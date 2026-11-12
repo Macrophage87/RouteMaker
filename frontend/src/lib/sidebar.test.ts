@@ -455,7 +455,7 @@ test("a figure the planner did not send is said so, not guessed; none is 'None'"
   const bare = quickFigures({} as never);
   assert.deepEqual(bare.map((f) => f.value), [NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE]);
   const calmRoute = quickFigures({ stress_m: { "1": 1000 }, facility_m: { path: 0 }, intersections: [], description: [], junction_delay_s: 0, stress_spans: [] } as never);
-  assert.deepEqual(calmRoute.map((f) => f.value), ["100%", "None", "None", "None", "0", "None"]);
+  assert.deepEqual(calmRoute.map((f) => f.value), ["100%", "None", "None", "None", "None", "None"]);
   assert.equal(calmPercent({}), null);
   assert.equal(heavyMetres({ "4": 10, "5": 5 }), 15, "heavy traffic counts the roads best avoided too");
   assert.equal(junctionFigure(null), NOT_AVAILABLE);

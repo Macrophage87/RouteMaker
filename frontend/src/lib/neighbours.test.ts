@@ -441,6 +441,9 @@ test("the named options are asked for only where the route warrants one; Go's tw
   const gravel = route({ stress_spans: unpavedSpans(300) });
   assert.deepEqual(neighbourKinds(gravel, false), ["paved"]);
   assert.equal(neighbourKinds(route({ stress_spans: unpavedSpans(100) }), false), null, "under 0.1 mi of unpaved");
+  const share = route({ preset: "bikeshare", description: turning(10) });
+  assert.equal(neighbourKinds(share, false), null, "Bikeshare: its options are Go's two");
+  assert.deepEqual(neighbourKinds(share, true), ["direct", "calmer"]);
 });
 
 test("Fewer turns is kept only with at least 3, and a quarter, fewer turns, and says so first", () => {

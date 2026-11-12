@@ -50,6 +50,8 @@ function unpavedOf(route: RouteResponse): number {
  */
 export function neighbourKinds(final: RouteResponse, go: boolean): NeighbourKind[] | null {
   const kinds: NeighbourKind[] = go ? ["direct", "calmer"] : [];
+  // Bikeshare's option is its ride between the same docks: More direct and Trailmaxxed only.
+  if (final.preset === "bikeshare") return kinds.length ? kinds : null;
   if (turnsOf(final) >= ASK_FEWER_TURNS_AT) kinds.push("fewer_turns");
   if (unpavedOf(final) >= PAVED_BY_M) kinds.push("paved");
   return kinds.length ? kinds : null;

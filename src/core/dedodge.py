@@ -362,14 +362,16 @@ def tie_rule() -> bool:
 def turn_lts3_m(ctx: refine.Context) -> float:
     """One turn as metres of LTS 3 avoided, at the plan's own prices: the turn charge as
     quiet riding (`refine.TURN_RANK_S` at the request's speed, the router's 15 s; the rider's
-    "Fewer turns", `presets.FEWER_TURNS_PENALTY_S`) over what a
-    metre of LTS 3 adds at its `use_roads` (`refine.lts3_added_m`). About 20 m at Default,
+    "Fewer turns", `presets.FEWER_TURNS_PENALTY_S`; a ride type's own higher charge) over what a
+    metre of LTS 3 adds at its `use_roads` (`refine.lts3_added_m`). About 22 m at Default,
     so a dodge is charged its turns at the rate the router charges them, not more.
     TURN_CHARGE_M where the request has no price for either."""
     added = refine.lts3_added_m(ctx)
     if ctx.quiet_cost <= 0 or added <= 0:
         return TURN_CHARGE_M
     rank_s = presets.FEWER_TURNS_PENALTY_S if ctx.fewer_turns else refine.TURN_RANK_S
+    # A ride type that charges more (Group Ride's and Road Bike's 30 s) is priced at its own.
+    rank_s = max(rank_s, float((ctx.costing.get("bicycle") or {}).get("maneuver_penalty") or 0))
     return refine.QUIET_COST_FACTOR * rank_s / ctx.quiet_cost / added
 
 

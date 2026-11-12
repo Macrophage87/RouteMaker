@@ -121,7 +121,7 @@ export function quickFigures(
       label: "Off-road path",
       value: route.facility_m === undefined ? NOT_AVAILABLE : path > 0 ? formatDistance(path) : "None",
     },
-    { key: "turns", label: "Turns", value: route.description == null ? NOT_AVAILABLE : String(turnTotal(route)) },
+    { key: "turns", label: "Turns", value: route.description == null ? NOT_AVAILABLE : turnTotal(route) > 0 ? String(turnTotal(route)) : "None" },
     { key: "waits", label: "Waiting at lights and stops", value: waitFigure(route.junction_delay_s) },
     // Said only where there is some: most routes have none, and "Unpaved: None" on each would be one more line to read.
     ...(unpaved !== null && unpaved >= UNPAVED_SAID_M ? [{ key: "unpaved" as const, label: "Unpaved", value: formatDistance(unpaved) }] : []),

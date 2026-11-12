@@ -234,8 +234,11 @@ class TestFewerTurnsAndAllPaved:
         options = ["fewer_turns", "paved"]
         answer = post(client, body_for(stress=70, options=options, fewer_turns=True)).json()
         assert [o["kind"] for o in answer["options"]] == ["paved"]
+        # Road Bike: never paved (it is), and it already charges a turn Fewer turns' price.
         answer = post(client, body_for("road-bike", options=options)).json()
-        assert [o["kind"] for o in answer["options"]] == ["fewer_turns"]
+        assert answer["options"] == []
+        answer = post(client, body_for("gravel", options=options)).json()
+        assert [o["kind"] for o in answer["options"]] == ["fewer_turns", "paved"]
 
     def test_without_options_it_is_go_as_before(
         self,
@@ -245,6 +248,42 @@ class TestFewerTurnsAndAllPaved:
     ) -> None:
         router(standard_router())
         answer = post(client, body_for(stress=70)).json()
+        assert [o["kind"] for o in answer["options"]] == ["direct", "calmer"]
+
+    def test_fewer_turns_is_not_planned_where_the_ride_type_already_charges_that_much(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        router(standard_router())
+        answer = post(client, body_for("group-ride", options=["fewer_turns", "paved"])).json()
+        assert [o["kind"] for o in answer["options"]] == ["paved"]
+
+    def test_each_plan_past_two_is_counted_and_left_out_where_there_is_no_room(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+        monkeypatch,
+    ) -> None:
+        from core.models import RateLimitWindow
+
+        router(standard_router())
+        four = ["direct", "calmer", "fewer_turns", "paved"]
+        answer = post(client, body_for(stress=70, options=four)).json()
+        assert [o["kind"] for o in answer["options"]] == four
+        assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [4]
+        # No room left for the extra two: Go's two are planned, the request is not refused.
+        real = ratelimit.hit
+        calls: list[int] = []
+
+        def full_after_the_first(limit, key, cost=1):
+            calls.append(cost)
+            return real(limit, key, cost) if len(calls) == 1 else ratelimit.Decision(False, 5)
+
+        monkeypatch.setattr(ratelimit, "hit", full_after_the_first)
+        answer = post(client, body_for(stress=70, options=four)).json()
         assert [o["kind"] for o in answer["options"]] == ["direct", "calmer"]
 
     def test_an_unknown_option_is_refused(self, client, segments) -> None:  # noqa: F811

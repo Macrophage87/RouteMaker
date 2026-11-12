@@ -2019,3 +2019,9 @@ class TestTheRidersFewerTurns:
         # Without it, the same weave is kept by the tie step alone.
         got = verdict(read(turns=4), read(lts3=60.0), CTX)
         assert not got.remove and got.needed_m == 50.0
+
+    def test_a_ride_type_that_charges_more_is_priced_at_its_own_charge(self) -> None:
+        own = dataclasses.replace(CTX, costing={"bicycle": {"maneuver_penalty": 30}})
+        assert dedodge.turn_lts3_m(own) == pytest.approx(
+            dedodge.turn_lts3_m(CTX) * 30 / refine.TURN_RANK_S
+        )

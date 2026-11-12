@@ -25,7 +25,7 @@ Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
   decision 254's "every preset": 15 s at every position, Default's 70 included; `turn_m` at every position
   (it counts a turn that stays on a trail's name too, which Valhalla's charge skips); and the side-street
   dodge pass asks a dodge to avoid its 50 m tie step plus each turn it adds, at the router's own price in
-  metres of LTS 3 (`dedodge.turn_lts3_m`, about 23 m a turn at 70). It waits on a before/after table.
+  metres of LTS 3 (`dedodge.turn_lts3_m`, about 22 m a turn at 70). It waits on a before/after table.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
   Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`

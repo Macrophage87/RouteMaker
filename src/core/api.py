@@ -3904,8 +3904,8 @@ def offline_network_view(request, body: OfflineNetworkIn):
 # 25 since the calmer option became the trailmaxxed route (2026-10-19): the top of the slider
 # runs the calm search at its full rate, which took longer than the old notch's one call.
 NEIGHBOURS_BUDGET_S = 25
-# What the request counts against the routing limit: one for each plan (Go's two; a request for
-# more options than two still counts two, as the budget above holds them all).
+# What the request counts against the routing limit up front: one for each of Go's two plans;
+# each plan asked past two is counted in the view (`route_neighbours`).
 NEIGHBOURS_COST = 2
 # What a loop's shapes (POST /api/route/loop-shapes) count against the routing limit, as three
 # plans (our default): six to eighteen /route calls and up to nine traces, all held to one plan's
@@ -3981,7 +3981,12 @@ def route_neighbours(request, body: RouteIn):
     at = {
         "direct": direct,
         "calmer": calmer,
-        "fewer_turns": None if body.fewer_turns else same,
+        # Nor where the ride type already charges a turn that much (Group Ride, Road Bike).
+        "fewer_turns": None
+        if body.fewer_turns
+        or presets.costing(body.preset)["bicycle"].get("maneuver_penalty", 0)
+        >= presets.FEWER_TURNS_PENALTY_S
+        else same,
         "paved": None if body.paved or body.preset == presets.ROAD_BIKE else same,
     }
     wanted = [
@@ -3996,6 +4001,14 @@ def route_neighbours(request, body: RouteIn):
             )
         )
     ]
+    # Each plan past the two the decorator counted is counted too (Go's More direct and
+    # Trailmaxxed, then Fewer turns and All paved): where the client has not the room, the
+    # last ones are left out, never the request refused.
+    extra = len(wanted) - NEIGHBOURS_COST
+    if extra > 0:
+        client = ratelimit.client_key(ratelimit.client_address(request))
+        if not ratelimit.hit(ratelimit.ROUTING, client, extra).allowed:
+            wanted = wanted[:NEIGHBOURS_COST]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
     bodies = {
