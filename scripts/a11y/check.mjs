@@ -5228,7 +5228,7 @@ if (mine()) {
       (await p.eval("!document.querySelector('.go-summary .transit-total') && !document.querySelector('.go-summary .transit-fold')")),
     JSON.stringify(folds));
   await p.eval("[...document.querySelectorAll('.go-summary .transit-go > details > summary')].forEach((s) => s.click()); true");
-  await sleep(200);
+  await p.waitFor("[...document.querySelectorAll('.go-summary .transit-go > details')].every((d) => d.open)", 5000);
   const trip = await p.eval(`(() => ({
     steps: [...document.querySelectorAll('ol.transit-steps > li')].map((e) => e.textContent.trim()),
     total: document.querySelector('.go-totals .total-time dd bdi')?.textContent,
@@ -5967,6 +5967,7 @@ const failed = results.filter((r) => !r.ok);
 // said, and one to the bottom.
 // The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
 // My routes' popup (the v0.26.0 a11y review) adds three: Tab inside, Back and Escape back to its button.
+// Go's transit trip on one screen (#1185) adds one: its steps and other trips start folded shut.
 const EXPECTED = 716;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
