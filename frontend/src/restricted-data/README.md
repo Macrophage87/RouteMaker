@@ -11,6 +11,7 @@ the project's OSM extract (on the PC: `python3 scripts/build_restricted_sites.py
 | Source | Licence | Credit on the map |
 | --- | --- | --- |
 | OpenStreetMap, via the project's own extract; hand-drawn areas from OSM geometry, each with its `source` page | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| U.S. Fish and Wildlife Service, Patuxent Research Refuge North Tract map, 2026-06: evidence for the Patuxent closed area's outline | Public domain (a U.S. federal government work) | none needed; credited in the About page's Acknowledgements |
 
 Until the script is run, the file is an empty FeatureCollection: no shading, and routing is as
 before.
