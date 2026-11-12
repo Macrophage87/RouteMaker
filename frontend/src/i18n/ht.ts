@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Tan Metro yo se sèvis abityèl li dapre wmata.com, se pa yon orè: tan pou tann lan se mwatye tan abityèl ant tren yo.",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Tan Metro yo se sèvis abityèl li pou {day} dapre wmata.com, se pa yon orè: tan pou tann lan se mwatye tan abityèl ant tren yo.",
   "More direct": "Pi dirèk",
+  "Fewer turns": "Mwens vire",
+  "All paved": "Tout asfalte",
   "Nearest by bike from here": "Ki pi pre a an bisiklèt depi isit la",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "Nou pa ka planifye okenn konbinezon Metro oswa bis isit la. Eseye fè tout wout la an bisiklèt.",
   "No bikeshare plan": "Pa gen plan bisiklèt pataje",

@@ -10,7 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { hillsWords, startDials, type Dials } from "./dials.ts";
 import { hillsShort, rideSummary, rideSummarySpoken, settingsSummary, settingsSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
-import { NOT_AVAILABLE, busyMetres, calmPercent, calmWayShares, calmWaysLabel, calmWaysText, calmWords, groupRideLine, heavyMetres, turnTotal, junctionFigure, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "./quickFigures.ts";
+import { NOT_AVAILABLE, busyMetres, calmPercent, calmWayShares, calmWaysLabel, calmWaysText, calmWords, groupRideLine, heavyMetres, turnTotal, junctionFigure, quickFigures, unpavedMetres, waitFigure, stressBarKey, stressBarLabel, stressPlainParts } from "./quickFigures.ts";
 import {
   BACK_LABEL,
   BAR_ITEMS,
@@ -413,6 +413,35 @@ test("the four quick figures: share on paths and quiet streets, heavy traffic, j
   assert.deepEqual([path.label, path.value], ["Off-road path", "2.4 mi (3.9 km)"]);
 });
 
+test("after the four, the turn burden: turns, the wait at lights and stops, and unpaved only where there is some", () => {
+  const stretch = (movement: string) => ({ kind: "stretch", turn: { movement } });
+  const fiddly = {
+    ...(route as object),
+    description: [stretch("depart"), stretch("left"), stretch("right"), stretch("straight"), stretch("bear_left"), { kind: "climb" }],
+    junction_delay_s: 250,
+    stress_spans: [
+      { from_m: 0, to_m: 1000, tier: 1, facility: "path", unpaved: true },
+      { from_m: 1000, to_m: 5000, tier: 2, facility: "none", unpaved: false },
+      { from_m: 5000, to_m: 5609, tier: 1, facility: "path", unpaved: true, rough: false },
+    ],
+  } as never;
+  const figures = quickFigures(fiddly);
+  assert.deepEqual(
+    figures.slice(4).map((f) => [f.label, f.value]),
+    [
+      ["Turns", "3"],
+      ["Waiting at lights and stops", "4 min"],
+      ["Unpaved", "1.0 mi (1.6 km)"],
+    ],
+  );
+  assert.equal(unpavedMetres(undefined), null, "no sections: not guessed");
+  assert.equal(waitFigure(12), "Under 1 min");
+  assert.equal(waitFigure(null), NOT_AVAILABLE);
+  // 50 m of gravel is a lot crossed, not a figure.
+  const tiny = quickFigures({ ...(fiddly as object), stress_spans: [{ from_m: 0, to_m: 50, tier: 1, facility: "path", unpaved: true }] } as never);
+  assert.equal(tiny.find((f) => f.key === "unpaved"), undefined);
+});
+
 test("the paths-and-quiet-streets figure is always the bar key's LTS 1 plus LTS 2 (the correctness review's N3)", () => {
   // Rounded on their own, the sum and the two shares in the key could differ by one.
   for (const stress of [{ "1": 6060, "2": 3040, "3": 900 }, { "1": 6049, "2": 3049, "3": 902 }, { "1": 333, "2": 333, "3": 334 }]) {
@@ -424,9 +453,9 @@ test("the paths-and-quiet-streets figure is always the bar key's LTS 1 plus LTS 
 
 test("a figure the planner did not send is said so, not guessed; none is 'None'", () => {
   const bare = quickFigures({} as never);
-  assert.deepEqual(bare.map((f) => f.value), [NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE]);
-  const calmRoute = quickFigures({ stress_m: { "1": 1000 }, facility_m: { path: 0 }, intersections: [] } as never);
-  assert.deepEqual(calmRoute.map((f) => f.value), ["100%", "None", "None", "None"]);
+  assert.deepEqual(bare.map((f) => f.value), [NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE, NOT_AVAILABLE]);
+  const calmRoute = quickFigures({ stress_m: { "1": 1000 }, facility_m: { path: 0 }, intersections: [], description: [], junction_delay_s: 0, stress_spans: [] } as never);
+  assert.deepEqual(calmRoute.map((f) => f.value), ["100%", "None", "None", "None", "None", "None"]);
   assert.equal(calmPercent({}), null);
   assert.equal(heavyMetres({ "4": 10, "5": 5 }), 15, "heavy traffic counts the roads best avoided too");
   assert.equal(junctionFigure(null), NOT_AVAILABLE);

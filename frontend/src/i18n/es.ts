@@ -791,6 +791,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Some on: {layers}.": "Algunas activadas: {layers}.",
   "Routes to choose from": "Rutas para elegir",
   "More direct": "Más directa",
+  "Fewer turns": "Menos giros",
+  "All paved": "Todo pavimentado",
   "1 alert": "1 alerta",
   "{count} alerts": "{count} alertas",
   "{count} routes": "{count} rutas",

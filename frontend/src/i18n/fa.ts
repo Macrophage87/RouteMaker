@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "زمان‌های Metro خدمات معمول آن از wmata.com است، نه جدول زمانی: انتظار نصف فاصلهٔ معمول بین قطارهاست.",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "زمان‌های Metro خدمات معمول {day} آن از wmata.com است، نه جدول زمانی: انتظار نصف فاصلهٔ معمول بین قطارهاست.",
   "More direct": "مستقیم‌تر",
+  "Fewer turns": "پیچ\u200cهای کمتر",
+  "All paved": "تماماً آسفالت",
   "Nearest by bike from here": "نزدیک‌ترین با دوچرخه از اینجا",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "هیچ ترکیبی از Metro یا اتوبوس اینجا برنامه‌ریزی نمی‌شود. تمام راه را با دوچرخه امتحان کنید.",
   "No bikeshare plan": "برنامهٔ دوچرخهٔ اشتراکی نیست",

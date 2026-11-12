@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "ግዜታት Metro ካብ wmata.com ልሙድ ኣገልግሎቱ እዩ፣ መደብ ኣይኮነን፦ ምጽባይ ፍርቂ ናይቲ ልሙድ ግዜ ኣብ መንጎ ባቡራት እዩ።",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "ግዜታት Metro ካብ wmata.com ናይ {day} ልሙድ ኣገልግሎቱ እዩ፣ መደብ ኣይኮነን፦ ምጽባይ ፍርቂ ናይቲ ልሙድ ግዜ ኣብ መንጎ ባቡራት እዩ።",
   "More direct": "ዝያዳ ቀጥታ",
+  "Fewer turns": "ውሑዳት ምጥዋያት",
+  "All paved": "ኩሉ ዝተነጸፈ",
   "Nearest by bike from here": "ካብዚ ብብሽክለታ ዝቐረበ",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "ኣብዚ ዝኾነ ምትእስሳር Metro ወይ ኣውቶቡስ ክውጠን ኣይክእልን። ምሉእ መገዲ ብብሽክለታ ፈትኑ።",
   "No bikeshare plan": "መደብ ሓባር ብሽክለታ የለን",

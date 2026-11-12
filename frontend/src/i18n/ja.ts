@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metroの時間はwmata.comによる通常の運行で、時刻表ではありません：待ち時間は通常の列車間隔の半分です。",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metroの時間はwmata.comによる{day}の通常の運行で、時刻表ではありません：待ち時間は通常の列車間隔の半分です。",
   "More direct": "より直接的",
+  "Fewer turns": "曲がる回数が少ない",
+  "All paved": "すべて舗装路",
   "Nearest by bike from here": "ここから自転車で最も近い",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "ここではMetroやバスの組み合わせを計画できません。全行程を自転車で試してください。",
   "No bikeshare plan": "シェアサイクルの計画なし",
