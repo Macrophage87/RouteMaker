@@ -3484,8 +3484,10 @@ export function RideMode({
         // (the v0.26.0 accessibility review: an alert as well said it twice).
         if (speaksAloud(prefsRef.current.output, document.visibilityState === "hidden")) rideVoice.speak(said, true);
         showCue(said);
-        const fix = rideRef.current.goodFix ?? rideRef.current.fix;
-        setSuddenAsk({ name: step.closure.name, distance: formatDistance(step.aheadM), toM: step.closure.toM, at: fix?.point ?? null });
+        // Only a good fix now: an old one could already be RESTART_AUTO_M away, closing it unheard (none: the next good one).
+        const fix = rideRef.current.fix;
+        const at = fix && fix.accuracyM <= POOR_FIX_M ? fix.point : null;
+        setSuddenAsk({ name: step.closure.name, distance: formatDistance(step.aheadM), toM: step.closure.toM, at });
       }
     }
   }, [watched, watchAt, suddenAsk, showToast]);
@@ -3494,6 +3496,10 @@ export function RideMode({
   const fixNow = ride.goodFix ?? ride.fix;
   useEffect(() => {
     if (!suddenAsk) return;
+    if (!suddenAsk.at && fixNow && fixNow.accuracyM <= POOR_FIX_M) {
+      setSuddenAsk({ ...suddenAsk, at: fixNow.point });
+      return;
+    }
     const passed = progress !== null && progress >= suddenAsk.toM;
     const rode = !!(fixNow && suddenAsk.at && fixNow.accuracyM <= POOR_FIX_M && haversineM(fixNow.point, suddenAsk.at) >= RESTART_AUTO_M);
     if (passed || rode) setSuddenAsk(null);
