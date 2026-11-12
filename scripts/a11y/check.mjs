@@ -5220,9 +5220,21 @@ if (mine()) {
   const planned = await p.waitFor("!!document.querySelector('ol.transit-steps li')", 20000);
   // The route's sentence is said once it has stood a moment (lib/settle.ts ANNOUNCE_SETTLE_MS), after the steps show.
   await p.waitFor("!!document.querySelector('.status-line')?.textContent.trim()", 5000);
+  // Go's trip on one screen (Stephen 2026-11-12, #1185): the steps and the other trips each start folded shut under a
+  // summary; the rider opens them (a tap each), and the lists are checked open, as a rider and a screen reader meet them.
+  const folds = await p.eval(`(() => [...document.querySelectorAll('.go-summary .transit-go > details')].map((d) => ({ cls: d.className, open: d.open, summary: d.querySelector('summary')?.textContent.trim() })))()`);
+  check("transit (Go): the steps and the other trips start folded shut, under named summaries, with no second total under the time",
+    JSON.stringify(folds) === JSON.stringify([{ cls: "transit-steps-fold", open: false, summary: "Steps, in order" }, { cls: "transit-options-fold", open: false, summary: "Trips, best first, counting busy roads" }]) &&
+      (await p.eval("!document.querySelector('.go-summary .transit-total') && !document.querySelector('.go-summary .transit-fold')")),
+    JSON.stringify(folds));
+  await p.eval("[...document.querySelectorAll('.go-summary .transit-go > details > summary')].forEach((s) => s.click()); true");
+  await sleep(200);
   const trip = await p.eval(`(() => ({
     steps: [...document.querySelectorAll('ol.transit-steps > li')].map((e) => e.textContent.trim()),
-    total: document.querySelector('.go-totals .total-time dd')?.textContent,
+    total: document.querySelector('.go-totals .total-time dd bdi')?.textContent,
+    // The arrival clock beside it (#1185): shown, and said as an estimate for leaving now.
+    arrive: document.querySelector('.go-totals .total-time .route-arrive [aria-hidden]')?.textContent,
+    arriveSaid: document.querySelector('.go-totals .total-time .route-arrive .visually-hidden')?.textContent,
     totalName: document.querySelector('.go-totals .total-time dt')?.textContent,
     heading: document.querySelector('.transit h3')?.textContent,
     compare: document.querySelector('.transit-compare')?.textContent,
@@ -5240,8 +5252,8 @@ if (mine()) {
       /* a ride step says its traffic stress in words since 8a7c1c1e ("Transit: colour every ride of the trip by traffic stress") */
       /^Ride 4 min to Eastern Market\. Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
-  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with riding the whole way beside it",
-    trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock and riding the whole way beside it",
+    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
     JSON.stringify(trip));
   check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
     trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",
@@ -5955,7 +5967,7 @@ const failed = results.filter((r) => !r.ok);
 // said, and one to the bottom.
 // The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
 // My routes' popup (the v0.26.0 a11y review) adds three: Tab inside, Back and Escape back to its button.
-const EXPECTED = 715;
+const EXPECTED = 716;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);
