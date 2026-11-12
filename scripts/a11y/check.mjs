@@ -5866,6 +5866,33 @@ if (mine()) {
   await forced.close();
 }
 
+// ---- My routes' popup, from Save & load (Stephen, 2026-11-12; the v0.26.0 a11y review) ----
+// On a phone, signed in: Tab stays in the popup, and Back to Save & load or Escape returns the focus to My routes.
+if (mine()) {
+  const p = await open({ width: 375, height: 812, mobile: true, ride: false, suggester: true });
+  const onButton = "document.activeElement?.matches('#sheet-gpx .my-routes-open button') && !document.getElementById('sheet-gpx').hidden && document.getElementById('sheet-routes').hidden";
+  await openMyRoutes(p);
+  const inside = [];
+  for (let i = 0; i < 10; i++) {
+    await p.tab(i % 3 === 2);
+    inside.push(await p.eval("!!document.activeElement?.closest('#sheet-routes')"));
+  }
+  check("my routes popup: on a phone, Tab and Shift+Tab stay inside it", inside.every(Boolean), JSON.stringify(inside));
+  const backText = await p.eval("document.querySelector('#sheet-routes .sheet-back')?.textContent.trim()");
+  await p.eval("document.querySelector('#sheet-routes .sheet-back').focus(); true");
+  await p.enter();
+  await sleep(400);
+  const viaBack = await p.eval(onButton);
+  check("my routes popup: \"Back to Save & load\" goes back to Save & load with the focus on My routes", backText === "Back to Save & load" && viaBack, JSON.stringify({ backText, focus: await focused(p) }));
+  await p.enter();
+  await p.waitFor("!document.getElementById('sheet-routes')?.hidden", 8000);
+  await sleep(300);
+  await p.escape();
+  await sleep(400);
+  check("my routes popup: Escape goes back to Save & load with the focus on My routes", await p.eval(onButton), await focused(p));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
@@ -5886,7 +5913,8 @@ const failed = results.filter((r) => !r.ok);
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
 // The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
-const EXPECTED = 712;
+// My routes' popup (the v0.26.0 a11y review) adds three: Tab inside, Back and Escape back to its button.
+const EXPECTED = 715;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);
