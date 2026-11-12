@@ -702,6 +702,7 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         + 222842  # own picks (the owner, 2026-11-09): MD 135417, VA 81047 (2 ways not in the
         # 2026-11-02 extract stay by id), WV 6378
         + 1  # Whip-poor-will Way, Patuxent Research Refuge (the owner, 2026-11-12)
+        + 72  # Patuxent Research Refuge closed area, one group (the owner, 2026-11-12)
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
