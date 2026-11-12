@@ -696,6 +696,27 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - The facts of an alert (which trail or bridge, which days) are used with a link to the page; no
   alert text is republished.
 
+### Park agency trail alerts (v0.26.0)
+
+- Credit: `Park agency trail alerts`
+- Pages, each in words with no feed (read 2026-11-12):
+  - NOVA Parks (the W&OD Trail): the alerts linked from <https://www.novaparks.com/>, one page an
+    alert (`https://www.novaparks.com/alert/...`).
+  - NPS, C&O Canal National Historical Park: "Towpath and Park Conditions",
+    <https://www.nps.gov/choh/planyourvisit/conditions.htm>, each place by its milepost. A
+    work of the US government, public domain.
+  - Anne Arundel County Recreation and Parks: "Closings, Cancellations, & Delays",
+    <https://www.aacounty.org/recreation-parks/about-us/closings-cancellations> (the B&A Trail).
+- New items are listed by `scripts/park_alerts.py watch`; a trail closure is read by a person and,
+  as the owner's rule for these says, kept as dates, a reason and links in
+  `src/core/geodata/park-closures.json`, its lines OpenStreetMap's (ODbL): the OSM ways, or for
+  the C&O the towpath between the named mileposts cut from the trail mile lines
+  (`trail-miles.json`, also OSM).
+- Use: closures routed round, whole days, gone after the last day (`routemaker.park_alerts`).
+  Each closure names its agency and links its alert.
+- The facts of an alert (which trail, which miles, which days) are used with a link to the page;
+  no alert text is republished. Not legal advice.
+
 ### DDOT occupancy permits (TOPS)
 
 - Credit: `Road closures: DDOT (TOPS permits), CC BY 4.0`
@@ -784,6 +805,23 @@ permits: never routed round, never in a route's words, a cue or the closure chec
   the closure's own fields are asked for, never the reporting account. Publisher: MDOT SHA, the
   WZDx feed's publisher. Terms: a public MD iMAP service, "as is", no licence stated (inferred
   public; ask MDOT SHA before redistributing the records themselves). Not legal advice.
+
+### Montgomery County DOT road closures (v0.26.0)
+
+- Credit: `Montgomery County DOT road closures`
+- **Montgomery County DOT road closures**. Layer "MC DOT Road Closure":
+  `www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0`, read every
+  15 minutes (source `moco`). Montgomery County's own closures on its roads (construction, weather
+  and flooding, crashes, emergencies, events), which it does not post to the state's Reporter
+  above (none of the state's records named Montgomery on 2026-11-12, so the two do not overlap).
+  The same fields as the state's Reporter, checked live 2026-11-12, read the same way
+  (`md_closures.parse_sha`); never `Creator`. The layer "may contain zero features" when nothing is
+  closed, which is a good read. Publisher's stated uses include "routing applications". Terms: a
+  public county map service, copyright "Montgomery County DOT", no licence stated on the layer
+  (the county's older open-data copy, "State and County Road Closures", 543g-yn3p, is marked
+  Public Domain but stopped updating in 2021). Inferred public; we route round it and show each
+  closure's own words with a link to the county's DOT, and never redistribute the records. Not
+  legal advice.
 
 ### Deer-management closures (v0.12.3)
 

@@ -45,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.25.1"
+SERVER_VERSION = "0.26.0"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
@@ -3248,7 +3248,17 @@ def _route_span(flat_route: list, cum: list, cells: dict, flat, pts: list):
     return (min(near), max(near)) if near else None
 
 
-PIECED_SOURCES = ("reviewer", "ddot_advisory", "purple_line", "fcpa", "protrack", "wssc", "sha")
+PIECED_SOURCES = (
+    "reviewer",
+    "ddot_advisory",
+    "purple_line",
+    "fcpa",
+    "park_alert",
+    "protrack",
+    "wssc",
+    "sha",
+    "moco",
+)
 
 
 def _closure_id(row: dict) -> str:

@@ -2157,4 +2157,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{n} e-bikes": "{n} sepeda listrik",
   "{n} open dock": "{n} dok kosong",
   "{n} open docks": "{n} dok kosong",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Ada bagian yang terasa berbeda dari penilaiannya?",
+  "Which stretch?": "Bagian mana?",
+  "You marked a road closed.": "Anda menandai satu jalan ditutup.",
+  "You marked {n} roads closed.": "Anda menandai {n} jalan ditutup.",
+  "Send for review": "Kirim untuk ditinjau",
+  "Only the road and the day are sent.": "Hanya jalan dan harinya yang dikirim.",
+  "Sent 1 closed road for review. Thank you.": "1 jalan tertutup dikirim untuk ditinjau. Terima kasih.",
+  "Sent {n} closed roads for review. Thank you.": "{n} jalan tertutup dikirim untuk ditinjau. Terima kasih.",
+  "Not sent. Try again shortly.": "Tidak terkirim. Coba lagi sebentar lagi.",
+  "That road can't be looked up right now. Try again shortly.": "Jalan itu tidak bisa dicari sekarang. Coba lagi sebentar lagi.",
+  "Looking up the road…": "Mencari jalan…",
+  "Sending…": "Mengirim…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Tidak ada akses umum",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Salin log petunjuk",
+  "Cue log copied.": "Log petunjuk disalin.",
+  "Could not copy the cue log.": "Tidak dapat menyalin log petunjuk.",
 };

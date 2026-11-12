@@ -15,7 +15,8 @@ export function rideViewKept(was: RideView | null, next: RideView | null): boole
     sameStops(was.stops, next.stops) &&
     (was.lettered ?? null) === (next.lettered ?? null) &&
     was.onLettered === next.onLettered &&
-    (was.transitPath ?? null) === (next.transitPath ?? null)
+    (was.transitPath ?? null) === (next.transitPath ?? null) &&
+    (was.wayBackTo ?? null) === (next.wayBackTo ?? null)
   );
 }
 

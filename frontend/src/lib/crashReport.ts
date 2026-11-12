@@ -98,6 +98,8 @@ export interface ReportInput {
   userAgent: string;
   logged: readonly LoggedError[];
   version?: string;
+  /** The ride's cue log (lib/cueRecorder.ts), where a ride was under way: cue numbers and what the voice did, no places. */
+  cueLog?: string;
 }
 
 /** The report as plain text, to copy. */
@@ -119,5 +121,6 @@ export function crashReport(input: ReportInput): string {
     lines.push("", `Earlier errors (${input.logged.length}, oldest first):`);
     for (const e of input.logged) lines.push(`- ${new Date(e.at).toISOString()} ${e.kind}: ${e.text}`);
   }
+  if (input.cueLog) lines.push("", input.cueLog);
   return lines.join("\n");
 }

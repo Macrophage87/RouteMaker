@@ -2157,4 +2157,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{n} e-bikes": "{n} elektrikli bisiklet",
   "{n} open dock": "{n} boş park yeri",
   "{n} open docks": "{n} boş park yeri",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Puanından farklı hissettiren bir bölüm oldu mu?",
+  "Which stretch?": "Hangi bölüm?",
+  "You marked a road closed.": "Bir yolu kapalı olarak işaretlediniz.",
+  "You marked {n} roads closed.": "{n} yolu kapalı olarak işaretlediniz.",
+  "Send for review": "İncelemeye gönder",
+  "Only the road and the day are sent.": "Yalnızca yol ve gün gönderilir.",
+  "Sent 1 closed road for review. Thank you.": "1 kapalı yol incelemeye gönderildi. Teşekkürler.",
+  "Sent {n} closed roads for review. Thank you.": "{n} kapalı yol incelemeye gönderildi. Teşekkürler.",
+  "Not sent. Try again shortly.": "Gönderilmedi. Biraz sonra tekrar deneyin.",
+  "That road can't be looked up right now. Try again shortly.": "O yol şu anda aranamıyor. Biraz sonra tekrar deneyin.",
+  "Looking up the road…": "Yol aranıyor…",
+  "Sending…": "Gönderiliyor…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Halka kapalı",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Yönlendirme kaydını kopyala",
+  "Cue log copied.": "Yönlendirme kaydı kopyalandı.",
+  "Could not copy the cue log.": "Yönlendirme kaydı kopyalanamadı.",
 };

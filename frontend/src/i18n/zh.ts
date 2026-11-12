@@ -2157,4 +2157,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{n} e-bikes": "电动单车 {n} 辆",
   "{n} open dock": "空车位 {n} 个",
   "{n} open docks": "空车位 {n} 个",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "有没有哪一段感觉和评级不一样？",
+  "Which stretch?": "哪一段？",
+  "You marked a road closed.": "你标记了一条道路封闭。",
+  "You marked {n} roads closed.": "你标记了 {n} 条道路封闭。",
+  "Send for review": "提交审核",
+  "Only the road and the day are sent.": "只发送道路和日期。",
+  "Sent 1 closed road for review. Thank you.": "已提交 1 条封闭道路供审核。谢谢。",
+  "Sent {n} closed roads for review. Thank you.": "已提交 {n} 条封闭道路供审核。谢谢。",
+  "Not sent. Try again shortly.": "未发送。请稍后再试。",
+  "That road can't be looked up right now. Try again shortly.": "现在无法查询这条道路。请稍后再试。",
+  "Looking up the road…": "正在查询道路…",
+  "Sending…": "正在发送…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "禁止公众进入",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "复制提示记录",
+  "Cue log copied.": "已复制提示记录。",
+  "Could not copy the cue log.": "无法复制提示记录。",
 };

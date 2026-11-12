@@ -2157,4 +2157,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{n} e-bikes": "{n} elétricas",
   "{n} open dock": "{n} vaga livre",
   "{n} open docks": "{n} vagas livres",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Algum trecho pareceu diferente da sua classificação?",
+  "Which stretch?": "Qual trecho?",
+  "You marked a road closed.": "Você marcou uma rua como fechada.",
+  "You marked {n} roads closed.": "Você marcou {n} ruas como fechadas.",
+  "Send for review": "Enviar para revisão",
+  "Only the road and the day are sent.": "Só a rua e o dia são enviados.",
+  "Sent 1 closed road for review. Thank you.": "1 rua fechada enviada para revisão. Obrigado.",
+  "Sent {n} closed roads for review. Thank you.": "{n} ruas fechadas enviadas para revisão. Obrigado.",
+  "Not sent. Try again shortly.": "Não enviado. Tente novamente em instantes.",
+  "That road can't be looked up right now. Try again shortly.": "Não é possível consultar essa rua agora. Tente novamente em instantes.",
+  "Looking up the road…": "Consultando a rua…",
+  "Sending…": "Enviando…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Sem acesso público",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Copiar registro de avisos",
+  "Cue log copied.": "Registro de avisos copiado.",
+  "Could not copy the cue log.": "Não foi possível copiar o registro de avisos.",
 };

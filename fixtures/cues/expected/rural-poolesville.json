@@ -1,0 +1,74 @@
+[
+ {
+  "turn": "Start",
+  "road": "Path",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Left",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Caution",
+  "road": "Elgin Rd",
+  "then": "",
+  "arrow": "caution"
+ },
+ {
+  "turn": "Left",
+  "road": "Wootton Ave",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Caution",
+  "road": "Fisher Ave",
+  "then": "",
+  "arrow": "caution"
+ },
+ {
+  "turn": "Left",
+  "road": "Kohlhoss Rd",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "Cattail Rd",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Left",
+  "road": "Darnestown Rd",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "Peach Tree Rd",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Moore Rd",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Left",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

@@ -248,6 +248,11 @@ interface Props {
   /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
   ghost?: readonly LonLat[] | null;
   /**
+   * Ride mode, off the route with the way back shown (no signal for a re-plan, Keep the planned route, a fixed
+   * route): the nearest point of the planned line ahead, drawn as a dashed line from the rider to it. Null: none.
+   */
+  wayBackTo?: LonLat | null;
+  /**
    * Plan (v0.10.0, lib/planLegs.ts): the legs drawn by hand (manual mode), and that the plan's legs show: a faint
    * straight line from each point to the next while there is no route for the points as they are, dashed where
    * drawn. Null shows none. The route's own drawn legs are dashed whatever this is.
@@ -436,6 +441,7 @@ function registerPmtiles(): void {
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
 const GHOST_SOURCE = "route-ghost";
+const WAY_BACK_SOURCE = "ride-way-back";
 const PLAN_LEGS_SOURCE = "plan-legs";
 const ROUTE_DRAWN_SOURCE = "route-drawn";
 /**
@@ -482,6 +488,10 @@ function ghostData(line: readonly LonLat[] | null | undefined): object {
   return line && line.length >= 2
     ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line.map((c) => [c[0], c[1]]) } }
     : { type: "FeatureCollection", features: [] };
+}
+/** The way back's dashed line: from the rider to the planned line, or nothing. */
+export function wayBackData(rider: LonLat | null | undefined, to: LonLat | null | undefined): object {
+  return rider && to ? ghostData([rider, to]) : ghostData(null);
 }
 /** Plan's faint leg lines (lib/planLegs.ts): shown with no route, or a route greyed for a new plan. */
 function planLegsData(props: Pick<Props, "points" | "planLegs" | "route" | "stale" | "loopVias">): object {
@@ -1377,6 +1387,23 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
       });
+      // Ride mode's way back to the planned line (off the route with no signal, Keep the planned route, a fixed route):
+      // a dashed line from the rider to the nearest point of the line ahead, white-edged so it reads over the stress lines.
+      map.addSource(WAY_BACK_SOURCE, { type: "geojson", data: wayBackData(callbacks.current.rider?.point, callbacks.current.wayBackTo) as never });
+      map.addLayer({
+        id: "ride-way-back-casing",
+        type: "line",
+        source: WAY_BACK_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 6, "line-opacity": 0.9 },
+      });
+      map.addLayer({
+        id: "ride-way-back",
+        type: "line",
+        source: WAY_BACK_SOURCE,
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": 3, "line-dasharray": [2, 1.5] },
+      });
       // Plan's legs as planned (v0.10.0, lib/planLegs.ts): straight lines between the points until the route comes,
       // solid where it will be routed, dashed where drawn by hand, on a white edge, with arrows the way each leg runs;
       // a loop's closing leg back to the start too. Under the route. A drag on one adds a via (planLegEdit).
@@ -2137,6 +2164,14 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     (map.getSource(GHOST_SOURCE) as GeoJSONSource | undefined)?.setData(ghostData(props.ghost));
   }, [props.ghost]);
+
+  // Ride mode's way back to the planned line, moved with the rider at each fix.
+  const wayBackRider = props.wayBackTo ? (props.rider?.point ?? null) : null;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(WAY_BACK_SOURCE) as GeoJSONSource | undefined)?.setData(wayBackData(wayBackRider, props.wayBackTo) as never);
+  }, [wayBackRider, props.wayBackTo]);
 
   // A bikeshare plan's walk legs and the docks it uses. The markers are not buttons, since they
   // do nothing when pressed: each is an image with its whole text equivalent as its name, and
@@ -3462,9 +3497,12 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();
-  if (fitted.current && routeInView(map, route.geometry.coordinates, padding)) return;
+  // A transit trip's line is its first ride: the whole trip is framed, its transit and later rides too (the 2026-11-12
+  // backlog: only the first leg was in view).
+  const framed: LonLat[] = [...route.geometry.coordinates, ...(transitOf(route)?.steps ?? []).flatMap((step) => step.coordinates as LonLat[])];
+  if (fitted.current && routeInView(map, framed, padding)) return;
   fitted.current = true;
   const bounds = new maplibregl.LngLatBounds();
-  route.geometry.coordinates.forEach((c) => bounds.extend(c));
+  framed.forEach((c) => bounds.extend(c));
   map.fitBounds(bounds, { padding, maxZoom: 15, duration: 600 });
 }

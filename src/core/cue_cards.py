@@ -89,8 +89,13 @@ STREET_WORDS = {
     "southeast": "SE",
     "bridge": "Br",
     "service": "Svc",
+    "path": "Path",
+    "sidewalk": "Sidewalk",
+    "alley": "Alley",
 }
 NAMELESS = ("", "unnamed road", "path")
+# Ride's word for a road a crossing has no name for (navigate.ts CROSS_UNNAMED).
+CROSS_UNNAMED = "the road"
 
 
 def abbreviate(street: str) -> str:
@@ -105,6 +110,12 @@ def abbreviate(street: str) -> str:
 def _named(street) -> str:
     s = str(street or "").strip()
     return "" if s.lower().startswith("unnamed") else s
+
+
+def _crossed(road) -> str:
+    """The road crossed between two turns; "" with no name (navigate.ts CROSS_UNNAMED)."""
+    s = _named(road)
+    return "" if s == CROSS_UNNAMED else s
 
 
 # --- the rows ----------------------------------------------------------------------------------
@@ -147,11 +158,16 @@ def cue_rows(
             rows.append(_caution(at, "Work zone", e))
         elif kind == "hazard":
             rows.append(_caution(at, "", e))
-        elif kind == "junction" and (e.get("severity") or e.get("group")) and not turn:
+        elif (
+            kind == "junction"
+            and (e.get("severity") or e.get("group"))
+            and turn.get("movement") in (None, "straight")
+        ):
+            # A flagged junction ridden straight through (its turn "straight"), as Ride warns of it.
             rows.append(_caution(at, "Crossing", e))
         elif kind == "stretch" and turn.get("cross"):
             rows.append(
-                _row(at, "Cross", abbreviate(_named(turn["cross"])), {"kind": "cross"})
+                _row(at, "Cross", abbreviate(_crossed(turn["cross"])), {"kind": "cross"})
                 | {"_cross": True}
             )
         elif kind == "stretch" and turn.get("movement") in TURN_WORDS:
@@ -169,6 +185,10 @@ def cue_rows(
                 )
                 | {"_move": turn["movement"], "_road": road}
             )
+        elif kind == "stretch" and turn.get("severity"):
+            # A flagged junction carried straight on into a stretch, as Ride warns of it
+            # (navigate.ts cueKindOf).
+            rows.append(_caution(at, "", e))
     rows.append(_row(length, "Finish", "", {"kind": "finish"}))
     rows = _jogs(rows)
     for note in notes or []:

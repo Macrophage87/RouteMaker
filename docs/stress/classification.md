@@ -84,10 +84,12 @@ recorded in `assumed` (`stress.py:135-137`).
    stretches do not come out as the files say (`src/pipeline/lts_sentinels.py`).
 4. **Stress override rows** (`run.py:2309`, `overrides.apply_stress`): they outrank
    everything above. See [overrides.md](overrides.md).
-5. **Side paths beside busy roads** (`run.py`, `apply_beside_busy_road`;
+5. **Side paths beside busy roads** (`run.py`, `rate_side_paths`, `apply_beside_busy_road`;
    `stress.beside_busy_road_step`; the owner, 2026-11-12: protected lanes along roads like
-   Old Georgetown Road "are fine for experienced cyclists, they might not be LTS 1"), right
-   after the rows. An unnamed trail-class way the rebuild finds along a named street
+   Old Georgetown Road "are fine for experienced cyclists, they might not be LTS 1"), once
+   every street's level is final: after the rows, and after the car-free and ridden-sidewalk
+   corrections in `classify_facilities` (so a road closed to cars for good, lowered to LTS 1
+   there, never lifts the path beside it). An unnamed trail-class way the rebuild finds along a named street
    (`facility.side_streets`, the same match that names it "path beside ...") and rated a
    flat LTS 1 takes a level from that street: 1.5 beside LTS 3 or 3.5, 2 beside LTS 4 or
    above (the street's busiest way that runs along at least 30% of the path,
@@ -100,8 +102,9 @@ recorded in `assumed` (`stress.py:135-137`).
    own but never past 4.5 ("no upper limit. There could be some really
    terrible bike paths"). Our defaults, not measured. A named trail, a way an owner row set
    and a way already above 1 are left alone; the junctions are still priced by the road's
-   own traffic (`intersections.traffic_level`). A ridden sidewalk's later step
-   (`raise_ridden_sidewalks`) may replace the rule text, never lowering the level. Map,
+   own traffic (`intersections.traffic_level`). It runs after step 6 and after the ridden
+   sidewalks are raised (`raise_ridden_sidewalks`), so a way either of those already moved
+   is not a flat LTS 1 and is left alone. Map,
    road panel and route stress only: the router does not yet price trail-class ways by
    their tier (`lua/routemaker_remap.lua`).
 6. **Car-free for good** (`run.py:1484-`, called at `:2511`): a road closed to motor

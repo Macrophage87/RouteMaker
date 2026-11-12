@@ -74,20 +74,38 @@ PROTRACK, DCWATER, WSSC = planned.PROTRACK, planned.DCWATER, planned.WSSC
 PLANNED = (PROTRACK, DCWATER, WSSC)
 # Maryland's counties' and towns' closures (v0.17.0, `routemaker.md_closures`): routed round.
 SHA = md.SHA
-PUBLIC = frozenset({DC, MPD, ALERTDC, SHA, *PLANNED})
+# Montgomery County DOT's own copy of the Reporter (v0.26.0, `md_closures.MOCO`): Montgomery
+# does not report to the state's.
+MOCO = md.MOCO
+PUBLIC = frozenset({DC, MPD, ALERTDC, SHA, MOCO, *PLANNED})
 
 # How often each source is read, and how old its copy may be before it is labelled
 # stale, and before it is not used at all. Planned work changes by the week: read every 6
 # hours, kept for 3 days.
 _PLANNED_EVERY, _PLANNED_STALE, _PLANNED_DROP = 6 * 3600.0, 24 * 3600.0, 72 * 3600.0
-EVERY_S = {DC: 60 * 60.0, MPD: 15 * 60.0, ALERTDC: 15 * 60.0, NPS: 30 * 60.0, SHA: 15 * 60.0}
-STALE_AFTER_S = {DC: 3 * 3600.0, MPD: 45 * 60.0, ALERTDC: 45 * 60.0, NPS: 90 * 60.0, SHA: 45 * 60.0}
+EVERY_S = {
+    DC: 60 * 60.0,
+    MPD: 15 * 60.0,
+    ALERTDC: 15 * 60.0,
+    NPS: 30 * 60.0,
+    SHA: 15 * 60.0,
+    MOCO: 15 * 60.0,
+}
+STALE_AFTER_S = {
+    DC: 3 * 3600.0,
+    MPD: 45 * 60.0,
+    ALERTDC: 45 * 60.0,
+    NPS: 90 * 60.0,
+    SHA: 45 * 60.0,
+    MOCO: 45 * 60.0,
+}
 DROP_AFTER_S = {
     DC: 26 * 3600.0,
     MPD: 6 * 3600.0,
     ALERTDC: 3 * 3600.0,
     NPS: 6 * 3600.0,
     SHA: 6 * 3600.0,
+    MOCO: 6 * 3600.0,
 }
 for _source in PLANNED:
     EVERY_S[_source] = _PLANNED_EVERY
@@ -111,6 +129,9 @@ SHA_URLS = tuple(
     for layer in ("RoadClosureActive", "RoadClosurePlanned")
 )
 SHA_MAX = 2000
+# Montgomery County DOT's "MC DOT Road Closure" line layer (checked live 2026-11-12): the state
+# Reporter's fields, closures in force only ("active, real-time conditions").
+MOCO_URL = "https://www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0/query"
 # The fields asked of each planned-work layer: never WSSC's contract managers' names, phones
 # or emails, which the layer also holds.
 PLANNED_FIELDS = {
@@ -138,6 +159,23 @@ RETRY_PLACE_S = 6 * 60 * 60.0
 # At most this many new places are looked for a refresh, per source.
 MAX_NEW_PLACES = {DC: 3000, MPD: 40, ALERTDC: 40, DCWATER: 400}
 
+# A source that still answers but reads as nothing (backlog 2026-11-12, item 8; AlertDC's RSS
+# turned into an HTML page in 2026 and nothing noticed): each good read's count of zones and
+# notices (a closure along several stretches counts each) is kept (the last `COUNTS_KEPT`), and a
+# read of none from a source whose usual count (the median of those kept, at least
+# `ZERO_ALARM_READS` of them) is `ZERO_ALARM_USUAL` or more is not taken: the last good copy is
+# kept and the run fails, so the operations page says so. A source that is often empty
+# (Montgomery County's closures) has a usual count under that, so it never trips. Once the kept
+# copy is past `DROP_AFTER_S` it is not used anyway, and the empty read is taken; from then on
+# the kept copy is empty, so the next empty read is taken quietly. MPD and AlertDC are left out
+# (`EMPTY_IS_NEWS`): their closures end in the reading (a reopening, an item aging out), so none
+# left is real news, and keeping the old copy would route round roads open again. All three
+# numbers are our default, unmeasured.
+COUNTS_KEPT = 8
+ZERO_ALARM_READS = 3
+ZERO_ALARM_USUAL = 5
+EMPTY_IS_NEWS = frozenset({MPD, ALERTDC})
+
 Fetch = Callable[[str, float, dict], bytes]
 
 
@@ -147,7 +185,7 @@ def nps_key() -> str:
 
 def wanted() -> list[str]:
     """The sources to read: the public ones always, NPS where the worker has the key."""
-    return [DC, MPD, ALERTDC, SHA] + ([NPS] if nps_key() else []) + list(PLANNED)
+    return [DC, MPD, ALERTDC, SHA, MOCO] + ([NPS] if nps_key() else []) + list(PLANNED)
 
 
 def http_get(url: str, timeout: float, headers: dict | None = None) -> bytes:
@@ -621,9 +659,9 @@ def read_dcwater(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> 
     return zones, []
 
 
-def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
-    """Maryland's Road Closure Reporter: closures in force and to come, routed round in their
-    hours. Both layers must read, or the source keeps its last good copy."""
+def _reporter_layers(fetch: Fetch, urls, sleep) -> list[dict]:
+    """A Road Closure Reporter's layers (the state's, or Montgomery County's copy), each read
+    whole, or `FeedError` so the source keeps its last good copy."""
     query = urllib.parse.urlencode(
         {
             "where": "ClosureEnd >= CURRENT_TIMESTAMP",
@@ -634,7 +672,7 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
         }
     )
     documents = []
-    for url in SHA_URLS:
+    for url in urls:
         document = json.loads(_get(fetch, f"{url}?{query}", {}, sleep))
         if not isinstance(document, dict) or document.get("error") or "features" not in document:
             raise FeedError("the Road Closure Reporter refused the query")
@@ -644,6 +682,21 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
             # A partial copy would leave closures unrouted: keep the last good copy instead.
             raise FeedError(f"the Road Closure Reporter has more than {SHA_MAX} records")
         documents.append(document)
+    return documents
+
+
+def read_moco(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """Montgomery County DOT's road closures, read as the state Reporter's are (`read_sha`).
+    The layer is legitimately empty when nothing is closed."""
+    documents = _reporter_layers(fetch, (MOCO_URL,), sleep)
+    zones = md.parse_sha(documents, now, source=MOCO)
+    return [zone for zone in zones if not rules.on_interstate(zone)], []
+
+
+def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """Maryland's Road Closure Reporter: closures in force and to come, routed round in their
+    hours. Both layers must read, or the source keeps its last good copy."""
+    documents = _reporter_layers(fetch, SHA_URLS, sleep)
     # Roads bicycles may not use, as the WZDx feeds' are (`workzones.refresh`; the owner,
     # 2026-10-25: "It's not worth mentioning closures on roads bikes can't use"): an Interstate
     # by its name here, a road the map bars in `refresh` (`workzones.without_barred`). The
@@ -655,7 +708,7 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
 
 # The sources whose closures on a road the map bars to bicycles (a motorway or its ramp) are
 # not kept, as the WZDx feeds' are not (`workzones.without_barred`; hunt K5, 2026-11-08).
-BARRED_CHECKED = frozenset({SHA})
+BARRED_CHECKED = frozenset({SHA, MOCO})
 
 READERS = {
     DC: read_dc,
@@ -666,6 +719,7 @@ READERS = {
     DCWATER: read_dcwater,
     WSSC: read_wssc,
     SHA: read_sha,
+    MOCO: read_moco,
 }
 
 
@@ -673,6 +727,32 @@ def _fresh_at(feed: dict) -> datetime | None:
     """When a source's copy was last known good: read, or checked unchanged (`FAST`)."""
     times = [rules._when(feed.get("read_at")), rules._when(feed.get("checked_at"))]
     return max((t for t in times if t is not None), default=None)
+
+
+def usual_count(feed: dict) -> int | None:
+    """The source's usual count of closures and notices a read (the median of the last good
+    reads'), or None with too few reads to say."""
+    counts = [c for c in feed.get("counts") or [] if isinstance(c, int)]
+    if len(counts) < ZERO_ALARM_READS:
+        return None
+    ordered = sorted(counts)
+    return ordered[len(ordered) // 2]
+
+
+def read_as_nothing(feed: dict, found: int, source: str, now: datetime) -> int | None:
+    """The usual count, where a read of `found` items is not to be believed: none read from a
+    source that usually has `ZERO_ALARM_USUAL` or more, while its kept copy is still in use."""
+    if found or source in EMPTY_IS_NEWS:
+        return None
+    if not (feed.get("zones") or feed.get("notices")):
+        return None  # the kept copy is empty too: nothing to protect
+    usual = usual_count(feed)
+    if usual is None or usual < ZERO_ALARM_USUAL:
+        return None
+    kept_at = rules._when(feed.get("read_at"))
+    if kept_at is None or (now - kept_at).total_seconds() > DROP_AFTER_S[source]:
+        return None
+    return usual
 
 
 def _due(feed: dict, source: str, now: datetime) -> bool:
@@ -740,6 +820,7 @@ def refresh(
     payload = row.payload if row is not None and isinstance(row.payload, dict) else {}
     feeds = dict(payload.get("feeds") or {})
     said = []
+    empty: list[str] = []
     sources = [s for s in wanted() if (s in only if only is not None else s not in FAST)]
     touched: set[str] = set()
     gone = [] if only is not None else [s for s in feeds if s not in wanted()]
@@ -791,12 +872,26 @@ def refresh(
             touched.add(source)
             said.append(f"{source} failed")
             continue
+        found = len(zones) + len(notices)
+        usual = read_as_nothing(kept, found, source, moment)
+        if usual is not None:
+            logger.warning(
+                "closures: the %s source read as nothing (usually %d items); its last copy kept",
+                source,
+                usual,
+            )
+            feeds[source] = {**kept, "failed_at": moment.isoformat()}
+            touched.add(source)
+            said.append(f"{source} read as nothing (usually {usual} items)")
+            empty.append(source)
+            continue
         feeds[source] = {
             "read_at": moment.isoformat(),
             "failed_at": None,
             "zones": [zone.to_json() for zone in zones],
             "notices": [notice.to_json() for notice in notices],
             "placed": places.used,
+            "counts": [*(kept.get("counts") or []), found][-COUNTS_KEPT:],
         }
         if digest is not None:
             feeds[source].update(digest=digest, parsed_at=moment.isoformat())
@@ -822,8 +917,16 @@ def refresh(
         when = _fresh_at(feeds.get(source) or {})
         if when is None or (now() - when).total_seconds() > STALE_AFTER_S[source]:
             stale.append(source)
+    # A source that read as nothing fails the run at once, not only once it is stale: its
+    # copy is still in use, but a parser that broke should be looked at the same day.
+    empty = [source for source in empty if source not in PLANNED]
+    problems = []
     if stale:
-        raise FeedError(f"{line}; no good read in time: {', '.join(stale)}")
+        problems.append(f"no good read in time: {', '.join(stale)}")
+    if empty:
+        problems.append(f"read as nothing: {', '.join(empty)}")
+    if problems:
+        raise FeedError(f"{line}; {'; '.join(problems)}")
     return line
 
 
