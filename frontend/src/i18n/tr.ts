@@ -2177,4 +2177,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "Yönlendirme kaydını kopyala",
   "Cue log copied.": "Yönlendirme kaydı kopyalandı.",
   "Could not copy the cue log.": "Yönlendirme kaydı kopyalanamadı.",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "Geri bildirim gönder",
+  "What happened?": "Ne oldu?",
+  "Sent with the app version, browser and ride type. Never where you are.": "Uygulama sürümü, tarayıcı ve sürüş türüyle gönderilir. Nerede olduğunuz asla gönderilmez.",
+  "Sent. Thank you.": "Gönderildi. Teşekkürler.",
+  "Could not send. Try again later.": "Gönderilemedi. Daha sonra tekrar deneyin.",
+  "Your phone may stop RouteMaker during a ride.": "Telefonunuz sürüş sırasında RouteMaker'ı durdurabilir.",
+  "Set battery to Unrestricted": "Pili Kısıtlamasız yap",
+  "Updating. Back in a few minutes.": "Güncelleniyor. Birkaç dakika içinde dönecek.",
+  "Route planning is down right now.": "Rota planlama şu anda çalışmıyor.",
+  "Some ride types are not working right now.": "Bazı sürüş türleri şu anda çalışmıyor.",
+  "Place search is down right now.": "Yer arama şu anda çalışmıyor.",
 };

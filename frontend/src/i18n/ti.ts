@@ -2177,4 +2177,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "መዝገብ መምርሒታት ቅዳሕ",
   "Cue log copied.": "መዝገብ መምርሒታት ተቐዲሑ።",
   "Could not copy the cue log.": "መዝገብ መምርሒታት ክቕዳሕ ኣይተኻእለን።",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "ርእይቶ ስደድ",
+  "What happened?": "እንታይ ኣጋጠመ?",
+  "Sent with the app version, browser and ride type. Never where you are.": "ምስ ስሪት መተግበሪ፣ መርበብን ዓይነት ጉዕዞን ይለኣኽ። ዘለኹምዎ ቦታ ፈጺሙ ኣይለኣኽን።",
+  "Sent. Thank you.": "ተላኢኹ። የቐንየልና።",
+  "Could not send. Try again later.": "ክለኣኽ ኣይተኻእለን። ጸኒሕኩም ደጊምኩም ፈትኑ።",
+  "Your phone may stop RouteMaker during a ride.": "ስልክኹም ኣብ ጉዕዞ RouteMaker ከቋርጾ ይኽእል እዩ።",
+  "Set battery to Unrestricted": "ባትሪ ናብ ዘይተገደበ ቀይሩ",
+  "Updating. Back in a few minutes.": "ይሕደስ ኣሎ። ድሕሪ ቁሩብ ደቓይቕ ይምለስ።",
+  "Route planning is down right now.": "ምድላው መገዲ ሕጂ ኣይሰርሕን።",
+  "Some ride types are not working right now.": "ገለ ዓይነታት ጉዕዞ ሕጂ ኣይሰርሑን።",
+  "Place search is down right now.": "ምድላይ ቦታ ሕጂ ኣይሰርሕን።",
 };

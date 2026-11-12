@@ -361,6 +361,10 @@ SECTIONS: list[tuple[str, str]] = [
                 "your account when signed in. RouteMaker shows which city or county 311 website "
                 "takes it; you "
                 "send it yourself.",
+                "Send feedback (Settings, About) passes what you type to the site’s owner on "
+                "Discord, with the app’s version, your browser’s name, the ride type, the language "
+                "and whether you were in Go or Plan. Never where you are. This site keeps none of "
+                "it; Discord keeps the post.",
             ]
         ),
     ),

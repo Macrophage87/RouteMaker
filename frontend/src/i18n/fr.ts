@@ -2177,4 +2177,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "Copier le journal des indications",
   "Cue log copied.": "Journal des indications copié.",
   "Could not copy the cue log.": "Impossible de copier le journal des indications.",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "Envoyer un avis",
+  "What happened?": "Que s'est-il passé ?",
+  "Sent with the app version, browser and ride type. Never where you are.": "Envoyé avec la version de l'appli, le navigateur et le type de sortie. Jamais votre position.",
+  "Sent. Thank you.": "Envoyé. Merci.",
+  "Could not send. Try again later.": "Envoi impossible. Réessayez plus tard.",
+  "Your phone may stop RouteMaker during a ride.": "Votre téléphone peut arrêter RouteMaker pendant une sortie.",
+  "Set battery to Unrestricted": "Mettre la batterie sur Non restreinte",
+  "Updating. Back in a few minutes.": "Mise à jour. De retour dans quelques minutes.",
+  "Route planning is down right now.": "Le calcul d'itinéraire est en panne pour le moment.",
+  "Some ride types are not working right now.": "Certains types de sortie ne marchent pas pour le moment.",
+  "Place search is down right now.": "La recherche de lieux est en panne pour le moment.",
 };
