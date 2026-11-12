@@ -7887,8 +7887,11 @@ only at the next map rebuild.
 - [ ] **Closed sites file** **(owner, PC, before the tag)**. `restricted-sites.json` ships as an
   empty FeatureCollection: no shading, no gate routing. Run `python3 scripts/build_restricted_sites.py
   --pbf <DATA_ROOT>/extracts/source.osm.pbf` on the PC and commit the result to the release branch
-  before the tag; the front end and the api image both read it. Shipping it empty is safe (routing as
-  v0.25.1), but Goddard's shading and the gate then wait for a later release.
+  before the tag; the front end and the api image both read it. The rider notes and the Routing page
+  promise Goddard's shading and the gate: if the file is not built, take line 3 of
+  `docs/releases/v0.26.0.md` and the Routing page's closed-site lines out before the tag (routing is
+  then as v0.25.1). Built before the closed-area override is loaded and the map rebuilt, the Patuxent
+  closed area is shaded and a point in it goes to the gate while its roads stay routable until then.
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.26.0
   (annotated) on that commit, from the PC.
 - [ ] **Migration.** 0062 (`ConnectorDraft.archived_at`) adds a nullable column with no default: the
@@ -7906,7 +7909,9 @@ only at the next map rebuild.
   on the PC), `smoke-test.sh --local`, then `smoke-test.sh --public <url> --passwords-file <file>`,
   then `auto-release.sh mark-deployed v0.26.0` and `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
-  (detail `alertdc unchanged` when the page was the same); `GET /api/closures/stamp` answers 200. The
+  with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
+  means the host is not answering (the run itself only fails after 45 minutes); `GET /api/closures/stamp` answers 200 (20 a minute per address, our default: a group of more than 20
+  riders on one Wi-Fi gets some 429s, which the app skips until the next minute). The
   AlertDC parser was written from a made-up sample: when the live list next carries a police or crash
   road item, check that it shows as a closure (the map, the road panel) with the title "Police
   activity: streets closed near ..." for police items.
@@ -7923,6 +7928,9 @@ only at the next map rebuild.
   site. Route ends at the gate." Rock Creek Park, Greenbelt Park and the Patuxent Research Refuge have their names on the map, and
   the refuge's closed area is shaded.
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.25.1 front end.
+  Leave `rebuild` on the v0.26.0 image: the `pre-rel` pipeline image still checks way 86073896, which
+  the closed-area file closes once it is loaded. A police area already in the closures row is read by
+  the v0.25.1 api as a line along its outline (routed round the edge) until it drops, at most 3 h.
   The `archived_at` column stays; on v0.25.1 archived drafts list again until they expire. On the
   beta, the images and `index.html` alone: no `restore-dump`, as 0062 only adds a column.
 
