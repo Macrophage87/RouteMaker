@@ -109,3 +109,13 @@ test("turns are named by their angle", () => {
 test("every edge in the test network has EDGE_FIELDS values", () => {
   assert.equal(grid(3, 3).edges.length % EDGE_FIELDS, 0);
 });
+
+test("a rider on a junction hears no made-up first turn, and bad input finds nothing", () => {
+  const g = grid(6, 4);
+  // Exactly on the node at Col 1, Row 2.
+  const way = offlineWayBack(g, CALM, at(200, 400), PLANNED, 0);
+  assert.ok(way);
+  assert.ok(way.turns.every((turn) => turn.atM >= 10));
+  assert.equal(offlineWayBack(g, CALM, at(200, 400), PLANNED, Number.NaN), null);
+  assert.equal(offlineWayBack(g, CALM, [Number.NaN, LAT], PLANNED, 0), null);
+});

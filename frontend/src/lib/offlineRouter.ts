@@ -269,7 +269,7 @@ export function offlineWayBack(
   line: readonly LonLat[],
   progressM: number,
 ): OfflineWayBack | null {
-  if (!readableGraph(g) || line.length < 2) return null;
+  if (!readableGraph(g) || line.length < 2 || !Number.isFinite(progressM) || !rider.every(Number.isFinite)) return null;
   const edgeCount = g.edges.length / EDGE_FIELDS;
   const nodeCount = g.nodes.length / 2;
   // The start: the nearest point of the nearest edge, its cost to each end by the share of the edge left.
@@ -377,10 +377,17 @@ export function offlineWayBack(
     const prev = pieces[i - 1];
     const cur = pieces[i];
     worst = Math.max(worst, g.edges[cur.e * EDGE_FIELDS + 3]);
-    const inPts = prev.pts;
+    // No turn said within FIRST_TURN_M of the rider: there the way in is the rider's own, not the network's (a rider
+    // standing on a junction would hear a turn the start edge's direction made up).
+    if (atM < FIRST_TURN_M) {
+      atM += pathM(cur.pts);
+      continue;
+    }
+    const inPts = distinct(prev.pts);
+    const outPts = distinct(cur.pts);
     const p0 = inPts[Math.max(0, inPts.length - 2)];
     const p1 = inPts[inPts.length - 1];
-    const q1 = cur.pts[Math.min(1, cur.pts.length - 1)];
+    const q1 = outPts[Math.min(1, outPts.length - 1)];
     let change = bearing(p1, q1) - bearing(p0, p1);
     if (change > 180) change -= 360;
     if (change < -180) change += 360;
@@ -399,6 +406,16 @@ export function offlineWayBack(
     joinAtM: joinAt.get(goal) as number,
     worstLevel2: worst,
   };
+}
+
+/** Under this far from the rider, a junction's turn is not said (about 30 ft). Our default, unmeasured. */
+export const FIRST_TURN_M = 10;
+
+/** The points with any within half a metre of the one before left out, so a bearing is never taken over nothing. */
+function distinct(points: readonly LonLat[]): LonLat[] {
+  const out: LonLat[] = [];
+  for (const p of points) if (!out.length || haversineM(out[out.length - 1], p) >= 0.5) out.push(p);
+  return out.length ? out : points.slice(0, 1);
 }
 
 function nameOf(g: CorridorGraph, e: number): string | null {
