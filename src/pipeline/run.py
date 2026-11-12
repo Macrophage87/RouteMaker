@@ -94,6 +94,7 @@ from . import (
     mass_capacity,
     overrides,
     promotion,
+    rated_facts,
     reconcile,
     rematch,
     restricted_areas,
@@ -3164,6 +3165,56 @@ def build_handlers(
             "override re-match",
         )
 
+    def write_rated_facts_report(before_rows: dict, rematch_report) -> None:
+        """`reports/rated-facts-changed.{md,csv}`: the pinned roads whose facts (class, speed,
+        lanes, count, bike facility) moved since the row was rated (`pipeline.rated_facts`).
+        The road keeps our level (the owner, 2026-11-12: "Keep our level, queue it for you");
+        the list feeds Review's "Facts changed since rated". A report, not the stage's output:
+        it never fails the rebuild."""
+        try:
+            stored = rated_facts.follow_rematch(rated_facts.load(), rematch_report.entries)
+            # Only while the row the facts came from is the one applied: a road re-rated in
+            # the road panel or Review, or pinned by another file's row, is not compared with
+            # facts it was never rated from (review of #1183).
+            ours: dict[int, float] = {}
+            for w, r in list(stored.items()):
+                result = context.stress_by_way.get(w)
+                adjustment = getattr(result, "adjustment", None) if w in before_rows else None
+                if adjustment is None or adjustment.adjustment_id != r.adjustment_id:
+                    del stored[w]
+                    continue
+                ours[w] = level_of(result)
+
+            def formula_of(result) -> float | None:
+                # The formula's own level where an agency's replaced it (`formula_tier`).
+                tier = getattr(result, "formula_tier", None)
+                if tier is not None:
+                    return int(tier) + (0.5 if result.formula_half else 0.0)
+                return level_of(result) if result.tier is not None else None
+
+            def facility_of(way_id: int, tags) -> str:
+                return str(facility.facility(dict(context.class_tags_by_way.get(way_id, tags))))
+
+            changed, checked = rated_facts.compare(
+                stored, context.ways_by_id, before_rows, ours, facility_of, formula_of
+            )
+            write_reports(
+                context.work_dir,
+                {
+                    f"{rated_facts.REPORT_NAME}.md": rated_facts.report_markdown(changed, checked),
+                    f"{rated_facts.REPORT_NAME}.csv": rated_facts.report_csv(changed),
+                },
+                "facts changed since rated",
+            )
+            logger.info(
+                "pinned roads whose facts changed since rated: %d of %d checked, in %s.md",
+                len(changed),
+                checked,
+                rated_facts.REPORT_NAME,
+            )
+        except Exception:
+            logger.warning("facts changed since rated: report not written", exc_info=True)
+
     def write_newer_osm_report(rows) -> None:
         """The District ways OSM edited after DC's record that disagree with what it
         applied, for the owner's call (`pipeline.dc_osm_newer`; the owner, 2026-11-08:
@@ -3269,6 +3320,10 @@ def build_handlers(
                 entry.reason,
             )
         write_rematch_report(rematch_report)
+        # The classifier's result on each way a stress row pins, before the row replaces it,
+        # for the facts-changed report (`pipeline.rated_facts`).
+        pinned = {row.osm_way_id for row in rows if row.kind == "stress"}
+        before_rows = {w: context.stress_by_way[w] for w in pinned if w in context.stress_by_way}
         try:
             access, access_missing, superseding = overrides.apply_access(context.ways, rows)
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
@@ -3306,6 +3361,7 @@ def build_handlers(
             raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
         write_newer_osm_report(rows)
+        write_rated_facts_report(before_rows, rematch_report)
         context.reviewer_surface_by_way = surfaces
         missing = tuple(
             sorted({*access_missing, *stress_missing, *jurisdiction_missing, *surface_missing})
