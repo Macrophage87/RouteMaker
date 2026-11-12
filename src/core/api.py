@@ -9096,6 +9096,54 @@ def report311_status(request):
     return response
 
 
+FEEDBACK_BODY_MAX_BYTES = 12_288
+
+
+@api.get("/feedback", summary="Whether riders' feedback can be sent from here")
+@decorate_view(ratelimit.rate_limited(ratelimit.FEEDBACK_STATUS), same_site_only, errors_as_json)
+def feedback_status(request):
+    from . import feedback
+
+    response = JsonResponse({"enabled": feedback.enabled()})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api.post("/feedback", summary="Send a rider's feedback to the owner (nothing is kept here)")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.FEEDBACK),
+    errors_as_json,
+)
+def feedback_send(request):
+    """The words and the place-free details go to the owner's Discord forum (core.feedback);
+    nothing is stored, and the words never reach a log."""
+    from . import feedback
+
+    if not feedback.enabled():
+        return _report311_refused(503, "Feedback is not set up here.", "off")
+    body, refusal = _json_body(request, FEEDBACK_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    body = body if isinstance(body, dict) else {}
+    text = body.get("text")
+    if not isinstance(text, str) or not (
+        feedback.TEXT_MIN <= len(text.strip()) <= feedback.TEXT_MAX
+    ):
+        return _error(
+            400, f"text is {feedback.TEXT_MIN} to {feedback.TEXT_MAX} characters of feedback."
+        )
+    if not ratelimit.hit(ratelimit.FEEDBACK_ALL, "all").allowed:
+        return _report311_refused(429, "Feedback from the app is paused for now.", "busy")
+    try:
+        feedback.send(text, feedback.clean_details(body.get("details")))
+    except feedback.NotSent:
+        return _report311_refused(502, "It could not be sent. Try again later.", "not_sent")
+    out = JsonResponse({"sent": True})
+    out["Cache-Control"] = "no-store"
+    return out
+
+
 @api.post("/report311/where", summary="Which 311 website takes a problem at a point")
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),

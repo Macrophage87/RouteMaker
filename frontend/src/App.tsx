@@ -266,7 +266,7 @@ import {
   type NearestFrom,
   type NearestKind,
 } from "./lib/nearest.ts";
-import { AppStatusBar, useAppStatus } from "./InstallableApp.tsx";
+import { AppStatusBar, useAppStatus, useServerStatusLine } from "./InstallableApp.tsx";
 import { OFFLINE_LAST_ROUTE, OFFLINE_SAID, offlineLine } from "./lib/appWorker.ts";
 import { isStandalone } from "./lib/installOffer.ts";
 import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
@@ -5336,6 +5336,8 @@ export function App() {
   routeOnScreen.current = shown !== null;
   // Offline, a planner out of reach is said once, in the error box with its Try again (lib/api.ts routeErrorShown).
   const offlineError = appStatus.offline && status.kind === "error" && status.error.kind === "network";
+  // The server's own line while something is down (lib/serverStatus.ts): asked again when a plan fails.
+  const serverLine = useServerStatusLine(status.kind === "error");
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
   // opensIntoRide): a route's broadcast starts its ride as Start's press does (no closure check: the leader's, Stephen
   // 2026-10-26); a Roam broadcast starts Roam. Judged
@@ -7407,7 +7409,7 @@ export function App() {
         </header>
         )}
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
-          <AppStatusBar status={appStatus} offline={offlineLine({ offline: appStatus.offline, routeShown: shown !== null, errorSaysIt: offlineError })} />
+          <AppStatusBar status={appStatus} offline={offlineLine({ offline: appStatus.offline, routeShown: shown !== null, errorSaysIt: offlineError })} server={serverLine} />
           {homeAsk && (
             <section className="home-offer" aria-labelledby="home-offer-heading">
               <h2 id="home-offer-heading" className="visually-hidden">

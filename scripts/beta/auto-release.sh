@@ -94,7 +94,7 @@ ROUTERS="valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
 # them turns on): run beside the four once their promoted build is on the host, never before, since
 # a bind with create_host_path: false stops the whole `up` without it (the owner, 2026-10-20).
 TRAIL_ROUTERS="valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend"
-SECRET_KEYS="PGPASSWORD DJANGO_SECRET_KEY KEY_ENCRYPTION_KEY DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN BOT_INTERNAL_SECRET"
+SECRET_KEYS="PGPASSWORD DJANGO_SECRET_KEY KEY_ENCRYPTION_KEY DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN BOT_INTERNAL_SECRET FEEDBACK_WEBHOOK_URL"
 UNIT=routemaker-beta-cd
 
 die() { echo "auto-release: $*" >&2; exit 2; }
