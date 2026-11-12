@@ -2171,4 +2171,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barrier in the way.": "Barreira no caminho.",
   "On this route: {list}.": "Nesta rota: {list}.",
   "Barriers on this route.": "Barreiras nesta rota.",
+  "{list} on this route. A cargo bike or tandem may not get through.": "{list} nesta rota. Uma bicicleta de carga ou tandem pode não passar.",
+  "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "{list} perto do início, de uma parada ou do fim. Uma bicicleta de carga ou tandem pode não passar.",
 };

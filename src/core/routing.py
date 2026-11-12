@@ -6360,7 +6360,9 @@ def _plan(
         trip, barrier_info = barriers.settle(
             trip, request, variant, deadline, points,
             level_excludes=refine_context.level_excludes,
-            keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
+            # Not held to the level rounds' guard (`refine.level_round_keeps`): a barrier a cargo
+            # bike or tandem cannot pass ends the trip, so a busier or longer way round it is
+            # still the way (the owner, 2026-11-12: "Exclude").
         )  # fmt: skip
         if trip is not barrier_trip:
             mtb_replaced = True

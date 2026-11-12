@@ -2171,4 +2171,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barrier in the way.": "มีสิ่งกีดขวางบนทาง",
   "On this route: {list}.": "บนเส้นทางนี้: {list}",
   "Barriers on this route.": "มีสิ่งกีดขวางบนเส้นทางนี้",
+  "{list} on this route. A cargo bike or tandem may not get through.": "มี{list}บนเส้นทางนี้ จักรยานบรรทุกของหรือจักรยานสองที่นั่งอาจผ่านไม่ได้",
+  "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "มี{list}ใกล้จุดเริ่มต้น จุดแวะ หรือปลายทางของคุณ จักรยานบรรทุกของหรือจักรยานสองที่นั่งอาจผ่านไม่ได้",
 };

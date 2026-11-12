@@ -990,7 +990,6 @@ export interface RunInfo {
   fits?: boolean | null;
 }
 
-/** An Easy MTB trails plan's reading of its route (core.api.EasyMtbOut). */
 /** One barrier or flight of steps on a route (core/barriers.py `reading`). */
 export interface BarrierItem {
   kind: string;
@@ -1023,6 +1022,7 @@ export interface BarrierRound {
   in_the_way: { kind: string; word: BarrierItem["word"]; lon: number; lat: number }[];
 }
 
+/** An Easy MTB trails plan's reading of its route (core.api.EasyMtbOut). */
 export interface EasyMtbReading {
   /** The hardest level counted easy (1). */
   max_level: number;

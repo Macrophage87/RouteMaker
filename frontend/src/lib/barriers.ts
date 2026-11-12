@@ -11,7 +11,7 @@
  * The map marks each one on the route (the owner, 2026-11-12: "Make those noticeable on the map"): an octagon with a
  * bar across it, as a road-closed sign, a shape no other route mark uses (hazards are circles, junctions triangles and
  * diamonds, steep grades squares). Red with a white bar where a cargo bike or tandem cannot pass, amber with a dark bar
- * for the others, each a little larger than the other route marks, and named beside it ("stile") from zoom 13 for the
+ * and rim for the others, each a little larger than the other route marks, and named beside it ("stile") from zoom 13 for the
  * red ones and 15 for the rest. Never the mark alone: the line says the same.
  *
  * Nothing is said where the answer has no barrier list (`data` false): silence must never read as "none mapped".
@@ -101,23 +101,38 @@ export interface BarrierNote {
   short: string;
 }
 
-/** The line for a Cargo or Tandem route's barriers, or null where nothing is said. */
+/** The line for a Cargo or Tandem route's barriers, or null where nothing is said. "No way round found" only where the
+ * barrier round looked and found none (`barrier_round.limited` no_way_round); by one of the rider's own points where it
+ * would not exclude one there (at_stop); else, as on a drawn or followed line or a round cut short, plainly. */
 export function barrierNote(
-  route: Pick<RouteResponse, "preset" | "barriers"> | null | undefined,
+  route:
+    | Pick<RouteResponse, "preset" | "barriers" | "barrier_round">
+    | null
+    | undefined,
 ): BarrierNote | null {
   if (!route || !BARRIER_PRESETS.has(route.preset)) return null;
   const reading = route.barriers;
   if (!reading?.data || reading.items.length === 0) return null;
   const blocking = reading.items.filter((item) => item.impassable);
   if (blocking.length > 0) {
-    return {
-      warn: true,
-      text: t(
-        "No way round found: {list} on this route. A cargo bike or tandem may not get through.",
-        { list: barrierList(blocking) },
-      ),
-      short: t("Barrier in the way."),
-    };
+    const list = barrierList(blocking);
+    const limited = route.barrier_round?.limited;
+    const text =
+      limited === "no_way_round"
+        ? t(
+            "No way round found: {list} on this route. A cargo bike or tandem may not get through.",
+            { list },
+          )
+        : limited === "at_stop"
+          ? t(
+              "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.",
+              { list },
+            )
+          : t(
+              "{list} on this route. A cargo bike or tandem may not get through.",
+              { list },
+            );
+    return { warn: true, text, short: t("Barrier in the way.") };
   }
   return {
     warn: false,
@@ -135,12 +150,12 @@ export const BARRIER_ICON_PX = 22;
 export const BARRIER_LABEL_ZOOM = 13;
 export const BARRIER_LABEL_ZOOM_OTHERS = 15;
 
-/** Red with a white bar (6.5:1) where a cargo bike or tandem cannot pass; amber with a dark bar (9:1) for the rest. */
+/** Red with a white bar and rim (6.5:1) where a cargo bike or tandem cannot pass; amber with a dark bar and rim (8.3:1)
+ * for the rest, the dark rim keeping its outline on a light map (amber alone is under 3:1 there). */
 export const BARRIER_COLOURS = {
-  blocked: { fill: "#b91c1c", mark: "#ffffff" },
-  noted: { fill: "#f59e0b", mark: "#111827" },
+  blocked: { fill: "#b91c1c", mark: "#ffffff", edge: "#ffffff" },
+  noted: { fill: "#f59e0b", mark: "#111827", edge: "#111827" },
 } as const;
-export const BARRIER_EDGE = "#ffffff";
 
 export type BarrierLevel = keyof typeof BARRIER_COLOURS;
 
@@ -158,7 +173,7 @@ function inOctagon(x: number, y: number, c: number, r: number): boolean {
   return dx <= apothem && dy <= apothem && dx + dy <= apothem * Math.SQRT2;
 }
 
-/** The mark: an octagon with a white rim and a bar across it. */
+/** The mark: an octagon with a rim and a bar across it. */
 export function barrierIcon(
   level: BarrierLevel,
   pixelRatio = 2,
@@ -170,7 +185,7 @@ export function barrierIcon(
   const rim = 1.5 * pixelRatio;
   const fill: Rgb = hexToRgb(BARRIER_COLOURS[level].fill);
   const mark: Rgb = hexToRgb(BARRIER_COLOURS[level].mark);
-  const edge: Rgb = hexToRgb(BARRIER_EDGE);
+  const edge: Rgb = hexToRgb(BARRIER_COLOURS[level].edge);
   return rasterise(size, pixelRatio, (x, y): Rgb | null => {
     if (!inOctagon(x, y, c, r)) return null;
     if (!inOctagon(x, y, c, r - rim)) return edge;

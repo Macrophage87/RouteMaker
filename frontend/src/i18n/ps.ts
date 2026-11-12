@@ -2171,4 +2171,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barrier in the way.": "په لاره کې خنډ.",
   "On this route: {list}.": "په دې لاره کې: {list}.",
   "Barriers on this route.": "په دې لاره کې خنډونه.",
+  "{list} on this route. A cargo bike or tandem may not get through.": "په دې لاره کې {list} شته. د بار بایسکل یا دوه کسیز بایسکل ښايي تېر نه شي.",
+  "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "ستاسو د پیل، یوه تمځای یا پای ته نږدې {list} شته. د بار بایسکل یا دوه کسیز بایسکل ښايي تېر نه شي.",
 };

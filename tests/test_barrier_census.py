@@ -112,10 +112,10 @@ def test_the_snapshot_reads_back_and_matches_a_route() -> None:
     # Each barrier's beside point is 4 m along its own way.
     stile = data["barriers"][0]
     assert stile[4][0][1] == pytest.approx(38.9001 + 4 / 111_195, abs=2e-7)
-    # The 0.9 m bollard's width is read from `width` when no `maxwidth` is mapped.
-    assert data["barriers"][3][3] == 0.9
+    # A bollard's own `width` is never read as its gap (it is often the post).
+    assert data["barriers"][3][3] is None
     index = barriers.index_of(data)
     line = [(-77.0, 38.9000 + i * 0.0001) for i in range(6)]
     reading = barriers.reading(line, index)
-    assert [i["word"] for i in reading["items"]] == ["stile", "bollard", "bollard", "narrow_gap"]
+    assert [i["word"] for i in reading["items"]] == ["stile", "bollard", "bollard", "bollard"]
     assert len(data["steps"]) == 1

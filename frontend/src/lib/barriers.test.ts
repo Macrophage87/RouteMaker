@@ -3,7 +3,7 @@
 // on other ride types or where the answer has no barrier list.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { BarrierItem, BarrierReading } from "./api.ts";
+import type { BarrierItem, BarrierReading, BarrierRound } from "./api.ts";
 import {
   BARRIER_LEVELS,
   BARRIER_PRESETS,
@@ -61,16 +61,36 @@ test("the list groups each kind, counts past one, and keeps unmapped gaps apart"
   assert.equal(list, "stile, bollard, bollard ×2 (width not mapped), gate");
 });
 
-test("an impassable barrier left on the route is a warning naming only those", () => {
-  const note = barrierNote({
-    preset: "cargo",
-    barriers: reading([item("gate"), item("stile", { impassable: true })]),
-  });
-  assert.deepEqual(note, {
-    warn: true,
-    text: "No way round found: stile on this route. A cargo bike or tandem may not get through.",
-    short: "Barrier in the way.",
-  });
+function round(limited: BarrierRound["limited"]): BarrierRound {
+  return { rounds: 1, impassable: 1, limited, in_the_way: [] };
+}
+
+test("an impassable barrier left on the route is a warning naming only those, worded by what the round found", () => {
+  const barriers = reading([item("gate"), item("stile", { impassable: true })]);
+  assert.deepEqual(
+    barrierNote({
+      preset: "cargo",
+      barriers,
+      barrier_round: round("no_way_round"),
+    }),
+    {
+      warn: true,
+      text: "No way round found: stile on this route. A cargo bike or tandem may not get through.",
+      short: "Barrier in the way.",
+    },
+  );
+  assert.equal(
+    barrierNote({ preset: "cargo", barriers, barrier_round: round("at_stop") })
+      ?.text,
+    "stile by your start, a stop or the end. A cargo bike or tandem may not get through.",
+  );
+  // A drawn or followed line, a first route or a round cut short never looked: said plainly.
+  for (const barrier_round of [null, undefined, round("time")]) {
+    assert.equal(
+      barrierNote({ preset: "cargo", barriers, barrier_round })?.text,
+      "stile on this route. A cargo bike or tandem may not get through.",
+    );
+  }
 });
 
 test("otherwise a hint listing them", () => {
@@ -101,6 +121,7 @@ test("said in the rider's language", () => {
     const note = barrierNote({
       preset: "tandem",
       barriers: reading([item("steps", { impassable: true })]),
+      barrier_round: round("no_way_round"),
     });
     assert.equal(
       note?.text,

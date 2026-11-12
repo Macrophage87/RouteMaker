@@ -1693,10 +1693,16 @@ def barriers_said(answer: dict) -> str | None:
         for (word, unmapped), n in groups.items()
     ]
     if blocking:
-        return (
-            f"no way round found: {', '.join(parts)} on this route; a cargo bike or tandem may"
-            " not get through"
-        )
+        # "No way round found" only where the barrier round looked and found none.
+        limited = (answer.get("barrier_round") or {}).get("limited")
+        listed = ", ".join(parts)
+        if limited == "no_way_round":
+            where = f"no way round found: {listed} on this route"
+        elif limited == "at_stop":
+            where = f"{listed} by the start, a stop or the end"
+        else:
+            where = f"{listed} on this route"
+        return f"{where}; a cargo bike or tandem may not get through"
     return ", ".join(parts)
 
 

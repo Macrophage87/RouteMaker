@@ -42,9 +42,14 @@ def test_the_list_and_unmapped_widths() -> None:
 
 
 def test_an_impassable_barrier_left_on_the_route() -> None:
-    said = mcp.barriers_said(answer("cargo", [item("gate"), item("stile", impassable=True)]))
-    assert said == (
-        "no way round found: stile on this route; a cargo bike or tandem may not get through"
+    body = answer("cargo", [item("gate"), item("stile", impassable=True)])
+    plain = "stile on this route; a cargo bike or tandem may not get through"
+    assert mcp.barriers_said(body) == plain
+    body["barrier_round"] = {"limited": "no_way_round"}
+    assert mcp.barriers_said(body) == "no way round found: " + plain
+    body["barrier_round"] = {"limited": "at_stop"}
+    assert mcp.barriers_said(body) == (
+        "stile by the start, a stop or the end; a cargo bike or tandem may not get through"
     )
 
 

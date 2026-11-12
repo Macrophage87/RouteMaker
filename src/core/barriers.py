@@ -365,7 +365,10 @@ def settle(
         more = [p for p in more if p not in excludes]
         if not more:
             break
-        excludes = (excludes + more)[-EXCLUDE_CAP:]
+        more = more[: max(0, EXCLUDE_CAP - len(excludes))]
+        if not more:
+            break
+        excludes = excludes + more
         info["rounds"] += 1
         asked = others[: max(0, 200 - len(excludes))] + [{"lon": x, "lat": y} for x, y in excludes]
         try:
@@ -403,6 +406,7 @@ def reread(trip: dict, info: dict, index: Index | None = None) -> None:
     if not index.loaded:
         return
     best = blocking(trip_line(trip), index)
+    before = info.get("in_the_way") or []
     info["impassable"] = len(best)
     info["in_the_way"] = [
         {"kind": b.kind, "word": word(b), "lon": round(b.lon, 6), "lat": round(b.lat, 6)}
@@ -410,5 +414,8 @@ def reread(trip: dict, info: dict, index: Index | None = None) -> None:
     ]
     if not best:
         info["limited"] = None
-    elif info.get("limited") is None:
+    elif info.get("limited") is None or (
+        info.get("limited") == "at_stop" and len(best) > len(before)
+    ):
+        # A later pass brought in a barrier the round did not see.
         info["limited"] = "no_way_round"

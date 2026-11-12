@@ -2171,4 +2171,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barrier in the way.": "ኣብ መገዲ መዓገቲ ኣሎ።",
   "On this route: {list}.": "ኣብዚ መገዲ፦ {list}።",
   "Barriers on this route.": "ኣብዚ መገዲ መዓገቲታት ኣለዉ።",
+  "{list} on this route. A cargo bike or tandem may not get through.": "ኣብዚ መገዲ {list} ኣሎ። ናይ ጽዕነት ብሽክለታ ወይ ታንደም ክሓልፍ ዘይክእል ይኸውን።",
+  "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "ኣብ ጥቓ መበገሲኹም፣ ሓደ መዕረፊ ወይ መወዳእታ {list} ኣሎ። ናይ ጽዕነት ብሽክለታ ወይ ታንደም ክሓልፍ ዘይክእል ይኸውን።",
 };

@@ -39,7 +39,8 @@ map rebuild.
 
 Memory: the script keeps only tagged barrier and kerb nodes, the nodes of steps
 and walk stretches, and trail end nodes; it never holds the whole network's node
-ids, so it runs on the PC's low RAM. It reads the extract three times.
+ids, so it runs on the PC's low RAM. It reads the extract three times (four with
+`--json`).
 
 Needs pyosmium (`pip install osmium`). Standalone: it imports nothing from the
 repository, so it can be run from a copy of this one file.
@@ -90,6 +91,7 @@ ROAD_HIGHWAYS = frozenset(
 TRAIL_HIGHWAYS = frozenset({"cycleway", "path", "footway", "bridleway", "track", "pedestrian"})
 CLOSED = frozenset({"no", "private", "use_sidepath"})
 GRANTS = frozenset({"yes", "designated", "permissive", "dismount"})
+KEPT_NODE_KEYS = ("barrier", "kerb", "maxwidth", "maxwidth:physical", "width", "bicycle", "access")
 RAMP_KEYS = ("ramp", "ramp:bicycle", "ramp:stroller", "ramp:wheelchair")
 OTHER_WIDTH_KEYS = ("maxwidth:physical", "width")
 
@@ -213,7 +215,8 @@ class Census:
     # -- pass 2 ------------------------------------------------------------------------
     def node(self, node_id: int, tags: dict[str, str], lat: float, lon: float) -> None:
         if tags and is_barrier_node(tags):
-            self.barriers[node_id] = (tags, lat, lon)
+            # Only the keys read, so a region's thousands of mapped kerbs stay small.
+            self.barriers[node_id] = ({k: tags[k] for k in KEPT_NODE_KEYS if k in tags}, lat, lon)
         if node_id in self.wanted_locations:
             self.locations[node_id] = (lat, lon)
 
@@ -263,9 +266,11 @@ class Census:
                     beside.append(beside_point((lat, lon), self.locations[other]))
             if not beside:
                 continue
+            # The gap only: `maxwidth`, else `maxwidth:physical`. A bollard's own `width` is
+            # often the post or the chicane, not the gap, so it is never read as one here.
             width = parse_width_m(tags.get("maxwidth"))
             if width is None:
-                width = _other_width(tags)
+                width = parse_width_m(tags.get("maxwidth:physical"))
             rows.append(
                 [round(lon, 7), round(lat, 7), kind, _round(width),
                  [[round(x, 7), round(y, 7)] for x, y in beside]]
@@ -468,11 +473,11 @@ def run(pbf: str, for_snapshot: bool = False) -> Census:
         def way(self, w):  # noqa: ANN001
             census.way_pass_two({t.k: t.v for t in w.tags}, [n.ref for n in w.nodes])
 
-    print("pass 1 of 3: ways", file=sys.stderr)
+    print("pass 1: ways", file=sys.stderr)
     WaysOne().apply_file(pbf)
-    print("pass 2 of 3: nodes", file=sys.stderr)
+    print("pass 2: nodes", file=sys.stderr)
     Nodes().apply_file(pbf)
-    print("pass 3 of 3: ways", file=sys.stderr)
+    print("pass 3: ways", file=sys.stderr)
     WaysTwo().apply_file(pbf)
     if for_snapshot:
         wanted = census.wanted_neighbours() - set(census.locations)
@@ -482,7 +487,7 @@ def run(pbf: str, for_snapshot: bool = False) -> Census:
                 if n.id in wanted and n.location.valid():
                     census.neighbour_node(n.id, n.location.lat, n.location.lon)
 
-        print("pass 4 of 4: barrier neighbours", file=sys.stderr)
+        print("pass 4: barrier neighbours", file=sys.stderr)
         Neighbours().apply_file(pbf)
     return census
 

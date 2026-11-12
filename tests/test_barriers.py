@@ -161,3 +161,21 @@ def test_no_snapshot_leaves_the_route(monkeypatch) -> None:
 def test_the_committed_snapshot_reads() -> None:
     index = barriers.index_of(__import__("json").loads(barriers.BARRIERS_PATH.read_text()))
     assert isinstance(index.barriers, list)
+
+
+def test_an_answer_cut_short_in_the_barrier_round_is_not_kept() -> None:
+    from core import route_cache
+
+    body = {"variant": "standard", "barrier_round": {"limited": "time"}}
+    assert not route_cache.keepable(body, "standard", 0)
+    body["barrier_round"] = {"limited": "no_way_round"}
+    assert route_cache.keepable(body, "standard", 0)
+
+
+def test_the_answer_schema_carries_both() -> None:
+    from core.api import BarrierRoundOut, BarriersOut
+
+    reading = barriers.reading(TRAIL, INDEX)
+    assert BarriersOut(**reading).items[0].word == "stile"
+    with pytest.raises(ValueError):
+        BarrierRoundOut(rounds=1, impassable=1, limited="somehow", in_the_way=[])
