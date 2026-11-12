@@ -1,7 +1,7 @@
 /**
  * The ride's cue log, a "flight recorder" (backlog 2026-11-12, item 3): what Ride made of each cue and what the voice did
  * with it, so a cue that was not heard can be explained ("cue 14 was made, held behind another, then dropped") instead
- * of guessed at. The 2026-11-03 Sligo report could not be told apart from stuck speech without it.
+ * of guessed at: an earlier report of a turn not said could not be told apart from stuck speech without it.
  *
  * Privacy: kept in this page's memory only, for this ride; nothing is sent or stored. A line holds the cue's number in
  * the ride's list, its kind and phase, metres to it, a GPS quality word and seconds since the ride started: never a
@@ -13,7 +13,7 @@ import type { Phase, RideEvent } from "./navigate.ts";
 /** How many lines are kept, oldest dropped first (our default, unmeasured: about an hour's riding in town). */
 export const CUE_LOG_KEPT = 400;
 
-/** A fix this good or better is "good", up to POOR_FIX_M (navigate.ts) "fair", rougher "poor" (our default). */
+/** A fix this good or better is "good", up to POOR_FIX_M (navigate.ts) "fair", rougher "poor" (our default, unmeasured). */
 export const GOOD_FIX_M = 20;
 const POOR_FIX_M = 50;
 
@@ -63,8 +63,14 @@ export class CueRecorder {
     this.startedAt = now;
   }
 
+  /** Whether a ride is under way (between start and end): the crash report carries the log only then. */
   get started(): boolean {
     return this.startedAt !== null;
+  }
+
+  /** The ride ended: nothing more is kept; the lines stay for the ride summary until the next ride starts. */
+  end(): void {
+    this.startedAt = null;
   }
 
   /** The engine made a cue's sentence (navigate.ts step's events). */
@@ -72,11 +78,11 @@ export class CueRecorder {
     if (this.startedAt === null) return;
     if (event.kind !== "cue") {
       this.push({ s: this.since(now), what: event.kind });
-      this.bySentence.set(event.spoken, event.kind);
+      this.remember(event.spoken, event.kind);
       return;
     }
     const cue = cueWord(event);
-    this.bySentence.set(event.spoken, cue);
+    this.remember(event.spoken, cue);
     const toM = event.cue && progressM !== null ? Math.round((event.cue.atM - progressM) / 5) * 5 : undefined;
     this.push({ s: this.since(now), what: "made", cue, ...(toM !== undefined ? { toM } : {}), fix: fixWord(accuracyM) });
   }
@@ -84,7 +90,7 @@ export class CueRecorder {
   /** A held cue said with fresh words (rideOutput.ts Announcer's `again`): the same cue. */
   alias(sentence: string, as: string): void {
     const cue = this.bySentence.get(as);
-    if (cue) this.bySentence.set(sentence, cue);
+    if (cue) this.remember(sentence, cue);
   }
 
   /** A note about the ride itself (GPS weak, paused). */
@@ -137,9 +143,16 @@ export class CueRecorder {
   private push(line: CueLogLine): void {
     this.kept.push(line);
     if (this.kept.length > CUE_LOG_KEPT) this.kept.splice(0, this.kept.length - CUE_LOG_KEPT);
-    if (this.bySentence.size > CUE_LOG_KEPT) {
+  }
+
+  /** Which cue a sentence is, the oldest forgotten past CUE_LOG_KEPT sentences. */
+  private remember(sentence: string, cue: string): void {
+    this.bySentence.delete(sentence);
+    this.bySentence.set(sentence, cue);
+    while (this.bySentence.size > CUE_LOG_KEPT) {
       const first = this.bySentence.keys().next().value;
-      if (first !== undefined) this.bySentence.delete(first);
+      if (first === undefined) break;
+      this.bySentence.delete(first);
     }
   }
 }

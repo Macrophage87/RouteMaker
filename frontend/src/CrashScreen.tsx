@@ -52,7 +52,8 @@ export class CrashBoundary extends Component<{ children: ReactNode }, { error: u
       path: window.location.pathname,
       userAgent: navigator.userAgent,
       logged: loggedErrors(),
-      cueLog: rideCueLog.text(),
+      // Only with a ride under way: a finished ride's log is not this crash's.
+      cueLog: rideCueLog.started ? rideCueLog.text() : "",
     });
     return <CrashScreen report={report} />;
   }

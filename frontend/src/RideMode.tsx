@@ -1504,14 +1504,16 @@ export function RideMode({
   // The ride's cue log starts with the ride (a Resume starts a new one); a new route's cues are numbered afresh.
   useEffect(() => {
     rideCueLog.start(Date.now());
+    return () => rideCueLog.end();
   }, []);
 
   // After the page comes back from the background: say where the rider is once, on the next fix.
   const sayWhereNext = useRef(false);
-  const say = useCallback((events: RideEvent[]) => {
+  // `onward`: a walk or train after the line (lib/onward.ts), whose cues are not measured along it.
+  const say = useCallback((events: RideEvent[], onward = false) => {
     // A cue held back by the throttle is said with the distance as it is then (review RIDE-4), from the rider's place.
     for (const event of events) {
-      rideCueLog.made(event, rideRef.current.progressM, rideRef.current.fix?.accuracyM ?? 0, Date.now());
+      rideCueLog.made(event, onward ? null : rideRef.current.progressM, rideRef.current.fix?.accuracyM ?? 0, Date.now());
       const respoken = event.respoken;
       const again =
         respoken &&
@@ -2038,7 +2040,7 @@ export function RideMode({
       if (out.state.index !== state.index) stay.current = null;
       onwardRef.current = out.state;
       setOnward(out.state);
-      say(out.events);
+      say(out.events, true);
       // The next stop and the stop to get off are said as notes are, whatever the voice level: they are the trip's.
       // With the ride after them about to start by itself, the last walk's end is no arrival (the release review).
       for (const line of out.said) if (!(restNextRef.current && line === t(ARRIVED_SAID))) notify(line);

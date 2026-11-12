@@ -155,7 +155,13 @@ function named(street: string | null): string | null {
  * cue's name (compileCourse), so "Cross" always shows and the road's name as much as fits.
  */
 export function crossName(cross: string): string {
-  return named(cross) && cross !== CROSS_UNNAMED ? `Cross ${abbreviateStreet(cross.trim())}` : "Cross";
+  const road = crossedRoad(cross);
+  return road ? `Cross ${abbreviateStreet(road)}` : "Cross";
+}
+
+/** The road a crossing crosses, in full, or "" where it has no name (navigate.ts CROSS_UNNAMED). */
+export function crossedRoad(cross: string): string {
+  return named(cross) && cross !== CROSS_UNNAMED ? cross.trim() : "";
 }
 
 /** A cue's kind, short name and how much it matters, from Ride's cue. */
@@ -340,7 +346,7 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = [], na
       ...(cue.kind === "turn" && cue.then?.length ? { then: cue.then.map((t) => ({ movement: t.movement, street: named(t.street) })) } : {}),
       ...(cue.kind === "turn" && cue.across ? { across: true } : {}),
       ...((cue.kind === "turn" && cue.cross) || cue.kind === "crossing" ? { cross: true } : {}),
-      ...(cue.kind === "turn" && cue.cross ? { crossRoad: named(cue.cross) && cue.cross !== CROSS_UNNAMED ? cue.cross.trim() : "" } : {}),
+      ...(cue.kind === "turn" && cue.cross ? { crossRoad: crossedRoad(cue.cross) } : {}),
       ...(cue.kind === "stop" && cue.stop != null ? { stop: cue.stop } : {}),
       ...(cue.note ? { note: cue.note } : {}),
     });

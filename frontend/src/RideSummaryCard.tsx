@@ -277,14 +277,12 @@ export function RideSummaryCard({
           {t("Keep riding")}
         </button>
         {/* After a ride where a cue was dropped, cut off or stuck: its log to paste into a bug report, no places in it. */}
+        {/* Its words become the answer, as Save route's do; the page's own region says things, never this card's (F6). */}
         {cueLog && (
           <button type="button" className="link ride-summary-keep" onClick={() => void copyCueLog()}>
-            {COPY_CUE_LOG}
+            {cueLogSaid || COPY_CUE_LOG}
           </button>
         )}
-        <p role="status" className="hint ride-summary-said">
-          {cueLogSaid}
-        </p>
       </div>
     </section>
   );
