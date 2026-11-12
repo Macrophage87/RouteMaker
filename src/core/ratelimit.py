@@ -265,6 +265,9 @@ CUE_CARDS = Limit(scope="cue-cards", requests=30, window_s=60)
 # A kept line checked against the closures in force (POST /api/closures/check): asked when a
 # saved or shared route opens, on Start ride and before a download, so a few a minute at most.
 CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)
+# Whether the closures in force changed (GET /api/closures/stamp): asked once a minute by a ride
+# (Stephen 2026-11-12), so 20 a minute is a cap on a script.
+CLOSURES_STAMP = Limit(scope="closures-stamp", requests=20, window_s=60)
 # Weather along a route (POST /api/weather/check, core.weather): asked when a route shows, on Start
 # and every 5 minutes in a ride, so 20 a minute is a cap on a script.
 WEATHER_CHECK = Limit(scope="weather-check", requests=20, window_s=60)

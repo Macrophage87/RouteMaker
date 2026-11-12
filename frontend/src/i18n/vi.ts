@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "Biểu tượng cảm xúc của điện thoại trên bản đồ",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Ghi chú và điểm dừng trên bản đồ dùng biểu tượng cảm xúc của điện thoại, không dùng hình của ứng dụng. Lưu trên thiết bị này.",
   "emoji signs": "biểu tượng cảm xúc",
+  "Road closed ahead": "Đường phía trước bị đóng",
+  "Road closed ahead, {distance}: {name}": "Đường phía trước bị đóng, {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Không cho công chúng vào",
 };

@@ -1189,7 +1189,12 @@ closed costs a little. A closure posted for one direction only counts one step l
 as every lane closed, and every lane closed one way as a lane closed. Montgomery County, Howard County and Baltimore
 City do not post there.</li>
 <li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-25" aria-label="source 25">[25]</a></sup> are
-matched to the streets they name and routed around.</li>
+matched to the streets they name and routed around. AlertDC is checked every minute. A road closure for police
+activity is read for its closed streets only: nothing else of the alert is kept or shown, and the closure says, for
+example, "Police activity: streets closed near 15th St &amp; P St NW". Routes keep about 1,000 ft [300 m] from all of
+its corners (our default, not measured); a route that starts or ends inside that ring is warned instead, and still
+goes round the closed junctions. One with no end of its own drops off after 3 hours (our default) or when an update
+reopens the roads. A crash or fire that closes one junction closes the junction itself.</li>
 <li><strong>DDOT project advisories</strong><sup class="cite"><a href="#ref-26" aria-label="source 26">[26]</a></sup>: DDOT posts traffic advisories for its big
 projects, such as the Connecticut Avenue Streetscape and Deckover. A RouteMaker reviewer reads each one,
 and what it closes to bikes is routed around from the start of its first day to the end of its last, then
@@ -1337,6 +1342,14 @@ Quarries, landfills and the service roads of industrial sites close the same way
 do an airport's airfield roads; public streets and the trails past them stay open. On a golf
 course the cart paths, walkways and drives close; public streets and their sidewalks,
 numbered roads, bike routes and named trails through the course stay open.</p>
+<p>The map shades these sites grey, with a hatch and a dashed edge, and names each one of about 0.1 sq mi
+[0.25 km²] or more with "No public access" (our default). A start, stop or end inside one, more than about 330 ft
+[100 m] from a way in it that stays open (our default), goes to the site's nearest gate, where a closed road meets
+one open to bikes, and the route says "Restricted site. Route ends at the gate." ("starts at" or "goes to" for a start
+or a stop). Hand-drawn closed areas have no gates, so a point inside one is routed as before. From the next map
+rebuild, the part of the Patuxent Research Refuge's North Tract that the refuge closed
+on 7 June 2026 is closed and shaded too, and the southern stretch of Whip-poor-will Way, which the refuge's map marks
+for biking, opens.</p>
 <p>Some roads are open to bikes only at certain times, such as a highway open to bikes on weekend days.
 From the next map rebuild, a route uses such a road only inside its window, at the ride time you chose
 (When: Now, a weekday or the weekend). A window tied to dawn or dusk is read as a fixed time that falls inside

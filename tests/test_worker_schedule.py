@@ -40,6 +40,7 @@ from rebuild_fixtures import (
 )
 
 from config.procrastinate import (
+    ALERTDC_CRON,
     BACKUP_KEEP,
     BACKUP_MAX_AGE,
     BACKUP_TIMEOUT_S,
@@ -87,6 +88,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
         "refresh_dc_closures": DC_CLOSURES_CRON,
+        "refresh_alertdc": ALERTDC_CRON,
         "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
         "route_scorecard": ROUTE_SCORECARD_CRON,
     }
@@ -2583,6 +2585,7 @@ def test_every_alert_window_is_pinned() -> None:
         # The work-zone feeds, every five minutes: six missed ticks, as the sweep.
         "refresh_work_zones": 30 * 60,
         "refresh_dc_closures": 60 * 60,
+        "refresh_alertdc": 10 * 60,
         "check_saved_route_closures": 60 * 60,
         "route_scorecard": 30 * 60 * 60,
     }
@@ -2616,6 +2619,7 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
         "refresh_dc_closures": DC_CLOSURES_CRON,
+        "refresh_alertdc": ALERTDC_CRON,
         "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
         "route_scorecard": ROUTE_SCORECARD_CRON,
     }

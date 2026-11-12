@@ -105,6 +105,10 @@ WORK_ZONES_TIMEOUT_S = 5 * 60
 # the task holds a maintenance slot at most 6 of every 15 minutes (it was 12).
 DC_CLOSURES_CRON = "*/15 * * * *"
 DC_CLOSURES_TIMEOUT_S = 6 * 60
+# AlertDC alone, every minute, read only where its page changed (Stephen 2026-11-12:
+# core.closure_sources.refresh_fast). Its own budget is 45 seconds; this is the backstop.
+ALERTDC_CRON = "* * * * *"
+ALERTDC_TIMEOUT_S = 55
 
 # The closures on riders' saved routes (v0.7.0 closures; core.saved_route_alerts): every fifteen
 # minutes, seven minutes after the closures' refresh, so it reads what that refresh stored.
@@ -1123,6 +1127,20 @@ def refresh_dc_closures(timestamp: int) -> None:
 
     with record("refresh_dc_closures") as run:
         run.detail = run_with_deadline(refresh, DC_CLOSURES_TIMEOUT_S, "refresh_dc_closures")
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=ALERTDC_CRON)
+@app.task(name="refresh_alertdc", queue="maintenance", queueing_lock="refresh_alertdc")
+def refresh_alertdc(timestamp: int) -> None:
+    """Read AlertDC's list and, where it changed, its road closures (crashes, fires, police
+    activity) into the planner's shared copy (core.closure_sources.refresh_fast). Not retried:
+    the next minute is the retry, and a failed read keeps the last good copy."""
+    from core.closure_sources import refresh_fast
+    from core.runs import record, run_with_deadline
+
+    with record("refresh_alertdc") as run:
+        run.detail = run_with_deadline(refresh_fast, ALERTDC_TIMEOUT_S, "refresh_alertdc")
         run.save(update_fields=["detail"])
 
 

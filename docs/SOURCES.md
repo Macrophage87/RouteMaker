@@ -732,8 +732,13 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - Credit: `AlertDC (HSEMA)`
 - Feed: <https://trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList> (the host name says
   "training" but it carries current alerts; despite the path it is an HTML list, not RSS, as of
-  2026-11-01), read every 15 minutes. A later "has reopened" update ends the alert it follows. Only traffic and road items are read; every other alert
-  type (crime first) is dropped before its text is read, and is never stored, logged or shown.
+  2026-11-01), fetched every minute and read when it changed (2026-11-12). A later "has reopened"
+  update ends the alert it follows. Only traffic and road items are read; every other alert type
+  (crime first) is dropped before its text is read, and is never stored, logged or shown. The one
+  exception (Stephen 2026-11-12) is a road closure whose title also names police activity or a
+  crime: only its closed streets are kept, routed round as one area about 1,000 ft round them
+  (our default) and shown as "Police activity: streets closed near ...", with none of its other
+  words.
 - Publisher: DC Homeland Security and Emergency Management Agency.
 - Terms: public government alerts (inferred public). Not legal advice.
 
@@ -944,6 +949,12 @@ map's credits (301 is about data sources). It is credited where the font is, in 
 - The military areas the rebuild closes to bicycles (`pipeline.restricted_areas`) are
   OpenStreetMap's own `landuse=military` and `military=*` polygons (© OpenStreetMap
   contributors, ODbL), read from the same extract as the ways.
+- The closed sites the map shades (`frontend/src/restricted-data/`, built by
+  `scripts/build_restricted_sites.py`) are those same OSM areas, plus hand-drawn closed areas in
+  `fixtures/restricted-sites/`. The Patuxent Research Refuge's North Tract closed area is drawn
+  on OSM geometry, with U.S. Fish and Wildlife Service, Patuxent Research Refuge North Tract map,
+  2026-06 (<https://www.fws.gov/sites/default/files/documents/2026-06/north-tract-trail-map_2026_time-change.pdf>)
+  as the evidence for its outline; a U.S. federal government work, public domain.
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
   owner's counts of three DC Bike Party rides (PLAN item 173,
   `reports/owner/cyclist_packing_density.md` (not in the repository)), indicative, good to about ±25% (item
@@ -1364,7 +1375,10 @@ aren't sharing their data verbatim, just referencing. Keep them").
   repository, while Arlington's terms are pending; cited by the owner's Virginia rows
   (`fixtures/overrides/2026-10-31-owner-virginia-ratings.json`, R2) and by the Arlington
   review rows (`fixtures/overrides/2026-11-03-owner-arlington-bci-review.json`), whose
-  road-panel "Why" notes name Arlington's comfort level where ours differs. The owner,
+  road-panel "Why" notes name Arlington's comfort level where ours differs, and by
+  `fixtures/overrides/2026-11-12-owner-side-streets-and-arlington-index.json`, whose Why line on
+  every matched way ends with the index's level ("agrees" at the same level included) and its
+  measured volume where it has one; terms still pending. The owner,
   2026-11-03: citing it is fair use (research, criticism and review); a row's reason
   quotes the index's figures for that way's blocks, and the dataset itself is never copied in.
 - Arlington County's Intersection Points

@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "Émojis du téléphone sur les panneaux de la carte",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Les notes et les arrêts de la carte montrent les émojis de votre téléphone, pas les images de l'appli. Gardé sur cet appareil.",
   "emoji signs": "panneaux en émoji",
+  "Road closed ahead": "Route fermée plus loin",
+  "Road closed ahead, {distance}: {name}": "Route fermée plus loin, {distance} : {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Pas d'accès public",
 };
