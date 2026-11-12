@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro के समय wmata.com की सामान्य सेवा हैं, समय-सारणी नहीं: प्रतीक्षा ट्रेनों के बीच सामान्य समय की आधी है।",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro के समय wmata.com की {day} की सामान्य सेवा हैं, समय-सारणी नहीं: प्रतीक्षा ट्रेनों के बीच सामान्य समय की आधी है।",
   "More direct": "ज़्यादा सीधा",
+  "Fewer turns": "कम मोड़",
+  "All paved": "पूरी तरह पक्की सड़क",
   "Nearest by bike from here": "यहाँ से साइकिल से सबसे पास",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "यहाँ Metro या बस का कोई मेल नहीं बन सकता। पूरा रास्ता साइकिल से आज़माएँ।",
   "No bikeshare plan": "बाइकशेयर योजना नहीं",

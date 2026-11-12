@@ -14,10 +14,62 @@ import { t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
 import { formatDistanceChange, formatDuration } from "./format.ts";
 import { isTransit, type PresetId } from "./presets.ts";
+import { turnTotal, unpavedMetres } from "./quickFigures.ts";
 import type { StressKey } from "./stressBar.ts";
 
 /** The calmer option is the trailmaxxed route, the top of the rider's slider (the owner, 2026-10-19; core.presets stress_notches). */
-export const NEIGHBOUR_NAME: Record<NeighbourKind, string> = { direct: t("More direct"), calmer: "Trailmaxxed" };
+export const NEIGHBOUR_NAME: Record<NeighbourKind, string> = {
+  direct: t("More direct"),
+  calmer: "Trailmaxxed",
+  // The backlog's "fewer turns" item (2026-11-12): the rider's own setting with one choice on, named for what it trades.
+  fewer_turns: t("Fewer turns"),
+  paved: t("All paved"),
+};
+
+/** "Fewer turns" is asked for only where the route has at least this many turns (our default, unmeasured). */
+export const ASK_FEWER_TURNS_AT = 6;
+/** ...and kept only where it has at least this many fewer, and at least a quarter fewer (our defaults, unmeasured). */
+export const FEWER_TURNS_BY = 3;
+export const FEWER_TURNS_SHARE = 0.25;
+/** "All paved" is asked for, and kept, only where it takes at least this much unpaved riding off: 0.1 mi (160 m). */
+export const PAVED_BY_M = 160;
+
+function turnsOf(route: RouteResponse): number {
+  return route.description == null ? 0 : turnTotal(route);
+}
+
+function unpavedOf(route: RouteResponse): number {
+  return unpavedMetres(route.stress_spans) ?? 0;
+}
+
+/**
+ * The options to ask for beside the rider's own route, in order of want (POST /api/route/neighbours `options`): Go's
+ * More direct and Trailmaxxed (`go`), then Fewer turns where the route has ASK_FEWER_TURNS_AT turns or more, and All
+ * paved where it rides PAVED_BY_M unpaved or more. Plan has its traffic slider for the first two, so asks only the
+ * named ones; null where there is nothing to ask.
+ */
+export function neighbourKinds(final: RouteResponse, go: boolean): NeighbourKind[] | null {
+  const kinds: NeighbourKind[] = go ? ["direct", "calmer"] : [];
+  if (turnsOf(final) >= ASK_FEWER_TURNS_AT) kinds.push("fewer_turns");
+  if (unpavedOf(final) >= PAVED_BY_M) kinds.push("paved");
+  return kinds.length ? kinds : null;
+}
+
+/** Whether a Fewer turns option does what its name says against the rider's own route. */
+export function fewerTurnsEnough(own: RouteResponse, other: RouteResponse): boolean {
+  const mine = turnsOf(own);
+  return mine - turnsOf(other) >= Math.max(FEWER_TURNS_BY, Math.ceil(mine * FEWER_TURNS_SHARE));
+}
+
+/** Whether an All paved option takes enough unpaved riding off the rider's own route. */
+export function pavedEnough(own: RouteResponse, other: RouteResponse): boolean {
+  return unpavedOf(own) - unpavedOf(other) >= PAVED_BY_M;
+}
+
+/** Whether two routes read the same on the figures a named option is chosen by: the same turns, unpaved and length. */
+function sameNamedFigures(a: RouteResponse, b: RouteResponse): boolean {
+  return turnsOf(a) === turnsOf(b) && Math.abs(unpavedOf(a) - unpavedOf(b)) < SAID_M && Math.abs(a.distance_m - b.distance_m) < SAID_M;
+}
 
 /**
  * Whether Go asks for the options at all: the bike-only ride types with a traffic slider to move, and plain Bikeshare
@@ -122,9 +174,14 @@ function trailName(name: string): string {
  * longer"; a notable trail gained or left is named last of its side ("on the Metropolitan Branch Trail"). Empty where
  * it gains nothing, and such an option is not offered.
  */
-export function tradeoffLine(own: RouteResponse, other: RouteResponse): string {
+export function tradeoffLine(own: RouteResponse, other: RouteResponse, kind?: NeighbourKind): string {
   const gains: string[] = [];
   const costs: string[] = [];
+  // A named option says first what it is named for: "5 fewer turns", "0.6 mi (1.0 km) less unpaved".
+  const fewer = turnsOf(own) - turnsOf(other);
+  if (kind === "fewer_turns" && fewer > 0) gains.push(fewer === 1 ? "1 fewer turn" : `${fewer} fewer turns`);
+  const dUnpaved = unpavedOf(other) - unpavedOf(own);
+  if (kind === "paved" && dUnpaved <= -SAID_M) gains.push(`${formatDistanceChange(dUnpaved)} less unpaved`);
   const dt = other.duration_s - own.duration_s;
   const time = formatDuration(Math.abs(dt));
   if (dt <= -SAID_S) gains.push(`${time} faster`);
@@ -171,14 +228,21 @@ export function keptNeighbours(
   const shown = [answer, ...(answer.candidates ?? [])];
   const room = MAX_ROWS - 1 - Math.min(keepRouter, shown.length - 1);
   const kept: RouteResponse[] = [];
-  for (const option of [...options].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "direct" ? -1 : 1))) {
+  const order: NeighbourKind[] = ["direct", "calmer", "fewer_turns", "paved"];
+  for (const option of [...options].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))) {
     if (kept.length >= room) break;
     const route = option.route;
-    if ([...shown, ...kept].some((r) => !differsEnough(r, route))) continue;
+    const named = option.kind === "fewer_turns" || option.kind === "paved";
+    // A named option differs in what it is named for, which time and stress may not show; it is left out only where a
+    // route already in the choice reads the same.
+    if ([...shown, ...kept].some((r) => (named ? sameNamedFigures(r, route) : !differsEnough(r, route)))) continue;
     if (option.kind === "direct" && route.duration_s > answer.duration_s - SAID_S) continue;
     if (option.kind === "calmer" && busy(route) > busy(answer) - SAID_M) continue;
-    if (option.kind === "direct" && holdsLts4(preset, dials) && lts4(route) > lts4(answer) + LTS4_ROUNDING_M) continue;
-    const line = tradeoffLine(answer, route);
+    if (option.kind === "fewer_turns" && !fewerTurnsEnough(answer, route)) continue;
+    if (option.kind === "paved" && !pavedEnough(answer, route)) continue;
+    // Never more heavy traffic to be more direct, nor for fewer turns or pavement, on a ride that holds LTS 4.
+    if (option.kind !== "calmer" && holdsLts4(preset, dials) && lts4(route) > lts4(answer) + LTS4_ROUNDING_M) continue;
+    const line = tradeoffLine(answer, route, option.kind);
     if (!line) continue;
     kept.push({ ...route, neighbour: { kind: option.kind, stress: option.stress, line } });
   }
@@ -222,6 +286,13 @@ export function displacedBy(answer: RouteResponse | null, picked: RouteResponse 
  * are never changed by choosing.
  */
 export function rideDials(planDials: Dials, shown: RouteResponse | null): Dials {
-  const stress = shown?.neighbour?.stress;
-  return stress === undefined ? planDials : { ...planDials, stress };
+  const neighbour = shown?.neighbour;
+  if (!neighbour) return planDials;
+  // A named option's re-plans keep its choice too ("Fewer turns", "All paved").
+  return {
+    ...planDials,
+    stress: neighbour.stress,
+    ...(neighbour.kind === "fewer_turns" ? { fewerTurns: true } : {}),
+    ...(neighbour.kind === "paved" ? { paved: true } : {}),
+  };
 }

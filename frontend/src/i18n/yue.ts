@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro嘅時間係wmata.com上嘅一般服務，唔係時間表：等候時間係平時班次相隔嘅一半。",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro嘅時間係wmata.com上{day}嘅一般服務，唔係時間表：等候時間係平時班次相隔嘅一半。",
   "More direct": "更直接",
+  "Fewer turns": "少啲轉彎",
+  "All paved": "全程鋪裝路",
   "Nearest by bike from here": "由呢度踩車最近",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "呢度規劃唔到任何Metro或者巴士組合。試下全程踩車。",
   "No bikeshare plan": "冇共享單車方案",

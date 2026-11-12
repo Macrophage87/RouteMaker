@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro 시간은 wmata.com의 일반 운행 기준이며 시간표가 아닙니다: 대기 시간은 평소 열차 간격의 절반입니다.",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro 시간은 wmata.com의 {day} 일반 운행 기준이며 시간표가 아닙니다: 대기 시간은 평소 열차 간격의 절반입니다.",
   "More direct": "더 직선적",
+  "Fewer turns": "회전 적게",
+  "All paved": "전부 포장도로",
   "Nearest by bike from here": "여기서 자전거로 가장 가까움",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "여기서는 Metro나 버스 조합을 계획할 수 없습니다. 전 구간 자전거로 시도해 보세요.",
   "No bikeshare plan": "공유 자전거 계획 없음",

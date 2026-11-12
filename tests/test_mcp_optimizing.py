@@ -518,6 +518,20 @@ def test_turns_are_counted_as_the_app_counts_them() -> None:
     assert "turns" not in mcp.summary({"distance_m": 4800.0})
 
 
+def test_fewer_turns_and_all_paved_are_sent_kept_and_said_missing_from_the_link(tools, api) -> None:
+    out = tools.call("plan_route", {"points": [east(0), east(4)], "fewer_turns": True})
+    assert api.routes[-1]["fewer_turns"] is True
+    assert "paved" not in api.routes[-1]
+    assert any("Fewer turns" in n and "not in it" in n for n in out["notes"])
+    # A revision keeps it, as Keep to roads; a new ride type too; clear_settings drops it.
+    tools.call("revise_route", {"draft_id": out["draft_id"], "paved": True})
+    assert api.routes[-1]["fewer_turns"] is True and api.routes[-1]["paved"] is True
+    tools.call("revise_route", {"draft_id": out["draft_id"], "preset": "gravel"})
+    assert api.routes[-1]["fewer_turns"] is True
+    tools.call("revise_route", {"draft_id": out["draft_id"], "clear_settings": ["fewer_turns"]})
+    assert "fewer_turns" not in api.routes[-1]
+
+
 def test_the_route_is_read_stretch_by_stretch(tools) -> None:
     draft = plan(tools)
     out = tools.call("route_segments", {"draft_id": draft["draft_id"]})

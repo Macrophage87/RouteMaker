@@ -14,7 +14,9 @@ import {
   MAX_ROWS,
   MIN_MOVED_M,
   movedBetweenTiers,
+  ASK_FEWER_TURNS_AT,
   neighbourDials,
+  neighbourKinds,
   neighboursSaid,
   offersNeighbours,
   rideDials,
@@ -42,7 +44,7 @@ function route(over: Partial<RouteResponse> & { s?: [number, number, number, num
   } as RouteResponse;
 }
 
-function option(kind: "direct" | "calmer", r: RouteResponse, stress = kind === "direct" ? 40 : 80): NeighbourOption {
+function option(kind: NeighbourOption["kind"], r: RouteResponse, stress = kind === "direct" ? 40 : kind === "calmer" ? 80 : 70): NeighbourOption {
   return { kind, stress, route: r };
 }
 
@@ -395,12 +397,15 @@ test("a refused options request holds nothing back: the next plan goes at once",
   assert.equal(t.states.includes("waiting"), false);
 });
 
-test("App: asked for in Go only, before Start, on the ride types that offer them; said once by their own line", () => {
+test("App: asked for before Start (Go's two in Go only), on the ride types that offer them; said once by their own line", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const start = app.indexOf("after: (plan: Plan, final: RouteResult) => {");
   const body = app.slice(start, app.indexOf("onAfter:", start));
   assert.ok(start > 0);
-  assert.match(body, /modeRef\.current !== "go" \|\| now\.riding\)/);
+  // Go asks for More direct and Trailmaxxed; both modes for the named ones the route warrants (neighbourKinds).
+  assert.match(body, /final\.route\.provisional \|\| now\.riding\) return null;/);
+  assert.match(body, /const kinds = neighbourKinds\(final\.route, modeRef\.current === "go"\);\s+if \(!kinds\) return null;/);
+  assert.match(body, /requestNeighbours\(plan\.points, plan\.preset, \{ dials, kinds,/);
   assert.match(body, /!offersNeighbours\(plan\.preset\) \|\| plan\.confirmLong/);
   assert.match(app, /announce\(neighboursSaid\(kept, displacedBy\(answer, picked, kept\)\)\)/);
   // The routes kept in place are the answer's own: the rider's choice, held to their count, and kept for the same answer.
@@ -411,4 +416,82 @@ test("App: asked for in Go only, before Start, on the ride types that offer them
   assert.match(app, /chosen \? announceHow\(picked, choice, true\) : announceHow\(answer, choice, false\)/);
   // Shown in the existing choice: the route section gets the answer with them.
   assert.match(app, /answer: picked, choice,/);
+});
+
+// --- Fewer turns and All paved (the backlog's "fewer turns" item, 2026-11-12) -----------------------------------------
+
+function turning(n: number): DescriptionEntry[] {
+  return Array.from({ length: n }, (_, i) => ({ ...stretch(`Street ${i}`, i * 100, i * 100 + 100), turn: { movement: i % 2 ? "left" : "right" } }) as never);
+}
+
+function unpavedSpans(m: number) {
+  return [
+    { from_m: 0, to_m: m, tier: 1, facility: "path" as const, unpaved: true },
+    { from_m: m, to_m: 6000, tier: 2, facility: "none" as const, unpaved: false },
+  ];
+}
+
+test("the named options are asked for only where the route warrants one; Go's two in Go only", () => {
+  const fiddly = route({ description: turning(ASK_FEWER_TURNS_AT) });
+  const plain = route({ description: turning(ASK_FEWER_TURNS_AT - 1) });
+  assert.deepEqual(neighbourKinds(fiddly, true), ["direct", "calmer", "fewer_turns"]);
+  assert.deepEqual(neighbourKinds(fiddly, false), ["fewer_turns"]);
+  assert.equal(neighbourKinds(plain, false), null, "Plan: nothing to ask");
+  assert.deepEqual(neighbourKinds(plain, true), ["direct", "calmer"], "Go asks as it did");
+  const gravel = route({ stress_spans: unpavedSpans(300) });
+  assert.deepEqual(neighbourKinds(gravel, false), ["paved"]);
+  assert.equal(neighbourKinds(route({ stress_spans: unpavedSpans(100) }), false), null, "under 0.1 mi of unpaved");
+});
+
+test("Fewer turns is kept only with at least 3, and a quarter, fewer turns, and says so first", () => {
+  const own = route({ description: turning(16) });
+  const twelve = route({ description: turning(12), duration_s: 1800 + 120 });
+  const kept = keptNeighbours(own, [option("fewer_turns", twelve)], "default");
+  assert.equal(kept.length, 1);
+  assert.deepEqual(kept[0].neighbour, { kind: "fewer_turns", stress: 70, line: "4 fewer turns, 2 min longer" });
+  // 13 turns: 3 fewer, but under a quarter of 16 (4): not offered.
+  assert.deepEqual(keptNeighbours(own, [option("fewer_turns", route({ description: turning(13) }))], "default"), []);
+  // Novice and Nervous never gets more heavy traffic for fewer turns.
+  const busier = route({ description: turning(8), s: [3000, 2000, 1000, 400] });
+  assert.deepEqual(keptNeighbours(own, [option("fewer_turns", busier)], "novice"), []);
+  assert.equal(keptNeighbours(own, [option("fewer_turns", busier)], "default").length, 1);
+});
+
+test("All paved is kept only where it takes 0.1 mi or more of unpaved off; a named option the same as a shown route is not", () => {
+  const own = route({ stress_spans: unpavedSpans(1000) });
+  const paved = route({ stress_spans: unpavedSpans(0), distance_m: 6100 });
+  const kept = keptNeighbours(own, [option("paved", paved)], "default");
+  assert.equal(kept[0].neighbour?.line, "0.6 mi (1.0 km) less unpaved");
+  assert.deepEqual(keptNeighbours(own, [option("paved", route({ stress_spans: unpavedSpans(900) }))], "default"), []);
+  // Already in the choice (the router's own Route 2 reads the same): not offered again.
+  assert.deepEqual(keptNeighbours({ ...own, candidates: [{ ...paved }] }, [option("paved", paved)], "default"), []);
+});
+
+test("the options come in their order, More direct and Trailmaxxed first, and a ride on a named one keeps its choice", () => {
+  const own = route({ description: turning(16), stress_spans: unpavedSpans(1000) });
+  const fewer = route({ description: turning(8), duration_s: 1800 });
+  const paved = route({ description: turning(16), stress_spans: unpavedSpans(0), distance_m: 6200 });
+  const kept = keptNeighbours(own, [option("paved", paved), option("fewer_turns", fewer), option("direct", DIRECT)], "default");
+  assert.deepEqual(kept.map((r) => r.neighbour?.kind), ["direct", "fewer_turns", "paved"]);
+  const rows = candidateRows(withNeighbours(own, kept))!;
+  assert.deepEqual(rows.slice(1).map((r) => r.name), ["More direct", "Fewer turns", "All paved"]);
+  const dials = startDials("default");
+  assert.deepEqual(rideDials(dials, kept[1]), { ...dials, stress: 70, fewerTurns: true });
+  assert.deepEqual(rideDials(dials, kept[2]), { ...dials, stress: 70, paved: true });
+  assert.deepEqual(rideDials(dials, kept[0]), { ...dials, stress: 40 });
+});
+
+test("the request asks for the options in order of want, and reads the named ones back", async () => {
+  let sent: Record<string, unknown> = {};
+  const fetchImpl = async (_url: string, init?: RequestInit) => {
+    sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({ stress: 70, options: [{ kind: "fewer_turns", stress: 70, route: { ...OWN } }, { kind: "flatter", stress: 70, route: { ...OWN } }] }), { status: 200 });
+  };
+  const got = await requestNeighbours([[-77, 38.9], [-77.01, 38.91]], "default", { dials: startDials("default"), kinds: ["fewer_turns"], fetchImpl });
+  assert.deepEqual(sent.options, ["fewer_turns"]);
+  assert.ok(got.ok);
+  if (got.ok) assert.deepEqual(got.options.map((o) => o.kind), ["fewer_turns"], "an unknown kind is dropped");
+  await requestNeighbours([[-77, 38.9], [-77.01, 38.91]], "default", { dials: { ...startDials("default"), fewerTurns: true }, fetchImpl });
+  assert.equal(sent.options, undefined, "Go's request as before");
+  assert.equal(sent.fewer_turns, true, "a ride on Fewer turns re-plans with it");
 });

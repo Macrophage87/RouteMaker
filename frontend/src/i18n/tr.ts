@@ -1683,6 +1683,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro's times are its typical service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro süreleri, wmata.com'daki olağan hizmetidir, bir tarife değildir: bekleme süresi trenler arasındaki olağan sürenin yarısıdır.",
   "Metro's times are its typical {day} service from wmata.com, not a timetable: its wait is half the usual time between trains.": "Metro süreleri, wmata.com'daki olağan {day} hizmetidir, bir tarife değildir: bekleme süresi trenler arasındaki olağan sürenin yarısıdır.",
   "More direct": "Daha doğrudan",
+  "Fewer turns": "Daha az dönüş",
+  "All paved": "Tamamen asfalt",
   "Nearest by bike from here": "Buradan bisikletle en yakın",
   "No Metro or bus combination can be planned here. Try riding the whole way.": "Burada hiçbir Metro veya otobüs bağlantısı planlanamıyor. Tüm yolu bisikletle gitmeyi deneyin.",
   "No bikeshare plan": "Paylaşımlı bisiklet planı yok",

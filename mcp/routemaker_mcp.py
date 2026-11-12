@@ -4770,6 +4770,23 @@ RIDE_OPTIONS = {
         "default": False,
         "description": "Keep to roads: no paths or trails.",
     },
+    "fewer_turns": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "Bike ride types: the same ride type and settings with turns charged more (Group"
+            " Ride's and Road Bike's price), for \"the same but fewer turns\". Compare"
+            " summary.turns before and after."
+        ),
+    },
+    "paved": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "Bike ride types: the same ride type and settings with gravel and dirt avoided"
+            " wherever pavement runs near (never closed). Compare summary.unpaved."
+        ),
+    },
     "easy_mtb": {
         "type": "boolean",
         "default": False,
@@ -4934,6 +4951,8 @@ PASSED_OPTIONS = (
     "carrying",
     "assist",
     "trails_off",
+    "fewer_turns",
+    "paved",
     "easy_mtb",
     "mtb_level",
     "mtb_preferred",
@@ -6741,6 +6760,8 @@ class Server:
                 k: answered.get(k)
                 for k in (
                     "trails_off",
+                    "fewer_turns",
+                    "paved",
                     "easy_mtb",
                     "target_distance_m",
                     "loop",
@@ -6850,6 +6871,9 @@ class Server:
             for key, what in (
                 ("blocked_lines", "the roads avoided"),
                 ("follow", "the line followed"),
+                # The app has no control for these (its named options set them for a ride).
+                ("fewer_turns", "Fewer turns"),
+                ("paved", "All paved"),
             )
             if plan.sent.get(key)
         ]
@@ -7599,6 +7623,9 @@ class Server:
                 "follow_alternative",
                 "blocked_lines",
                 "trails_off",
+                # The rider's choices, as Keep to roads.
+                "fewer_turns",
+                "paved",
             )
             if preset != "run":
                 # A riding speed is no running pace: the run starts at Run's own.

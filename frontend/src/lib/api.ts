@@ -1135,6 +1135,9 @@ export interface RouteResponse {
     carrying: Carrying | null;
     assist?: boolean;
     avoid_gravel?: boolean;
+    /** "Fewer turns" and "All paved" (a named option chosen, then its ride's re-plans); absent from an older API. */
+    fewer_turns?: boolean;
+    paved?: boolean;
     trails_off?: boolean;
     easy_mtb?: boolean;
     target_distance_m?: number | null;
@@ -1312,7 +1315,9 @@ export function routeErrorShown(error: RouteError, goPlace: string | null, offli
 }
 
 /** Go's "More direct" (two notches more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
-export type NeighbourKind = "direct" | "calmer";
+/** Go's More direct and Calmer, and the named options at the rider's own setting (the backlog's "fewer turns" item). */
+export type NeighbourKind = "direct" | "calmer" | "fewer_turns" | "paved";
+const NEIGHBOUR_KINDS: readonly NeighbourKind[] = ["direct", "calmer", "fewer_turns", "paved"];
 export interface NeighbourOption {
   kind: NeighbourKind;
   stress: number;
@@ -1714,6 +1719,12 @@ export function cancelRoute(planId: string, options: { fetchImpl?: FetchLike } =
   }
 }
 
+/** The request body with the options asked for (`options`, in order of want), or as it is: the API's default, direct and calmer. */
+function withOptions(body: string, kinds: readonly NeighbourKind[] | undefined): string {
+  if (!kinds) return body;
+  return JSON.stringify({ ...(JSON.parse(body) as object), options: kinds });
+}
+
 /**
  * Go's "More direct" and "Calmer" for a plan (POST /api/route/neighbours): the same body as the plan's full request,
  * one request for both, and one count of the routing limit. Nothing is said on a failure: the options are left out.
@@ -1721,21 +1732,21 @@ export function cancelRoute(planId: string, options: { fetchImpl?: FetchLike } =
 export async function requestNeighbours(
   points: readonly LonLat[],
   preset: PresetId,
-  options: Pick<RouteRequestOptions, "dials" | "vias"> & { fetchImpl?: FetchLike } = {},
+  options: Pick<RouteRequestOptions, "dials" | "vias"> & { fetchImpl?: FetchLike; kinds?: readonly NeighbourKind[] } = {},
 ): Promise<NeighboursResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   try {
     const response = await fetchImpl("/api/route/neighbours", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: routeRequestBody(points, preset, { dials: options.dials, vias: options.vias }),
+      body: withOptions(routeRequestBody(points, preset, { dials: options.dials, vias: options.vias }), options.kinds),
     });
     const body: unknown = await response.json().catch(() => null);
     const list = (body as { options?: unknown } | null)?.options;
     if (response.ok && Array.isArray(list)) {
       const kept = list.filter(
         (o): o is NeighbourOption =>
-          !!o && (o.kind === "direct" || o.kind === "calmer") && typeof o.stress === "number" && looksLikeRoute(o.route),
+          !!o && NEIGHBOUR_KINDS.includes(o.kind) && typeof o.stress === "number" && looksLikeRoute(o.route),
       );
       return { ok: true, options: unitsFirstDeep(kept) };
     }
