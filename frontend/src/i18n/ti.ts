@@ -2171,4 +2171,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Sending…": "ይለኣኽ ኣሎ…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "ንህዝቢ ክፉት ኣይኮነን",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "መዝገብ መምርሒታት ቅዳሕ",
+  "Cue log copied.": "መዝገብ መምርሒታት ተቐዲሑ።",
+  "Could not copy the cue log.": "መዝገብ መምርሒታት ክቕዳሕ ኣይተኻእለን።",
 };

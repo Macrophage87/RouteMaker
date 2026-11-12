@@ -2171,4 +2171,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Sending…": "Enviando…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "Sem acesso público",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Copiar registro de avisos",
+  "Cue log copied.": "Registro de avisos copiado.",
+  "Could not copy the cue log.": "Não foi possível copiar o registro de avisos.",
 };

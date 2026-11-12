@@ -2171,4 +2171,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Sending…": "보내는 중…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "일반인 출입 금지",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "안내 기록 복사",
+  "Cue log copied.": "안내 기록을 복사했습니다.",
+  "Could not copy the cue log.": "안내 기록을 복사할 수 없습니다.",
 };

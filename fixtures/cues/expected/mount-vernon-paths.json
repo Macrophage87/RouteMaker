@@ -1,0 +1,74 @@
+[
+ {
+  "turn": "Start",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Left",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Left",
+  "road": "Southwood Dr",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "Adrienne Dr",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Left",
+  "road": "Old Mill Rd",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "Gateshead Rd",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Bear right",
+  "road": "Path",
+  "then": "then bear right onto Path, then bear right onto Path",
+  "arrow": "turn bear_right,bear_right,bear_right"
+ },
+ {
+  "turn": "Right",
+  "road": "Pole Rd",
+  "then": "then left onto Keeler St",
+  "arrow": "turn right,left"
+ },
+ {
+  "turn": "Left",
+  "road": "Sprayer St",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Left",
+  "road": "Ackley St",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "Shirley St",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

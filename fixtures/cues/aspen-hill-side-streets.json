@@ -1,0 +1,887 @@
+{
+ "name": "aspen-hill-side-streets",
+ "about": "Side streets west of Layhill Rd: many short residential turns, one after another",
+ "route": {
+  "preset": "trailmaxxing",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.06974,
+     39.068719
+    ],
+    [
+     -77.069565,
+     39.06906
+    ],
+    [
+     -77.06952,
+     39.069048
+    ],
+    [
+     -77.069477,
+     39.069018
+    ],
+    [
+     -77.069412,
+     39.069091
+    ],
+    [
+     -77.069282,
+     39.069087
+    ],
+    [
+     -77.069167,
+     39.0691
+    ],
+    [
+     -77.068939,
+     39.069126
+    ],
+    [
+     -77.068672,
+     39.06921
+    ],
+    [
+     -77.068436,
+     39.069307
+    ],
+    [
+     -77.068374,
+     39.069332
+    ],
+    [
+     -77.068294,
+     39.069365
+    ],
+    [
+     -77.067556,
+     39.069667
+    ],
+    [
+     -77.067481,
+     39.069698
+    ],
+    [
+     -77.067422,
+     39.069721
+    ],
+    [
+     -77.06723,
+     39.069797
+    ],
+    [
+     -77.066993,
+     39.069866
+    ],
+    [
+     -77.066757,
+     39.069908
+    ],
+    [
+     -77.066596,
+     39.069926
+    ],
+    [
+     -77.066482,
+     39.069931
+    ],
+    [
+     -77.066371,
+     39.069943
+    ],
+    [
+     -77.065773,
+     39.070011
+    ],
+    [
+     -77.065383,
+     39.070075
+    ],
+    [
+     -77.065439,
+     39.070141
+    ],
+    [
+     -77.066368,
+     39.071228
+    ],
+    [
+     -77.066719,
+     39.071594
+    ],
+    [
+     -77.066825,
+     39.071762
+    ],
+    [
+     -77.066879,
+     39.071979
+    ],
+    [
+     -77.066856,
+     39.072198
+    ],
+    [
+     -77.066841,
+     39.072285
+    ],
+    [
+     -77.065773,
+     39.072151
+    ],
+    [
+     -77.06562,
+     39.072139
+    ],
+    [
+     -77.065374,
+     39.072164
+    ],
+    [
+     -77.065143,
+     39.072255
+    ],
+    [
+     -77.064994,
+     39.072332
+    ],
+    [
+     -77.064901,
+     39.072395
+    ],
+    [
+     -77.06469,
+     39.072524
+    ],
+    [
+     -77.064636,
+     39.072559
+    ],
+    [
+     -77.064399,
+     39.072715
+    ],
+    [
+     -77.064163,
+     39.072822
+    ],
+    [
+     -77.062782,
+     39.073226
+    ],
+    [
+     -77.06253,
+     39.073322
+    ],
+    [
+     -77.062019,
+     39.073627
+    ],
+    [
+     -77.061439,
+     39.074092
+    ],
+    [
+     -77.061325,
+     39.074146
+    ],
+    [
+     -77.06002,
+     39.074764
+    ],
+    [
+     -77.059866,
+     39.074851
+    ],
+    [
+     -77.05942,
+     39.075104
+    ],
+    [
+     -77.059323,
+     39.07517
+    ],
+    [
+     -77.059246,
+     39.07511
+    ],
+    [
+     -77.05915,
+     39.075042
+    ],
+    [
+     -77.059028,
+     39.074993
+    ],
+    [
+     -77.058898,
+     39.074966
+    ],
+    [
+     -77.057792,
+     39.075004
+    ],
+    [
+     -77.057304,
+     39.075019
+    ],
+    [
+     -77.056716,
+     39.075038
+    ],
+    [
+     -77.055549,
+     39.075073
+    ],
+    [
+     -77.055366,
+     39.075111
+    ],
+    [
+     -77.055259,
+     39.075164
+    ],
+    [
+     -77.055175,
+     39.075241
+    ],
+    [
+     -77.054924,
+     39.075599
+    ],
+    [
+     -77.054794,
+     39.075695
+    ],
+    [
+     -77.05458,
+     39.07574
+    ],
+    [
+     -77.053871,
+     39.075843
+    ],
+    [
+     -77.053771,
+     39.075649
+    ],
+    [
+     -77.053405,
+     39.075298
+    ],
+    [
+     -77.053146,
+     39.075416
+    ],
+    [
+     -77.05297,
+     39.075469
+    ],
+    [
+     -77.052803,
+     39.075141
+    ],
+    [
+     -77.052764,
+     39.075084
+    ],
+    [
+     -77.05268,
+     39.075008
+    ],
+    [
+     -77.052452,
+     39.074901
+    ],
+    [
+     -77.052108,
+     39.074836
+    ],
+    [
+     -77.052131,
+     39.07471
+    ],
+    [
+     -77.05214,
+     39.074504
+    ]
+   ]
+  },
+  "distance_m": 2249.0,
+  "duration_s": 536.0,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.01818,
+    10.5
+   ],
+   [
+    0.0218,
+    12.1
+   ],
+   [
+    0.0218,
+    20.1
+   ],
+   [
+    0.02223,
+    20.3
+   ],
+   [
+    0.06851,
+    41.2
+   ],
+   [
+    0.06851,
+    49.2
+   ],
+   [
+    0.10721,
+    66.8
+   ],
+   [
+    0.10721,
+    74.8
+   ],
+   [
+    0.14769,
+    93.1
+   ],
+   [
+    0.14769,
+    101.1
+   ],
+   [
+    0.19084,
+    120.7
+   ],
+   [
+    0.19084,
+    128.7
+   ],
+   [
+    0.19116,
+    128.8
+   ],
+   [
+    0.31762,
+    170.4
+   ],
+   [
+    0.31762,
+    182.4
+   ],
+   [
+    0.3177,
+    182.4
+   ],
+   [
+    0.39146,
+    219.8
+   ],
+   [
+    0.39146,
+    243.8
+   ],
+   [
+    0.65355,
+    376.9
+   ],
+   [
+    0.88252,
+    459.1
+   ],
+   [
+    0.88256,
+    459.1
+   ],
+   [
+    0.88256,
+    471.1
+   ],
+   [
+    0.91522,
+    488.4
+   ],
+   [
+    0.91548,
+    488.5
+   ],
+   [
+    0.91548,
+    500.5
+   ],
+   [
+    0.93402,
+    506.7
+   ],
+   [
+    0.98349,
+    527.4
+   ],
+   [
+    1.0,
+    536.0
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 49,
+    "from_mi": 0.0,
+    "to_mi": 0.03,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 160 ft (49 m): Path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 49,
+    "to_m": 429,
+    "from_mi": 0.03,
+    "to_mi": 0.27,
+    "street": "Kayson Street",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "bear_left",
+     "onto": "Kayson Street",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.3 mi (0.0 to 0.4 km): Bear left onto Kayson Street, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 429,
+    "to_m": 714,
+    "from_mi": 0.27,
+    "to_mi": 0.44,
+    "street": "Estelle Road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Estelle Road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -111,
+      "others": [
+       -6,
+       66
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.3 to 0.4 mi (0.4 to 0.7 km): Left onto Estelle Road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 714,
+    "to_m": 891,
+    "from_mi": 0.44,
+    "to_mi": 0.55,
+    "street": "May Street",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "May Street",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 to 0.6 mi (0.7 to 0.9 km): Right onto May Street, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 891,
+    "to_m": 1471,
+    "from_mi": 0.55,
+    "to_mi": 0.91,
+    "street": "Rippling Brook Drive",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "straight",
+     "onto": "Rippling Brook Drive",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 to 0.9 mi (0.9 to 1.5 km): Continue onto Rippling Brook Drive, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1471,
+    "to_m": 1985,
+    "from_mi": 0.91,
+    "to_mi": 1.23,
+    "street": "Beechmont Lane",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Beechmont Lane",
+     "control": "none",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.9 to 1.2 mi (1.5 to 2.0 km): Right onto Beechmont Lane, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1985,
+    "to_m": 2059,
+    "from_mi": 1.23,
+    "to_mi": 1.28,
+    "street": "Belle Crest Lane",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Belle Crest Lane",
+     "control": "none",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.2 mi (2.0 km), for 240 ft (74 m): Right onto Belle Crest Lane, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2059,
+    "to_m": 2101,
+    "from_mi": 1.28,
+    "to_mi": 1.31,
+    "street": "Hathaway Drive",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Hathaway Drive",
+     "control": "none",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.3 mi (2.1 km), for 140 ft (42 m): Left onto Hathaway Drive, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2101,
+    "to_m": 2212,
+    "from_mi": 1.31,
+    "to_mi": 1.37,
+    "street": "Dressler Lane",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Dressler Lane",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.3 mi (2.1 km), for 360 ft (111 m): Right onto Dressler Lane, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2212,
+    "to_m": 2249,
+    "from_mi": 1.37,
+    "to_mi": 1.4,
+    "street": "Lutes Drive",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Lutes Drive",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.4 mi (2.2 km), for 120 ft (37 m): Right onto Lutes Drive, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   74
+  ],
+  "arrival_side": "left",
+  "leg_arrival_sides": [
+   "left"
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 49,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 49,
+    "to_m": 59,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 59,
+    "to_m": 714,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 714,
+    "to_m": 891,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 891,
+    "to_m": 1470,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1470,
+    "to_m": 1984,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1984,
+    "to_m": 2058,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 2058,
+    "to_m": 2100,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 2100,
+    "to_m": 2248,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}

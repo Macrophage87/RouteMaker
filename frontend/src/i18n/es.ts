@@ -2690,6 +2690,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Road closed ahead, {distance}: {name}": "Calle cerrada más adelante, {distance}: {name}",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "Sin acceso público",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Copiar registro de avisos",
+  "Cue log copied.": "Registro de avisos copiado.",
+  "Could not copy the cue log.": "No se pudo copiar el registro de avisos.",
   // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
   "Anything feel different from its rating?": "¿Algún tramo se sintió distinto de su calificación?",
   "Which stretch?": "¿Qué tramo?",

@@ -18,10 +18,16 @@ import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
 import { DO_ANOTHER_TRIP, FINISH_SESSION, REBALANCE_TODAY, dayRows, type RebalanceDay } from "./lib/rebalanceDay.ts";
+import { rideCueLog } from "./lib/cueRecorder.ts";
+import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { closedSpots, feltStretches } from "./lib/rideFeedback.ts";
 import { ClosedOffer, FeltDifferent } from "./RideFeedback.tsx";
 
 export const RIDE_SUMMARY_TITLE = t("Ride ended");
+/** The ride's cue log, offered only after a ride where a cue went wrong (lib/cueRecorder.ts; the owner, 2026-11-12). */
+export const COPY_CUE_LOG = t("Copy cue log");
+export const CUE_LOG_COPIED = t("Cue log copied.");
+export const CUE_LOG_NOT_COPIED = t("Could not copy the cue log.");
 /** The stress shares are shown once this much was ridden along the route. */
 const STRESS_MIN_M = METRES_PER_MILE / 10;
 
@@ -117,6 +123,13 @@ export function RideSummaryCard({
 }) {
   const done = useRef<HTMLButtonElement>(null);
   const titleId = useId();
+  // The ride's cue log, as it was when the ride ended; "" when every cue went as planned (then no link at all).
+  const [cueLog] = useState(() => (rideCueLog.wentWrong() ? rideCueLog.text() : ""));
+  const [cueLogSaid, setCueLogSaid] = useState("");
+  const copyCueLog = async () => {
+    const copied = await copyText(cueLog, navigator.clipboard, selectionCopy);
+    setCueLogSaid(copied ? CUE_LOG_COPIED : CUE_LOG_NOT_COPIED);
+  };
   useEffect(() => {
     done.current?.focus();
   }, []);
@@ -277,6 +290,13 @@ export function RideSummaryCard({
         <button type="button" className="link ride-summary-keep" onClick={onUndo}>
           {t("Keep riding")}
         </button>
+        {/* After a ride where a cue was dropped, cut off or stuck: its log to paste into a bug report, no places in it. */}
+        {/* Its words become the answer, as Save route's do; the page's own region says things, never this card's (F6). */}
+        {cueLog && (
+          <button type="button" className="link ride-summary-keep" onClick={() => void copyCueLog()}>
+            {cueLogSaid || COPY_CUE_LOG}
+          </button>
+        )}
       </div>
     </section>
   );

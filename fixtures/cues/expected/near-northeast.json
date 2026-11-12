@@ -1,0 +1,56 @@
+[
+ {
+  "turn": "Start",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Right",
+  "road": "M St NE",
+  "then": "then right onto 17th St NE bike Ln",
+  "arrow": "turn right,right"
+ },
+ {
+  "turn": "Right",
+  "road": "K St NE",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Left",
+  "road": "Staples St NE",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Left",
+  "road": "14th St NE bike Ln",
+  "then": "",
+  "arrow": "turn across left"
+ },
+ {
+  "turn": "Right",
+  "road": "Maryland Ave NE",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "G St NE",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Path",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

@@ -1,0 +1,467 @@
+{
+ "name": "west-basin",
+ "about": "Ohio Dr path to West Basin Dr: a bear across Ohio Dr then a right onto the path beside it (#1028)",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.047917,
+     38.884911
+    ],
+    [
+     -77.047481,
+     38.884512
+    ],
+    [
+     -77.047324,
+     38.884371
+    ],
+    [
+     -77.046643,
+     38.883796
+    ],
+    [
+     -77.046465,
+     38.883655
+    ],
+    [
+     -77.04636,
+     38.883565
+    ],
+    [
+     -77.045634,
+     38.882997
+    ],
+    [
+     -77.044812,
+     38.882358
+    ],
+    [
+     -77.044531,
+     38.882156
+    ],
+    [
+     -77.044235,
+     38.881942
+    ],
+    [
+     -77.042952,
+     38.881022
+    ],
+    [
+     -77.042223,
+     38.880533
+    ],
+    [
+     -77.041846,
+     38.880305
+    ],
+    [
+     -77.041715,
+     38.880242
+    ],
+    [
+     -77.041645,
+     38.880218
+    ],
+    [
+     -77.041518,
+     38.88019
+    ],
+    [
+     -77.041359,
+     38.880178
+    ],
+    [
+     -77.041234,
+     38.880195
+    ],
+    [
+     -77.041123,
+     38.880224
+    ],
+    [
+     -77.040877,
+     38.880298
+    ],
+    [
+     -77.040783,
+     38.880319
+    ],
+    [
+     -77.040688,
+     38.880324
+    ],
+    [
+     -77.040661,
+     38.880384
+    ],
+    [
+     -77.040642,
+     38.880425
+    ],
+    [
+     -77.040596,
+     38.880447
+    ],
+    [
+     -77.040553,
+     38.880406
+    ],
+    [
+     -77.04048,
+     38.880368
+    ],
+    [
+     -77.039972,
+     38.880084
+    ],
+    [
+     -77.03989,
+     38.880057
+    ],
+    [
+     -77.039849,
+     38.880049
+    ],
+    [
+     -77.039788,
+     38.880043
+    ],
+    [
+     -77.039727,
+     38.880046
+    ],
+    [
+     -77.039563,
+     38.880086
+    ],
+    [
+     -77.039426,
+     38.880118
+    ],
+    [
+     -77.039331,
+     38.880137
+    ],
+    [
+     -77.039236,
+     38.88015
+    ],
+    [
+     -77.039146,
+     38.880149
+    ],
+    [
+     -77.039054,
+     38.880141
+    ],
+    [
+     -77.038964,
+     38.880122
+    ],
+    [
+     -77.038751,
+     38.880061
+    ],
+    [
+     -77.038604,
+     38.88002
+    ],
+    [
+     -77.038435,
+     38.879989
+    ],
+    [
+     -77.038298,
+     38.879967
+    ],
+    [
+     -77.03809,
+     38.879944
+    ],
+    [
+     -77.037868,
+     38.879935
+    ],
+    [
+     -77.037328,
+     38.879936
+    ],
+    [
+     -77.037186,
+     38.879942
+    ],
+    [
+     -77.037106,
+     38.879941
+    ],
+    [
+     -77.037033,
+     38.879939
+    ],
+    [
+     -77.0365,
+     38.879938
+    ]
+   ]
+  },
+  "distance_m": 1232.0,
+  "duration_s": 264.5,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.04732,
+    14.9
+   ],
+   [
+    0.68291,
+    171.7
+   ],
+   [
+    0.68912,
+    174.7
+   ],
+   [
+    0.68912,
+    186.7
+   ],
+   [
+    0.69639,
+    190.1
+   ],
+   [
+    0.94176,
+    250.3
+   ],
+   [
+    1.0,
+    264.5
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 58,
+    "from_mi": 0.0,
+    "to_mi": 0.04,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 190 ft (58 m): Path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 58,
+    "to_m": 842,
+    "from_mi": 0.04,
+    "to_mi": 0.52,
+    "street": "path beside Ohio Drive Southwest",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": "path beside Ohio Drive Southwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.5 mi (0.1 to 0.8 km): Continue onto the path beside Ohio Drive Southwest, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 842,
+    "to_m": 854,
+    "from_mi": 0.52,
+    "to_mi": 0.53,
+    "street": "path",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_left",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": "Ohio Drive Southwest",
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.5 mi (0.8 km), for 39 ft (12 m): Cross Ohio Drive Southwest, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 849,
+      "road": "Ohio Drive Southwest"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 854,
+    "to_m": 926,
+    "from_mi": 0.53,
+    "to_mi": 0.58,
+    "street": "path beside Ohio Drive Southwest",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "path beside Ohio Drive Southwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 38,
+      "others": [
+       -58,
+       -7
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.5 mi (0.9 km), for 240 ft (72 m): Right onto the path beside Ohio Drive Southwest, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 926,
+    "to_m": 1232,
+    "from_mi": 0.58,
+    "to_mi": 0.77,
+    "street": "path beside West Basin Drive Southwest",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_left",
+     "onto": "path beside West Basin Drive Southwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 to 0.8 mi (0.9 to 1.2 km): Bear left onto the path beside West Basin Drive Southwest, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   49
+  ],
+  "arrival_side": "left",
+  "leg_arrival_sides": [
+   "left"
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 58,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 58,
+    "to_m": 1173,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1173,
+    "to_m": 1232,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}
