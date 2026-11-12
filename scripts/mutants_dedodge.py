@@ -954,8 +954,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r1 top: the turns charged",
         DD,
-        "    if tie:" + NL + "        return TIE_STEP_M",
-        "    if tie:"
+        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)" + NL + "        return TIE_STEP_M",
+        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)"
         + NL
         + "        return TIE_STEP_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
         TD,
@@ -970,8 +970,37 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r1 top: the verdict ignores the rule",
         DD,
-        "    needed = needed_m(saved, tie)",
+        "    needed = needed_m(saved, tie, turn_lts3_m(ctx))",
         "    needed = needed_m(saved)",
+        TD,
+    ),
+    # --- the every-setting turn charge (owner decision 254, 2026-11-12) ------------------------
+    (
+        "turns: the charge ignores the switch",
+        DD,
+        "        if presets.TURN_CHARGE_EVERY_SETTING:",
+        "        if True:",
+        TD,
+    ),
+    (
+        "turns: the turns not charged with the switch on",
+        DD,
+        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)",
+        "            return TIE_STEP_M",
+        TD,
+    ),
+    (
+        "turns: item 254's 80 m in place of the router's price",
+        DD,
+        "    needed = needed_m(saved, tie, turn_lts3_m(ctx))",
+        "    needed = needed_m(saved, tie)",
+        TD,
+    ),
+    (
+        "turns: a negative saving charged",
+        DD,
+        "per_turn_m * max(0, turns_saved)",
+        "per_turn_m * turns_saved",
         TD,
     ),
     # --- r1: not worth a check (review r0 item 4) ---------------------------------------------

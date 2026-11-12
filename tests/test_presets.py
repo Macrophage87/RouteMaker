@@ -804,10 +804,30 @@ class TestMountainBike:
         assert mtb.brake_grade is None
 
 
-def test_above_the_old_top_the_turn_charge_rises_to_the_calm_charge() -> None:
+def test_with_the_every_setting_charge_turns_cost_the_same_at_every_position(monkeypatch) -> None:
+    # Owner decision 254, "every preset" (the backlog's "fewer turns" item, 2026-11-12).
+    # Before: 5 s at Default's 70, where Go plans; after: 15 s (our default, unmeasured) at
+    # every position and on every ride type that charged Valhalla's 5 s; 30 s kept.
+    # Off until the owner's yes (the switch's comment).
+    assert presets.TURN_CHARGE_EVERY_SETTING is False
+    monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
+    for stress in (0, 40, 70, presets.STRESS_TODAYS_TOP, 90, presets.STRESS_MAX):
+        got = presets.costing("default", stress)["bicycle"]["maneuver_penalty"]
+        assert got == presets.CALM_MANEUVER_PENALTY_S, stress
+    for name, preset in presets.PRESETS.items():
+        own = preset.costing_options.get("maneuver_penalty", presets.VALHALLA_MANEUVER_PENALTY_S)
+        got = presets.costing(name)["bicycle"]["maneuver_penalty"]
+        assert got == max(own, presets.CALM_MANEUVER_PENALTY_S), name
+    assert presets.costing("tandem", 70)["bicycle"]["maneuver_penalty"] == presets.HIGH_MANEUVER_PENALTY_S
+
+
+def test_above_the_old_top_the_turn_charge_rises_to_the_calm_charge(monkeypatch) -> None:
     # The owner, 2026-11-10, Trolley Trail commute: fewer fiddly turns at the calm end. Before:
     # Valhalla's 5 s at every position; after: 15 s (our default) above 80, a ride type's own
     # higher charge kept; with no position asked for, the ride type's own start decides.
+
+    # The rule as it stands with the every-setting charge off (the test below reads it on).
+    monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", False)
 
     def at(name: str, stress: int) -> int:
         return presets.costing(name, stress)["bicycle"]["maneuver_penalty"]

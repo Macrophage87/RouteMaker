@@ -195,6 +195,15 @@ HIGH_MANEUVER_PENALTY_S = 30
 # the calm search". 15 s is our default, not measured; a ride type that already charges more
 # (HIGH_MANEUVER_PENALTY_S) keeps its own.
 CALM_MANEUVER_PENALTY_S = 15
+# The same turn charge at every traffic setting, Default (where Go plans) included: owner decision
+# 254 (2026-10-03), "Turns should also carry a penalty as they do add some cognitive load ... on
+# every preset", whose every-preset half the above-80 change (#1139) left unbuilt; the backlog's
+# "fewer turns" item (2026-11-12). With it on, Valhalla's 5 s becomes CALM_MANEUVER_PENALTY_S at
+# every position, the ranking counts turns everywhere (`refine.turn_m`), and the side-street
+# dodge pass charges the turns a dodge adds (`dedodge.needed_m`). OFF until the owner says yes
+# after a before/after table (the route scorecard); False keeps every plan on the above-80-only
+# rule. 15 s stays our default, not measured.
+TURN_CHARGE_EVERY_SETTING = False
 
 # The mass ride speed band's default planning speed, 6 mph, in Valhalla's km/h.
 MASS_RIDE_PLANNING_SPEED_KMH = round(6 * 1.609344, 1)
@@ -316,7 +325,8 @@ HILLS_MIN, HILLS_MAX = -100, 100
 #
 # Turn costs and hill costs are not part of this: they are costing options sent
 # at every position, so a relaxed ride is not a zig-zag over a hill. Above the old top the
-# turn charge rises to CALM_MANEUVER_PENALTY_S (2026-11-10), never falls.
+# turn charge rises to CALM_MANEUVER_PENALTY_S (2026-11-10), never falls; with
+# TURN_CHARGE_EVERY_SETTING it is that charge at every position.
 STRESS_DEFAULT_AT = 70
 STRESS_TODAYS_TOP = 80
 # The old scale's positions at those two points, which `use_roads` is read at.
@@ -1440,8 +1450,12 @@ def costing(
     options = copy.deepcopy(dict(PRESETS[name].costing_options))
     if stress is not None:
         options["use_roads"] = use_roads_for(stress)
-    # Above the old top, asked for or the ride type's own start (Trailmaxxing's 100).
-    if (PRESETS[name].stress if stress is None else stress) > STRESS_TODAYS_TOP:
+    # Above the old top, asked for or the ride type's own start (Trailmaxxing's 100); at every
+    # position with TURN_CHARGE_EVERY_SETTING.
+    if (
+        TURN_CHARGE_EVERY_SETTING
+        or (PRESETS[name].stress if stress is None else stress) > STRESS_TODAYS_TOP
+    ):
         options["maneuver_penalty"] = max(
             options.get("maneuver_penalty", VALHALLA_MANEUVER_PENALTY_S), CALM_MANEUVER_PENALTY_S
         )

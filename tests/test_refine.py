@@ -288,14 +288,27 @@ class TestTurns:
         calm.turns = 40
         assert calm.key(top) < busy.key(top)
 
-    def test_at_or_below_the_old_top_turns_change_nothing(self) -> None:
+    def test_at_or_below_the_old_top_turns_change_nothing(self, monkeypatch) -> None:
         # Review of #1139: level3 also prices repeats, dodges and loop way-backs below the
-        # top, so turns count only where the calm search runs (rate > 0 or the top).
+        # top, so turns count only where the calm search runs (rate > 0 or the top). That
+        # rule, with the every-setting charge off.
+        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", False)
         below, calm = context(), context(rate=presets.calm_rate_for(90))
         plain, fiddly = analysis("a"), analysis("b")
         fiddly.turns = 12
         assert refine.level3(fiddly, below) == refine.level3(plain, below)
         assert refine.level3(fiddly, calm) > refine.level3(plain, calm)
+
+    def test_with_the_every_setting_charge_turns_count_below_the_top_too(self, monkeypatch) -> None:
+        # Owner decision 254, "every preset" (2026-11-12). Before: at Default a route with 12
+        # more turns ranked level with one without them; after: 12 turns' worth behind.
+        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
+        below = context()
+        plain, fiddly = analysis("a"), analysis("b")
+        fiddly.turns = 12
+        assert refine.level3(fiddly, below) - refine.level3(plain, below) == pytest.approx(
+            refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 12 / QUIET_COST
+        )
 
     def test_legs_add_their_turns(self) -> None:
         one, two = analysis("a"), analysis("b")
