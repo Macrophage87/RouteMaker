@@ -5688,11 +5688,25 @@ row keyed `closures` (`src/core/closure_sources.py`):
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
 | Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. One on an Interstate ("I 695", "WB I 695") or a road the map bars is not kept, as the WZDx feeds' are not. The reporting account (`Creator`) is never asked for |
+| Montgomery County DOT road closures (`moco`, v0.26.0) | `www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0/query` | 15 min | 45 min | 6 h | As `sha` (the same Reporter fields, `md_closures.parse_sha`): Montgomery County's own closures, which it does not post to the state's layers. Often legitimately empty |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
 without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
 `geo.dcwater.com` and `gisportal.wsscwater.com` for planned work and `mdgeodata.md.gov` for
-Maryland's Road Closure Reporter (PLAYBOOK §0).
+Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.26.0) `www7.montgomerycountymd.gov` for
+Montgomery County's road closures.
+
+**A source that reads as nothing** (v0.26.0). Each good read's count of closures and notices is
+kept (the last 8). A read of none from a source whose usual count (the median of those, once there
+are 3) is 5 or more is not taken: its last copy is kept, and the run fails at once with "read as
+nothing: <source>", so the operations page shows it the same day. It almost always means the page
+or layer changed shape (AlertDC's RSS turning into an HTML list in 2026): fetch it by hand and
+compare with its sample in `tests/data/closures`. A source that is often empty (Montgomery
+County's closures) never trips it, and MPD and AlertDC are left out (their closures end in the
+reading, so none left is real news). Once the kept copy is past its "Dropped after" age the empty
+read is taken, and further empty reads are quiet. Counts are zones and notices, so a closure along
+several stretches counts each. 8, 3 and 5 are our default, unmeasured
+(`COUNTS_KEPT`, `ZERO_ALARM_READS`, `ZERO_ALARM_USUAL` in src/core/closure_sources.py).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5856,6 +5870,56 @@ The first watch listed 12 trail items, among them the Lake Accotink marina bridg
 (closed for repairs, "reopen by Friday, Nov. 13"), the Cross County Trail under the Dulles Toll
 Road ("until Fall 2026"), the Pimmit Run sewer work and several bridges closed until further
 notice; none was entered before the owner's review.
+
+## Park agency trail closures (v0.26.0)
+
+Backlog 2026-11-12, item 8: the Fairfax watch above, extended to the agencies whose trails riders
+use most. Each posts trail closures only in words, so, as for Fairfax, a person reads each new
+item and a closure goes in `src/core/geodata/park-closures.json` (`routemaker.park_alerts`,
+source `park_alert`, "Park agency trail alert"; the DDOT advisories file's shape, `project` the
+agency's name as in `park_alerts.AGENCIES`): routed round, red on the map, whole days, gone after
+the last day. What is read:
+
+| Agency (`--agency`) | Page | What an item is |
+|---|---|---|
+| NOVA Parks (`nova`) | the alerts linked from `www.novaparks.com` | one alert page: its title (trail and days) and body |
+| NPS, C&O Canal (`choh`) | `nps.gov/choh/planyourvisit/conditions.htm` | one state that is not plain "Open" at one place, with its milepost, or the stretch its words name ("Miles 106 - 106.8") |
+| Anne Arundel County (`aacounty`) | `aacounty.org/recreation-parks/about-us/closings-cancellations` | one entry: badge, title, words |
+
+Not read yet (checked 2026-11-12): **Montgomery Parks** posts trail closures as news items and
+has no closures list page (its rainout-line status covers natural-surface trails only);
+**Arlington County**'s pages answer 403 to a script; **Prince George's** parks' alerts page is
+filled in the browser from Nixle. Each needs its own look before it can be watched.
+
+1. `python scripts/park_alerts.py watch` (or `--agency choh`, repeatable) prints, for each agency,
+   the items not yet in the file's `seen`, the ones naming a trail, towpath, bridge, path or detour
+   in full, then the rest one line each (read those too); `CHECK:` lines first for a guessed last
+   day within 30 days or the file not updated in 45 days (`scripts/ddot_advisories.py watch` prints
+   these as well). It exits 1 where a page could not be read or answered with no items at all
+   (its layout has likely changed: look at the page by hand).
+2. For each item that closes a way a bicycle uses, draft an entry as for Fairfax (`id`, `project`,
+   `page` the agency's page, `advisory` the alert's own page, `posted`, `road`, `on_foot`,
+   `reason`, `first_day`, `last_day`, `lines`). For the C&O, `python scripts/park_alerts.py
+   towpath FIRST [LAST]` prints the towpath's lines between the mileposts (one milepost: about 160 ft
+   either side, our default) and how much of the stretch the mile lines cover; where under 95% (the
+   mile lines have gaps, e.g. about mile 9 to 19.6), draw the rest from the OSM ways
+   (`python scripts/ddot_advisories.py lines WAY ...`). "Detour" in an NPS line usually means
+   the towpath itself is closed there; "High Water Detour" is only when the river is up: leave it
+   out (it has no dates). Work that leaves the trail open ("expect intermittent delays", "one
+   lane") stays out.
+3. Enter it as the owner's rule for these closures says (the decision is in the backlog thread
+   "Add trail and county closures"; until it is made, only what the owner confirms). Evidence is
+   the agency's words and what a rider saw, never another map. A closure that starts before the
+   next release reaches riders only through a reviewer closure (the road panel's "Mark closed",
+   an admin's), so for a short one that is the way.
+4. `python scripts/park_alerts.py watch --mark` adds every item now on the pages read to `seen`
+   and sets `updated` to today. An item whose words change is listed again.
+5. Ship the file in the next release, as for the other hand-read files.
+
+The first watch (2026-11-12) listed 2 NOVA Parks trail items (Falls Church crosswalk detours,
+Nov 17-24; the Sterling Blvd overpass, delays only), 6 C&O trail items (among them the Dam No. 5
+towpath detour, miles 106 to 106.8, and the Polly Pond bridge, mile 134.3, past the map's edge) and
+3 Anne Arundel ones (none a closure of the B&A); nothing was entered or marked read.
 
 ## Deer-management closures (v0.12.3)
 
@@ -7894,6 +7958,12 @@ only at the next map rebuild.
   closed area is shaded and a point in it goes to the gate while its roads stay routable until then.
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.26.0
   (annotated) on that commit, from the PC.
+- [ ] **Outbound host** (trail and county closures, #1189). Add `www7.montgomerycountymd.gov` (443)
+  to beta's egress list, and home's if it is filtered: the worker's `refresh_dc_closures` now reads
+  Montgomery County DOT's road closures (source `moco`, routed round as `sha` is); with no good read
+  in 45 minutes the run fails. The same run now also fails at once with "read as nothing: <source>"
+  where a usually busy source parses to nothing (its last copy kept). The park agencies' trail
+  closures (`park_alert`) are a hand-read file that ships empty: nothing to deploy for them.
 - [ ] **Migration.** 0062 (`ConnectorDraft.archived_at`) adds a nullable column with no default: the
   v0.25.1 api inserts drafts without it (null, listed) in the minutes between `migrate` and its
   recreation, and after a rollback of the images, and never reads it. Reversible.
