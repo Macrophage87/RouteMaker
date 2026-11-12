@@ -62,9 +62,9 @@ export function levelSaid(tier: number): string {
  */
 export function feltStretches(stats: Pick<RideStats, "ridden">): FeltStretch[] {
   const merged = new Map<string, RiddenStretch>();
-  for (const r of stats.ridden ?? []) {
-    // An unnamed road is never added to another one: the same words, but likely another road.
-    const key = r.street === null ? `#${merged.size}` : `${r.street}|${r.tier}`;
+  for (const r of Array.isArray(stats.ridden) ? stats.ridden : []) {
+    // A path or an unnamed road is never added to another one: the same words, but likely another way.
+    const key = r.street === null || r.named === false ? `#${merged.size}` : `${r.street}|${r.tier}`;
     const was = merged.get(key);
     merged.set(key, was ? { ...was, m: was.m + r.m } : r);
   }
@@ -94,8 +94,8 @@ function apartM(a: LonLat, b: LonLat): number {
  */
 export function closedSpots(stats: Pick<RideStats, "closed">): LonLat[] {
   const spots: LonLat[] = [];
-  for (const line of stats.closed ?? []) {
-    if (line.length === 0) continue;
+  for (const line of Array.isArray(stats.closed) ? stats.closed : []) {
+    if (!Array.isArray(line) || line.length === 0) continue;
     const [a, b] = [line[0], line[1] ?? line[0]];
     const mid: LonLat = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     if (!spots.some((s) => apartM(s, mid) < CLOSED_SAME_M)) spots.push(mid);
@@ -126,15 +126,16 @@ export function roadStep(info: Pick<SegmentInfo, "step" | "tier">): number {
 /**
  * Send the Road closed presses for review: each spot's road looked up, its ticket asked (as opening the road panel's
  * form does) and the short form's "Closed" sent, at the road's own level. One send per road. How many were sent and
- * how many were not.
+ * how many were not, and the spots not sent, which a retry sends again (never the ones sent).
  */
 export async function sendClosedSpots(
   origin: string,
   spots: readonly LonLat[],
   csrf: () => string | null,
   run: Fetch = fetch,
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; left: LonLat[] }> {
   const done = new Set<number>();
+  const left: LonLat[] = [];
   let sent = 0;
   let failed = 0;
   for (const spot of spots) {
@@ -142,6 +143,7 @@ export async function sendClosedSpots(
     const way = info?.osm_way_id ?? null;
     if (!info || way === null) {
       failed += 1;
+      left.push(spot);
       continue;
     }
     if (done.has(way)) continue;
@@ -150,6 +152,7 @@ export async function sendClosedSpots(
     const step = roadStep(info);
     if (!ticket || !step) {
       failed += 1;
+      left.push(spot);
       continue;
     }
     const point = info.on_way ?? spot;
@@ -159,9 +162,12 @@ export async function sendClosedSpots(
       csrf(),
       run,
     );
-    // Already sent today for this road is as good as sent.
+    // Already sent today for this road (a retry, or End ride again after Keep riding) is as good as sent.
     if (outcome.kind === "sent" || outcome.status === 409) sent += 1;
-    else failed += 1;
+    else {
+      failed += 1;
+      left.push(spot);
+    }
   }
-  return { sent, failed };
+  return { sent, failed, left };
 }

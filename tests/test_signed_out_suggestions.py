@@ -231,8 +231,9 @@ class TestFromRide:
         assert (
             row.kind == StressSuggestion.Kind.CLOSURE and row.signed_out and row.suggester is None
         )
-        # The device's count keeps no road, and the audit row no suggestion.
-        assert [s.osm_way_id for s in SignedOutSend.objects.all()] == [0]
+        # The device's count keeps no road id (a one-way code), and the audit row no suggestion.
+        kept = [s.osm_way_id for s in SignedOutSend.objects.all()]
+        assert len(kept) == 1 and kept[0] < 0 and kept[0] != -WAY
         entry = AuditLogEntry.objects.get(action="stress_suggest_signed_out")
         assert entry.object_id == ""
 
@@ -243,6 +244,18 @@ class TestFromRide:
             row.pk
         )
         assert abs((timezone.now() - row.created_at).total_seconds()) < 60
+
+    def test_a_ride_send_is_still_one_a_road(self, live) -> None:
+        # A retry, or Keep riding then End ride again, or a forged from_ride: refused, not counted.
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        assert StressSuggestion.objects.count() == 1
+
+    def test_the_ride_road_code_is_one_way_and_per_device(self) -> None:
+        a = quick.ride_road_code("d1", WAY)
+        assert a == quick.ride_road_code("d1", WAY) and a < 0
+        assert a != quick.ride_road_code("d2", WAY) and a != quick.ride_road_code("d1", OTHER_ROAD)
 
     def test_ride_sends_still_count_toward_ten_a_day(self, live, monkeypatch) -> None:
         monkeypatch.setattr(quick, "DAILY_MAX", 2)

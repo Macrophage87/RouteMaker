@@ -18,7 +18,7 @@
  */
 import { formatClimb, formatDistance, formatDuration, formatSpeed } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { POOR_FIX_M, onHalfStep, pointAt, stretchAt, wayRidden, type RideFix, type RideModel, type RideState } from "./navigate.ts";
+import { POOR_FIX_M, isUnnamed, onHalfStep, pointAt, stretchAt, wayRidden, type RideFix, type RideModel, type RideState } from "./navigate.ts";
 import type { RouteProfile } from "./api.ts";
 import type { BarKey, BarMetres } from "./stressBar.ts";
 
@@ -43,6 +43,8 @@ export const RIDDEN_MOST = 60;
 export interface RiddenStretch {
   /** The street as Ride says it ("Connecticut Ave", "a path"); null where the route gives none. */
   street: string | null;
+  /** Whether it has its own name: "a path" or "an unnamed road" is never added to another one of the same words. */
+  named?: boolean;
   /** Its level, 1 to 5 by halves (5 is Avoid). */
   tier: number;
   /** Metres ridden on it. */
@@ -142,7 +144,7 @@ export function statsStep(
       // A half step's own key where the route's sections put one here, as the line draws it.
       const key = (level === null ? "unknown" : level < 5 && onHalfStep(model, mid, level) ? `${level}h` : String(level)) as BarKey;
       next.stressM = { ...stats.stressM, [key]: (stats.stressM[key] ?? 0) + stepM };
-      if (stretch && level !== null) next.ridden = withRidden(stats.ridden ?? [], wayRidden(stretch), key.endsWith("h") ? level + 0.5 : level, stepM, pointAt(model, mid));
+      if (stretch && level !== null) next.ridden = withRidden(stats.ridden ?? [], wayRidden(stretch), key.endsWith("h") ? level + 0.5 : level, stepM, pointAt(model, mid), !isUnnamed(stretch.street));
     }
   }
   if (progressM !== null) next.elevation = withHeight(stats.elevation, next.distanceM, profileAt(profile, progressM));
@@ -150,10 +152,10 @@ export function statsStep(
 }
 
 /** The stretches ridden with one more step: added to the last where it is the same street and level, else a new one. */
-export function withRidden(ridden: readonly RiddenStretch[], street: string | null, tier: number, m: number, point: LonLat): RiddenStretch[] {
+export function withRidden(ridden: readonly RiddenStretch[], street: string | null, tier: number, m: number, point: LonLat, named = street !== null): RiddenStretch[] {
   const last = ridden[ridden.length - 1];
   if (last && last.street === street && last.tier === tier) return [...ridden.slice(0, -1), { ...last, m: last.m + m }];
-  const next = [...ridden, { street, tier, m, point }];
+  const next = [...ridden, { street, named, tier, m, point }];
   if (next.length <= RIDDEN_MOST) return next;
   // The shortest goes, never the one being ridden.
   let drop = 0;

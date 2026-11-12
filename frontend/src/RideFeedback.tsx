@@ -84,8 +84,8 @@ export function FeltDifferent({ origin, stretches }: { origin: string; stretches
         {FELT_PICK}
       </h3>
       <ul className="ride-summary-felt-list">
-        {stretches.map((s) => (
-          <li key={s.label}>
+        {stretches.map((s, n) => (
+          <li key={n}>
             <button type="button" className="secondary" aria-disabled={looking ? true : undefined} onClick={() => pick(s)}>
               {/* Each part kept whole, the line breaking only between them. */}
               {s.label.split(" · ").map((part, i) => (
@@ -109,23 +109,37 @@ export function FeltDifferent({ origin, stretches }: { origin: string; stretches
  * Road closed presses (lib/rideFeedback.ts): offered for review, opt in, each ride. Sent: how many, in the line's place.
  */
 export function ClosedOffer({ origin, spots }: { origin: string; spots: LonLat[] }) {
-  const [state, setState] = useState<"idle" | "sending" | { sent: number; failed: number }>("idle");
+  // The spots still to send: all of them, then those a send could not (a retry never sends one twice).
+  const [left, setLeft] = useState(spots);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(0);
+  const [tried, setTried] = useState(false);
+  const line = useRef<HTMLParagraphElement>(null);
+  const done = tried && left.length === 0;
+  useEffect(() => {
+    // All sent: the Send button the focus was on goes, so the focus goes to the line that says so.
+    if (done && (document.activeElement === null || document.activeElement === document.body)) line.current?.focus();
+  }, [done]);
   const send = () => {
-    if (state !== "idle" && (typeof state === "string" || state.failed === 0)) return;
-    setState("sending");
-    void sendClosedSpots(origin, spots, () => csrfFromCookie(document.cookie)).then(setState);
+    if (sending || left.length === 0) return;
+    setSending(true);
+    void sendClosedSpots(origin, left, () => csrfFromCookie(document.cookie)).then((outcome) => {
+      setSending(false);
+      setTried(true);
+      setSent((n) => n + outcome.sent);
+      setLeft(outcome.left);
+    });
   };
-  const result = typeof state === "object" ? state : null;
-  const said = result ? [result.sent > 0 ? CLOSED_SENT(result.sent) : "", result.failed > 0 ? CLOSED_NOT_SENT : ""].filter(Boolean).join(" ") : "";
+  const said = tried ? [sent > 0 ? CLOSED_SENT(sent) : "", left.length > 0 ? CLOSED_NOT_SENT : ""].filter(Boolean).join(" ") : "";
   return (
     <div className="ride-summary-favorite ride-summary-closed">
-      <p>
-        {result ? null : CLOSED_OFFER(spots.length)} <span className="hint">{result ? null : CLOSED_WHAT}</span>
+      <p ref={line} tabIndex={done ? -1 : undefined}>
+        {tried ? null : CLOSED_OFFER(spots.length)} <span className="hint">{tried ? null : CLOSED_WHAT}</span>
         <span role="status">{said}</span>
       </p>
-      {(!result || result.failed > 0) && (
-        <button type="button" className="secondary" aria-disabled={state === "sending" || undefined} onClick={state === "sending" ? undefined : send}>
-          {state === "sending" ? CLOSED_SENDING : CLOSED_SEND}
+      {!done && (
+        <button type="button" className="secondary" aria-disabled={sending || undefined} onClick={sending ? undefined : send}>
+          {sending ? CLOSED_SENDING : CLOSED_SEND}
         </button>
       )}
     </div>

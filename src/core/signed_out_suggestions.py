@@ -34,8 +34,9 @@ From the ride summary (`from_ride`; frontend lib/rideFeedback.ts, the 2026-11-12
 send there says where the rider just was, so it keeps less (the owner's rule: nothing identifying
 stays on the server longer than two minutes). The suggestion keeps the day, never the time
 (`created_at` is midnight, Washington's day, as the 311 log keeps it); the per-device count row
-keeps no road (`osm_way_id` 0), so nothing ties a device to a road ridden, and the one-per-road
-rule is the client's (a ride sends each road once); and the audit row names no suggestion.
+keeps the road only as a one-way code mixed with the device's (`ride_road_code`), so the row
+names no road, yet one-a-road still holds (a ride's retry, or Keep riding and End ride again, is
+refused as "already sent", not counted twice); and the audit row names no suggestion.
 """
 
 from __future__ import annotations
@@ -73,6 +74,7 @@ KEEP = timedelta(hours=24)
 TICKET_SALT = "routemaker/signed-out-suggestion/v1"
 TICKET_MAX_AGE_S = 2 * 3600
 DEVICE_SALT = b"routemaker/signed-out-device/v1"
+RIDE_ROAD_SALT = b"routemaker/signed-out-ride-road/v1"
 REMOVED = "[removed]"
 # A ride's send keeps the day in Washington's time (core.report_log.DAY_ZONE, the 311 log's).
 DAY_ZONE = ZoneInfo("America/New_York")
@@ -199,13 +201,12 @@ def create(
                 device=device, created_at__gte=now - KEEP
             )
         )
-        if not from_ride and any(s.osm_way_id == way_id for s in sends):
+        road = ride_road_code(device, way_id) if from_ride else way_id
+        if any(s.osm_way_id == road for s in sends):
             raise Again("You've sent a suggestion for this road today. Thank you.")
         if len(sends) >= DAILY_MAX:
             raise Limited(f"That's {DAILY_MAX} suggestions today. Thank you; try again tomorrow.")
-        SignedOutSend.objects.create(
-            device=device, osm_way_id=0 if from_ride else way_id, created_at=now
-        )
+        SignedOutSend.objects.create(device=device, osm_way_id=road, created_at=now)
         suggestion = StressSuggestion.objects.create(
             created_at=ride_day(now) if from_ride else now,
             suggester=None,
@@ -229,6 +230,14 @@ def create(
         AuditLogEntry.Outcome.ALLOWED,
     )  # fmt: skip
     return suggestion
+
+
+def ride_road_code(device: str, way_id: int) -> int:
+    """A ride's road as its count row keeps it: a one-way code of the device's code and the road,
+    negative so it never equals a road id. It says only "this device sent this code today"."""
+    key = hmac.new(settings.SECRET_KEY.encode(), RIDE_ROAD_SALT, hashlib.sha256).digest()
+    digest = hmac.new(key, f"{device}|{int(way_id)}".encode(), hashlib.sha256).digest()
+    return -(int.from_bytes(digest[:8], "big") >> 2) - 1
 
 
 def ride_day(now: datetime) -> datetime:

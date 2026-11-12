@@ -2168,4 +2168,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not sent. Try again shortly.": "لم يُرسل. حاول مرة أخرى بعد قليل.",
   "That road can't be looked up right now. Try again shortly.": "لا يمكن البحث عن هذا الطريق الآن. حاول مرة أخرى بعد قليل.",
   "Looking up the road…": "جارٍ البحث عن الطريق…",
+  "Sending…": "جارٍ الإرسال…",
 };

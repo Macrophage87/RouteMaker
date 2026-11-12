@@ -28,6 +28,24 @@ test("the streets offered: the same street and level added up, the short ones le
   assert.deepEqual(feltStretches({}), []);
 });
 
+test("a path or an unnamed road is never added to another of the same words", () => {
+  const path = (m: number, p: number): RiddenStretch => ({ street: "a path", named: false, tier: 1, m, point: at(p) });
+  const felt = feltStretches({ ridden: [path(400, 0), r("A St", 2, 300, 400), path(500, 700)] });
+  assert.deepEqual(
+    felt.map((f) => [f.street, Math.round(f.m)]),
+    [
+      ["a path", 500],
+      ["a path", 400],
+      ["A St", 300],
+    ],
+  );
+});
+
+test("figures kept by an older page, or damaged, give no lines rather than an error", () => {
+  assert.deepEqual(feltStretches({ ridden: "x" as never }), []);
+  assert.deepEqual(closedSpots({ closed: [null, "y"] as never }), []);
+});
+
 test("a level is said as the line draws it", () => {
   assert.equal(levelSaid(2.5), "LTS 2.5");
   assert.equal(levelSaid(5), "Avoid");
@@ -63,7 +81,7 @@ function server(log: { url: string; body?: unknown }[]) {
 test("sending the spots: each road once, as the short form's Closed at its own level, marked from the ride, the road's own point", async () => {
   const log: { url: string; body?: unknown }[] = [];
   const outcome = await sendClosedSpots("https://example.test", [at(10), at(100), at(1000), at(9000)], () => "c", server(log));
-  assert.deepEqual(outcome, { sent: 2, failed: 1 });
+  assert.deepEqual(outcome, { sent: 2, failed: 1, left: [at(9000)] });
   const sends = log.filter((l) => l.url.endsWith("/signed-out")).map((l) => l.body as Record<string, unknown>);
   assert.equal(sends.length, 2);
   assert.deepEqual(
@@ -81,5 +99,5 @@ test("a server that cannot be reached: nothing sent, all counted as not sent", a
   const outcome = await sendClosedSpots("https://example.test", [at(10)], () => null, (async () => {
     throw new TypeError("offline");
   }) as typeof fetch);
-  assert.deepEqual(outcome, { sent: 0, failed: 1 });
+  assert.deepEqual(outcome, { sent: 0, failed: 1, left: [at(10)] });
 });
