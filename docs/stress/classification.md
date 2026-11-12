@@ -103,8 +103,9 @@ recorded in `assumed` (`stress.py:135-137`).
    own but never past 4.5 ("no upper limit. There could be some really
    terrible bike paths"). Our defaults, not measured. A named trail, a way an owner row set
    and a way already above 1 are left alone; the junctions are still priced by the road's
-   own traffic (`intersections.traffic_level`). A ridden sidewalk's later step
-   (`raise_ridden_sidewalks`) may replace the rule text, never lowering the level. Map,
+   own traffic (`intersections.traffic_level`). It runs after step 6 and after the ridden
+   sidewalks are raised (`raise_ridden_sidewalks`), so a way either of those already moved
+   is not a flat LTS 1 and is left alone. Map,
    road panel and route stress only: the router does not yet price trail-class ways by
    their tier (`lua/routemaker_remap.lua`).
 6. **Car-free for good** (`run.py:1484-`, called at `:2511`): a road closed to motor

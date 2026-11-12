@@ -864,7 +864,8 @@ class RebuildContext:
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
     # Each unnamed bike way's named street alongside (`facility.side_streets`), found once
-    # after the override rows: for the side-path step and the side-path names. None until then.
+    # at the end of `classify_facilities`: for the side-path step and the side-path names.
+    # None until then.
     side_streets: dict[int, object] | None = None
     # The `bicycle=use_sidepath` roads with a side path mapped beside them, to that
     # path's name (None where it has none), rated Avoid by `classify_stress` and said
