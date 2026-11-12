@@ -304,7 +304,8 @@ the lines on the map and press <strong>Start ride</strong><sup class="cite"><a h
 
 <ul>
 <li><strong>Where to?</strong> starts finding the route while you are still looking at the top result.
-Tapping the empty box lists the places you picked recently, once there are some. Results come nearest the
+Tapping the empty box lists your Home, Work and first 3 favorites (our default, not measured), then the places
+you picked recently. Results come nearest the
 route's start first (a place whose name matches your words before the rest), each with its area and how far it is in a
 straight line: "Dupont Circle, Washington · 0.3 mi (0.5 km)". An address keeps the order the search gives it. Your Home, Work and favorites come before the places found when your
 words name them; the start of a name ("Joe" for Joe's Bikes) is enough. Said into the microphone, "home", "work" or a
@@ -362,11 +363,13 @@ Trailmaxxed is planned at the top of the traffic slider and is shown only when i
 change.</li>
 <li><strong>Arrival time:</strong> beside the route's time, Go's route sheet and Plan's totals give when
 you would arrive if you left now, such as "1 h 48 min · arrive 8:27 AM" (in the app's language, with your device's 12- or 24-hour clock when the device is set to that language), kept up to date each minute. A screen
-reader hears "arriving about 8:27 AM if you leave now". It isn't shown for a transit or bikeshare trip, on Mass
-Ride, or when the <strong>When</strong> chosen isn't the time it is now, such as Weekend on a Tuesday
+reader hears "arriving about 8:27 AM if you leave now". In Go a transit trip shows it too, door to door with the waits, from when the trip was planned. It isn't
+shown for a bikeshare trip, or when the <strong>When</strong> chosen isn't the time it is now, such as Weekend on a Tuesday
 (<strong>Now</strong> always is).</li>
 <li><strong>The route sheet</strong> ends with <strong>Start ride</strong> and <strong>Share live</strong>,
-kept at its bottom edge however far the sheet is pulled up; it is Go's only Start ride. A plain line says how the
+kept at its bottom edge however far the sheet is pulled up; it is Go's only Start ride. From the top, it shows the
+time and distance, the stress bar, any warnings, the route card with <strong>Add a stop</strong> and the bike rack
+button on one row under it, then the ride types. A plain line says how the
 route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy road for 0.2 mi", over a bar of its
 stress levels, half steps ridden in their own colors, and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
 Traffic stress key, and a screen reader hears every level's share, half steps included. A National Weather Service alert is one line under
@@ -377,6 +380,9 @@ Clear says "Route cleared".</li>
 <li><strong>Transit offer:</strong> on Novice and Nervous, when the only way through is a busy road,
 <strong>Own bike + transit</strong> and <strong>Bikeshare + transit</strong> appear beside the route,
 each naming the busy stretch it avoids.</li>
+<li><strong>A transit trip in Go</strong> fits one screen: when you would arrive, the trip's legs as one strip of
+icons and minutes, the next departure, and any live alerts or elevator warnings. <strong>Steps, in order</strong>
+and the other trips are folded shut. Plan shows everything open.</li>
 <li><strong>Ride types:</strong> Go shows them as one row of buttons that scrolls sideways: the one in use
 first, then your default, the starred ones and the transit ones. A button whose sliders you moved says
 "(changed)". <strong>Ride type &amp; settings</strong> lists every type in four groups, Common, Transportation,
@@ -392,7 +398,8 @@ nothing is sent to a search. A short plus code is placed nearest the route's sta
 map's view; the town after it is ignored, so use the full code for a place far away.</li>
 <li><strong>When something goes wrong</strong>, Go keeps the trip on screen and says what to do next: "No route to
 Union Station with this ride type. Try another ride type." With location blocked, the start line says "Location off.
-Type a start, or allow location in site settings." Offline, the last route stays, with "Offline: showing your last
+Type a start, or allow location in site settings." Once you have picked a destination, that line sits beside the
+start box, which takes the focus. Offline, the last route stays, with "Offline: showing your last
 route.", and is planned again once you are back online.</li>
 <li><strong>Location in an iPhone Home Screen app:</strong> an app added to the Home Screen has its own location
 permission, which the iPhone can refuse without asking. Go, Plan, Roam and the ride then say "Your location is blocked
@@ -912,7 +919,8 @@ coming within 15 minutes or turning heavy, brings them back.</li>
 closure within 10 mi [16 km] along the route (the owner's choice) is said at once ("Road closed ahead, 2.1 miles:
 Police activity: streets closed near 15th St &amp; P St NW") and a pop-up offers <strong>Reroute around it</strong>
 (where the focus starts) or <strong>Keep going</strong>. One further away is said quietly, then asked about once it
-is within 10 mi [16 km]. Closures already on the route when you pressed Start ride are not asked about again.</li>
+is within 10 mi [16 km]. Escape is Keep going, and the pop-up closes as Keep going once you pass the closure or
+ride about 650 ft [200 m] on. Closures already on the route when you pressed Start ride are not asked about again.</li>
 <li><strong>Left alone.</strong> During a ride or Roam, if you have moved the map by hand, 30 seconds
 with no touch, wheel, key or focus move and nothing open puts it back on you, following at the ride's zoom (<strong>Where am
 I?</strong> does it at once). The same 30 seconds closes a map card (a stop, place, station, closure or climb), the
@@ -939,7 +947,9 @@ tap it.</li>
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
 ends. Only map tiles are kept, never where you were. If none of it could be kept, a line in the panel at
 the bottom of the screen says "Map not saved offline: it needs a signal." (shown, not said); the route line and the cues work
-without it.</li>
+without it. Off the route with no signal to plan again, the ride says where the planned route is ("No signal: the
+planned route is still shown. The planned route is 400 feet to the northeast.") and draws a dashed line from you to
+its nearest point ahead, as it does after Keep going and on a fixed route.</li>
 <li><strong>Pauses to save battery:</strong> a ride pauses after 10 minutes staying in one place once you
 have arrived, and Roam after 10 minutes without moving; in a browser, either also pauses after 10 minutes out of
 sight. A pause stops the map and the cues following you and lets the screen sleep. After a stay, your location is
@@ -1263,7 +1273,7 @@ use) filters the list in one tap. Each saved route has <strong>Archive</strong>,
 <strong>Undo</strong> for 8 seconds; <strong>Archived (n)</strong> under the list opens the archived ones, each with
 <strong>Restore</strong>.</li>
 <li><strong>Keep for offline</strong> keeps a planned route on this device, up to 10, so it opens
-from My routes without signal, in the installed app or a browser tab. The last ride is kept too.</li>
+from My routes without signal, in the installed app, the Android app or a browser tab. The last ride is kept too.</li>
 <li>Before a route is exported or kept, RouteMaker warns if it goes through a closure.</li>
 </ul>
 <h3>Share</h3>
