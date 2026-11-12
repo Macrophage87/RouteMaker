@@ -155,6 +155,8 @@ def test_the_acknowledgements_credit_every_source_the_map_credits() -> None:
         "Purple Line construction updates",
         "Fairfax County Park Authority",
         "Maryland Road Closure Reporter",
+        "Montgomery County DOT road closures",
+        "Park agency trail alerts",
     )
     # One name per map credit, in the same order: a new credit fails here until it is named.
     assert len(names) == len(map_credits)

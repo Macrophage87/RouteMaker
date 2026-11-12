@@ -352,6 +352,10 @@ SECTIONS: list[tuple[str, str]] = [
                 "Signed out, a suggestion keeps no account. To limit sends, your device is counted "
                 "by a one-way code made from your internet address and the day, deleted after 24 "
                 "hours. E-mail addresses and phone numbers are taken out of what you type.",
+                "Sent from the end of a ride (a road that felt different from its rating, or a "
+                "road you found closed), a suggestion keeps the road and the day, never the time "
+                "or your path, and no account. Your device's count for the day keeps the road only "
+                "as a one-way code, deleted after 24 hours.",
                 "The 311 log keeps each problem you log: what it is, the road’s name, its GPS "
                 "position, the day (not the time) and your note. It stays on your device, and with "
                 "your account when signed in. RouteMaker shows which city or county 311 website "

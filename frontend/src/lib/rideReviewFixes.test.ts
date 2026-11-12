@@ -145,3 +145,10 @@ test("a re-plan before the ride is placed counts from the rider's place on the l
   assert.match(replan, /const progressM = heldProgressM\(modelRef\.current, current, here\);/);
   assert.doesNotMatch(replan, /current\.progressM \?\? 0/);
 });
+
+test("Road closed while a re-plan is under way clears a Reroute around it waiting too: one re-plan, not two", () => {
+  const branch = ride.slice(ride.indexOf("if (!check && closedPending.current && !ended.current) {"), ride.indexOf("if (!check && (mtbDonePending.current || suddenPending.current)"));
+  assert.match(branch, /closedPending\.current = false;/);
+  assert.match(branch, /mtbDonePending\.current = false;/);
+  assert.match(branch, /suddenPending\.current = false;/);
+});

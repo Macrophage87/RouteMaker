@@ -177,6 +177,8 @@ export interface Said {
  * was at least POLITE_GAP_MS ago, else waits, replacing any already waiting, until the gap is over.
  */
 export class Announcer {
+  /** Told of a polite sentence dropped unsaid (replaced while it waited, or dropped by an urgent one): the cue log. */
+  onDrop: ((text: string) => void) | null = null;
   private lastPolite: number | null = null;
   private waiting: Said | null = null;
   /** The waiting sentence built afresh as it is said (say's `again`). */
@@ -217,6 +219,7 @@ export class Announcer {
       this.deliver({ text, urgent: false });
       return;
     }
+    if (this.waiting) this.onDrop?.(this.waiting.text);
     this.waiting = { text, urgent: false };
     this.again = again ?? null;
     if (this.timer === null) {
@@ -227,6 +230,7 @@ export class Announcer {
         this.waiting = null;
         this.again = null;
         const text = next && fresh ? fresh() : next?.text;
+        if (next && !text) this.onDrop?.(next.text);
         if (next && text) {
           this.lastPolite = this.now();
           this.deliver({ ...next, text });
@@ -258,6 +262,7 @@ export class Announcer {
 
   /** Drop what is waiting (End ride, a re-plan). */
   drop(): void {
+    if (this.waiting) this.onDrop?.(this.waiting.text);
     this.waiting = null;
     this.again = null;
     if (this.timer !== null) this.unschedule(this.timer);
@@ -300,6 +305,8 @@ export interface SpeechEnv {
   now?: () => number;
   /** Run `fn` after `ms` (the stuck check); setTimeout where absent. */
   later?: (fn: () => void, ms: number) => void;
+  /** Told what became of each sentence (lib/cueRecorder.ts): started, left waiting, replaced, cut off, or stuck. */
+  trace?: (what: "said" | "waits" | "replaced" | "cut" | "stuck", text: string) => void;
 }
 
 /**
@@ -347,6 +354,8 @@ export class Voice {
   private waiting: string | null = null;
   /** The utterance being said, held so the browser cannot collect it before its end fires (a Chrome bug). */
   private current: UtteranceLike | null = null;
+  /** Its words as asked for (the English said in place of a language with no voice is still this sentence). */
+  private currentText = "";
   /** When it was started, and by when it should have ended. */
   private endsBy = 0;
   private timer: true | null = null;
@@ -373,25 +382,41 @@ export class Voice {
     const busy = this.busy();
     if (urgent && after && busy) {
       // A jog's next turn: straight after the turn being said, not over it.
-      this.waiting = text;
+      this.wait(text);
       return;
     }
     if (urgent) {
-      this.waiting = null;
+      this.replace();
       // Cancelled only where something is being said: Chrome on Android can drop an utterance spoken straight after a
       // cancel of nothing.
-      if (synth.speaking || synth.pending) synth.cancel();
+      if (synth.speaking || synth.pending) {
+        if (this.current) this.env.trace?.("cut", this.currentText);
+        synth.cancel();
+      }
       this.start(text);
       return;
     }
     if (busy) {
-      this.waiting = text;
+      this.wait(text);
       this.watch();
       return;
     }
     // A newer polite cue takes the place of any older one still waiting.
-    this.waiting = null;
+    this.replace();
     this.start(text);
+  }
+
+  /** `text` waits for the sentence being said, in place of any already waiting. */
+  private wait(text: string): void {
+    this.replace();
+    this.waiting = text;
+    this.env.trace?.("waits", text);
+  }
+
+  /** Nothing waits any more: one that did is dropped unsaid. */
+  private replace(): void {
+    if (this.waiting !== null) this.env.trace?.("replaced", this.waiting);
+    this.waiting = null;
   }
 
   /** With a cue waiting, check once the sentence being said should have ended: stuck, the cue goes then, not later. */
@@ -421,6 +446,7 @@ export class Voice {
     if (!synth?.speaking) return false;
     if (this.current === null || this.now() <= this.endsBy) return true;
     // Stuck: let it go, so the cue waiting behind it is said.
+    this.env.trace?.("stuck", this.currentText);
     this.current = null;
     synth.cancel();
     return false;
@@ -455,6 +481,8 @@ export class Voice {
       if (this.current === utterance) this.next();
     };
     this.current = utterance;
+    this.currentText = text;
+    this.env.trace?.("said", text);
     this.endsBy = this.now() + STUCK_BASE_MS + STUCK_PER_CHAR_MS * said.length;
     this.env.synth?.speak(utterance);
   }

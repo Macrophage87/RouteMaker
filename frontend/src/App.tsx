@@ -3,6 +3,8 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { LiveMap, LiveRiderPoint, type LiveRider } from "./app/LiveMap.tsx";
 import { liveValue } from "./lib/liveValue.ts";
+import { BikeLoopPicker } from "./BikeLoopPicker.tsx";
+import { FINISH_NAME, shapePoints } from "./lib/bikeLoop.ts";
 import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
@@ -5309,8 +5311,12 @@ export function App() {
     // Go's tapped-spot card (GoSpotDialog.tsx), while open: its pins and a stop's card are kept clear of it too.
     const spotCard = document.querySelector<HTMLElement>("dialog.go-spot[open]")?.getBoundingClientRect();
     if (window.matchMedia(NARROW).matches) {
-      // The attribution sits above the sheet on a phone; leave room for it too.
-      return { top: 40, left: 30, right: 30, bottom: Math.max(panel?.height ?? 0, (spotCard?.height ?? 0) - 50) + 90 };
+      // The attribution sits above the sheet on a phone; leave room for it too. Go's top bar (with its Undo and Clear
+      // row) covers the map's top: the route is framed below it, so neither end hides under it (the 2026-11-12 backlog).
+      const mapTop = mapRef.current?.getContainer().getBoundingClientRect().top ?? 0;
+      const bar = document.querySelector(".go-top")?.getBoundingClientRect();
+      const top = bar && bar.height > 0 ? Math.max(40, bar.bottom - mapTop + 24) : 40;
+      return { top, left: 30, right: 30, bottom: Math.max(panel?.height ?? 0, (spotCard?.height ?? 0) - 50) + 90 };
     }
     // On a wide screen the route is a card on the map's right (styles.css, Plan on a wide screen): clear of it too.
     const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
@@ -6484,9 +6490,26 @@ export function App() {
       onSay={announce}
     />
   );
+  // A bike loop from a start and a distance (lib/bikeLoop.ts; Plan only, Stephen 2026-11-12): the picked shape is one
+  // edit, so Undo takes it back to the start alone.
+  const bikeLoop =
+    mode === "plan" ? (
+      <BikeLoopPicker
+        preset={preset}
+        dials={dials}
+        points={points}
+        announce={announce}
+        onPick={(start, shape) => {
+          commit(shapePoints(start, shape, (p) => VIA_MARKS.via(p), (p) => VIA_MARKS.named(p, FINISH_NAME)));
+          // Planned at once, as an opened file is: the rider asked for a loop and picked it.
+          setRouteAsk((n) => n + 1);
+        }}
+      />
+    ) : null;
   const pointsSection = (
     <PointsSection key="points"
       {...{
+        bikeLoop,
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials,
         dials, accessMode, namer, located: fromHere, removeAt, reorderPoint, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
@@ -7265,6 +7288,7 @@ export function App() {
           onUndo={undoEndRide}
           onDone={finishRide}
           onReports={rideEndReports}
+          origin={origin}
         />
       )}
       {riding && rideStart && (
@@ -7468,6 +7492,7 @@ export function App() {
                   startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? t("the point on the map")) : null, goStart.kind === "here" && here?.point === goStart.point ? here.accuracyM : 0)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}
+                  destinationWaiting={goPending.current !== null}
                 />
               ) : reviewing ? (
                 <ReviewMode

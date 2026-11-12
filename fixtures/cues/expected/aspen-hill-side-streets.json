@@ -1,0 +1,50 @@
+[
+ {
+  "turn": "Start",
+  "road": "Path",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Bear left",
+  "road": "Kayson St",
+  "then": "",
+  "arrow": "turn bear_left"
+ },
+ {
+  "turn": "Left",
+  "road": "Estelle Rd",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "May St",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Beechmont Ln",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Belle Crest Ln",
+  "then": "then left onto Hathaway Dr, then right onto Dressler Ln",
+  "arrow": "turn right,left,right"
+ },
+ {
+  "turn": "Right",
+  "road": "Lutes Dr",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

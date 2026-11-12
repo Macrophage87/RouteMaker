@@ -221,7 +221,8 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   const summary = src("TransitSummary.tsx");
   assert.equal(STEPS_LABEL, "Steps, in order");
   assert.match(summary, /<ol className="transit-steps" aria-label=\{STEPS_LABEL\}>/);
-  assert.match(summary, /<h3 id=\{`\$\{id\}-heading`\}>\n\s*<PresetName id=\{preset\} suffix=\{`: \$\{plan\.summary\.replace/);
+  // Go keeps the heading for a screen reader only: its sheet shows the time above (Stephen 2026-11-12).
+  assert.match(summary, /<h3 id=\{`\$\{id\}-heading`\} className=\{go \? "visually-hidden" : undefined\}>\n\s*<PresetName id=\{preset\} suffix=\{`: \$\{plan\.summary\.replace/);
   assert.match(summary, /plan\.riding_quicker \? "transit-compare" : "transit-compare hint"/, "riding quicker is a plain line, not a warning box (P11)");
   // The panel's time is the door-to-door total, named for a screen reader, not the first ride's.
   const panel = src("app/RoutePanel.tsx");
@@ -310,4 +311,16 @@ test("the ride map's train or bus path is edged at 3:1 on the light map whatever
   assert.match(map, /"line-color": onBoardPaint\(openedFlavour === "dark"\)\.casing/);
   assert.match(map, /setPaintProperty\("onboard-casing", "line-color", onBoard\.casing\)/);
   assert.match(map, /setPaintProperty\("onboard-stops", "circle-stroke-color", onBoard\.stopRing as never\)/);
+});
+
+test("Go's transit trip fits one screen: legs as a strip, the steps and other trips folded shut, no second total (Stephen 2026-11-12)", () => {
+  const summary = src("TransitSummary.tsx");
+  const go = summary.slice(summary.indexOf("if (go) {"), summary.indexOf("<section className=\"transit\" aria-labelledby"));
+  assert.match(go, /<span aria-hidden="true">\{legsText\(chosen\.legs\)\}<\/span>\s*<span className="visually-hidden">\{legsSaid\(chosen\.legs\)\}<\/span>/);
+  assert.match(go, /<details className="transit-steps-fold">\s*<summary>\{STEPS_LABEL\}<\/summary>\s*\{steps\}/);
+  assert.match(go, /<details className="transit-options-fold">\s*<summary>\{OPTIONS_LABEL\}<\/summary>/);
+  assert.doesNotMatch(go, /<details[^>]* open/, "folded shut by default");
+  assert.doesNotMatch(go, /transit-total/);
+  // Plan keeps its fold open, the steps in it.
+  assert.match(src("app/RoutePanel.tsx"), /transit && !goMode \? \(\s*<Fold title=\{t\("\{ride\} trip"[^\n]* open className="transit-fold"/);
 });

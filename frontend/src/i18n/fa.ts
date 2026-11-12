@@ -2157,6 +2157,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "نشانه‌های ایموجی",
   "Road closed ahead": "جاده جلوتر بسته است",
   "Road closed ahead, {distance}: {name}": "جاده جلوتر بسته است، {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "آیا بخشی متفاوت از رتبه‌اش به نظر رسید؟",
+  "Which stretch?": "کدام بخش؟",
+  "You marked a road closed.": "یک خیابان را بسته علامت زدید.",
+  "You marked {n} roads closed.": "{n} خیابان را بسته علامت زدید.",
+  "Send for review": "ارسال برای بررسی",
+  "Only the road and the day are sent.": "فقط خیابان و روز ارسال می‌شود.",
+  "Sent 1 closed road for review. Thank you.": "۱ خیابان بسته برای بررسی ارسال شد. سپاس.",
+  "Sent {n} closed roads for review. Thank you.": "{n} خیابان بسته برای بررسی ارسال شد. سپاس.",
+  "Not sent. Try again shortly.": "ارسال نشد. کمی بعد دوباره امتحان کنید.",
+  "That road can't be looked up right now. Try again shortly.": "اکنون نمی‌توان آن خیابان را جستجو کرد. کمی بعد دوباره امتحان کنید.",
+  "Looking up the road…": "در حال جستجوی خیابان…",
+  "Sending…": "در حال ارسال…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "ورود عموم ممنوع",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "کپی گزارش راهنماها",
+  "Cue log copied.": "گزارش راهنماها کپی شد.",
+  "Could not copy the cue log.": "کپی گزارش راهنماها ممکن نشد.",
 };

@@ -247,3 +247,46 @@ def test_an_owner_row_on_the_street_sets_the_paths_level():
     }
     apply_beside_busy_road(stress, {2: facility.SideStreet("x bike lane", {1: 100.0})})
     assert (stress[2].tier, stress[2].half) == (Stress.LTS1, True)
+
+
+# --- Order (v0.26.0 review): the step reads street levels only once they are final ----------
+
+
+class _Way:
+    def __init__(self, osm_id, tags, coordinates, node_ids=()):
+        self.osm_id, self.tags, self.coordinates, self.node_ids = (
+            osm_id,
+            tags,
+            coordinates,
+            node_ids,
+        )
+
+
+def test_a_road_closed_to_cars_for_good_never_lifts_the_path_beside_it():
+    from pipeline.run import car_free_tier_1, rate_side_paths
+
+    road = _Way(1, {"highway": "residential", "name": "Beach Drive", "motor_vehicle": "no"}, ROAD)
+    path = _Way(2, {"highway": "cycleway"}, _east(ROAD, 10))
+    stress = {1: StressResult(Stress.LTS3, "mixed traffic, 30 mph"), 2: PATH}
+    # In the rebuild's order: the car-free correction first, then the side paths.
+    assert car_free_tier_1(road, stress)
+    side_streets, moved = rate_side_paths([road, path], stress)
+    assert set(side_streets) == {2}
+    assert moved == 0
+    assert stress[2] is PATH
+
+
+def test_the_rebuild_rates_side_paths_after_the_car_free_and_sidewalk_corrections():
+    import inspect
+
+    from pipeline import run
+
+    source = inspect.getsource(run)
+    body = source[source.index("    def classify_facilities() -> None:") :]
+    body = body[: body.index("\n    def ", 10)]
+    step = body.index("rate_side_paths(context.ways, context.stress_by_way)")
+    assert body.index("raise_ridden_sidewalks(") < step
+    assert body.index("car_free_tier_1(way, context.stress_by_way)") < step
+    overrides = source[source.index("    def apply_overrides() -> None:") :]
+    overrides = overrides[: overrides.index("\n    def ", 10)]
+    assert "rate_side_paths" not in overrides and "apply_beside_busy_road" not in overrides

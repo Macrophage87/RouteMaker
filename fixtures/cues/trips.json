@@ -1,0 +1,204 @@
+{
+ "about": "The cue bench's trips (scripts/cue_bench_capture.py): made-up start and end points round junctions where a cue went wrong before, never anyone's ride. Each is planned once on a RouteMaker server and its answer kept as <name>.json beside this file.",
+ "trips": [
+  {
+   "name": "dupont-15th-s-st",
+   "about": "15th St cycle track, S St, 19th St, a service road beside Florida Ave: plain lefts and rights",
+   "points": [
+    [
+     -77.0365,
+     38.9101
+    ],
+    [
+     -77.0428,
+     38.916
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "kenyon-warder",
+   "about": "Kenyon St NW's two-way track left onto Warder St: a turn over the road alongside (#1162)",
+   "points": [
+    [
+     -77.0262,
+     38.9298
+    ],
+    [
+     -77.0219,
+     38.9365
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "west-basin",
+   "about": "Ohio Dr path to West Basin Dr: a bear across Ohio Dr then a right onto the path beside it (#1028)",
+   "points": [
+    [
+     -77.0505,
+     38.8835
+    ],
+    [
+     -77.0365,
+     38.88
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "near-northeast",
+   "about": "17th St NE, K St, Staples St, a left across Florida Ave NE from the left (across_from), Maryland Ave",
+   "points": [
+    [
+     -76.9795,
+     38.9052
+    ],
+    [
+     -76.988,
+     38.899
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "dupont-cycletracks",
+   "about": "20th St and 17th St cycle tracks: lefts across a road onto a cycle track, an Avoid junction",
+   "points": [
+    [
+     -77.0478,
+     38.9085
+    ],
+    [
+     -77.0438,
+     38.9175
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "aspen-hill-side-streets",
+   "about": "Side streets west of Layhill Rd: many short residential turns, one after another",
+   "points": [
+    [
+     -77.07,
+     39.0688
+    ],
+    [
+     -77.052,
+     39.0745
+    ]
+   ],
+   "preset": "trailmaxxing"
+  },
+  {
+   "name": "mount-vernon-paths",
+   "about": "Path beside Mount Vernon Memorial Hwy, then side streets and short path pieces (three bears in 50 m)",
+   "points": [
+    [
+     -77.13245,
+     38.71655
+    ],
+    [
+     -77.124,
+     38.733
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "downtown-grid",
+   "about": "Downtown grid: turns at signals, a left across 9th St, a crossing then a right 8 m on",
+   "points": [
+    [
+     -77.033,
+     38.899
+    ],
+    [
+     -77.024,
+     38.906
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "rock-creek-trail",
+   "about": "Rock Creek Trail and Western Ridge Trail: forks along one trail, a crossing of Broad Branch Rd",
+   "points": [
+    [
+     -77.052,
+     38.921
+    ],
+    [
+     -77.05,
+     38.943
+    ]
+   ],
+   "preset": "trailmaxxing"
+  },
+  {
+   "name": "capitol-hill-stop",
+   "about": "Capitol Hill to the Navy Yard with a stop near Eastern Market: a stop between legs, a U-turn at the end",
+   "points": [
+    [
+     -76.996,
+     38.89
+    ],
+    [
+     -76.996,
+     38.884
+    ],
+    [
+     -77.003,
+     38.876
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "trolley-trail-north",
+   "about": "Bethesda Trolley Trail north: a crossing then a right onto the trail, forks that keep to it",
+   "points": [
+    [
+     -77.096,
+     38.9895
+    ],
+    [
+     -77.105,
+     39.01
+    ]
+   ],
+   "preset": "trailmaxxing"
+  },
+  {
+   "name": "bethesda-to-rock-creek",
+   "about": "Bethesda to Rock Creek Park: Georgetown Branch Trail, a Beach Dr crossing, 29 turns over 5 mi",
+   "points": [
+    [
+     -77.093,
+     38.985
+    ],
+    [
+     -77.033,
+     38.993
+    ]
+   ],
+   "preset": "default"
+  },
+  {
+   "name": "rural-poolesville",
+   "about": "Country roads near Poolesville: long stretches, few turns, bends with no choice",
+   "points": [
+    [
+     -77.417,
+     39.145
+    ],
+    [
+     -77.37,
+     39.18
+    ]
+   ],
+   "preset": "road-bike"
+  }
+ ]
+}

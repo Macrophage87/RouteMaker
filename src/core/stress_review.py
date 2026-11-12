@@ -17,8 +17,10 @@ heaviest compares two whole segment tables:
   outside the repository (`pending_ratings`): shown and counted in the spread, never deciding a
   level and never on a public surface;
 - `narrow_rural`: ways the owner's narrow-rural-road rule read at 25 mph with no posted speed;
-- `sidepath`, `works_closure`, `rematch`, `dc_no_bike`: read from the rebuild's reports where
-  they exist (`FILE_QUEUES`); a queue whose report is not there is listed as not wired;
+- `sidepath`, `works_closure`, `rematch`, `dc_no_bike`, `facts_changed`: read from the rebuild's
+  reports where they exist (`FILE_QUEUES`); a queue whose report is not there is listed as not
+  wired. `facts_changed` is the pinned roads whose facts moved since we rated them
+  (`pipeline.rated_facts`); each keeps our level until ruled on (the owner, 2026-11-12);
 - `painted_lane`: the rebuild's RL-3 report, painted lanes on two-way roads with two or more
   lanes each way, DDOT's or Montgomery's level beside the formula's, and Arlington's from the
   pending file for comparison (`compute_painted_lane`).
@@ -1057,6 +1059,16 @@ FILE_QUEUES = (
         lambda r: (r.get("status") or "closed") == "closed",
         lambda r: r.get("why") or r.get("reason") or "Closed to bicycles",
         closed=True,
+    ),
+    # Pinned roads whose facts (class, speed, lanes, count, bike facility) changed since the
+    # row was rated (`pipeline.rated_facts`). Each keeps our level (the owner, 2026-11-12:
+    # "Keep our level, queue it for you"): Accept keeps it, Change LTS re-rates it.
+    FileQueue(
+        Queue.FACTS_CHANGED,
+        "rated-facts-changed.csv",
+        ("way_id",),
+        lambda r: True,
+        lambda r: r.get("reason") or "Facts changed since rated",
     ),
 )
 
