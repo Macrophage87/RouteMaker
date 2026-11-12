@@ -4,7 +4,7 @@ import type { RouteResponse } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { writeGpx } from "./lib/gpx.ts";
 import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
-import { gpxAccept, gpxWorker, importGpx } from "./lib/gpxImport.ts";
+import { OPENS_WHAT, gpxAccept, gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import {
   againstTrafficNotice,
   elevationsAlong,
@@ -357,12 +357,15 @@ export const GPX_SAID_TRACK = t("GPX track: the opened file's track, rerouted ro
 const FORMAT_LABELS: Record<ExportFormat, string> = {
   gpx: t("GPX track"),
   fit: t("FIT course, with turn cues"),
+  "png-lock": t("Cue sheet image, for a phone lock screen"),
   tcx: t("TCX course, with turn cues"),
   "pdf-sheet": t("PDF cue sheet, to print"),
   "pdf-strip": t("PDF handlebar strip, to print"),
-  "png-lock": t("Cue sheet image, for a phone lock screen"),
   "png-lock-dark": t("Cue sheet image, dark, for a ride at night"),
 };
+/** The three most riders want, listed first; the rest follow under "Other file types" (backlog 2026-11-12, Plan). */
+const COMMON_FORMATS: readonly ExportFormat[] = ["gpx", "fit", "png-lock"];
+const OTHER_FORMATS = (Object.keys(FORMAT_LABELS) as ExportFormat[]).filter((format) => !COMMON_FORMATS.includes(format));
 
 /** What the button says it downloads. */
 const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": t("image"), "png-lock-dark": t("image") };
@@ -422,6 +425,21 @@ export function GpxPanel(props: Props) {
   // What the last course download fitted to the device, said in the status region below; a new route, another
   // file type or another device clears it.
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const pdf = choice.format === "pdf-sheet" || choice.format === "pdf-strip";
+  const formatShort = pdf
+    ? t("A cue sheet to print: on letter paper, or a strip for the handlebar.")
+    : isLock(choice.format)
+      ? t("The cues as pictures for your phone's lock screen, in parts.")
+      : isCourse(choice.format)
+        ? t("A course for your device, with Ride's turn cues.")
+        : null;
+  const formatMore = pdf
+    ? t("A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size to cut out for the handlebar. Its credits are at the foot of every page.")
+    : isLock(choice.format)
+      ? t("The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. It comes as Part 1, Part 2 and on, downloaded one after another: a new part at each stop when the cues don't fit on one, and the credits last, on a part of their own.")
+      : isCourse(choice.format)
+        ? t("A course is the route shown with Ride's turn cues, fitted to the device. TCX carries the credits in its notes; FIT has no place for them but its name, which has them where the device leaves room: route data © OpenStreetMap contributors (ODbL).")
+        : null;
   const [courseSaid, setCourseSaid] = useState<{ text: string; count: number } | null>(null);
   // Lock-screen images still to save, one per press of the same button ("Download part 2 of 6").
   const [parts, setParts] = useState<PartQueue | null>(null);
@@ -600,11 +618,18 @@ export function GpxPanel(props: Props) {
           <label className="select-setting">
             {t("File type")}
             <select value={choice.format} onChange={(event) => choose({ format: event.target.value as ExportFormat })}>
-              {(Object.keys(FORMAT_LABELS) as ExportFormat[]).map((format) => (
+              {COMMON_FORMATS.map((format) => (
                 <option key={format} value={format}>
                   {FORMAT_LABELS[format]}
                 </option>
               ))}
+              <optgroup label={t("Other file types")}>
+                {OTHER_FORMATS.map((format) => (
+                  <option key={format} value={format}>
+                    {FORMAT_LABELS[format]}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </label>
           {isCourse(choice.format) && (
@@ -672,7 +697,7 @@ export function GpxPanel(props: Props) {
         {reading.kind === "reading" && <p className="loading">{t("Reading {name}…", { name: reading.name })}</p>}
         {reading.kind === "error" && (
           <p className="notice gpx-error">
-            <strong>{t("Can't open that file.")}</strong> {reading.message}
+            <strong>{t("Can't open that file.")}</strong> {reading.message.replace(OPENS_WHAT, t(OPENS_WHAT))}
           </p>
         )}
         {reading.kind === "idle" && imported && (
@@ -739,24 +764,12 @@ export function GpxPanel(props: Props) {
         <p className="hint">{FILE_PRIVACY_SHORT}</p>
         <InfoButton open={privacyOpen} onToggle={() => setPrivacyOpen((was) => !was)} controls="gpx-privacy-info" about={t("route files")} />
       </div>
-      <p className="hint setting-info" id="gpx-privacy-info" hidden={!privacyOpen}>
-        {t("A file you open is read in this browser and never uploaded (unless you save it to your account, or snap it to the map's streets, which sends its line alone). Opened and not edited, the download is that file as it came; otherwise it is the route shown, with its credits: © OpenStreetMap contributors (ODbL) and the traffic and elevation sources.")}
-      </p>
-      {(choice.format === "pdf-sheet" || choice.format === "pdf-strip") && (
-        <p className="hint">
-          {t("A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size to cut out for the handlebar. Its credits are at the foot of every page.")}
-        </p>
-      )}
-      {isLock(choice.format) && (
-        <p className="hint">
-          {t("The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. It comes as Part 1, Part 2 and on, downloaded one after another: a new part at each stop when the cues don't fit on one, and the credits last, on a part of their own.")}
-        </p>
-      )}
-      {isCourse(choice.format) && (
-        <p className="hint">
-          {t("A course is the route shown with Ride's turn cues, fitted to the device. TCX carries the credits in its notes; FIT has no place for them but its name, which has them where the device leaves room: route data © OpenStreetMap contributors (ODbL).")}
-        </p>
-      )}
+      {/* The file type's one line; its full words are behind the same (i) (backlog 2026-11-12, Plan: was 40 to 60 words). */}
+      {formatShort && <p className="hint gpx-format-line">{formatShort}</p>}
+      <div className="hint setting-info" id="gpx-privacy-info" hidden={!privacyOpen}>
+        <p>{t("A file you open is read in this browser and never uploaded (unless you save it to your account, or snap it to the map's streets, which sends its line alone). Opened and not edited, the download is that file as it came; otherwise it is the route shown, with its credits: © OpenStreetMap contributors (ODbL) and the traffic and elevation sources.")}</p>
+        {formatMore && <p>{formatMore}</p>}
+      </div>
     </section>
   );
 }

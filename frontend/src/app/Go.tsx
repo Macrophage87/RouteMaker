@@ -636,6 +636,8 @@ export function GoSheet({
   startLine,
   startMissing,
   onStartPick,
+  whereToTyped,
+  onWhereToTyped,
   destinationWaiting = false,
 }: {
   size: GoSheetSize;
@@ -662,6 +664,10 @@ export function GoSheet({
   startMissing: boolean;
   /** A start typed in: it replaces the location. */
   onStartPick: (place: Place) => void;
+  /** Words put in Where to? from outside and searched (a shared address with no map point; app/sharedLaunch.ts). */
+  whereToTyped?: { text: string; n: number } | null;
+  /** The words were put in Where to?: dropped, so they are not put in again when Go is opened again. */
+  onWhereToTyped?: () => void;
   /** A destination picked waits for a start (no location): its notice names it, and the start box takes the focus. */
   destinationWaiting?: boolean;
 }) {
@@ -711,6 +717,12 @@ export function GoSheet({
   useEffect(() => {
     if (!routeShown) setNewOpen(false);
   }, [routeShown]);
+  // Words put in Where to? from outside while a route is shown: the box is opened, so its results are seen.
+  useEffect(() => {
+    if (whereToTyped && routeShown) setNewOpen(true);
+    // Only a new set of words opens it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whereToTyped?.n]);
   const pickWhereTo = (place: Place) => {
     setNewOpen(false);
     onPick(place);
@@ -761,7 +773,7 @@ export function GoSheet({
           </button>
         )}
         <div id={newId} className="go-new-body" hidden={!whereShown}>
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} typed={whereToTyped} onTyped={onWhereToTyped} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").

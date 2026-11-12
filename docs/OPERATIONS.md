@@ -179,8 +179,9 @@ for the rebuild, the task's own figure otherwise — one table, in
 `core.runs.job_budgets`) is reported as wedged, on both surfaces, and
 `check_operations` exits non-zero on it.
 
-There is no paging integration and no scraper yet; the plan records both as
-follow-ups. What exists is the thing that has to exist first — the state is
+Paging now exists on the beta: `scripts/beta/alert.sh` posts to a Discord channel and pings
+an off-host uptime check (Healthchecks.io) (docs/BETA-RUNBOOK.md, "Alerts"). There is still
+no metrics scraper; the plan records it as a follow-up. What exists is the thing that has to exist first — the state is
 computed, and it is visible.
 
 ## What is watched, and for how long
@@ -9637,8 +9638,9 @@ scripts/cloud/import-result.sh <-- out/  7 graphs, staging schema dump        <-
 ```
 
 `scripts/cloud/launch.sh` runs the three from here with one command ("The launcher",
-below); "A run" is the same thing by hand. There are no S3 checkpoints and no on-demand
-fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
+below); "A run" is the same thing by hand. There are no S3 checkpoints. A run stopped by a spot
+reclaim can be run again on the standing on-demand box ("Two boxes: spot and on-demand", below),
+and this host stays the last fallback (its weekly rebuild is paused during active development).
 
 ### One-time setup (the owner, in the AWS console)
 

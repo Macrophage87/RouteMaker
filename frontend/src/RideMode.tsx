@@ -3564,7 +3564,7 @@ export function RideMode({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", shown);
     };
-  }, [watchOn, model]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watchOn, model]);
   const watchAt = progress === null ? null : Math.floor(progress / 100);
   useEffect(() => {
     if (watched === null || watchAt === null || suddenAsk) return;

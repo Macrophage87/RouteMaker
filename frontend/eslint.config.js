@@ -20,7 +20,7 @@ export default [
         babelOptions: { babelrc: false, configFile: false, parserOpts: { plugins: ["jsx", "typescript"] } },
       },
     },
-    linterOptions: { reportUnusedDisableDirectives: "off" },
+    linterOptions: { reportUnusedDisableDirectives: "warn" },
     plugins: { "react-hooks": reactHooks },
     // rules-of-hooks is an error, so `npm run lint` fails CI on a hook called conditionally or in a
     // loop (the owner, 2026-10-29). exhaustive-deps stays a warning while the existing reports are

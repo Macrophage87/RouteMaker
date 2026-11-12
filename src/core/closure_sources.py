@@ -25,7 +25,10 @@ for the WZDx feeds, and it feeds the same closure model (`routemaker.workzones.Z
 
 The proxy this was written behind answers 403 for all four hosts, so the readers were
 built and tested on saved sample pages (tests/data/closures); docs/OPERATIONS.md, "DC
-closures", has the first check to run where they are reachable.
+closures", has the first check to run where they are reachable. As of 2026-11-12 no date of a
+first live check is recorded for any reader (AlertDC's police and crash items, #1175, were
+parsed from a made-up sample); add the date beside a reader's docstring once its live check is
+done. Until then an "EMPTY" read in the run line (`refresh`) is the first thing to look at.
 """
 
 from __future__ import annotations
@@ -893,7 +896,12 @@ def refresh(
         if digest is not None:
             feeds[source].update(digest=digest, parsed_at=moment.isoformat())
         touched.add(source)
-        said.append(f"{source} {len(zones)} closures, {len(notices)} notices")
+        if zones or notices:
+            said.append(f"{source} {len(zones)} closures, {len(notices)} notices")
+        else:
+            # Said in its own words so an empty read stands out on the operations page: a feed
+            # that changed its format reads as nothing, not as a failure.
+            said.append(f"{source} EMPTY (read, 0 items)")
     _save(feeds, touched, gone, now())
     workzones.forget()
     line = "closures: " + (", ".join(said) if said else "nothing due")
