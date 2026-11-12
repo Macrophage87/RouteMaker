@@ -26,11 +26,11 @@ import {
   IOS_INSTALL,
   installOffer,
   installState,
-  isStandalone,
   promptInstall,
   subscribeInstall,
 } from "./lib/installOffer.ts";
 import { removeKept } from "./lib/offlineKeep.ts";
+import { installedApp } from "./lib/installedApp.ts";
 import { matchSaid, matching } from "./lib/routeSearch.ts";
 import { KEPT_HEADING, KEPT_HOW, KEPT_NONE, KEPT_NONE_SHORT, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
@@ -344,7 +344,7 @@ export function KeptRoutes({
       </div>
       {compact && (
         <p className="hint setting-info" id={`${id}-info`} hidden={!infoOpen}>
-          {KEPT_HOW} {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
+          {KEPT_HOW} {KEPT_PRIVATE} {storageNote(kept, installedApp())}
         </p>
       )}
       {routes !== null && routes.length > 0 && (
@@ -389,7 +389,7 @@ export function KeptRoutes({
       )}
       {!compact && (
         <p className="hint">
-          {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
+          {KEPT_PRIVATE} {storageNote(kept, installedApp())}
         </p>
       )}
     </section>

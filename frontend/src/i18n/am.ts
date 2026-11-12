@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "ወደ ታቀደው መንገድ ተመልሰዋል።",
   "No route found ahead. Make a U-turn.": "ከፊት መንገድ አልተገኘም። ዞረው ይመለሱ።",
   "No signal: the planned route is still shown.": "ምልክት የለም፦ የታቀደው መንገድ አሁንም ይታያል።",
+  "No signal: a rough way back to your route, found offline.": "ምልክት የለም፦ ወደ መንገድዎ የሚመልስ ግምታዊ መንገድ ያለ ኢንተርኔት ተገኝቷል።",
   "No new route found. The planned route is still shown.": "አዲስ መንገድ አልተገኘም። የታቀደው መንገድ አሁንም ይታያል።",
   "No new route found. Go back to the planned route.": "አዲስ መንገድ አልተገኘም። ወደ ታቀደው መንገድ ይመለሱ።",
   "New route found. It rejoins your route ahead.": "አዲስ መንገድ ተገኝቷል። ወደፊት ከመንገድዎ ጋር ይገናኛል።",
@@ -2156,6 +2157,25 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "የኢሞጂ ምልክቶች",
   "Road closed ahead": "ወደፊት መንገድ ተዘግቷል",
   "Road closed ahead, {distance}: {name}": "ወደፊት መንገድ ተዘግቷል፣ {distance}፦ {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "ከደረጃው የተለየ የተሰማዎት ክፍል አለ?",
+  "Which stretch?": "የትኛው ክፍል?",
+  "You marked a road closed.": "አንድ መንገድ ዝግ ብለው ምልክት አድርገዋል።",
+  "You marked {n} roads closed.": "{n} መንገዶችን ዝግ ብለው ምልክት አድርገዋል።",
+  "Send for review": "ለግምገማ ላክ",
+  "Only the road and the day are sent.": "የሚላከው መንገዱ እና ቀኑ ብቻ ነው።",
+  "Sent 1 closed road for review. Thank you.": "1 ዝግ መንገድ ለግምገማ ተልኳል። እናመሰግናለን።",
+  "Sent {n} closed roads for review. Thank you.": "{n} ዝግ መንገዶች ለግምገማ ተልከዋል። እናመሰግናለን።",
+  "Not sent. Try again shortly.": "አልተላከም። ትንሽ ቆይተው እንደገና ይሞክሩ።",
+  "That road can't be looked up right now. Try again shortly.": "ያንን መንገድ አሁን መፈለግ አይቻልም። ትንሽ ቆይተው እንደገና ይሞክሩ።",
+  "Looking up the road…": "መንገዱን በመፈለግ ላይ…",
+  "Sending…": "በመላክ ላይ…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "ለሕዝብ ክፍት አይደለም",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "የአቅጣጫ መዝገብ ቅዳ",
+  "Cue log copied.": "የአቅጣጫ መዝገብ ተቀድቷል።",
+  "Could not copy the cue log.": "የአቅጣጫ መዝገቡን መቅዳት አልተቻለም።",
   // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
   "Send feedback": "አስተያየት ላክ",
   "What happened?": "ምን ሆነ?",

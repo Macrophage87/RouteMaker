@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "Planlanan rotaya geri döndünüz.",
   "No route found ahead. Make a U-turn.": "İleride rota bulunamadı. U dönüşü yapın.",
   "No signal: the planned route is still shown.": "Sinyal yok: planlanan rota gösterilmeye devam ediyor.",
+  "No signal: a rough way back to your route, found offline.": "Sinyal yok: rotanıza dönmek için yaklaşık bir yol çevrimdışı bulundu.",
   "No new route found. The planned route is still shown.": "Yeni rota bulunamadı. Planlanan rota gösterilmeye devam ediyor.",
   "No new route found. Go back to the planned route.": "Yeni rota bulunamadı. Planlanan rotaya geri dönün.",
   "New route found. It rejoins your route ahead.": "Yeni rota bulundu. İleride rotanıza yeniden katılıyor.",
@@ -2156,6 +2157,25 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "emoji işaretleri",
   "Road closed ahead": "İleride yol kapalı",
   "Road closed ahead, {distance}: {name}": "İleride yol kapalı, {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Puanından farklı hissettiren bir bölüm oldu mu?",
+  "Which stretch?": "Hangi bölüm?",
+  "You marked a road closed.": "Bir yolu kapalı olarak işaretlediniz.",
+  "You marked {n} roads closed.": "{n} yolu kapalı olarak işaretlediniz.",
+  "Send for review": "İncelemeye gönder",
+  "Only the road and the day are sent.": "Yalnızca yol ve gün gönderilir.",
+  "Sent 1 closed road for review. Thank you.": "1 kapalı yol incelemeye gönderildi. Teşekkürler.",
+  "Sent {n} closed roads for review. Thank you.": "{n} kapalı yol incelemeye gönderildi. Teşekkürler.",
+  "Not sent. Try again shortly.": "Gönderilmedi. Biraz sonra tekrar deneyin.",
+  "That road can't be looked up right now. Try again shortly.": "O yol şu anda aranamıyor. Biraz sonra tekrar deneyin.",
+  "Looking up the road…": "Yol aranıyor…",
+  "Sending…": "Gönderiliyor…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Halka kapalı",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Yönlendirme kaydını kopyala",
+  "Cue log copied.": "Yönlendirme kaydı kopyalandı.",
+  "Could not copy the cue log.": "Yönlendirme kaydı kopyalanamadı.",
   // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
   "Send feedback": "Geri bildirim gönder",
   "What happened?": "Ne oldu?",

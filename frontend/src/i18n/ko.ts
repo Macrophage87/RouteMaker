@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "계획한 경로로 돌아왔습니다.",
   "No route found ahead. Make a U-turn.": "앞쪽으로 경로를 찾지 못했습니다. 유턴하세요.",
   "No signal: the planned route is still shown.": "신호 없음: 계획한 경로를 계속 표시합니다.",
+  "No signal: a rough way back to your route, found offline.": "신호 없음: 경로로 돌아가는 대략적인 길을 오프라인으로 찾았습니다.",
   "No new route found. The planned route is still shown.": "새 경로를 찾지 못했습니다. 계획한 경로를 계속 표시합니다.",
   "No new route found. Go back to the planned route.": "새 경로를 찾지 못했습니다. 계획한 경로로 돌아가세요.",
   "New route found. It rejoins your route ahead.": "새 경로를 찾았습니다. 앞에서 원래 경로와 다시 만납니다.",
@@ -2156,6 +2157,25 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "이모지 표시",
   "Road closed ahead": "앞쪽 도로 통제",
   "Road closed ahead, {distance}: {name}": "앞쪽 도로 통제, {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "등급과 다르게 느껴진 구간이 있었나요?",
+  "Which stretch?": "어느 구간인가요?",
+  "You marked a road closed.": "도로 1곳을 통제됨으로 표시했습니다.",
+  "You marked {n} roads closed.": "도로 {n}곳을 통제됨으로 표시했습니다.",
+  "Send for review": "검토 요청 보내기",
+  "Only the road and the day are sent.": "도로와 날짜만 전송됩니다.",
+  "Sent 1 closed road for review. Thank you.": "통제된 도로 1곳을 검토 요청으로 보냈습니다. 감사합니다.",
+  "Sent {n} closed roads for review. Thank you.": "통제된 도로 {n}곳을 검토 요청으로 보냈습니다. 감사합니다.",
+  "Not sent. Try again shortly.": "전송되지 않았습니다. 잠시 후 다시 시도하세요.",
+  "That road can't be looked up right now. Try again shortly.": "지금은 그 도로를 조회할 수 없습니다. 잠시 후 다시 시도하세요.",
+  "Looking up the road…": "도로를 조회하는 중…",
+  "Sending…": "보내는 중…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "일반인 출입 금지",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "안내 기록 복사",
+  "Cue log copied.": "안내 기록을 복사했습니다.",
+  "Could not copy the cue log.": "안내 기록을 복사할 수 없습니다.",
   // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
   "Send feedback": "의견 보내기",
   "What happened?": "무슨 일이 있었나요?",

@@ -1,0 +1,689 @@
+{
+ "name": "downtown-grid",
+ "about": "Downtown grid: turns at signals, a left across 9th St, a crossing then a right 8 m on",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.032997,
+     38.898994
+    ],
+    [
+     -77.032153,
+     38.899288
+    ],
+    [
+     -77.031948,
+     38.899359
+    ],
+    [
+     -77.031774,
+     38.899421
+    ],
+    [
+     -77.030449,
+     38.899875
+    ],
+    [
+     -77.03033,
+     38.899921
+    ],
+    [
+     -77.030187,
+     38.899974
+    ],
+    [
+     -77.030052,
+     38.900024
+    ],
+    [
+     -77.029795,
+     38.900114
+    ],
+    [
+     -77.029622,
+     38.900163
+    ],
+    [
+     -77.029443,
+     38.900214
+    ],
+    [
+     -77.028217,
+     38.900634
+    ],
+    [
+     -77.028104,
+     38.90067
+    ],
+    [
+     -77.027953,
+     38.900721
+    ],
+    [
+     -77.027604,
+     38.900844
+    ],
+    [
+     -77.027212,
+     38.900981
+    ],
+    [
+     -77.02715,
+     38.901004
+    ],
+    [
+     -77.027033,
+     38.901045
+    ],
+    [
+     -77.026927,
+     38.901083
+    ],
+    [
+     -77.026867,
+     38.901103
+    ],
+    [
+     -77.026119,
+     38.901362
+    ],
+    [
+     -77.025983,
+     38.901405
+    ],
+    [
+     -77.025983,
+     38.901323
+    ],
+    [
+     -77.025988,
+     38.900975
+    ],
+    [
+     -77.025989,
+     38.900887
+    ],
+    [
+     -77.025851,
+     38.900886
+    ],
+    [
+     -77.024853,
+     38.900884
+    ],
+    [
+     -77.024118,
+     38.900882
+    ],
+    [
+     -77.023979,
+     38.90088
+    ],
+    [
+     -77.023895,
+     38.90088
+    ],
+    [
+     -77.023895,
+     38.900971
+    ],
+    [
+     -77.023891,
+     38.901327
+    ],
+    [
+     -77.02389,
+     38.901765
+    ],
+    [
+     -77.02389,
+     38.901972
+    ],
+    [
+     -77.023896,
+     38.902109
+    ],
+    [
+     -77.023902,
+     38.902266
+    ],
+    [
+     -77.0239,
+     38.90283
+    ],
+    [
+     -77.02389,
+     38.902958
+    ],
+    [
+     -77.023888,
+     38.903066
+    ],
+    [
+     -77.023882,
+     38.904044
+    ],
+    [
+     -77.023882,
+     38.904077
+    ],
+    [
+     -77.023883,
+     38.904177
+    ],
+    [
+     -77.023882,
+     38.904278
+    ],
+    [
+     -77.023882,
+     38.904307
+    ],
+    [
+     -77.023883,
+     38.905537
+    ],
+    [
+     -77.023883,
+     38.905571
+    ],
+    [
+     -77.023883,
+     38.90565
+    ],
+    [
+     -77.023882,
+     38.905738
+    ],
+    [
+     -77.023882,
+     38.905759
+    ],
+    [
+     -77.023969,
+     38.905745
+    ],
+    [
+     -77.023969,
+     38.906
+    ]
+   ]
+  },
+  "distance_m": 1481.0,
+  "duration_s": 486.6,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.05341,
+    17.2
+   ],
+   [
+    0.05341,
+    31.2
+   ],
+   [
+    0.16227,
+    66.3
+   ],
+   [
+    0.16227,
+    80.3
+   ],
+   [
+    0.30426,
+    126.1
+   ],
+   [
+    0.30426,
+    140.1
+   ],
+   [
+    0.36782,
+    160.6
+   ],
+   [
+    0.36782,
+    174.6
+   ],
+   [
+    0.43813,
+    197.2
+   ],
+   [
+    0.43813,
+    211.2
+   ],
+   [
+    0.44809,
+    214.5
+   ],
+   [
+    0.48698,
+    229.1
+   ],
+   [
+    0.59567,
+    263.9
+   ],
+   [
+    0.59567,
+    277.9
+   ],
+   [
+    0.60933,
+    282.3
+   ],
+   [
+    0.69101,
+    312.2
+   ],
+   [
+    0.69101,
+    326.2
+   ],
+   [
+    0.75524,
+    349.7
+   ],
+   [
+    0.75524,
+    363.7
+   ],
+   [
+    0.84652,
+    397.1
+   ],
+   [
+    0.84652,
+    411.1
+   ],
+   [
+    0.95876,
+    452.1
+   ],
+   [
+    0.95876,
+    466.1
+   ],
+   [
+    0.97566,
+    472.3
+   ],
+   [
+    0.98086,
+    473.9
+   ],
+   [
+    1.0,
+    486.6
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 649,
+    "from_mi": 0.0,
+    "to_mi": 0.4,
+    "street": "New York Avenue Northwest",
+    "tier": 2,
+    "facility": "lane",
+    "oneway": true,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.4 mi (0.0 to 0.6 km): New York Avenue Northwest, fairly low stress (LTS 2), painted bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 649,
+    "to_m": 662,
+    "from_mi": 0.4,
+    "to_mi": 0.41,
+    "street": "New York Avenue Northwest",
+    "tier": 3,
+    "facility": "lane",
+    "oneway": true,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 mi (0.6 km), for 43 ft (13 m): Continue on New York Avenue Northwest, busy road (LTS 3), painted bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 662,
+    "to_m": 720,
+    "from_mi": 0.41,
+    "to_mi": 0.45,
+    "street": "10th Street Northwest",
+    "tier": 2,
+    "facility": "lane",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "10th Street Northwest",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 112,
+      "others": [
+       -68,
+       -2
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 mi (0.7 km), for 190 ft (58 m): Right onto 10th Street Northwest at a signal, fairly low stress (LTS 2), painted bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 720,
+    "to_m": 901,
+    "from_mi": 0.45,
+    "to_mi": 0.56,
+    "street": "I Street Northwest",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "I Street Northwest",
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 to 0.6 mi (0.7 to 0.9 km): Left onto I Street Northwest, no signal mapped (Higher stress junction), fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 901,
+    "to_m": 1445,
+    "from_mi": 0.56,
+    "to_mi": 0.9,
+    "street": "9th Street Northwest bike lane",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "9th Street Northwest bike lane",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": "9th Street Northwest",
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 to 0.9 mi (0.9 to 1.4 km): Cross 9th Street Northwest at a signal, then left onto 9th Street Northwest bike lane, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 1038,
+      "road": "K Street Northwest"
+     },
+     {
+      "at_m": 1133,
+      "road": "Allen Y Lew Place Northwest"
+     },
+     {
+      "at_m": 1269,
+      "road": "L Street Northwest"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1445,
+    "to_m": 1453,
+    "from_mi": 0.9,
+    "to_mi": 0.9,
+    "street": "unnamed road",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "unnamed road",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": "the road",
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.9 mi (1.4 km), for 26 ft (8 m): Cross the road at a signal, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1453,
+    "to_m": 1481,
+    "from_mi": 0.9,
+    "to_mi": 0.92,
+    "street": "9th Street Northwest",
+    "tier": 3,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "9th Street Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.9 mi (1.5 km), for 92 ft (28 m): Right onto 9th Street Northwest, busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   50
+  ],
+  "arrival_side": null,
+  "leg_arrival_sides": [
+   null
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 98,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 98,
+    "to_m": 251,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 251,
+    "to_m": 265,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 265,
+    "to_m": 318,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 318,
+    "to_m": 648,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 648,
+    "to_m": 661,
+    "tier": 3,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 661,
+    "to_m": 719,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 719,
+    "to_m": 900,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 900,
+    "to_m": 1451,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1451,
+    "to_m": 1479,
+    "tier": 3,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   }
+  ]
+ }
+}

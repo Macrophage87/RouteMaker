@@ -18,8 +18,16 @@ import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
 import { DO_ANOTHER_TRIP, FINISH_SESSION, REBALANCE_TODAY, dayRows, type RebalanceDay } from "./lib/rebalanceDay.ts";
+import { rideCueLog } from "./lib/cueRecorder.ts";
+import { copyText, selectionCopy } from "./lib/sidebar.ts";
+import { closedSpots, feltStretches } from "./lib/rideFeedback.ts";
+import { ClosedOffer, FeltDifferent } from "./RideFeedback.tsx";
 
 export const RIDE_SUMMARY_TITLE = t("Ride ended");
+/** The ride's cue log, offered only after a ride where a cue went wrong (lib/cueRecorder.ts; the owner, 2026-11-12). */
+export const COPY_CUE_LOG = t("Copy cue log");
+export const CUE_LOG_COPIED = t("Cue log copied.");
+export const CUE_LOG_NOT_COPIED = t("Could not copy the cue log.");
 /** The stress shares are shown once this much was ridden along the route. */
 const STRESS_MIN_M = METRES_PER_MILE / 10;
 
@@ -67,6 +75,7 @@ function ElevationFigure({ stats }: { stats: RideStats }) {
   );
 }
 
+
 export function RideSummaryCard({
   stats,
   endedAt,
@@ -78,6 +87,7 @@ export function RideSummaryCard({
   onUndo,
   onReports,
   rebalance = null,
+  origin = null,
 }: {
   stats: RideStats;
   endedAt: number;
@@ -105,9 +115,21 @@ export function RideSummaryCard({
    * trip first, which plans the next one from here; Done is Finish session.
    */
   rebalance?: { day: RebalanceDay; onAnother: () => void } | null;
+  /**
+   * The API's origin, for the two lines that learn from the ride (lib/rideFeedback.ts): "Anything feel different from
+   * its rating?" and, after Road closed presses, the offer to send them for review. None: neither line shows.
+   */
+  origin?: string | null;
 }) {
   const done = useRef<HTMLButtonElement>(null);
   const titleId = useId();
+  // The ride's cue log, as it was when the ride ended; "" when every cue went as planned (then no link at all).
+  const [cueLog] = useState(() => (rideCueLog.wentWrong() ? rideCueLog.text() : ""));
+  const [cueLogSaid, setCueLogSaid] = useState("");
+  const copyCueLog = async () => {
+    const copied = await copyText(cueLog, navigator.clipboard, selectionCopy);
+    setCueLogSaid(copied ? CUE_LOG_COPIED : CUE_LOG_NOT_COPIED);
+  };
   useEffect(() => {
     done.current?.focus();
   }, []);
@@ -138,6 +160,8 @@ export function RideSummaryCard({
   const rows = summaryRows(stats, endedAt);
   const ridden = Object.values(stats.stressM).reduce((sum, m) => sum + (m ?? 0), 0);
   const segments = ridden >= STRESS_MIN_M ? stressSegments(stats.stressM) : [];
+  const felt = origin != null ? feltStretches(stats) : [];
+  const spots = origin != null ? closedSpots(stats) : [];
   return (
     <section className="ride-summary" aria-labelledby={titleId}>
       <h2 id={titleId}>{RIDE_SUMMARY_TITLE}</h2>
@@ -214,6 +238,9 @@ export function RideSummaryCard({
             </dl>
           </section>
         )}
+        {/* Learning from the ride (lib/rideFeedback.ts): under the figures, each one line until pressed. */}
+        {origin != null && spots.length > 0 && <ClosedOffer origin={origin} spots={spots} />}
+        {origin != null && felt.length > 0 && <FeltDifferent origin={origin} stretches={felt} />}
         {/* The chart and the stress behind Details (the UI review, 2026-10-28), the figures in view. */}
         {(segments.length > 0 || elevationDrawn(stats)) && (
           <details className="ride-summary-details">
@@ -263,6 +290,13 @@ export function RideSummaryCard({
         <button type="button" className="link ride-summary-keep" onClick={onUndo}>
           {t("Keep riding")}
         </button>
+        {/* After a ride where a cue was dropped, cut off or stuck: its log to paste into a bug report, no places in it. */}
+        {/* Its words become the answer, as Save route's do; the page's own region says things, never this card's (F6). */}
+        {cueLog && (
+          <button type="button" className="link ride-summary-keep" onClick={() => void copyCueLog()}>
+            {cueLogSaid || COPY_CUE_LOG}
+          </button>
+        )}
       </div>
     </section>
   );

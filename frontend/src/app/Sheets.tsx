@@ -339,9 +339,18 @@ export function GpxSheet(props: GpxSheetProps) {
   const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, onFitting, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, onMyRoutes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")} popup>
-      {/* Save and Share first, then the files to export; My routes, to load, is its own popup (Stephen, 2026-11-12: "Put
-          the load rides in a popout and have save load be mostly about saving and exporting"), its button last. */}
+      {/* Save and Share first, then the one button to My routes, its own popup (Stephen, 2026-11-12: "Put the load rides
+          in a popout and have save load be mostly about saving and exporting"), then the files to export. The button is
+          one row, above the export so a saved route is reached with no scroll (the v0.26.0 simplicity review). */}
       {shareControls}
+      {onMyRoutes && (
+        <div className="actions my-routes-open">
+          <button type="button" className="secondary" aria-haspopup="dialog" onClick={(event) => onMyRoutes(event.currentTarget)}>
+            <Icon name="routes" size={20} />
+            {SHEET_TITLES.routes}
+          </button>
+        </div>
+      )}
       <GpxPanel
         route={shown}
         routedPoints={routedPoints}
@@ -363,14 +372,6 @@ export function GpxSheet(props: GpxSheetProps) {
         onSendToWahoo={sendToWahoo}
         match={match}
       />
-      {onMyRoutes && (
-        <div className="actions my-routes-open">
-          <button type="button" className="secondary" aria-haspopup="dialog" onClick={(event) => onMyRoutes(event.currentTarget)}>
-            <Icon name="routes" size={20} />
-            {SHEET_TITLES.routes}
-          </button>
-        </div>
-      )}
     </SheetFrame>
   );
 }

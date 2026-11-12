@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "De retour sur l'itinéraire prévu.",
   "No route found ahead. Make a U-turn.": "Aucun itinéraire trouvé devant. Faites demi-tour.",
   "No signal: the planned route is still shown.": "Pas de signal : l'itinéraire prévu reste affiché.",
+  "No signal: a rough way back to your route, found offline.": "Pas de signal : un chemin approximatif pour rejoindre votre itinéraire a été trouvé hors ligne.",
   "No new route found. The planned route is still shown.": "Aucun nouvel itinéraire trouvé. L'itinéraire prévu reste affiché.",
   "No new route found. Go back to the planned route.": "Aucun nouvel itinéraire trouvé. Revenez sur l'itinéraire prévu.",
   "New route found. It rejoins your route ahead.": "Nouvel itinéraire trouvé. Il rejoint votre itinéraire plus loin.",
@@ -2156,6 +2157,25 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "panneaux en émoji",
   "Road closed ahead": "Route fermée plus loin",
   "Road closed ahead, {distance}: {name}": "Route fermée plus loin, {distance} : {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Un tronçon vous a-t-il semblé différent de sa note ?",
+  "Which stretch?": "Quel tronçon ?",
+  "You marked a road closed.": "Vous avez signalé une route fermée.",
+  "You marked {n} roads closed.": "Vous avez signalé {n} routes fermées.",
+  "Send for review": "Envoyer pour vérification",
+  "Only the road and the day are sent.": "Seuls la route et le jour sont envoyés.",
+  "Sent 1 closed road for review. Thank you.": "1 route fermée envoyée pour vérification. Merci.",
+  "Sent {n} closed roads for review. Thank you.": "{n} routes fermées envoyées pour vérification. Merci.",
+  "Not sent. Try again shortly.": "Non envoyé. Réessayez dans un instant.",
+  "That road can't be looked up right now. Try again shortly.": "Impossible de consulter cette route pour le moment. Réessayez dans un instant.",
+  "Looking up the road…": "Recherche de la route…",
+  "Sending…": "Envoi…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Pas d'accès public",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Copier le journal des indications",
+  "Cue log copied.": "Journal des indications copié.",
+  "Could not copy the cue log.": "Impossible de copier le journal des indications.",
   // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
   "Send feedback": "Envoyer un avis",
   "What happened?": "Que s'est-il passé ?",

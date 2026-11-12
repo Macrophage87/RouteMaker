@@ -1,0 +1,1572 @@
+{
+ "name": "dupont-cycletracks",
+ "about": "20th St and 17th St cycle tracks: lefts across a road onto a cycle track, an Avoid junction",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.0478,
+     38.908572
+    ],
+    [
+     -77.047719,
+     38.908572
+    ],
+    [
+     -77.046725,
+     38.908572
+    ],
+    [
+     -77.046635,
+     38.908572
+    ],
+    [
+     -77.046553,
+     38.908572
+    ],
+    [
+     -77.046143,
+     38.908572
+    ],
+    [
+     -77.045757,
+     38.908573
+    ],
+    [
+     -77.045373,
+     38.908573
+    ],
+    [
+     -77.045307,
+     38.908573
+    ],
+    [
+     -77.045052,
+     38.908573
+    ],
+    [
+     -77.045,
+     38.908573
+    ],
+    [
+     -77.044953,
+     38.908573
+    ],
+    [
+     -77.044953,
+     38.908531
+    ],
+    [
+     -77.044953,
+     38.908513
+    ],
+    [
+     -77.044952,
+     38.908282
+    ],
+    [
+     -77.044951,
+     38.908224
+    ],
+    [
+     -77.044951,
+     38.908031
+    ],
+    [
+     -77.044951,
+     38.907908
+    ],
+    [
+     -77.04495,
+     38.907806
+    ],
+    [
+     -77.04495,
+     38.907773
+    ],
+    [
+     -77.044949,
+     38.907443
+    ],
+    [
+     -77.044949,
+     38.907363
+    ],
+    [
+     -77.044949,
+     38.907321
+    ],
+    [
+     -77.04495,
+     38.907245
+    ],
+    [
+     -77.044951,
+     38.907175
+    ],
+    [
+     -77.044951,
+     38.907142
+    ],
+    [
+     -77.04495,
+     38.906646
+    ],
+    [
+     -77.044951,
+     38.906471
+    ],
+    [
+     -77.044953,
+     38.905824
+    ],
+    [
+     -77.044954,
+     38.905777
+    ],
+    [
+     -77.044954,
+     38.905729
+    ],
+    [
+     -77.044955,
+     38.905653
+    ],
+    [
+     -77.044956,
+     38.905557
+    ],
+    [
+     -77.044956,
+     38.905515
+    ],
+    [
+     -77.044957,
+     38.905056
+    ],
+    [
+     -77.044956,
+     38.904842
+    ],
+    [
+     -77.044958,
+     38.904314
+    ],
+    [
+     -77.044958,
+     38.90425
+    ],
+    [
+     -77.044958,
+     38.904194
+    ],
+    [
+     -77.04496,
+     38.903892
+    ],
+    [
+     -77.04496,
+     38.903845
+    ],
+    [
+     -77.04496,
+     38.903805
+    ],
+    [
+     -77.044904,
+     38.903804
+    ],
+    [
+     -77.04479,
+     38.903803
+    ],
+    [
+     -77.044771,
+     38.903803
+    ],
+    [
+     -77.044298,
+     38.903803
+    ],
+    [
+     -77.044226,
+     38.903803
+    ],
+    [
+     -77.0441,
+     38.903804
+    ],
+    [
+     -77.043611,
+     38.903805
+    ],
+    [
+     -77.043556,
+     38.903804
+    ],
+    [
+     -77.043458,
+     38.903804
+    ],
+    [
+     -77.043367,
+     38.903804
+    ],
+    [
+     -77.043339,
+     38.903804
+    ],
+    [
+     -77.043001,
+     38.903805
+    ],
+    [
+     -77.042701,
+     38.903805
+    ],
+    [
+     -77.042471,
+     38.903805
+    ],
+    [
+     -77.042317,
+     38.903786
+    ],
+    [
+     -77.042283,
+     38.903783
+    ],
+    [
+     -77.041848,
+     38.903777
+    ],
+    [
+     -77.041803,
+     38.903781
+    ],
+    [
+     -77.041695,
+     38.903789
+    ],
+    [
+     -77.041571,
+     38.903799
+    ],
+    [
+     -77.04154,
+     38.903801
+    ],
+    [
+     -77.040933,
+     38.903803
+    ],
+    [
+     -77.040859,
+     38.903801
+    ],
+    [
+     -77.040698,
+     38.903796
+    ],
+    [
+     -77.040345,
+     38.903796
+    ],
+    [
+     -77.040327,
+     38.903796
+    ],
+    [
+     -77.040273,
+     38.903795
+    ],
+    [
+     -77.040131,
+     38.903796
+    ],
+    [
+     -77.039952,
+     38.903796
+    ],
+    [
+     -77.039832,
+     38.903801
+    ],
+    [
+     -77.039801,
+     38.903802
+    ],
+    [
+     -77.039519,
+     38.903803
+    ],
+    [
+     -77.039414,
+     38.903801
+    ],
+    [
+     -77.039332,
+     38.9038
+    ],
+    [
+     -77.039293,
+     38.9038
+    ],
+    [
+     -77.039203,
+     38.903799
+    ],
+    [
+     -77.039021,
+     38.903796
+    ],
+    [
+     -77.038702,
+     38.903796
+    ],
+    [
+     -77.038658,
+     38.903796
+    ],
+    [
+     -77.038601,
+     38.903796
+    ],
+    [
+     -77.038514,
+     38.903796
+    ],
+    [
+     -77.038422,
+     38.903796
+    ],
+    [
+     -77.038422,
+     38.903816
+    ],
+    [
+     -77.038422,
+     38.903836
+    ],
+    [
+     -77.038422,
+     38.904316
+    ],
+    [
+     -77.038422,
+     38.904668
+    ],
+    [
+     -77.038422,
+     38.904689
+    ],
+    [
+     -77.038421,
+     38.904722
+    ],
+    [
+     -77.038417,
+     38.904891
+    ],
+    [
+     -77.038418,
+     38.905571
+    ],
+    [
+     -77.038419,
+     38.905591
+    ],
+    [
+     -77.038419,
+     38.905643
+    ],
+    [
+     -77.038419,
+     38.9057
+    ],
+    [
+     -77.038419,
+     38.905728
+    ],
+    [
+     -77.038419,
+     38.905748
+    ],
+    [
+     -77.038415,
+     38.906412
+    ],
+    [
+     -77.038415,
+     38.906481
+    ],
+    [
+     -77.038414,
+     38.906598
+    ],
+    [
+     -77.038414,
+     38.906683
+    ],
+    [
+     -77.038414,
+     38.906712
+    ],
+    [
+     -77.038412,
+     38.907177
+    ],
+    [
+     -77.038412,
+     38.907248
+    ],
+    [
+     -77.038411,
+     38.907322
+    ],
+    [
+     -77.03841,
+     38.907512
+    ],
+    [
+     -77.038445,
+     38.907585
+    ],
+    [
+     -77.038443,
+     38.907762
+    ],
+    [
+     -77.038442,
+     38.907802
+    ],
+    [
+     -77.038438,
+     38.907913
+    ],
+    [
+     -77.038434,
+     38.90803
+    ],
+    [
+     -77.038432,
+     38.908066
+    ],
+    [
+     -77.038431,
+     38.908363
+    ],
+    [
+     -77.03843,
+     38.908632
+    ],
+    [
+     -77.038429,
+     38.908702
+    ],
+    [
+     -77.038429,
+     38.908767
+    ],
+    [
+     -77.038427,
+     38.909057
+    ],
+    [
+     -77.038433,
+     38.909574
+    ],
+    [
+     -77.038433,
+     38.909591
+    ],
+    [
+     -77.038445,
+     38.909652
+    ],
+    [
+     -77.038456,
+     38.909707
+    ],
+    [
+     -77.038456,
+     38.909726
+    ],
+    [
+     -77.038455,
+     38.910053
+    ],
+    [
+     -77.038455,
+     38.910314
+    ],
+    [
+     -77.038455,
+     38.910335
+    ],
+    [
+     -77.038455,
+     38.91039
+    ],
+    [
+     -77.038455,
+     38.910455
+    ],
+    [
+     -77.038455,
+     38.910476
+    ],
+    [
+     -77.038454,
+     38.910724
+    ],
+    [
+     -77.038453,
+     38.911065
+    ],
+    [
+     -77.038453,
+     38.911143
+    ],
+    [
+     -77.038453,
+     38.911204
+    ],
+    [
+     -77.038453,
+     38.911243
+    ],
+    [
+     -77.038455,
+     38.911544
+    ],
+    [
+     -77.038457,
+     38.911797
+    ],
+    [
+     -77.038456,
+     38.911815
+    ],
+    [
+     -77.038454,
+     38.911882
+    ],
+    [
+     -77.038452,
+     38.911932
+    ],
+    [
+     -77.038451,
+     38.911961
+    ],
+    [
+     -77.038449,
+     38.912202
+    ],
+    [
+     -77.038447,
+     38.912501
+    ],
+    [
+     -77.038446,
+     38.912524
+    ],
+    [
+     -77.038446,
+     38.912546
+    ],
+    [
+     -77.038438,
+     38.91261
+    ],
+    [
+     -77.038426,
+     38.9127
+    ],
+    [
+     -77.038422,
+     38.91273
+    ],
+    [
+     -77.038419,
+     38.913021
+    ],
+    [
+     -77.038418,
+     38.91327
+    ],
+    [
+     -77.038417,
+     38.913293
+    ],
+    [
+     -77.038418,
+     38.913308
+    ],
+    [
+     -77.038418,
+     38.913355
+    ],
+    [
+     -77.038418,
+     38.913417
+    ],
+    [
+     -77.038418,
+     38.913655
+    ],
+    [
+     -77.038418,
+     38.913699
+    ],
+    [
+     -77.038418,
+     38.914
+    ],
+    [
+     -77.038418,
+     38.914021
+    ],
+    [
+     -77.038419,
+     38.914099
+    ],
+    [
+     -77.038486,
+     38.914097
+    ],
+    [
+     -77.038553,
+     38.914098
+    ],
+    [
+     -77.038597,
+     38.914099
+    ],
+    [
+     -77.039126,
+     38.9141
+    ],
+    [
+     -77.039273,
+     38.914099
+    ],
+    [
+     -77.039435,
+     38.914099
+    ],
+    [
+     -77.040182,
+     38.914097
+    ],
+    [
+     -77.041355,
+     38.914102
+    ],
+    [
+     -77.041553,
+     38.914102
+    ],
+    [
+     -77.041656,
+     38.914102
+    ],
+    [
+     -77.041772,
+     38.914102
+    ],
+    [
+     -77.04195,
+     38.914102
+    ],
+    [
+     -77.042262,
+     38.914102
+    ],
+    [
+     -77.042607,
+     38.914102
+    ],
+    [
+     -77.042882,
+     38.914101
+    ],
+    [
+     -77.04334,
+     38.9141
+    ],
+    [
+     -77.043428,
+     38.9141
+    ],
+    [
+     -77.043429,
+     38.914175
+    ],
+    [
+     -77.043429,
+     38.914484
+    ],
+    [
+     -77.043426,
+     38.914837
+    ],
+    [
+     -77.043425,
+     38.91551
+    ],
+    [
+     -77.043425,
+     38.915588
+    ],
+    [
+     -77.043425,
+     38.915649
+    ],
+    [
+     -77.043426,
+     38.915739
+    ],
+    [
+     -77.043426,
+     38.915797
+    ],
+    [
+     -77.043429,
+     38.915826
+    ],
+    [
+     -77.04343,
+     38.915845
+    ],
+    [
+     -77.04344,
+     38.915894
+    ],
+    [
+     -77.043454,
+     38.915945
+    ],
+    [
+     -77.043457,
+     38.915952
+    ],
+    [
+     -77.043473,
+     38.915998
+    ],
+    [
+     -77.043544,
+     38.916162
+    ],
+    [
+     -77.043706,
+     38.916539
+    ],
+    [
+     -77.043863,
+     38.916916
+    ],
+    [
+     -77.043887,
+     38.916974
+    ],
+    [
+     -77.043918,
+     38.917045
+    ],
+    [
+     -77.044078,
+     38.917411
+    ],
+    [
+     -77.043997,
+     38.917411
+    ],
+    [
+     -77.0438,
+     38.917411
+    ]
+   ]
+  },
+  "distance_m": 3323.0,
+  "duration_s": 1069.0,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.03013,
+    23.2
+   ],
+   [
+    0.03013,
+    35.2
+   ],
+   [
+    0.07412,
+    69.0
+   ],
+   [
+    0.08527,
+    77.0
+   ],
+   [
+    0.08527,
+    81.0
+   ],
+   [
+    0.1157,
+    102.9
+   ],
+   [
+    0.1157,
+    106.9
+   ],
+   [
+    0.16722,
+    143.9
+   ],
+   [
+    0.16722,
+    157.9
+   ],
+   [
+    0.232,
+    204.5
+   ],
+   [
+    0.232,
+    208.5
+   ],
+   [
+    0.23363,
+    209.7
+   ],
+   [
+    0.27026,
+    240.6
+   ],
+   [
+    0.27026,
+    244.6
+   ],
+   [
+    0.3022,
+    271.5
+   ],
+   [
+    0.3022,
+    283.5
+   ],
+   [
+    0.31576,
+    294.9
+   ],
+   [
+    0.31576,
+    298.9
+   ],
+   [
+    0.34468,
+    323.3
+   ],
+   [
+    0.34468,
+    343.3
+   ],
+   [
+    0.35583,
+    352.7
+   ],
+   [
+    0.35583,
+    366.7
+   ],
+   [
+    0.38807,
+    393.8
+   ],
+   [
+    0.38807,
+    407.8
+   ],
+   [
+    0.40396,
+    421.2
+   ],
+   [
+    0.4649,
+    472.7
+   ],
+   [
+    0.4649,
+    478.7
+   ],
+   [
+    0.49292,
+    502.4
+   ],
+   [
+    0.49292,
+    516.4
+   ],
+   [
+    0.51883,
+    538.3
+   ],
+   [
+    0.51883,
+    542.3
+   ],
+   [
+    0.53751,
+    558.1
+   ],
+   [
+    0.53751,
+    572.1
+   ],
+   [
+    0.56764,
+    597.6
+   ],
+   [
+    0.56764,
+    601.6
+   ],
+   [
+    0.59687,
+    626.3
+   ],
+   [
+    0.59687,
+    630.3
+   ],
+   [
+    0.62218,
+    651.7
+   ],
+   [
+    0.62218,
+    655.7
+   ],
+   [
+    0.64929,
+    678.6
+   ],
+   [
+    0.64929,
+    698.6
+   ],
+   [
+    0.674,
+    719.5
+   ],
+   [
+    0.674,
+    723.5
+   ],
+   [
+    0.69539,
+    741.5
+   ],
+   [
+    0.69539,
+    745.5
+   ],
+   [
+    0.72341,
+    769.2
+   ],
+   [
+    0.72341,
+    773.2
+   ],
+   [
+    0.74842,
+    794.4
+   ],
+   [
+    0.74842,
+    814.4
+   ],
+   [
+    0.74891,
+    814.8
+   ],
+   [
+    0.77102,
+    832.5
+   ],
+   [
+    0.77102,
+    852.5
+   ],
+   [
+    0.83067,
+    900.2
+   ],
+   [
+    0.83067,
+    904.2
+   ],
+   [
+    0.87931,
+    943.1
+   ],
+   [
+    0.88189,
+    945.4
+   ],
+   [
+    0.88189,
+    949.4
+   ],
+   [
+    0.9292,
+    990.9
+   ],
+   [
+    0.9292,
+    1004.9
+   ],
+   [
+    0.99276,
+    1060.8
+   ],
+   [
+    1.0,
+    1069.0
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 240,
+    "from_mi": 0.0,
+    "to_mi": 0.15,
+    "street": "O Street Northwest",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.1 mi (0.0 to 0.2 km): O Street Northwest, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 240,
+    "to_m": 776,
+    "from_mi": 0.15,
+    "to_mi": 0.48,
+    "street": "20th Street Northwest Cycletrack",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "20th Street Northwest Cycletrack",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.1 to 0.5 mi (0.2 to 0.8 km): Right onto 20th Street Northwest Cycletrack, low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 304,
+      "road": "New Hampshire Avenue Northwest"
+     },
+     {
+      "at_m": 569,
+      "road": "M Street Northwest"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 776,
+    "to_m": 1341,
+    "from_mi": 0.48,
+    "to_mi": 0.83,
+    "street": "L Street Northwest",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "L Street Northwest",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": "20th Street Northwest",
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.5 to 0.8 mi (0.8 to 1.3 km): Cross 20th Street Northwest at a signal, then left onto L Street Northwest, low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 906,
+      "road": "19th Street Northwest"
+     },
+     {
+      "at_m": 1058,
+      "road": "18th Street Northwest"
+     },
+     {
+      "at_m": 1194,
+      "road": "Connecticut Avenue Northwest"
+     }
+    ]
+   },
+   {
+    "kind": "junction",
+    "from_m": 1004,
+    "to_m": 1004,
+    "from_mi": 0.62,
+    "to_mi": 0.62,
+    "street": null,
+    "tier": null,
+    "facility": null,
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": null,
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "At 0.6 mi (1.0 km): Cross a slip lane off a busy road (LTS 3), no signal mapped (Higher stress junction).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1341,
+    "to_m": 2487,
+    "from_mi": 0.83,
+    "to_mi": 1.55,
+    "street": "17th Street Northwest bike lane",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "17th Street Northwest bike lane",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": "17th Street Northwest",
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 to 1.5 mi (1.3 to 2.5 km): Cross 17th Street Northwest at a signal, then left onto 17th Street Northwest bike lane, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 1545,
+      "road": "M Street Northwest"
+     },
+     {
+      "at_m": 1651,
+      "road": "Rhode Island Avenue Northwest"
+     },
+     {
+      "at_m": 1798,
+      "road": "Massachusetts Avenue Northwest"
+     },
+     {
+      "at_m": 1992,
+      "road": "P Street Northwest"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2487,
+    "to_m": 2916,
+    "from_mi": 1.55,
+    "to_mi": 1.81,
+    "street": "S Street Northwest",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "S Street Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.5 to 1.8 mi (2.5 to 2.9 km): Left onto S Street Northwest, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2916,
+    "to_m": 2931,
+    "from_mi": 1.81,
+    "to_mi": 1.82,
+    "street": "unnamed road",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": "unnamed road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.8 mi (2.9 km), for 49 ft (15 m): Continue onto unnamed road, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2931,
+    "to_m": 3122,
+    "from_mi": 1.82,
+    "to_mi": 1.94,
+    "street": "19th Street Northwest",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "19th Street Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.8 to 1.9 mi (2.9 to 3.1 km): Right onto 19th Street Northwest, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3122,
+    "to_m": 3299,
+    "from_mi": 1.94,
+    "to_mi": 2.05,
+    "street": "19th Street Northwest",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.9 to 2.0 mi (3.1 to 3.3 km): Continue on 19th Street Northwest, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3299,
+    "to_m": 3323,
+    "from_mi": 2.05,
+    "to_mi": 2.06,
+    "street": "service road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "service road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 109,
+      "others": [
+       0
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.0 mi (3.3 km), for 79 ft (24 m): Right onto the service road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   195
+  ],
+  "arrival_side": "left",
+  "leg_arrival_sides": [
+   "left"
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 240,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 240,
+    "to_m": 251,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 251,
+    "to_m": 1144,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1144,
+    "to_m": 1193,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1193,
+    "to_m": 1208,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1208,
+    "to_m": 1288,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1288,
+    "to_m": 1331,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1331,
+    "to_m": 2484,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2484,
+    "to_m": 2912,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 2912,
+    "to_m": 2927,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2927,
+    "to_m": 3118,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 3118,
+    "to_m": 3295,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 3295,
+    "to_m": 3319,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   }
+  ]
+ }
+}

@@ -1,0 +1,1448 @@
+{
+ "name": "capitol-hill-stop",
+ "about": "Capitol Hill to the Navy Yard with a stop near Eastern Market: a stop between legs, a U-turn at the end",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -76.996086,
+     38.89
+    ],
+    [
+     -76.996085,
+     38.889907
+    ],
+    [
+     -76.996174,
+     38.889916
+    ],
+    [
+     -76.996175,
+     38.889813
+    ],
+    [
+     -76.996175,
+     38.88972
+    ],
+    [
+     -76.996175,
+     38.889689
+    ],
+    [
+     -76.996175,
+     38.889337
+    ],
+    [
+     -76.996175,
+     38.888753
+    ],
+    [
+     -76.996176,
+     38.888687
+    ],
+    [
+     -76.996089,
+     38.888688
+    ],
+    [
+     -76.995747,
+     38.888687
+    ],
+    [
+     -76.995068,
+     38.888684
+    ],
+    [
+     -76.994964,
+     38.888685
+    ],
+    [
+     -76.994869,
+     38.888687
+    ],
+    [
+     -76.993889,
+     38.888683
+    ],
+    [
+     -76.993845,
+     38.888683
+    ],
+    [
+     -76.993762,
+     38.888683
+    ],
+    [
+     -76.993762,
+     38.888609
+    ],
+    [
+     -76.993762,
+     38.888485
+    ],
+    [
+     -76.99376,
+     38.888382
+    ],
+    [
+     -76.99385,
+     38.888346
+    ],
+    [
+     -76.994865,
+     38.887935
+    ],
+    [
+     -76.994963,
+     38.887895
+    ],
+    [
+     -76.995068,
+     38.887851
+    ],
+    [
+     -76.995681,
+     38.887602
+    ],
+    [
+     -76.996077,
+     38.887442
+    ],
+    [
+     -76.996196,
+     38.887388
+    ],
+    [
+     -76.996187,
+     38.887277
+    ],
+    [
+     -76.996186,
+     38.887066
+    ],
+    [
+     -76.996185,
+     38.887046
+    ],
+    [
+     -76.996176,
+     38.886437
+    ],
+    [
+     -76.996174,
+     38.886288
+    ],
+    [
+     -76.996176,
+     38.886105
+    ],
+    [
+     -76.996177,
+     38.886039
+    ],
+    [
+     -76.996177,
+     38.885969
+    ],
+    [
+     -76.996175,
+     38.885503
+    ],
+    [
+     -76.996175,
+     38.885466
+    ],
+    [
+     -76.996175,
+     38.885209
+    ],
+    [
+     -76.996175,
+     38.884914
+    ],
+    [
+     -76.996175,
+     38.884852
+    ],
+    [
+     -76.996175,
+     38.884795
+    ],
+    [
+     -76.996174,
+     38.88457
+    ],
+    [
+     -76.996174,
+     38.884507
+    ],
+    [
+     -76.996174,
+     38.884451
+    ],
+    [
+     -76.996177,
+     38.884276
+    ],
+    [
+     -76.996176,
+     38.883845
+    ],
+    [
+     -76.996111,
+     38.883846
+    ],
+    [
+     -76.996108,
+     38.883932
+    ],
+    [
+     -76.996111,
+     38.883992
+    ],
+    [
+     -76.996111,
+     38.884002
+    ],
+    [
+     -76.996111,
+     38.883992
+    ],
+    [
+     -76.996108,
+     38.883932
+    ],
+    [
+     -76.996111,
+     38.883846
+    ],
+    [
+     -76.996176,
+     38.883845
+    ],
+    [
+     -76.996176,
+     38.883766
+    ],
+    [
+     -76.996179,
+     38.88369
+    ],
+    [
+     -76.996177,
+     38.88344
+    ],
+    [
+     -76.99618,
+     38.882833
+    ],
+    [
+     -76.99618,
+     38.882796
+    ],
+    [
+     -76.99618,
+     38.882724
+    ],
+    [
+     -76.99618,
+     38.882666
+    ],
+    [
+     -76.99618,
+     38.882642
+    ],
+    [
+     -76.996179,
+     38.882385
+    ],
+    [
+     -76.996182,
+     38.882082
+    ],
+    [
+     -76.996183,
+     38.88194
+    ],
+    [
+     -76.996181,
+     38.881348
+    ],
+    [
+     -76.996181,
+     38.88127
+    ],
+    [
+     -76.996181,
+     38.881214
+    ],
+    [
+     -76.996181,
+     38.880994
+    ],
+    [
+     -76.99618,
+     38.880833
+    ],
+    [
+     -76.996179,
+     38.880616
+    ],
+    [
+     -76.996178,
+     38.880314
+    ],
+    [
+     -76.996178,
+     38.880281
+    ],
+    [
+     -76.996182,
+     38.879731
+    ],
+    [
+     -76.996185,
+     38.879447
+    ],
+    [
+     -76.996185,
+     38.879374
+    ],
+    [
+     -76.996184,
+     38.879285
+    ],
+    [
+     -76.996184,
+     38.879232
+    ],
+    [
+     -76.996184,
+     38.879199
+    ],
+    [
+     -76.996186,
+     38.878961
+    ],
+    [
+     -76.996187,
+     38.878694
+    ],
+    [
+     -76.996187,
+     38.878649
+    ],
+    [
+     -76.996187,
+     38.878589
+    ],
+    [
+     -76.996189,
+     38.878516
+    ],
+    [
+     -76.996189,
+     38.878484
+    ],
+    [
+     -76.996189,
+     38.878407
+    ],
+    [
+     -76.996189,
+     38.878399
+    ],
+    [
+     -76.996189,
+     38.878245
+    ],
+    [
+     -76.996189,
+     38.878177
+    ],
+    [
+     -76.996188,
+     38.877803
+    ],
+    [
+     -76.996187,
+     38.87761
+    ],
+    [
+     -76.996187,
+     38.87753
+    ],
+    [
+     -76.996273,
+     38.877529
+    ],
+    [
+     -76.998039,
+     38.877525
+    ],
+    [
+     -76.998162,
+     38.877525
+    ],
+    [
+     -76.998711,
+     38.877526
+    ],
+    [
+     -76.998755,
+     38.877526
+    ],
+    [
+     -76.998896,
+     38.877526
+    ],
+    [
+     -76.999428,
+     38.877525
+    ],
+    [
+     -76.999522,
+     38.877525
+    ],
+    [
+     -76.99961,
+     38.877526
+    ],
+    [
+     -76.999873,
+     38.877528
+    ],
+    [
+     -77.000444,
+     38.877531
+    ],
+    [
+     -77.000482,
+     38.877531
+    ],
+    [
+     -77.000565,
+     38.877531
+    ],
+    [
+     -77.000562,
+     38.877461
+    ],
+    [
+     -77.000563,
+     38.877272
+    ],
+    [
+     -77.000564,
+     38.877012
+    ],
+    [
+     -77.000563,
+     38.87665
+    ],
+    [
+     -77.000562,
+     38.876614
+    ],
+    [
+     -77.000561,
+     38.876543
+    ],
+    [
+     -77.000559,
+     38.876454
+    ],
+    [
+     -77.000558,
+     38.876407
+    ],
+    [
+     -77.000673,
+     38.876408
+    ],
+    [
+     -77.001928,
+     38.87641
+    ],
+    [
+     -77.002043,
+     38.87641
+    ],
+    [
+     -77.002148,
+     38.87641
+    ],
+    [
+     -77.003759,
+     38.876409
+    ],
+    [
+     -77.003758,
+     38.876397
+    ],
+    [
+     -77.003758,
+     38.876364
+    ],
+    [
+     -77.003516,
+     38.876362
+    ],
+    [
+     -77.002997,
+     38.876359
+    ]
+   ]
+  },
+  "distance_m": 2633.0,
+  "duration_s": 732.9,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.00393,
+    2.0
+   ],
+   [
+    0.00686,
+    3.6
+   ],
+   [
+    0.00686,
+    23.6
+   ],
+   [
+    0.00689,
+    23.6
+   ],
+   [
+    0.05886,
+    56.1
+   ],
+   [
+    0.05905,
+    56.2
+   ],
+   [
+    0.05905,
+    60.2
+   ],
+   [
+    0.09905,
+    84.0
+   ],
+   [
+    0.09905,
+    104.0
+   ],
+   [
+    0.13832,
+    127.4
+   ],
+   [
+    0.13867,
+    127.6
+   ],
+   [
+    0.13867,
+    139.6
+   ],
+   [
+    0.15105,
+    149.0
+   ],
+   [
+    0.19238,
+    175.2
+   ],
+   [
+    0.19238,
+    179.2
+   ],
+   [
+    0.22286,
+    198.6
+   ],
+   [
+    0.22286,
+    202.6
+   ],
+   [
+    0.2416,
+    214.5
+   ],
+   [
+    0.29943,
+    249.8
+   ],
+   [
+    0.29943,
+    253.8
+   ],
+   [
+    0.34705,
+    282.9
+   ],
+   [
+    0.34705,
+    296.9
+   ],
+   [
+    0.39144,
+    323.9
+   ],
+   [
+    0.39238,
+    324.9
+   ],
+   [
+    0.39238,
+    328.9
+   ],
+   [
+    0.39358,
+    330.0
+   ],
+   [
+    0.40018,
+    334.5
+   ],
+   [
+    0.40678,
+    339.0
+   ],
+   [
+    0.40892,
+    340.2
+   ],
+   [
+    0.4099,
+    340.7
+   ],
+   [
+    0.4099,
+    344.7
+   ],
+   [
+    0.45752,
+    371.0
+   ],
+   [
+    0.45752,
+    375.0
+   ],
+   [
+    0.51886,
+    408.8
+   ],
+   [
+    0.51886,
+    412.8
+   ],
+   [
+    0.59886,
+    456.9
+   ],
+   [
+    0.59886,
+    460.9
+   ],
+   [
+    0.62781,
+    476.9
+   ],
+   [
+    0.62781,
+    480.9
+   ],
+   [
+    0.67599,
+    507.4
+   ],
+   [
+    0.67657,
+    507.7
+   ],
+   [
+    0.67657,
+    511.7
+   ],
+   [
+    0.78667,
+    569.7
+   ],
+   [
+    0.78667,
+    573.7
+   ],
+   [
+    0.82012,
+    591.3
+   ],
+   [
+    0.82133,
+    592.1
+   ],
+   [
+    0.82133,
+    604.1
+   ],
+   [
+    0.86019,
+    630.7
+   ],
+   [
+    0.86019,
+    644.7
+   ],
+   [
+    0.86766,
+    649.8
+   ],
+   [
+    0.91429,
+    676.7
+   ],
+   [
+    0.91429,
+    680.7
+   ],
+   [
+    0.97304,
+    714.6
+   ],
+   [
+    0.97495,
+    715.9
+   ],
+   [
+    1.0,
+    732.9
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 18,
+    "from_mi": 0.0,
+    "to_mi": 0.01,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 59 ft (18 m): Path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 18,
+    "to_m": 155,
+    "from_mi": 0.01,
+    "to_mi": 0.1,
+    "street": "7th Street Southeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "7th Street Southeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 450 ft (137 m): Left onto 7th Street Southeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 155,
+    "to_m": 365,
+    "from_mi": 0.1,
+    "to_mi": 0.23,
+    "street": "A Street Southeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "A Street Southeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.1 to 0.2 mi (0.2 to 0.4 km): Left onto A Street Southeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 365,
+    "to_m": 398,
+    "from_mi": 0.23,
+    "to_mi": 0.25,
+    "street": "9th Street Southeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "9th Street Southeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.2 mi (0.4 km), for 110 ft (33 m): Right onto 9th Street Southeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 398,
+    "to_m": 638,
+    "from_mi": 0.25,
+    "to_mi": 0.4,
+    "street": "North Carolina Avenue Southeast",
+    "tier": 2,
+    "facility": "lane",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "North Carolina Avenue Southeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 64,
+      "others": [
+       -117,
+       1
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.2 to 0.4 mi (0.4 to 0.6 km): Right onto North Carolina Avenue Southeast, fairly low stress (LTS 2), painted bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 638,
+    "to_m": 927,
+    "from_mi": 0.4,
+    "to_mi": 0.58,
+    "street": "7th Street Southeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "7th Street Southeast",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -64,
+      "others": [
+       2
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 to 0.6 mi (0.6 to 0.9 km): Left onto 7th Street Southeast at a signal, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 927,
+    "to_m": 1033,
+    "from_mi": 0.58,
+    "to_mi": 0.64,
+    "street": "7th Street Southeast",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 mi (0.9 km), for 350 ft (106 m): Continue on 7th Street Southeast, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1033,
+    "to_m": 1039,
+    "from_mi": 0.64,
+    "to_mi": 0.65,
+    "street": "unnamed road",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "unnamed road",
+     "control": "signal",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": "the road",
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 mi (1.0 km), for 20 ft (6 m): Cross the road at a signal (Higher stress junction), heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1039,
+    "to_m": 1056,
+    "from_mi": 0.65,
+    "to_mi": 0.66,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": -89,
+      "others": [
+       -52,
+       57
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 mi (1.0 km), for 56 ft (17 m): Left to stay on the path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "via",
+    "from_m": 1056,
+    "to_m": 1056,
+    "from_mi": 0.66,
+    "to_mi": 0.66,
+    "street": null,
+    "tier": null,
+    "facility": null,
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": 1,
+    "group": null,
+    "surface": null,
+    "text": "Stop 1 at 0.7 mi (1.1 km).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1056,
+    "to_m": 1079,
+    "from_mi": 0.66,
+    "to_mi": 0.67,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.7 mi (1.1 km), for 76 ft (23 m): Path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1079,
+    "to_m": 1658,
+    "from_mi": 0.67,
+    "to_mi": 1.03,
+    "street": "7th Street Southeast",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "7th Street Southeast",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.7 to 1.0 mi (1.1 to 1.7 km): Left onto 7th Street Southeast at a signal, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1658,
+    "to_m": 1781,
+    "from_mi": 1.03,
+    "to_mi": 1.11,
+    "street": "7th Street Southeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.0 mi (1.7 km), for 400 ft (123 m): Continue on 7th Street Southeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1781,
+    "to_m": 2163,
+    "from_mi": 1.11,
+    "to_mi": 1.34,
+    "street": "L Street Southeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "L Street Southeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.1 to 1.3 mi (1.8 to 2.2 km): Right onto L Street Southeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2163,
+    "to_m": 2288,
+    "from_mi": 1.34,
+    "to_mi": 1.42,
+    "street": "4th Street Southeast",
+    "tier": 2,
+    "facility": "lane",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "4th Street Southeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.3 mi (2.2 km), for 410 ft (125 m): Left onto 4th Street Southeast, fairly low stress (LTS 2), painted bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2288,
+    "to_m": 2567,
+    "from_mi": 1.42,
+    "to_mi": 1.59,
+    "street": "M Street Southeast Cycletrack",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "M Street Southeast Cycletrack",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": "M Street Southeast",
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.4 to 1.6 mi (2.3 to 2.6 km): Cross M Street Southeast at a signal, then right onto M Street Southeast Cycletrack, low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2567,
+    "to_m": 2633,
+    "from_mi": 1.59,
+    "to_mi": 1.64,
+    "street": "M Street Southeast Cycletrack",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "uturn",
+     "onto": "M Street Southeast Cycletrack",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.6 mi (2.6 km), for 220 ft (66 m): Make a U-turn on M Street Southeast Cycletrack, low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   49,
+   121
+  ],
+  "arrival_side": "right",
+  "leg_arrival_sides": [
+   "right",
+   "right"
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 18,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 18,
+    "to_m": 30,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 30,
+    "to_m": 397,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 397,
+    "to_m": 636,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 636,
+    "to_m": 924,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 924,
+    "to_m": 1030,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1030,
+    "to_m": 1085,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1085,
+    "to_m": 1588,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1588,
+    "to_m": 1653,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1653,
+    "to_m": 1776,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1776,
+    "to_m": 2156,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 2156,
+    "to_m": 2266,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2266,
+    "to_m": 2281,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 2281,
+    "to_m": 2625,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}

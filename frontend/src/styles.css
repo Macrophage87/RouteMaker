@@ -5343,6 +5343,55 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-size: 16pt;
 }
 
+/* Learning from the ride (RideFeedback.tsx): the line at the summary's size, its streets a plain list of full-width
+   buttons, each part of a label ("0.9 mi (1.5 km)") kept whole on its line. */
+.ride-summary-felt {
+  margin: 0;
+}
+
+.ride-summary-felt > button.link,
+.ride-summary-felt h3 {
+  font-size: 16pt;
+  min-height: 48px;
+  text-align: start;
+  padding-inline: 0;
+}
+
+.ride-summary-felt h3 {
+  margin: 4px 0;
+  min-height: 0;
+}
+
+.ride-summary-felt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ride-summary-felt-list button {
+  white-space: normal;
+  width: 100%;
+  min-height: 48px;
+  font-size: 16pt;
+  text-align: start;
+}
+
+.ride-summary-felt-list button span {
+  white-space: nowrap;
+}
+
+/* The short suggestion form's reasons (SuggestQuick.tsx), here and in the road panel: one a line, each a full-size
+   target (WCAG 2.5.8), not run together as a paragraph. */
+.suggest-quick-reason {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
 .ride-summary-actions {
   flex: none;
   display: flex;
@@ -10443,6 +10492,26 @@ summary.closure-notices-heading {
   flex: 1 1 100%;
 }
 
+/* Add a stop and the bike rack offer side by side under the route card (Stephen 2026-11-12); a field opened under
+   Add a stop takes the whole row, and a long rack line wraps beside it. */
+.go-stop-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.go-stop-row > .go-add-stop {
+  display: contents;
+}
+
+.go-stop-row > .go-end-rack {
+  flex: 1 1 10rem;
+  width: auto;
+  margin: 0;
+}
+
 .go-add-stop-field[hidden] {
   display: none;
 }
@@ -10773,6 +10842,8 @@ summary.closure-notices-heading {
 }
 .load-route-dialog .closure-choices button,
 .ride-settings-dialog .closure-choices button,
+.start-first-dialog .closure-choices button,
+.sudden-closure-dialog .closure-choices button,
 .resume-ride-dialog .closure-choices button,
 .same-ride-dialog .closure-choices button {
   min-height: 44px;
@@ -11299,6 +11370,66 @@ button.route-note:focus-visible {
   height: auto;
   font-size: 14px;
 }
+
+/* Go's transit trip on one screen (Stephen 2026-11-12): the chosen trip's legs as one strip, then the next departure;
+   the steps and the other trips each behind a fold, tall enough to tap. */
+.transit-go .transit-legs {
+  margin: 4px 0;
+  font-weight: 600;
+}
+
+.transit-go > details > summary {
+  /* 44 px, padded rather than flex, so it keeps its triangle (as .route-credit-fold's). */
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Loop by distance (BikeLoopPicker.tsx): one row to ask, then the shapes as a radio list. */
+.bike-loop {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.bike-loop-title {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+.bike-loop-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.bike-loop-ask input {
+  width: 5em;
+}
+.bike-loop-shapes {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border: 0;
+}
+.bike-loop-shapes legend {
+  padding: 0;
+  font-weight: 600;
+}
+.bike-loop-shape {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.35rem 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.bike-loop-name {
+  font-weight: 600;
+}
+.bike-loop-line {
+  grid-column: 2;
 
 /* Send feedback (FeedbackBox.tsx; the owner, 2026-11-12): one button, then a short box. Buttons 44 px high. */
 .feedback-box {

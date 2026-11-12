@@ -7,7 +7,8 @@
  * The ARIA 1.2 combobox pattern: the input owns a listbox, the arrow keys
  * move through the options without leaving the input (aria-activedescendant),
  * Enter picks, Escape closes and then clears. The empty box lists "Your
- * location" and then the last places picked (lib/recentPlaces.ts). The result count is announced
+ * location", Go's Home, Work and first favorites (lib/savedPlaceSearch.ts), and then the last places picked
+ * (lib/recentPlaces.ts). The result count is announced
  * in a polite live region, and the options are tall enough to tap.
  *
  * A pasted map link (Google, Apple, Waze, geo:), typed coordinates (decimal, or degrees, minutes and seconds) or a
@@ -352,12 +353,15 @@ export function PlaceSearch({
   const sharedSaid = shared && "said" in shared ? shared.said : "";
   // The empty box lists the last places picked (v0.6.1), under "Your location".
   const empty = query.trim() === "";
-  const saved: Place[] = savedFor && !empty ? savedFor(query).places : [];
+  // Go's empty box lists Home, Work and the first favorites above them (lib/savedPlaceSearch.ts): never the Enter default.
+  const saved: Place[] = savedFor ? savedFor(query).places : [];
+  const spot = (place: Place) => `${place.lon},${place.lat}`;
+  const savedSpots = new Set(saved.map(spot));
   // Rows listed beside the search's own, for the count said: saved places and places to eat, less the found ones folded into them.
-  const extraRows = saved.length + food.length - (found.length - places.length);
+  const extraRows = (empty ? 0 : saved.length) + food.length - (found.length - places.length);
   // With places to eat listed, a place search that failed is not news: the count is of the rows shown.
   const statusResult: GeoResult | null = food.length > 0 && result?.ok === false ? { ok: true, places: [], attribution: [] } : result;
-  const offered: Place[] = [...sharedItems, ...(empty ? recent : [...saved, ...food, ...places])];
+  const offered: Place[] = [...sharedItems, ...(empty ? [...saved, ...recent.filter((place) => !savedSpots.has(spot(place)))] : [...saved, ...food, ...places])];
   // What Enter with nothing highlighted takes: the first place offered for the words typed; an empty box
   // takes nothing (a recent place is picked only by choosing it).
   const enterPlaces: Place[] = empty ? [] : offered;
@@ -632,7 +636,7 @@ export function PlaceSearch({
       {/* The located point's note shows under whichever box is open, Add a stop too: a loop has no To box (Plan starts
           as a loop, Stephen 2026-10-20), and the note is what says the point is approximate. */}
       {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
-      <ul id={listId} role="listbox" aria-label={empty ? t("Your location and recent places") : t("Places found")} className="place-results" hidden={!expanded}>
+      <ul id={listId} role="listbox" aria-label={empty ? (saved.length > 0 ? t("Places") : t("Your location and recent places")) : t("Places found")} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (
             <li

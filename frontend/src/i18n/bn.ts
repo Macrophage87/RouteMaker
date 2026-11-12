@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "পরিকল্পিত রুটে ফিরে এসেছেন।",
   "No route found ahead. Make a U-turn.": "সামনে কোনো রুট পাওয়া যায়নি। ইউ-টার্ন নিন।",
   "No signal: the planned route is still shown.": "সিগন্যাল নেই: পরিকল্পিত রুট এখনো দেখানো হচ্ছে।",
+  "No signal: a rough way back to your route, found offline.": "সিগন্যাল নেই: আপনার রুটে ফেরার একটি আনুমানিক পথ অফলাইনে পাওয়া গেছে।",
   "No new route found. The planned route is still shown.": "নতুন রুট পাওয়া যায়নি। পরিকল্পিত রুট এখনো দেখানো হচ্ছে।",
   "No new route found. Go back to the planned route.": "নতুন রুট পাওয়া যায়নি। পরিকল্পিত রুটে ফিরে যান।",
   "New route found. It rejoins your route ahead.": "নতুন রুট পাওয়া গেছে। এটি সামনে আপনার রুটে আবার মিলবে।",
@@ -2156,6 +2157,25 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "ইমোজি চিহ্ন",
   "Road closed ahead": "সামনে রাস্তা বন্ধ",
   "Road closed ahead, {distance}: {name}": "সামনে রাস্তা বন্ধ, {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "কোনো অংশ কি তার রেটিং থেকে আলাদা মনে হয়েছে?",
+  "Which stretch?": "কোন অংশ?",
+  "You marked a road closed.": "আপনি একটি রাস্তা বন্ধ চিহ্নিত করেছেন।",
+  "You marked {n} roads closed.": "আপনি {n}টি রাস্তা বন্ধ চিহ্নিত করেছেন।",
+  "Send for review": "পর্যালোচনার জন্য পাঠান",
+  "Only the road and the day are sent.": "শুধু রাস্তা আর দিনটি পাঠানো হয়।",
+  "Sent 1 closed road for review. Thank you.": "১টি বন্ধ রাস্তা পর্যালোচনার জন্য পাঠানো হয়েছে। ধন্যবাদ।",
+  "Sent {n} closed roads for review. Thank you.": "{n}টি বন্ধ রাস্তা পর্যালোচনার জন্য পাঠানো হয়েছে। ধন্যবাদ।",
+  "Not sent. Try again shortly.": "পাঠানো হয়নি। একটু পরে আবার চেষ্টা করুন।",
+  "That road can't be looked up right now. Try again shortly.": "এই মুহূর্তে রাস্তাটি খোঁজা যাচ্ছে না। একটু পরে আবার চেষ্টা করুন।",
+  "Looking up the road…": "রাস্তাটি খোঁজা হচ্ছে…",
+  "Sending…": "পাঠানো হচ্ছে…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "জনসাধারণের প্রবেশ নিষেধ",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "নির্দেশনার লগ কপি করুন",
+  "Cue log copied.": "নির্দেশনার লগ কপি হয়েছে।",
+  "Could not copy the cue log.": "নির্দেশনার লগ কপি করা যায়নি।",
   // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
   "Send feedback": "মতামত পাঠান",
   "What happened?": "কী হয়েছে?",
