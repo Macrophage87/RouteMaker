@@ -674,8 +674,8 @@ class TestRulings:
         live, staging = tables
         rated = rated_facts.Rated(
             rated_facts.from_evidence(
-                "group G00001: secondary, urban, speed 35 posted, lanes 2, two way, "
-                "8,000-11,999, facility none; r"
+                "Own-picks review, group G00001: secondary, urban, speed 35 posted, lanes 2, "
+                "two way, 8,000-11,999, facility none; r"
             ),
             "x.json",
             "2026-11-09",

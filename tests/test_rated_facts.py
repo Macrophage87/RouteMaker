@@ -44,8 +44,8 @@ def test_count_bands(text, band) -> None:
 
 def test_no_speed_no_lanes_and_a_default_speed_read_as_none() -> None:
     facts = rf.from_evidence(
-        "group G00007: residential:driveway, rural, speed 50 default, lanes None, one way, "
-        "no count, facility none; reports"
+        "Own-picks review 2026-11-09, group G00007: residential:driveway, rural, "
+        "speed 50 default, lanes None, one way, no count, facility none; reports"
     )
     assert facts["highway"] == "residential"
     assert facts["speed_mph"] is None and facts["lanes"] is None and facts["oneway"]
@@ -54,6 +54,8 @@ def test_no_speed_no_lanes_and_a_default_speed_read_as_none() -> None:
 
 def test_a_hand_written_sentence_is_not_read() -> None:
     assert rf.from_evidence("Owner's report from the street, 2026-11-10") is None
+    # Not even one quoting an own-picks sentence: it replaced that row, often for wrong facts.
+    assert rf.from_evidence("The owner's report. Was: " + SENTENCE) is None
 
 
 @pytest.mark.parametrize("path", OWN_PICKS, ids=lambda p: p.name)
@@ -162,7 +164,7 @@ def test_compare_lists_only_moved_ways_with_both_levels() -> None:
     ways = {1: SimpleNamespace(tags=tags), 2: SimpleNamespace(tags={**tags, "lanes": "4"})}
     result = SimpleNamespace(speed_mph=35, volume_aadt=9000, tier=3)
     changed, checked = rf.compare(
-        rated, ways, {1: result, 2: result}, {2: 2.5}, lambda t: "lane", lambda r: 3.0
+        rated, ways, {1: result, 2: result}, {2: 2.5}, lambda w, t: "lane", lambda r: 3.0
     )
     assert checked == 2
     assert [(c.way_id, c.our_level, c.formula_level, c.what) for c in changed] == [
@@ -180,6 +182,8 @@ def test_compare_lists_only_moved_ways_with_both_levels() -> None:
         ({"speed_mph": "35"}, "speed_mph"),
         ({"count_band": [1]}, "count_band"),
         ({"colour": "red"}, "has no"),
+        ({"highway": 5}, "highway"),
+        ({"urban": "yes"}, "urban"),
     ],
 )
 def test_a_malformed_facts_object_is_refused(facts, problem) -> None:
@@ -191,14 +195,52 @@ def test_a_good_facts_object_passes() -> None:
 
 
 def test_a_retired_row_no_longer_pins_its_facts(tmp_path) -> None:
-    group = {"kind": "stress", "evidence": SENTENCE, "ways": [4, 5]}
+    value = {"adjustment_id": "own-1"}
+    group = {"kind": "stress", "value": value, "evidence": SENTENCE, "ways": [4, 5, 6]}
     (tmp_path / "a.json").write_text(json.dumps({"version": 1, "groups": [group]}))
-    retire = [{"kind": "stress", "osm_way_id": 4, "value": {}, "reason": "r"}]
-    (tmp_path / "b.json").write_text(json.dumps({"version": 1, "retire": retire}))
-    assert sorted(rf.load(tmp_path)) == [5]
+    retire = [
+        {"kind": "stress", "osm_way_id": 4, "value": value, "reason": "r"},
+        {"kind": "stress", "osm_way_id": 5, "value": value, "reason": "r"},
+        # Another row's retirement leaves our facts alone.
+        {"kind": "stress", "osm_way_id": 6, "value": {"adjustment_id": "other"}, "reason": "r"},
+    ]
+    again = {"kind": "stress", "value": {"adjustment_id": "fix-1"}, "evidence": "rechecked"}
+    document = {
+        "version": 1,
+        "decided": "2026-11-12",
+        "retire": retire,
+        "groups": [{**again, "ways": [5]}],
+    }
+    (tmp_path / "b.json").write_text(json.dumps(document))
+    found = rf.load(tmp_path)
+    # A row in its place that states no facts is not checked (it may exist because the
+    # facts were wrong); another row's retirement leaves ours alone.
+    assert sorted(found) == [6]
+    assert found[6].adjustment_id == "own-1"
+
+
+def test_one_bad_entry_is_skipped_not_the_report() -> None:
+    rated = {1: rf.Rated({"highway": 5}, "x.json", "d"), 2: rf.Rated(STORED, "x.json", "d")}
+    ways = {w: SimpleNamespace(tags={"highway": "secondary", "lanes": "4"}) for w in (1, 2)}
+    result = SimpleNamespace(speed_mph=35, volume_aadt=9000, tier=3)
+    changed, _ = rf.compare(
+        rated, ways, {1: result, 2: result}, {}, lambda w, t: "lane", lambda r: 3.0
+    )
+    assert [c.way_id for c in changed] == [2]
 
 
 def test_the_own_picks_files_pin_every_way_but_the_retired() -> None:
     found = rf.load(OVERRIDES)
-    assert len(found) > 200_000
+    own = sum(len(g["ways"]) for p in OWN_PICKS for g in json.loads(p.read_text())["groups"])
+    retired = {
+        r["osm_way_id"]
+        for p in OVERRIDES.glob("*.json")
+        if p not in OWN_PICKS
+        for r in json.loads(p.read_text()).get("retire", [])
+        if r["kind"] == "stress"
+        and str(r["value"].get("adjustment_id", "")).startswith(("md-own-", "va-own-", "wv-own-"))
+    }
+    # Every own-picks way but those a later file re-rated (the North Bethesda lanes, the
+    # 2026-11-12 recheck), whose new rows state no facts.
+    assert len(found) == own - len(retired)
     assert 553709201 not in found, "Woodglen Drive, retired by the North Bethesda file"

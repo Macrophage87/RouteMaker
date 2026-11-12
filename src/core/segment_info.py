@@ -775,10 +775,10 @@ GRADE_WORDS = {
     RIDER_CHECKED: "rider-checked",
 }
 GRADE_DETAIL = {
-    MEASURED: "Measured: a traffic count and a posted speed",
-    PART_ASSUMED: "Part assumed: a traffic count or a posted speed, not both",
-    INFERRED: "Inferred from surroundings: no traffic count and no posted speed",
-    RIDER_CHECKED: "Rider-checked: set from the road panel or a reviewed rider rating",
+    MEASURED: "Measured: a traffic count and a known speed limit",
+    PART_ASSUMED: "Part assumed: a traffic count or a known speed limit, not both",
+    INFERRED: "Inferred from surroundings: no traffic count and no known speed limit",
+    RIDER_CHECKED: "Rider-checked: set by the owner on the road or a reviewed rider rating",
 }
 # A road-panel edit's adjustment id (`core.stress_edits`), and a Review ruling's.
 PANEL_EDIT_PREFIX = "edit-"

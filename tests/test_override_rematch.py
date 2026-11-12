@@ -972,14 +972,27 @@ def test_the_stage_lists_a_pinned_road_whose_facts_moved(tmp_path, monkeypatch) 
     context = context_with(tmp_path, ways, stress)
     facts = {"highway": "primary", "lanes": 2, "speed_mph": None, "facility": "none"}
     monkeypatch.setattr(
-        rated_facts, "load", lambda: {1: rated_facts.Rated(facts, "x.json", "2026-11-09")}
+        rated_facts,
+        "load",
+        lambda: {
+            1: rated_facts.Rated(facts, "x.json", "2026-11-09", adjustment_id="harford-lts1"),
+            # Re-rated since: the applied row is another, so its old facts are not compared.
+            20: rated_facts.Rated(facts, "x.json", "2026-11-09", adjustment_id="own-pick-20"),
+        },
     )
-    rows = [replace(stress_row(1, tier=1), fingerprint=fingerprint())]
+    ways.append(StageWay(20, dict(tags, name="Elsewhere Road"), line(3000, 0, 45)))
+    stress[20] = StressResult(Stress.LTS3, "x")
+    context.ways_by_id[20] = ways[-1]
+    rows = [
+        replace(stress_row(1, tier=1), fingerprint=fingerprint()),
+        stress_row(20, tier=2, adjustment="edit-7"),
+    ]
     build_handlers(context, load_overrides=lambda: rows)[Stage.APPLY_OVERRIDES]()
 
     assert context.stress_by_way[11].tier is Stress.LTS1, "our level stands"
     reports = tmp_path / "work" / "reports"
     text = (reports / "rated-facts-changed.md").read_text()
     assert "Pinned roads with stored facts, in this extract: 2" in text
+    assert "Elsewhere Road" not in text
     assert "| 11 | Harford Road | primary | 1.0 | 3.0 | 2026-11-09 | lanes 2 -> 4 |" in text
     assert "12,Harford Road" in (reports / "rated-facts-changed.csv").read_text()

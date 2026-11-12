@@ -188,13 +188,21 @@ traffic count and bike facility, and those can change under it: a new protected 
 lower posted speed, a new count. Each own-picks group's `evidence` sentence already lists
 those facts, and a row or group may carry them as a `facts` object instead
 (`src/pipeline/rated_facts.py`, `FACT_KEYS`). At each rebuild `rated_facts.compare`
-checks every approved, pinned way against what this extract and the agency layers now
-say, and writes the ways whose facts moved to `rated-facts-changed.md`/`.csv` in the
+checks each pinned way whose applied row is the one that stated the facts (matched by
+`adjustment_id`) against what this extract and the agency layers now say, and writes the ways whose facts moved to `rated-facts-changed.md`/`.csv` in the
 rebuild's report directory. What counts as moved (our defaults, unmeasured): a
 different class; a speed now read or no longer read, or 5 mph or more apart; a different
 `lanes` tag; a count where there was none, or more than 20% outside the stored band;
 a different bike facility class. A count that disappears is not listed (the match
-changed, not the road).
+changed, not the road). Class and `lanes` are read from the way's own OSM tags, as the
+own-picks sweep read them; speed, count and facility from what the classifier read
+(agency overlay and curated lanes included).
+
+Not checked: a road re-rated since (a road-panel edit or Review ruling replaces the row),
+and any row that states no facts: hand-written rows, and the rows that replace own-picks
+rows (the North Bethesda lanes, 2026-11-10; the 2026-11-12 recheck's 12,396 ways), since a
+replacement often exists because the old facts were wrong. A replacing file states its own
+`facts` to be checked. The report's first line says how many pinned roads were checked.
 
 The road **keeps our level** (the owner's call, 2026-11-12: "Keep our level, queue it
 for you"). The list is Review's queue "Facts changed since rated", where Accept keeps the
@@ -205,8 +213,9 @@ level and Change LTS re-rates the road.
 The road panel's first line says how sure the level is, a few words after it ("LTS 2 ·
 Fine for adults · inferred from surroundings"), and the details repeat it in a "How
 sure" row (`core.segment_info.evidence_grade`): **measured** (a traffic count and a
-posted speed), **part assumed** (one of them), **inferred from surroundings** (neither),
-or **rider-checked** (a road-panel edit or a reviewed community rating). It reads what the
+known speed limit: posted, an agency's record or a curated speed), **part assumed** (one
+of them), **inferred from surroundings** (neither), or **rider-checked** (the owner's own
+level from the road panel or a Review ruling, or a reviewed community rating). It reads what the
 level rests on, not who set it, so an own-picks road with no count or speed sign reads
 "inferred". Paths and trails have none. Plan's route summary does not mention it (the
 owner's pick).

@@ -3147,19 +3147,30 @@ def build_handlers(
         it never fails the rebuild."""
         try:
             stored = rated_facts.follow_rematch(rated_facts.load(), rematch_report.entries)
-            stored = {w: r for w, r in stored.items() if w in before_rows}
-            ours = {
-                w: level_of(context.stress_by_way[w])
-                for w in stored
-                if w in context.stress_by_way and context.stress_by_way[w].tier is not None
-            }
+            # Only while the row the facts came from is the one applied: a road re-rated in
+            # the road panel or Review, or pinned by another file's row, is not compared with
+            # facts it was never rated from (review of #1183).
+            ours: dict[int, float] = {}
+            for w, r in list(stored.items()):
+                result = context.stress_by_way.get(w)
+                adjustment = getattr(result, "adjustment", None) if w in before_rows else None
+                if adjustment is None or adjustment.adjustment_id != r.adjustment_id:
+                    del stored[w]
+                    continue
+                ours[w] = level_of(result)
+
+            def formula_of(result) -> float | None:
+                # The formula's own level where an agency's replaced it (`formula_tier`).
+                tier = getattr(result, "formula_tier", None)
+                if tier is not None:
+                    return int(tier) + (0.5 if result.formula_half else 0.0)
+                return level_of(result) if result.tier is not None else None
+
+            def facility_of(way_id: int, tags) -> str:
+                return str(facility.facility(dict(context.class_tags_by_way.get(way_id, tags))))
+
             changed, checked = rated_facts.compare(
-                stored,
-                context.ways_by_id,
-                before_rows,
-                ours,
-                lambda tags: str(facility.facility(dict(tags))),
-                level_of,
+                stored, context.ways_by_id, before_rows, ours, facility_of, formula_of
             )
             write_reports(
                 context.work_dir,

@@ -69,6 +69,9 @@ _EVIDENCE = re.compile(
 )
 
 
+OWN_PICKS_HEAD = "Own-picks review "
+
+
 def _number(text: str) -> int:
     return int(text.replace(",", ""))
 
@@ -89,7 +92,9 @@ def count_band(text: str) -> list | None:
 def from_evidence(sentence: str) -> dict | None:
     """The facts an own-picks group's evidence sentence states, or None where the
     sentence is not in that form (a hand-written row's)."""
-    m = _EVIDENCE.search(sentence or "")
+    # Only an own-picks review's own sentence: a later row that quotes one (Woodglen Drive's,
+    # 2026-11-10, replaced because those facts were wrong) is not rated from it.
+    m = _EVIDENCE.search(sentence or "") if (sentence or "").startswith(OWN_PICKS_HEAD) else None
     if not m:
         return None
     source = m["source"]
@@ -113,6 +118,12 @@ def facts_problem(facts: object) -> str | None:
     extra = set(facts) - FACT_KEYS
     if extra:
         return f"facts has no {sorted(extra)}; its keys are {sorted(FACT_KEYS)}"
+    for key in ("highway", "speed_source"):
+        if facts.get(key) is not None and not isinstance(facts[key], str):
+            return f"facts.{key} is text or null"
+    for key in ("urban", "oneway"):
+        if key in facts and not isinstance(facts[key], bool):
+            return f"facts.{key} is true or false"
     if "facility" in facts and facts["facility"] not in FACILITIES:
         return f"facts.facility is one of {list(FACILITIES)}"
     for key in ("speed_mph", "lanes"):
@@ -132,12 +143,14 @@ def facts_problem(facts: object) -> str | None:
 
 @dataclass(frozen=True)
 class Rated:
-    """What a pinned row was rated from: its facts, its file and the day it was decided."""
+    """What a pinned row was rated from: its facts, its file, the day it was decided, and its
+    `adjustment_id`, so the facts are compared only while that row is the one applied."""
 
     facts: dict
     file: str
     decided: str
     reason: str = ""
+    adjustment_id: str | None = None
 
 
 def load(directory: Path | str | None = None) -> dict[int, Rated]:
@@ -161,10 +174,18 @@ def _load(signature: tuple) -> dict[int, Rated]:
         if not isinstance(document, dict):
             continue
         decided = str(document.get("decided") or "")
-        # A row a later file retires (its `retire` list) no longer pins the way with its facts.
+        # A row a later file retires (its `retire` list, matched by adjustment id) no longer
+        # pins the way with its facts. The row written in its place is checked only if it
+        # states facts of its own: a replacement is often made because the facts were wrong
+        # (Woodglen Drive's protected lane, 2026-11-10), so it never inherits the old ones.
         for entry in document.get("retire") or []:
-            if isinstance(entry, dict) and entry.get("kind") == "stress":
-                found.pop(entry.get("osm_way_id"), None)
+            if not isinstance(entry, dict) or entry.get("kind") != "stress":
+                continue
+            way = entry.get("osm_way_id")
+            value = entry.get("value") if isinstance(entry.get("value"), dict) else {}
+            old = found.get(way)
+            if old is not None and old.adjustment_id == value.get("adjustment_id"):
+                del found[way]
         entries = [
             (row, [row.get("osm_way_id")])
             for row in document.get("rows") or []
@@ -180,9 +201,12 @@ def _load(signature: tuple) -> dict[int, Rated]:
             facts = entry.get("facts")
             if facts is None or facts_problem(facts):
                 facts = from_evidence(entry.get("evidence") or "")
-            if not facts:
+            value = entry.get("value") if isinstance(entry.get("value"), dict) else {}
+            adjustment = value.get("adjustment_id")
+            reason = str(entry.get("reason") or "")
+            rated = Rated(facts, path.name, decided, reason, adjustment) if facts else None
+            if rated is None:
                 continue
-            rated = Rated(facts, path.name, decided, str(entry.get("reason") or ""))
             for way in ways:
                 if isinstance(way, int) and not isinstance(way, bool):
                     found[way] = rated
@@ -337,13 +361,15 @@ def compare(
     stress_by_way: Mapping[int, object],
     our_level: Mapping[int, float],
     facility_of,
-    level_of,
+    formula_of,
 ) -> tuple[list[Changed], int]:
     """The pinned ways whose facts moved, and how many pinned ways were checked.
 
     `stress_by_way` is the classifier's result before any row; `our_level` the level each
-    pinned row sets; `facility_of(tags)` the facility class; `level_of(result)` a result's
-    level, half step included."""
+    pinned row sets; `facility_of(way_id, tags)` the facility class from the tags the
+    classifier read (the agency overlay and curated lanes included); `formula_of(result)`
+    the formula's own level. Class and `lanes` are the way's own OSM tags, as the
+    own-picks sweep read them. A way whose stored facts cannot be compared is skipped."""
     out: list[Changed] = []
     checked = 0
     for way_id, r in rated.items():
@@ -353,7 +379,10 @@ def compare(
             continue
         checked += 1
         tags = getattr(way, "tags", {}) or {}
-        what = changes(r.facts, current_facts(tags, result, facility_of(tags)))
+        try:
+            what = changes(r.facts, current_facts(tags, result, facility_of(way_id, tags)))
+        except (TypeError, ValueError, AttributeError):
+            continue
         if what:
             out.append(
                 Changed(
@@ -361,7 +390,7 @@ def compare(
                     name=str(tags.get("name") or ""),
                     highway=str(tags.get("highway") or ""),
                     our_level=our_level.get(way_id),
-                    formula_level=level_of(result) if getattr(result, "tier", None) else None,
+                    formula_level=formula_of(result),
                     rated=r,
                     what=what,
                 )

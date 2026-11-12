@@ -1508,5 +1508,5 @@ def test_the_details_say_how_sure_the_level_is() -> None:
     row = {"stress_tier": 2, "stress_rule": "mixed traffic", "volume_aadt": None}
     rows = {r["label"]: r for r in segment_info.stress_rows(row)}
     assert rows["How sure"]["value"] == (
-        "Inferred from surroundings: no traffic count and no posted speed"
+        "Inferred from surroundings: no traffic count and no known speed limit"
     )
