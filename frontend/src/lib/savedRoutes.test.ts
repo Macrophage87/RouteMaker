@@ -315,8 +315,8 @@ test("Save route sits beside Share; My routes is a popup from Save and load, in 
   // The owner, 2026-10-18: "the files tab (maybe call it save or load) is where we should save the routes and search for them".
   assert.doesNotMatch(sheets, /<MyRoutes |<KeptRoutes /);
   // Stephen, 2026-11-12: "Put the load rides in a popout and have save load be mostly about saving and exporting":
-  // Save and Share, then the files to export, then the one button that opens My routes.
-  assert.match(sheets, /\{shareControls\}\s*<GpxPanel[\s\S]*?\/>\s*\{onMyRoutes && \(/);
+  // Save and Share, then the one button that opens My routes (above the export: no scroll to reach it), then the files.
+  assert.match(sheets, /\{shareControls\}\s*\{onMyRoutes && \([\s\S]*?\)\}\s*<GpxPanel/);
   assert.match(sheets, /onClick=\{\(event\) => onMyRoutes\(event\.currentTarget\)\}/);
   assert.match(sheets, /<SheetFrame id="sheet-routes" title=\{SHEET_TITLES\.routes\} open=\{nav\.view === "routes"\}[^>]*popup>\s*\{routes\}/);
   const your = readFileSync(new URL("../YourRoutes.tsx", import.meta.url), "utf8");

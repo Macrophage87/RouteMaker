@@ -1,0 +1,62 @@
+[
+ {
+  "turn": "Start",
+  "road": "Rock Creek Trl",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Caution",
+  "road": "Shoreham Dr NW",
+  "then": "",
+  "arrow": "caution"
+ },
+ {
+  "turn": "Left",
+  "road": "Zoo Loop Trl",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "Rock Creek Trl",
+  "then": "then left onto Path, then right onto Path",
+  "arrow": "turn right,left,right"
+ },
+ {
+  "turn": "Bear left",
+  "road": "Path",
+  "then": "",
+  "arrow": "turn bear_left"
+ },
+ {
+  "turn": "Bear right",
+  "road": "Western Ridge Trl",
+  "then": "",
+  "arrow": "turn bear_right"
+ },
+ {
+  "turn": "Bear right",
+  "road": "Western Ridge Trl",
+  "then": "",
+  "arrow": "turn bear_right"
+ },
+ {
+  "turn": "Bear right",
+  "road": "Western Ridge Trl",
+  "then": "",
+  "arrow": "turn bear_right"
+ },
+ {
+  "turn": "Cross",
+  "road": "Broad Branch Rd NW",
+  "then": "then bear right onto Rock Creek Trl, then right onto Beach Dr NW",
+  "arrow": "turn across bear_right,right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

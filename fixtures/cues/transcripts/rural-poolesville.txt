@@ -1,0 +1,148 @@
+# rural-poolesville: Country roads near Poolesville: long stretches, few turns, bends with no choice
+
+## The cues Ride made
+    26 m  #0 left Svc Rd: Left onto the service road.
+    30 m  #1 hazard Elgin Rd: Continue onto Elgin Road. Busy junction, no signal. Busy road.
+   153 m  #2 left Wootton Ave: Left onto Wootton Avenue.
+  1049 m  #3 hazard Fisher Ave: Busy crossing at Fisher Avenue, no signal.
+  1169 m  #4 left Kohlhoss Rd: Left onto Kohlhoss Road.
+  1544 m  #5 right Cattail Rd: Right onto Cattail Road.
+  4333 m  #6 left Darnestown Rd: Left onto Darnestown Road.
+  4740 m  #7 right Peach Tree Rd: Right onto Peach Tree Road.
+  7070 m  #8 right Moore Rd: Right onto Moore Road.
+  8419 m  #9 left Svc Rd: Left onto the service road.
+  8582 m  #10 end: The end of the route. Destination on your left.
+
+## rural-poolesville at 8 mph, steady
+    0 s      0 m  #0 left Svc Rd prepare: "In 90 feet, left onto the service road." -> said
+    4 s     14 m  #0 left Svc Rd now (urgent): "Left now onto the service road." -> said
+    5 s     18 m  #1 hazard Elgin Rd advance: "In 40 feet, continue onto Elgin Road. Busy junction, no signal. Busy road." -> dropped
+    6 s     21 m  #2 left Wootton Ave advance: "In 450 feet, left onto Wootton Avenue. Busy junction." -> held 2.0 s, as "In 400 feet, left onto Wootton Avenue. Busy junction."
+   31 s    111 m  #2 left Wootton Ave prepare: "In 140 feet, left onto Wootton Avenue." -> said
+   39 s    139 m  #2 left Wootton Ave now (urgent): "Left now onto Wootton Avenue." -> said
+  252 s    901 m  #3 hazard Fisher Ave advance: "In 500 feet, busy crossing at Fisher Avenue, no signal." -> said
+  286 s   1023 m  #4 left Kohlhoss Rd advance: "In 500 feet, left onto Kohlhoss Road." -> said
+  315 s   1127 m  #4 left Kohlhoss Rd prepare: "In 140 feet, left onto Kohlhoss Road." -> said
+  323 s   1155 m  #4 left Kohlhoss Rd now (urgent): "Left now onto Kohlhoss Road." -> said
+  390 s   1395 m  #5 right Cattail Rd advance: "In 500 feet, right onto Cattail Road." -> said
+  420 s   1502 m  #5 right Cattail Rd prepare: "In 140 feet, right onto Cattail Road." -> said
+  428 s   1531 m  #5 right Cattail Rd now (urgent): "Right now onto Cattail Road." -> said
+  449 s   1606 m  #5 right Cattail Rd undefined: "Continue on Cattail Road for 1.7 miles." -> said
+ 1170 s   4184 m  #6 left Darnestown Rd advance: "In 500 feet, left onto Darnestown Road. Busy junction." -> said
+ 1200 s   4292 m  #6 left Darnestown Rd prepare: "In 140 feet, left onto Darnestown Road." -> said
+ 1208 s   4320 m  #6 left Darnestown Rd now (urgent): "Left now onto Darnestown Road." -> said
+ 1284 s   4592 m  #7 right Peach Tree Rd advance: "In 500 feet, right onto Peach Tree Road." -> said
+ 1313 s   4696 m  #7 right Peach Tree Rd prepare: "In 140 feet, right onto Peach Tree Road." -> said
+ 1322 s   4728 m  #7 right Peach Tree Rd now (urgent): "Right now onto Peach Tree Road." -> said
+ 1343 s   4803 m  #7 right Peach Tree Rd undefined: "Continue on Peach Tree Road for 1.4 miles." -> said
+ 1936 s   6924 m  #8 right Moore Rd advance: "In 500 feet, right onto Moore Road." -> said
+ 1965 s   7027 m  #8 right Moore Rd prepare: "In 140 feet, right onto Moore Road." -> said
+ 1973 s   7056 m  #8 right Moore Rd now (urgent): "Right now onto Moore Road." -> said
+ 2313 s   8272 m  #9 left Svc Rd advance: "In 500 feet, left onto the service road." -> said
+ 2342 s   8376 m  #9 left Svc Rd prepare: "In 140 feet, left onto the service road." -> said
+ 2350 s   8404 m  #9 left Svc Rd now (urgent): "Left now onto the service road." -> said
+ 2395 s   8565 m  #10 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## rural-poolesville at 12 mph, steady
+    0 s      0 m  #0 left Svc Rd prepare: "In 90 feet, left onto the service road." -> said, cut 2.7 s in
+    3 s     16 m  #0 left Svc Rd now (urgent): "Left now onto the service road." -> said
+    4 s     21 m  #1 hazard Elgin Rd advance: "In 30 feet, continue onto Elgin Road. Busy junction, no signal. Busy road." -> dropped
+    5 s     27 m  #2 left Wootton Ave advance: "In 400 feet, left onto Wootton Avenue. Busy junction." -> held 3.0 s
+   19 s    102 m  #2 left Wootton Ave prepare: "In 170 feet, left onto Wootton Avenue." -> said
+   26 s    139 m  #2 left Wootton Ave now (urgent): "Left now onto Wootton Avenue." -> said
+  168 s    901 m  #3 hazard Fisher Ave advance: "In 500 feet, busy crossing at Fisher Avenue, no signal." -> said
+  191 s   1025 m  #4 left Kohlhoss Rd advance: "In 500 feet, left onto Kohlhoss Road." -> said
+  208 s   1116 m  #4 left Kohlhoss Rd prepare: "In 180 feet, left onto Kohlhoss Road." -> said
+  216 s   1159 m  #4 left Kohlhoss Rd now (urgent): "Left now onto Kohlhoss Road." -> said
+  260 s   1395 m  #5 right Cattail Rd advance: "In 500 feet, right onto Cattail Road." -> said
+  278 s   1491 m  #5 right Cattail Rd prepare: "In 170 feet, right onto Cattail Road." -> said
+  286 s   1534 m  #5 right Cattail Rd now (urgent): "Right now onto Cattail Road." -> said
+  299 s   1604 m  #5 right Cattail Rd undefined: "Continue on Cattail Road for 1.7 miles." -> said
+  780 s   4184 m  #6 left Darnestown Rd advance: "In 500 feet, left onto Darnestown Road. Busy junction." -> said
+  798 s   4281 m  #6 left Darnestown Rd prepare: "In 170 feet, left onto Darnestown Road." -> said
+  805 s   4318 m  #6 left Darnestown Rd now (urgent): "Left now onto Darnestown Road." -> said
+  856 s   4592 m  #7 right Peach Tree Rd advance: "In 500 feet, right onto Peach Tree Road." -> said
+  874 s   4689 m  #7 right Peach Tree Rd prepare: "In 170 feet, right onto Peach Tree Road." -> said
+  881 s   4726 m  #7 right Peach Tree Rd now (urgent): "Right now onto Peach Tree Road." -> said
+  895 s   4801 m  #7 right Peach Tree Rd undefined: "Continue on Peach Tree Road for 1.4 miles." -> said
+ 1291 s   6926 m  #8 right Moore Rd advance: "In 500 feet, right onto Moore Road." -> said
+ 1309 s   7022 m  #8 right Moore Rd prepare: "In 160 feet, right onto Moore Road." -> said
+ 1316 s   7060 m  #8 right Moore Rd now (urgent): "Right now onto Moore Road." -> said
+ 1542 s   8272 m  #9 left Svc Rd advance: "In 500 feet, left onto the service road." -> said
+ 1560 s   8369 m  #9 left Svc Rd prepare: "In 160 feet, left onto the service road." -> said
+ 1567 s   8406 m  #9 left Svc Rd now (urgent): "Left now onto the service road." -> said
+ 1597 s   8567 m  #10 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## rural-poolesville at 18 mph, steady
+    0 s      0 m  #0 left Svc Rd prepare: "In 90 feet, left onto the service road." -> said, cut 1.7 s in
+    2 s     16 m  #0 left Svc Rd now (urgent): "Left now onto the service road." -> said
+    3 s     24 m  #1 hazard Elgin Rd advance: "In 20 feet, continue onto Elgin Road. Busy junction, no signal. Busy road." -> dropped
+    4 s     32 m  #2 left Wootton Ave advance: "In 400 feet, left onto Wootton Avenue. Busy junction." -> held 4.0 s, as "In 300 feet, left onto Wootton Avenue. Busy junction."
+   10 s     80 m  #2 left Wootton Ave prepare: "In 250 feet, left onto Wootton Avenue." -> held 6.0 s, cut 0.7 s in, as "In 110 feet, left onto Wootton Avenue."
+   17 s    137 m  #2 left Wootton Ave now (urgent): "Left now onto Wootton Avenue." -> said
+  104 s    837 m  #3 hazard Fisher Ave advance: "In 700 feet, busy crossing at Fisher Avenue, no signal." -> said
+  119 s    958 m  #4 left Kohlhoss Rd advance: "In 700 feet, left onto Kohlhoss Road." -> said
+  136 s   1094 m  #4 left Kohlhoss Rd prepare: "In 250 feet, left onto Kohlhoss Road." -> said
+  144 s   1159 m  #4 left Kohlhoss Rd now (urgent): "Left now onto Kohlhoss Road." -> said
+  165 s   1328 m  #5 right Cattail Rd advance: "In 700 feet, right onto Cattail Road." -> said
+  182 s   1465 m  #5 right Cattail Rd prepare: "In 250 feet, right onto Cattail Road." -> said
+  190 s   1529 m  #5 right Cattail Rd now (urgent): "Right now onto Cattail Road." -> said
+  200 s   1609 m  #5 right Cattail Rd undefined: "Continue on Cattail Road for 1.7 miles." -> said
+  512 s   4120 m  #6 left Darnestown Rd advance: "In 700 feet, left onto Darnestown Road. Busy junction." -> said
+  529 s   4257 m  #6 left Darnestown Rd prepare: "In 250 feet, left onto Darnestown Road." -> said
+  537 s   4321 m  #6 left Darnestown Rd now (urgent): "Left now onto Darnestown Road." -> said
+  563 s   4530 m  #7 right Peach Tree Rd advance: "In 700 feet, right onto Peach Tree Road." -> said
+  580 s   4667 m  #7 right Peach Tree Rd prepare: "In 250 feet, right onto Peach Tree Road." -> said
+  588 s   4731 m  #7 right Peach Tree Rd now (urgent): "Right now onto Peach Tree Road." -> said
+  597 s   4804 m  #7 right Peach Tree Rd undefined: "Continue on Peach Tree Road for 1.4 miles." -> said
+  852 s   6856 m  #8 right Moore Rd advance: "In 700 feet, right onto Moore Road." -> said
+  869 s   6993 m  #8 right Moore Rd prepare: "In 250 feet, right onto Moore Road." -> said
+  877 s   7057 m  #8 right Moore Rd now (urgent): "Right now onto Moore Road." -> said
+ 1020 s   8208 m  #9 left Svc Rd advance: "In 700 feet, left onto the service road." -> said
+ 1037 s   8344 m  #9 left Svc Rd prepare: "In 250 feet, left onto the service road." -> said
+ 1045 s   8409 m  #9 left Svc Rd now (urgent): "Left now onto the service road." -> said
+ 1065 s   8570 m  #10 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## rural-poolesville at 12 mph, missed-turn
+    0 s      0 m  #0 left Svc Rd prepare: "In 90 feet, left onto the service road." -> said, cut 2.7 s in
+    3 s     16 m  #0 left Svc Rd now (urgent): "Left now onto the service road." -> said
+    4 s     21 m  #1 hazard Elgin Rd advance: "In 30 feet, continue onto Elgin Road. Busy junction, no signal. Busy road." -> dropped
+    5 s     27 m  #2 left Wootton Ave advance: "In 400 feet, left onto Wootton Avenue. Busy junction." -> held 3.0 s
+   19 s    102 m  #2 left Wootton Ave prepare: "In 170 feet, left onto Wootton Avenue." -> said
+   26 s    139 m  #2 left Wootton Ave now (urgent): "Left now onto Wootton Avenue." -> said
+  168 s    901 m  #3 hazard Fisher Ave advance: "In 500 feet, busy crossing at Fisher Avenue, no signal." -> said
+  191 s   1025 m  #4 left Kohlhoss Rd advance: "In 500 feet, left onto Kohlhoss Road." -> said
+  208 s   1116 m  #4 left Kohlhoss Rd prepare: "In 180 feet, left onto Kohlhoss Road." -> said
+  216 s   1159 m  #4 left Kohlhoss Rd now (urgent): "Left now onto Kohlhoss Road." -> said
+  232 s   1169 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 75 m past the missed turn
+
+## rural-poolesville at 12 mph, weak-gps
+    0 s      0 m  #0 left Svc Rd prepare: "In 90 feet, left onto the service road." -> said, cut 2.7 s in
+    3 s     16 m  #0 left Svc Rd now (urgent): "Left now onto the service road." -> said
+    4 s     21 m  #1 hazard Elgin Rd advance: "In 30 feet, continue onto Elgin Road. Busy junction, no signal. Busy road." -> dropped
+    5 s     27 m  #2 left Wootton Ave advance: "In 400 feet, left onto Wootton Avenue. Busy junction." -> held 3.0 s
+   19 s    102 m  #2 left Wootton Ave prepare: "In 170 feet, left onto Wootton Avenue." -> said
+   26 s    139 m  #2 left Wootton Ave now (urgent): "Left now onto Wootton Avenue." -> said
+  168 s    901 m  #3 hazard Fisher Ave advance: "In 500 feet, busy crossing at Fisher Avenue, no signal." -> said
+  191 s   1025 m  #4 left Kohlhoss Rd advance: "In 500 feet, left onto Kohlhoss Road." -> said
+  208 s   1116 m  #4 left Kohlhoss Rd prepare: "In 180 feet, left onto Kohlhoss Road." -> said
+  216 s   1159 m  #4 left Kohlhoss Rd now (urgent): "Left now onto Kohlhoss Road." -> said
+  260 s   1395 m  #5 right Cattail Rd advance: "In 500 feet, right onto Cattail Road." -> said
+  278 s   1491 m  #5 right Cattail Rd prepare: "In 170 feet, right onto Cattail Road." -> said
+  286 s   1534 m  #5 right Cattail Rd now (urgent): "Right now onto Cattail Road." -> said
+  299 s   1604 m  #5 right Cattail Rd undefined: "Continue on Cattail Road for 1.7 miles." -> said
+  780 s   4184 m  #6 left Darnestown Rd advance: "In 500 feet, left onto Darnestown Road. Busy junction." -> said
+  798 s   4281 m  #6 left Darnestown Rd prepare: "In 170 feet, left onto Darnestown Road." -> said
+  811 s           note: "GPS is weak: turn cues paused."
+  856 s   4592 m  #7 right Peach Tree Rd advance: "In 500 feet, right onto Peach Tree Road." -> said
+  874 s   4689 m  #7 right Peach Tree Rd prepare: "In 170 feet, right onto Peach Tree Road." -> said
+  881 s   4726 m  #7 right Peach Tree Rd now (urgent): "Right now onto Peach Tree Road." -> said
+  895 s   4801 m  #7 right Peach Tree Rd undefined: "Continue on Peach Tree Road for 1.4 miles." -> said
+ 1291 s   6926 m  #8 right Moore Rd advance: "In 500 feet, right onto Moore Road." -> said
+ 1309 s   7022 m  #8 right Moore Rd prepare: "In 160 feet, right onto Moore Road." -> said
+ 1316 s   7060 m  #8 right Moore Rd now (urgent): "Right now onto Moore Road." -> said
+ 1542 s   8272 m  #9 left Svc Rd advance: "In 500 feet, left onto the service road." -> said
+ 1560 s   8369 m  #9 left Svc Rd prepare: "In 160 feet, left onto the service road." -> said
+ 1567 s   8406 m  #9 left Svc Rd now (urgent): "Left now onto the service road." -> said
+ 1597 s   8567 m  #10 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said

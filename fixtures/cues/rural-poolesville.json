@@ -1,0 +1,1334 @@
+{
+ "name": "rural-poolesville",
+ "about": "Country roads near Poolesville: long stretches, few turns, bends with no choice",
+ "route": {
+  "preset": "road-bike",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.417099,
+     39.145024
+    ],
+    [
+     -77.417008,
+     39.145248
+    ],
+    [
+     -77.417058,
+     39.145257
+    ],
+    [
+     -77.417442,
+     39.144298
+    ],
+    [
+     -77.417442,
+     39.144199
+    ],
+    [
+     -77.417228,
+     39.144141
+    ],
+    [
+     -77.415702,
+     39.14373
+    ],
+    [
+     -77.415527,
+     39.143669
+    ],
+    [
+     -77.41526,
+     39.143577
+    ],
+    [
+     -77.415076,
+     39.143528
+    ],
+    [
+     -77.414543,
+     39.143386
+    ],
+    [
+     -77.413764,
+     39.143188
+    ],
+    [
+     -77.412877,
+     39.142968
+    ],
+    [
+     -77.412809,
+     39.142948
+    ],
+    [
+     -77.411987,
+     39.14274
+    ],
+    [
+     -77.411744,
+     39.142679
+    ],
+    [
+     -77.411436,
+     39.142603
+    ],
+    [
+     -77.410743,
+     39.142432
+    ],
+    [
+     -77.410581,
+     39.142392
+    ],
+    [
+     -77.41045,
+     39.14236
+    ],
+    [
+     -77.409876,
+     39.142232
+    ],
+    [
+     -77.409782,
+     39.142211
+    ],
+    [
+     -77.409631,
+     39.142191
+    ],
+    [
+     -77.409414,
+     39.142181
+    ],
+    [
+     -77.409248,
+     39.142181
+    ],
+    [
+     -77.409156,
+     39.142185
+    ],
+    [
+     -77.408729,
+     39.142223
+    ],
+    [
+     -77.407647,
+     39.142334
+    ],
+    [
+     -77.407501,
+     39.142349
+    ],
+    [
+     -77.407359,
+     39.142364
+    ],
+    [
+     -77.406978,
+     39.142405
+    ],
+    [
+     -77.406885,
+     39.142414
+    ],
+    [
+     -77.406097,
+     39.142498
+    ],
+    [
+     -77.406138,
+     39.142701
+    ],
+    [
+     -77.406169,
+     39.142857
+    ],
+    [
+     -77.406204,
+     39.143032
+    ],
+    [
+     -77.406196,
+     39.143135
+    ],
+    [
+     -77.40615,
+     39.143264
+    ],
+    [
+     -77.406032,
+     39.143406
+    ],
+    [
+     -77.405944,
+     39.143512
+    ],
+    [
+     -77.405783,
+     39.143695
+    ],
+    [
+     -77.405603,
+     39.143901
+    ],
+    [
+     -77.405544,
+     39.143967
+    ],
+    [
+     -77.405464,
+     39.144058
+    ],
+    [
+     -77.405165,
+     39.144403
+    ],
+    [
+     -77.405113,
+     39.144462
+    ],
+    [
+     -77.405023,
+     39.144568
+    ],
+    [
+     -77.404963,
+     39.144646
+    ],
+    [
+     -77.40475,
+     39.145145
+    ],
+    [
+     -77.404586,
+     39.145515
+    ],
+    [
+     -77.403915,
+     39.145347
+    ],
+    [
+     -77.403694,
+     39.145366
+    ],
+    [
+     -77.403556,
+     39.145431
+    ],
+    [
+     -77.403465,
+     39.145526
+    ],
+    [
+     -77.402889,
+     39.146444
+    ],
+    [
+     -77.402259,
+     39.147448
+    ],
+    [
+     -77.402156,
+     39.147612
+    ],
+    [
+     -77.401887,
+     39.14803
+    ],
+    [
+     -77.401435,
+     39.148731
+    ],
+    [
+     -77.400711,
+     39.149864
+    ],
+    [
+     -77.400627,
+     39.149974
+    ],
+    [
+     -77.400497,
+     39.1501
+    ],
+    [
+     -77.400406,
+     39.150148
+    ],
+    [
+     -77.400199,
+     39.150257
+    ],
+    [
+     -77.399581,
+     39.150455
+    ],
+    [
+     -77.399391,
+     39.150505
+    ],
+    [
+     -77.399185,
+     39.150535
+    ],
+    [
+     -77.396789,
+     39.150493
+    ],
+    [
+     -77.394251,
+     39.150508
+    ],
+    [
+     -77.394142,
+     39.15052
+    ],
+    [
+     -77.393562,
+     39.150627
+    ],
+    [
+     -77.393165,
+     39.150726
+    ],
+    [
+     -77.39299,
+     39.150791
+    ],
+    [
+     -77.392822,
+     39.150852
+    ],
+    [
+     -77.392021,
+     39.151226
+    ],
+    [
+     -77.391555,
+     39.151485
+    ],
+    [
+     -77.391311,
+     39.151659
+    ],
+    [
+     -77.391288,
+     39.151676
+    ],
+    [
+     -77.391187,
+     39.151793
+    ],
+    [
+     -77.39112,
+     39.15187
+    ],
+    [
+     -77.39067,
+     39.152565
+    ],
+    [
+     -77.390571,
+     39.152755
+    ],
+    [
+     -77.390457,
+     39.153118
+    ],
+    [
+     -77.390312,
+     39.153512
+    ],
+    [
+     -77.390133,
+     39.153998
+    ],
+    [
+     -77.389869,
+     39.154712
+    ],
+    [
+     -77.389808,
+     39.154842
+    ],
+    [
+     -77.389503,
+     39.155334
+    ],
+    [
+     -77.389083,
+     39.155807
+    ],
+    [
+     -77.389007,
+     39.155918
+    ],
+    [
+     -77.388566,
+     39.157137
+    ],
+    [
+     -77.388351,
+     39.157733
+    ],
+    [
+     -77.388236,
+     39.15813
+    ],
+    [
+     -77.388175,
+     39.15867
+    ],
+    [
+     -77.388098,
+     39.159338
+    ],
+    [
+     -77.387837,
+     39.160694
+    ],
+    [
+     -77.387763,
+     39.161075
+    ],
+    [
+     -77.387664,
+     39.161354
+    ],
+    [
+     -77.387321,
+     39.161922
+    ],
+    [
+     -77.387123,
+     39.16222
+    ],
+    [
+     -77.386892,
+     39.162438
+    ],
+    [
+     -77.387413,
+     39.163198
+    ],
+    [
+     -77.388451,
+     39.164682
+    ],
+    [
+     -77.388918,
+     39.165319
+    ],
+    [
+     -77.389053,
+     39.165501
+    ],
+    [
+     -77.389157,
+     39.165637
+    ],
+    [
+     -77.388788,
+     39.166116
+    ],
+    [
+     -77.388631,
+     39.16633
+    ],
+    [
+     -77.38832,
+     39.166751
+    ],
+    [
+     -77.387931,
+     39.167327
+    ],
+    [
+     -77.387763,
+     39.16764
+    ],
+    [
+     -77.387649,
+     39.167972
+    ],
+    [
+     -77.38758,
+     39.16827
+    ],
+    [
+     -77.387542,
+     39.168586
+    ],
+    [
+     -77.38755,
+     39.168773
+    ],
+    [
+     -77.38758,
+     39.168952
+    ],
+    [
+     -77.387771,
+     39.169498
+    ],
+    [
+     -77.388315,
+     39.170821
+    ],
+    [
+     -77.38832,
+     39.170833
+    ],
+    [
+     -77.388323,
+     39.170849
+    ],
+    [
+     -77.388377,
+     39.171105
+    ],
+    [
+     -77.388389,
+     39.171165
+    ],
+    [
+     -77.388389,
+     39.171386
+    ],
+    [
+     -77.388359,
+     39.171527
+    ],
+    [
+     -77.388198,
+     39.171939
+    ],
+    [
+     -77.388111,
+     39.172091
+    ],
+    [
+     -77.387637,
+     39.172922
+    ],
+    [
+     -77.38729,
+     39.17353
+    ],
+    [
+     -77.387046,
+     39.174018
+    ],
+    [
+     -77.386856,
+     39.174442
+    ],
+    [
+     -77.386121,
+     39.176101
+    ],
+    [
+     -77.385467,
+     39.177577
+    ],
+    [
+     -77.38535,
+     39.177852
+    ],
+    [
+     -77.385015,
+     39.178638
+    ],
+    [
+     -77.384979,
+     39.178722
+    ],
+    [
+     -77.384819,
+     39.1791
+    ],
+    [
+     -77.384452,
+     39.179836
+    ],
+    [
+     -77.383946,
+     39.180797
+    ],
+    [
+     -77.383842,
+     39.180995
+    ],
+    [
+     -77.38375,
+     39.181205
+    ],
+    [
+     -77.383735,
+     39.181335
+    ],
+    [
+     -77.383781,
+     39.181568
+    ],
+    [
+     -77.384086,
+     39.182411
+    ],
+    [
+     -77.384353,
+     39.182968
+    ],
+    [
+     -77.384391,
+     39.18309
+    ],
+    [
+     -77.384384,
+     39.183246
+    ],
+    [
+     -77.384346,
+     39.183357
+    ],
+    [
+     -77.384292,
+     39.183441
+    ],
+    [
+     -77.383526,
+     39.184576
+    ],
+    [
+     -77.383064,
+     39.185253
+    ],
+    [
+     -77.381118,
+     39.184436
+    ],
+    [
+     -77.380805,
+     39.184246
+    ],
+    [
+     -77.380323,
+     39.18383
+    ],
+    [
+     -77.380277,
+     39.18379
+    ],
+    [
+     -77.379981,
+     39.183544
+    ],
+    [
+     -77.379737,
+     39.183368
+    ],
+    [
+     -77.379653,
+     39.183326
+    ],
+    [
+     -77.378524,
+     39.182826
+    ],
+    [
+     -77.377746,
+     39.18246
+    ],
+    [
+     -77.377395,
+     39.182315
+    ],
+    [
+     -77.376815,
+     39.182113
+    ],
+    [
+     -77.376525,
+     39.182006
+    ],
+    [
+     -77.376377,
+     39.181929
+    ],
+    [
+     -77.376327,
+     39.181903
+    ],
+    [
+     -77.375907,
+     39.181625
+    ],
+    [
+     -77.375404,
+     39.181335
+    ],
+    [
+     -77.374671,
+     39.180805
+    ],
+    [
+     -77.373872,
+     39.180373
+    ],
+    [
+     -77.373225,
+     39.180024
+    ],
+    [
+     -77.37313,
+     39.179973
+    ],
+    [
+     -77.371276,
+     39.178928
+    ],
+    [
+     -77.370588,
+     39.178594
+    ],
+    [
+     -77.370445,
+     39.178524
+    ],
+    [
+     -77.370224,
+     39.178455
+    ],
+    [
+     -77.370189,
+     39.178505
+    ],
+    [
+     -77.369916,
+     39.178889
+    ],
+    [
+     -77.369673,
+     39.179161
+    ],
+    [
+     -77.369634,
+     39.179434
+    ],
+    [
+     -77.369485,
+     39.179795
+    ],
+    [
+     -77.369485,
+     39.179795
+    ]
+   ]
+  },
+  "distance_m": 8594.0,
+  "duration_s": 1347.6,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.00304,
+    6.3
+   ],
+   [
+    0.00349,
+    7.5
+   ],
+   [
+    0.00349,
+    15.5
+   ],
+   [
+    0.00356,
+    15.7
+   ],
+   [
+    0.01781,
+    34.3
+   ],
+   [
+    0.01781,
+    46.3
+   ],
+   [
+    0.01785,
+    46.4
+   ],
+   [
+    0.13638,
+    196.1
+   ],
+   [
+    0.17984,
+    258.5
+   ],
+   [
+    0.17991,
+    258.6
+   ],
+   [
+    0.17991,
+    266.6
+   ],
+   [
+    0.5047,
+    710.4
+   ],
+   [
+    0.50483,
+    710.6
+   ],
+   [
+    0.50483,
+    740.6
+   ],
+   [
+    0.55199,
+    800.2
+   ],
+   [
+    0.82373,
+    1142.3
+   ],
+   [
+    0.98083,
+    1318.4
+   ],
+   [
+    1.0,
+    1347.6
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 26,
+    "from_mi": 0.0,
+    "to_mi": 0.02,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 85 ft (26 m): Path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 26,
+    "to_m": 30,
+    "from_mi": 0.02,
+    "to_mi": 0.02,
+    "street": "service road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "service road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -95,
+      "others": [
+       0,
+       26
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 13 ft (4 m): Left onto the service road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 30,
+    "to_m": 153,
+    "from_mi": 0.02,
+    "to_mi": 0.1,
+    "street": "Elgin Road",
+    "tier": 3,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "straight",
+     "onto": "Elgin Road",
+     "control": "none",
+     "severity": "red",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "red",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 400 ft (123 m): Continue onto Elgin Road, no signal mapped (Very high stress junction), busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 153,
+    "to_m": 1171,
+    "from_mi": 0.1,
+    "to_mi": 0.73,
+    "street": "Wootton Avenue",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Wootton Avenue",
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.1 to 0.7 mi (0.2 to 1.2 km): Left onto Wootton Avenue, no signal mapped (Higher stress junction), fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "junction",
+    "from_m": 1050,
+    "to_m": 1050,
+    "from_mi": 0.65,
+    "to_mi": 0.65,
+    "street": "Fisher Avenue",
+    "tier": null,
+    "facility": null,
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": null,
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "At 0.7 mi (1.1 km): Cross Fisher Avenue (LTS 3), no signal mapped (Higher stress junction).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1171,
+    "to_m": 1546,
+    "from_mi": 0.73,
+    "to_mi": 0.96,
+    "street": "Kohlhoss Road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Kohlhoss Road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.7 to 1.0 mi (1.2 to 1.5 km): Left onto Kohlhoss Road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1546,
+    "to_m": 4339,
+    "from_mi": 0.96,
+    "to_mi": 2.7,
+    "street": "Cattail Road",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Cattail Road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.0 to 2.7 mi (1.5 to 4.3 km): Right onto Cattail Road, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4339,
+    "to_m": 4746,
+    "from_mi": 2.7,
+    "to_mi": 2.95,
+    "street": "Darnestown Road",
+    "tier": 4,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Darnestown Road",
+     "control": "none",
+     "severity": "red",
+     "stay": null,
+     "shape": {
+      "out": -67,
+      "others": [
+       110
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "red",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.7 to 2.9 mi (4.3 to 4.7 km): Left onto Darnestown Road, no signal mapped (Very high stress junction), heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4746,
+    "to_m": 7080,
+    "from_mi": 2.95,
+    "to_mi": 4.4,
+    "street": "Peach Tree Road",
+    "tier": 3,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Peach Tree Road",
+     "control": "none",
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 62,
+      "others": [
+       -2
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.9 to 4.4 mi (4.7 to 7.1 km): Right onto Peach Tree Road, busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 7080,
+    "to_m": 8430,
+    "from_mi": 4.4,
+    "to_mi": 5.24,
+    "street": "Moore Road",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Moore Road",
+     "control": "none",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "4.4 to 5.2 mi (7.1 to 8.4 km): Right onto Moore Road, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 8430,
+    "to_m": 8594,
+    "from_mi": 5.24,
+    "to_mi": 5.34,
+    "street": "service road",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "service road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -83,
+      "others": [
+       -11
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "5.2 to 5.3 mi (8.4 to 8.6 km): Left onto the service road, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   179
+  ],
+  "arrival_side": "left",
+  "leg_arrival_sides": [
+   "left"
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 30,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 30,
+    "to_m": 153,
+    "tier": 3,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 153,
+    "to_m": 1050,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1050,
+    "to_m": 1171,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1171,
+    "to_m": 1546,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1546,
+    "to_m": 1911,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1911,
+    "to_m": 4338,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 4338,
+    "to_m": 4745,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 4745,
+    "to_m": 7079,
+    "tier": 3,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 7079,
+    "to_m": 8593,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}

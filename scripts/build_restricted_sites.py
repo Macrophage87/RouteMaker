@@ -261,7 +261,7 @@ def collection(areas: dict, ways: Sequence) -> dict:
                     },
                 }
             )
-    features.extend(drawn_features())
+    features.extend(drawn_features(DRAWN))  # read at call time, so a test can point it elsewhere
     return {"type": "FeatureCollection", "features": features}
 
 
