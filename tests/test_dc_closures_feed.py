@@ -37,12 +37,16 @@ def _fresh(monkeypatch):
     workzones.forget()
 
 
+EMPTY = b'{"type": "FeatureCollection", "features": []}'
+
+
 class Net:
     """Answers by host, recording each URL and its headers."""
 
-    def __init__(self, fail: tuple[str, ...] = ()) -> None:
+    def __init__(self, fail: tuple[str, ...] = (), moco: bytes = EMPTY) -> None:
         self.asked: list[tuple[str, dict]] = []
         self.fail = fail
+        self.moco = moco
 
     def __call__(self, url: str, timeout: float, headers: dict) -> bytes:
         self.asked.append((url, headers))
@@ -51,6 +55,9 @@ class Net:
         if any(host in url for host in ("ProTrackPlusViews", "geo.dcwater.com", "wsscwater.com")):
             # Planned work (routemaker.planned_work; tests/test_planned_work.py): none here.
             return b'{"type": "FeatureCollection", "features": []}'
+        if "montgomerycountymd.gov" in url:
+            # Montgomery County DOT's closures (v0.27.0): legitimately empty most of the time.
+            return self.moco
         if "RoadClosurePlanned" in url:
             return b'{"type": "FeatureCollection", "features": []}'
         if "RoadClosureActive" in url:
@@ -220,6 +227,77 @@ class TestRefresh:
 
 
 @db
+class TestMontgomeryCounty:
+    """Montgomery County DOT's own road closures (v0.27.0, source "moco"): the state Road
+    Closure Reporter's fields on the county's server, read as the state's are."""
+
+    def test_its_closures_are_read_as_the_state_reporters_are(self) -> None:
+        moco = (DATA / "moco-road-closures.geojson").read_bytes()
+        net = Net(moco=moco)
+        sources.refresh(net, no_sleep, lambda: NOW, Placer())
+        (zone,) = stored("moco")["zones"]
+        assert zone["id"].startswith("moco-") and zone["source"] == "moco"
+        assert zone["kind"] == wz.CLOSED
+        assert zone["title"] == "Brookville Rd, Taylor St to Grubb Rd: closed (Montgomery County)"
+        assert "[phone]" in zone["description"] and "555" not in zone["description"]
+        url = next(u for u, _h in net.asked if "montgomerycountymd.gov" in u)
+        assert "Creator" not in url and "ClosureEnd" in url
+
+    def test_an_empty_layer_is_a_good_read(self) -> None:
+        """The county: "When no closures exist, the layer may contain zero features"."""
+        for minutes in range(0, 16 * 6, 16):
+            sources.refresh(Net(), no_sleep, lambda m=minutes: NOW + timedelta(minutes=m), Placer())
+        moco = stored("moco")
+        assert moco["zones"] == [] and moco["failed_at"] is None
+        assert moco["counts"] == [0] * 6
+
+
+@db
+class TestReadAsNothing:
+    """Backlog 2026-11-12, item 8: a source that still answers but parses to nothing (AlertDC's
+    RSS turned into HTML) was a quiet success. Now it is an alarm, and its last copy is kept."""
+
+    def test_a_usually_busy_source_reading_none_keeps_its_copy_and_fails_the_run(self) -> None:
+        moco = (DATA / "moco-road-closures.geojson").read_bytes()
+        many = json.loads(moco)
+        feature = many["features"][0]
+        many["features"] = [
+            {
+                **feature,
+                "properties": {**feature["properties"], "OBJECTID": n, "RC_GUID": f"{{{n}}}"},
+            }
+            for n in range(1, 7)
+        ]
+        busy = json.dumps(many).encode()
+        times = [NOW + timedelta(minutes=16 * n) for n in range(4)]
+        for when in times[:3]:
+            sources.refresh(Net(moco=busy), no_sleep, lambda w=when: w, Placer())
+        assert stored("moco")["counts"] == [6, 6, 6]
+        with pytest.raises(workzones.FeedError) as failed:
+            sources.refresh(Net(), no_sleep, lambda: times[3], Placer())
+        assert "moco read as nothing (usually 6)" in str(failed.value)
+        assert "read as nothing: moco" in str(failed.value)
+        moco = stored("moco")
+        assert len(moco["zones"]) == 6, "the last good copy is kept"
+        assert moco["read_at"] == times[2].isoformat()
+        assert moco["failed_at"] == times[3].isoformat()
+
+    def test_a_source_that_is_often_empty_never_trips_it(self) -> None:
+        feed = {"counts": [0, 2, 0, 1, 0], "read_at": NOW.isoformat()}
+        assert sources.read_as_nothing(feed, 0, "moco", NOW) is None
+
+    def test_too_few_reads_to_say_never_trips_it(self) -> None:
+        feed = {"counts": [40, 40], "read_at": NOW.isoformat()}
+        assert sources.read_as_nothing(feed, 0, "dc", NOW) is None
+
+    def test_once_the_kept_copy_is_past_its_drop_age_the_empty_read_is_taken(self) -> None:
+        feed = {"counts": [40, 40, 40], "read_at": NOW.isoformat()}
+        assert sources.read_as_nothing(feed, 0, "dc", NOW + timedelta(hours=1)) == 40
+        assert sources.read_as_nothing(feed, 0, "dc", NOW + timedelta(hours=27)) is None
+        assert sources.read_as_nothing(feed, 3, "dc", NOW + timedelta(hours=1)) is None
+
+
+@db
 def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monkeypatch) -> None:
     monkeypatch.setattr(workzones, "_now", lambda: NOW)
     both(Net(), lambda: NOW, Placer())
@@ -232,6 +310,7 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
         "dcwater": "current",
         "wssc": "current",
         "sha": "current",
+        "moco": "current",
     }
     assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc", "sha"}
     # The parks' deer-management notices (routemaker.deer_closures) come from the clock, not a feed.
@@ -252,6 +331,7 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
         "dcwater": "current",
         "wssc": "current",
         "sha": "unavailable",
+        "moco": "unavailable",
     }
 
 

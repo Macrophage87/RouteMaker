@@ -784,6 +784,23 @@ permits: never routed round, never in a route's words, a cue or the closure chec
   WZDx feed's publisher. Terms: a public MD iMAP service, "as is", no licence stated (inferred
   public; ask MDOT SHA before redistributing the records themselves). Not legal advice.
 
+### Montgomery County DOT road closures (v0.27.0)
+
+- Credit: `Montgomery County DOT road closures`
+- **Montgomery County DOT road closures**. Layer "MC DOT Road Closure":
+  `www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0`, read every
+  15 minutes (source `moco`). Montgomery County's own closures on its roads (construction, weather
+  and flooding, crashes, emergencies, events), which it does not post to the state's Reporter
+  above (none of the state's records named Montgomery on 2026-11-12, so the two do not overlap).
+  The same fields as the state's Reporter, checked live 2026-11-12, read the same way
+  (`md_closures.parse_sha`); never `Creator`. The layer "may contain zero features" when nothing is
+  closed, which is a good read. Publisher's stated uses include "routing applications". Terms: a
+  public county map service, copyright "Montgomery County DOT", no licence stated on the layer
+  (the county's older open-data copy, "State and County Road Closures", 543g-yn3p, is marked
+  Public Domain but stopped updating in 2021). Inferred public; we route round it and show each
+  closure's own words with a link to the county's DOT, and never redistribute the records. Not
+  legal advice.
+
 ### Deer-management closures (v0.12.3)
 
 Not a map credit: each notice names its agency and links its page (`routemaker.deer_closures`),

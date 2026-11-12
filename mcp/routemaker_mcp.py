@@ -3248,7 +3248,16 @@ def _route_span(flat_route: list, cum: list, cells: dict, flat, pts: list):
     return (min(near), max(near)) if near else None
 
 
-PIECED_SOURCES = ("reviewer", "ddot_advisory", "purple_line", "fcpa", "protrack", "wssc", "sha")
+PIECED_SOURCES = (
+    "reviewer",
+    "ddot_advisory",
+    "purple_line",
+    "fcpa",
+    "protrack",
+    "wssc",
+    "sha",
+    "moco",
+)
 
 
 def _closure_id(row: dict) -> str:

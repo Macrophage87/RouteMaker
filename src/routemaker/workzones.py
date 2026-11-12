@@ -88,6 +88,8 @@ SOURCES = {
     "wssc": "WSSC Water water main construction",
     # Maryland's counties' and towns' closures (v0.17.0; `routemaker.md_closures`), routed round.
     "sha": "Maryland Road Closure Reporter (MDOT SHA)",
+    # Montgomery County DOT's own road closures (v0.27.0; `routemaker.md_closures`).
+    "moco": "Montgomery County DOT road closures",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -105,6 +107,7 @@ SOURCE_LINKS = {
     "dcwater": "https://www.dcwater.com/projects",
     "wssc": "https://www.wsscwater.com/what-we-do/constructionin-your-neighborhood-map",
     "sha": "https://data.imap.maryland.gov/datasets/maryland-road-closures",
+    "moco": "https://www.montgomerycountymd.gov/dot/",
 }
 
 DISCLAIMER = (

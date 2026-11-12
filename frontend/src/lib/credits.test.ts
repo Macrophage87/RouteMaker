@@ -44,6 +44,8 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "Fairfax County Park Authority park alerts",
       // v0.17.0: Maryland's counties' and towns' closures, routed round (routemaker.md_closures).
       "Maryland Road Closure Reporter (MDOT SHA)",
+      // v0.27.0: Montgomery County DOT's own road closures (routemaker.md_closures, source moco).
+      "Montgomery County DOT road closures",
     ],
   );
   for (const credit of DATA) {
