@@ -7869,6 +7869,62 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.26.0
+
+My routes in its own window (#1168), archived assistant test drafts (#1169), sudden closures from
+AlertDC with Ride's closure window (#1175), closed sites shaded and routed to their gate with the big
+parks named (#1173), and three override files: Whip-poor-will Way (#1170), the Patuxent Research
+Refuge's closed area (#1172), and quieter side streets with the Arlington comfort index (#1174).
+**No `lua/`, `valhalla/`, compose, Caddyfile, nginx (`deploy/`) or requirements change.** What
+changes: migration 0062; a new worker task, `refresh_alertdc`, every minute (its alert window 10
+minutes, `runs.STALE_AFTER`), reading the same AlertDC host as before (no new outbound host); a new
+endpoint, `GET /api/closures/stamp`, asked once a minute by a ride, through `location /` like the
+rest of `/api/`; one line in `docker/api.Dockerfile` copying
+`frontend/src/restricted-data/restricted-sites.json`, so the beta agent's gate stops on the tag and
+the beta is a hand ship; and `src/pipeline/run.py` (the side-path step, #1174), which takes effect
+only at the next map rebuild.
+
+- [ ] **Closed sites file** **(owner, PC, before the tag)**. `restricted-sites.json` ships as an
+  empty FeatureCollection: no shading, no gate routing. Run `python3 scripts/build_restricted_sites.py
+  --pbf <DATA_ROOT>/extracts/source.osm.pbf` on the PC and commit the result to the release branch
+  before the tag; the front end and the api image both read it. Shipping it empty is safe (routing as
+  v0.25.1), but Goddard's shading and the gate then wait for a later release.
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.26.0
+  (annotated) on that commit, from the PC.
+- [ ] **Migration.** 0062 (`ConnectorDraft.archived_at`) adds a nullable column with no default: the
+  v0.25.1 api inserts drafts without it (null, listed) in the minutes between `migrate` and its
+  recreation, and after a rollback of the images, and never reads it. Reversible.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
+  api rebuild` (tag the pipeline image `pre-rel-<short>` too: the rebuild's calm-road sentinel moved
+  to way 11507801, #1172, and a v0.25.1 `rebuild` image still checks way 86073896, which the closed
+  area file closes), `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api
+  worker rebuild` with no job todo or doing, then the front end. No router restart, no map rebuild.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, `migrate`, the worker recreated so it picks up `refresh_alertdc`, the front end built
+  on the PC), `smoke-test.sh --local`, then `smoke-test.sh --public <url> --passwords-file <file>`,
+  then `auto-release.sh mark-deployed v0.26.0` and `auto-release.sh resume`.
+- [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
+  (detail `alertdc unchanged` when the page was the same); `GET /api/closures/stamp` answers 200. The
+  AlertDC parser was written from a made-up sample: when the live list next carries a police or crash
+  road item, check that it shows as a closure (the map, the road panel) with the title "Police
+  activity: streets closed near ..." for police items.
+- [ ] **The three override files** (optional, separate, each on the owner's go). On the PC with
+  `load_access_overrides`, a dry run each, then `--confirm` with the owner's go per file:
+  `2026-11-12-owner-patuxent-whip-poor-will-way.json`, `2026-11-12-owner-patuxent-closed-area.json`,
+  `2026-11-12-owner-side-streets-and-arlington-index.json` (12,396 rows, each retiring its own-picks
+  row; if its dry run reports ways without fingerprints, run the fingerprint backfill first, as for the own-picks files). All take effect at the
+  next map rebuild, in its own thread, not with this release.
+- [ ] **Spot checks.** Save & load: Save and Share at the top, My routes opens its own window with
+  "Back to Save & load". Through the connector: a `plan_route` with `test: true` stays out of Load
+  route, and `archive_draft` drops another. With the closed sites file built: the map shades NASA
+  Goddard with "No public access", and a route to a point inside it ends at a gate with "Restricted
+  site. Route ends at the gate." Rock Creek Park and Greenbelt Park have their names on the map.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.25.1 front end.
+  The `archived_at` column stays; on v0.25.1 archived drafts list again until they expire. On the
+  beta, the images and `index.html` alone: no `restore-dump`, as 0062 only adds a column.
+
 ## Deploying v0.25.1
 
 Ride follows a parallel way beside the route instead of re-routing back (#1165): within about 500 ft
