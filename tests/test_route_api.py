@@ -118,6 +118,10 @@ CONTRACT_KEYS = {
     "red_crossings",
     # Additive, hunt 4 P4-1 (2026-11-09): Group Ride's and Fast's winding-trail round.
     "winding",
+    # Additive, barriers (backlog 2026-11-12 item 12): every barrier on the line, and Cargo's
+    # and Tandem's round off the impassable ones (null on other ride types).
+    "barriers",
+    "barrier_round",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
     "bikeshare",
     # Additive, FOLLOWUP-ISECT-AVOID (OWNER-DECISIONS 307-310, 335): the Avoid-rated

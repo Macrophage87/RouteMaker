@@ -26,6 +26,7 @@ import { candidateRows } from "../lib/candidates.ts";
 import { loopNote, loopNoteShort } from "../lib/loop.ts";
 import { mtbNotes } from "../lib/mtbMode.ts";
 import { roadBikeNotice } from "../lib/roadBike.ts";
+import { barrierNote } from "../lib/barriers.ts";
 import { easyMtbNote } from "../lib/easyMtb.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
@@ -632,6 +633,15 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // Easy MTB trails: a harder trail it could not leave, or the off-road map down (lib/easyMtb.ts).
   const easy = easyMtbNote(route);
   if (easy) lines.push({ key: "easy-mtb", className: "notice easy-mtb-warning", icon: "warn", text: easy.text, short: easy.short });
+  // Cargo and Tandem: an impassable barrier no way round was found for, or the barriers on the route (lib/barriers.ts).
+  const barrier = barrierNote(route);
+  if (barrier) {
+    lines.push(
+      barrier.warn
+        ? { key: "barriers", className: "notice barrier-warning", icon: "warn", text: barrier.text, short: barrier.short }
+        : { key: "barriers", className: "hint barrier-note", icon: "info", text: barrier.text, short: barrier.short },
+    );
+  }
   // Road Bike planned on a fallback map while its own is down: the standard map for the paved-only one,
   // the paved-only map for the weekend one (lib/roadBike.ts).
   const roadBike = roadBikeNotice(route);
