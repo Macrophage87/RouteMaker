@@ -283,7 +283,7 @@ import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTime
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
-import { EditRouteSheet, FoodChips, FoodSheet, GpxSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
+import { EditRouteSheet, FoodChips, FoodSheet, GpxSheet, RoutesSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips, SheetHandle, type GoSheetSize } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
@@ -6728,6 +6728,21 @@ export function App() {
           if (saved) lastSettings.current = doc;
           return saved;
         };
+  // Save route, then Share (the owner, 2026-10-17: "Basically you save then you share"), for the route shown or the
+  // file opened: Save & load's top.
+  const gpxShareControls =
+    shown || (imported?.verbatim && !importEdited) ? (
+      <ShareControls
+        save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
+        canShare={canShare}
+        ready={!!shown}
+        shareRoute={(ride) => (ride ? sameRideFirst(() => void shareRoute(true), true) : sameRideFirst((secret) => void shareRoute(false, shareNav, secret)))}
+        shareKeep={shareKeep}
+        onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
+        shareSaid={shareSaid}
+        linkNote={linkNote}
+      />
+    ) : null;
   return (
     <div className={`app${onBike ? " riding" : ""}${roaming ? " roaming" : ""}${goMode && !onBike ? " go-mode" : ""}${accessMode ? " access-mode" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
@@ -7522,8 +7537,15 @@ export function App() {
                     ...(importBase.current && !importEdited ? { exact: importBase.current.exact === true, onExact: setFollowExact } : {}),
                   },
                 }),
-                // Your routes, saved and kept for offline, with a search (the owner, 2026-10-18); versions in Plan only.
-                routes: (
+                // My routes: its own popup, a step in (Stephen, 2026-11-12), listed while there is any to list.
+                onMyRoutes: myGoControls.signedIn || keepShown || anyKept() ? (opener: HTMLElement) => openView("routes", opener, true) : null,
+                shareControls: gpxShareControls,
+              }}
+            />
+            {/* My routes, opened from Save & load: saved and kept for offline, with a search (the owner, 2026-10-18); versions in Plan only. */}
+            <RoutesSheet
+              nav={sheetNav}
+              routes={
                   <YourRoutes
                     signedIn={myGoControls.signedIn}
                     kept={{ shown: keepShown || anyKept(), version: keptVersion, onOpen: openKept, onSay: announce }}
@@ -7537,23 +7559,7 @@ export function App() {
                       },
                     }, versions: mode !== "go" }}
                   />
-                ),
-                // Save route, then Share (the owner, 2026-10-17: "Basically you save then you share"), for the route shown
-                // or the file opened.
-                shareControls:
-                  shown || (imported?.verbatim && !importEdited) ? (
-                    <ShareControls
-                      save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
-                      canShare={canShare}
-                      ready={!!shown}
-                      shareRoute={(ride) => (ride ? sameRideFirst(() => void shareRoute(true), true) : sameRideFirst((secret) => void shareRoute(false, shareNav, secret)))}
-                      shareKeep={shareKeep}
-                      onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
-                      shareSaid={shareSaid}
-                      linkNote={linkNote}
-                    />
-                  ) : null,
-              }}
+              }
             />
             <SettingsSheet
               {...{

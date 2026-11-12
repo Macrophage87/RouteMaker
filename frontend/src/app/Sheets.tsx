@@ -328,18 +328,18 @@ export interface GpxSheetProps {
   match?: GpxPanelProps["match"];
   /** Save route (signed in) and Share, for the route shown or the file opened (RoutePanel.tsx ShareControls); null with neither. */
   shareControls: ReactNode;
-  /** Your routes: the saved ones and the ones kept for offline, with a search (YourRoutes.tsx); null with neither. */
-  routes: ReactNode;
+  /** Opens My routes (RoutesSheet), a step in: null where there are none to list (signed out, none kept). */
+  onMyRoutes: ((opener: HTMLElement) => void) | null;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, onFitting, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, onFitting, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, onMyRoutes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")} popup>
-      {/* Save and Share first, then My routes to load (in Go, the way to start a saved route), then the files. */}
+      {/* Save and Share first, then the files to export; My routes, to load, is its own popup (Stephen, 2026-11-12: "Put
+          the load rides in a popout and have save load be mostly about saving and exporting"), its button last. */}
       {shareControls}
-      {routes}
       <GpxPanel
         route={shown}
         routedPoints={routedPoints}
@@ -361,6 +361,23 @@ export function GpxSheet(props: GpxSheetProps) {
         onSendToWahoo={sendToWahoo}
         match={match}
       />
+      {onMyRoutes && (
+        <div className="actions my-routes-open">
+          <button type="button" className="secondary" aria-haspopup="dialog" onClick={(event) => onMyRoutes(event.currentTarget)}>
+            <Icon name="routes" size={20} />
+            {SHEET_TITLES.routes}
+          </button>
+        </div>
+      )}
+    </SheetFrame>
+  );
+}
+
+/** My routes (YourRoutes.tsx): the saved routes and those kept for offline, with a search, opened from Save & load. */
+export function RoutesSheet({ nav, routes }: { nav: SheetNav; routes: ReactNode }) {
+  return (
+    <SheetFrame id="sheet-routes" title={SHEET_TITLES.routes} open={nav.view === "routes"} onBack={nav.back} backLabel={nav.backLabel("routes")} popup>
+      {routes}
     </SheetFrame>
   );
 }
