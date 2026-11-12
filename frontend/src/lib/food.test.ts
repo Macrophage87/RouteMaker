@@ -246,8 +246,8 @@ test("the panel: a labelled search, then the chips, a status line, collapsed; Se
   assert.doesNotMatch(html, /Search this area/, "not before the map is moved");
   assert.match(html, /<p class="hint food-status" role="status"><\/p>/);
   assert.doesNotMatch(html, /<ol/);
-  // The help: short on screen, the rest for screen readers.
-  assert.match(html, /<p class="hint" id="food-help">Search a food or a name; blank shows all\.<span class="visually-hidden"> With a route shown/);
+  // The help is for screen readers: on screen the placeholder says it (backlog 2026-11-12, Go).
+  assert.match(html, /<p class="visually-hidden" id="food-help">Search a food or a name; blank shows all\.<span> With a route shown/);
   let area = 0;
   const moved = renderToStaticMarkup(createElement(FoodFinder, { ...baseProps, areaMoved: true, onSearchArea: () => area++ }));
   assert.match(moved, /<button type="button" class="secondary food-area">Search this area<\/button>/);

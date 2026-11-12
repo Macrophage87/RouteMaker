@@ -20,6 +20,12 @@ RouteMaker beta: how to get in
 RouteMaker plans bike routes for the DC region and Baltimore. This is a test version, so
 some things may be rough or change; nothing asks for a password.
 
+What to try first:
+
+- In Go, type a place in "Where to?", pick it, and look at the route: its colours show how calm each street is.
+- Tap a ride type (Gravel, Cargo, Bike + transit and others) and see how the route changes.
+- Press "Start ride" and ride it: Ride gives each turn as you go.
+
 
 1. Open it in a real browser
 ----------------------------
@@ -122,8 +128,10 @@ Wait about 20 minutes and try again. Report it only if it lasts more than half a
 5. Ride mode: directions while you ride
 ---------------------------------------
 
-For short rides, up to 30 miles (48 km), on a phone with the screen on and the page in front.
-For longer rides, use Download GPX with a bike computer, which keeps going with the screen off.
+In a browser: for short rides, up to 30 miles (48 km), on a phone with the screen on and the page
+in front. In the Android app (if you are testing it): any length, with the screen locked. For
+longer rides in a browser, use Download GPX with a bike computer, which keeps going with the screen
+off.
 You stay responsible for riding safely; the route can be wrong.
 
 - Plan a route, then press "Start ride", on the bar at the top of the map (once you've picked a

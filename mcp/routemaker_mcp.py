@@ -45,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.26.0"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
@@ -5119,9 +5119,32 @@ CUE_CARDS_TOOL = {
     "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
 }
 
+# scenic_roads_near's max_lts: a road is kept when at least this share of its miles in reach is
+# at the level asked or calmer (our default, unmeasured).
+SCENIC_CALM_SHARE = 0.5
+
+
+def _calm_share(road: dict, most: float) -> float:
+    """The share of a scenic road's miles (`lts_miles`: "LTS 2", "Avoid") at `most` or calmer."""
+    by_level = road.get("lts_miles") or {}
+    total = sum(by_level.values())
+    if total <= 0:
+        return 0.0
+    calm = 0.0
+    for label, miles in by_level.items():
+        try:
+            level = 5.0 if label == "Avoid" else float(str(label).removeprefix("LTS "))
+        except ValueError:
+            continue
+        if level <= most:
+            calm += miles
+    return calm / total
+
+
 TOOLS = [
     {
         "name": "find_place",
+        "title": "Find a place",
         "description": (
             "Search RouteMaker's place search (DC to Baltimore) for a place, address or street;"
             " returns up to five matches with [lon, lat]. Give near (a point of the route) to"
@@ -5136,6 +5159,7 @@ TOOLS = [
     },
     {
         "name": "metro_stations",
+        "title": "Metro stations",
         "description": (
             "List Metrorail stations (all 98, or those within a distance of a point), with lines,"
             " [lon, lat], the [lon, lat] of its bike entrance (route to that, not the station"
@@ -5152,6 +5176,7 @@ TOOLS = [
     },
     {
         "name": "scenic_roads_near",
+        "title": "Scenic roads near a place",
         "description": (
             "List the designated scenic roads near a point (nearest first, up to 25):"
             " Montgomery County Rustic and Exceptional Rustic Roads, Maryland Scenic Byways,"
@@ -5175,6 +5200,15 @@ TOOLS = [
                     "type": "string",
                     "description": "Only these, by a word of the designation: 'rustic', 'byway'.",
                 },
+                "max_lts": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 4.5,
+                    "description": (
+                        "Only roads with at least half their miles in reach at this traffic-stress"
+                        " level or calmer (half is our default, unmeasured). Absent: every road."
+                    ),
+                },
             },
             "required": ["near"],
         },
@@ -5182,6 +5216,7 @@ TOOLS = [
     },
     {
         "name": "climbs_near",
+        "title": "Climbs near a place",
         "description": (
             "List the categorised climbs near a point (Cat 5 to HC, from the Climbs map"
             " layer): name, miles, gain, average grade, surface, its foot and summit and"
@@ -5216,6 +5251,7 @@ TOOLS = [
     },
     {
         "name": "closures_near",
+        "title": "Closures near a place",
         "description": (
             "List the closures and construction in force now near a point, nearest first: trail"
             " and road closures from Maryland SHA, NPS, MPD and RouteMaker's reviewers (Lake"
@@ -5244,6 +5280,7 @@ TOOLS = [
     },
     {
         "name": "plan_route",
+        "title": "Plan a route",
         "description": (
             "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
             " end) and summarise it: distance, time, climbing, the share on each traffic-stress"
@@ -5352,6 +5389,7 @@ TOOLS = [
     },
     {
         "name": "reach",
+        "title": "How far you can ride",
         "description": (
             "Where a rider can be in 15, 30, 45 and 60 minutes (reach rings, isochrones) from one"
             " to five points, by any bike ride type (its graph, pace and traffic setting), on"
@@ -5393,6 +5431,7 @@ TOOLS = [
     },
     {
         "name": "compare_places",
+        "title": "Compare places by ride",
         "description": (
             "Compare 2 to 6 places to start from (a home, a hotel, an office)"
             " against 1 to 3 places the rider goes, each with an optional minute limit: one row"
@@ -5429,6 +5468,7 @@ TOOLS = [
     },
     {
         "name": "plan_metro_loop",
+        "title": "Plan a Metro loop",
         "description": (
             "Plan a loop of about target_miles around a centre (DC by default) that stays within"
             " max_miles_from_metro of a Metrorail station: waypoints are picked at Metro stations"
@@ -5476,6 +5516,7 @@ TOOLS = [
     },
     {
         "name": "open_link",
+        "title": "Open a RouteMaker link",
         "description": (
             "Start a draft from a RouteMaker link the rider pastes: the address of the page"
             " showing a route (after changing it in the app, or opening one of their saved"
@@ -5496,6 +5537,7 @@ TOOLS = [
     },
     {
         "name": "revise_route",
+        "title": "Revise a route",
         "description": (
             "Change a draft the rider has looked at and plan it again, as a new draft (the old"
             " one stays, to go back to). Send only what changes: points to add, move or remove,"
@@ -5600,6 +5642,7 @@ TOOLS = [
     },
     {
         "name": "route_segments",
+        "title": "Route segments",
         "description": (
             "Read a draft stretch by stretch, for optimizing it: each stretch's miles, road,"
             " LTS (1 calmest to 4, 5 Avoid), facility (path, trail: a mountain-bike trail,"
@@ -5629,6 +5672,7 @@ TOOLS = [
     },
     {
         "name": "ride_conditions",
+        "title": "Ride conditions",
         "description": (
             "Light and weather for riding a draft at a time: whether it is dark at the start"
             " and the finish (civil dawn and dusk, as the app's Dawn and Dusk), the arrival"
@@ -5654,6 +5698,7 @@ TOOLS = [
     },
     {
         "name": "my_routes",
+        "title": "My routes",
         "description": (
             "The rider's saved routes (My routes), on RouteMaker's own connector: with no"
             " route_id or name, their names, miles, ride types and tags (archived ones only"
@@ -5743,6 +5788,7 @@ TOOLS = [
     },
     {
         "name": "save_route",
+        "title": "Save a route",
         "description": (
             "Keep a draft once the rider has said to, under a name: on the site's own connector,"
             " in their My routes, with tags if given; on the rider's own computer, as a GPX"
@@ -5775,6 +5821,7 @@ TOOLS = [
     },
     {
         "name": "my_drafts",
+        "title": "My drafts",
         "description": (
             "The routes planned through this app and not saved (drafts), newest revision of"
             " each, newest first: name, miles, ride type, when made, days left and link. Drafts"
@@ -5801,6 +5848,7 @@ TOOLS = [
     },
     {
         "name": "archive_draft",
+        "title": "Archive a draft",
         "description": (
             "Archive a draft (every revision of its route): it leaves the rider's Load route and"
             " my_drafts, and still goes a week after it was made. For a draft that only tested"
@@ -5824,6 +5872,7 @@ TOOLS = [
     },
     {
         "name": "organize_route",
+        "title": "Organize a route",
         "description": (
             "Tag, archive or restore one of the rider's saved routes (a route_id from"
             " my_routes), on RouteMaker's own connector. tags replaces its tags; add_tags and"
@@ -5846,6 +5895,7 @@ TOOLS = [
     },
     {
         "name": "gpx_route",
+        "title": "Route as a GPX file",
         "description": (
             "A draft as a GPX track for a bike computer or another app: on the rider's own"
             " computer a .gpx file, on the site a download link (for the rider who made the"
@@ -5864,6 +5914,7 @@ TOOLS = [
     },
     {
         "name": "draft_route_post",
+        "title": "Draft a route post",
         "description": (
             "Write a Featured routes post (a page at /routes/<slug> around one exact route) as a"
             " DRAFT, for the site's admin to read and publish in the admin. Offered only to an"
@@ -6582,6 +6633,12 @@ class Server:
         except (TypeError, ValueError):
             raise ToolError("within_miles is a number") from None
         roads = self.api.scenic_roads(near, miles, str(args.get("designation") or "").strip())
+        if args.get("max_lts") is not None:
+            try:
+                most = float(args["max_lts"])
+            except (TypeError, ValueError):
+                raise ToolError("max_lts is a number from 1 to 4.5") from None
+            roads = [road for road in roads if _calm_share(road, most) >= SCENIC_CALM_SHARE]
         return {
             "roads": roads,
             "source": "Montgomery County Planning (Rustic Roads), MDOT SHA (Scenic Byways),"
@@ -8183,7 +8240,6 @@ class Server:
         out: dict = {
             "ride_type": answer.get("preset", preset),
             "direction": direction,
-            "combine": combine if len(points) > 1 else None,
             "stress_used": answer.get("stress_used"),
             "groups": rings(answer.get("groups") or []),
             "link": self._reach_link(points, preset, dials, direction, combine, calm, minutes),
@@ -8193,6 +8249,9 @@ class Server:
         app_rings = [m for m in minutes if m in (15, 30, 45, 60)] or [15, 30, 45, 60]
         if app_rings != minutes:
             out["link_rings"] = app_rings
+        if len(points) > 1:
+            # Only where there is something to combine: one point's answer leaves the key out.
+            out["combine"] = combine
         if answer.get("calm"):
             out["calm"] = {
                 "stress": answer["calm"]["stress"],
@@ -8424,7 +8483,9 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                 " open the route in the app, whole with its # part: after a week only that part"
                 " can plan the route again. Save to My routes only when asked. Planning only to"
                 " test or check RouteMaker, not for the rider: pass test: true, or archive_draft"
-                " each draft when done, so it stays out of the rider's Load route."
+                " each draft when done, so it stays out of the rider's Load route. Send calls that"
+                " look up places by name (find_place, compare_places, a named place anywhere) one"
+                " at a time: place search refuses a second one while the first is running."
             ),
         }
     elif method == "ping":
@@ -8470,7 +8531,8 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
             result = {
                 "content": [
                     *call.images,
-                    {"type": "text", "text": json.dumps(payload, indent=1)},
+                    # Compact: indenting only spends the model's context.
+                    {"type": "text", "text": json.dumps(payload, separators=(",", ":"))},
                 ],
                 "structuredContent": payload,
                 "isError": False,

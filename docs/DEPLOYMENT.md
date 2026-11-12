@@ -800,6 +800,10 @@ last one by any path it controls.
 
 ## Host requirements
 
+The beta does not run on this host: it runs on a shared 15 GiB host under `compose.beta.yaml`'s
+memory budget (about 8 GiB resident; the overlay's header comment has the sums), with map
+rebuilds done on a cloud box (docs/CLOUD-REBUILD-PLAN.md).
+
 PLAN:293's initial host: **8 vCPU, 32 GB RAM**, with storage split — a small
 root volume for the operating system, the Docker images and the checked-out
 code, and a **separate 200 GB gp3 data volume**, growable, mounted at
@@ -1239,9 +1243,9 @@ What the edge does with it (Caddyfile, `@frontend`):
   `max-age=31536000, immutable` - only files that exist, so a 404 is not
   cached for a year. The favicon is cached for a day.
 - The app's responses are compressed (`encode zstd gzip`, in this block only):
-  MapLibre's chunk (`maplibre-*.js`) is about 1.1 MB raw and 300 KB gzipped,
-  App's about 1.0 MB and 310 KB, React's about 220 KB and 70 KB (measured at
-  v0.15.0). MapLibre and React are chunks of their own (`frontend/vite.config.ts`,
+  App's chunk is about 1.23 MB raw and 380 KB gzipped (gzip level 6),
+  MapLibre's (`maplibre-*.js`) about 1.12 MB and 300 KB, React's about 220 KB
+  and 70 KB (measured 2026-11-12 on release/v0.26.0). MapLibre and React are chunks of their own (`frontend/vite.config.ts`,
   `codeSplitting`), so their names, and a returning rider's copies, last across
   app releases; `index.html` preloads App's chunks while the language's catalog
   loads, and Spanish's catalog is a `lang-es-*.js` of its own. Nothing else on the

@@ -68,12 +68,13 @@ const LOCALE: Record<Language, string> = {
 
 /**
  * The voice's language, and the other tags a phone may file its voice under (Cantonese is "yue-HK" on some, "zh-HK"
- * on others). US Spanish, so the voices made for the US are picked where a phone has several.
+ * on others). Mandarin asks for any Mandarin voice (Taiwan's, Singapore's) before "zh" alone, which could match a
+ * Hong Kong voice, Cantonese (backlog 2026-11-12, languages). US Spanish, so the voices made for the US are picked where a phone has several.
  */
 const VOICE: Record<Language, readonly string[]> = {
   en: ["en-US"], es: ["es-US", "es-MX", "es"], am: ["am-ET", "am"], ar: ["ar-SA", "ar"], bn: ["bn-BD", "bn-IN", "bn"],
   yue: ["yue-HK", "zh-HK", "yue"], fa: ["fa-IR", "fa"], fr: ["fr-FR", "fr"], ht: ["ht-HT", "ht"], hi: ["hi-IN", "hi"],
-  id: ["id-ID", "in-ID", "id"], ja: ["ja-JP", "ja"], ko: ["ko-KR", "ko"], zh: ["zh-CN", "cmn-CN", "zh"], ps: ["ps-AF", "ps"],
+  id: ["id-ID", "in-ID", "id"], ja: ["ja-JP", "ja"], ko: ["ko-KR", "ko"], zh: ["zh-CN", "cmn-CN", "zh-TW", "cmn-TW", "zh-SG", "zh"], ps: ["ps-AF", "ps"],
   pt: ["pt-BR", "pt"], ru: ["ru-RU", "ru"], th: ["th-TH", "th"], ti: ["ti-ER", "ti-ET", "ti"], tr: ["tr-TR", "tr"], vi: ["vi-VN", "vi"],
 };
 

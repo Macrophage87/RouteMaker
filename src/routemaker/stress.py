@@ -10,7 +10,9 @@ computed the same way everywhere from the same tables. Since v0.7.0 an agency's
 own rating takes the place of this one where the agency rates the road (the
 owner, 2026-10-13: "Ratings from the local government win over a formula"),
 county over state; that is done by the rebuild after classification
-(`routemaker.agency_lts`), on this scale, and never inside this module.
+(`routemaker.agency_lts`), on this scale, and never inside this module. An approved
+stress override row (`pipeline.overrides`; since 2026-11-09 our own reasoned level
+on every road, the "own picks") outranks both the agency's rating and this one.
 
 The ordering is speed, then facility, then volume, then surface. Volume is a
 modifier on two-lane roads rather than a primary variable: what makes a road

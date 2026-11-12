@@ -890,7 +890,8 @@ ICON_LINKS = (
 # The app's own preview (frontend/index.html's description, and the card scripts/
 # make_share_images.py draws).
 SITE_DESCRIPTION = (
-    "Bike route planning tool around Washington, DC and Baltimore. No sign-in needed."
+    "Bike route planning and navigation for a wide variety of cycling, from Washington, DC to "
+    "Baltimore. No sign-in needed."
 )
 SITE_CARD = "/icons/share-card.png"
 SITE_CARD_ALT = (

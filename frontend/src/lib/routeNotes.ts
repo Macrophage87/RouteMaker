@@ -75,7 +75,7 @@ const KIND_LETTER: Record<NoteKind, string> = { caution: "c", interest: "i" };
 /** A note's words as kept: spaces squeezed, no control characters, at most NOTE_TEXT_MAX characters; "" for none. */
 export function cleanNoteText(text: string | null | undefined): string {
   const squeezed = String(text ?? "")
-    // eslint-disable-next-line no-control-regex -- control characters are what this takes out
+    // Control characters are what this takes out.
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(/\s+/g, " ")
     .trim();

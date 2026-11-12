@@ -551,6 +551,21 @@ def test_scenic_roads_near_asks_the_site_within_its_reach() -> None:
     assert [r["road"] for r in out["roads"]] == ["Moore Road"]
 
 
+def test_scenic_roads_near_keeps_mostly_calm_roads_with_max_lts() -> None:
+    places = _Places()
+    places.scenic_roads = lambda near, miles, designation="": [
+        {"road": "Calm Road", "lts_miles": {"LTS 2": 3.0, "LTS 3": 1.0}},
+        {"road": "Half Road", "lts_miles": {"LTS 2": 1.0, "LTS 4": 1.0}},
+        {"road": "Busy Road", "lts_miles": {"LTS 2": 0.5, "LTS 4": 2.0, "Avoid": 0.5}},
+        {"road": "No Levels", "lts_miles": {}},
+    ]
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("scenic_roads_near", {"near": list(LEWIS_ORCHARDS), "max_lts": 2})
+    assert [r["road"] for r in out["roads"]] == ["Calm Road", "Half Road"]
+    every = server.call("scenic_roads_near", {"near": list(LEWIS_ORCHARDS)})
+    assert len(every["roads"]) == 4
+
+
 # --- Interval training ------------------------------------------------------------------------
 
 
