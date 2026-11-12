@@ -722,10 +722,10 @@ in the database still names it: delete that row in the admin when loading the fi
 
 - `2026-11-12-owner-patuxent-whip-poor-will-way.json` (1 way): the southern stretch of
   Whip-poor-will Way in the Patuxent Research Refuge's North Tract, way 85508536 (0.71 mi,
-  1,150 m), tagged `access=permit` and `bicycle=permit` in OSM from when the refuge sold
-  parking passes, so the map hid it and routes could not use it. The owner, 2026-11-12:
-  "It's the white parts that concerns me." The refuge's June 2026 North Tract map marks the
-  road for walking, biking and horseback riding, and FWS says passes are no longer needed.
+  1,150 m), tagged `access=permit` and `bicycle=permit` in OSM, so the map hid it and
+  routes could not use it, though the stretches either side carry `bicycle=yes`. The owner,
+  2026-11-12: "It's the white parts that concerns me." The refuge's June 2026 North Tract
+  map marks the road for walking, biking and horseback riding and names no permit.
   Opened with a `bicycle=yes` access row, with a fingerprint. South Road's two permit pieces
   (707456988, 707645386) stay closed: they lie in the area the refuge closed on 2026-06-07.
   Load like the others; takes effect on the next rebuild.
