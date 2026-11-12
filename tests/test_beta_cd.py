@@ -1567,6 +1567,12 @@ def test_the_runbook_documents_continuous_deployment() -> None:
         "git tag -a",
         "restore-dump",
         "OWNER-DECISIONS 431",
+        '"$A" rollback',
+        '"$A" rollback-map',
+        '"$A" ship-held',
+        "RM_CD_ALWAYS_STOP=1",
+        ".github/workflows/release.yml",
+        "Required reviewers",
     ):
         assert needle in section, needle
 
