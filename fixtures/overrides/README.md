@@ -745,3 +745,22 @@ in the database still names it: delete that row in the admin when loading the fi
   closes the old rebuild road sentinel, way 86073896, so `REBUILD_SENTINEL_CALM_STREET_WAYS`
   moves to way 11507801 on the open stretch. Load like the others; takes effect on the next
   rebuild.
+
+- `2026-11-12-owner-side-streets-and-arlington-index.json` (12,396 ways, 12,396 retired): two
+  rechecks of the 2026-11-09 own-picks, each row replacing (and retiring) that way's own-picks
+  row. (1) The own-picks raised uncounted residential streets half a step (2 to 2.5), or from
+  below 2 to 2, wherever jobs within half a mile reached 5,000 a square mile (our default, never
+  measured), so whole side-street grids near Ballston, Bethesda or Silver Spring read busier than
+  they are. The owner, 2026-11-12: "Drop the bump, through streets checked": 9,308 of those
+  streets go back to the level without the bump; 32 through streets linking two main roads were
+  checked on the web and in dated Mapillary photos, and 12 that carry more (buses, shops, a
+  campus) keep the raised level, with that evidence in the Why line. (2) Arlington: every
+  own-picks way matched to Arlington's Bike Comfort Index ends its Why line with the index's
+  level, and its measured volume where it has one (cited as fair use, never republished; a class
+  default is not quoted as a count). Where the two differed by a full level or more (286
+  stretches, 44 mi), the road was rechecked from measured counts, the web and the newest dated
+  Mapillary photos; a protected lane mapped as its own way is rated with the side-path rule, not
+  on the roadway. 28 ways the review could not settle (counts that may belong to another block,
+  only old photos) keep their own-picks rows. The index says "agrees" only at the same level and
+  "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
+  bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.

@@ -68,6 +68,7 @@ from routemaker.stress import (
     classify,
     inferred_unpaved,
     is_rough,
+    level_of,
     painted_lane_multilane,
     rural_floor,
     rural_floor_applies,
@@ -862,6 +863,9 @@ class RebuildContext:
     road_attr_sources: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
+    # Each unnamed bike way's named street alongside (`facility.side_streets`), found once
+    # after the override rows: for the side-path step and the side-path names. None until then.
+    side_streets: dict[int, object] | None = None
     # The `bicycle=use_sidepath` roads with a side path mapped beside them, to that
     # path's name (None where it has none), rated Avoid by `classify_stress` and said
     # "riders are asked to use the side path" in the road panel (review RL-1).
@@ -1084,6 +1088,7 @@ class RebuildContext:
             "road_attr_sources",
             "road_disagreements",
             "stress_by_way",
+            "side_streets",
             "use_sidepath_paths",
             "facility_by_way",
             "facility_shown_by_way",
@@ -1968,6 +1973,42 @@ def assert_mass_capacity(
     )
     if found:
         raise ValidationFailed("; ".join(found))
+
+
+def apply_beside_busy_road(
+    stress_by_way: dict, side_streets: dict, crossings: dict | None = None
+) -> int:
+    """Rate each side path or protected lane from the street it runs beside
+    (`stress.beside_busy_road_step`): the busiest level among the street's ways that carry at
+    least `BESIDE_BUSY_ROAD_MIN_SHARE` of the path's length found beside it, and what it
+    crosses (`facility.side_path_crossings`). Returns how many ways the step moved."""
+    from routemaker.stress import BESIDE_BUSY_ROAD_MIN_SHARE, beside_busy_road_step
+
+    moved = 0
+    for path_id, found in side_streets.items():
+        current = stress_by_way.get(path_id)
+        if current is None:
+            continue
+        total = sum(found.metres_by_way.values())
+        levels = [
+            level_of(stress_by_way[street_id])
+            for street_id, metres in found.metres_by_way.items()
+            if street_id in stress_by_way
+            and stress_by_way[street_id].tier is not None
+            and total > 0
+            and metres >= BESIDE_BUSY_ROAD_MIN_SHARE * total
+        ]
+        crossed = (crossings or {}).get(path_id)
+        stepped = beside_busy_road_step(
+            current,
+            max(levels, default=None),
+            crossing_score=crossed.score_per_mile if crossed else None,
+            slip_lane=crossed.slip_lane if crossed else False,
+        )
+        if stepped is not current:
+            stress_by_way[path_id] = stepped
+            moved += 1
+    return moved
 
 
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
@@ -3228,6 +3269,31 @@ def build_handlers(
                 "opened to bicycles",
                 len(context.mall_ways),
             )
+            # The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
+            # the owner, 2026-11-12), after the rows so the street's own level is the one its row
+            # set and a row on the path itself stands, and after the circle parks', Capitol
+            # grounds' and Mall's walks are opened, so they are matched (and named) too. The
+            # street each runs beside is kept for the side-path names (`write_segments`).
+            context.side_streets = facility.side_streets(
+                [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+            )
+            crossings = facility.side_path_crossings(
+                [
+                    (way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates)
+                    for way in context.ways
+                ],
+                context.side_streets,
+                lambda osm_id: (
+                    level_of(context.stress_by_way[osm_id])
+                    if osm_id in context.stress_by_way
+                    and context.stress_by_way[osm_id].tier is not None
+                    else None
+                ),
+            )
+            stepped = apply_beside_busy_road(context.stress_by_way, context.side_streets, crossings)
+            logger.info(
+                "side paths and protected lanes beside a busy road, rated from it: %d", stepped
+            )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
             # same way: an approved row asking for something an override may not
@@ -4265,8 +4331,12 @@ def build_handlers(
         # (v0.7.0 "Go riding fixes" item 4), or the path or sidewalk beside it where
         # people on foot share it (`facility.sidepath_name`), for the route description
         # and the road panel.
-        sidepath_names = facility.side_street_names(
-            [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        sidepath_names = (
+            {osm_id: found.name for osm_id, found in context.side_streets.items()}
+            if context.side_streets is not None
+            else facility.side_street_names(
+                [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+            )
         )
         logger.info("unnamed bike ways named for the street beside them: %d", len(sidepath_names))
         # The crossings, paths and sidewalks whose signal is called with a push button
