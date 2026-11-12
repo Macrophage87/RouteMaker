@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "De volta à rota planejada.",
   "No route found ahead. Make a U-turn.": "Nenhuma rota encontrada à frente. Faça o retorno.",
   "No signal: the planned route is still shown.": "Sem sinal: a rota planejada continua na tela.",
+  "No signal: a rough way back to your route, found offline.": "Sem sinal: um caminho aproximado de volta à sua rota foi encontrado offline.",
   "No new route found. The planned route is still shown.": "Nenhuma rota nova encontrada. A rota planejada continua na tela.",
   "No new route found. Go back to the planned route.": "Nenhuma rota nova encontrada. Volte para a rota planejada.",
   "New route found. It rejoins your route ahead.": "Nova rota encontrada. Ela volta à sua rota mais à frente.",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "Barreiras nesta rota.",
   "{list} on this route. A cargo bike or tandem may not get through.": "{list} nesta rota. Uma bicicleta de carga ou tandem pode não passar.",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "{list} perto do início, de uma parada ou do fim. Uma bicicleta de carga ou tandem pode não passar.",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Algum trecho pareceu diferente da sua classificação?",
+  "Which stretch?": "Qual trecho?",
+  "You marked a road closed.": "Você marcou uma rua como fechada.",
+  "You marked {n} roads closed.": "Você marcou {n} ruas como fechadas.",
+  "Send for review": "Enviar para revisão",
+  "Only the road and the day are sent.": "Só a rua e o dia são enviados.",
+  "Sent 1 closed road for review. Thank you.": "1 rua fechada enviada para revisão. Obrigado.",
+  "Sent {n} closed roads for review. Thank you.": "{n} ruas fechadas enviadas para revisão. Obrigado.",
+  "Not sent. Try again shortly.": "Não enviado. Tente novamente em instantes.",
+  "That road can't be looked up right now. Try again shortly.": "Não é possível consultar essa rua agora. Tente novamente em instantes.",
+  "Looking up the road…": "Consultando a rua…",
+  "Sending…": "Enviando…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Sem acesso público",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Copiar registro de avisos",
+  "Cue log copied.": "Registro de avisos copiado.",
+  "Could not copy the cue log.": "Não foi possível copiar o registro de avisos.",
 };

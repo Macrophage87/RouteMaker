@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "ናብ ዝተመደበ መገዲ ተመሊስኩም።",
   "No route found ahead. Make a U-turn.": "ኣብ ቅድሚ መገዲ ኣይተረኽበን። ዙርዩ ተመለሱ።",
   "No signal: the planned route is still shown.": "ምልክት የለን፦ ዝተመደበ መገዲ ገና ይርአ ኣሎ።",
+  "No signal: a rough way back to your route, found offline.": "ምልክት የለን፦ ናብ መገድኹም ዝመልስ ግምታዊ መገዲ ብዘይ ኢንተርነት ተረኺቡ።",
   "No new route found. The planned route is still shown.": "ሓድሽ መገዲ ኣይተረኽበን። ዝተመደበ መገዲ ገና ይርአ ኣሎ።",
   "No new route found. Go back to the planned route.": "ሓድሽ መገዲ ኣይተረኽበን። ናብ ዝተመደበ መገዲ ተመለሱ።",
   "New route found. It rejoins your route ahead.": "ሓድሽ መገዲ ተረኺቡ። ኣብ ቅድሚ ምስ መገድኹም ይራኸብ።",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "ኣብዚ መገዲ መዓገቲታት ኣለዉ።",
   "{list} on this route. A cargo bike or tandem may not get through.": "ኣብዚ መገዲ {list} ኣሎ። ናይ ጽዕነት ብሽክለታ ወይ ታንደም ክሓልፍ ዘይክእል ይኸውን።",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "ኣብ ጥቓ መበገሲኹም፣ ሓደ መዕረፊ ወይ መወዳእታ {list} ኣሎ። ናይ ጽዕነት ብሽክለታ ወይ ታንደም ክሓልፍ ዘይክእል ይኸውን።",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "ካብ ደረጃኡ ዝተፈልየ ዝተሰመዐካ ክፋል ነይሩ ድዩ?",
+  "Which stretch?": "ኣየናይ ክፋል?",
+  "You marked a road closed.": "ሓደ መገዲ ዕጹው ኢልካ ምልክት ገይርካ።",
+  "You marked {n} roads closed.": "{n} መገድታት ዕጹዋት ኢልካ ምልክት ገይርካ።",
+  "Send for review": "ንግምገማ ስደድ",
+  "Only the road and the day are sent.": "ዝለኣኽ መገዲን መዓልትን ጥራይ እዩ።",
+  "Sent 1 closed road for review. Thank you.": "1 ዕጹው መገዲ ንግምገማ ተላኢኹ። የቐንየልና።",
+  "Sent {n} closed roads for review. Thank you.": "{n} ዕጹዋት መገድታት ንግምገማ ተላኢኾም። የቐንየልና።",
+  "Not sent. Try again shortly.": "ኣይተላእከን። ቁሩብ ደሓር እንደገና ፈትን።",
+  "That road can't be looked up right now. Try again shortly.": "እቲ መገዲ ሕጂ ክድለ ኣይክእልን። ቁሩብ ደሓር እንደገና ፈትን።",
+  "Looking up the road…": "መገዲ ይድለ ኣሎ…",
+  "Sending…": "ይለኣኽ ኣሎ…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "ንህዝቢ ክፉት ኣይኮነን",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "መዝገብ መምርሒታት ቅዳሕ",
+  "Cue log copied.": "መዝገብ መምርሒታት ተቐዲሑ።",
+  "Could not copy the cue log.": "መዝገብ መምርሒታት ክቕዳሕ ኣይተኻእለን።",
 };

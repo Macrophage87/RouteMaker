@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "Kembali ke rute yang direncanakan.",
   "No route found ahead. Make a U-turn.": "Tidak ada rute di depan. Putar balik.",
   "No signal: the planned route is still shown.": "Tidak ada sinyal: rute yang direncanakan tetap ditampilkan.",
+  "No signal: a rough way back to your route, found offline.": "Tidak ada sinyal: jalan kembali perkiraan ke rute Anda ditemukan secara offline.",
   "No new route found. The planned route is still shown.": "Tidak ada rute baru. Rute yang direncanakan tetap ditampilkan.",
   "No new route found. Go back to the planned route.": "Tidak ada rute baru. Kembali ke rute yang direncanakan.",
   "New route found. It rejoins your route ahead.": "Rute baru ditemukan. Rute ini bergabung kembali dengan rute Anda di depan.",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "Ada penghalang di rute ini.",
   "{list} on this route. A cargo bike or tandem may not get through.": "{list} di rute ini. Sepeda kargo atau tandem mungkin tidak bisa lewat.",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "{list} di dekat titik awal, perhentian, atau tujuan Anda. Sepeda kargo atau tandem mungkin tidak bisa lewat.",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Ada bagian yang terasa berbeda dari penilaiannya?",
+  "Which stretch?": "Bagian mana?",
+  "You marked a road closed.": "Anda menandai satu jalan ditutup.",
+  "You marked {n} roads closed.": "Anda menandai {n} jalan ditutup.",
+  "Send for review": "Kirim untuk ditinjau",
+  "Only the road and the day are sent.": "Hanya jalan dan harinya yang dikirim.",
+  "Sent 1 closed road for review. Thank you.": "1 jalan tertutup dikirim untuk ditinjau. Terima kasih.",
+  "Sent {n} closed roads for review. Thank you.": "{n} jalan tertutup dikirim untuk ditinjau. Terima kasih.",
+  "Not sent. Try again shortly.": "Tidak terkirim. Coba lagi sebentar lagi.",
+  "That road can't be looked up right now. Try again shortly.": "Jalan itu tidak bisa dicari sekarang. Coba lagi sebentar lagi.",
+  "Looking up the road…": "Mencari jalan…",
+  "Sending…": "Mengirim…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Tidak ada akses umum",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Salin log petunjuk",
+  "Cue log copied.": "Log petunjuk disalin.",
+  "Could not copy the cue log.": "Tidak dapat menyalin log petunjuk.",
 };

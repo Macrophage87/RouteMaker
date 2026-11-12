@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "Đã trở lại tuyến đường dự định.",
   "No route found ahead. Make a U-turn.": "Không tìm thấy tuyến đường phía trước. Quay đầu xe.",
   "No signal: the planned route is still shown.": "Không có tín hiệu: tuyến đường dự định vẫn được hiển thị.",
+  "No signal: a rough way back to your route, found offline.": "Không có tín hiệu: đã tìm thấy ngoại tuyến một đường gần đúng để quay lại tuyến của bạn.",
   "No new route found. The planned route is still shown.": "Không tìm thấy tuyến đường mới. Tuyến đường dự định vẫn được hiển thị.",
   "No new route found. Go back to the planned route.": "Không tìm thấy tuyến đường mới. Hãy quay lại tuyến đường dự định.",
   "New route found. It rejoins your route ahead.": "Đã tìm thấy tuyến đường mới. Tuyến này nhập lại tuyến của bạn ở phía trước.",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "Tuyến này có vật cản.",
   "{list} on this route. A cargo bike or tandem may not get through.": "Tuyến này có {list}. Xe đạp chở hàng hoặc xe đạp đôi có thể không qua được.",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "Có {list} gần điểm xuất phát, một điểm dừng hoặc điểm đến của bạn. Xe đạp chở hàng hoặc xe đạp đôi có thể không qua được.",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Có đoạn nào cảm thấy khác với mức đánh giá không?",
+  "Which stretch?": "Đoạn nào?",
+  "You marked a road closed.": "Bạn đã đánh dấu một con đường bị đóng.",
+  "You marked {n} roads closed.": "Bạn đã đánh dấu {n} con đường bị đóng.",
+  "Send for review": "Gửi để xem xét",
+  "Only the road and the day are sent.": "Chỉ gửi con đường và ngày.",
+  "Sent 1 closed road for review. Thank you.": "Đã gửi 1 con đường bị đóng để xem xét. Cảm ơn bạn.",
+  "Sent {n} closed roads for review. Thank you.": "Đã gửi {n} con đường bị đóng để xem xét. Cảm ơn bạn.",
+  "Not sent. Try again shortly.": "Chưa gửi. Hãy thử lại sau ít phút.",
+  "That road can't be looked up right now. Try again shortly.": "Hiện không tra cứu được con đường đó. Hãy thử lại sau ít phút.",
+  "Looking up the road…": "Đang tra cứu con đường…",
+  "Sending…": "Đang gửi…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Không cho công chúng vào",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Sao chép nhật ký chỉ dẫn",
+  "Cue log copied.": "Đã sao chép nhật ký chỉ dẫn.",
+  "Could not copy the cue log.": "Không thể sao chép nhật ký chỉ dẫn.",
 };

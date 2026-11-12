@@ -1,0 +1,675 @@
+{
+ "name": "dupont-15th-s-st",
+ "about": "15th St cycle track, S St, 19th St, a service road beside Florida Ave: plain lefts and rights",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.036523,
+     38.910063
+    ],
+    [
+     -77.03641,
+     38.910063
+    ],
+    [
+     -77.035615,
+     38.910063
+    ],
+    [
+     -77.035405,
+     38.910062
+    ],
+    [
+     -77.035177,
+     38.910064
+    ],
+    [
+     -77.035027,
+     38.910064
+    ],
+    [
+     -77.034841,
+     38.910065
+    ],
+    [
+     -77.034672,
+     38.910064
+    ],
+    [
+     -77.034642,
+     38.910063
+    ],
+    [
+     -77.03464,
+     38.910195
+    ],
+    [
+     -77.034633,
+     38.910278
+    ],
+    [
+     -77.034633,
+     38.910339
+    ],
+    [
+     -77.034632,
+     38.910394
+    ],
+    [
+     -77.03463,
+     38.910451
+    ],
+    [
+     -77.03464,
+     38.910521
+    ],
+    [
+     -77.03464,
+     38.910724
+    ],
+    [
+     -77.03464,
+     38.910936
+    ],
+    [
+     -77.034629,
+     38.911034
+    ],
+    [
+     -77.034629,
+     38.911068
+    ],
+    [
+     -77.034627,
+     38.911141
+    ],
+    [
+     -77.034626,
+     38.911205
+    ],
+    [
+     -77.034626,
+     38.911244
+    ],
+    [
+     -77.034639,
+     38.911276
+    ],
+    [
+     -77.034638,
+     38.911533
+    ],
+    [
+     -77.034636,
+     38.911689
+    ],
+    [
+     -77.034628,
+     38.911746
+    ],
+    [
+     -77.034628,
+     38.911825
+    ],
+    [
+     -77.034628,
+     38.911884
+    ],
+    [
+     -77.034628,
+     38.911932
+    ],
+    [
+     -77.034628,
+     38.911947
+    ],
+    [
+     -77.034634,
+     38.912008
+    ],
+    [
+     -77.034638,
+     38.912217
+    ],
+    [
+     -77.034636,
+     38.912383
+    ],
+    [
+     -77.034626,
+     38.91246
+    ],
+    [
+     -77.034625,
+     38.912545
+    ],
+    [
+     -77.034626,
+     38.912608
+    ],
+    [
+     -77.034626,
+     38.912685
+    ],
+    [
+     -77.034625,
+     38.912714
+    ],
+    [
+     -77.034634,
+     38.912794
+    ],
+    [
+     -77.034632,
+     38.913361
+    ],
+    [
+     -77.034632,
+     38.913701
+    ],
+    [
+     -77.034632,
+     38.913885
+    ],
+    [
+     -77.034621,
+     38.913947
+    ],
+    [
+     -77.03462,
+     38.914033
+    ],
+    [
+     -77.034618,
+     38.9141
+    ],
+    [
+     -77.034679,
+     38.914101
+    ],
+    [
+     -77.036382,
+     38.914103
+    ],
+    [
+     -77.036512,
+     38.914102
+    ],
+    [
+     -77.036638,
+     38.914102
+    ],
+    [
+     -77.037167,
+     38.914101
+    ],
+    [
+     -77.038373,
+     38.914099
+    ],
+    [
+     -77.038419,
+     38.914099
+    ],
+    [
+     -77.038486,
+     38.914097
+    ],
+    [
+     -77.038553,
+     38.914098
+    ],
+    [
+     -77.038597,
+     38.914099
+    ],
+    [
+     -77.039126,
+     38.9141
+    ],
+    [
+     -77.039273,
+     38.914099
+    ],
+    [
+     -77.039435,
+     38.914099
+    ],
+    [
+     -77.040182,
+     38.914097
+    ],
+    [
+     -77.041355,
+     38.914102
+    ],
+    [
+     -77.041553,
+     38.914102
+    ],
+    [
+     -77.041656,
+     38.914102
+    ],
+    [
+     -77.041772,
+     38.914102
+    ],
+    [
+     -77.04195,
+     38.914102
+    ],
+    [
+     -77.042262,
+     38.914102
+    ],
+    [
+     -77.042607,
+     38.914102
+    ],
+    [
+     -77.042882,
+     38.914101
+    ],
+    [
+     -77.04334,
+     38.9141
+    ],
+    [
+     -77.043428,
+     38.9141
+    ],
+    [
+     -77.043429,
+     38.914175
+    ],
+    [
+     -77.043429,
+     38.914484
+    ],
+    [
+     -77.043426,
+     38.914837
+    ],
+    [
+     -77.043425,
+     38.91551
+    ],
+    [
+     -77.043425,
+     38.915588
+    ],
+    [
+     -77.043425,
+     38.915649
+    ],
+    [
+     -77.043426,
+     38.915739
+    ],
+    [
+     -77.043349,
+     38.915759
+    ],
+    [
+     -77.042761,
+     38.915908
+    ]
+   ]
+  },
+  "distance_m": 1620.0,
+  "duration_s": 479.6,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.10064,
+    35.0
+   ],
+   [
+    0.12415,
+    44.6
+   ],
+   [
+    0.12415,
+    48.6
+   ],
+   [
+    0.16986,
+    67.1
+   ],
+   [
+    0.16986,
+    71.1
+   ],
+   [
+    0.22607,
+    93.8
+   ],
+   [
+    0.22607,
+    97.8
+   ],
+   [
+    0.27177,
+    116.3
+   ],
+   [
+    0.27177,
+    120.3
+   ],
+   [
+    0.37431,
+    161.8
+   ],
+   [
+    0.37431,
+    165.8
+   ],
+   [
+    0.37853,
+    167.5
+   ],
+   [
+    0.4719,
+    202.6
+   ],
+   [
+    0.4719,
+    216.6
+   ],
+   [
+    0.58493,
+    259.0
+   ],
+   [
+    0.58493,
+    279.0
+   ],
+   [
+    0.62755,
+    295.0
+   ],
+   [
+    0.62755,
+    315.0
+   ],
+   [
+    0.74985,
+    360.9
+   ],
+   [
+    0.74985,
+    364.9
+   ],
+   [
+    0.84988,
+    402.4
+   ],
+   [
+    0.85053,
+    402.7
+   ],
+   [
+    0.85053,
+    406.7
+   ],
+   [
+    0.95244,
+    447.4
+   ],
+   [
+    0.95244,
+    459.4
+   ],
+   [
+    0.96257,
+    463.4
+   ],
+   [
+    1.0,
+    479.6
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 164,
+    "from_mi": 0.0,
+    "to_mi": 0.1,
+    "street": "service road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.1 mi (0.0 to 0.2 km): Service road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 164,
+    "to_m": 613,
+    "from_mi": 0.1,
+    "to_mi": 0.38,
+    "street": "15th Street Northwest Cycle Track",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "15th Street Northwest Cycle Track",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.1 to 0.4 mi (0.2 to 0.6 km): Left onto 15th Street Northwest Cycle Track, low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 613,
+    "to_m": 1378,
+    "from_mi": 0.38,
+    "to_mi": 0.86,
+    "street": "S Street Northwest",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "S Street Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 to 0.9 mi (0.6 to 1.4 km): Left onto S Street Northwest, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1378,
+    "to_m": 1560,
+    "from_mi": 0.86,
+    "to_mi": 0.97,
+    "street": "19th Street Northwest",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "19th Street Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.9 to 1.0 mi (1.4 to 1.6 km): Right onto 19th Street Northwest, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1560,
+    "to_m": 1620,
+    "from_mi": 0.97,
+    "to_mi": 1.01,
+    "street": "service road beside Florida Avenue Northwest",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "service road beside Florida Avenue Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 72,
+      "others": [
+       0
+      ],
+      "main": "before",
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.0 mi (1.6 km), for 200 ft (60 m): Right onto the service road beside Florida Avenue Northwest, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   77
+  ],
+  "arrival_side": "left",
+  "leg_arrival_sides": [
+   "left"
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 164,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 164,
+    "to_m": 613,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 613,
+    "to_m": 1377,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1377,
+    "to_m": 1559,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1559,
+    "to_m": 1619,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   }
+  ]
+ }
+}

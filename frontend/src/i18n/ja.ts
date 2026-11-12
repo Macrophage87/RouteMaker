@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "予定のルートに戻りました。",
   "No route found ahead. Make a U-turn.": "この先にルートが見つかりません。Uターンします。",
   "No signal: the planned route is still shown.": "信号なし：予定のルートを表示したままです。",
+  "No signal: a rough way back to your route, found offline.": "信号なし：ルートへ戻るおおよその道をオフラインで見つけました。",
   "No new route found. The planned route is still shown.": "新しいルートは見つかりませんでした。予定のルートを表示したままです。",
   "No new route found. Go back to the planned route.": "新しいルートは見つかりませんでした。予定のルートへ戻ってください。",
   "New route found. It rejoins your route ahead.": "新しいルートが見つかりました。この先で元のルートに合流します。",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "このルートに障害物があります。",
   "{list} on this route. A cargo bike or tandem may not get through.": "このルートに{list}があります。カーゴバイクやタンデムは通れないかもしれません。",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "出発地、立ち寄り先、または目的地の近くに{list}があります。カーゴバイクやタンデムは通れないかもしれません。",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "評価と違うと感じた区間はありましたか？",
+  "Which stretch?": "どの区間ですか？",
+  "You marked a road closed.": "1本の道を通行止めとして記録しました。",
+  "You marked {n} roads closed.": "{n}本の道を通行止めとして記録しました。",
+  "Send for review": "確認のために送信",
+  "Only the road and the day are sent.": "送信されるのは道と日付だけです。",
+  "Sent 1 closed road for review. Thank you.": "通行止めの道を1本、確認のために送信しました。ありがとうございます。",
+  "Sent {n} closed roads for review. Thank you.": "通行止めの道を{n}本、確認のために送信しました。ありがとうございます。",
+  "Not sent. Try again shortly.": "送信されませんでした。少し後でもう一度お試しください。",
+  "That road can't be looked up right now. Try again shortly.": "今はその道を調べられません。少し後でもう一度お試しください。",
+  "Looking up the road…": "道を調べています…",
+  "Sending…": "送信中…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "一般立入禁止",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "案内ログをコピー",
+  "Cue log copied.": "案内ログをコピーしました。",
+  "Could not copy the cue log.": "案内ログをコピーできませんでした。",
 };

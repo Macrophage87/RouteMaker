@@ -81,6 +81,8 @@ SOURCES = {
     "purple_line": "Purple Line construction update",
     # The Fairfax County Park Authority's Park Alerts, read by hand (v0.22.0; `routemaker.fcpa`).
     "fcpa": "Fairfax County Park Authority park alert",
+    # The park agencies' trail alerts, read by hand (v0.26.0; `routemaker.park_alerts`).
+    "park_alert": "Park agency trail alert",
     # Planned work that may close a road some day in its window (v0.17.0; Plan's Potential
     # closures layer only; `routemaker.planned_work`).
     "protrack": "DDOT capital projects (ProTrack+, CC BY 4.0)",
@@ -88,6 +90,8 @@ SOURCES = {
     "wssc": "WSSC Water water main construction",
     # Maryland's counties' and towns' closures (v0.17.0; `routemaker.md_closures`), routed round.
     "sha": "Maryland Road Closure Reporter (MDOT SHA)",
+    # Montgomery County DOT's own road closures (v0.26.0; `routemaker.md_closures`).
+    "moco": "Montgomery County DOT road closures",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -101,10 +105,14 @@ SOURCE_LINKS = {
     "ddot_advisory": "https://projects.ddot.dc.gov/",
     "purple_line": "https://purplelinemd.com/updates",
     "fcpa": "https://www.fairfaxcounty.gov/parks/park-alerts",
+    # Each park closure carries its own agency's page (`park-closures.json`'s `page`, required by
+    # tests/test_park_alerts.py); this is only a fallback.
+    "park_alert": "https://www.nps.gov/choh/planyourvisit/conditions.htm",
     "protrack": "https://opendata.dc.gov/",
     "dcwater": "https://www.dcwater.com/projects",
     "wssc": "https://www.wsscwater.com/what-we-do/constructionin-your-neighborhood-map",
     "sha": "https://data.imap.maryland.gov/datasets/maryland-road-closures",
+    "moco": "https://www.montgomerycountymd.gov/dot/",
 }
 
 DISCLAIMER = (
@@ -1670,7 +1678,7 @@ def split_words(zone: Zone | None) -> str:
 DC_SOURCES = frozenset({"dc", "mpd", "alertdc", "ddot_advisory"})
 # The sources whose closed zones are said as a road closed, not a work zone: DC's, the
 # closures a reviewer confirmed, the Purple Line's (v0.13.0) and Fairfax's park alerts (v0.22.0).
-CLOSURE_SOURCES = DC_SOURCES | {"reviewer", "purple_line", "fcpa"}
+CLOSURE_SOURCES = DC_SOURCES | {"reviewer", "purple_line", "fcpa", "park_alert"}
 
 
 # --- The card's words (v0.7.0, "Closures on the map") ------------------------------
@@ -1721,7 +1729,9 @@ def cited_date(moment: datetime) -> str:
 # The sources whose windows are whole days: a reviewer's, a DDOT project advisory's
 # (`routemaker.ddot_advisories`), a Purple Line update's (`routemaker.purple_line`) and a
 # Fairfax park alert's (`routemaker.fcpa`).
-WHOLE_DAY_SOURCES = frozenset({"reviewer", "ddot_advisory", "purple_line", "fcpa", "dcwater"})
+WHOLE_DAY_SOURCES = frozenset(
+    {"reviewer", "ddot_advisory", "purple_line", "fcpa", "park_alert", "dcwater"}
+)
 
 
 def last_day(source: str, end: datetime) -> datetime | None:
@@ -1804,7 +1814,7 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
 
 
 # The sources the card dates by when they published it.
-DATED_SOURCES = frozenset({"mpd", "alertdc", "ddot_advisory", "purple_line", "fcpa"})
+DATED_SOURCES = frozenset({"mpd", "alertdc", "ddot_advisory", "purple_line", "fcpa", "park_alert"})
 
 
 def source_text(zone: Zone, now: datetime | None = None) -> str:

@@ -695,6 +695,27 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - The facts of an alert (which trail or bridge, which days) are used with a link to the page; no
   alert text is republished.
 
+### Park agency trail alerts (v0.26.0)
+
+- Credit: `Park agency trail alerts`
+- Pages, each in words with no feed (read 2026-11-12):
+  - NOVA Parks (the W&OD Trail): the alerts linked from <https://www.novaparks.com/>, one page an
+    alert (`https://www.novaparks.com/alert/...`).
+  - NPS, C&O Canal National Historical Park: "Towpath and Park Conditions",
+    <https://www.nps.gov/choh/planyourvisit/conditions.htm>, each place by its milepost. A
+    work of the US government, public domain.
+  - Anne Arundel County Recreation and Parks: "Closings, Cancellations, & Delays",
+    <https://www.aacounty.org/recreation-parks/about-us/closings-cancellations> (the B&A Trail).
+- New items are listed by `scripts/park_alerts.py watch`; a trail closure is read by a person and,
+  as the owner's rule for these says, kept as dates, a reason and links in
+  `src/core/geodata/park-closures.json`, its lines OpenStreetMap's (ODbL): the OSM ways, or for
+  the C&O the towpath between the named mileposts cut from the trail mile lines
+  (`trail-miles.json`, also OSM).
+- Use: closures routed round, whole days, gone after the last day (`routemaker.park_alerts`).
+  Each closure names its agency and links its alert.
+- The facts of an alert (which trail, which miles, which days) are used with a link to the page;
+  no alert text is republished. Not legal advice.
+
 ### DDOT occupancy permits (TOPS)
 
 - Credit: `Road closures: DDOT (TOPS permits), CC BY 4.0`
@@ -736,7 +757,7 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
   update ends the alert it follows. Only traffic and road items are read; every other alert type
   (crime first) is dropped before its text is read, and is never stored, logged or shown. The one
   exception (Stephen 2026-11-12) is a road closure whose title also names police activity or a
-  crime: only its closed streets are kept, routed round as one area about 1,000 ft wide of them
+  crime: only its closed streets are kept, routed round as one area about 1,000 ft round them
   (our default) and shown as "Police activity: streets closed near ...", with none of its other
   words.
 - Publisher: DC Homeland Security and Emergency Management Agency.
@@ -783,6 +804,23 @@ permits: never routed round, never in a route's words, a cue or the closure chec
   the closure's own fields are asked for, never the reporting account. Publisher: MDOT SHA, the
   WZDx feed's publisher. Terms: a public MD iMAP service, "as is", no licence stated (inferred
   public; ask MDOT SHA before redistributing the records themselves). Not legal advice.
+
+### Montgomery County DOT road closures (v0.26.0)
+
+- Credit: `Montgomery County DOT road closures`
+- **Montgomery County DOT road closures**. Layer "MC DOT Road Closure":
+  `www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0`, read every
+  15 minutes (source `moco`). Montgomery County's own closures on its roads (construction, weather
+  and flooding, crashes, emergencies, events), which it does not post to the state's Reporter
+  above (none of the state's records named Montgomery on 2026-11-12, so the two do not overlap).
+  The same fields as the state's Reporter, checked live 2026-11-12, read the same way
+  (`md_closures.parse_sha`); never `Creator`. The layer "may contain zero features" when nothing is
+  closed, which is a good read. Publisher's stated uses include "routing applications". Terms: a
+  public county map service, copyright "Montgomery County DOT", no licence stated on the layer
+  (the county's older open-data copy, "State and County Road Closures", 543g-yn3p, is marked
+  Public Domain but stopped updating in 2021). Inferred public; we route round it and show each
+  closure's own words with a link to the county's DOT, and never redistribute the records. Not
+  legal advice.
 
 ### Deer-management closures (v0.12.3)
 
@@ -949,6 +987,12 @@ map's credits (301 is about data sources). It is credited where the font is, in 
 - The military areas the rebuild closes to bicycles (`pipeline.restricted_areas`) are
   OpenStreetMap's own `landuse=military` and `military=*` polygons (© OpenStreetMap
   contributors, ODbL), read from the same extract as the ways.
+- The closed sites the map shades (`frontend/src/restricted-data/`, built by
+  `scripts/build_restricted_sites.py`) are those same OSM areas, plus hand-drawn closed areas in
+  `fixtures/restricted-sites/`. The Patuxent Research Refuge's North Tract closed area is drawn
+  on OSM geometry, with U.S. Fish and Wildlife Service, Patuxent Research Refuge North Tract map,
+  2026-06 (<https://www.fws.gov/sites/default/files/documents/2026-06/north-tract-trail-map_2026_time-change.pdf>)
+  as the evidence for its outline; a U.S. federal government work, public domain.
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
   owner's counts of three DC Bike Party rides (PLAN item 173,
   `reports/owner/cyclist_packing_density.md` (not in the repository)), indicative, good to about ±25% (item
@@ -1369,7 +1413,10 @@ aren't sharing their data verbatim, just referencing. Keep them").
   repository, while Arlington's terms are pending; cited by the owner's Virginia rows
   (`fixtures/overrides/2026-10-31-owner-virginia-ratings.json`, R2) and by the Arlington
   review rows (`fixtures/overrides/2026-11-03-owner-arlington-bci-review.json`), whose
-  road-panel "Why" notes name Arlington's comfort level where ours differs. The owner,
+  road-panel "Why" notes name Arlington's comfort level where ours differs, and by
+  `fixtures/overrides/2026-11-12-owner-side-streets-and-arlington-index.json`, whose Why line on
+  every matched way ends with the index's level ("agrees" at the same level included) and its
+  measured volume where it has one; terms still pending. The owner,
   2026-11-03: citing it is fair use (research, criticism and review); a row's reason
   quotes the index's figures for that way's blocks, and the dataset itself is never copied in.
 - Arlington County's Intersection Points

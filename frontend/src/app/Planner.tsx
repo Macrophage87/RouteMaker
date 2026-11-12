@@ -39,6 +39,8 @@ import { IosLocationHelp } from "../IosLocationHelp.tsx";
 type PlaceNames = ReturnType<typeof usePlaceNames>;
 
 export interface PointsSectionProps {
+  /** Plan's bike loop from a start and a distance (BikeLoopPicker), or null; it hides itself where it does not apply. */
+  bikeLoop?: ReactNode;
   pointsHeadingRef: RefObject<HTMLHeadingElement | null>;
   zoom: number | null;
   stressVisible: boolean;
@@ -117,7 +119,7 @@ function HintLines({ lines }: { lines: readonly string[] }) {
 }
 
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
+  const { bikeLoop, pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
   // A finger as the main pointer: the Info's tips say tap and press and hold, not click (P8).
   const touch = looksLikePhone();
   return (
@@ -241,6 +243,7 @@ export function PointsSection(props: PointsSectionProps) {
       {/* What to do after the start, said where it plans and not shown (as the empty plan's line): the Points list and
           the map show it. In accessibility mode it shows, with its Map tools way in. */}
       {points.length === 1 && <p className={accessMode ? "hint" : "visually-hidden"}>{loneStartHint(preset, loopVias, accessMode)}</p>}
+      {bikeLoop}
       {/* Only when there is something to fix: a stop between the start and the end (the 2026-10-29 review). */}
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
       {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}

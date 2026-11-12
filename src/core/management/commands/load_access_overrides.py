@@ -221,6 +221,12 @@ def parse_file(text: str, label: str) -> list[dict]:
             problem = placeholder_problem(field, row[field])
             if problem:
                 raise CommandError(f"{where}: {problem}")
+        if "facts" in row:
+            from pipeline.rated_facts import facts_problem
+
+            problem = facts_problem(row["facts"])
+            if problem:
+                raise CommandError(f"{where}: {problem}")
         if "fingerprint" in row:
             # Not loaded into the row: the rebuild reads it from the image's copy of
             # this file (pipeline.rematch), but a malformed one is refused here too.
@@ -237,9 +243,25 @@ def groups_problem(groups: object) -> str | None:
     for index, group in enumerate(groups):
         if not isinstance(group, dict):
             return f"group {index} is not an object"
-        extra = set(group) - {"kind", "value", "reason", "evidence", "ways", "fingerprints"}
+        extra = set(group) - {
+            "kind",
+            "value",
+            "reason",
+            "evidence",
+            "ways",
+            "fingerprints",
+            "facts",
+        }
         if extra:
             return f"group {index} has no {sorted(extra)}"
+        if "facts" in group:
+            # The facts the group was rated from (`pipeline.rated_facts`): not loaded, read
+            # by the rebuild from the image's copy of this file, but checked here.
+            from pipeline.rated_facts import facts_problem
+
+            problem = facts_problem(group["facts"])
+            if problem:
+                return f"group {index}: {problem}"
         ways = group.get("ways")
         if not isinstance(ways, list) or not ways:
             return f"group {index}: ways must be a non-empty list of way ids"

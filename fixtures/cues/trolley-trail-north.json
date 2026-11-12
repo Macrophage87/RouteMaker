@@ -1,0 +1,1951 @@
+{
+ "name": "trolley-trail-north",
+ "about": "Bethesda Trolley Trail north: a crossing then a right onto the trail, forks that keep to it",
+ "route": {
+  "preset": "trailmaxxing",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.096217,
+     38.98947
+    ],
+    [
+     -77.096275,
+     38.989723
+    ],
+    [
+     -77.096296,
+     38.989719
+    ],
+    [
+     -77.09639,
+     38.989705
+    ],
+    [
+     -77.096425,
+     38.989858
+    ],
+    [
+     -77.096511,
+     38.989776
+    ],
+    [
+     -77.096729,
+     38.989569
+    ],
+    [
+     -77.096774,
+     38.989527
+    ],
+    [
+     -77.097049,
+     38.989233
+    ],
+    [
+     -77.09725,
+     38.98903
+    ],
+    [
+     -77.097324,
+     38.988956
+    ],
+    [
+     -77.097416,
+     38.989012
+    ],
+    [
+     -77.097998,
+     38.98936
+    ],
+    [
+     -77.098073,
+     38.989406
+    ],
+    [
+     -77.098151,
+     38.989452
+    ],
+    [
+     -77.098754,
+     38.989808
+    ],
+    [
+     -77.098823,
+     38.989849
+    ],
+    [
+     -77.098904,
+     38.989898
+    ],
+    [
+     -77.099505,
+     38.990258
+    ],
+    [
+     -77.099572,
+     38.990298
+    ],
+    [
+     -77.099654,
+     38.990349
+    ],
+    [
+     -77.100055,
+     38.9906
+    ],
+    [
+     -77.1001,
+     38.990636
+    ],
+    [
+     -77.100229,
+     38.99074
+    ],
+    [
+     -77.100293,
+     38.990795
+    ],
+    [
+     -77.100385,
+     38.990777
+    ],
+    [
+     -77.100399,
+     38.990825
+    ],
+    [
+     -77.100417,
+     38.990869
+    ],
+    [
+     -77.100416,
+     38.990927
+    ],
+    [
+     -77.100399,
+     38.990996
+    ],
+    [
+     -77.100366,
+     38.991074
+    ],
+    [
+     -77.10032,
+     38.991158
+    ],
+    [
+     -77.100235,
+     38.991359
+    ],
+    [
+     -77.100206,
+     38.991431
+    ],
+    [
+     -77.100104,
+     38.991695
+    ],
+    [
+     -77.100032,
+     38.991932
+    ],
+    [
+     -77.099998,
+     38.992146
+    ],
+    [
+     -77.099994,
+     38.99229
+    ],
+    [
+     -77.100001,
+     38.992373
+    ],
+    [
+     -77.100004,
+     38.992395
+    ],
+    [
+     -77.100006,
+     38.992404
+    ],
+    [
+     -77.100009,
+     38.992442
+    ],
+    [
+     -77.100016,
+     38.992491
+    ],
+    [
+     -77.100018,
+     38.992507
+    ],
+    [
+     -77.100014,
+     38.992577
+    ],
+    [
+     -77.099993,
+     38.992653
+    ],
+    [
+     -77.099963,
+     38.992808
+    ],
+    [
+     -77.099939,
+     38.99295
+    ],
+    [
+     -77.099918,
+     38.993142
+    ],
+    [
+     -77.099906,
+     38.993256
+    ],
+    [
+     -77.099901,
+     38.993364
+    ],
+    [
+     -77.099867,
+     38.993467
+    ],
+    [
+     -77.099858,
+     38.993607
+    ],
+    [
+     -77.099809,
+     38.993679
+    ],
+    [
+     -77.099757,
+     38.993713
+    ],
+    [
+     -77.099778,
+     38.993728
+    ],
+    [
+     -77.099838,
+     38.993768
+    ],
+    [
+     -77.099849,
+     38.993789
+    ],
+    [
+     -77.100119,
+     38.993879
+    ],
+    [
+     -77.100216,
+     38.993841
+    ],
+    [
+     -77.100318,
+     38.9938
+    ],
+    [
+     -77.100429,
+     38.993789
+    ],
+    [
+     -77.100531,
+     38.993789
+    ],
+    [
+     -77.101052,
+     38.993808
+    ],
+    [
+     -77.101708,
+     38.993794
+    ],
+    [
+     -77.102216,
+     38.993792
+    ],
+    [
+     -77.102773,
+     38.993793
+    ],
+    [
+     -77.102881,
+     38.9938
+    ],
+    [
+     -77.103017,
+     38.99388
+    ],
+    [
+     -77.103004,
+     38.993984
+    ],
+    [
+     -77.103029,
+     38.994113
+    ],
+    [
+     -77.103052,
+     38.994153
+    ],
+    [
+     -77.103106,
+     38.994195
+    ],
+    [
+     -77.103169,
+     38.994213
+    ],
+    [
+     -77.103259,
+     38.994222
+    ],
+    [
+     -77.103691,
+     38.994201
+    ],
+    [
+     -77.104236,
+     38.994187
+    ],
+    [
+     -77.104566,
+     38.994168
+    ],
+    [
+     -77.10462,
+     38.994209
+    ],
+    [
+     -77.104635,
+     38.994304
+    ],
+    [
+     -77.104604,
+     38.994377
+    ],
+    [
+     -77.104574,
+     38.994451
+    ],
+    [
+     -77.104556,
+     38.994719
+    ],
+    [
+     -77.104572,
+     38.994895
+    ],
+    [
+     -77.104656,
+     38.995027
+    ],
+    [
+     -77.104667,
+     38.995097
+    ],
+    [
+     -77.104621,
+     38.995178
+    ],
+    [
+     -77.10452,
+     38.995289
+    ],
+    [
+     -77.104413,
+     38.995545
+    ],
+    [
+     -77.104388,
+     38.995739
+    ],
+    [
+     -77.104408,
+     38.99586
+    ],
+    [
+     -77.104473,
+     38.995928
+    ],
+    [
+     -77.104581,
+     38.995969
+    ],
+    [
+     -77.104731,
+     38.996033
+    ],
+    [
+     -77.104803,
+     38.996082
+    ],
+    [
+     -77.104961,
+     38.996127
+    ],
+    [
+     -77.105014,
+     38.996215
+    ],
+    [
+     -77.105039,
+     38.996379
+    ],
+    [
+     -77.105067,
+     38.996552
+    ],
+    [
+     -77.105158,
+     38.996806
+    ],
+    [
+     -77.105214,
+     38.996951
+    ],
+    [
+     -77.105266,
+     38.997065
+    ],
+    [
+     -77.105314,
+     38.997114
+    ],
+    [
+     -77.105348,
+     38.997127
+    ],
+    [
+     -77.105408,
+     38.997122
+    ],
+    [
+     -77.105513,
+     38.997126
+    ],
+    [
+     -77.105659,
+     38.997177
+    ],
+    [
+     -77.105828,
+     38.997206
+    ],
+    [
+     -77.106039,
+     38.997207
+    ],
+    [
+     -77.106205,
+     38.997183
+    ],
+    [
+     -77.106525,
+     38.997205
+    ],
+    [
+     -77.106702,
+     38.997204
+    ],
+    [
+     -77.106931,
+     38.997189
+    ],
+    [
+     -77.107199,
+     38.997155
+    ],
+    [
+     -77.107402,
+     38.997147
+    ],
+    [
+     -77.107881,
+     38.997151
+    ],
+    [
+     -77.108141,
+     38.997155
+    ],
+    [
+     -77.108311,
+     38.997163
+    ],
+    [
+     -77.108362,
+     38.997176
+    ],
+    [
+     -77.108403,
+     38.997194
+    ],
+    [
+     -77.108463,
+     38.997224
+    ],
+    [
+     -77.108532,
+     38.997266
+    ],
+    [
+     -77.108577,
+     38.99729
+    ],
+    [
+     -77.108621,
+     38.997307
+    ],
+    [
+     -77.108668,
+     38.997316
+    ],
+    [
+     -77.108706,
+     38.997316
+    ],
+    [
+     -77.108765,
+     38.997306
+    ],
+    [
+     -77.108789,
+     38.9973
+    ],
+    [
+     -77.108816,
+     38.997292
+    ],
+    [
+     -77.108914,
+     38.997482
+    ],
+    [
+     -77.108934,
+     38.997526
+    ],
+    [
+     -77.10895,
+     38.997565
+    ],
+    [
+     -77.108973,
+     38.997655
+    ],
+    [
+     -77.108989,
+     38.997784
+    ],
+    [
+     -77.109002,
+     38.997882
+    ],
+    [
+     -77.109019,
+     38.997983
+    ],
+    [
+     -77.109024,
+     38.998012
+    ],
+    [
+     -77.109042,
+     38.998072
+    ],
+    [
+     -77.109049,
+     38.99809
+    ],
+    [
+     -77.10906,
+     38.998109
+    ],
+    [
+     -77.109068,
+     38.998126
+    ],
+    [
+     -77.109081,
+     38.998189
+    ],
+    [
+     -77.109084,
+     38.998235
+    ],
+    [
+     -77.109088,
+     38.998259
+    ],
+    [
+     -77.109097,
+     38.998358
+    ],
+    [
+     -77.109065,
+     38.998385
+    ],
+    [
+     -77.109048,
+     38.998439
+    ],
+    [
+     -77.109071,
+     38.998503
+    ],
+    [
+     -77.109142,
+     38.998718
+    ],
+    [
+     -77.109206,
+     38.999164
+    ],
+    [
+     -77.109209,
+     38.999279
+    ],
+    [
+     -77.109193,
+     38.999353
+    ],
+    [
+     -77.109201,
+     38.999393
+    ],
+    [
+     -77.109266,
+     38.999482
+    ],
+    [
+     -77.109288,
+     38.999588
+    ],
+    [
+     -77.109296,
+     38.999675
+    ],
+    [
+     -77.109278,
+     38.999802
+    ],
+    [
+     -77.109284,
+     38.999951
+    ],
+    [
+     -77.109285,
+     39.000013
+    ],
+    [
+     -77.109294,
+     39.000045
+    ],
+    [
+     -77.109299,
+     39.000062
+    ],
+    [
+     -77.109304,
+     39.00008
+    ],
+    [
+     -77.109315,
+     39.000121
+    ],
+    [
+     -77.109342,
+     39.000217
+    ],
+    [
+     -77.10935,
+     39.000247
+    ],
+    [
+     -77.109351,
+     39.000258
+    ],
+    [
+     -77.109536,
+     39.001518
+    ],
+    [
+     -77.109532,
+     39.001811
+    ],
+    [
+     -77.109552,
+     39.001979
+    ],
+    [
+     -77.109599,
+     39.002115
+    ],
+    [
+     -77.109626,
+     39.002163
+    ],
+    [
+     -77.1097,
+     39.002276
+    ],
+    [
+     -77.109713,
+     39.002343
+    ],
+    [
+     -77.109698,
+     39.002592
+    ],
+    [
+     -77.109706,
+     39.002662
+    ],
+    [
+     -77.109739,
+     39.002759
+    ],
+    [
+     -77.109771,
+     39.002837
+    ],
+    [
+     -77.109774,
+     39.002846
+    ],
+    [
+     -77.109784,
+     39.002876
+    ],
+    [
+     -77.109798,
+     39.002914
+    ],
+    [
+     -77.109809,
+     39.002946
+    ],
+    [
+     -77.109822,
+     39.002979
+    ],
+    [
+     -77.10985,
+     39.003046
+    ],
+    [
+     -77.109938,
+     39.003312
+    ],
+    [
+     -77.110009,
+     39.003488
+    ],
+    [
+     -77.110057,
+     39.003606
+    ],
+    [
+     -77.110164,
+     39.003874
+    ],
+    [
+     -77.110227,
+     39.004009
+    ],
+    [
+     -77.110265,
+     39.004092
+    ],
+    [
+     -77.110293,
+     39.004156
+    ],
+    [
+     -77.110389,
+     39.004368
+    ],
+    [
+     -77.11039,
+     39.004409
+    ],
+    [
+     -77.110377,
+     39.004434
+    ],
+    [
+     -77.110388,
+     39.00445
+    ],
+    [
+     -77.11045,
+     39.004546
+    ],
+    [
+     -77.110509,
+     39.004634
+    ],
+    [
+     -77.110515,
+     39.004655
+    ],
+    [
+     -77.110543,
+     39.004669
+    ],
+    [
+     -77.110579,
+     39.004696
+    ],
+    [
+     -77.110797,
+     39.005133
+    ],
+    [
+     -77.110916,
+     39.005354
+    ],
+    [
+     -77.110921,
+     39.005407
+    ],
+    [
+     -77.110951,
+     39.00547
+    ],
+    [
+     -77.111026,
+     39.005608
+    ],
+    [
+     -77.111049,
+     39.005648
+    ],
+    [
+     -77.111259,
+     39.006019
+    ],
+    [
+     -77.111415,
+     39.006294
+    ],
+    [
+     -77.111561,
+     39.006546
+    ],
+    [
+     -77.111583,
+     39.006585
+    ],
+    [
+     -77.111629,
+     39.006613
+    ],
+    [
+     -77.111652,
+     39.006651
+    ],
+    [
+     -77.111031,
+     39.00705
+    ],
+    [
+     -77.110361,
+     39.007478
+    ],
+    [
+     -77.11003,
+     39.007688
+    ],
+    [
+     -77.110015,
+     39.007698
+    ],
+    [
+     -77.109408,
+     39.00811
+    ],
+    [
+     -77.109245,
+     39.008223
+    ],
+    [
+     -77.109125,
+     39.008339
+    ],
+    [
+     -77.109053,
+     39.008515
+    ],
+    [
+     -77.108986,
+     39.008682
+    ],
+    [
+     -77.108642,
+     39.009536
+    ],
+    [
+     -77.108556,
+     39.009781
+    ],
+    [
+     -77.108521,
+     39.00988
+    ],
+    [
+     -77.108478,
+     39.009975
+    ],
+    [
+     -77.108415,
+     39.01008
+    ],
+    [
+     -77.108366,
+     39.010143
+    ],
+    [
+     -77.108339,
+     39.010178
+    ],
+    [
+     -77.10827,
+     39.010246
+    ],
+    [
+     -77.108202,
+     39.010301
+    ],
+    [
+     -77.107998,
+     39.010448
+    ],
+    [
+     -77.107812,
+     39.010546
+    ],
+    [
+     -77.107611,
+     39.010606
+    ],
+    [
+     -77.10749,
+     39.010646
+    ],
+    [
+     -77.107089,
+     39.010826
+    ],
+    [
+     -77.106742,
+     39.010982
+    ],
+    [
+     -77.105857,
+     39.011367
+    ],
+    [
+     -77.105828,
+     39.011316
+    ],
+    [
+     -77.105247,
+     39.010295
+    ],
+    [
+     -77.105148,
+     39.010173
+    ],
+    [
+     -77.104934,
+     39.010051
+    ],
+    [
+     -77.10497,
+     39.009989
+    ]
+   ]
+  },
+  "distance_m": 4018.0,
+  "duration_s": 945.0,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.00711,
+    5.2
+   ],
+   [
+    0.00946,
+    6.9
+   ],
+   [
+    0.00946,
+    30.9
+   ],
+   [
+    0.00964,
+    31.0
+   ],
+   [
+    0.01394,
+    40.1
+   ],
+   [
+    0.04283,
+    61.5
+   ],
+   [
+    0.04283,
+    71.5
+   ],
+   [
+    0.04554,
+    73.5
+   ],
+   [
+    0.06574,
+    91.1
+   ],
+   [
+    0.06574,
+    99.1
+   ],
+   [
+    0.08591,
+    116.6
+   ],
+   [
+    0.08591,
+    124.6
+   ],
+   [
+    0.10608,
+    142.2
+   ],
+   [
+    0.10608,
+    150.2
+   ],
+   [
+    0.12475,
+    166.4
+   ],
+   [
+    0.12475,
+    174.4
+   ],
+   [
+    0.12731,
+    176.6
+   ],
+   [
+    0.12935,
+    179.0
+   ],
+   [
+    0.17629,
+    226.6
+   ],
+   [
+    0.17629,
+    238.6
+   ],
+   [
+    0.21602,
+    279.0
+   ],
+   [
+    0.22234,
+    283.7
+   ],
+   [
+    0.28601,
+    336.1
+   ],
+   [
+    0.32693,
+    367.1
+   ],
+   [
+    0.49649,
+    487.3
+   ],
+   [
+    0.52166,
+    505.5
+   ],
+   [
+    0.52166,
+    515.5
+   ],
+   [
+    0.52214,
+    515.8
+   ],
+   [
+    0.57644,
+    558.3
+   ],
+   [
+    0.57644,
+    568.3
+   ],
+   [
+    0.65413,
+    629.0
+   ],
+   [
+    0.65413,
+    639.0
+   ],
+   [
+    0.69955,
+    674.5
+   ],
+   [
+    0.70294,
+    677.1
+   ],
+   [
+    0.70294,
+    701.1
+   ],
+   [
+    0.76718,
+    750.3
+   ],
+   [
+    0.76718,
+    758.3
+   ],
+   [
+    0.76725,
+    758.3
+   ],
+   [
+    0.88361,
+    824.0
+   ],
+   [
+    0.89728,
+    831.1
+   ],
+   [
+    0.89741,
+    831.2
+   ],
+   [
+    0.89741,
+    839.2
+   ],
+   [
+    0.91285,
+    849.7
+   ],
+   [
+    0.91285,
+    857.7
+   ],
+   [
+    0.93426,
+    872.2
+   ],
+   [
+    0.93426,
+    880.2
+   ],
+   [
+    0.95597,
+    895.0
+   ],
+   [
+    0.99812,
+    938.5
+   ],
+   [
+    1.0,
+    945.0
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 38,
+    "from_mi": 0.0,
+    "to_mi": 0.02,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 120 ft (38 m): Path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 38,
+    "to_m": 55,
+    "from_mi": 0.02,
+    "to_mi": 0.03,
+    "street": "Woodmont Avenue",
+    "tier": 3,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Woodmont Avenue",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 56 ft (17 m): Right onto Woodmont Avenue, busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 55,
+    "to_m": 182,
+    "from_mi": 0.03,
+    "to_mi": 0.11,
+    "street": "Saint Elmo Avenue",
+    "tier": 3,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Saint Elmo Avenue",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -131,
+      "others": [
+       1
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.1 km), for 420 ft (127 m): Left onto Saint Elmo Avenue at a signal, busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 182,
+    "to_m": 509,
+    "from_mi": 0.11,
+    "to_mi": 0.32,
+    "street": "Norfolk Avenue",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Norfolk Avenue",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.1 to 0.3 mi (0.2 to 0.5 km): Right onto Norfolk Avenue at a signal, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 509,
+    "to_m": 517,
+    "from_mi": 0.32,
+    "to_mi": 0.32,
+    "street": "unnamed road",
+    "tier": 3,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "unnamed road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": "the road",
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.3 mi (0.5 km), for 26 ft (8 m): Cross the road, busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 517,
+    "to_m": 865,
+    "from_mi": 0.32,
+    "to_mi": 0.54,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "Bethesda Trolley Trail",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.3 to 0.5 mi (0.5 to 0.9 km): Right onto Bethesda Trolley Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 708,
+      "road": "Battery Lane"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 865,
+    "to_m": 890,
+    "from_mi": 0.54,
+    "to_mi": 0.55,
+    "street": "path",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_left",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -45,
+      "others": [
+       11
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.5 mi (0.9 km), for 82 ft (25 m): Bear left onto the path, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 890,
+    "to_m": 1147,
+    "from_mi": 0.55,
+    "to_mi": 0.71,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_left",
+     "onto": "Bethesda Trolley Trail",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -50,
+      "others": [
+       123
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 to 0.7 mi (0.9 to 1.1 km): Bear left onto Bethesda Trolley Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1147,
+    "to_m": 1311,
+    "from_mi": 0.71,
+    "to_mi": 0.81,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "Bethesda Trolley Trail",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": 59,
+      "others": [
+       -121
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.7 to 0.8 mi (1.1 to 1.3 km): Right to stay on Bethesda Trolley Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1311,
+    "to_m": 1578,
+    "from_mi": 0.81,
+    "to_mi": 0.98,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "Bethesda Trolley Trail",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": 53,
+      "others": [
+       -15
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 to 1.0 mi (1.3 to 1.6 km): Right to stay on Bethesda Trolley Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1578,
+    "to_m": 1993,
+    "from_mi": 0.98,
+    "to_mi": 1.24,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "Bethesda Trolley Trail",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": 18,
+      "others": [
+       -34
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.0 to 1.2 mi (1.6 to 2.0 km): Bear right to stay on Bethesda Trolley Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1993,
+    "to_m": 2096,
+    "from_mi": 1.24,
+    "to_mi": 1.3,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "Bethesda Trolley Trail",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": 85,
+      "others": [
+       -42
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.2 mi (2.0 km), for 340 ft (103 m): Right to stay on Bethesda Trolley Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2096,
+    "to_m": 2810,
+    "from_mi": 1.3,
+    "to_mi": 1.75,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.3 to 1.7 mi (2.1 to 2.8 km): Continue on Bethesda Trolley Trail, low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 2104,
+      "road": "the road"
+     },
+     {
+      "at_m": 2628,
+      "road": "Center Drive"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2810,
+    "to_m": 3083,
+    "from_mi": 1.75,
+    "to_mi": 1.92,
+    "street": "Bethesda Trolley Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.7 to 1.9 mi (2.8 to 3.1 km): Continue on Bethesda Trolley Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 2824,
+      "road": "West Cedar Lane"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3083,
+    "to_m": 3842,
+    "from_mi": 1.92,
+    "to_mi": 2.39,
+    "street": "Alta Vista Road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Alta Vista Road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 75,
+      "others": [
+       -113,
+       0
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.9 to 2.4 mi (3.1 to 3.8 km): Right onto Alta Vista Road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3842,
+    "to_m": 4011,
+    "from_mi": 2.39,
+    "to_mi": 2.49,
+    "street": "Balfour Drive",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Balfour Drive",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.4 to 2.5 mi (3.8 to 4.0 km): Right onto Balfour Drive, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4011,
+    "to_m": 4018,
+    "from_mi": 2.49,
+    "to_mi": 2.5,
+    "street": "Balfour Court",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Balfour Court",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 78,
+      "others": [
+       -25
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.5 mi (4.0 km), for 23 ft (7 m): Right onto Balfour Court, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   240
+  ],
+  "arrival_side": null,
+  "leg_arrival_sides": [
+   null
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 38,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 38,
+    "to_m": 55,
+    "tier": 3,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 55,
+    "to_m": 182,
+    "tier": 3,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 182,
+    "to_m": 517,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 517,
+    "to_m": 2095,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2095,
+    "to_m": 2809,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2809,
+    "to_m": 3081,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 3081,
+    "to_m": 3549,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 3549,
+    "to_m": 3604,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 3604,
+    "to_m": 3840,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 3840,
+    "to_m": 4016,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}

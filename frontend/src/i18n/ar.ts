@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "عدت إلى المسار المخطط.",
   "No route found ahead. Make a U-turn.": "لم يُعثر على مسار في الأمام. استدر للخلف.",
   "No signal: the planned route is still shown.": "لا توجد إشارة: لا يزال المسار المخطط معروضًا.",
+  "No signal: a rough way back to your route, found offline.": "لا توجد إشارة: تم العثور على طريق تقريبي للعودة إلى مسارك دون اتصال.",
   "No new route found. The planned route is still shown.": "لم يُعثر على مسار جديد. لا يزال المسار المخطط معروضًا.",
   "No new route found. Go back to the planned route.": "لم يُعثر على مسار جديد. عُد إلى المسار المخطط.",
   "New route found. It rejoins your route ahead.": "تم العثور على مسار جديد. يعود إلى مسارك في الأمام.",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "حواجز على هذا المسار.",
   "{list} on this route. A cargo bike or tandem may not get through.": "{list} على هذا المسار. قد لا تمر دراجة الشحن أو الدراجة المزدوجة.",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "{list} قرب نقطة البداية أو إحدى المحطات أو النهاية. قد لا تمر دراجة الشحن أو الدراجة المزدوجة.",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "هل شعرت أن أي جزء يختلف عن تقييمه؟",
+  "Which stretch?": "أي جزء؟",
+  "You marked a road closed.": "حددت طريقًا مغلقًا.",
+  "You marked {n} roads closed.": "حددت {n} طرق مغلقة.",
+  "Send for review": "إرسال للمراجعة",
+  "Only the road and the day are sent.": "يُرسل الطريق واليوم فقط.",
+  "Sent 1 closed road for review. Thank you.": "أُرسل طريق مغلق واحد للمراجعة. شكرًا.",
+  "Sent {n} closed roads for review. Thank you.": "أُرسلت {n} طرق مغلقة للمراجعة. شكرًا.",
+  "Not sent. Try again shortly.": "لم يُرسل. حاول مرة أخرى بعد قليل.",
+  "That road can't be looked up right now. Try again shortly.": "لا يمكن البحث عن هذا الطريق الآن. حاول مرة أخرى بعد قليل.",
+  "Looking up the road…": "جارٍ البحث عن الطريق…",
+  "Sending…": "جارٍ الإرسال…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "لا دخول للعامة",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "نسخ سجل الإرشادات",
+  "Cue log copied.": "تم نسخ سجل الإرشادات.",
+  "Could not copy the cue log.": "تعذّر نسخ سجل الإرشادات.",
 };

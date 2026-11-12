@@ -69,3 +69,10 @@ test("the crash screen says to paste the report in our Discord, linked as the be
   assert.match(screen, /\{saidWithDiscord\(said\)\}/);
   assert.match(ES["Error report copied. Paste it into your bug report in our Discord."], /Discord\.$/, "the Spanish keeps the word the link is on");
 });
+
+test("a ride's cue log goes at the end of the report, where there is one", () => {
+  const base = { error: new Error("boom"), at: 0, hash: "", path: "/", userAgent: "Chrome", logged: [], version: "0.27.0" };
+  assert.doesNotMatch(crashReport(base), /Cue log/);
+  const text = crashReport({ ...base, cueLog: "Cue log (this ride; cue numbers as in the plan's list, no places):\n     +3 s  #4 left advance  made" });
+  assert.match(text, /\n\nCue log \(this ride[^\n]*\n +\+3 s {2}#4 left advance {2}made$/);
+});

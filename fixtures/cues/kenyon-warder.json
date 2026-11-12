@@ -1,0 +1,558 @@
+{
+ "name": "kenyon-warder",
+ "about": "Kenyon St NW's two-way track left onto Warder St: a turn over the road alongside (#1162)",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.026223,
+     38.929795
+    ],
+    [
+     -77.024069,
+     38.929991
+    ],
+    [
+     -77.023644,
+     38.930025
+    ],
+    [
+     -77.023557,
+     38.930024
+    ],
+    [
+     -77.023523,
+     38.930021
+    ],
+    [
+     -77.02347,
+     38.930016
+    ],
+    [
+     -77.023367,
+     38.929997
+    ],
+    [
+     -77.023206,
+     38.929962
+    ],
+    [
+     -77.023177,
+     38.929955
+    ],
+    [
+     -77.023071,
+     38.929931
+    ],
+    [
+     -77.023006,
+     38.929918
+    ],
+    [
+     -77.022901,
+     38.929905
+    ],
+    [
+     -77.022782,
+     38.929901
+    ],
+    [
+     -77.022626,
+     38.929905
+    ],
+    [
+     -77.021649,
+     38.929997
+    ],
+    [
+     -77.019949,
+     38.930268
+    ],
+    [
+     -77.019915,
+     38.930274
+    ],
+    [
+     -77.019826,
+     38.930288
+    ],
+    [
+     -77.019833,
+     38.930318
+    ],
+    [
+     -77.01985,
+     38.930383
+    ],
+    [
+     -77.020063,
+     38.931197
+    ],
+    [
+     -77.020076,
+     38.931247
+    ],
+    [
+     -77.020094,
+     38.931316
+    ],
+    [
+     -77.020206,
+     38.931735
+    ],
+    [
+     -77.020224,
+     38.931801
+    ],
+    [
+     -77.020311,
+     38.932126
+    ],
+    [
+     -77.020387,
+     38.93241
+    ],
+    [
+     -77.020402,
+     38.932468
+    ],
+    [
+     -77.02042,
+     38.932539
+    ],
+    [
+     -77.020437,
+     38.932603
+    ],
+    [
+     -77.020594,
+     38.933208
+    ],
+    [
+     -77.020611,
+     38.933274
+    ],
+    [
+     -77.020629,
+     38.933344
+    ],
+    [
+     -77.020709,
+     38.933651
+    ],
+    [
+     -77.020781,
+     38.933919
+    ],
+    [
+     -77.020799,
+     38.933984
+    ],
+    [
+     -77.020818,
+     38.934057
+    ],
+    [
+     -77.020885,
+     38.934301
+    ],
+    [
+     -77.020948,
+     38.934533
+    ],
+    [
+     -77.020972,
+     38.934628
+    ],
+    [
+     -77.020987,
+     38.93469
+    ],
+    [
+     -77.021029,
+     38.934858
+    ],
+    [
+     -77.021046,
+     38.934924
+    ],
+    [
+     -77.021056,
+     38.934969
+    ],
+    [
+     -77.021063,
+     38.935002
+    ],
+    [
+     -77.021083,
+     38.935109
+    ],
+    [
+     -77.021126,
+     38.935396
+    ],
+    [
+     -77.021148,
+     38.935537
+    ],
+    [
+     -77.02116,
+     38.935616
+    ],
+    [
+     -77.021169,
+     38.935677
+    ],
+    [
+     -77.021204,
+     38.935908
+    ],
+    [
+     -77.021258,
+     38.936258
+    ],
+    [
+     -77.021268,
+     38.936331
+    ],
+    [
+     -77.021357,
+     38.936312
+    ],
+    [
+     -77.021389,
+     38.936305
+    ],
+    [
+     -77.021618,
+     38.936254
+    ],
+    [
+     -77.02163,
+     38.93633
+    ],
+    [
+     -77.02167,
+     38.936592
+    ],
+    [
+     -77.021914,
+     38.93654
+    ]
+   ]
+  },
+  "distance_m": 1335.0,
+  "duration_s": 335.2,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.18652,
+    55.4
+   ],
+   [
+    0.18652,
+    69.4
+   ],
+   [
+    0.41423,
+    137.1
+   ],
+   [
+    0.41423,
+    151.1
+   ],
+   [
+    0.41962,
+    152.7
+   ],
+   [
+    0.81423,
+    271.9
+   ],
+   [
+    0.81423,
+    275.9
+   ],
+   [
+    0.93171,
+    311.4
+   ],
+   [
+    0.95527,
+    318.4
+   ],
+   [
+    0.98361,
+    330.8
+   ],
+   [
+    1.0,
+    335.2
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 561,
+    "from_mi": 0.0,
+    "to_mi": 0.35,
+    "street": "Kenyon Street Northwest bike lane",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.3 mi (0.0 to 0.6 km): Kenyon Street Northwest bike lane, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 249,
+      "road": "Georgia Avenue Northwest"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 561,
+    "to_m": 564,
+    "from_mi": 0.35,
+    "to_mi": 0.35,
+    "street": "Warder Street Northwest",
+    "tier": 2,
+    "facility": "none",
+    "oneway": true,
+    "turn": {
+     "movement": "left",
+     "onto": "Warder Street Northwest",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": "Kenyon Street Northwest"
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.3 mi (0.6 km), for 10 ft (3 m): Left onto Warder Street Northwest at a signal, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 564,
+    "to_m": 1245,
+    "from_mi": 0.35,
+    "to_mi": 0.77,
+    "street": "Warder Street Northwest",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": true,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 to 0.8 mi (0.6 to 1.2 km): Continue on Warder Street Northwest, low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1245,
+    "to_m": 1277,
+    "from_mi": 0.77,
+    "to_mi": 0.79,
+    "street": "Quebec Place Northwest",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Quebec Place Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 mi (1.2 km), for 100 ft (32 m): Left onto Quebec Place Northwest, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1277,
+    "to_m": 1314,
+    "from_mi": 0.79,
+    "to_mi": 0.82,
+    "street": "service road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "service road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 99,
+      "others": [
+       4
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 mi (1.3 km), for 120 ft (37 m): Right onto the service road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1314,
+    "to_m": 1335,
+    "from_mi": 0.82,
+    "to_mi": 0.83,
+    "street": "service road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "service road",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": -98,
+      "others": [
+       -1
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 mi (1.3 km), for 69 ft (21 m): Left to stay on the service road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   58
+  ],
+  "arrival_side": null,
+  "leg_arrival_sides": [
+   null
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 1165,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1165,
+    "to_m": 1245,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1245,
+    "to_m": 1277,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1277,
+    "to_m": 1335,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   }
+  ]
+ }
+}

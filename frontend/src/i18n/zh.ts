@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "已回到计划路线。",
   "No route found ahead. Make a U-turn.": "前方找不到路线。请掉头。",
   "No signal: the planned route is still shown.": "没有信号：仍显示计划路线。",
+  "No signal: a rough way back to your route, found offline.": "没有信号：已离线找到一条返回您路线的大致路线。",
   "No new route found. The planned route is still shown.": "没有找到新路线。仍显示计划路线。",
   "No new route found. Go back to the planned route.": "没有找到新路线。请回到计划路线。",
   "New route found. It rejoins your route ahead.": "已找到新路线。它会在前方重新接入您的路线。",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "此路线上有障碍。",
   "{list} on this route. A cargo bike or tandem may not get through.": "此路线上有{list}。货运自行车或双人自行车可能无法通过。",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "起点、途经点或终点附近有{list}。货运自行车或双人自行车可能无法通过。",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "有没有哪一段感觉和评级不一样？",
+  "Which stretch?": "哪一段？",
+  "You marked a road closed.": "你标记了一条道路封闭。",
+  "You marked {n} roads closed.": "你标记了 {n} 条道路封闭。",
+  "Send for review": "提交审核",
+  "Only the road and the day are sent.": "只发送道路和日期。",
+  "Sent 1 closed road for review. Thank you.": "已提交 1 条封闭道路供审核。谢谢。",
+  "Sent {n} closed roads for review. Thank you.": "已提交 {n} 条封闭道路供审核。谢谢。",
+  "Not sent. Try again shortly.": "未发送。请稍后再试。",
+  "That road can't be looked up right now. Try again shortly.": "现在无法查询这条道路。请稍后再试。",
+  "Looking up the road…": "正在查询道路…",
+  "Sending…": "正在发送…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "禁止公众进入",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "复制提示记录",
+  "Cue log copied.": "已复制提示记录。",
+  "Could not copy the cue log.": "无法复制提示记录。",
 };

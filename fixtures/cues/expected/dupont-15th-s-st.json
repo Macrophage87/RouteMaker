@@ -1,0 +1,38 @@
+[
+ {
+  "turn": "Start",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Left",
+  "road": "15th St NW Cycle Track",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Left",
+  "road": "S St NW",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "19th St NW",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

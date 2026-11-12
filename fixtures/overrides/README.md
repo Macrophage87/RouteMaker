@@ -499,6 +499,12 @@ A file may write its rows in a compact `groups` list instead of, or after, `rows
 with the shared fields. Used by the 2026-11-09 own-picks files, about 180,000 ways that
 would not fit the repository one row each. The loader, the re-match and
 `backfill_override_fingerprints.py` (which fills a group's `fingerprints`) read both forms.
+A stress group or row may also carry `facts`, the facts it was rated from (`highway`,
+`urban`, `speed_mph`, `speed_source`, `lanes`, `oneway`, `count_band`, `facility`;
+`pipeline.rated_facts`), which the rebuild compares with the way's facts now and lists in
+`rated-facts-changed.md` where they moved (docs/stress/overrides.md, "Facts changed since
+rated"). The own-picks files state theirs in each group's `evidence` sentence, which is
+read where there is no `facts` object. The loader checks `facts` and does not load it.
 
 A file that re-points a row at new ways keeps the old way in a top-level `superseded`
 list, with `replaced_by` and the old way's fingerprint, because the row already loaded

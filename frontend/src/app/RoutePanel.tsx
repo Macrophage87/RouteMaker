@@ -889,7 +889,8 @@ export function RouteSummary({
     <>
       {/* <bdi>: "31 min" keeps its order on a right-to-left page (DC's languages, 2026-10-28). */}
       <bdi>{timeText}</bdi>
-      {arriveMs != null && <ArriveAt arriveMs={arriveMs} />}
+      {/* A transit trip's arrival in Go only (the 2026-11-12 backlog's scope: Plan's transit panel unchanged). */}
+      {arriveMs != null && !(transit && mode !== "go") && <ArriveAt arriveMs={arriveMs} />}
     </>
   );
   const calm = calmPercent(route.stress_m);
@@ -1035,21 +1036,29 @@ export function RouteSummary({
     </Fold>
   ) : null;
 
-  const transitFold = transit ? (
-    // The trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list").
-    <Fold title={t("{ride} trip", { ride: presetLabel(preset) })} said={t("{ride} trip", { ride: presetSaid(preset) })} open className="transit-fold" icon="train">
-      <TransitSummary
-        plan={transit}
-        lineSpans={route.stress_spans}
-        preset={preset}
-        onPick={transitControls?.onPick}
-        busy={transitControls?.busy}
-        announce={transitControls?.announce}
-        onMissed={transitControls?.onMissed}
-        onRideRest={restOffered(rideTripOf(route, points)) ? transitControls?.onRideRest : undefined}
-      />
-    </Fold>
+  const transitSummary = transit ? (
+    <TransitSummary
+      plan={transit}
+      lineSpans={route.stress_spans}
+      preset={preset}
+      onPick={transitControls?.onPick}
+      busy={transitControls?.busy}
+      announce={transitControls?.announce}
+      onMissed={transitControls?.onMissed}
+      onRideRest={restOffered(rideTripOf(route, points)) ? transitControls?.onRideRest : undefined}
+      go={goMode}
+    />
   ) : null;
+  // Plan: the trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list"). Go: the
+  // trip on the sheet itself, its steps folded inside it (Stephen 2026-11-12), with no fold title repeating the ride type.
+  const transitFold =
+    transit && !goMode ? (
+      <Fold title={t("{ride} trip", { ride: presetLabel(preset) })} said={t("{ride} trip", { ride: presetSaid(preset) })} open className="transit-fold" icon="train">
+        {transitSummary}
+      </Fold>
+    ) : (
+      transitSummary
+    );
 
   if (goMode) {
     // Go (the approved mockup's route sheets): the time big, the distance and climb in a line, Info, the
@@ -1126,9 +1135,18 @@ export function RouteSummary({
         {!go.peek && bikeshareFold}
         {!go.peek && transitFold}
         {!go.peek && <CapacityShort route={route} corkers={corkerShort(route, profile, rideSize)} />}
+        {/* The route's warnings next, on the half sheet's first screen (Stephen 2026-11-12: answer, stress, warnings,
+            stops, ride type): a rider who taps Start from there has seen a closure, rain or the sunset first. */}
+        {!go.peek && alerts}
+        {!go.peek && noteList}
         {!go.peek && go.routeCard}
-        {!go.peek && go.addStop}
-        {!go.peek && go.endRack}
+        {/* Add a stop and the bike rack on one row (the same 2026-11-12 pick), so the warnings fit above them. */}
+        {!go.peek && (go.addStop || go.endRack) && (
+          <div className="go-stop-row">
+            {go.addStop}
+            {go.endRack}
+          </div>
+        )}
         {!go.peek && go.rides && (
           <div className="go-route-rides">
             {/* Shown, as the route card says what it edits; the chips' group is named "Ride type" for a screen reader. */}
@@ -1138,8 +1156,6 @@ export function RouteSummary({
             {go.rides}
           </div>
         )}
-        {!go.peek && alerts}
-        {!go.peek && noteList}
         {!go.peek && actions.savedNote}
         {/* The routes and Save; the ride type and Plan in detail moved (edit-route redesign): the ride types sit
             under the route card, and the Go/Plan switch at the top is Plan in detail. */}

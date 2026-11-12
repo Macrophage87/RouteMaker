@@ -130,7 +130,7 @@ test("RideMode asks for the way to the start once, at the first fix, before the 
   assert.match(ride, /setStartAsk\(true\);\s*notify\(`\$\{START_ASK_HEADING\}\$\{fullStop\(\)\} \$\{START_ASK_LEAD\}`\);/);
   assert.match(ride, /haversineM\(fix\.point, startAskedAt\) >= RESTART_AUTO_M\) \{\s*const startAt = plan\.current\.points\[0\];\s*const toward = !!startAt && haversineM\(fix\.point, startAt\) < haversineM\(startAskedAt, startAt\);\s*chooseStartRef\.current\(toward && startsAway\(modelRef\.current, fix\), fix\.point\);/);
   // Go to the start chosen and no way found: said, not silent.
-  assert.match(ride, /if \(!found\) \{\s*\/\/ The rider asked for it[^\n]*\n\s*const said = [^;]+;\s*setReplanNote\(said\);\s*sayDetour\(said\);\s*return false;/);
+  assert.match(ride, /if \(!found\) \{\s*\/\/ The rider asked for it[^\n]*\n\s*const said = [^;]+;\s*setReplanNote\(said\);\s*\/\/[^\n]*\n\s*sayDetour\(said === REPLAN_NO_SIGNAL \? noSignalSaid\(wayBack\(modelRef\.current, rideRef\.current\)\) : said\);\s*return false;/);
   // Join from here: the ride goes on as any ride off its line, with Already done? asked as usual.
   assert.match(ride, /if \(!start \|\| !here\) \{\s*toStartAsking\.current = false;\s*return;\s*\}/);
   const dialog = readFileSync(new URL("../StartFirstDialog.tsx", import.meta.url), "utf8");

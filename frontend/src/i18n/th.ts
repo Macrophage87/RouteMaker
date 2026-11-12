@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "กลับมาบนเส้นทางที่วางแผนไว้แล้ว",
   "No route found ahead. Make a U-turn.": "ไม่พบเส้นทางข้างหน้า กลับรถ",
   "No signal: the planned route is still shown.": "ไม่มีสัญญาณ ยังแสดงเส้นทางที่วางแผนไว้",
+  "No signal: a rough way back to your route, found offline.": "ไม่มีสัญญาณ พบทางกลับสู่เส้นทางของคุณแบบคร่าว ๆ แบบออฟไลน์",
   "No new route found. The planned route is still shown.": "ไม่พบเส้นทางใหม่ ยังแสดงเส้นทางที่วางแผนไว้",
   "No new route found. Go back to the planned route.": "ไม่พบเส้นทางใหม่ กลับไปยังเส้นทางที่วางแผนไว้",
   "New route found. It rejoins your route ahead.": "พบเส้นทางใหม่ ซึ่งจะกลับมาบรรจบเส้นทางของคุณข้างหน้า",
@@ -2173,4 +2174,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Barriers on this route.": "มีสิ่งกีดขวางบนเส้นทางนี้",
   "{list} on this route. A cargo bike or tandem may not get through.": "มี{list}บนเส้นทางนี้ จักรยานบรรทุกของหรือจักรยานสองที่นั่งอาจผ่านไม่ได้",
   "{list} by your start, a stop or the end. A cargo bike or tandem may not get through.": "มี{list}ใกล้จุดเริ่มต้น จุดแวะ หรือปลายทางของคุณ จักรยานบรรทุกของหรือจักรยานสองที่นั่งอาจผ่านไม่ได้",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "มีช่วงไหนที่รู้สึกต่างจากระดับที่ให้ไว้ไหม",
+  "Which stretch?": "ช่วงไหน",
+  "You marked a road closed.": "คุณทำเครื่องหมายว่าถนน 1 สายปิดอยู่",
+  "You marked {n} roads closed.": "คุณทำเครื่องหมายว่าถนน {n} สายปิดอยู่",
+  "Send for review": "ส่งเพื่อตรวจสอบ",
+  "Only the road and the day are sent.": "ส่งเฉพาะถนนและวันเท่านั้น",
+  "Sent 1 closed road for review. Thank you.": "ส่งถนนที่ปิด 1 สายเพื่อตรวจสอบแล้ว ขอบคุณ",
+  "Sent {n} closed roads for review. Thank you.": "ส่งถนนที่ปิด {n} สายเพื่อตรวจสอบแล้ว ขอบคุณ",
+  "Not sent. Try again shortly.": "ยังไม่ได้ส่ง ลองอีกครั้งในอีกสักครู่",
+  "That road can't be looked up right now. Try again shortly.": "ค้นหาถนนนั้นไม่ได้ในขณะนี้ ลองอีกครั้งในอีกสักครู่",
+  "Looking up the road…": "กำลังค้นหาถนน…",
+  "Sending…": "กำลังส่ง…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "ห้ามบุคคลภายนอกเข้า",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "คัดลอกบันทึกคำแนะนำ",
+  "Cue log copied.": "คัดลอกบันทึกคำแนะนำแล้ว",
+  "Could not copy the cue log.": "คัดลอกบันทึกคำแนะนำไม่ได้",
 };

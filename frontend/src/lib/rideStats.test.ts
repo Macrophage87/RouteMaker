@@ -1,7 +1,7 @@
 // The ride's summary figures (lib/rideStats.ts; the owner, 2026-10-20). Made-up points along a meridian, not a real ride.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { elevationSpan, profileGain, statsPause, statsStart, statsStep, summaryRows, type RideStats } from "./rideStats.ts";
+import { RIDDEN_MOST, elevationSpan, profileGain, statsPause, statsStart, statsStep, summaryRows, withClosedStretch, withRidden, type RideStats } from "./rideStats.ts";
 import type { RideFix, RideModel } from "./navigate.ts";
 import type { RouteProfile } from "./api.ts";
 
@@ -121,4 +121,40 @@ test("heights are kept along the ride for the elevation chart, every 30 m or so,
   let off = statsStep(statsStart(0), fix(0, 0), { progressM: 0, off: true }, model, profile);
   off = statsStep(off, fix(600, 120), { progressM: 600, off: true }, model, profile);
   assert.equal(elevationSpan(off), null);
+});
+
+test("the streets ridden are kept by street and level, with a point on the route line, never a fix", () => {
+  const s = ride(statsStart(0), 0, 2000, 5, 0);
+  const ridden = s.ridden ?? [];
+  assert.deepEqual(
+    ridden.map((r) => [r.street, r.tier]),
+    [
+      ["A St", 1],
+      ["B St", 3],
+    ],
+  );
+  assert.ok(Math.abs(ridden[0].m - 1000) < 15 && Math.abs(ridden[1].m - 1000) < 15);
+  // On the line (lon -77 exactly here), not a fix's own point.
+  assert.ok(ridden.every((r) => r.point[0] === -77));
+});
+
+test("past RIDDEN_MOST streets the shortest goes, never the one being ridden", () => {
+  let r = withRidden([], "Long Rd", 2, 500, at(0));
+  for (let i = 0; i < RIDDEN_MOST; i++) r = withRidden(r, `St ${i}`, 2, 10 + i, at(i));
+  assert.equal(r.length, RIDDEN_MOST);
+  assert.equal(r[0].street, "Long Rd");
+  assert.ok(!r.some((x) => x.street === "St 0"));
+  assert.equal(r[r.length - 1].street, `St ${RIDDEN_MOST - 1}`);
+  // The same street and level again straight after: added to it.
+  const more = withRidden(r, `St ${RIDDEN_MOST - 1}`, 2, 5, at(0));
+  assert.equal(more.length, RIDDEN_MOST);
+  assert.equal(more[more.length - 1].m, 10 + RIDDEN_MOST - 1 + 5);
+});
+
+test("a Road closed press is kept with the figures and survives the next fix", () => {
+  const line: [number, number][] = [at(10), at(160)];
+  let s = withClosedStretch(statsStart(0), line);
+  s = statsStep(s, fix(0, 0), onRoute(0), model, profile);
+  s = statsStep(s, fix(20, 4), onRoute(20), model, profile);
+  assert.deepEqual(s.closed, [line]);
 });
