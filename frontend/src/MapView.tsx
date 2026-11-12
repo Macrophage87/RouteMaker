@@ -3497,9 +3497,12 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();
-  if (fitted.current && routeInView(map, route.geometry.coordinates, padding)) return;
+  // A transit trip's line is its first ride: the whole trip is framed, its transit and later rides too (the 2026-11-12
+  // backlog: only the first leg was in view).
+  const framed: LonLat[] = [...route.geometry.coordinates, ...(transitOf(route)?.steps ?? []).flatMap((step) => step.coordinates as LonLat[])];
+  if (fitted.current && routeInView(map, framed, padding)) return;
   fitted.current = true;
   const bounds = new maplibregl.LngLatBounds();
-  route.geometry.coordinates.forEach((c) => bounds.extend(c));
+  framed.forEach((c) => bounds.extend(c));
   map.fitBounds(bounds, { padding, maxZoom: 15, duration: 600 });
 }
