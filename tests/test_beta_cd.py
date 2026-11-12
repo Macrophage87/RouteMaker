@@ -2889,3 +2889,90 @@ def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval
     # the tag line is the one the agent reads
     assert "api-image: %s" in jobs["tag"]["steps"][0]["run"]
     assert cd_logic.TAG_IMAGE.pattern.startswith("(?m)^api-image: ")
+
+
+# --- ship-held: a release that carries a map, by one command (area 09 item 2) ---
+
+STUB_IMPORT = """#!/bin/sh
+echo "import $*" >> "$STUB_LOG"
+case "$*" in *--swap*) exit "${STUB_SWAP_RC:-0}" ;; esac
+exit 0
+"""
+RUN = "s3://bucket/rebuild-checkpoints/transfer/cloud-20261112a"
+
+
+def test_a_map_stop_is_a_map_reason_and_nginx_is_not() -> None:
+    lua = _gate({"lua/tags.lua": ("a", "b")})
+    assert lua["verdict"] == "stop" and lua["map_reasons"] == lua["reasons"]
+    nginx = _gate({"deploy/beta/401.html": ("a", "b")})
+    assert nginx["verdict"] == "stop" and nginx["map_reasons"] == []
+
+
+def _map_release(beta: Beta, extra: dict[str, str] | None = None) -> str:
+    sha = beta.release(
+        "v0.2.0",
+        {
+            "lua/tags.lua": "-- new\n",
+            "scripts/cloud/import-result.sh": STUB_IMPORT,
+            **(extra or {}),
+        },
+    )
+    (beta.origin / "scripts/cloud/import-result.sh").chmod(0o755)
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status()
+    return sha
+
+
+def test_ship_held_deploys_the_code_then_installs_and_swaps_the_map(beta: Beta) -> None:
+    sha = _map_release(beta)
+    dry = beta.agent("ship-held", "v0.2.0", "--map", RUN, "--dry-run", **UP)
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert (
+        "needs a map: lua/tags.lua" in dry.stdout and "then install and swap the map" in dry.stdout
+    )
+    assert beta.head() == beta.v1 and "import" not in beta.calls()
+    nomap = beta.agent("ship-held", "v0.2.0", **UP)
+    assert nomap.returncode == 1 and "give --map RUN_URL" in beta.status()
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, "--allow-sha-mismatch", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status() and "with the map from" in beta.status()
+    assert beta.head() == sha and (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    calls = beta.calls()
+    _order(
+        calls,
+        "up -d api worker",
+        "smoke --local",
+        f"import --beta --state {beta.state} --allow-sha-mismatch {RUN}",
+        f"import --beta --state {beta.state} --allow-sha-mismatch --swap {RUN}",
+    )
+    assert not (beta.cd / "hold" / "v0.2.0").exists() and not (beta.cd / "PAUSED").exists()
+    beta.agent("run", **UP)
+    assert "up-to-date: v0.2.0" in beta.status()
+
+
+def test_ship_held_keeps_a_pause_it_did_not_make(beta: Beta) -> None:
+    _map_release(beta)
+    beta.agent("pause", "by hand")
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "import" not in beta.calls() and (beta.cd / "PAUSED").exists()
+
+
+def test_a_failed_map_swap_leaves_the_code_live_and_the_agent_paused(beta: Beta) -> None:
+    _map_release(beta)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_SWAP_RC="1")
+    assert done.returncode == 1
+    assert "the map swap failed" in beta.status() and "rollback-map" in beta.status()
+    assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_release_that_needs_nginx_and_changes_nothing(beta: Beta) -> None:
+    beta.release("v0.2.0", {"deploy/beta/401.html": "<p>x</p>\n"})
+    beta.agent("run", **UP)
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "needs the owner by hand: deploy/beta/401.html" in done.stdout
+    assert "up -d" not in beta.calls() and beta.head() == beta.v1
+    assert not (beta.cd / "PAUSED").exists()

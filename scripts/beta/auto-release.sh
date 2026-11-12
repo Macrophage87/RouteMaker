@@ -20,6 +20,10 @@
 #                                     checked the stack by hand
 #   auto-release.sh retry vX.Y.Z      allow a held or failed tag to be tried again
 #   auto-release.sh hold vX.Y.Z [REASON]   keep a tag from being deployed (after a rollback by hand)
+#   auto-release.sh ship-held vX.Y.Z (--map RUN_URL | --no-map) [--allow-sha-mismatch] [--dry-run]
+#                                     the owner's one command for a release held because it needs a
+#                                     map: its code through the agent's deploy, then the cloud run's
+#                                     map (import-result.sh --beta, then --swap); "ship-held" below
 #   auto-release.sh rollback [--dry-run] [--keep-db | --restore-db] [--force]
 #                                     the owner's one command to put the previous release back (the
 #                                     deployed one is then held); "rollback" below explains the flags
@@ -1196,6 +1200,158 @@ cmd_run() {
 	return "$rc"
 }
 
+# --- ship-held: a held release (one that carries a map) by the owner's one command ---------------
+# `auto-release.sh ship-held vX.Y.Z (--map RUN_URL | --no-map) [--allow-sha-mismatch] [--dry-run]`:
+# what the per-release hand-ship scripts did, checked in. For a tag the agent held because it
+# needs a map (lua/, the pipeline's graph or table builders, a graph-build setting, a migration
+# naming the live schema): the same checks a pass makes (annotated or release tag, on main,
+# descending from the deployed release, `test` and `a11y` green), then the code through the
+# agent's own deploy (build or pull, front end, migrations after a snapshot, routers, health,
+# smoke tests; a failure rolls the code back by itself), then the cloud run's map through
+# scripts/cloud/import-result.sh --beta (download and verify, then --swap: it asks for sudo for the
+# files and the table rename, restarts the routers one at a time, pre-draws and smoke-tests). The
+# agent stays paused from the start to the end (and is resumed only if this command paused it).
+# A held release that needs nginx, sudo or a new data path (deploy/, prepare_data_root.sh, a compose
+# image or DATA_ROOT line, an odd file name) is still a hand ship: it says so and changes nothing.
+#   --map RUN_URL         the cloud run's s3://.../transfer/<run> (built with --beta-bundle)
+#   --no-map              ship the code alone; the map follows by hand (import-result.sh --beta)
+#   --allow-sha-mismatch  the run was built from another commit than the tag (as import-result.sh)
+#   --dry-run             the checks and the plan; changes nothing (downloads nothing)
+ship_held_pass() { # tag map-url no-map allow dry
+	local tag=$1 map=$2 no_map=$3 allow=$4 dry=$5 cur cur_sha new verdict gate_file why ci_image="" other map_reasons we_paused=0 rc import
+	cur=$(deployed_tag); cur_sha=$(deployed_sha)
+	[ ! -f "$cd_dir/BROKEN" ] || { finish broken "a rollback failed earlier and needs the owner (see $cd_dir/BROKEN)"; return 1; }
+	[ "$(leftover)" = none ] || { finish error "a stopped pass left $progress; let a pass deal with it first (auto-release.sh status)"; return 1; }
+	if [ "$(gitc rev-parse HEAD 2>/dev/null)" != "$cur_sha" ] || [ -n "$(gitc status --porcelain 2>/dev/null)" ] || [ "$(env_value TAG)" != "${cur_sha:0:12}" ]; then
+		finish drift "the checkout is not clean at $cur ($cur_sha) with TAG=${cur_sha:0:12} in .env; put it right first"
+		return 1
+	fi
+	why=$(origin_problem) && { finish error "$why"; return 1; }
+	gitc fetch --quiet --tags origin "+refs/heads/main:refs/remotes/origin/main" >>"$run_log" 2>&1 || { finish error "git fetch failed"; return 1; }
+	release_tag "$tag" || { finish error "$tag is not a release tag (annotated, or on a \"Release $tag\" commit)"; return 1; }
+	new=$(tag_commit "$tag") || { finish error "$tag names no commit"; return 1; }
+	[ "$new" != "$cur_sha" ] || { finish error "$tag is the deployed commit already"; return 1; }
+	if [ "${RM_CD_REQUIRE_SIGNED_TAGS:-0}" = 1 ]; then gitc verify-tag "$tag" >>"$run_log" 2>&1 || { finish error "$tag's signature does not verify"; return 1; }; fi
+	gitc merge-base --is-ancestor "$new" refs/remotes/origin/main || { finish error "$tag ($new) is not on main"; return 1; }
+	gitc merge-base --is-ancestor "$cur_sha" "$new" || { finish error "$tag does not descend from the deployed release $cur"; return 1; }
+	verdict=$(ci_status "$new")
+	[ "$verdict" = green ] || { finish error "$tag: CI is ${verdict#unknown } on $new, not green (test and a11y)"; return 1; }
+	if annotated "$tag"; then ci_image=$(gitc for-each-ref --format='%(contents)' "refs/tags/$tag" | "$py" "$logic" tag-image); fi
+	gate_file=$(mktemp)
+	"$py" "$logic" gate --repo "$RM_SRC" --old "$cur_sha" --new "$new" ${ci_image:+--ci-image} >"$gate_file" || { rm -f "$gate_file"; finish error "the gate failed to run"; return 1; }
+	say "ship-held: $tag ($new) over $cur"
+	sed -n 's/^note=/note: /p' "$gate_file" | while IFS= read -r why; do say "$why"; done
+	map_reasons=$(sed -n 's/^map_reason=//p' "$gate_file")
+	# Reasons a map does not answer (nginx, sudo, data paths, compose images, odd names; the image's
+	# own files when the tag names no workflow-built image): still a hand ship.
+	other=$(sed -n 's/^reason=//p' "$gate_file" | grep -vxF -f <(printf '%s\n' "$map_reasons" | grep .) || true)
+	if [ -n "$other" ]; then
+		printf '%s\n' "$other" | while IFS= read -r why; do say "needs the owner by hand: $why"; done
+		rm -f "$gate_file"; finish error "$tag needs steps this command does not take (listed above): ship it by hand (docs/BETA-RUNBOOK.md, \"Shipping an update later\")"; return 1
+	fi
+	if [ -n "$map_reasons" ]; then
+		printf '%s\n' "$map_reasons" | while IFS= read -r why; do say "needs a map: $why"; done
+		[ -n "$map" ] || [ "$no_map" = 1 ] || { rm -f "$gate_file"; finish error "$tag needs a map built from it: give --map RUN_URL (the cloud run), or --no-map to ship the code now and the map by hand"; return 1; }
+	elif [ -n "$map" ]; then
+		say "note: $tag needs no map, but one was given: it is installed after the code"
+	fi
+	if [ "$(kv frontend "$gate_file")" = 1 ]; then
+		why=$(frontend_ready "$new") || { rm -f "$gate_file"; finish error "$tag: $why"; return 1; }
+	fi
+	if [ "$dry" = 1 ]; then
+		say "dry run: would deploy $tag's code (frontend=$(kv frontend "$gate_file") migrations=$(kv migrations "$gate_file") compose_changed=$(kv compose_changed "$gate_file") routers_restart=$(kv routers_restart "$gate_file")${ci_image:+ image=$ci_image})$([ -n "$map" ] && echo ", then install and swap the map from $map")"
+		rm -f "$gate_file"; finish dry-run "$tag would be shipped"; return 0
+	fi
+	if [ ! -f "$cd_dir/PAUSED" ]; then
+		printf '%s ship-held %s\n' "$(utc)" "$tag" >"$cd_dir/PAUSED"; we_paused=1
+	fi
+	if [ -n "$ci_image" ] && ! dk image inspect "$API_IMAGE:${new:0:12}" >/dev/null 2>&1; then
+		say "step: pull the api image the release workflow built ($ci_image)"
+		{ quiet dk pull "$ci_image" </dev/null && quiet dk tag "$ci_image" "$API_IMAGE:${new:0:12}" </dev/null; } ||
+			{ rm -f "$gate_file"; [ "$we_paused" = 0 ] || rm -f "$cd_dir/PAUSED"; finish error "could not pull $ci_image; nothing was changed"; return 1; }
+	fi
+	say "deploying $tag's code ($new) over $cur at $(utc)"
+	deploy "$tag" "$new" "$gate_file"
+	rc=$?
+	rm -f "$gate_file"
+	if [ "$rc" != 0 ]; then
+		if [ "$rc" = 3 ]; then
+			rm -f "$progress"; prune
+			finish failed "$tag's code could not be exported or built; $cur was not touched (the agent stays paused: auto-release.sh resume)"
+		elif rollback "$cur_sha" "${cur_sha:0:12}"; then
+			rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"; prune
+			finish rolled-back "$tag's code failed and $cur is running again; no map was installed (the agent stays paused: auto-release.sh resume)"
+		else
+			{ echo "$(utc) ship-held $tag failed and the rollback to $cur did not complete"; cat "$report"; } >"$cd_dir/BROKEN"
+			finish broken "$tag's code failed AND the rollback did not complete: the owner is needed (see $cd_dir/BROKEN and the run log)"
+		fi
+		return 1
+	fi
+	rm -f "$cd_dir/hold/$tag" "$cd_dir/failed/$tag"
+	prune; prune_deployed "$new" "$cur_sha"
+	say "step: $tag's code is live and recorded as deployed"
+	if [ -n "$map" ]; then
+		# import-result.sh --swap checks that no pass holds the lock: let it go (the pause stays,
+		# so no pass deploys meanwhile).
+		flock -u 9
+		import="$RM_SRC/scripts/cloud/import-result.sh"
+		say "step: download and verify the map ($map)"
+		if ! "$import" --beta --state "$RM_STATE" ${allow:+--allow-sha-mismatch} "$map" 2>&1 | tee -a "$run_log"; then
+			finish error "$tag's code is live, but the map did not download or verify (above); the old map is still served. Fix it, then: $import --beta [--allow-sha-mismatch] --swap $map, and auto-release.sh resume"
+			return 1
+		fi
+		say "step: swap the map in (sudo is asked for the files and the table rename)"
+		if ! "$import" --beta --state "$RM_STATE" ${allow:+--allow-sha-mismatch} --swap "$map" 2>&1 | tee -a "$run_log"; then
+			finish error "$tag's code is live, but the map swap failed (above; import-result.sh says what it left). The way back to the old map: auto-release.sh rollback-map. Then auto-release.sh resume"
+			return 1
+		fi
+		say "step: the map is swapped in"
+	fi
+	[ "$we_paused" = 0 ] || rm -f "$cd_dir/PAUSED"
+	finish deployed "$tag ($new), was $cur: shipped by ship-held$([ -n "$map" ] && echo " with the map from $map")${predraw_warning:+; WARNING: $predraw_warning}$([ "$we_paused" = 0 ] && echo '; the agent was paused before and stays paused')"
+	return 0
+}
+
+cmd_ship_held() {
+	local tag="" map="" no_map=0 allow="" dry=0 stamp
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--map) [ $# -ge 2 ] || die "--map needs the run's s3:// address"; map=$2; shift ;;
+			--no-map) no_map=1 ;;
+			--allow-sha-mismatch) allow=1 ;;
+			--dry-run) dry=1 ;;
+			-*) die "ship-held: unknown option $1" ;;
+			*) [ -z "$tag" ] || die "ship-held takes one tag"; tag=$1 ;;
+		esac
+		shift
+	done
+	is_semver "$tag" || die "ship-held needs a vX.Y.Z tag"
+	[ -z "$map" ] || [ "$no_map" = 0 ] || die "ship-held: --map or --no-map, not both"
+	case "$map" in '' | s3://?*) ;; *) die "--map takes the cloud run's s3:// address" ;; esac
+	case "$map" in *[!A-Za-z0-9._~:/=+-]*) die "--map: an address with a character a run's address does not use" ;; esac
+	dry_run=$dry
+	mkdir -p "$cd_dir/hold" "$cd_dir/failed" "$cd_dir/backups" "$cd_dir/runs" "$cd_dir/build" && chmod 700 "$cd_dir" "$cd_dir/backups"
+	exec 9>"$cd_dir/lock"
+	flock -n 9 || die "a pass is running; wait for it (auto-release.sh pause --wait) and try again"
+	umask 022
+	stamp=$(utc)
+	run_log="$cd_dir/runs/$stamp-ship-held.log"; : >"$run_log"
+	report=$(mktemp)
+	if [ "$dry" = 0 ]; then
+		trap 'on_signal TERM 143' TERM
+		trap 'on_signal INT 130' INT
+		trap 'on_signal HUP 129' HUP
+		say "auto-release ship-held $tag at $stamp"
+	else
+		say "auto-release ship-held $tag at $stamp (dry run: changes nothing)"
+	fi
+	say "run log: $run_log"
+	ship_held_pass "$tag" "$map" "$no_map" "$allow" "$dry"; local rc=$?
+	trap - TERM INT HUP
+	rm -f "$report"
+	return "$rc"
+}
+
 # --- rollback: the previous release back, by the owner's command --------------------------------
 # `auto-release.sh rollback [--dry-run] [--keep-db | --restore-db] [--force]`: the release before the
 # deployed one goes back on through the same deploy a new release gets (export, image, front end,
@@ -1724,6 +1880,7 @@ main() {
 		set-report-url) cmd_set_report_url "$@" ;;
 		rollback) cmd_rollback "$@" ;;
 		rollback-map) cmd_rollback_map "$@" ;;
+		ship-held) cmd_ship_held "$@" ;;
 		*) die "unknown command '$command' (--help)" ;;
 	esac
 }

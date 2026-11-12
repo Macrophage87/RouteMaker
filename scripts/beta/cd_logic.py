@@ -193,6 +193,15 @@ AGENT_FILES = (
 # image the release workflow built from the tagged commit and named, by digest, in the tag
 # (.github/workflows/release.yml; the owner, 2026-11-12, "Yes, behind your approval").
 CI_IMAGE_PREFIXES = ("docker/api.Dockerfile", "docker/requirements", "docker/api-entrypoint.sh")
+# The stops a map shipped with the release answers (`auto-release.sh ship-held --map`): the graph
+# and table builders, whose change needs a map built at home or on the cloud box.
+MAP_PREFIXES = (
+    "lua/",
+    "valhalla/vendor/",
+    "src/pipeline/schema.py",
+    "src/pipeline/variants.py",
+    "src/pipeline/tiles.py",
+)
 # The line the release workflow writes into the annotated tag's message: the image by digest.
 TAG_IMAGE = re.compile(
     r"(?m)^api-image: (ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64})\s*$"
@@ -310,6 +319,7 @@ def gate(
         "agent_changed": False,
         "changed_files": 0,
         "notes": [],
+        "map_reasons": [],
     }
     paths: list = []
     for change in changes:
@@ -334,6 +344,8 @@ def gate(
                     )
                 else:
                     reasons.append(f"{path}: {why}")
+                    if prefix in MAP_PREFIXES:
+                        result["map_reasons"].append(f"{path}: {why}")
                 break
         if path.startswith("frontend/"):
             result["frontend"] = True
@@ -350,10 +362,12 @@ def gate(
         ):
             kind, keys = valhalla_change(show("old", path), show("new", path))
             if kind == "build":
-                reasons.append(
+                why = (
                     f"{path}: a graph-build setting changed ({', '.join(keys[:5])}): "
                     "rebuild the graphs at home"
                 )
+                reasons.append(why)
+                result["map_reasons"].append(why)
             elif kind == "runtime":
                 # Every router restarts, the trail routers (valhalla-offroad, valhalla-mtb,
                 # valhalla-paved, valhalla-paved-weekend) among them once their
@@ -380,10 +394,13 @@ def gate(
             else:
                 result["migrations"] = True
                 if MIGRATION_NEEDS_DATA.search(text):
-                    reasons.append(f"{path}: a migration names the live schema (data from home)")
+                    why = f"{path}: a migration names the live schema (data from home)"
+                    reasons.append(why)
+                    result["map_reasons"].append(why)
     if compose_diff:
         reasons.extend(compose_change(compose_diff))
     result["reasons"] = sorted(set(reasons))
+    result["map_reasons"] = sorted(set(result["map_reasons"]))
     result["verdict"] = "stop" if result["reasons"] else "deploy"
     return result
 
@@ -560,6 +577,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"reason={_clean(reason)}")
         for note in result["notes"]:
             print(f"note={_clean(note)}")
+        # The reasons above that a map shipped with the release answers (ship-held --map).
+        for reason in result["map_reasons"]:
+            print(f"map_reason={_clean(reason)}")
         return 0
     if args.command == "tag-image":
         image = tag_image(sys.stdin.read())
