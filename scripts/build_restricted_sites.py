@@ -74,6 +74,20 @@ PLACES = 6
 
 M_PER_DEG = 111_320.0
 
+# Military-tagged places the public goes to, left out of the shading and the gates (a trip there
+# is routed as before): event venues whose doors are public, by OSM id. Found in the first full
+# build's review, 2026-11-12.
+PUBLIC_VENUES = {
+    "w298594982": "D.C. Armory (event venue)",
+    "w41965158": "the D.C. Armory's grounds",
+    "w108841375": "Fifth Regiment Armory, Baltimore (event venue)",
+    "w83502307": "Fifth Regiment Armory's building",
+}
+# Our default, unmeasured: a site with this share of its area inside a bigger site is the same
+# place mapped twice (an old base name inside a joint base, an airfield inside its air station)
+# and is left out, so the bigger one is shaded, labelled and gated once.
+NESTED_SHARE = 0.9
+
 
 def ring_m2(ring: Sequence[tuple[float, float]]) -> float:
     """A ring's area in square metres, by the shoelace on an equirectangular projection at the
@@ -106,13 +120,41 @@ def sites_of(areas: dict) -> list[tuple[str, object]]:
     for kind in (ra.MILITARY, ra.SECURED):
         for area in areas.get(kind, ()):
             osm = site_id(area)
-            if not osm or osm in seen or osm in ra.PUBLIC_EDGE_AREAS:
+            if not osm or osm in seen or osm in ra.PUBLIC_EDGE_AREAS or osm in PUBLIC_VENUES:
                 continue
             if area_m2(area) < MIN_SHADE_M2:
                 continue
             seen.add(osm)
             out.append((kind, area))
-    return out
+    return drop_nested(out)
+
+
+def _shape(area):
+    from shapely.geometry import MultiPolygon, Polygon
+
+    _bbox, outers, inners = area
+    shape = MultiPolygon([Polygon(o) for o in outers if len(o) >= 4]).buffer(0)
+    for inner in inners:
+        if len(inner) >= 4:
+            shape = shape.difference(Polygon(inner).buffer(0))
+    return shape
+
+
+def drop_nested(sites: list[tuple[str, object]]) -> list[tuple[str, object]]:
+    """The sites but those mostly inside a bigger one (NESTED_SHARE)."""
+    shapes = [_shape(area) for _kind, area in sites]
+    sizes = [area_m2(area) for _kind, area in sites]
+    keep = []
+    for i, site in enumerate(sites):
+        inner = shapes[i]
+        nested = inner.area > 0 and any(
+            sizes[j] > sizes[i] and shapes[j].intersection(inner).area >= NESTED_SHARE * inner.area
+            for j in range(len(sites))
+            if j != i
+        )
+        if not nested:
+            keep.append(site)
+    return keep
 
 
 def _key(point: tuple[float, float]) -> tuple[int, int]:
