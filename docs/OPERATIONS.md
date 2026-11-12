@@ -24,6 +24,7 @@ Contents:
 - [The 311 log's days (migration 0052, v0.15.0)](#the-311-logs-days-migration-0052-v0150)
 - [Transit schedule (TRANSIT-ASSIST, v0.6.0)](#transit-schedule-transit-assist-v060)
 - [Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)](#avoid-rated-junctions-adding-one-followup-isect-avoid-owner-decisions-307-310-335)
+- [A dozen riders at once: the load test](#a-dozen-riders-at-once-the-load-test)
 - [Backups](#backups)
 - [Restoring one](#restoring-one)
 - [Off-box copies of beta backups](#off-box-copies-of-beta-backups)
