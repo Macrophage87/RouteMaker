@@ -2726,4 +2726,16 @@ export const ES: Readonly<Record<string, string>> = {
   "the nearest to your distance found": "la más cercana a su distancia que se encontró",
   "Quiet is traffic stress level 1 or 2. Figures are before the full plan; picking a shape plans it.":
     "Tranquilo es nivel de estrés de tráfico 1 o 2. Las cifras son previas al plan completo; al elegir una forma, se planifica.",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "Enviar comentarios",
+  "What happened?": "¿Qué pasó?",
+  "Sent with the app version, browser and ride type. Never where you are.": "Se envía con la versión de la app, el navegador y el tipo de recorrido. Nunca dónde estás.",
+  "Sent. Thank you.": "Enviado. Gracias.",
+  "Could not send. Try again later.": "No se pudo enviar. Inténtalo más tarde.",
+  "Your phone may stop RouteMaker during a ride.": "Tu teléfono podría detener RouteMaker durante un recorrido.",
+  "Set battery to Unrestricted": "Pon la batería en Sin restricciones",
+  "Updating. Back in a few minutes.": "Actualizando. Vuelve en unos minutos.",
+  "Route planning is down right now.": "La planificación de rutas no funciona ahora mismo.",
+  "Some ride types are not working right now.": "Algunos tipos de recorrido no funcionan ahora mismo.",
+  "Place search is down right now.": "La búsqueda de lugares no funciona ahora mismo.",
 };

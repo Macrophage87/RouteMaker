@@ -60,6 +60,8 @@ import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { SteepGradeKey, steepGradesFor } from "../lib/steepGrades.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
+import { FeedbackBox } from "../FeedbackBox.tsx";
+import type { FeedbackDetails } from "../lib/feedback.ts";
 import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
 import { Report311Log } from "../Report311Log.tsx";
@@ -493,6 +495,8 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
 
 export interface SettingsSheetProps {
   nav: SheetNav;
+  /** Send feedback's place-free details (lib/feedback.ts), worked out when the rider presses Send. */
+  feedbackDetails?: () => FeedbackDetails;
   /** What Garmin's return said (lib/garminLink.ts garminReturnFrom), once, or null. */
   garminReturned?: string | null;
   /** What Wahoo's return said (lib/wahooLink.ts wahooReturnFrom), once, or null. */
@@ -840,6 +844,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </a>
           </p>
         </div>
+        {/* Send feedback without Discord (the owner, 2026-11-12), only where the server takes it. */}
+        {props.feedbackDetails && <FeedbackBox details={props.feedbackDetails} onSay={announce} />}
         {/* The version (lib/appVersion.ts): here and in the map's Help, since Plan's phone sheet has no title row (P10). */}
         {APP_VERSION && <p className="hint settings-version">{versionSaid()}</p>}
       </section>

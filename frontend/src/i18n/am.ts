@@ -2176,4 +2176,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "የአቅጣጫ መዝገብ ቅዳ",
   "Cue log copied.": "የአቅጣጫ መዝገብ ተቀድቷል።",
   "Could not copy the cue log.": "የአቅጣጫ መዝገቡን መቅዳት አልተቻለም።",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "አስተያየት ላክ",
+  "What happened?": "ምን ሆነ?",
+  "Sent with the app version, browser and ride type. Never where you are.": "ከመተግበሪያው ስሪት፣ ከአሳሹ እና ከጉዞ ዓይነቱ ጋር ይላካል። ያሉበት ቦታ በፍጹም አይላክም።",
+  "Sent. Thank you.": "ተልኳል። እናመሰግናለን።",
+  "Could not send. Try again later.": "መላክ አልተቻለም። ቆይተው እንደገና ይሞክሩ።",
+  "Your phone may stop RouteMaker during a ride.": "ስልክዎ በጉዞ ላይ RouteMakerን ሊያቆመው ይችላል።",
+  "Set battery to Unrestricted": "ባትሪውን ወደ ያልተገደበ ያድርጉ",
+  "Updating. Back in a few minutes.": "በማዘመን ላይ። በጥቂት ደቂቃዎች ይመለሳል።",
+  "Route planning is down right now.": "የመንገድ ዕቅድ አሁን አይሰራም።",
+  "Some ride types are not working right now.": "አንዳንድ የጉዞ ዓይነቶች አሁን አይሰሩም።",
+  "Place search is down right now.": "የቦታ ፍለጋ አሁን አይሰራም።",
 };

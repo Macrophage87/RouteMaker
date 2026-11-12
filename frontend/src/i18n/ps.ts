@@ -2176,4 +2176,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "د لارښوونو لاګ کاپي کړئ",
   "Cue log copied.": "د لارښوونو لاګ کاپي شو.",
   "Could not copy the cue log.": "د لارښوونو لاګ کاپي نه شو.",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "نظر ولېږئ",
+  "What happened?": "څه وشول؟",
+  "Sent with the app version, browser and ride type. Never where you are.": "د اپ نسخې، براوزر او د سفر ډول سره لېږل کېږي. ستاسو ځای هېڅکله نه.",
+  "Sent. Thank you.": "ولېږل شو. مننه.",
+  "Could not send. Try again later.": "ونه لېږل شو. وروسته بیا هڅه وکړئ.",
+  "Your phone may stop RouteMaker during a ride.": "ستاسو تلیفون ممکن د سفر پر مهال RouteMaker ودروي.",
+  "Set battery to Unrestricted": "بیټرۍ په «بې محدودیته» کېږدئ",
+  "Updating. Back in a few minutes.": "تازه کېږي. په څو دقیقو کې بېرته راځي.",
+  "Route planning is down right now.": "د لارې پلان جوړول اوس کار نه کوي.",
+  "Some ride types are not working right now.": "د سفر ځینې ډولونه اوس کار نه کوي.",
+  "Place search is down right now.": "د ځای لټون اوس کار نه کوي.",
 };

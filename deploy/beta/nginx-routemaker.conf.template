@@ -368,6 +368,18 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
+    # The riders' status line (scripts/beta/alert.sh, "The riders' status line"): one small file
+    # the release agent and the 10-minute watch write while something is down, and remove when
+    # all is well, so its 404 is the usual answer. Served by nginx, so it answers while the api
+    # is stopped for a deploy. Never cached: a line that outlives the fault is worse than none.
+    location = /status.json {
+        root @DATA_ROOT@/status;
+        default_type application/json;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "no-store" always;
+    }
+
     # The rider-facing pages (Caddyfile @frontend): how traffic-stress ratings work
     # (OWNER-DECISIONS 461; frontend/public/about/stress.html) and the rest of the
     # documentation beside it, with the app's headers and CSP. Any page or image of that

@@ -2176,4 +2176,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "Sao chép nhật ký chỉ dẫn",
   "Cue log copied.": "Đã sao chép nhật ký chỉ dẫn.",
   "Could not copy the cue log.": "Không thể sao chép nhật ký chỉ dẫn.",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "Gửi góp ý",
+  "What happened?": "Chuyện gì đã xảy ra?",
+  "Sent with the app version, browser and ride type. Never where you are.": "Gửi kèm phiên bản ứng dụng, trình duyệt và kiểu chuyến đi. Không bao giờ gửi vị trí của bạn.",
+  "Sent. Thank you.": "Đã gửi. Cảm ơn bạn.",
+  "Could not send. Try again later.": "Không gửi được. Hãy thử lại sau.",
+  "Your phone may stop RouteMaker during a ride.": "Điện thoại có thể dừng RouteMaker khi đang đạp xe.",
+  "Set battery to Unrestricted": "Đặt pin thành Không hạn chế",
+  "Updating. Back in a few minutes.": "Đang cập nhật. Sẽ trở lại sau vài phút.",
+  "Route planning is down right now.": "Lập lộ trình hiện đang không hoạt động.",
+  "Some ride types are not working right now.": "Một số kiểu chuyến đi hiện không hoạt động.",
+  "Place search is down right now.": "Tìm địa điểm hiện đang không hoạt động.",
 };

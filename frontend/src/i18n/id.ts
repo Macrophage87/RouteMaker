@@ -2176,4 +2176,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "Salin log petunjuk",
   "Cue log copied.": "Log petunjuk disalin.",
   "Could not copy the cue log.": "Tidak dapat menyalin log petunjuk.",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "Kirim masukan",
+  "What happened?": "Apa yang terjadi?",
+  "Sent with the app version, browser and ride type. Never where you are.": "Dikirim bersama versi aplikasi, browser, dan jenis perjalanan. Tidak pernah lokasi Anda.",
+  "Sent. Thank you.": "Terkirim. Terima kasih.",
+  "Could not send. Try again later.": "Tidak dapat mengirim. Coba lagi nanti.",
+  "Your phone may stop RouteMaker during a ride.": "Ponsel Anda bisa menghentikan RouteMaker saat bersepeda.",
+  "Set battery to Unrestricted": "Atur baterai ke Tidak dibatasi",
+  "Updating. Back in a few minutes.": "Sedang memperbarui. Kembali dalam beberapa menit.",
+  "Route planning is down right now.": "Perencanaan rute sedang tidak berfungsi.",
+  "Some ride types are not working right now.": "Beberapa jenis perjalanan sedang tidak berfungsi.",
+  "Place search is down right now.": "Pencarian tempat sedang tidak berfungsi.",
 };

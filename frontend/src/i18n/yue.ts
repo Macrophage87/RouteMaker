@@ -2176,4 +2176,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "複製提示記錄",
   "Cue log copied.": "已複製提示記錄。",
   "Could not copy the cue log.": "複製唔到提示記錄。",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "傳送意見",
+  "What happened?": "發生咗咩事？",
+  "Sent with the app version, browser and ride type. Never where you are.": "會連同 app 版本、瀏覽器同踩車類型一齊傳送。永遠唔會傳送你喺邊度。",
+  "Sent. Thank you.": "已經傳送。多謝。",
+  "Could not send. Try again later.": "傳送唔到。遲啲再試。",
+  "Your phone may stop RouteMaker during a ride.": "踩車期間你部電話可能會停咗 RouteMaker。",
+  "Set battery to Unrestricted": "將電池設定做「無限制」",
+  "Updating. Back in a few minutes.": "更新緊。幾分鐘後返嚟。",
+  "Route planning is down right now.": "路線規劃而家用唔到。",
+  "Some ride types are not working right now.": "部分踩車類型而家用唔到。",
+  "Place search is down right now.": "地點搜尋而家用唔到。",
 };

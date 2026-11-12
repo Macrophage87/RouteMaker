@@ -3920,3 +3920,9 @@ def test_the_runbook_restarts_every_running_router_after_a_config_change() -> No
         " valhalla-weekend   # needed"
     )
     assert bare not in RUNBOOK
+
+
+def test_the_riders_status_file_is_served_and_never_cached() -> None:
+    block = dict(locations(stage("full")))["= /status.json"]
+    assert "status;" in block and "root " in block
+    assert 'add_header Cache-Control "no-store" always;' in block

@@ -2176,4 +2176,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Copy cue log": "คัดลอกบันทึกคำแนะนำ",
   "Cue log copied.": "คัดลอกบันทึกคำแนะนำแล้ว",
   "Could not copy the cue log.": "คัดลอกบันทึกคำแนะนำไม่ได้",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "ส่งความคิดเห็น",
+  "What happened?": "เกิดอะไรขึ้น",
+  "Sent with the app version, browser and ride type. Never where you are.": "ส่งพร้อมเวอร์ชันแอป เบราว์เซอร์ และประเภทการปั่น ไม่ส่งตำแหน่งของคุณเด็ดขาด",
+  "Sent. Thank you.": "ส่งแล้ว ขอบคุณ",
+  "Could not send. Try again later.": "ส่งไม่ได้ โปรดลองอีกครั้งภายหลัง",
+  "Your phone may stop RouteMaker during a ride.": "โทรศัพท์ของคุณอาจหยุด RouteMaker ระหว่างการปั่น",
+  "Set battery to Unrestricted": "ตั้งแบตเตอรี่เป็นไม่จำกัด",
+  "Updating. Back in a few minutes.": "กำลังอัปเดต กลับมาในไม่กี่นาที",
+  "Route planning is down right now.": "การวางแผนเส้นทางใช้ไม่ได้ในขณะนี้",
+  "Some ride types are not working right now.": "การปั่นบางประเภทใช้ไม่ได้ในขณะนี้",
+  "Place search is down right now.": "การค้นหาสถานที่ใช้ไม่ได้ในขณะนี้",
 };
