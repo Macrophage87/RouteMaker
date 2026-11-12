@@ -614,6 +614,7 @@ def test_a_scorecard_run_that_fails_is_posted_once_a_day(box: Box) -> None:
     (only,) = box.posts()
     assert "the nightly route scorecard did not run" in only
 
+
 # --- what a tester sees (backlog 2026-11-12, "Ready for a dozen testers") ---------------------
 
 

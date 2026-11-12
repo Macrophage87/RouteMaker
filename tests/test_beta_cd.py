@@ -3080,6 +3080,7 @@ def test_ship_held_refuses_a_migration_that_reads_the_map_tables(beta: Beta) -> 
     assert done.returncode == 1 and "must run after the new map" in beta.status()
     assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
 
+
 def test_riders_see_updating_from_the_stop_until_the_pass_ends(beta: Beta) -> None:
     """A release with a migration stops the api; riders see "Updating" until the pass ends."""
     _alert_stub(beta)
