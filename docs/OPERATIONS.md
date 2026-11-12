@@ -7920,7 +7920,8 @@ only at the next map rebuild.
   "Back to Save & load". Through the connector: a `plan_route` with `test: true` stays out of Load
   route, and `archive_draft` drops another. With the closed sites file built: the map shades NASA
   Goddard with "No public access", and a route to a point inside it ends at a gate with "Restricted
-  site. Route ends at the gate." Rock Creek Park and Greenbelt Park have their names on the map.
+  site. Route ends at the gate." Rock Creek Park, Greenbelt Park and the Patuxent Research Refuge have their names on the map, and
+  the refuge's closed area is shaded.
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.25.1 front end.
   The `archived_at` column stays; on v0.25.1 archived drafts list again until they expire. On the
   beta, the images and `index.html` alone: no `restore-dump`, as 0062 only adds a column.
