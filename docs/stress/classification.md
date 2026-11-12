@@ -11,21 +11,20 @@ override rows in `APPLY_OVERRIDES` (`run.py:2262-2370`). Stage order is at
 
 ## The scale
 
-| Tier | Name in the code | Road panel words (`src/core/segment_info.py:63-69`) | Legend words (`frontend/src/stressStyle.js:56-62`) |
-|---|---|---|---|
-| 1 | `Stress.LTS1` | Comfortable for everyone | Comfortable for most people |
-| 2 | `Stress.LTS2` | Fine for adults | Comfortable for most adults |
-| 3 | `Stress.LTS3` | For experienced cyclists | For confident riders |
-| 4 | `Stress.LTS4` | High stress: busy, fast traffic | Heavy or fast traffic |
-| 5 | `Stress.AVOID` | Avoid | Legal, but best avoided |
+| Tier | Name in the code | Words, in the road panel and the legend alike (`frontend/src/lib/stepWords.ts`, `frontend/src/stressStyle.js` `TIER_SHAPES`) |
+|---|---|---|
+| 1 | `Stress.LTS1` | Comfortable for everyone |
+| 2 | `Stress.LTS2` | Fine for adults |
+| 3 | `Stress.LTS3` | For experienced cyclists |
+| 4 | `Stress.LTS4` | High stress: busy, fast traffic |
+| 5 | `Stress.AVOID` | Avoid |
 
 `src/routemaker/stress.py:117-128`. Tiers 1-4 are Furth's levels. Tier 5 is the owner's
 "legal but to be avoided" (2026-09-27) and is never produced by the Furth tables. The
-two sets of words differ today: the panel uses the owner's 441l words, and the legend
-still has the earlier ones (460.10 says the legend switches to 441l's, with the
-half-step editor). Half-step words (1.5 "Probably comfortable for older children",
+panel and the legend use one set of words, the owner's 441l (checked 2026-11-12), and
+the half steps have theirs (`STEP_WORDS`): 1.5 "Probably comfortable for older children",
 2.5 "Fine for most confident adults", 3.5 "Stressful even for experienced cyclists",
-4.5 "A very high-stress road") are **planned** (441l).
+4.5 "A very high-stress road".
 
 ## Inputs
 

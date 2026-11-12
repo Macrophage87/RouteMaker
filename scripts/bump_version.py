@@ -28,7 +28,9 @@ VERSION = re.compile(r"\d+\.\d+\.\d+")
 
 def _sub(path: Path, pattern: str, version: str) -> None:
     text = path.read_text(encoding="utf-8")
-    new, count = re.subn(pattern, lambda m: m.group(1) + version + m.group(3), text, count=1, flags=re.M)
+    new, count = re.subn(
+        pattern, lambda m: m.group(1) + version + m.group(3), text, count=1, flags=re.M
+    )
     if count != 1:
         raise SystemExit(f"bump_version: no version line found in {path}")
     path.write_text(new, encoding="utf-8")
@@ -57,7 +59,7 @@ def main(argv: list[str]) -> int:
         print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
         return 2
     bump(argv[0])
-    print(f"bump_version: {argv[0]} in pyproject.toml, routemaker, frontend, mobile and the connector")
+    print(f"bump_version: {argv[0]} in pyproject, routemaker, frontend, mobile, connector")
     return 0
 
 

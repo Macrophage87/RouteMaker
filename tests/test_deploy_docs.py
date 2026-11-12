@@ -1927,7 +1927,9 @@ def test_the_package_version_is_one_number_in_both_places() -> None:
     assert {phone["version"], phone_lock["version"], phone_lock["packages"][""]["version"]} == {
         routemaker.__version__
     }
-    server = re.search(r'(?m)^SERVER_VERSION = "([^"]+)"$', (root / "mcp/routemaker_mcp.py").read_text())
+    server = re.search(
+        r'(?m)^SERVER_VERSION = "([^"]+)"$', (root / "mcp/routemaker_mcp.py").read_text()
+    )
     assert server and server.group(1) == routemaker.__version__
 
 

@@ -5014,7 +5014,7 @@ SCENIC_CALM_SHARE = 0.5
 
 
 def _calm_share(road: dict, most: float) -> float:
-    """The share of a scenic road's miles (`lts_miles`: "LTS 2", "LTS 4.5", "Avoid") at `most` or calmer."""
+    """The share of a scenic road's miles (`lts_miles`: "LTS 2", "Avoid") at `most` or calmer."""
     by_level = road.get("lts_miles") or {}
     total = sum(by_level.values())
     if total <= 0:
