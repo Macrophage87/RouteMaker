@@ -358,7 +358,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Change what to find": "探すものを変更",
   "Detour here: {place}": "ここに寄る：{place}",
   "Detour here": "ここに寄る",
-  "Search: {credits}": "検索：{credits}",
   "Dock": "ドック",
   "Docked at {dock}.": "{dock}に返却しました。",
   "Undocked about {time}.": "約{time}に貸し出し。",

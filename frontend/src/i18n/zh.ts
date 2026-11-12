@@ -358,7 +358,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Change what to find": "更改要找的",
   "Detour here: {place}": "绕到这里：{place}",
   "Detour here": "绕到这里",
-  "Search: {credits}": "搜索：{credits}",
   "Dock": "桩位",
   "Docked at {dock}.": "已在{dock}还车。",
   "Undocked about {time}.": "约{time}借车。",

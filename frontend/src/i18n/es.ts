@@ -1882,7 +1882,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Chosen": "Elegida",
   "Press the chosen station again to let the plan choose.": "Presione otra vez la estación elegida para que el plan elija.",
   "(now {place})": "(ahora {place})",
-  "Search: {credits}": "Búsqueda: {credits}",
   "{kind} marked not reported.": "{kind} marcado como no reportado.",
   "{kind} back on the checklist.": "{kind} de vuelta en la lista.",
   "{kind} marked reported.": "{kind} marcado como reportado.",

@@ -358,7 +358,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Change what to find": "찾을 것 바꾸기",
   "Detour here: {place}": "여기 들르기: {place}",
   "Detour here": "여기 들르기",
-  "Search: {credits}": "검색: {credits}",
   "Dock": "거치대",
   "Docked at {dock}.": "{dock}에 반납했습니다.",
   "Undocked about {time}.": "약 {time}에 대여했습니다.",

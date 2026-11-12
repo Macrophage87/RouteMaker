@@ -358,7 +358,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Change what to find": "क्या ढूँढना है, बदलें",
   "Detour here: {place}": "यहाँ होकर जाएँ: {place}",
   "Detour here": "यहाँ होकर जाएँ",
-  "Search: {credits}": "खोज: {credits}",
   "Dock": "डॉक",
   "Docked at {dock}.": "{dock} पर लौटाई।",
   "Undocked about {time}.": "लगभग {time} पर निकाली।",

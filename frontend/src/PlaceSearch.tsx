@@ -709,7 +709,6 @@ export function PlaceSearch({
       {expanded && places.length > 0 && (
         <p className="place-credit">
           {t("Only places in this map's area.")}
-          {result?.ok && result.attribution.length > 0 && <> {t("Search: {credits}", { credits: result.attribution.join("; ") })}</>}
         </p>
       )}
       {!single && choices.length > 1 && (

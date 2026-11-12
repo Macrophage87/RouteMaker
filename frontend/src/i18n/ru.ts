@@ -358,7 +358,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Change what to find": "Изменить, что искать",
   "Detour here: {place}": "Заехать сюда: {place}",
   "Detour here": "Заехать сюда",
-  "Search: {credits}": "Поиск: {credits}",
   "Dock": "Станция",
   "Docked at {dock}.": "Велосипед сдан на {dock}.",
   "Undocked about {time}.": "Велосипед взят около {time}.",
