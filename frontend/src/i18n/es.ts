@@ -2688,4 +2688,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Stop icon removed.": "Icono de la parada quitado.",
   "Road closed ahead": "Calle cerrada más adelante",
   "Road closed ahead, {distance}: {name}": "Calle cerrada más adelante, {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Sin acceso público",
 };

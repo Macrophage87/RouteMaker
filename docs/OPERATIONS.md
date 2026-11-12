@@ -8239,6 +8239,21 @@ go here." (Spanish in `routemaker/lang_es.py`, for a native speaker's review). T
 gets one, and neither does a road the route only passes along. The page shows and says it as it
 does the moved points ("End: ...", `movedPointsNote` in `frontend/src/lib/summary.ts`).
 
+**A point inside a closed site goes to its gate** (the owner, 2026-11-12: "route them to the gate
+and they can figure it out themselves", then "That works for me"). The roads inside a military
+area or a secured compound are closed to bicycles, so a route cannot end on them; a start, stop
+or end inside such a site is moved to the site's nearest gate (where a road the rule closes meets
+a road or signed path open to bicycles) and `moved_points` says so (reason `restricted_gate`:
+"Restricted site. Route ends at the gate.", "... starts at ..." or "... goes to ..."). Not moved:
+a point within 100 m (our default) of a way inside the site that stays open (the Goddard Visitor
+Center's way in, a public road the outline takes in), a ride's re-plan's start, a drawn or opened
+line, a point whose gate is where the point before it is routed, and a point in a site with no
+gate found. The map washes, hatches and dashes the edge of each site, with its name and "No
+public access" on sites of 0.25 km2 or more (our default). Sites, gates and the hand-drawn closed
+areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
+PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
+rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
+
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
 tile property `mtb` (and `rough`), facility `none`, and since 456 so does rated singletrack that
