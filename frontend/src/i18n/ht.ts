@@ -2154,6 +2154,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "Emoji telefòn sou siy kat la",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Nòt ak arè sou kat la montre emoji telefòn ou, pa imaj aplikasyon an. Li rete sou aparèy sa a.",
   "emoji signs": "siy emoji",
+  "Road closed ahead": "Wout fèmen pi devan",
+  "Road closed ahead, {distance}: {name}": "Wout fèmen pi devan, {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Piblik pa ka antre",
   // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
   "Copy cue log": "Kopye jounal endikasyon yo",
   "Cue log copied.": "Jounal endikasyon yo kopye.",

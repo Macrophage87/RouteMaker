@@ -1,0 +1,34 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "OBJECTID": 101,
+    "RC_GUID": "{5D0C1E2A-0000-4000-8000-000000000101}",
+    "ClosureStart": 1791979200000,
+    "ClosureEnd": 1792530000000,
+    "ClosureType": "Closed",
+    "Comments": "Culvert replacement, made-up record for tests. Questions 240-555-0100",
+    "RoadName": "BROOKVILLE RD",
+    "CrossStreet1": "Taylor St",
+    "CrossStreet2": "Grubb Rd",
+    "Jurisdiction": "Montgomery County",
+    "closureSummary": "BROOKVILLE RD: Closed, all directions.  All lanes closed."
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -77.0601,
+      38.9921
+     ],
+     [
+      -77.0598,
+      38.9935
+     ]
+    ]
+   }
+  }
+ ]
+}

@@ -2154,6 +2154,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "በካርታ ምልክቶች ላይ የስልክ ኢሞጂ",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "በካርታው ላይ ያሉ ማስታወሻዎችና ማቆሚያዎች የመተግበሪያውን ምስሎች ሳይሆን የስልክዎን ኢሞጂ ያሳያሉ። በዚህ መሣሪያ ላይ ይቀመጣል።",
   "emoji signs": "የኢሞጂ ምልክቶች",
+  "Road closed ahead": "ወደፊት መንገድ ተዘግቷል",
+  "Road closed ahead, {distance}: {name}": "ወደፊት መንገድ ተዘግቷል፣ {distance}፦ {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "ለሕዝብ ክፍት አይደለም",
   // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
   "Copy cue log": "የአቅጣጫ መዝገብ ቅዳ",
   "Cue log copied.": "የአቅጣጫ መዝገብ ተቀድቷል።",

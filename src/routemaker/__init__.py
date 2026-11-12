@@ -1,3 +1,3 @@
 """RouteMaker: collaborative bicycle route planning for the Washington, DC metro area."""
 
-__version__ = "0.25.1"
+__version__ = "0.26.0"

@@ -6,8 +6,9 @@ for the WZDx feeds, and it feeds the same closure model (`routemaker.workzones.Z
 
 - **Fetching.** The worker's `refresh_dc_closures` task (config.procrastinate, every
   `REFRESH_MINUTES` minutes) calls `refresh()`, which reads each source when it is due
-  (`EVERY_S`): AlertDC and MPD every 15 minutes, NPS every 30, DDOT's permits every hour
-  (DDOT refreshes them nightly). Each read has up to `TRIES` tries, and a source that
+  (`EVERY_S`): MPD every 15 minutes, NPS every 30, DDOT's permits every hour (DDOT
+  refreshes them nightly). AlertDC has its own task, every minute (`refresh_fast`), read only
+  where its page changed. Each read has up to `TRIES` tries, and a source that
   fails keeps its last good copy. NPS needs the owner's key, read from `NPS_API_KEY` on
   the worker only and sent in the `X-Api-Key` header; without it NPS is off and nothing
   is asked of the NPS. No message names a URL or the key.
@@ -29,8 +30,10 @@ closures", has the first check to run where they are reachable.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import math
 import os
 import time
 import urllib.error
@@ -68,20 +71,38 @@ PROTRACK, DCWATER, WSSC = planned.PROTRACK, planned.DCWATER, planned.WSSC
 PLANNED = (PROTRACK, DCWATER, WSSC)
 # Maryland's counties' and towns' closures (v0.17.0, `routemaker.md_closures`): routed round.
 SHA = md.SHA
-PUBLIC = frozenset({DC, MPD, ALERTDC, SHA, *PLANNED})
+# Montgomery County DOT's own copy of the Reporter (v0.26.0, `md_closures.MOCO`): Montgomery
+# does not report to the state's.
+MOCO = md.MOCO
+PUBLIC = frozenset({DC, MPD, ALERTDC, SHA, MOCO, *PLANNED})
 
 # How often each source is read, and how old its copy may be before it is labelled
 # stale, and before it is not used at all. Planned work changes by the week: read every 6
 # hours, kept for 3 days.
 _PLANNED_EVERY, _PLANNED_STALE, _PLANNED_DROP = 6 * 3600.0, 24 * 3600.0, 72 * 3600.0
-EVERY_S = {DC: 60 * 60.0, MPD: 15 * 60.0, ALERTDC: 15 * 60.0, NPS: 30 * 60.0, SHA: 15 * 60.0}
-STALE_AFTER_S = {DC: 3 * 3600.0, MPD: 45 * 60.0, ALERTDC: 45 * 60.0, NPS: 90 * 60.0, SHA: 45 * 60.0}
+EVERY_S = {
+    DC: 60 * 60.0,
+    MPD: 15 * 60.0,
+    ALERTDC: 15 * 60.0,
+    NPS: 30 * 60.0,
+    SHA: 15 * 60.0,
+    MOCO: 15 * 60.0,
+}
+STALE_AFTER_S = {
+    DC: 3 * 3600.0,
+    MPD: 45 * 60.0,
+    ALERTDC: 45 * 60.0,
+    NPS: 90 * 60.0,
+    SHA: 45 * 60.0,
+    MOCO: 45 * 60.0,
+}
 DROP_AFTER_S = {
     DC: 26 * 3600.0,
     MPD: 6 * 3600.0,
     ALERTDC: 3 * 3600.0,
     NPS: 6 * 3600.0,
     SHA: 6 * 3600.0,
+    MOCO: 6 * 3600.0,
 }
 for _source in PLANNED:
     EVERY_S[_source] = _PLANNED_EVERY
@@ -105,6 +126,9 @@ SHA_URLS = tuple(
     for layer in ("RoadClosureActive", "RoadClosurePlanned")
 )
 SHA_MAX = 2000
+# Montgomery County DOT's "MC DOT Road Closure" line layer (checked live 2026-11-12): the state
+# Reporter's fields, closures in force only ("active, real-time conditions").
+MOCO_URL = "https://www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0/query"
 # The fields asked of each planned-work layer: never WSSC's contract managers' names, phones
 # or emails, which the layer also holds.
 PLANNED_FIELDS = {
@@ -132,6 +156,23 @@ RETRY_PLACE_S = 6 * 60 * 60.0
 # At most this many new places are looked for a refresh, per source.
 MAX_NEW_PLACES = {DC: 3000, MPD: 40, ALERTDC: 40, DCWATER: 400}
 
+# A source that still answers but reads as nothing (backlog 2026-11-12, item 8; AlertDC's RSS
+# turned into an HTML page in 2026 and nothing noticed): each good read's count of zones and
+# notices (a closure along several stretches counts each) is kept (the last `COUNTS_KEPT`), and a
+# read of none from a source whose usual count (the median of those kept, at least
+# `ZERO_ALARM_READS` of them) is `ZERO_ALARM_USUAL` or more is not taken: the last good copy is
+# kept and the run fails, so the operations page says so. A source that is often empty
+# (Montgomery County's closures) has a usual count under that, so it never trips. Once the kept
+# copy is past `DROP_AFTER_S` it is not used anyway, and the empty read is taken; from then on
+# the kept copy is empty, so the next empty read is taken quietly. MPD and AlertDC are left out
+# (`EMPTY_IS_NEWS`): their closures end in the reading (a reopening, an item aging out), so none
+# left is real news, and keeping the old copy would route round roads open again. All three
+# numbers are our default, unmeasured.
+COUNTS_KEPT = 8
+ZERO_ALARM_READS = 3
+ZERO_ALARM_USUAL = 5
+EMPTY_IS_NEWS = frozenset({MPD, ALERTDC})
+
 Fetch = Callable[[str, float, dict], bytes]
 
 
@@ -141,7 +182,7 @@ def nps_key() -> str:
 
 def wanted() -> list[str]:
     """The sources to read: the public ones always, NPS where the worker has the key."""
-    return [DC, MPD, ALERTDC, SHA] + ([NPS] if nps_key() else []) + list(PLANNED)
+    return [DC, MPD, ALERTDC, SHA, MOCO] + ([NPS] if nps_key() else []) + list(PLANNED)
 
 
 def http_get(url: str, timeout: float, headers: dict | None = None) -> bytes:
@@ -202,7 +243,9 @@ class Places:
         self.left = most
         self.out_of_time = out_of_time
 
-    def get(self, key: str, find: Callable[[], list | None]) -> list | None:
+    def get(self, key: str, find: Callable[[], list | None], minimum: int = 2) -> list | None:
+        """The remembered place, else `find()`'s, at least `minimum` points (a line's two;
+        a junction's candidates, one); None where none was found."""
         row = self.kept.get(key)
         if row is not None:
             at = rules._when(row.get("at"))
@@ -222,7 +265,7 @@ class Places:
         except Exception:  # noqa: BLE001 - a place not found is text, never a failed refresh
             logger.info("closures: a place could not be looked up", exc_info=True)
             line = None
-        line = [list(map(float, p)) for p in line] if line and len(line) >= 2 else None
+        line = [list(map(float, p)) for p in line] if line and len(line) >= minimum else None
         self.used[key] = {"line": line, "at": self.now.isoformat()}
         return line
 
@@ -347,6 +390,26 @@ class DatabasePlacer:
             return None
         return self._along(pair, segment.street)
 
+    # A closed junction.
+    def corner_points(self, a: str, b: str) -> list | None:
+        """Where the ways named `a` meet those named `b` in the District: each junction as
+        [lon, lat] (a name may meet another at more than one place). Asked again near the
+        first ways found of each where the first ask finds no meeting."""
+        ways_a, ways_b = self._ways(a), self._ways(b)
+        if not ways_a or not ways_b:
+            return None
+        found = dc.meeting_points(
+            self._lines([w for w, _p in ways_a]), self._lines([w for w, _p in ways_b])
+        )
+        if not found:
+            more_a = [w for _w, point in ways_b[:2] for w in self._ways(a, bias=point)]
+            more_b = [w for _w, point in ways_a[:2] for w in self._ways(b, bias=point)]
+            found = dc.meeting_points(
+                self._lines([w for w, _p in ways_a + more_a]),
+                self._lines([w for w, _p in ways_b + more_b]),
+            )
+        return [[float(p[0]), float(p[1])] for p in found] or None
+
     def _along(self, pair, street: str) -> list | None:
         """The router's way from one end to the other, kept only if every step of it is
         on `street` (asked both ways round, for a one-way street)."""
@@ -415,12 +478,20 @@ def read_dc(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple
     return zones, []
 
 
+# Of a junction's candidate places, the one taken is within this of another of the same
+# advisory's closures; one with several candidates and none near another is not placed.
+CORNER_NEAR_M = 1500.0
+
+
 def _advisory_zones(advisories, placer, places: Places, now: datetime) -> tuple[list, list]:
     zones, notices = [], []
     for advisory in advisories:
         if advisory.end is not None and advisory.end <= now:
             continue
         unplaced = list(advisory.unparsed)
+        # A police closure's corners and blocks, avoided together as one wide area.
+        spots: list[list[float]] = []
+        names: list[str] = []
         for index, segment in enumerate(advisory.segments):
             if segment.end is not None and segment.end <= now:
                 continue
@@ -428,15 +499,80 @@ def _advisory_zones(advisories, placer, places: Places, now: datetime) -> tuple[
                 dc.street_key(s) for s in (segment.street, segment.from_street, segment.to_street)
             )
             line = places.get(key, lambda s=segment: placer.segment_line(s))
-            if line:
+            if line and advisory.police:
+                spots.extend(line)
+                names.append(dc.corner_title(dc.Corner(segment.street, segment.from_street, "")))
+            elif line:
                 zones.append(dc.segment_zone(advisory, index, segment, line))
             else:
-                unplaced.append(segment.text)
-        if unplaced or not advisory.segments:
+                unplaced.append(
+                    _said(
+                        advisory,
+                        segment.street,
+                        segment.from_street,
+                        segment.to_street,
+                        segment.text,
+                    )
+                )
+        candidates = []
+        for corner in advisory.corners:
+            key = "corner:" + "|".join(dc.street_key(s) for s in sorted((corner.a, corner.b)))
+            found = places.get(
+                key,
+                lambda c=corner: getattr(placer, "corner_points", lambda a, b: None)(c.a, c.b),
+                minimum=1,
+            )
+            candidates.append((corner, found or []))
+        picks = _pick_corners(candidates, spots)
+        for index, ((corner, _found), point) in enumerate(zip(candidates, picks, strict=True)):
+            if point is None:
+                unplaced.append(_said(advisory, corner.a, corner.b, None, corner.text))
+            elif advisory.police:
+                spots.append(point)
+                names.append(dc.corner_title(corner))
+            else:
+                zone = dc.area_zone(
+                    advisory, index, [point], dc.CORNER_MARGIN_M, dc.corner_title(corner)
+                )
+                if zone is not None:
+                    zones.append(zone)
+        if advisory.police and spots:
+            zone = dc.area_zone(advisory, 0, spots, dc.POLICE_MARGIN_M, names[0])
+            if zone is not None:
+                zones.append(zone)
+        if unplaced or not (advisory.segments or advisory.corners):
             notice = advisory.notice(unplaced)
             if notice.end is None or notice.end > now:
                 notices.append(notice)
     return zones, notices
+
+
+def _said(advisory, street: str, a: str, b: str | None, text: str) -> str:
+    """An unplaced closure's line for "Check before you go": the source's own words, but for
+    a police closure only the streets, never what happened."""
+    if not advisory.police:
+        return text
+    if b is None:
+        return f"{dc.corner_title(dc.Corner(street, a, ''))} closed"
+    return f"{street} closed, {a} to {b}"
+
+
+def _pick_corners(candidates, spots) -> list:
+    """Each junction's place: its only candidate, else the one nearest another of the
+    advisory's closures (`CORNER_NEAR_M`), else None."""
+    known = [list(p) for p in spots] + [c[0] for _corner, c in candidates if len(c) == 1]
+    out = []
+    for _corner, found in candidates:
+        if len(found) == 1:
+            out.append(found[0])
+            continue
+        best = None
+        for point in found:
+            near = min((dc._metres(point, k) for k in known), default=math.inf)
+            if near <= CORNER_NEAR_M and (best is None or near < best[0]):
+                best = (near, point)
+        out.append(None if best is None else best[1])
+    return out
 
 
 def read_mpd(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
@@ -520,9 +656,9 @@ def read_dcwater(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> 
     return zones, []
 
 
-def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
-    """Maryland's Road Closure Reporter: closures in force and to come, routed round in their
-    hours. Both layers must read, or the source keeps its last good copy."""
+def _reporter_layers(fetch: Fetch, urls, sleep) -> list[dict]:
+    """A Road Closure Reporter's layers (the state's, or Montgomery County's copy), each read
+    whole, or `FeedError` so the source keeps its last good copy."""
     query = urllib.parse.urlencode(
         {
             "where": "ClosureEnd >= CURRENT_TIMESTAMP",
@@ -533,7 +669,7 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
         }
     )
     documents = []
-    for url in SHA_URLS:
+    for url in urls:
         document = json.loads(_get(fetch, f"{url}?{query}", {}, sleep))
         if not isinstance(document, dict) or document.get("error") or "features" not in document:
             raise FeedError("the Road Closure Reporter refused the query")
@@ -543,6 +679,21 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
             # A partial copy would leave closures unrouted: keep the last good copy instead.
             raise FeedError(f"the Road Closure Reporter has more than {SHA_MAX} records")
         documents.append(document)
+    return documents
+
+
+def read_moco(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """Montgomery County DOT's road closures, read as the state Reporter's are (`read_sha`).
+    The layer is legitimately empty when nothing is closed."""
+    documents = _reporter_layers(fetch, (MOCO_URL,), sleep)
+    zones = md.parse_sha(documents, now, source=MOCO)
+    return [zone for zone in zones if not rules.on_interstate(zone)], []
+
+
+def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tuple[list, list]:
+    """Maryland's Road Closure Reporter: closures in force and to come, routed round in their
+    hours. Both layers must read, or the source keeps its last good copy."""
+    documents = _reporter_layers(fetch, SHA_URLS, sleep)
     # Roads bicycles may not use, as the WZDx feeds' are (`workzones.refresh`; the owner,
     # 2026-10-25: "It's not worth mentioning closures on roads bikes can't use"): an Interstate
     # by its name here, a road the map bars in `refresh` (`workzones.without_barred`). The
@@ -554,7 +705,7 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
 
 # The sources whose closures on a road the map bars to bicycles (a motorway or its ramp) are
 # not kept, as the WZDx feeds' are not (`workzones.without_barred`; hunt K5, 2026-11-08).
-BARRED_CHECKED = frozenset({SHA})
+BARRED_CHECKED = frozenset({SHA, MOCO})
 
 READERS = {
     DC: read_dc,
@@ -565,13 +716,67 @@ READERS = {
     DCWATER: read_dcwater,
     WSSC: read_wssc,
     SHA: read_sha,
+    MOCO: read_moco,
 }
+
+
+def _fresh_at(feed: dict) -> datetime | None:
+    """When a source's copy was last known good: read, or checked unchanged (`FAST`)."""
+    times = [rules._when(feed.get("read_at")), rules._when(feed.get("checked_at"))]
+    return max((t for t in times if t is not None), default=None)
+
+
+def usual_count(feed: dict) -> int | None:
+    """The source's usual count of closures and notices a read (the median of the last good
+    reads'), or None with too few reads to say."""
+    counts = [c for c in feed.get("counts") or [] if isinstance(c, int)]
+    if len(counts) < ZERO_ALARM_READS:
+        return None
+    ordered = sorted(counts)
+    return ordered[len(ordered) // 2]
+
+
+def read_as_nothing(feed: dict, found: int, source: str, now: datetime) -> int | None:
+    """The usual count, where a read of `found` items is not to be believed: none read from a
+    source that usually has `ZERO_ALARM_USUAL` or more, while its kept copy is still in use."""
+    if found or source in EMPTY_IS_NEWS:
+        return None
+    if not (feed.get("zones") or feed.get("notices")):
+        return None  # the kept copy is empty too: nothing to protect
+    usual = usual_count(feed)
+    if usual is None or usual < ZERO_ALARM_USUAL:
+        return None
+    kept_at = rules._when(feed.get("read_at"))
+    if kept_at is None or (now - kept_at).total_seconds() > DROP_AFTER_S[source]:
+        return None
+    return usual
 
 
 def _due(feed: dict, source: str, now: datetime) -> bool:
     last = rules._when(feed.get("failed_at")) or rules._when(feed.get("read_at"))
     # A minute's grace, so a fifteen-minute source is read at every fifteen-minute tick.
     return last is None or (now - last).total_seconds() >= EVERY_S[source] - 60
+
+
+# AlertDC every minute (Stephen 2026-11-12: "Maybe every minute, checking for changes"): its
+# own small task (config.procrastinate `refresh_alertdc`), not the fifteen-minute one, which
+# leaves it out. The page is fetched each minute and read only where it changed since the last
+# read (`digest`), or where the last read is `FAST_REREAD_S` old (an item ages out by the clock,
+# not by the page). The whole task stops starting work past `FAST_BUDGET_S`.
+FAST = (ALERTDC,)
+FAST_REREAD_S = 15 * 60.0
+FAST_BUDGET_S = 45.0
+
+
+def refresh_fast(
+    fetch: Fetch = http_get,
+    sleep=time.sleep,
+    now: Callable[[], datetime] = _now,
+    placer=None,
+    clock: Callable[[], float] = time.monotonic,
+) -> str:
+    """`refresh` of the every-minute sources (`FAST`) alone."""
+    return refresh(fetch, sleep, now, placer, True, FAST_BUDGET_S, clock, only=FAST)
 
 
 def refresh(
@@ -582,12 +787,15 @@ def refresh(
     force: bool = False,
     budget_s: float = REFRESH_BUDGET_S,
     clock: Callable[[], float] = time.monotonic,
+    only: tuple[str, ...] | None = None,
 ) -> str:
     """Read every source that is due and replace the shared copy. A source that fails
     keeps its last good copy. Nothing starts past `budget_s` (`REFRESH_BUDGET_S`): a source
     not reached in time keeps its copy and is read next time. Returns a line for the run row;
     raises `FeedError` with that line, after saving, where a source has had no good read in
-    its `STALE_AFTER_S`."""
+    its `STALE_AFTER_S`. `only` names the sources to read (`refresh_fast`); without it, every
+    source but the every-minute ones (`FAST`). Only the sources read are written back, so the
+    two tasks never undo each other's reads."""
     from . import workzones
     from .models import BikeshareFeedCache
 
@@ -609,10 +817,12 @@ def refresh(
     payload = row.payload if row is not None and isinstance(row.payload, dict) else {}
     feeds = dict(payload.get("feeds") or {})
     said = []
-    sources = wanted()
-    for source in list(feeds):
-        if source not in sources:
-            del feeds[source]  # NPS's key removed: its notices go with it
+    empty: list[str] = []
+    sources = [s for s in wanted() if (s in only if only is not None else s not in FAST)]
+    touched: set[str] = set()
+    gone = [] if only is not None else [s for s in feeds if s not in wanted()]
+    for source in gone:
+        del feeds[source]  # NPS's key removed: its notices go with it
     placer = placer if placer is not None else DatabasePlacer()
     for source in sources:
         kept = feeds.get(source) or {}
@@ -623,8 +833,29 @@ def refresh(
             continue
         moment = now()
         places = Places(kept.get("placed"), moment, MAX_NEW_PLACES.get(source, 0), out_of_time)
+        read_fetch = bounded_fetch
+        digest = None
         try:
-            zones, notices = READERS[source](bounded_fetch, placer, places, moment, bounded_sleep)
+            if source in FAST:
+                page = _get(bounded_fetch, URLS[source], {"Accept": "text/html"}, bounded_sleep)
+                digest = hashlib.sha256(page).hexdigest()
+                parsed = rules._when(kept.get("parsed_at"))
+                if (
+                    digest == kept.get("digest")
+                    and parsed is not None
+                    and (moment - parsed).total_seconds() < FAST_REREAD_S
+                ):
+                    # `read_at` stays the last read, so the route cache (whose key holds it) is
+                    # not emptied each minute; `checked_at` says the copy is still current.
+                    feeds[source] = {**kept, "checked_at": moment.isoformat(), "failed_at": None}
+                    touched.add(source)
+                    said.append(f"{source} unchanged")
+                    continue
+
+                def read_fetch(url, timeout, headers, page=page, wanted_url=URLS[source]):
+                    return page if url == wanted_url else bounded_fetch(url, timeout, headers)
+
+            zones, notices = READERS[source](read_fetch, placer, places, moment, bounded_sleep)
             if source in BARRED_CHECKED:
                 zones = workzones.without_barred(zones)
         except (FeedError, ValueError) as error:
@@ -635,7 +866,21 @@ def refresh(
                 continue
             logger.warning("closures: the %s source could not be read (%s)", source, error)
             feeds[source] = {**kept, "failed_at": moment.isoformat()}
+            touched.add(source)
             said.append(f"{source} failed")
+            continue
+        found = len(zones) + len(notices)
+        usual = read_as_nothing(kept, found, source, moment)
+        if usual is not None:
+            logger.warning(
+                "closures: the %s source read as nothing (usually %d items); its last copy kept",
+                source,
+                usual,
+            )
+            feeds[source] = {**kept, "failed_at": moment.isoformat()}
+            touched.add(source)
+            said.append(f"{source} read as nothing (usually {usual} items)")
+            empty.append(source)
             continue
         feeds[source] = {
             "read_at": moment.isoformat(),
@@ -643,12 +888,13 @@ def refresh(
             "zones": [zone.to_json() for zone in zones],
             "notices": [notice.to_json() for notice in notices],
             "placed": places.used,
+            "counts": [*(kept.get("counts") or []), found][-COUNTS_KEPT:],
         }
+        if digest is not None:
+            feeds[source].update(digest=digest, parsed_at=moment.isoformat())
+        touched.add(source)
         said.append(f"{source} {len(zones)} closures, {len(notices)} notices")
-    BikeshareFeedCache.objects.update_or_create(
-        key=KEY,
-        defaults={"payload": {"feeds": feeds}, "fetched_at": now(), "failed_at": None},
-    )
+    _save(feeds, touched, gone, now())
     workzones.forget()
     line = "closures: " + (", ".join(said) if said else "nothing due")
     # A source with no good read in `STALE_AFTER_S` fails the run, so the operations page
@@ -660,12 +906,42 @@ def refresh(
             # Planned work only feeds an off-by-default layer and is never routed round: an
             # outage there is logged, never an alarm on the whole closures job.
             continue
-        when = rules._when((feeds.get(source) or {}).get("read_at"))
+        when = _fresh_at(feeds.get(source) or {})
         if when is None or (now() - when).total_seconds() > STALE_AFTER_S[source]:
             stale.append(source)
+    # A source that read as nothing fails the run at once, not only once it is stale: its
+    # copy is still in use, but a parser that broke should be looked at the same day.
+    empty = [source for source in empty if source not in PLANNED]
+    problems = []
     if stale:
-        raise FeedError(f"{line}; no good read in time: {', '.join(stale)}")
+        problems.append(f"no good read in time: {', '.join(stale)}")
+    if empty:
+        problems.append(f"read as nothing: {', '.join(empty)}")
+    if problems:
+        raise FeedError(f"{line}; {'; '.join(problems)}")
     return line
+
+
+def _save(feeds: dict, touched: set[str], gone: list[str], at: datetime) -> None:
+    """Write the sources this run read (`touched`) into the shared row, and take out those no
+    longer wanted (`gone`), as the row stands now: the every-minute task and the fifteen-minute
+    one each keep the other's sources as the other last wrote them."""
+    from django.db import transaction
+
+    from .models import BikeshareFeedCache
+
+    with transaction.atomic():
+        row = BikeshareFeedCache.objects.select_for_update().filter(key=KEY).first()
+        payload = row.payload if row is not None and isinstance(row.payload, dict) else {}
+        merged = dict(payload.get("feeds") or {})
+        for source in gone:
+            merged.pop(source, None)
+        for source in touched:
+            merged[source] = feeds[source]
+        BikeshareFeedCache.objects.update_or_create(
+            key=KEY,
+            defaults={"payload": {"feeds": merged}, "fetched_at": at, "failed_at": None},
+        )
 
 
 def status_of(source: str, read_at: datetime | None, now: datetime) -> str:
@@ -691,7 +967,7 @@ def load(payload: dict, now: datetime) -> tuple[list, list, dict, dict]:
     for source in sorted(set(feeds) | PUBLIC):
         feed = feeds.get(source) or {}
         read_at[source] = feed.get("read_at")
-        status[source] = status_of(source, rules._when(feed.get("read_at")), now)
+        status[source] = status_of(source, _fresh_at(feed), now)
         if status[source] == "unavailable":
             continue
         for row in feed.get("zones") or []:

@@ -37,12 +37,16 @@ def _fresh(monkeypatch):
     workzones.forget()
 
 
+EMPTY = b'{"type": "FeatureCollection", "features": []}'
+
+
 class Net:
     """Answers by host, recording each URL and its headers."""
 
-    def __init__(self, fail: tuple[str, ...] = ()) -> None:
+    def __init__(self, fail: tuple[str, ...] = (), moco: bytes = EMPTY) -> None:
         self.asked: list[tuple[str, dict]] = []
         self.fail = fail
+        self.moco = moco
 
     def __call__(self, url: str, timeout: float, headers: dict) -> bytes:
         self.asked.append((url, headers))
@@ -51,6 +55,9 @@ class Net:
         if any(host in url for host in ("ProTrackPlusViews", "geo.dcwater.com", "wsscwater.com")):
             # Planned work (routemaker.planned_work; tests/test_planned_work.py): none here.
             return b'{"type": "FeatureCollection", "features": []}'
+        if "montgomerycountymd.gov" in url:
+            # Montgomery County DOT's closures (v0.26.0): legitimately empty most of the time.
+            return self.moco
         if "RoadClosurePlanned" in url:
             return b'{"type": "FeatureCollection", "features": []}'
         if "RoadClosureActive" in url:
@@ -93,6 +100,12 @@ def no_sleep(_s: float) -> None:
     pass
 
 
+def both(net, now, placer) -> None:
+    """The fifteen-minute refresh and AlertDC's every-minute one (`refresh_fast`)."""
+    sources.refresh(net, no_sleep, now, placer)
+    sources.refresh_fast(net, no_sleep, now, placer)
+
+
 def stored(source: str) -> dict:
     return BikeshareFeedCache.objects.get(key=sources.KEY).payload["feeds"][source]
 
@@ -119,7 +132,7 @@ class TestRefresh:
         assert notice["url"].startswith("https://mpdc.dc.gov/release/")
 
     def test_crime_and_other_alerts_are_never_stored(self) -> None:
-        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        both(Net(), lambda: NOW, Placer())
         kept = json.dumps(BikeshareFeedCache.objects.get(key=sources.KEY).payload)
         for word in ("shooting", "Police Activity", "police activity", "Wind Advisory", "Arrest"):
             assert word not in kept
@@ -159,7 +172,7 @@ class TestRefresh:
         """Every 15 minutes on a maintenance slot: past `REFRESH_BUDGET_S` no fetch, retry or
         place look-up starts, a fetch is cut to what is left, and a source not reached keeps
         its last good copy and is due again next time."""
-        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        both(Net(), lambda: NOW, Placer())
         assert sources.REFRESH_BUDGET_S <= 5 * 60
 
         clock = [0.0]
@@ -183,11 +196,14 @@ class TestRefresh:
         assert "not reached in time" in str(failed.value)
         assert all(t <= sources.TIMEOUT_S for t in timeouts) and timeouts[1] <= 30.0
         assert clock[0] <= 100.0 + 70.0, "nothing was started past the budget"
-        # A source not reached keeps its copy from the first refresh, unfailed.
+        # A source not reached keeps its copy from the first refresh, unfailed; AlertDC, read by
+        # its own every-minute task, is left as that task last wrote it.
+        sha = stored("sha")
+        assert sha["read_at"] == NOW.isoformat() and sha["failed_at"] is None
         alertdc = stored("alertdc")
         assert alertdc["read_at"] == NOW.isoformat() and alertdc["failed_at"] is None
         # A source cut short mid-fetch is not failed either, so it is due at the next tick.
-        assert all(stored(source)["failed_at"] is None for source in ("dc", "mpd", "alertdc"))
+        assert all(stored(source)["failed_at"] is None for source in ("dc", "mpd", "sha"))
 
     def test_a_failed_source_keeps_its_last_good_copy(self) -> None:
         sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
@@ -200,20 +216,107 @@ class TestRefresh:
         """Audit 2026-10-29: the run said it succeeded while every source kept failing, so
         the operations page never flagged it. A failure inside `STALE_AFTER_S` of the last
         good read is not yet an alarm; past it the run fails, its copy still kept."""
-        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        sources.refresh_fast(Net(), no_sleep, lambda: NOW, Placer())
         soon = NOW + timedelta(minutes=20)
-        sources.refresh(Net(fail=("hsema",)), no_sleep, lambda: soon, Placer())
+        sources.refresh_fast(Net(fail=("hsema",)), no_sleep, lambda: soon, Placer())
         later = NOW + timedelta(hours=1)
         with pytest.raises(workzones.FeedError) as failed:
-            sources.refresh(Net(fail=("hsema",)), no_sleep, lambda: later, Placer())
+            sources.refresh_fast(Net(fail=("hsema",)), no_sleep, lambda: later, Placer())
         assert "no good read in time: alertdc" in str(failed.value)
         assert stored("alertdc")["read_at"] == NOW.isoformat()
 
 
 @db
+class TestMontgomeryCounty:
+    """Montgomery County DOT's own road closures (v0.26.0, source "moco"): the state Road
+    Closure Reporter's fields on the county's server, read as the state's are."""
+
+    def test_its_closures_are_read_as_the_state_reporters_are(self) -> None:
+        moco = (DATA / "moco-road-closures.geojson").read_bytes()
+        net = Net(moco=moco)
+        sources.refresh(net, no_sleep, lambda: NOW, Placer())
+        (zone,) = stored("moco")["zones"]
+        assert zone["id"].startswith("moco-") and zone["source"] == "moco"
+        assert zone["kind"] == wz.CLOSED
+        assert zone["title"] == "Brookville Rd, Taylor St to Grubb Rd: closed (Montgomery County)"
+        assert "[phone]" in zone["description"] and "555" not in zone["description"]
+        url = next(u for u, _h in net.asked if "montgomerycountymd.gov" in u)
+        assert "Creator" not in url and "ClosureEnd" in url
+
+    def test_an_empty_layer_is_a_good_read(self) -> None:
+        """The county: "When no closures exist, the layer may contain zero features"."""
+        for minutes in range(0, 16 * 6, 16):
+            sources.refresh(Net(), no_sleep, lambda m=minutes: NOW + timedelta(minutes=m), Placer())
+        moco = stored("moco")
+        assert moco["zones"] == [] and moco["failed_at"] is None
+        assert moco["counts"] == [0] * 6
+
+
+@db
+class TestReadAsNothing:
+    """Backlog 2026-11-12, item 8: a source that still answers but parses to nothing (AlertDC's
+    RSS turned into HTML) was a quiet success. Now it is an alarm, and its last copy is kept."""
+
+    def test_a_usually_busy_source_reading_none_keeps_its_copy_and_fails_the_run(self) -> None:
+        moco = (DATA / "moco-road-closures.geojson").read_bytes()
+        many = json.loads(moco)
+        feature = many["features"][0]
+        many["features"] = [
+            {
+                **feature,
+                "properties": {**feature["properties"], "OBJECTID": n, "RC_GUID": f"{{{n}}}"},
+            }
+            for n in range(1, 7)
+        ]
+        busy = json.dumps(many).encode()
+        times = [NOW + timedelta(minutes=16 * n) for n in range(4)]
+        for when in times[:3]:
+            sources.refresh(Net(moco=busy), no_sleep, lambda w=when: w, Placer())
+        assert stored("moco")["counts"] == [6, 6, 6]
+        with pytest.raises(workzones.FeedError) as failed:
+            sources.refresh(Net(), no_sleep, lambda: times[3], Placer())
+        assert "moco read as nothing (usually 6 items)" in str(failed.value)
+        assert "read as nothing: moco" in str(failed.value)
+        moco = stored("moco")
+        assert len(moco["zones"]) == 6, "the last good copy is kept"
+        assert moco["read_at"] == times[2].isoformat()
+        assert moco["failed_at"] == times[3].isoformat()
+
+    def test_a_source_that_really_empties_alarms_only_until_its_copy_ages_out(self) -> None:
+        """Review: past the drop age the empty read is taken, and from then on the kept copy is
+        empty too, so the next empty read is quiet (not days of alarms while the median falls)."""
+        busy = {"counts": [40] * 8, "zones": [{"id": "x"}], "read_at": NOW.isoformat()}
+        later = NOW + timedelta(hours=27)
+        assert sources.read_as_nothing(busy, 0, "dc", later) is None
+        taken = {"counts": [40] * 7 + [0], "zones": [], "notices": [], "read_at": later.isoformat()}
+        assert sources.read_as_nothing(taken, 0, "dc", later + timedelta(hours=1)) is None
+
+    def test_mpd_and_alertdc_are_left_out(self) -> None:
+        """Their closures end in the reading (reopened, aged out): none left is real news."""
+        busy = {"counts": [9] * 8, "zones": [{"id": "x"}], "read_at": NOW.isoformat()}
+        for source in ("alertdc", "mpd"):
+            assert sources.read_as_nothing(busy, 0, source, NOW) is None
+        assert sources.read_as_nothing(busy, 0, "sha", NOW) == 9
+
+    def test_a_source_that_is_often_empty_never_trips_it(self) -> None:
+        feed = {"counts": [0, 2, 0, 1, 0], "read_at": NOW.isoformat()}
+        assert sources.read_as_nothing(feed, 0, "moco", NOW) is None
+
+    def test_too_few_reads_to_say_never_trips_it(self) -> None:
+        feed = {"counts": [40, 40], "read_at": NOW.isoformat()}
+        assert sources.read_as_nothing(feed, 0, "dc", NOW) is None
+
+    def test_once_the_kept_copy_is_past_its_drop_age_the_empty_read_is_taken(self) -> None:
+        feed = {"counts": [40, 40, 40], "zones": [{"id": "x"}], "read_at": NOW.isoformat()}
+        assert sources.read_as_nothing(feed, 0, "dc", NOW + timedelta(hours=1)) == 40
+        assert sources.read_as_nothing(feed, 0, "dc", NOW + timedelta(hours=27)) is None
+        assert sources.read_as_nothing(feed, 3, "dc", NOW + timedelta(hours=1)) is None
+
+
+@db
 def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monkeypatch) -> None:
     monkeypatch.setattr(workzones, "_now", lambda: NOW)
-    sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+    both(Net(), lambda: NOW, Placer())
     found = workzones.snapshot()
     assert found.status == {
         "alertdc": "current",
@@ -223,6 +326,7 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
         "dcwater": "current",
         "wssc": "current",
         "sha": "current",
+        "moco": "current",
     }
     assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc", "sha"}
     # The parks' deer-management notices (routemaker.deer_closures) come from the clock, not a feed.
@@ -243,6 +347,7 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
         "dcwater": "current",
         "wssc": "current",
         "sha": "unavailable",
+        "moco": "unavailable",
     }
 
 

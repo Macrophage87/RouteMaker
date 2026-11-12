@@ -2154,6 +2154,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "मानचित्र चिह्नों पर फ़ोन के इमोजी",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "मानचित्र पर नोट और पड़ाव ऐप की तस्वीरों के बजाय आपके फ़ोन के इमोजी दिखाते हैं। इसी डिवाइस पर रखा जाता है।",
   "emoji signs": "इमोजी चिह्न",
+  "Road closed ahead": "आगे सड़क बंद है",
+  "Road closed ahead, {distance}: {name}": "आगे सड़क बंद है, {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "आम लोगों का प्रवेश नहीं",
   // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
   "Copy cue log": "निर्देश लॉग कॉपी करें",
   "Cue log copied.": "निर्देश लॉग कॉपी हो गया।",

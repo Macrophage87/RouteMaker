@@ -2504,10 +2504,12 @@ class WorkZoneOut(Schema):
         "ddot_advisory",
         "purple_line",
         "fcpa",
+        "park_alert",
         "protrack",
         "dcwater",
         "wssc",
         "sha",
+        "moco",
     ]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
@@ -2537,10 +2539,12 @@ class ClosureOut(Schema):
         "ddot_advisory",
         "purple_line",
         "fcpa",
+        "park_alert",
         "protrack",
         "dcwater",
         "wssc",
         "sha",
+        "moco",
     ]
     source_name: str = Field(
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'
@@ -8953,6 +8957,28 @@ def closures_map(request, params: Query[AreaClosuresIn], response: HttpResponse)
     except ValueError as error:
         return Status(400, {"error": str(error)})
     return Status(200, {"closures": work_zones.area_rows(box, permits=params.permits)})
+
+
+class ClosuresStampOut(Schema):
+    stamp: str = Field(
+        description="A fingerprint of the closures in force now; it changes when they do."
+    )
+
+
+# GET /api/closures/stamp (Stephen 2026-11-12, sudden closures): a ride asks each minute whether
+# the closures in force changed, and checks its line (POST /api/closures/check) only when they
+# did. Nothing of the rider's is sent.
+@api.get(
+    "/closures/stamp",
+    response={200: ClosuresStampOut, 429: ErrorOut, 500: ErrorOut},
+    summary="A fingerprint of the closures in force now, which changes when they do",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.CLOSURES_STAMP), errors_as_json)
+def closures_stamp(request, response: HttpResponse):
+    from . import workzones as work_zones
+
+    response["Cache-Control"] = "no-store"
+    return Status(200, {"stamp": work_zones.closures_stamp()})
 
 
 CLOSURE_LINE_MAX_POINTS = 10_000
