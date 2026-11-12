@@ -7989,7 +7989,10 @@ only at the next map rebuild.
   (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
   built there, `migrate`, the worker recreated so it picks up `refresh_alertdc`, the front end built
   on the PC), `smoke-test.sh --local`, then `smoke-test.sh --public <url> --passwords-file <file>`,
-  then `auto-release.sh mark-deployed v0.26.0` and `auto-release.sh resume`.
+  then `auto-release.sh mark-deployed v0.26.0`, then `"$RM_SRC/scripts/beta/auto-release.sh" install`
+  (a hand ship does not reinstall the agent, and v0.26.0 changes it: #1195's quick deploys,
+  `rollback`, `rollback-map`, `ship-held` and the workflow image pull start with the next release),
+  then `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
   with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
   means the host is not answering (the run itself only fails after 45 minutes); `GET /api/closures/stamp` answers 200 (20 a minute per address, our default: a group of more than 20
