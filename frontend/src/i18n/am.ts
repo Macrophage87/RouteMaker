@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "በካርታ ምልክቶች ላይ የስልክ ኢሞጂ",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "በካርታው ላይ ያሉ ማስታወሻዎችና ማቆሚያዎች የመተግበሪያውን ምስሎች ሳይሆን የስልክዎን ኢሞጂ ያሳያሉ። በዚህ መሣሪያ ላይ ይቀመጣል።",
   "emoji signs": "የኢሞጂ ምልክቶች",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "የአቅጣጫ መዝገብ ቅዳ",
+  "Cue log copied.": "የአቅጣጫ መዝገብ ተቀድቷል።",
+  "Could not copy the cue log.": "የአቅጣጫ መዝገቡን መቅዳት አልተቻለም።",
 };

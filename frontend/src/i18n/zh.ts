@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "地图标记使用手机表情符号",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "地图上的备注和停靠点显示手机自带的表情符号，而不是应用的图片。保存在此设备上。",
   "emoji signs": "表情符号标记",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "复制提示记录",
+  "Cue log copied.": "已复制提示记录。",
+  "Could not copy the cue log.": "无法复制提示记录。",
 };

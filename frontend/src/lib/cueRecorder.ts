@@ -38,6 +38,11 @@ function fixWord(accuracyM: number): "good" | "fair" | "poor" {
   return a <= GOOD_FIX_M ? "good" : a <= POOR_FIX_M ? "fair" : "poor";
 }
 
+/** "#5 left prepare" and "#5 left now": the same cue. */
+function sameCue(a: string | undefined, b: string | undefined): boolean {
+  return !!a && !!b && a.split(" ")[0] === b.split(" ")[0];
+}
+
 function cueWord(event: Pick<RideEvent, "cue" | "phase" | "kind">): string {
   const cue = event.cue;
   if (!cue) return event.kind;
@@ -92,6 +97,21 @@ export class CueRecorder {
   voice(what: VoiceTrace, sentence: string, now: number): void {
     if (this.startedAt === null) return;
     this.push({ s: this.since(now), what, cue: this.bySentence.get(sentence) ?? "note" });
+  }
+
+  /**
+   * Whether a cue went wrong this ride: one dropped unsaid, replaced while it waited, cut off by another cue's or the
+   * ride's sentence, or stuck. The ride summary offers the log only then (the owner, 2026-11-12: "Only when a cue went
+   * wrong"). A cue's own "now" cutting its warning is the plan, not a fault, and is not counted.
+   */
+  wentWrong(): boolean {
+    return this.kept.some((l, i) => {
+      if (l.cue === undefined || l.cue === "note") return false;
+      if (l.what === "dropped" || l.what === "replaced" || l.what === "stuck") return true;
+      // Cut: by the sentence said next (the voice cuts, then starts the newer one).
+      const by = l.what === "cut" ? this.kept.slice(i + 1).find((n) => n.what === "said") : undefined;
+      return l.what === "cut" && !sameCue(l.cue, by?.cue);
+    });
   }
 
   lines(): readonly CueLogLine[] {

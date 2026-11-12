@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "지도 표시에 휴대폰 이모지",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "지도의 메모와 정류 지점에 앱 그림 대신 휴대폰 이모지를 표시합니다. 이 기기에 저장됩니다.",
   "emoji signs": "이모지 표시",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "안내 기록 복사",
+  "Cue log copied.": "안내 기록을 복사했습니다.",
+  "Could not copy the cue log.": "안내 기록을 복사할 수 없습니다.",
 };

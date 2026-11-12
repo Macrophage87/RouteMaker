@@ -58,3 +58,43 @@ test("a whole ride's log (the cue bench) names no street, no place and no senten
   // Every sentence the bench says was made appears as made in the log.
   assert.equal(log.lines().filter((l) => l.what === "made").length, run.heard.filter((h) => h.event.kind === "cue").length);
 });
+
+test("went wrong: a cue dropped, replaced, stuck, or cut by another cue's sentence; not a turn's own 'now' over its warning", () => {
+  const c = cue(2, 300);
+  const d = cue(3, 340);
+  const ride = () => {
+    const log = new CueRecorder();
+    log.start(0);
+    log.made(event(c, "prepare", "In 150 feet, left."), 250, 8, 1000);
+    log.made(event(c, "now", "Left now."), 290, 8, 2000);
+    log.made(event(d, "now", "Right now."), 330, 8, 3000);
+    return log;
+  };
+  const fine = ride();
+  fine.voice("said", "In 150 feet, left.", 1000);
+  fine.voice("cut", "In 150 feet, left.", 2000);
+  fine.voice("said", "Left now.", 2000);
+  assert.equal(fine.wentWrong(), false);
+  const cut = ride();
+  cut.voice("said", "Left now.", 2000);
+  cut.voice("cut", "Left now.", 3000);
+  cut.voice("said", "Right now.", 3000);
+  assert.equal(cut.wentWrong(), true);
+  for (const what of ["dropped", "replaced", "stuck"] as const) {
+    const log = ride();
+    log.voice(what, "In 150 feet, left.", 1500);
+    assert.equal(log.wentWrong(), true, what);
+  }
+  const note = ride();
+  note.voice("dropped", "GPS is weak: turn cues paused.", 1500);
+  assert.equal(note.wentWrong(), false, "a note about the ride is not a cue");
+});
+
+test("the bench's rides: the log says went wrong where the bench found a dropped warning", () => {
+  const log = new CueRecorder();
+  benchRun(fixture("near-northeast"), 18, "steady", "full", log);
+  assert.equal(log.wentWrong(), true);
+  const calm = new CueRecorder();
+  benchRun(fixture("dupont-15th-s-st"), 12, "steady", "full", calm);
+  assert.equal(calm.wentWrong(), false);
+});

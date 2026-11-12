@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "मानचित्र चिह्नों पर फ़ोन के इमोजी",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "मानचित्र पर नोट और पड़ाव ऐप की तस्वीरों के बजाय आपके फ़ोन के इमोजी दिखाते हैं। इसी डिवाइस पर रखा जाता है।",
   "emoji signs": "इमोजी चिह्न",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "निर्देश लॉग कॉपी करें",
+  "Cue log copied.": "निर्देश लॉग कॉपी हो गया।",
+  "Could not copy the cue log.": "निर्देश लॉग कॉपी नहीं हो सका।",
 };

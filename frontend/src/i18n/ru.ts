@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "Эмодзи телефона на значках карты",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Заметки и остановки на карте показываются эмодзи вашего телефона, а не картинками приложения. Хранится на этом устройстве.",
   "emoji signs": "значки эмодзи",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Скопировать журнал подсказок",
+  "Cue log copied.": "Журнал подсказок скопирован.",
+  "Could not copy the cue log.": "Не удалось скопировать журнал подсказок.",
 };

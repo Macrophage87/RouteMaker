@@ -5409,6 +5409,16 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   text-decoration: underline;
 }
 
+/* Copy cue log's answer, on a row of its own under the buttons; nothing shows while it is empty. */
+.ride-summary-actions .ride-summary-said {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.ride-summary-actions .ride-summary-said:empty {
+  display: none;
+}
+
 /* Where, how far and how long, first (the UI review, 2026-10-28). */
 .ride-summary-lead {
   font-size: max(16pt, 1.375rem);
