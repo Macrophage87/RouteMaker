@@ -1153,7 +1153,7 @@ def beside_busy_road_step(
         return result
     for at_least, level in BESIDE_BUSY_ROAD_STEPS:
         if road_level >= at_least:
-            why = [f"road at LTS {road_level:g}"]
+            why = ["road rated Avoid" if road_level >= 5 else f"road at LTS {road_level:g}"]
             # Half a level for every CROSSING_SCORE_STEP, with no cap of its own (the owner,
             # 2026-11-12: "no upper limit. There could be some really terrible bike paths"),
             # and half a level for a slip lane; never past 4.5 ("nothing is avoid").

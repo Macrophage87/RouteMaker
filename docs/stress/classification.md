@@ -91,15 +91,20 @@ recorded in `assumed` (`stress.py:135-137`).
    after the rows. An unnamed trail-class way the rebuild finds along a named street
    (`facility.side_streets`, the same match that names it "path beside ...") and rated a
    flat LTS 1 takes a level from that street: 1.5 beside LTS 3 or 3.5, 2 beside LTS 4 or
-   above. Then half a level more for every 20 points a mile of crossings along its run (its
+   above (the street's busiest way that runs along at least 30% of the path,
+   `BESIDE_BUSY_ROAD_MIN_SHARE`). Then half a level more for every 20 points a mile of crossings along its run (its
    ways along one street joined end to end, at least 0.1 mi [160 m]; each street, driveway or
-   service-road crossing scores the crossed way's own level, a slip lane 2 more: "it's not
+   service-road crossing scores the crossed way's own level, a slip lane 2 more, and a
+   crossing mapped as its own way scores the worst road it crosses: "it's not
    always number of crossings, but also how bad they are"), and half a level more where the
    way crosses a slip lane (a `*_link`; `facility.side_path_crossings`), with no cap of its
    own but never past 4.5 ("no upper limit. There could be some really
    terrible bike paths"). Our defaults, not measured. A named trail, a way an owner row set
    and a way already above 1 are left alone; the junctions are still priced by the road's
-   own traffic (`intersections.traffic_level`).
+   own traffic (`intersections.traffic_level`). A ridden sidewalk's later step
+   (`raise_ridden_sidewalks`) may replace the rule text, never lowering the level. Map,
+   road panel and route stress only: the router does not yet price trail-class ways by
+   their tier (`lua/routemaker_remap.lua`).
 6. **Car-free for good** (`run.py:1484-`, called at `:2511`): a road closed to motor
    traffic outright, including by an approved `motor_vehicle=no` access row, becomes
    LTS 1 and a path, unless a curated stress row set its tier. A road closed to cars

@@ -1061,36 +1061,79 @@ def _length_m(coordinates: Sequence[tuple[float, float]]) -> float:
     return sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False))
 
 
+def _crossing_way(tags: dict[str, str]) -> bool:
+    """A crossing mapped as its own way: a footway, cycleway or path tagged as the crossing
+    (`footway=crossing`, `cycleway=crossing`, `path=crossing`), as DC, Arlington and
+    Montgomery County map most crossings of a main road or a slip lane."""
+    return tags.get("highway") in TRAIL_CLASS_HIGHWAY and "crossing" in (
+        tags.get("footway"),
+        tags.get("cycleway"),
+        tags.get("path"),
+    )
+
+
 def side_path_crossings(
-    ways: Iterable[tuple[int, dict[str, str], Sequence[int], Sequence[tuple[float, float]]]],
+    ways: Sequence[tuple[int, dict[str, str], Sequence[int], Sequence[tuple[float, float]]]],
     side: dict[int, SideStreet],
     level_of: Callable[[int], float | None] | None = None,
 ) -> dict[int, SidePathCrossings]:
     """For each side path in `side` (`side_streets`), what it crosses, by osm id.
 
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]) for every way; `level_of` gives a
-    crossed way's level by osm id (None where it has none). A run is the side paths along one
-    street name joined at shared end nodes."""
-    road_nodes: dict[int, tuple[float, bool]] = {}
+    crossed way's level by osm id (None where it has none). A road the path shares a node with
+    is a crossing; so is a crossing mapped as its own way (`_crossing_way`) that touches the
+    path, scored by the worst road it touches. A run is the side paths along one street name
+    joined at shared end nodes or through such a crossing. Only the road nodes near a side
+    path are held, so the region's road network is read, not kept."""
     paths: dict[int, tuple[Sequence[int], float]] = {}
-    for osm_id, tags, nodes, coords in ways:
+    for osm_id, _tags, nodes, coords in ways:
         if osm_id in side:
             paths[osm_id] = (nodes, _length_m(coords))
-            continue
+    path_nodes = {node for nodes, _length in paths.values() for node in nodes}
+    crossers: dict[int, Sequence[int]] = {}
+    for osm_id, tags, nodes, _coords in ways:
+        if osm_id not in side and _crossing_way(tags) and path_nodes.intersection(nodes):
+            crossers[osm_id] = nodes
+    wanted = path_nodes.union(*crossers.values()) if crossers else path_nodes
+    road_nodes: dict[int, tuple[float, bool]] = {}
+    for osm_id, tags, nodes, _coords in ways:
         highway = tags.get("highway", "")
-        if highway not in CROSSING_WEIGHT_BY_CLASS:
+        if osm_id in side or highway not in CROSSING_WEIGHT_BY_CLASS:
+            continue
+        near = [node for node in nodes if node in wanted]
+        if not near:
             continue
         level = level_of(osm_id) if level_of is not None else None
         slip = highway in SLIP_LANE_HIGHWAY
         weight = (level if level is not None else CROSSING_WEIGHT_BY_CLASS[highway]) + (
             SLIP_LANE_WEIGHT if slip else 0.0
         )
-        for node in nodes:
+        for node in near:
             held = road_nodes.get(node)
             road_nodes[node] = (
                 (weight, slip) if held is None else (max(held[0], weight), held[1] or slip)
             )
-    # Runs: union the paths of one street name that share an end node.
+    # Each crossing as (key, weight, slip), by the path nodes it touches.
+    at_node: dict[int, list[tuple[tuple[str, int], float, bool]]] = {}
+    for node in path_nodes:
+        if node in road_nodes:
+            weight, slip = road_nodes[node]
+            at_node.setdefault(node, []).append((("node", node), weight, slip))
+    crosser_paths: dict[int, set[int]] = {}
+    for osm_id, nodes in crossers.items():
+        hits = [road_nodes[n] for n in nodes if n in road_nodes and n not in path_nodes]
+        if not hits:
+            continue
+        weight, slip = max(h[0] for h in hits), any(h[1] for h in hits)
+        for node in nodes:
+            if node in path_nodes:
+                at_node.setdefault(node, []).append((("way", osm_id), weight, slip))
+    for path_id, (nodes, _length) in paths.items():
+        for node in nodes:
+            for key, _weight, _slip in at_node.get(node, ()):
+                if key[0] == "way":
+                    crosser_paths.setdefault(key[1], set()).add(path_id)
+    # Runs: union the paths of one street name that share an end node or a crossing way.
     parent = {osm_id: osm_id for osm_id in paths}
 
     def root(x: int) -> int:
@@ -1109,19 +1152,27 @@ def side_path_crossings(
                 parent[root(osm_id)] = root(ends[key])
             else:
                 ends[key] = osm_id
-    run_nodes: dict[int, set[int]] = {}
+    for members in crosser_paths.values():
+        by_name: dict[str, int] = {}
+        for osm_id in sorted(members):
+            first = by_name.setdefault(side[osm_id].name, osm_id)
+            parent[root(osm_id)] = root(first)
+    run_crossings: dict[int, dict[tuple[str, int], float]] = {}
     run_length: dict[int, float] = {}
     for osm_id, (nodes, length) in paths.items():
         r = root(osm_id)
-        run_nodes.setdefault(r, set()).update(n for n in nodes if n in road_nodes)
+        held = run_crossings.setdefault(r, {})
+        for node in nodes:
+            for key, weight, _slip in at_node.get(node, ()):
+                held[key] = max(held.get(key, 0.0), weight)
         run_length[r] = run_length.get(r, 0.0) + length
     found: dict[int, SidePathCrossings] = {}
     for osm_id, (nodes, _length) in paths.items():
         r = root(osm_id)
         length = run_length[r]
-        score = sum(road_nodes[n][0] for n in run_nodes[r])
+        score = sum(run_crossings[r].values())
         rate = score / (length / _MILE_M) if length >= CROSSING_RUN_MIN_M else None
-        slip = any(road_nodes[n][1] for n in nodes if n in road_nodes)
+        slip = any(s for node in nodes for _key, _weight, s in at_node.get(node, ()))
         found[osm_id] = SidePathCrossings(rate, slip)
     return found
 

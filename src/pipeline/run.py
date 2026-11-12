@@ -3248,30 +3248,6 @@ def build_handlers(
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
             jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
             surfaces, surface_missing = overrides.apply_surface(context.ways_by_id, rows)
-            # The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
-            # the owner, 2026-11-12), after the rows so the street's own level is the one its row
-            # set and a row on the path itself stands. The street each runs beside is kept for the
-            # side-path names (`classify_facilities`).
-            context.side_streets = facility.side_streets(
-                [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
-            )
-            crossings = facility.side_path_crossings(
-                (
-                    (way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates)
-                    for way in context.ways
-                ),
-                context.side_streets,
-                lambda osm_id: (
-                    level_of(context.stress_by_way[osm_id])
-                    if osm_id in context.stress_by_way
-                    and context.stress_by_way[osm_id].tier is not None
-                    else None
-                ),
-            )
-            stepped = apply_beside_busy_road(context.stress_by_way, context.side_streets, crossings)
-            logger.info(
-                "side paths and protected lanes beside a busy road, rated from it: %d", stepped
-            )
             # The circle parks' walkways, after the overrides so a reviewed bicycle
             # value stands (`routemaker.circleparks`, owner 2026-10-17).
             context.circle_park_ways = circleparks.open_ways(context.ways)
@@ -3292,6 +3268,31 @@ def build_handlers(
                 "%d walks and crossings of the Monument grounds and Constitution Gardens "
                 "opened to bicycles",
                 len(context.mall_ways),
+            )
+            # The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
+            # the owner, 2026-11-12), after the rows so the street's own level is the one its row
+            # set and a row on the path itself stands, and after the circle parks', Capitol
+            # grounds' and Mall's walks are opened, so they are matched (and named) too. The
+            # street each runs beside is kept for the side-path names (`write_segments`).
+            context.side_streets = facility.side_streets(
+                [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+            )
+            crossings = facility.side_path_crossings(
+                [
+                    (way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates)
+                    for way in context.ways
+                ],
+                context.side_streets,
+                lambda osm_id: (
+                    level_of(context.stress_by_way[osm_id])
+                    if osm_id in context.stress_by_way
+                    and context.stress_by_way[osm_id].tier is not None
+                    else None
+                ),
+            )
+            stepped = apply_beside_busy_road(context.stress_by_way, context.side_streets, crossings)
+            logger.info(
+                "side paths and protected lanes beside a busy road, rated from it: %d", stepped
             )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the

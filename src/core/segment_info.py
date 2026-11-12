@@ -623,7 +623,11 @@ def _rule_words(rule: str) -> str:
     if rule.startswith(BESIDE_BUSY_ROAD_RULE):
         # The owner, 2026-11-12: protected lanes along busy roads "might not be LTS 1".
         road = re.search(r"road at LTS (\d(?:\.5)?)", rule)
-        level = f" (LTS {road.group(1)})" if road else ""
+        level = (
+            f" (LTS {road.group(1)})"
+            if road
+            else (" (Avoid)" if "road rated Avoid" in rule else "")
+        )
         crossed = re.search(r"crossings score (\d+) a mile", rule)
         extra = ["many or busy street and driveway crossings"] if crossed else []
         if "crosses a slip lane" in rule:

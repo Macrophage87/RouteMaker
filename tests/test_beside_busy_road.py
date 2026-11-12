@@ -41,7 +41,8 @@ def _east(points, metres):
 def test_a_path_beside_a_busy_road_takes_a_level_from_it(road, tier, half):
     stepped = beside_busy_road_step(PATH, road)
     assert (stepped.tier, stepped.half) == (tier, half)
-    assert stepped.rule.startswith(f"{BESIDE_BUSY_ROAD_RULE} (road at LTS {road:g})")
+    words = "road rated Avoid" if road == 5.0 else f"road at LTS {road:g}"
+    assert stepped.rule.startswith(f"{BESIDE_BUSY_ROAD_RULE} ({words})")
 
 
 @pytest.mark.parametrize("road", [None, 1.0, 2.0, 2.5])
@@ -180,3 +181,69 @@ def test_a_short_run_reads_no_rate():
         (20, {"highway": "service"}, [101, 900], []),
     ]
     assert facility.side_path_crossings(ways, side)[10].score_per_mile is None
+
+
+def test_a_crossing_mapped_as_its_own_way_is_scored_and_joins_the_run():
+    side = {
+        10: facility.SideStreet("path beside Old Georgetown Road", {1: 100.0}),
+        11: facility.SideStreet("path beside Old Georgetown Road", {1: 100.0}),
+    }
+    ways = [
+        (10, {"highway": "cycleway"}, [100, 101, 102], _line(39.0, 3)),
+        (11, {"highway": "cycleway"}, [200, 201, 202], _line(39.0015, 3)),
+        # The crosswalk over a slip lane, its own way, from the end of one to the start of
+        # the other.
+        (30, {"highway": "footway", "footway": "crossing"}, [102, 300, 200], []),
+        (23, {"highway": "primary_link"}, [300, 903], []),
+    ]
+    found = facility.side_path_crossings(ways, side)
+    assert found[10].score_per_mile == found[11].score_per_mile > 0
+    assert found[10].slip_lane and found[11].slip_lane
+
+
+def test_paths_beside_different_streets_are_never_one_run():
+    side = {
+        10: facility.SideStreet("path beside Old Georgetown Road", {1: 100.0}),
+        11: facility.SideStreet("path beside Cedar Lane", {2: 100.0}),
+    }
+    ways = [
+        (10, {"highway": "cycleway"}, [100, 101, 102], _line(39.0, 5)),
+        (11, {"highway": "cycleway"}, [102, 201, 202], _line(39.002, 5)),
+        (20, {"highway": "service"}, [101, 900], []),
+    ]
+    found = facility.side_path_crossings(ways, side)
+    assert found[10].score_per_mile > 0
+    assert not found[11].score_per_mile
+
+
+def test_a_way_with_no_nodes_is_read_as_no_crossings():
+    side = {10: facility.SideStreet("path beside Old Georgetown Road", {1: 100.0})}
+    found = facility.side_path_crossings([(10, {"highway": "cycleway"}, (), [])], side)
+    assert found[10] == facility.SidePathCrossings(None, False)
+
+
+def test_the_road_panel_names_bad_crossings_slip_lanes_and_avoid_roads():
+    rule = beside_busy_road_step(PATH, 4.0, crossing_score=45.0, slip_lane=True).rule
+    words = segment_info.rule_words(rule)
+    assert "many or busy street and driveway crossings" in words
+    assert "crosses a slip lane" in words
+    avoid = segment_info.rule_words(beside_busy_road_step(PATH, 5.0).rule)
+    assert avoid.startswith("Path beside a busy road (Avoid)")
+
+
+def test_an_owner_row_on_the_street_sets_the_paths_level():
+    row = StressAdjustment(
+        tier=Stress.LTS3,
+        adjustment_id="test-row",
+        computed_tier=Stress.LTS4,
+        category="other",
+        visibility="public",
+        annotation_status="approved",
+        half=True,
+    )
+    stress = {
+        1: StressResult(Stress.LTS3, "override: stress adjustment test-row", adjustment=row),
+        2: PATH,
+    }
+    apply_beside_busy_road(stress, {2: facility.SideStreet("x bike lane", {1: 100.0})})
+    assert (stress[2].tier, stress[2].half) == (Stress.LTS1, True)
