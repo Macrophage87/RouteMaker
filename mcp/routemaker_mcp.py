@@ -82,6 +82,8 @@ TEST_SCHEMA = {
 }
 # Set while a call with `test` runs (Server.call): the draft stores archive what they keep.
 TEST_CALL: contextvars.ContextVar[bool] = contextvars.ContextVar("TEST_CALL", default=False)
+# The tools that take `test` (a revision of an archived route stays archived on its own).
+TEST_TOOLS = ("plan_route", "plan_metro_loop", "open_link")
 PLAN_BUDGET_S = 48  # the longest one plan can take: the site's long-plan budget, and a little
 # Another plan starts while one more as long as the longest timed so far, by this factor and
 # these seconds over, still fits before the call's deadline (as _best_order always has; the
@@ -5702,7 +5704,12 @@ TOOLS = [
             },
             "required": ["draft_id"],
         },
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
     },
     {
         "name": "organize_route",
@@ -8212,7 +8219,7 @@ class Server:
             raise ToolError(f"no tool named {name}")
         call = call or Call()
         # A test call's drafts are archived as they are made (TEST_CALL).
-        testing = TEST_CALL.set(bool((args or {}).get("test")))
+        testing = TEST_CALL.set(name in TEST_TOOLS and bool((args or {}).get("test")))
         try:
             out = handler(args or {}, call)
         except KeyError as missing:
