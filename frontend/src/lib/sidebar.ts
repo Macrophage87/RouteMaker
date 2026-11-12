@@ -12,6 +12,7 @@ import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
+import { MY_ROUTES } from "./savedRoutes.ts";
 
 /**
  * The views the panel body shows: the planner (Plan's sections, or Go's sheet), or one of the sheets
@@ -49,7 +50,7 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   reach: t("Reach"),
   // My routes (Stephen, 2026-11-12: "Put the load rides in a popout and have save load be mostly about saving and
   // exporting"): the saved routes and those kept for offline, a step in from Save & load, so its export is not under them.
-  routes: t("My routes"),
+  routes: MY_ROUTES,
 };
 
 /** The Files sheet's name on its buttons and its heading (the owner, 2026-10-18), short enough for the bar. */

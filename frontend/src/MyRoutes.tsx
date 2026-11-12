@@ -122,7 +122,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
 
   return (
     <section aria-labelledby={headingId} className="my-routes">
-      <h4 id={headingId}>{ACCOUNT_ROUTES}</h4>
+      <h3 id={headingId}>{ACCOUNT_ROUTES}</h3>
       {failed && <p className="notice">{t("Your saved routes could not be read; try again shortly.")}</p>}
       {routes && routes.length === 0 && !failed && <p className="hint">{NONE_SAVED}</p>}
       {routes && routes.length > 0 && (
@@ -338,7 +338,7 @@ function SharedLinks({ version, announce, onChange }: { version: number; announc
   if (!failed && (!links || links.length === 0)) return null;
   return (
     <section aria-labelledby={headingId} className="my-routes">
-      <h4 id={headingId}>{SHARED_LINKS}</h4>
+      <h3 id={headingId}>{SHARED_LINKS}</h3>
       {failed && <p className="notice">{t("Your shared links could not be read; try again shortly.")}</p>}
       {links && links.length > 0 && (
         <ul role="list" className="my-routes-list">
