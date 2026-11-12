@@ -199,3 +199,14 @@ changed, not the road).
 The road **keeps our level** (the owner's call, 2026-11-12: "Keep our level, queue it
 for you"). The list is Review's queue "Facts changed since rated", where Accept keeps the
 level and Change LTS re-rates the road.
+
+## How sure a level is (the owner, 2026-11-12)
+
+The road panel's first line says how sure the level is, a few words after it ("LTS 2 ·
+Fine for adults · inferred from surroundings"), and the details repeat it in a "How
+sure" row (`core.segment_info.evidence_grade`): **measured** (a traffic count and a
+posted speed), **part assumed** (one of them), **inferred from surroundings** (neither),
+or **rider-checked** (a road-panel edit or a reviewed community rating). It reads what the
+level rests on, not who set it, so an own-picks road with no count or speed sign reads
+"inferred". Paths and trails have none. Plan's route summary does not mention it (the
+owner's pick).

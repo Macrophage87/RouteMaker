@@ -758,9 +758,10 @@ def stress_rows(row: dict) -> list[dict]:
     return rows + rating_rows(row)
 
 
-# How sure a road's level is (backlog 2026-11-12 item 6; the owner chose the placement
-# separately): from what the level rests on, never from who set it, except that a level the
-# owner set from the road panel or a reviewed community rating is rider-checked. Most own-picks
+# How sure a road's level is (backlog 2026-11-12 item 6), on the summary's first line and in
+# the details' "How sure" row: from what the level rests on, never from who set it, except
+# that a level the owner set from the road panel or a reviewed community rating is
+# rider-checked. Most own-picks
 # roads have neither a count nor a posted speed (70% no count, 72% no posted speed of 222,844
 # ways), so their grade says so. None on a path or trail: no traffic to measure.
 MEASURED = "measured"
@@ -1389,7 +1390,11 @@ def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     path = bool(row.get("is_trail_class"))
     assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
     half = row.get("stress_half") is True
-    rows = [{"id": "stress", "label": "Traffic stress", "value": stress_short(tier, half)}]
+    # How sure the level is, a few words after it (the owner, 2026-11-12: "Yes, a few words
+    # after the level"; `evidence_grade`).
+    grade = evidence_grade(row)
+    level = stress_short(tier, half) + (f" · {GRADE_WORDS[grade]}" if grade else "")
+    rows = [{"id": "stress", "label": "Traffic stress", "value": level}]
 
     def add(id_: str, label: str, value: str) -> None:
         rows.append({"id": id_, "label": label, "value": value})

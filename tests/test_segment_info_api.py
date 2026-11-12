@@ -165,7 +165,7 @@ class TestAnswer:
         # left out on a road, the capacity (the panel shows it on the Mass Ride map only).
         assert body["kind"] == "Main road"
         assert summary(body) == [
-            "Traffic stress: LTS 3 · For experienced cyclists",
+            "Traffic stress: LTS 3 · For experienced cyclists · measured",
             "Why: 30 mph (48 km/h), mixed traffic",
             "Speed: 30 mph (48 km/h), posted",
             "Lanes: 2 each way",
@@ -382,7 +382,7 @@ class TestAnswer:
         assert section(body, "road")["Kind"]["value"] == "Residential street"
         # Assumed figures say so; no count is left out, not printed as "none".
         assert summary(body) == [
-            "Traffic stress: LTS 2 · Fine for adults",
+            "Traffic stress: LTS 2 · Fine for adults · inferred from surroundings",
             "Why: 20 mph (32 km/h) or below, mixed traffic",
             "Speed: 20 mph (32 km/h), assumed",
             "Lanes: 1 each way, assumed",
