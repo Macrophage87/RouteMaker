@@ -1771,7 +1771,7 @@ class MovedPointOut(Schema):
     index: int = Field(description="The point's place in `points`, from 0.")
     asked: list[float] = Field(description="[lon, lat] as asked.")
     routed: list[float] = Field(description="[lon, lat] as routed.")
-    reason: Literal["zoo_racks", "rail_street"]
+    reason: Literal["zoo_racks", "rail_street", "restricted_gate"]
     note: str = Field(description="One plain sentence to show the rider.")
 
 

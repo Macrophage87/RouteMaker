@@ -1460,7 +1460,9 @@ and says it as it shows the Zoo's moved points. Where no route is found with the
 (the router finds no path), the ride is planned again with them open, and `road_hazards` names
 the rails it rides, as before. The reach, the search distances and the offset are Claude's
 defaults, not measured. Tests: tests/test_mass_rails.py, on H Street NE and Benning Road NE drawn
-after the hunt's trips.
+after the hunt's trips. A start, stop or end inside a closed site (a military area, a secured compound) is moved to
+the site's nearest gate, reason `restricted_gate` (`core.routing.move_restricted_points`,
+`routemaker.restricted_sites`; docs/OPERATIONS.md).
 
 ### Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, items 325-327)
 

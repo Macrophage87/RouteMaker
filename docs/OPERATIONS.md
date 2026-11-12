@@ -1363,8 +1363,10 @@ no named candidate may be left at 0 (the derive ran to the end); the path
 sentinels, the W&OD (OSM way 8810729) and the C&O towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
 (12.9 km) or more; the road sentinel, Wildlife Loop in the Patuxent Research Refuge
-(OSM way 86073896, LTS 2 in our own picks, in an 8.6 mi calm run; it was Gambrill Park
-Road until our own picks rated that piece 2.5, 2026-11-10, and Elmer School Road
+(OSM way 11507801, the loop's southern stretch, LTS 2 in our own picks, in a calm run of
+about 6 mi over Bailey Bridge, estimated; it was way 86073896 on the same loop until the refuge's
+2026-06-07 closed area took that stretch, 2026-11-12, Gambrill Park Road until our own
+picks rated that piece 2.5, 2026-11-10, and Elmer School Road
 before that, until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
 `settings.REBUILD_SENTINEL_CALM_STREET_WAYS` (the setting keeps its first name), must
 be in a calm run of 2 mi or more; and at least `settings.REBUILD_CALM_RUN_FLOORS`
@@ -8235,6 +8237,21 @@ that point: "This end point is not typically open to the public, make sure you'r
 go here." (Spanish in `routemaker/lang_es.py`, for a native speaker's review). The start never
 gets one, and neither does a road the route only passes along. The page shows and says it as it
 does the moved points ("End: ...", `movedPointsNote` in `frontend/src/lib/summary.ts`).
+
+**A point inside a closed site goes to its gate** (the owner, 2026-11-12: "route them to the gate
+and they can figure it out themselves", then "That works for me"). The roads inside a military
+area or a secured compound are closed to bicycles, so a route cannot end on them; a start, stop
+or end inside such a site is moved to the site's nearest gate (where a road the rule closes meets
+a road or signed path open to bicycles) and `moved_points` says so (reason `restricted_gate`:
+"Restricted site. Route ends at the gate.", "... starts at ..." or "... goes to ..."). Not moved:
+a point within 100 m (our default) of a way inside the site that stays open (the Goddard Visitor
+Center's way in, a public road the outline takes in), a ride's re-plan's start, a drawn or opened
+line, a point whose gate is where the point before it is routed, and a point in a site with no
+gate found. The map washes, hatches and dashes the edge of each site, with its name and "No
+public access" on sites of 0.25 km2 or more (our default). Sites, gates and the hand-drawn closed
+areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
+PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
+rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the

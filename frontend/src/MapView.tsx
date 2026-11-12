@@ -42,7 +42,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, setDarkMap } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, setDarkMap, darkMapOn } from "./stressStyle.js";
 import { basemapLayers as flavourLayers, mapFlavourFor } from "./lib/mapFlavour.ts";
 import { useMapFlavour } from "./useMapFlavour.ts";
 import { themeIsDark } from "./lib/themeClock.ts";
@@ -98,6 +98,8 @@ import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import federalLandUrl from "./federal-data/federal-land.json?url";
+import restrictedSitesUrl from "./restricted-data/restricted-sites.json?url";
+import { addRestrictedSites } from "./lib/restrictedSites.ts";
 import { addDcMask } from "./lib/dcBoundary.ts";
 import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData, type FederalMap } from "./lib/federalLand.ts";
 import type { FederalStatus } from "./lib/federalLegend.ts";
@@ -1363,6 +1365,9 @@ export function MapView(props: Props) {
       // The grey outside the District, shown in Mass Ride mode only (OWNER-DECISIONS 418; lib/dcBoundary.ts):
       // over the base map, under its labels, the overlays and the route.
       addDcMask(map, callbacks.current.massArea === true, new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
+      // The closed sites (military areas, secure federal campuses, closed refuge land; lib/restrictedSites.ts): washed,
+      // hatched and named, under the labels and the overlays. Always on: a map style, not a layer to choose.
+      addRestrictedSites(map, restrictedSitesUrl, darkMapOn(), new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
       // Plan mode's ghost (v0.7.0, lib/planFirst.ts): the route before the last update, dashed, under the route.
       map.addSource(GHOST_SOURCE, { type: "geojson", data: ghostData(callbacks.current.ghost) });
       map.addLayer({

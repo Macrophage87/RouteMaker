@@ -2686,4 +2686,6 @@ export const ES: Readonly<Record<string, string>> = {
   "No icon": "Sin icono",
   "Stop icon: {icon}.": "Icono de la parada: {icon}.",
   "Stop icon removed.": "Icono de la parada quitado.",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Sin acceso público",
 };
