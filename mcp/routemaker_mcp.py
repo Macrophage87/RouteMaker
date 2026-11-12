@@ -1860,6 +1860,9 @@ def summary(answer: dict) -> dict:
     unpaved = _unpaved_mi(answer)
     if unpaved >= 0.05:
         out["unpaved"] = miles_text(unpaved * METRES_PER_MILE)
+    turns = turn_count(answer)
+    if turns is not None:
+        out["turns"] = turns
     waits = (answer.get("junction_delay_s") or 0.0) / 60
     if waits >= 0.5:
         # The time the route spends at signals and stop signs, inside moving_time.
@@ -3648,10 +3651,32 @@ def _unpaved_mi(answer: dict) -> float:
     return total
 
 
+# The movements that are turns, as the app counts them (frontend lib/quickFigures.ts
+# turnTotal): left, right, bear and U-turns; not "continue" or straight on at a junction.
+TURN_MOVEMENTS = frozenset({"left", "right", "bear_left", "bear_right", "uturn"})
+
+
+def turn_count(answer: dict) -> int | None:
+    """The turns in the route's directions, as the app's summary counts them; None where the
+    answer has no directions (an older API), so 0 is never guessed."""
+    entries = answer.get("description")
+    if entries is None:
+        return None
+    return sum(
+        1
+        for entry in entries
+        if entry.get("kind") == "stretch"
+        and (entry.get("turn") or {}).get("movement") in TURN_MOVEMENTS
+    )
+
+
 def figures(answer: dict) -> dict:
-    """The route in the numbers a rider weighs one plan against another by."""
+    """The route in the numbers a rider weighs one plan against another by: its turns among
+    them (the backlog's "fewer turns" item, 2026-11-12), so "the same but fewer turns" can be
+    compared like "calmer"."""
     stress = answer.get("stress_m") or {}
     found = answer.get("intersections") or []
+    turns = turn_count(answer)
     return {
         "miles": round((answer.get("distance_m") or 0.0) / METRES_PER_MILE, 2),
         "minutes": round((answer.get("duration_s") or 0.0) / 60, 1),
@@ -3666,6 +3691,7 @@ def figures(answer: dict) -> dict:
         "very_high_junctions": sum(1 for j in found if j.get("severity") == "red"),
         "higher_junctions": sum(1 for j in found if j.get("severity") == "orange"),
         "junction_wait_minutes": round((answer.get("junction_delay_s") or 0.0) / 60, 1),
+        **({} if turns is None else {"turns": turns}),
     }
 
 

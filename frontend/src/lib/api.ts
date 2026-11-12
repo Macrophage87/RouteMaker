@@ -1225,6 +1225,8 @@ export interface RouteResponse {
   intersections?: JunctionWarning[] | null;
   /** A Mass Ride's groups of signalized crossings; empty or null elsewhere, absent from an older API. */
   intersection_groups?: JunctionGroupSummary[] | null;
+  /** The seconds the route waits at signals and stop signs (`routemaker.junction_delay`), inside `duration_s`; absent from an older API. */
+  junction_delay_s?: number | null;
   /** The route in words, stretch by stretch; null where it could not be built, absent from an older API. */
   description?: DescriptionEntry[] | null;
   /** The same route with stretches under a quarter of a mile merged (OWNER-DECISIONS 226); null where unbuilt. */

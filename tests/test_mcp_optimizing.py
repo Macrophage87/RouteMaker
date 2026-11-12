@@ -377,6 +377,7 @@ def test_a_revision_says_each_figure_before_and_after(tools, api) -> None:
         "unpaved_mi",
         "very_high_junctions",
         "junction_wait_minutes",
+        "turns",
     }
     assert change["miles_lts_4_up"] == {"before": 0.6, "after": 0.6, "change": 0.0}
 
@@ -497,6 +498,24 @@ def test_the_summary_and_road_list_say_unpaved_miles_and_junction_waits(tools) -
     assert trail["unpaved_mi"] == 0.5
     assert out["steep_grades"][0]["grade_pct"] == 9
     assert out["road_hazards"][0]["kinds"] == ["rails"]
+
+
+def test_turns_are_counted_as_the_app_counts_them() -> None:
+    entries = [
+        {**stretch("Rock Creek Trail", 0.0, 1.0, 1, "path"), "turn": {"movement": "depart"}},
+        {**stretch("Porter Street", 1.0, 2.0, 2), "turn": {"movement": "left"}},
+        {**stretch("Porter Street", 2.0, 2.5, 2), "turn": {"movement": "straight"}},
+        {**stretch("Ross Drive", 2.5, 3.0, 2), "turn": {"movement": "bear_right"}},
+        {"kind": "climb", "turn": {"movement": "left"}},
+    ]
+    answer = {"description": entries}
+    assert mcp.turn_count(answer) == 2
+    assert mcp.figures(answer)["turns"] == 2
+    assert mcp.summary({**answer, "distance_m": 4800.0})["turns"] == 2
+    # An answer with no directions: not said, never a guessed 0.
+    assert mcp.turn_count({}) is None
+    assert "turns" not in mcp.figures({})
+    assert "turns" not in mcp.summary({"distance_m": 4800.0})
 
 
 def test_the_route_is_read_stretch_by_stretch(tools) -> None:
