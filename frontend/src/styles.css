@@ -11299,3 +11299,28 @@ button.route-note:focus-visible {
   height: auto;
   font-size: 14px;
 }
+
+/* Send feedback (FeedbackBox.tsx; the owner, 2026-11-12): one button, then a short box. Buttons 44 px high. */
+.feedback-box {
+  margin: 8px 0;
+}
+.feedback-box button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.feedback-box form {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.feedback-box form[hidden] {
+  display: none;
+}
+.feedback-box textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+}
+.feedback-box .feedback-said:empty {
+  display: none;
+}

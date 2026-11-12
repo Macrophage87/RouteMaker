@@ -348,7 +348,10 @@ import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCA
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
-import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
+import { firstWordAndRest, language, planLanguageAttributes } from "./lib/i18n.ts";
+import { feedbackDetails } from "./lib/feedback.ts";
+import { FeedbackBox } from "./FeedbackBox.tsx";
+import { findShell } from "./lib/nativeShell.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
@@ -5336,6 +5339,9 @@ export function App() {
   routeOnScreen.current = shown !== null;
   // Offline, a planner out of reach is said once, in the error box with its Try again (lib/api.ts routeErrorShown).
   const offlineError = appStatus.offline && status.kind === "error" && status.error.kind === "network";
+  // Send feedback's place-free details (lib/feedback.ts), worked out at Send.
+  const detailsForFeedback = () =>
+    feedbackDetails({ userAgent: navigator.userAgent, rideType: preset, language: language(), mode, nativeApp: findShell() !== null });
   // The server's own line while something is down (lib/serverStatus.ts): asked again when a plan fails.
   const serverLine = useServerStatusLine(status.kind === "error");
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
@@ -7235,6 +7241,7 @@ export function App() {
         <BetaChip
           enabled={isBetaBuild(import.meta.env.VITE_BETA)}
           reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
+          feedback={<FeedbackBox details={detailsForFeedback} onSay={announce} />}
         />
       )}
       <p className="visually-hidden" role="status" aria-live="polite">
@@ -7567,6 +7574,7 @@ export function App() {
               {...{
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
+                feedbackDetails: detailsForFeedback,
                 saveSettingsNow,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
