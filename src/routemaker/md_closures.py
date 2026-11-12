@@ -25,7 +25,7 @@ What a record's `ClosureType` and `closureSummary` mean for a bicycle:
 Only the closure's own fields are asked for: never its `Creator` (the reporting account); a
 phone number or email in an agency's comments is never kept.
 
-Montgomery County's own closures (v0.27.0, source "moco"): Montgomery County DOT keeps the
+Montgomery County's own closures (v0.26.0, source "moco"): Montgomery County DOT keeps the
 same Road Closure Reporter on its own server ("MC DOT Road Closure",
 www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0), with the
 same fields, checked live 2026-11-12. Montgomery does not report to the state's layers (none of
@@ -46,7 +46,7 @@ from . import planned_work as pw
 from . import workzones as wz
 
 SHA = "sha"
-# Montgomery County DOT's copy of the Reporter (v0.27.0).
+# Montgomery County DOT's copy of the Reporter (v0.26.0).
 MOCO = "moco"
 # The fields asked for: never `Creator`, `CreationDate` or `EditDate`.
 FIELDS = (

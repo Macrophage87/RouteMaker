@@ -152,7 +152,7 @@ def _no_ddot_advisories(monkeypatch):
     real_fc = fcpa.zones
     monkeypatch.setattr(fcpa, "zones", lambda now, closures=None: [])
     monkeypatch.setattr(fcpa, "real_zones", real_fc, raising=False)
-    # The park agencies' trail closures (`routemaker.park_alerts`, v0.27.0) likewise.
+    # The park agencies' trail closures (`routemaker.park_alerts`, v0.26.0) likewise.
     from routemaker import park_alerts
 
     real_pa = park_alerts.zones

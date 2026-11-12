@@ -81,7 +81,7 @@ SOURCES = {
     "purple_line": "Purple Line construction update",
     # The Fairfax County Park Authority's Park Alerts, read by hand (v0.22.0; `routemaker.fcpa`).
     "fcpa": "Fairfax County Park Authority park alert",
-    # The park agencies' trail alerts, read by hand (v0.27.0; `routemaker.park_alerts`).
+    # The park agencies' trail alerts, read by hand (v0.26.0; `routemaker.park_alerts`).
     "park_alert": "Park agency trail alert",
     # Planned work that may close a road some day in its window (v0.17.0; Plan's Potential
     # closures layer only; `routemaker.planned_work`).
@@ -90,7 +90,7 @@ SOURCES = {
     "wssc": "WSSC Water water main construction",
     # Maryland's counties' and towns' closures (v0.17.0; `routemaker.md_closures`), routed round.
     "sha": "Maryland Road Closure Reporter (MDOT SHA)",
-    # Montgomery County DOT's own road closures (v0.27.0; `routemaker.md_closures`).
+    # Montgomery County DOT's own road closures (v0.26.0; `routemaker.md_closures`).
     "moco": "Montgomery County DOT road closures",
 }
 
@@ -105,6 +105,8 @@ SOURCE_LINKS = {
     "ddot_advisory": "https://projects.ddot.dc.gov/",
     "purple_line": "https://purplelinemd.com/updates",
     "fcpa": "https://www.fairfaxcounty.gov/parks/park-alerts",
+    # Each park closure carries its own agency's page (`park-closures.json`'s `page`, required by
+    # tests/test_park_alerts.py); this is only a fallback.
     "park_alert": "https://www.nps.gov/choh/planyourvisit/conditions.htm",
     "protrack": "https://opendata.dc.gov/",
     "dcwater": "https://www.dcwater.com/projects",

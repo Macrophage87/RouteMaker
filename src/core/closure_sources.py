@@ -71,7 +71,7 @@ PROTRACK, DCWATER, WSSC = planned.PROTRACK, planned.DCWATER, planned.WSSC
 PLANNED = (PROTRACK, DCWATER, WSSC)
 # Maryland's counties' and towns' closures (v0.17.0, `routemaker.md_closures`): routed round.
 SHA = md.SHA
-# Montgomery County DOT's own copy of the Reporter (v0.27.0, `md_closures.MOCO`): Montgomery
+# Montgomery County DOT's own copy of the Reporter (v0.26.0, `md_closures.MOCO`): Montgomery
 # does not report to the state's.
 MOCO = md.MOCO
 PUBLIC = frozenset({DC, MPD, ALERTDC, SHA, MOCO, *PLANNED})
@@ -157,17 +157,21 @@ RETRY_PLACE_S = 6 * 60 * 60.0
 MAX_NEW_PLACES = {DC: 3000, MPD: 40, ALERTDC: 40, DCWATER: 400}
 
 # A source that still answers but reads as nothing (backlog 2026-11-12, item 8; AlertDC's RSS
-# turned into an HTML page in 2026 and nothing noticed): each good read's count of closures and
-# notices is kept (the last `COUNTS_KEPT`), and a read of none from a source whose usual count
-# (the median of those kept, at least `ZERO_ALARM_READS` of them) is `ZERO_ALARM_USUAL` or more
-# is not taken: the last good copy is kept and the run fails, so the operations page says so. A
-# source that is often empty (Montgomery County's closures, AlertDC on a quiet night) has a
-# usual count under that, so it never trips. Once the kept copy is past `DROP_AFTER_S` it is
-# not used anyway, and the empty read is taken (still said in the run's line). All three
+# turned into an HTML page in 2026 and nothing noticed): each good read's count of zones and
+# notices (a closure along several stretches counts each) is kept (the last `COUNTS_KEPT`), and a
+# read of none from a source whose usual count (the median of those kept, at least
+# `ZERO_ALARM_READS` of them) is `ZERO_ALARM_USUAL` or more is not taken: the last good copy is
+# kept and the run fails, so the operations page says so. A source that is often empty
+# (Montgomery County's closures) has a usual count under that, so it never trips. Once the kept
+# copy is past `DROP_AFTER_S` it is not used anyway, and the empty read is taken; from then on
+# the kept copy is empty, so the next empty read is taken quietly. MPD and AlertDC are left out
+# (`EMPTY_IS_NEWS`): their closures end in the reading (a reopening, an item aging out), so none
+# left is real news, and keeping the old copy would route round roads open again. All three
 # numbers are our default, unmeasured.
 COUNTS_KEPT = 8
 ZERO_ALARM_READS = 3
 ZERO_ALARM_USUAL = 5
+EMPTY_IS_NEWS = frozenset({MPD, ALERTDC})
 
 Fetch = Callable[[str, float, dict], bytes]
 
@@ -735,8 +739,12 @@ def usual_count(feed: dict) -> int | None:
 def read_as_nothing(feed: dict, found: int, source: str, now: datetime) -> int | None:
     """The usual count, where a read of `found` items is not to be believed: none read from a
     source that usually has `ZERO_ALARM_USUAL` or more, while its kept copy is still in use."""
+    if found or source in EMPTY_IS_NEWS:
+        return None
+    if not (feed.get("zones") or feed.get("notices")):
+        return None  # the kept copy is empty too: nothing to protect
     usual = usual_count(feed)
-    if found or usual is None or usual < ZERO_ALARM_USUAL:
+    if usual is None or usual < ZERO_ALARM_USUAL:
         return None
     kept_at = rules._when(feed.get("read_at"))
     if kept_at is None or (now - kept_at).total_seconds() > DROP_AFTER_S[source]:
@@ -865,13 +873,13 @@ def refresh(
         usual = read_as_nothing(kept, found, source, moment)
         if usual is not None:
             logger.warning(
-                "closures: the %s source read as nothing (usually %d); its last copy kept",
+                "closures: the %s source read as nothing (usually %d items); its last copy kept",
                 source,
                 usual,
             )
             feeds[source] = {**kept, "failed_at": moment.isoformat()}
             touched.add(source)
-            said.append(f"{source} read as nothing (usually {usual})")
+            said.append(f"{source} read as nothing (usually {usual} items)")
             empty.append(source)
             continue
         feeds[source] = {

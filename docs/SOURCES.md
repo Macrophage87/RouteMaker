@@ -695,7 +695,7 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - The facts of an alert (which trail or bridge, which days) are used with a link to the page; no
   alert text is republished.
 
-### Park agency trail alerts (v0.27.0)
+### Park agency trail alerts (v0.26.0)
 
 - Credit: `Park agency trail alerts`
 - Pages, each in words with no feed (read 2026-11-12):
@@ -805,7 +805,7 @@ permits: never routed round, never in a route's words, a cue or the closure chec
   WZDx feed's publisher. Terms: a public MD iMAP service, "as is", no licence stated (inferred
   public; ask MDOT SHA before redistributing the records themselves). Not legal advice.
 
-### Montgomery County DOT road closures (v0.27.0)
+### Montgomery County DOT road closures (v0.26.0)
 
 - Credit: `Montgomery County DOT road closures`
 - **Montgomery County DOT road closures**. Layer "MC DOT Road Closure":

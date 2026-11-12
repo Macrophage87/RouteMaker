@@ -478,7 +478,7 @@ def _load(now: datetime) -> Snapshot:
         read = fcpa.updated()
         status[fcpa.SOURCE] = STALE if ddot_advisories.stale(read, today) else CURRENT
         read_at[fcpa.SOURCE] = read
-    # The park agencies' trail alerts (v0.27.0; routemaker.park_alerts), the same way.
+    # The park agencies' trail alerts (v0.26.0; routemaker.park_alerts), the same way.
     trails = park_alerts.zones(now)
     if trails:
         zones.extend(trails)

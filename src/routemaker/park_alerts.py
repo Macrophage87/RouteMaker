@@ -1,4 +1,4 @@
-"""Trail closures from the park agencies that run the trails (v0.27.0).
+"""Trail closures from the park agencies that run the trails (v0.26.0).
 
 Backlog 2026-11-12, item 8, which the owner approved ("Let's get the top 12"): the owner's own
 reported misses were trail closures (the Cross County Trail at Lake Accotink, the Met Branch
@@ -258,8 +258,9 @@ def towpath_lines(first_mile: float, last_mile: float, data: dict | None = None)
     """The C&O towpath's lines from one milepost to another, cut from the trail mile lines
     (`trail-miles.json`: OpenStreetMap's ways, simplified to about 10 m, each piece with `s`, its
     first point's distance from mile 0 in metres, set from the posted mile markers), ready for a
-    closure's `lines`. A stretch the mile lines do not cover (a gap between pieces, or past mile
-    115 where the map ends) has no line: the caller says so."""
+    closure's `lines`. A stretch the mile lines do not cover has no line, and the caller says so:
+    on 2026-11-12 they had gaps at about miles 9.0-19.6, 22.09-22.12, 54.1-54.75 and 93.15-93.36,
+    and stopped at mile 106.05."""
     if data is None:
         data = json.loads(TRAIL_MILES.read_text())
     low, high = sorted((first_mile * MILE_M, last_mile * MILE_M))
@@ -275,10 +276,12 @@ def towpath_lines(first_mile: float, last_mile: float, data: dict | None = None)
         for a, b in zip(points, points[1:], strict=False):
             length = _metres(a, b)
             start, end = along, along + length
-            if end >= low and start <= high and length > 0:
+            if end > low and start < high and length > 0:
                 if not cut:
                     cut.append(_between(a, b, max(0.0, (low - start) / length)))
-                cut.append(_between(a, b, min(1.0, (high - start) / length)))
+                point = _between(a, b, min(1.0, (high - start) / length))
+                if point != cut[-1]:
+                    cut.append(point)
             along = end
         if len(cut) >= 2:
             out.append([list(p) for p in cut])

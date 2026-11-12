@@ -288,7 +288,7 @@ CD agent's and the host's own, is kept outside this repository, with the owner):
   `trainingtrack.hsema.dc.gov`, `developer.nps.gov` (with `NPS_API_KEY`), `geo.dcwater.com` and
   `gisportal.wsscwater.com` (v0.17.0, planned work for Plan's Potential closures),
   `mdgeodata.md.gov` (v0.17.0, Maryland's Road Closure Reporter), `www7.montgomerycountymd.gov`
-  (v0.27.0, Montgomery County DOT's road closures); and
+  (v0.26.0, Montgomery County DOT's road closures); and
   (`refresh_work_zones`, every 5 minutes) `filter.ritis.org` (Maryland) and
   `data.511-atis-ttrip-prod.iteriscloud.com` (Virginia, with `SMARTERROADS_TOKEN`). It also reaches
   Photon and the Valhalla containers on the compose network, as the api does.

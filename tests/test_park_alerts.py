@@ -1,4 +1,4 @@
-"""Trail closures from the park agencies (v0.27.0, `routemaker.park_alerts`): NOVA Parks (the
+"""Trail closures from the park agencies (v0.26.0, `routemaker.park_alerts`): NOVA Parks (the
 W&OD), NPS's C&O Canal conditions page (by milepost) and Anne Arundel County's closings list.
 Backlog 2026-11-12, item 8. Read by hand into a file, routed round, gone after their last day;
 `scripts/park_alerts.py watch` lists what is not yet read. Pages are made up in each site's shape
@@ -181,6 +181,28 @@ class TestCAndOCanal:
         (line,) = pa.towpath_lines(4.7, 4.7)
         length = sum(pa._metres(a, b) for a, b in zip(line, line[1:], strict=False))
         assert 90.0 < length < 110.0
+
+    def test_a_piece_boundary_adds_no_empty_line_and_a_reversed_range_reads_the_same(
+        self,
+    ) -> None:
+        data = {
+            "trails": [
+                {
+                    "n": "Chesapeake and Ohio Canal Trail",
+                    "s": 0,
+                    "l": [[-77.0, 39.0], [-77.01, 39.0]],
+                },
+                {
+                    "n": "Chesapeake and Ohio Canal Trail",
+                    "s": 1000,
+                    "l": [[-77.02, 39.0], [-77.03, 39.0]],
+                },
+            ]
+        }
+        boundary = 1000 / pa.MILE_M
+        lines = pa.towpath_lines(boundary - 0.2, boundary, data)
+        assert len(lines) == 1 and all(len(set(map(tuple, line))) == len(line) for line in lines)
+        assert pa.towpath_lines(boundary, boundary - 0.2, data) == lines
 
     def test_a_stretch_with_no_mile_line_has_no_line(self) -> None:
         data = {"trails": [{"n": "Chesapeake and Ohio Canal Trail", "s": 0, "l": [[-77, 39]]}]}

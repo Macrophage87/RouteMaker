@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Find the park agencies' new trail alerts, and draw a C&O closure by milepost.
 
-For `routemaker.park_alerts` (v0.27.0): NOVA Parks (the W&OD), NPS's C&O Canal conditions page
+For `routemaker.park_alerts` (v0.26.0): NOVA Parks (the W&OD), NPS's C&O Canal conditions page
 and Anne Arundel County's closings list. Each posts its trail closures only as words, so a
 closure goes in `src/core/geodata/park-closures.json` only after a person reads it and the owner's
 rule for these allows it (docs/OPERATIONS.md, "Park agency trail closures").

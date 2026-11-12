@@ -56,7 +56,7 @@ class Net:
             # Planned work (routemaker.planned_work; tests/test_planned_work.py): none here.
             return b'{"type": "FeatureCollection", "features": []}'
         if "montgomerycountymd.gov" in url:
-            # Montgomery County DOT's closures (v0.27.0): legitimately empty most of the time.
+            # Montgomery County DOT's closures (v0.26.0): legitimately empty most of the time.
             return self.moco
         if "RoadClosurePlanned" in url:
             return b'{"type": "FeatureCollection", "features": []}'
@@ -228,7 +228,7 @@ class TestRefresh:
 
 @db
 class TestMontgomeryCounty:
-    """Montgomery County DOT's own road closures (v0.27.0, source "moco"): the state Road
+    """Montgomery County DOT's own road closures (v0.26.0, source "moco"): the state Road
     Closure Reporter's fields on the county's server, read as the state's are."""
 
     def test_its_closures_are_read_as_the_state_reporters_are(self) -> None:
@@ -275,12 +275,28 @@ class TestReadAsNothing:
         assert stored("moco")["counts"] == [6, 6, 6]
         with pytest.raises(workzones.FeedError) as failed:
             sources.refresh(Net(), no_sleep, lambda: times[3], Placer())
-        assert "moco read as nothing (usually 6)" in str(failed.value)
+        assert "moco read as nothing (usually 6 items)" in str(failed.value)
         assert "read as nothing: moco" in str(failed.value)
         moco = stored("moco")
         assert len(moco["zones"]) == 6, "the last good copy is kept"
         assert moco["read_at"] == times[2].isoformat()
         assert moco["failed_at"] == times[3].isoformat()
+
+    def test_a_source_that_really_empties_alarms_only_until_its_copy_ages_out(self) -> None:
+        """Review: past the drop age the empty read is taken, and from then on the kept copy is
+        empty too, so the next empty read is quiet (not days of alarms while the median falls)."""
+        busy = {"counts": [40] * 8, "zones": [{"id": "x"}], "read_at": NOW.isoformat()}
+        later = NOW + timedelta(hours=27)
+        assert sources.read_as_nothing(busy, 0, "dc", later) is None
+        taken = {"counts": [40] * 7 + [0], "zones": [], "notices": [], "read_at": later.isoformat()}
+        assert sources.read_as_nothing(taken, 0, "dc", later + timedelta(hours=1)) is None
+
+    def test_mpd_and_alertdc_are_left_out(self) -> None:
+        """Their closures end in the reading (reopened, aged out): none left is real news."""
+        busy = {"counts": [9] * 8, "zones": [{"id": "x"}], "read_at": NOW.isoformat()}
+        for source in ("alertdc", "mpd"):
+            assert sources.read_as_nothing(busy, 0, source, NOW) is None
+        assert sources.read_as_nothing(busy, 0, "sha", NOW) == 9
 
     def test_a_source_that_is_often_empty_never_trips_it(self) -> None:
         feed = {"counts": [0, 2, 0, 1, 0], "read_at": NOW.isoformat()}
@@ -291,7 +307,7 @@ class TestReadAsNothing:
         assert sources.read_as_nothing(feed, 0, "dc", NOW) is None
 
     def test_once_the_kept_copy_is_past_its_drop_age_the_empty_read_is_taken(self) -> None:
-        feed = {"counts": [40, 40, 40], "read_at": NOW.isoformat()}
+        feed = {"counts": [40, 40, 40], "zones": [{"id": "x"}], "read_at": NOW.isoformat()}
         assert sources.read_as_nothing(feed, 0, "dc", NOW + timedelta(hours=1)) == 40
         assert sources.read_as_nothing(feed, 0, "dc", NOW + timedelta(hours=27)) is None
         assert sources.read_as_nothing(feed, 3, "dc", NOW + timedelta(hours=1)) is None

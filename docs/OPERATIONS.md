@@ -5688,22 +5688,24 @@ row keyed `closures` (`src/core/closure_sources.py`):
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
 | Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. One on an Interstate ("I 695", "WB I 695") or a road the map bars is not kept, as the WZDx feeds' are not. The reporting account (`Creator`) is never asked for |
-| Montgomery County DOT road closures (`moco`, v0.27.0) | `www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0/query` | 15 min | 45 min | 6 h | As `sha` (the same Reporter fields, `md_closures.parse_sha`): Montgomery County's own closures, which it does not post to the state's layers. Often legitimately empty |
+| Montgomery County DOT road closures (`moco`, v0.26.0) | `www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0/query` | 15 min | 45 min | 6 h | As `sha` (the same Reporter fields, `md_closures.parse_sha`): Montgomery County's own closures, which it does not post to the state's layers. Often legitimately empty |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
 without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
 `geo.dcwater.com` and `gisportal.wsscwater.com` for planned work and `mdgeodata.md.gov` for
-Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.27.0) `www7.montgomerycountymd.gov` for
+Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.26.0) `www7.montgomerycountymd.gov` for
 Montgomery County's road closures.
 
-**A source that reads as nothing** (v0.27.0). Each good read's count of closures and notices is
+**A source that reads as nothing** (v0.26.0). Each good read's count of closures and notices is
 kept (the last 8). A read of none from a source whose usual count (the median of those, once there
 are 3) is 5 or more is not taken: its last copy is kept, and the run fails at once with "read as
 nothing: <source>", so the operations page shows it the same day. It almost always means the page
 or layer changed shape (AlertDC's RSS turning into an HTML list in 2026): fetch it by hand and
 compare with its sample in `tests/data/closures`. A source that is often empty (Montgomery
-County's closures, AlertDC on a quiet night) never trips it. Once the kept copy is past its
-"Dropped after" age the empty read is taken. 8, 3 and 5 are our default, unmeasured
+County's closures) never trips it, and MPD and AlertDC are left out (their closures end in the
+reading, so none left is real news). Once the kept copy is past its "Dropped after" age the empty
+read is taken, and further empty reads are quiet. Counts are zones and notices, so a closure along
+several stretches counts each. 8, 3 and 5 are our default, unmeasured
 (`COUNTS_KEPT`, `ZERO_ALARM_READS`, `ZERO_ALARM_USUAL` in src/core/closure_sources.py).
 
 **First checks on a new host.** The readers were built on saved sample pages
@@ -5869,7 +5871,7 @@ The first watch listed 12 trail items, among them the Lake Accotink marina bridg
 Road ("until Fall 2026"), the Pimmit Run sewer work and several bridges closed until further
 notice; none was entered before the owner's review.
 
-## Park agency trail closures (v0.27.0)
+## Park agency trail closures (v0.26.0)
 
 Backlog 2026-11-12, item 8: the Fairfax watch above, extended to the agencies whose trails riders
 use most. Each posts trail closures only in words, so, as for Fairfax, a person reads each new
