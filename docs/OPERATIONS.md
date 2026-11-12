@@ -58,6 +58,7 @@ Contents:
 - [DDOT project advisories (v0.12.4)](#ddot-project-advisories-v0124)
 - [Purple Line construction closures (v0.13.0)](#purple-line-construction-closures-v0130)
 - [Fairfax park trail closures (v0.22.0)](#fairfax-park-trail-closures-v0220)
+- [Park agency trail closures (v0.26.0)](#park-agency-trail-closures-v0260)
 - [Deer-management closures (v0.12.3)](#deer-management-closures-v0123)
 - [DC pavement condition (DC-PCI)](#dc-pavement-condition-dc-pci)
 - [Agency traffic signals (signals.json)](#agency-traffic-signals-signalsjson)
@@ -90,6 +91,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.26.0](#deploying-v0260)
 - [Deploying v0.25.1](#deploying-v0251)
 - [Deploying v0.25.0](#deploying-v0250)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
@@ -102,6 +104,7 @@ Contents:
 - [Rebuilding on the cloud box](#rebuilding-on-the-cloud-box)
 - [Phone app (v0.8.0)](#phone-app-v080)
 - [Fixing OSM from a ride (scripts/osm_edit.py)](#fixing-osm-from-a-ride-scriptsosm_editpy)
+- [Off-grid way back: the offline road network](#off-grid-way-back-the-offline-road-network)
 
 <!-- /CONTENTS -->
 
