@@ -2156,6 +2156,19 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "የኢሞጂ ምልክቶች",
   "Road closed ahead": "ወደፊት መንገድ ተዘግቷል",
   "Road closed ahead, {distance}: {name}": "ወደፊት መንገድ ተዘግቷል፣ {distance}፦ {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "ከደረጃው የተለየ የተሰማዎት ክፍል አለ?",
+  "Which stretch?": "የትኛው ክፍል?",
+  "You marked a road closed.": "አንድ መንገድ ዝግ ብለው ምልክት አድርገዋል።",
+  "You marked {n} roads closed.": "{n} መንገዶችን ዝግ ብለው ምልክት አድርገዋል።",
+  "Send for review": "ለግምገማ ላክ",
+  "Only the road and the day are sent.": "የሚላከው መንገዱ እና ቀኑ ብቻ ነው።",
+  "Sent 1 closed road for review. Thank you.": "1 ዝግ መንገድ ለግምገማ ተልኳል። እናመሰግናለን።",
+  "Sent {n} closed roads for review. Thank you.": "{n} ዝግ መንገዶች ለግምገማ ተልከዋል። እናመሰግናለን።",
+  "Not sent. Try again shortly.": "አልተላከም። ትንሽ ቆይተው እንደገና ይሞክሩ።",
+  "That road can't be looked up right now. Try again shortly.": "ያንን መንገድ አሁን መፈለግ አይቻልም። ትንሽ ቆይተው እንደገና ይሞክሩ።",
+  "Looking up the road…": "መንገዱን በመፈለግ ላይ…",
+  "Sending…": "በመላክ ላይ…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "ለሕዝብ ክፍት አይደለም",
 };

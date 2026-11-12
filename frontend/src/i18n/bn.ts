@@ -2156,6 +2156,19 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "ইমোজি চিহ্ন",
   "Road closed ahead": "সামনে রাস্তা বন্ধ",
   "Road closed ahead, {distance}: {name}": "সামনে রাস্তা বন্ধ, {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "কোনো অংশ কি তার রেটিং থেকে আলাদা মনে হয়েছে?",
+  "Which stretch?": "কোন অংশ?",
+  "You marked a road closed.": "আপনি একটি রাস্তা বন্ধ চিহ্নিত করেছেন।",
+  "You marked {n} roads closed.": "আপনি {n}টি রাস্তা বন্ধ চিহ্নিত করেছেন।",
+  "Send for review": "পর্যালোচনার জন্য পাঠান",
+  "Only the road and the day are sent.": "শুধু রাস্তা আর দিনটি পাঠানো হয়।",
+  "Sent 1 closed road for review. Thank you.": "১টি বন্ধ রাস্তা পর্যালোচনার জন্য পাঠানো হয়েছে। ধন্যবাদ।",
+  "Sent {n} closed roads for review. Thank you.": "{n}টি বন্ধ রাস্তা পর্যালোচনার জন্য পাঠানো হয়েছে। ধন্যবাদ।",
+  "Not sent. Try again shortly.": "পাঠানো হয়নি। একটু পরে আবার চেষ্টা করুন।",
+  "That road can't be looked up right now. Try again shortly.": "এই মুহূর্তে রাস্তাটি খোঁজা যাচ্ছে না। একটু পরে আবার চেষ্টা করুন।",
+  "Looking up the road…": "রাস্তাটি খোঁজা হচ্ছে…",
+  "Sending…": "পাঠানো হচ্ছে…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "জনসাধারণের প্রবেশ নিষেধ",
 };

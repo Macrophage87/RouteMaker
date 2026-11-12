@@ -2690,4 +2690,16 @@ export const ES: Readonly<Record<string, string>> = {
   "Road closed ahead, {distance}: {name}": "Calle cerrada más adelante, {distance}: {name}",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "Sin acceso público",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "¿Algún tramo se sintió distinto de su calificación?",
+  "Which stretch?": "¿Qué tramo?",
+  "You marked a road closed.": "Marcó una calle cerrada.",
+  "You marked {n} roads closed.": "Marcó {n} calles cerradas.",
+  "Send for review": "Enviar para revisión",
+  "Only the road and the day are sent.": "Solo se envían la calle y el día.",
+  "Sent 1 closed road for review. Thank you.": "Se envió 1 calle cerrada para revisión. Gracias.",
+  "Sent {n} closed roads for review. Thank you.": "Se enviaron {n} calles cerradas para revisión. Gracias.",
+  "Not sent. Try again shortly.": "No enviado. Inténtelo de nuevo en un momento.",
+  "That road can't be looked up right now. Try again shortly.": "No se puede consultar esa calle ahora. Inténtelo de nuevo en un momento.",
+  "Looking up the road…": "Consultando la calle…",
 };

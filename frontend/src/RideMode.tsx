@@ -165,7 +165,7 @@ import {
   endWords,
   ARRIVED_SAID,
 } from "./lib/navigate.ts";
-import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
+import { statsPause, statsStart, statsStep, withClosedStretch, type RideStats } from "./lib/rideStats.ts";
 import {
   Announcer,
   OUTPUT_LABELS,
@@ -2710,7 +2710,11 @@ export function RideMode({
       sayDetour(ROAD_CLOSED_NO_PLACE);
       return;
     }
-    blockedRef.current = withClosed(blockedRef.current, stretch.line);    blockedUntil.current = stretch.untilM === null ? null : { model: modelRef.current, untilM: stretch.untilM };
+    blockedRef.current = withClosed(blockedRef.current, stretch.line);
+    // Kept with the ride's figures too, so the summary can offer to send it for review (lib/rideFeedback.ts); on the
+    // phone only until the rider says Send.
+    statsRef.current = withClosedStretch(statsRef.current, stretch.line);
+    blockedUntil.current = stretch.untilM === null ? null : { model: modelRef.current, untilM: stretch.untilM };
     otherRef.current = null;
     setOther(null);
     setKeepPlanned(false);

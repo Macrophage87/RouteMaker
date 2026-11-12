@@ -7269,6 +7269,7 @@ export function App() {
           onUndo={undoEndRide}
           onDone={finishRide}
           onReports={rideEndReports}
+          origin={origin}
         />
       )}
       {riding && rideStart && (
