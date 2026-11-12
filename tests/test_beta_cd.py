@@ -2350,8 +2350,12 @@ def test_a_deploy_refreshes_the_installed_alert_script_first(beta: Beta) -> None
     assert done.returncode == 0, done.stdout + done.stderr
     assert (beta.cd / "bin" / "alert.sh").read_text() == newer
     sent = _alerts(beta)
+    # The riders' "updating" goes out before the new copy is in, from the copy then installed.
+    assert sent[0] == "status|updating|"
+    sent = sent[1:]
     assert sent and all(line.startswith("new|") for line in sent)
     assert any(line.startswith("new|release-notes|v0.2.0|") for line in sent), sent
+    assert "new|status|done|" in sent
 
 
 def test_release_notes_are_retried_on_an_up_to_date_pass(beta: Beta) -> None:
@@ -2545,3 +2549,17 @@ def test_a_failing_bot_changelog_is_reported_and_retried(beta: Beta) -> None:
     beta.agent("run", **env)
     assert sum(" changelog " in line for line in _reports(beta)) == 2
     assert any(line.startswith("clear|release-notes|") for line in _alerts(beta))
+
+
+def test_riders_see_updating_from_the_stop_until_the_pass_ends(beta: Beta) -> None:
+    _alert_stub(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    sent = _alerts(beta)
+    assert sent.index("status|updating|") < sent.index("status|done|")
+    assert not (beta.cd / "rider-updating").exists()
+    # an idle pass after it says nothing to riders
+    (beta.tmp / "alerts.log").unlink()
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert not any(line.startswith("status|") for line in _alerts(beta))

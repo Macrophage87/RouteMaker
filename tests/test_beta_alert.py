@@ -613,3 +613,45 @@ def test_the_public_address_and_its_certificate(box: Box) -> None:
     assert any("certificate ends in" in p for p in box.posts())
     for post in box.posts():
         assert "beta.example.org" not in post  # the address stays out of Discord
+
+
+def status_of(box: Box) -> dict | None:
+    path = box.tmp / "data" / "status" / "status.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def test_riders_see_updating_during_a_deploy_and_nothing_after(box: Box) -> None:
+    (box.tmp / "data" / "status").mkdir(parents=True)
+    env = {"RM_DATA": str(box.tmp / "data")}
+    assert box.run("status", "updating", **env).returncode == 0
+    assert status_of(box) == {"state": "updating"}
+    path = box.tmp / "data" / "status" / "status.json"
+    assert oct(path.stat().st_mode & 0o777) == "0o644"  # nginx reads it
+    assert box.run("status", "done", **env).returncode == 0
+    assert status_of(box) is None  # all well: no file, the app's 404
+
+
+def test_riders_see_what_is_down_once_it_is_seen_twice(box: Box) -> None:
+    (box.tmp / "data" / "status").mkdir(parents=True)
+    env = {"RM_DATA": str(box.tmp / "data")}
+    (box.tmp / "smoke-fails").write_text(
+        "FAIL  a mountain-bike route is planned on the mtb graph: no match\n"
+        "FAIL  place search finds Union Station: no match\n"
+    )
+    box.run("watch", **env)
+    assert status_of(box) is None  # once could be a router restarting
+    box.run("watch", **env)
+    assert status_of(box) == {"state": "degraded", "parts": ["trails", "search"]}
+    # a deploy's "updating" wins while it lasts
+    box.run("status", "updating", **env)
+    assert status_of(box) == {"state": "updating"}
+    box.run("status", "done", **env)
+    assert status_of(box)["state"] == "degraded"
+    (box.tmp / "smoke-fails").unlink()
+    box.run("watch", **env)
+    assert status_of(box) is None
+
+
+def test_no_status_directory_writes_nothing(box: Box) -> None:
+    assert box.run("status", "updating", RM_DATA=str(box.tmp / "data")).returncode == 0
+    assert not (box.tmp / "data").exists()

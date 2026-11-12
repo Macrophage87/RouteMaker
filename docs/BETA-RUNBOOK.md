@@ -1494,6 +1494,23 @@ What is posted, each as one short message starting "RouteMaker beta:":
   in `vars.sh`: `RM_ALERT_CERT_DAYS`, `RM_ALERT_5XX`, `RM_ALERT_SLOW_S`, `RM_ALERT_SLOW_N`,
   `RM_ALERT_MEM_MIB`, `RM_ALERT_DISK_MIB`. These checks need nothing new installed beyond running
   `alert.sh install` again, so the timer's copy is the new script.
+- **The riders' status line** (the owner, 2026-11-12: one line in Go and Plan, only while
+  degraded). The release agent writes `$RM_DATA/status/status.json` as `{"state": "updating"}`
+  from the moment it stops the api until its pass ends; the same check writes
+  `{"state": "degraded", "parts": [...]}` (`routing`, `trails`, `search`) once a smoke-test failure
+  is seen twice, and removes the file when all is well. nginx serves it at `/status.json`
+  (never cached), even while the api is stopped; the app reads it at open and when a request
+  fails, and shows one short line. Install once (no sudo for the directory; nginx needs a
+  re-render for the new location):
+
+  ```sh
+  . "$HOME/routemaker-beta-state/vars.sh"
+  mkdir "$RM_DATA/status" && chmod 755 "$RM_DATA/status"
+  "$RM_SRC/scripts/beta/render-nginx.sh" --stage full --diff "$NGINX_SITE"   # shows the one new location
+  ```
+
+  then install the rendered file as in step 10 (`nginx -t` before the reload). Without the
+  directory nothing is written and riders see no line.
 - **The PC's copy of the backups:** once the owner's PC pulls the nightly dumps
   (docs/OPERATIONS.md, "Off-box copies of beta backups"), each run that ends ok writes
   `~/routemaker-beta-state/pc-backup-pull`. The same check posts once that file is over 36 h old

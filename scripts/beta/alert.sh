@@ -17,6 +17,8 @@
 #                                  errors or slow route plans; and when a container restarts or
 #                                  is killed for memory, or the host runs low on memory or disk
 #                                  (docs/BETA-RUNBOOK.md, "Alerts"). Skipped while a deploy pass runs.
+#   alert.sh status updating|done  the release agent's calls around a deploy: riders' status line
+#                                  says "Updating" until done (see "The riders' status line")
 #   alert.sh send KEY ID MESSAGE   post MESSAGE unless KEY last posted the same ID (within a day)
 #   alert.sh note MESSAGE          post MESSAGE (no repeat check)
 #   alert.sh clear KEY MESSAGE     KEY is fine: post MESSAGE if KEY had posted, and forget it
@@ -178,10 +180,13 @@ cmd_watch() {
 	out=$("${RM_ALERT_SMOKE:-$RM_SRC/scripts/beta/smoke-test.sh}" --local $trails 2>&1 </dev/null); rc=$?
 	if [ "$rc" = 0 ]; then
 		cmd_clear site "working again: the local smoke tests pass"
+		rider_parts ""
 	else
 		fails=$(printf '%s\n' "$out" | grep -E '^(FAIL|smoke-test:)' | head -n 8)
 		failing site "$(same_id "$fails")" \
 			"the local smoke tests fail:"$'\n'"${fails:-$(printf '%s\n' "$out" | tail -n 4)}"
+		# Riders hear of it once it is posted (seen twice), not at a router's one-off restart.
+		if [ -f "$state/site" ]; then rider_parts "$(parts_of "$out")"; else rider_parts ""; fi
 	fi
 	out=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" exec -T worker ./manage.py check_operations 2>&1 </dev/null); rc=$?
 	if [ "$rc" = 0 ]; then
@@ -195,6 +200,59 @@ cmd_watch() {
 	watch_api_log
 	watch_containers
 	watch_host
+	return 0
+}
+
+# --- The riders' status line ---------------------------------------------------------------------
+# A small status.json beside the front end (nginx: location = /status.json, read from
+# $RM_DATA/status), which the app reads at open and when a request fails, and shows as one line
+# only while something is wrong. nginx serves it even while the api is stopped for a deploy.
+# {"state": "updating"} while the release agent deploys; {"state": "degraded", "parts": [...]}
+# while the watch's smoke tests fail (routing, trails, search); no file at all when all is well.
+# No $RM_DATA/status directory (made once at install, BETA-RUNBOOK.md "Alerts"), nothing written.
+status_dir() { printf '%s' "${RM_STATUS_DIR:-${RM_DATA:+$RM_DATA/status}}"; }
+
+# What the riders cannot do, from the smoke tests' FAIL lines: routing (no health, no route),
+# trails (a trail graph), search (place search or a place name).
+parts_of() {
+	local fails parts=""
+	fails=$(printf '%s\n' "$1" | grep '^FAIL')
+	printf '%s\n' "$fails" | grep -qE 'healthz|a route comes back' && parts="$parts routing"
+	printf '%s\n' "$fails" | grep -qE 'graph' && parts="$parts trails"
+	printf '%s\n' "$fails" | grep -qE 'place search|place name' && parts="$parts search"
+	printf '%s' "${parts# }"
+}
+
+rider_parts() { # "routing trails search" or "" (all well)
+	mkdir -p "$state" && chmod 700 "$state"
+	printf '%s\n' "$1" >"$state/rider-parts"
+	write_status
+}
+
+write_status() {
+	local dir json parts
+	dir=$(status_dir)
+	[ -n "$dir" ] && [ -d "$dir" ] || return 0
+	parts=$(cat "$state/rider-parts" 2>/dev/null)
+	if [ -f "$state/rider-updating" ]; then
+		json='{"state": "updating"}'
+	elif [ -n "$parts" ]; then
+		json=$(printf '%s\n' $parts | sed 's/.*/"&"/' | paste -sd, - | sed 's/,/, /g; s/^/{"state": "degraded", "parts": [/; s/$/]}/')
+	else
+		rm -f "$dir/status.json"
+		return 0
+	fi
+	(umask 022 && printf '%s\n' "$json" >"$dir/.status.json.new") && mv -f "$dir/.status.json.new" "$dir/status.json"
+}
+
+cmd_status() { # updating | done
+	mkdir -p "$state" && chmod 700 "$state"
+	case "${1:-}" in
+		updating) : >"$state/rider-updating" ;;
+		done) rm -f "$state/rider-updating" ;;
+		*) die "status updating|done" ;;
+	esac
+	write_status
 	return 0
 }
 
@@ -504,6 +562,7 @@ main() {
 		note) [ $# = 1 ] || die "note MESSAGE"; post "$1"; return 0 ;;
 		clear) cmd_clear "$@" ;;
 		watch) cmd_watch ;;
+		status) [ $# = 1 ] || die "status updating|done"; cmd_status "$1" ;;
 		heartbeat) cmd_heartbeat ;;
 		test) post "test message from alert.sh test; alerts reach this channel" ;;
 		set-webhook) cmd_set_webhook "$hook_file" test ;;
