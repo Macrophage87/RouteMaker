@@ -362,7 +362,8 @@ _lock = threading.Lock()
 _cached: tuple[float, Snapshot] | None = None
 
 
-_stamp: tuple[int, int, str] | None = None
+# The snapshot itself, not its id(): an id can be reused once a snapshot is collected.
+_stamp: tuple[Snapshot, int, str] | None = None
 
 
 def closures_stamp(now: datetime | None = None) -> str:
@@ -377,7 +378,7 @@ def closures_stamp(now: datetime | None = None) -> str:
     moment = now or _now()
     minute = int(moment.timestamp() // 60)
     with _lock:
-        if _stamp is not None and _stamp[0] == id(found) and _stamp[1] == minute:
+        if _stamp is not None and _stamp[0] is found and _stamp[1] == minute:
             return _stamp[2]
     # Each closure's id, end and line: an area that grows keeps its id (review of #1175).
     rows = sorted(
@@ -389,7 +390,7 @@ def closures_stamp(now: datetime | None = None) -> str:
     )
     stamp = hashlib.sha256("\n".join(rows).encode()).hexdigest()[:16]
     with _lock:
-        _stamp = (id(found), minute, stamp)
+        _stamp = (found, minute, stamp)
     return stamp
 
 
