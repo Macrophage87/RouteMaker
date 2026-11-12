@@ -2154,4 +2154,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "د نقشې په نښو د تلیفون ایموجي",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "په نقشه کې یادښتونه او تمځایونه د اپ د انځورونو پر ځای ستاسو د تلیفون ایموجي ښيي. په دې وسیله ساتل کېږي.",
   "emoji signs": "د ایموجي نښې",
+  "Road closed ahead": "مخکې سړک تړل شوی",
+  "Road closed ahead, {distance}: {name}": "مخکې سړک تړل شوی، {distance}: {name}",
 };

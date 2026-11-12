@@ -2686,4 +2686,6 @@ export const ES: Readonly<Record<string, string>> = {
   "No icon": "Sin icono",
   "Stop icon: {icon}.": "Icono de la parada: {icon}.",
   "Stop icon removed.": "Icono de la parada quitado.",
+  "Road closed ahead": "Calle cerrada más adelante",
+  "Road closed ahead, {distance}: {name}": "Calle cerrada más adelante, {distance}: {name}",
 };

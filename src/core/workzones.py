@@ -362,6 +362,36 @@ _lock = threading.Lock()
 _cached: tuple[float, Snapshot] | None = None
 
 
+_stamp: tuple[int, int, str] | None = None
+
+
+def closures_stamp(now: datetime | None = None) -> str:
+    """A short fingerprint of the closures in force now that routes go round (DDOT's permits
+    and blocked bike lanes left out): it changes when one starts, ends or is added. A ride asks
+    for it each minute and checks its line again only when it changes (Stephen 2026-11-12:
+    sudden closures, a crash or police activity, offered a reroute)."""
+    import hashlib
+
+    global _stamp
+    found = snapshot()
+    moment = now or _now()
+    minute = int(moment.timestamp() // 60)
+    with _lock:
+        if _stamp is not None and _stamp[0] == id(found) and _stamp[1] == minute:
+            return _stamp[2]
+    ids = sorted(
+        z.zone_id
+        for z in found.zones
+        if z.kind in (rules.CLOSED, rules.UNKNOWN)
+        and not rules.possible(z)
+        and rules.active(z, moment)
+    )
+    stamp = hashlib.sha256("\n".join(ids).encode()).hexdigest()[:16]
+    with _lock:
+        _stamp = (id(found), minute, stamp)
+    return stamp
+
+
 def forget() -> None:
     global _cached
     with _lock:

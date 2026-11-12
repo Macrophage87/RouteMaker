@@ -2154,4 +2154,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "อีโมจิของโทรศัพท์บนป้ายแผนที่",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "โน้ตและจุดแวะบนแผนที่จะแสดงอีโมจิของโทรศัพท์คุณ แทนภาพของแอป เก็บไว้ในอุปกรณ์นี้",
   "emoji signs": "ป้ายอีโมจิ",
+  "Road closed ahead": "ถนนข้างหน้าปิด",
+  "Road closed ahead, {distance}: {name}": "ถนนข้างหน้าปิด {distance}: {name}",
 };

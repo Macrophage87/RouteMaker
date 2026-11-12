@@ -93,6 +93,12 @@ def no_sleep(_s: float) -> None:
     pass
 
 
+def both(net, now, placer) -> None:
+    """The fifteen-minute refresh and AlertDC's every-minute one (`refresh_fast`)."""
+    sources.refresh(net, no_sleep, now, placer)
+    sources.refresh_fast(net, no_sleep, now, placer)
+
+
 def stored(source: str) -> dict:
     return BikeshareFeedCache.objects.get(key=sources.KEY).payload["feeds"][source]
 
@@ -119,7 +125,7 @@ class TestRefresh:
         assert notice["url"].startswith("https://mpdc.dc.gov/release/")
 
     def test_crime_and_other_alerts_are_never_stored(self) -> None:
-        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        both(Net(), lambda: NOW, Placer())
         kept = json.dumps(BikeshareFeedCache.objects.get(key=sources.KEY).payload)
         for word in ("shooting", "Police Activity", "police activity", "Wind Advisory", "Arrest"):
             assert word not in kept
@@ -159,7 +165,7 @@ class TestRefresh:
         """Every 15 minutes on a maintenance slot: past `REFRESH_BUDGET_S` no fetch, retry or
         place look-up starts, a fetch is cut to what is left, and a source not reached keeps
         its last good copy and is due again next time."""
-        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        both(Net(), lambda: NOW, Placer())
         assert sources.REFRESH_BUDGET_S <= 5 * 60
 
         clock = [0.0]
@@ -183,11 +189,14 @@ class TestRefresh:
         assert "not reached in time" in str(failed.value)
         assert all(t <= sources.TIMEOUT_S for t in timeouts) and timeouts[1] <= 30.0
         assert clock[0] <= 100.0 + 70.0, "nothing was started past the budget"
-        # A source not reached keeps its copy from the first refresh, unfailed.
+        # A source not reached keeps its copy from the first refresh, unfailed; AlertDC, read by
+        # its own every-minute task, is left as that task last wrote it.
+        sha = stored("sha")
+        assert sha["read_at"] == NOW.isoformat() and sha["failed_at"] is None
         alertdc = stored("alertdc")
         assert alertdc["read_at"] == NOW.isoformat() and alertdc["failed_at"] is None
         # A source cut short mid-fetch is not failed either, so it is due at the next tick.
-        assert all(stored(source)["failed_at"] is None for source in ("dc", "mpd", "alertdc"))
+        assert all(stored(source)["failed_at"] is None for source in ("dc", "mpd", "sha"))
 
     def test_a_failed_source_keeps_its_last_good_copy(self) -> None:
         sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
@@ -200,12 +209,12 @@ class TestRefresh:
         """Audit 2026-10-29: the run said it succeeded while every source kept failing, so
         the operations page never flagged it. A failure inside `STALE_AFTER_S` of the last
         good read is not yet an alarm; past it the run fails, its copy still kept."""
-        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        sources.refresh_fast(Net(), no_sleep, lambda: NOW, Placer())
         soon = NOW + timedelta(minutes=20)
-        sources.refresh(Net(fail=("hsema",)), no_sleep, lambda: soon, Placer())
+        sources.refresh_fast(Net(fail=("hsema",)), no_sleep, lambda: soon, Placer())
         later = NOW + timedelta(hours=1)
         with pytest.raises(workzones.FeedError) as failed:
-            sources.refresh(Net(fail=("hsema",)), no_sleep, lambda: later, Placer())
+            sources.refresh_fast(Net(fail=("hsema",)), no_sleep, lambda: later, Placer())
         assert "no good read in time: alertdc" in str(failed.value)
         assert stored("alertdc")["read_at"] == NOW.isoformat()
 
@@ -213,7 +222,7 @@ class TestRefresh:
 @db
 def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monkeypatch) -> None:
     monkeypatch.setattr(workzones, "_now", lambda: NOW)
-    sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+    both(Net(), lambda: NOW, Placer())
     found = workzones.snapshot()
     assert found.status == {
         "alertdc": "current",

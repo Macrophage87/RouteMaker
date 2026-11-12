@@ -246,6 +246,16 @@ class Zone:
     # None: it holds the whole of its window (hunt K6, 2026-11-08: a week of nights was read
     # as one week-long closure, and daytime rides went round an open street).
     daily: tuple[int, int, int, int] | None = None
+    # An area, not a line (Stephen 2026-11-12: police activity is avoided "by a wide margin";
+    # a closure at one corner closes the junction): `line` is then the area's outline, a closed
+    # ring, already `margin_m` out from the closed corners or blocks (`dc_closures.area_ring`),
+    # and the router leaves out the whole ring (`polygon`), not a strip along a line.
+    margin_m: float = 0.0
+
+    @property
+    def area(self) -> bool:
+        """Whether the zone is an area (`margin_m`): its `line` is a closed ring."""
+        return self.margin_m > 0 and len(self.line) >= 4 and self.line[0] == self.line[-1]
 
     @property
     def firm_end(self) -> bool:
@@ -274,6 +284,7 @@ class Zone:
             "from_ends": self.from_ends,
             "on_foot": self.on_foot,
             "daily": None if self.daily is None else list(self.daily),
+            "margin_m": self.margin_m,
         }
 
     @classmethod
@@ -298,6 +309,7 @@ class Zone:
             from_ends=bool(row.get("from_ends")),
             on_foot=_on_foot(row.get("on_foot")),
             daily=_daily(row.get("daily")),
+            margin_m=_margin(row.get("margin_m")),
         )
 
 
@@ -314,6 +326,15 @@ def _daily(value) -> tuple[int, int, int, int] | None:
     ):
         return None
     return hours  # type: ignore[return-value]
+
+
+def _margin(value) -> float:
+    """A stored `margin_m`: a number from 0 to 2 km, else 0 (a line)."""
+    try:
+        margin = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    return margin if 0.0 < margin <= 2000.0 else 0.0
 
 
 def _on_foot(value) -> bool | None:
@@ -557,7 +578,10 @@ def _to_segment(p, a, b) -> float:
 def polygon(zone: Zone) -> list[list[float]] | None:
     """The strip the router is to leave out for a zone: its line trimmed at both
     ends, thinned, and widened `HALF_WIDTH_M` each side; a closed ring of [lon, lat]
-    pairs (Valhalla's `exclude_polygons` entry). None for a line under 1 m."""
+    pairs (Valhalla's `exclude_polygons` entry). None for a line under 1 m. An area's ring is
+    its outline itself (`Zone.area`)."""
+    if zone.area:
+        return [[float(p[0]), float(p[1])] for p in zone.line]
     return line_ring(zone.line, TRIM_M)
 
 
@@ -725,8 +749,33 @@ def zone_rings(
     zone: Zone, points: Sequence[Sequence[float]] = (), crossings: Sequence[float] = ()
 ) -> list[list[list[float]]]:
     """A closure's strips (`line_rings`): its line trimmed `TRIM_M` at both ends, less the
-    stretches near the rider's `points`, cut at its `crossings`."""
+    stretches near the rider's `points`, cut at its `crossings`. An area is its one ring, or
+    none where one of `points` lies in it or within `NEAR_POINT_M` of it (the rider starts
+    there: warned of, not left out)."""
+    if zone.area:
+        if any(near_area(zone, p) for p in points):
+            return []
+        ring = polygon(zone)
+        return [] if ring is None else [ring]
     return line_rings(zone.line, TRIM_M, points, crossings)
+
+
+def _in_ring(point: tuple[float, float], ring: Sequence[tuple[float, float]]) -> bool:
+    """Whether a point lies inside a closed ring (both on the same plane): even-odd rule."""
+    x, y = point
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring, ring[1:], strict=False):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+def near_area(zone: Zone, point: Sequence[float], near_m: float = NEAR_POINT_M) -> bool:
+    """Whether a [lon, lat] point lies in an area zone, or within `near_m` of its outline."""
+    lat0 = zone.line[0][1]
+    ring = [_xy(lon, lat, lat0) for lon, lat in zone.line]
+    at = _xy(point[0], point[1], lat0)
+    return _in_ring(at, ring) or _distance_to_line(at, ring) <= near_m
 
 
 def crossing_cuts(
@@ -922,6 +971,11 @@ def along(
             continue
         if _length(points) < 1.0:
             continue
+        if zone.area:
+            inside = _through_area(route, cumulative, points)
+            if inside is not None:
+                found.append(Passage(zone, inside[0], inside[1]))
+            continue
         samples = _samples(_trim(points, TRIM_M))
         # Only the route's segments near the zone are measured against.
         zx = [x for x, _ in points]
@@ -967,6 +1021,52 @@ def along(
         if near and len(near) >= ALONG_SHARE * len(samples):
             found.append(Passage(zone, min(near), max(near)))
     return sorted(found, key=lambda p: (p.from_m, p.zone.zone_id))
+
+
+def _through_area(
+    route: Sequence[tuple[float, float]],
+    cumulative: Sequence[float],
+    ring: Sequence[tuple[float, float]],
+) -> tuple[float, float] | None:
+    """Where a route (on the plane, with its metres along) is inside an area's ring: the
+    first and last metres along it that are, counting where it crosses the outline; None
+    where it never enters. A route that only touches the outline from outside is not in it."""
+    marks: list[float] = []
+    xs = [p[0] for p in ring]
+    ys = [p[1] for p in ring]
+    box = (min(xs), min(ys), max(xs), max(ys))
+    for i, (a, b) in enumerate(zip(route, route[1:], strict=False)):
+        if max(a[0], b[0]) < box[0] or min(a[0], b[0]) > box[2]:
+            continue
+        if max(a[1], b[1]) < box[1] or min(a[1], b[1]) > box[3]:
+            continue
+        seg = cumulative[i + 1] - cumulative[i]
+        if _in_ring(a, ring):
+            marks.append(cumulative[i])
+        if _in_ring(b, ring):
+            marks.append(cumulative[i + 1])
+        for c, d in zip(ring, ring[1:], strict=False):
+            t = _cross_at(a, b, c, d)
+            if t is not None:
+                marks.append(cumulative[i] + t * seg)
+    if not marks:
+        return None
+    first, last = min(marks), max(marks)
+    if last - first < 1.0:
+        return None  # touched, not entered
+    return first, last
+
+
+def _cross_at(a, b, c, d) -> float | None:
+    """How far along a-b (0 to 1) it crosses c-d; None where it does not."""
+    rx, ry = b[0] - a[0], b[1] - a[1]
+    sx, sy = d[0] - c[0], d[1] - c[1]
+    den = rx * sy - ry * sx
+    if abs(den) < 1e-12:
+        return None
+    t = ((c[0] - a[0]) * sy - (c[1] - a[1]) * sx) / den
+    u = ((c[0] - a[0]) * ry - (c[1] - a[1]) * rx) / den
+    return t if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0 else None
 
 
 # --- Putting a line given by its ends on the road ---------------------------------
@@ -1418,7 +1518,8 @@ def for_plan(
             closures.append(zone)
         else:
             plan.passable.append(zone)
-    cuts = crossings(closures) if crossings is not None and closures else {}
+    lines = [z for z in closures if not z.area]  # an area is left out whole, never cut
+    cuts = crossings(lines) if crossings is not None and lines else {}
     pieces: dict[str, list[list[list[float]]]] = {}
     fitting = []
     stops = [list(p) for p in points[1:]]
@@ -1428,7 +1529,9 @@ def for_plan(
         # the router can never arrive on (Valhalla 3.9.1 `AvoidAsDestinationEdge`), so a closure
         # by one is warned of whole, as before (review of hunt K3, 2026-11-08).
         if stops and any(
-            _distance_to_line(_xy(p[0], p[1], zone.line[0][1]), _zone_xy(zone)) <= NEAR_POINT_M
+            near_area(zone, p)
+            if zone.area
+            else _distance_to_line(_xy(p[0], p[1], zone.line[0][1]), _zone_xy(zone)) <= NEAR_POINT_M
             for p in stops
         ):
             plan.unexcluded.append(zone)
