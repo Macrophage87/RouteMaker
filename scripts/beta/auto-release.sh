@@ -20,6 +20,9 @@
 #                                     checked the stack by hand
 #   auto-release.sh retry vX.Y.Z      allow a held or failed tag to be tried again
 #   auto-release.sh hold vX.Y.Z [REASON]   keep a tag from being deployed (after a rollback by hand)
+#   auto-release.sh rollback [--dry-run] [--keep-db | --restore-db] [--force]
+#                                     the owner's one command to put the previous release back (the
+#                                     deployed one is then held); "rollback" below explains the flags
 #   auto-release.sh set-report-url URL|none
 #
 # One pass (`run`), in order; anything but a deploy only reports and changes nothing:
@@ -546,6 +549,7 @@ predraw() { # the step 8 pre-draw, waited for here (a systemd pass ends by killi
 # the release is recorded or rolled back. A pass stopped mid-deploy leaves it, and the next pass
 # rolls that deploy back (recover) instead of reporting the moved checkout as drift.
 done_steps=""; deploy_tag=""; deploy_new=""; deploy_old=""; deploy_old_tag=""; predraw_warning=""; predraw_started=0
+restore_from="" # rollback --restore-db: the snapshot deploy() restores in place of the migrations
 write_progress() {
 	printf 'tag=%s\nnew=%s\nold=%s\nold_tag=%s\nsteps=%s\npid=%s\n' "$deploy_tag" "$deploy_new" "$deploy_old" "$deploy_old_tag" "$done_steps" "$$" >"$progress.new" &&
 		mv -f "$progress.new" "$progress"
@@ -571,6 +575,9 @@ commit_release() { # tag sha
 		printf '%s\n' "$1" >"$cd_dir/deployed-tag.new" || return 1
 	mv -f "$cd_dir/previous-tag.new" "$cd_dir/previous-tag" && mv -f "$cd_dir/deployed-sha.new" "$cd_dir/deployed-sha" &&
 		mv -f "$cd_dir/deployed-tag.new" "$cd_dir/deployed-tag" || return 1
+	# The snapshot taken before this deploy (none without a migration): what `rollback --restore-db`
+	# puts back, the database as the previous release left it.
+	if [ -s "$cd_dir/run-snapshot" ]; then mv -f "$cd_dir/run-snapshot" "$cd_dir/deployed-snapshot"; else rm -f "$cd_dir/deployed-snapshot"; fi
 	rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"
 }
 # Who rolls back a deploy a stopped pass left half done: the next pass, unless the agent is paused.
@@ -723,7 +730,7 @@ deploy() { # tag new-sha gate-file
 	# the new image in seconds instead of minutes of "Router unavailable" (backlog 2026-11-12,
 	# area 09 item 3). RM_CD_ALWAYS_STOP=1 keeps the old stop-and-snapshot path for every release.
 	local quick=0
-	if [ "$(kv migrations "$gate_file")" != 1 ] && [ "${RM_CD_ALWAYS_STOP:-0}" != 1 ]; then quick=1; fi
+	if [ "$(kv migrations "$gate_file")" != 1 ] && [ "${RM_CD_ALWAYS_STOP:-0}" != 1 ] && [ -z "$restore_from" ]; then quick=1; fi
 	if [ "$quick" = 1 ]; then
 		say "step: no migration in this release: the api and worker keep running and no snapshot is taken; they are swapped onto the new image below"
 	else
@@ -745,7 +752,13 @@ deploy() { # tag new-sha gate-file
 	mark tag_set "set TAG=$new_short in .env" || return 1
 	step "set TAG in .env" set_tag "$new_short" || return 1
 	compose_gate || { say "FAILED: the compose gate (check_beta_compose.py --env-file .env); its output is in the run log"; return 1; }
-	if ! bc run --rm --no-deps migrate ./manage.py migrate --check </dev/null >>"$run_log" 2>&1; then
+	if [ -n "$restore_from" ]; then
+		# `rollback --restore-db`: the database goes back to the snapshot taken before the release
+		# being undone was deployed. Recorded as "migrate" (the database moved), so a failure from
+		# here restores the snapshot just taken, the database as it was a minute ago.
+		mark migrate "put back the database from before $deploy_old_tag was deployed ($restore_from)" || return 1
+		step "restore the database from before $deploy_old_tag" env RECEIVE_DATA_REPO="$RM_SRC" "$receive" --env-file "$RM_SRC/.env" --backups-dir "$cd_dir/backups" restore-dump "$restore_from" </dev/null || return 1
+	elif ! bc run --rm --no-deps migrate ./manage.py migrate --check </dev/null >>"$run_log" 2>&1; then
 		# Never a migration without its snapshot: a pending one the gate did not see (no migration
 		# file changed, so the database is behind the release for some other reason) fails the
 		# deploy here, before the api moves; the rollback puts the checkout and TAG back.
@@ -1158,6 +1171,150 @@ cmd_run() {
 	return "$rc"
 }
 
+# --- rollback: the previous release back, by the owner's command --------------------------------
+# `auto-release.sh rollback [--dry-run] [--keep-db | --restore-db] [--force]`: the release before the
+# deployed one goes back on through the same deploy a new release gets (export, image, front end,
+# swap or stop, routers, health, smoke tests; a failure puts the deployed release back). The undone
+# tag is then held, so no pass deploys it again; a later tag is the way forward. The owner runs it.
+#   --keep-db     the release being undone carried a migration, and the database stays as it is (fine
+#                 when the migration only added tables or columns with database defaults)
+#   --restore-db  the database goes back to the snapshot taken just before that release was deployed:
+#                 accounts, saved routes and rides changed since then are LOST (a snapshot of the
+#                 database as it is now is taken first and kept in $RM_STATE/cd/backups)
+#   --force       go on although the release being undone changed things outside the code (the map's
+#                 tag transform or pipeline, nginx, compose images): the code goes back, they do not
+rollback_pass() { # dry-run keep-db restore-db force
+	local dry=$1 keep_db=$2 restore_db=$3 force=$4 cur cur_sha prev prev_sha fwd gate_file reasons other why snap=""
+	cur=$(deployed_tag); cur_sha=$(deployed_sha)
+	[ ! -f "$cd_dir/BROKEN" ] || { finish broken "a rollback failed earlier and needs the owner (see $cd_dir/BROKEN)"; return 1; }
+	[ "$(leftover)" = none ] || { finish error "a stopped pass left $progress; let a pass deal with it first (auto-release.sh status)"; return 1; }
+	is_semver "$cur" && [ -n "$cur_sha" ] || { finish error "no deployed tag recorded"; return 1; }
+	prev=$(cat "$cd_dir/previous-tag" 2>/dev/null)
+	is_semver "$prev" || { finish error "no previous release recorded in $cd_dir/previous-tag; roll back by hand (docs/BETA-RUNBOOK.md, \"Rollback by hand\")"; return 1; }
+	# Back only: a previous-tag newer than the deployed one would be a roll forward, a new release's job.
+	[ "$prev" != "$cur" ] && [ "$(printf '%s\n%s\n' "$prev" "$cur" | sort -V | head -n 1)" = "$prev" ] ||
+		{ finish error "the recorded previous release $prev is not older than the deployed $cur"; return 1; }
+	if [ "$(gitc rev-parse HEAD 2>/dev/null)" != "$cur_sha" ] || [ -n "$(gitc status --porcelain 2>/dev/null)" ] || [ "$(env_value TAG)" != "${cur_sha:0:12}" ]; then
+		finish drift "the checkout is not clean at $cur ($cur_sha) with TAG=${cur_sha:0:12} in .env; put it right first"
+		return 1
+	fi
+	release_tag "$prev" || { finish error "$prev is not a release tag in the checkout (git fetch --tags?)"; return 1; }
+	prev_sha=$(tag_commit "$prev") || { finish error "$prev names no commit"; return 1; }
+	gitc merge-base --is-ancestor "$prev_sha" "$cur_sha" || { finish error "$prev ($prev_sha) is not an ancestor of $cur"; return 1; }
+	say "rollback: $cur ($cur_sha) back to $prev ($prev_sha)"
+
+	# What the release being undone changed, read forward (previous to deployed): the same flags undo it.
+	fwd=$(mktemp)
+	"$py" "$logic" gate --repo "$RM_SRC" --old "$prev_sha" --new "$cur_sha" >"$fwd" || { rm -f "$fwd"; finish error "the gate failed to run"; return 1; }
+	# The api image's own files are no reason to stop: the previous release's image is the one it ran.
+	reasons=$(sed -n 's/^reason=//p' "$fwd")
+	other=$(printf '%s\n' "$reasons" | grep -v -e '^docker/' -e '^$' || true)
+	if [ -n "$other" ]; then
+		printf '%s\n' "$other" | while IFS= read -r why; do say "outside the code: $why"; done
+		if [ "$force" = 0 ]; then
+			rm -f "$fwd"
+			finish error "$cur changed things a code rollback does not undo (listed above); if the map changed, put the old map back first (receive-data.sh rollback-map), then rollback --force"
+			return 1
+		fi
+		say "WARNING: --force: only the code goes back; the things above stay as $cur left them"
+	fi
+	if [ "$(kv migrations "$fwd")" = 1 ]; then
+		if [ "$keep_db" = 0 ] && [ "$restore_db" = 0 ]; then
+			rm -f "$fwd"
+			finish error "$cur carried a migration: add --keep-db (the database stays; fine when the migration only added things with defaults) or --restore-db (the database goes back to the snapshot taken before $cur was deployed, LOSING accounts, saved routes and rides changed since)"
+			return 1
+		fi
+		if [ "$restore_db" = 1 ]; then
+			snap=$(cat "$cd_dir/deployed-snapshot" 2>/dev/null)
+			[ -n "$snap" ] && [ -f "$snap" ] || { rm -f "$fwd"; finish error "no snapshot from before $cur was deployed is kept (shipped by hand, or over 6.5 days old): roll back by hand (docs/BETA-RUNBOOK.md, rollback B)"; return 1; }
+			say "the database goes back to $snap (taken $(date -u -r "$snap" +%FT%TZ 2>/dev/null)); everything changed since is LOST"
+		fi
+	elif [ "$restore_db" = 1 ]; then
+		say "note: $cur carried no migration, so the database stays as it is (--restore-db ignored)"
+	fi
+	# The deploy's own flags: the front end, compose and router settings as the release changed them;
+	# a database put back means the stress tiles are drawn again (their cache follows the tables).
+	gate_file=$(mktemp)
+	{
+		echo "verdict=deploy"
+		for k in frontend lockfile_changed compose_changed routers_restart; do echo "$k=$(kv "$k" "$fwd")"; done
+		echo "migrations=0"
+		if [ -n "$snap" ] || [ "$(kv predraw "$fwd")" = 1 ]; then echo "predraw=1"; else echo "predraw=0"; fi
+	} >"$gate_file"
+	rm -f "$fwd"
+	if [ "$(kv frontend "$gate_file")" = 1 ]; then
+		why=$(frontend_ready "$prev_sha") || { rm -f "$gate_file"; finish error "$prev's front end cannot be rebuilt here: $why"; return 1; }
+	fi
+	if [ "$dry" = 1 ]; then
+		say "dry run: would put $prev back over $cur: frontend=$(kv frontend "$gate_file") compose_changed=$(kv compose_changed "$gate_file") routers_restart=$(kv routers_restart "$gate_file") restore_db=$([ -n "$snap" ] && echo 1 || echo 0) predraw=$(kv predraw "$gate_file"); $cur would then be held"
+		rm -f "$gate_file"; finish dry-run "$prev would be put back over $cur"; return 0
+	fi
+	[ ! -f "$cd_dir/PAUSED" ] || say "note: the agent is paused; the rollback goes on (the owner's command) and the pause stays"
+	restore_from=$snap
+	say "rolling back $cur to $prev at $(utc)"
+	deploy "$prev" "$prev_sha" "$gate_file"
+	local rc=$?
+	restore_from=""
+	rm -f "$gate_file"
+	if [ "$rc" = 0 ]; then
+		{ echo "$(utc) $cur held: rolled back to $prev by auto-release.sh rollback"; cat "$report"; } >"$cd_dir/hold/$cur"
+		prune
+		finish deployed "$prev ($prev_sha), rolled back from $cur, which is held (auto-release.sh retry $cur lets it deploy again)${predraw_warning:+; WARNING: $predraw_warning}"
+		return 0
+	fi
+	if [ "$rc" = 3 ]; then
+		rm -f "$progress"; prune
+		finish failed "the rollback to $prev could not be exported or built; $cur was not touched and is still running"
+		return 1
+	fi
+	if rollback "$cur_sha" "${cur_sha:0:12}"; then
+		rm -f "$progress" "$cd_dir/run-snapshot" "$cd_dir/run-index"; prune
+		finish rolled-back "the rollback to $prev failed, and $cur is running again (the run log says why)"
+	else
+		{ echo "$(utc) the rollback from $cur to $prev failed and putting $cur back did not complete"; cat "$report"; } >"$cd_dir/BROKEN"
+		finish broken "the rollback to $prev failed AND putting $cur back did not complete: the owner is needed (see $cd_dir/BROKEN and the run log)"
+	fi
+	return 1
+}
+
+cmd_rollback() {
+	local dry=0 keep_db=0 restore_db=0 force=0 stamp
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--dry-run) dry=1 ;;
+			--keep-db) keep_db=1 ;;
+			--restore-db) restore_db=1 ;;
+			--force) force=1 ;;
+			*) die "rollback: unknown argument $1 (--dry-run, --keep-db, --restore-db, --force)" ;;
+		esac
+		shift
+	done
+	[ "$keep_db$restore_db" != 11 ] || die "rollback: --keep-db or --restore-db, not both"
+	dry_run=$dry
+	mkdir -p "$cd_dir" && chmod 700 "$cd_dir"
+	mkdir -p "$cd_dir/hold" "$cd_dir/failed" "$cd_dir/backups" "$cd_dir/runs" "$cd_dir/build"
+	chmod 700 "$cd_dir/backups"
+	exec 9>"$cd_dir/lock"
+	flock -n 9 || die "a pass is running; wait for it (auto-release.sh pause --wait) and try again"
+	umask 022
+	stamp=$(utc)
+	run_log="$cd_dir/runs/$stamp-rollback.log"; : >"$run_log"
+	report=$(mktemp)
+	if [ "$dry" = 0 ]; then
+		trap 'on_signal TERM 143' TERM
+		trap 'on_signal INT 130' INT
+		trap 'on_signal HUP 129' HUP
+		say "auto-release rollback at $stamp"
+	else
+		say "auto-release rollback at $stamp (dry run: changes nothing)"
+	fi
+	say "run log: $run_log"
+	rollback_pass "$dry" "$keep_db" "$restore_db" "$force"; local rc=$?
+	trap - TERM INT HUP
+	rm -f "$report"
+	return "$rc"
+}
+
 # --- the other commands ---------------------------------------------------------------------------
 cmd_status() {
 	local root pguser n
@@ -1255,6 +1412,12 @@ cmd_mark_deployed() { # [--force] tag
 	# (--force; a BROKEN state already means the owner has looked).
 	if [ "$force" = 0 ] && [ ! -f "$cd_dir/BROKEN" ] && [ "$(leftover)" = half-done ]; then
 		die "a stopped pass left a deploy of $(kv tag "$progress") half done (steps $(kv steps "$progress"); $progress). Let a pass roll it back (resume, then run), or put it right by hand, check auto-release.sh status, and run mark-deployed --force $tag"
+	fi
+	# A release shipped by hand: what ran before it is the one `rollback` puts back, and no snapshot of
+	# the agent's belongs to it.
+	if is_semver "$(deployed_tag)" && [ "$(deployed_tag)" != "$tag" ]; then
+		printf '%s\n' "$(deployed_tag)" >"$cd_dir/previous-tag"
+		rm -f "$cd_dir/deployed-snapshot"
 	fi
 	record_deployed "$tag" "$sha"
 	rm -f "$cd_dir/hold/$tag" "$cd_dir/failed/$tag" "$cd_dir/BROKEN" "$cd_dir/run-snapshot" "$cd_dir/run-index" "$progress"
@@ -1419,6 +1582,7 @@ main() {
 		retry) cmd_retry "$@" ;;
 		hold) cmd_hold "$@" ;;
 		set-report-url) cmd_set_report_url "$@" ;;
+		rollback) cmd_rollback "$@" ;;
 		*) die "unknown command '$command' (--help)" ;;
 	esac
 }

@@ -2616,3 +2616,97 @@ def test_a_failing_bot_changelog_is_reported_and_retried(beta: Beta) -> None:
     beta.agent("run", **env)
     assert sum(" changelog " in line for line in _reports(beta)) == 2
     assert any(line.startswith("clear|release-notes|") for line in _alerts(beta))
+
+
+# --- rollback: the owner's one command (backlog 2026-11-12, area 09 item 10) ---
+
+UP = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis"}
+
+
+def test_rollback_puts_the_previous_release_back_and_holds_the_undone_one(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    assert beta.agent("run", **UP).returncode == 0
+    beta.log.unlink()
+    dry = beta.agent("rollback", "--dry-run", **UP)
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert "v0.1.0 would be put back over v0.2.0" in dry.stdout
+    assert "up -d" not in beta.calls() and (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.1.0" in beta.status() and "rolled back from v0.2.0" in beta.status()
+    assert beta.head() == beta.v1 and f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+    calls = beta.calls()
+    # no migration either way: the api is swapped, never stopped, and the database left alone
+    assert "stop api worker" not in calls and "pg_restore" not in calls
+    _order(calls, "up -d api worker", "smoke --local")
+    assert (beta.cd / "hold" / "v0.2.0").exists()
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status()
+    assert beta.head() == beta.v1
+
+
+def test_rollback_needs_a_database_choice_when_the_release_carried_a_migration(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
+    assert beta.agent("run", **UP, STUB_PENDING="1").returncode == 0
+    snapshot = (beta.cd / "deployed-snapshot").read_text().strip()
+    assert Path(snapshot).is_file() and "pre-release-" in snapshot
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 1
+    assert "--keep-db" in beta.status() and "--restore-db" in beta.status()
+    assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    beta.log.unlink()
+    done = beta.agent("rollback", "--restore-db", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "everything changed since is LOST" in done.stdout
+    calls = beta.calls()
+    # the database as it is now is snapshotted first, then the one from before v0.2.0 goes back
+    _order(calls, "stop api worker", "pg_dump", "pg_restore", "up -d api worker", "smoke --local")
+    assert "predraw_stress_tiles" in calls
+    assert "deployed: v0.1.0" in beta.status() and beta.head() == beta.v1
+
+
+def test_rollback_keep_db_leaves_the_database_and_never_stops_the_api(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
+    assert beta.agent("run", **UP, STUB_PENDING="1").returncode == 0
+    beta.log.unlink()
+    done = beta.agent("rollback", "--keep-db", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    calls = beta.calls()
+    assert "stop api worker" not in calls and "pg_restore" not in calls
+    assert "deployed: v0.1.0" in beta.status()
+
+
+def test_a_rollback_that_fails_puts_the_deployed_release_back(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    assert beta.agent("run", **UP).returncode == 0
+    done = beta.agent("rollback", **UP, STUB_GATE_FAIL=beta.v1[:12])
+    assert done.returncode == 1
+    assert "the rollback to v0.1.0 failed, and v0.2.0 is running again" in beta.status()
+    assert beta.head() == sha and (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    assert not (beta.cd / "hold" / "v0.2.0").exists()
+
+
+def test_rollback_over_a_hand_shipped_map_release_needs_force(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"lua/tags.lua": "-- new\n"})
+    beta.agent("run")
+    assert "held: v0.2.0" in beta.status()
+    git(beta.src, "fetch", "-q", "--tags", "origin")
+    git(beta.src, "checkout", "-q", "--detach", "v0.2.0")
+    env = (beta.src / ".env").read_text().replace(f"TAG={beta.v1[:12]}", f"TAG={sha[:12]}")
+    (beta.src / ".env").write_text(env)
+    assert beta.agent("mark-deployed", "v0.2.0").returncode == 0
+    # mark-deployed records what ran before the hand ship, for rollback
+    assert (beta.cd / "previous-tag").read_text() == "v0.1.0\n"
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 1
+    assert "outside the code: lua/tags.lua" in done.stdout and "rollback-map" in beta.status()
+    done = beta.agent("rollback", "--force", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.1.0" in beta.status() and beta.head() == beta.v1
+
+
+def test_rollback_without_a_previous_release_or_with_both_db_flags_is_refused(beta: Beta) -> None:
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 1 and "no previous release recorded" in beta.status()
+    done = beta.agent("rollback", "--keep-db", "--restore-db")
+    assert done.returncode == 2 and "not both" in done.stderr
