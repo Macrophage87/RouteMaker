@@ -77,7 +77,7 @@ test("the resolved config (with the address) is git-ignored where cap sync write
   assert.match(mine, /\*\.keystore/);
 });
 
-test("the manifest asks for the network, the location and notifications, and removes the rest", () => {
+test("the manifest asks for the network, the location, notifications and vibration, and removes the rest", () => {
   const manifest = readFileSync(here("../android/app/src/main/AndroidManifest.xml"), "utf8");
   const asked = [...manifest.matchAll(/<uses-permission android:name="android\.permission\.([A-Z_]+)" \/>/g)].map((m) => m[1]);
   assert.deepEqual(asked.sort(), [
@@ -87,6 +87,7 @@ test("the manifest asks for the network, the location and notifications, and rem
     "FOREGROUND_SERVICE_LOCATION",
     "INTERNET",
     "POST_NOTIFICATIONS",
+    "VIBRATE",
   ]);
   const removed = [...manifest.matchAll(/<uses-permission android:name="android\.permission\.([A-Z_]+)" tools:node="remove" \/>/g)].map((m) => m[1]);
   assert.deepEqual(removed.sort(), ["RECEIVE_BOOT_COMPLETED", "SCHEDULE_EXACT_ALARM", "WAKE_LOCK"]);

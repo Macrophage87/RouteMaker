@@ -3564,7 +3564,7 @@ export function RideMode({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", shown);
     };
-  }, [watchOn, model]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watchOn, model]);
   const watchAt = progress === null ? null : Math.floor(progress / 100);
   useEffect(() => {
     if (watched === null || watchAt === null || suddenAsk) return;
@@ -4342,7 +4342,6 @@ export function RideMode({
                       ))}
                     </ol>
                     {(detourList.kind === "water" || detourList.kind === "restroom") && <p className="hint">{WATER_CAUTION}</p>}
-                    {detourList.attribution && <p className="hint">{t("Search: {credits}", { credits: detourList.attribution.join("; ") })}</p>}
                   </div>
                 )}
                 {/* Said once by screen readers; no longer shown under every list (the UI review, 2026-10-28). */}

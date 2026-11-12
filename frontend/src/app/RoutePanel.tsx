@@ -1036,11 +1036,14 @@ export function RouteSummary({
     </Fold>
   ) : null;
 
+  // The trip's own ride type, not the chip last pressed: offline, a kept transit plan stands in for whatever
+  // was asked (seen live: "Default trip" over a transit plan; backlog 2026-11-12).
+  const tripPreset = route.preset ?? preset;
   const transitSummary = transit ? (
     <TransitSummary
       plan={transit}
       lineSpans={route.stress_spans}
-      preset={preset}
+      preset={tripPreset}
       onPick={transitControls?.onPick}
       busy={transitControls?.busy}
       announce={transitControls?.announce}
@@ -1053,7 +1056,7 @@ export function RouteSummary({
   // trip on the sheet itself, its steps folded inside it (Stephen 2026-11-12), with no fold title repeating the ride type.
   const transitFold =
     transit && !goMode ? (
-      <Fold title={t("{ride} trip", { ride: presetLabel(preset) })} said={t("{ride} trip", { ride: presetSaid(preset) })} open className="transit-fold" icon="train">
+      <Fold title={t("{ride} trip", { ride: presetLabel(tripPreset) })} said={t("{ride} trip", { ride: presetSaid(tripPreset) })} open className="transit-fold" icon="train">
         {transitSummary}
       </Fold>
     ) : (

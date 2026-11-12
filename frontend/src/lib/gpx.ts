@@ -177,6 +177,8 @@ export function parseGpx(text: string): GpxFile {
   const parentGpx = () => (stack.length ? stack[stack.length - 1].gpx : null);
 
   const outsideRoot = (chunk: string) => {
+    // Text before any element: not XML at all (a PDF, a FIT file, a picture), so not GPX (backlog 2026-11-12 review).
+    if (chunk.trim() && file === null && !rootClosed) throw new GpxError("not-gpx", "This is not a GPX file.");
     if (chunk.trim() && (file === null || rootClosed)) {
       throw new GpxError("malformed", "The file has text outside its GPX element.");
     }
