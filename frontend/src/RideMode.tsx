@@ -3458,9 +3458,15 @@ export function RideMode({
     };
     void run();
     const timer = window.setInterval(() => void run(), WATCH_MS);
+    // Back in front: asked at once, not up to a minute later.
+    const shown = () => {
+      if (document.visibilityState === "visible") void run();
+    };
+    document.addEventListener("visibilitychange", shown);
     return () => {
       live = false;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", shown);
     };
   }, [watchOn, model]); // eslint-disable-line react-hooks/exhaustive-deps
   const watchAt = progress === null ? null : Math.floor(progress / 100);
@@ -3472,13 +3478,26 @@ export function RideMode({
       if (step.kind === "note") {
         announcer.current?.note(said);
         showToast(closedAheadSaid(formatDistance(step.aheadM), step.closure.name));
+        if (prefsRef.current.output === "neither") setPolite((p) => ({ text: said, count: p.count + 1 }));
       } else {
-        deliver({ text: said, urgent: true });
-        setSuddenAsk({ name: step.closure.name, distance: formatDistance(step.aheadM) });
+        // The voice only: a screen reader hears the dialog itself as the focus moves into it, named by the closure
+        // (the v0.26.0 accessibility review: an alert as well said it twice).
+        if (speaksAloud(prefsRef.current.output, document.visibilityState === "hidden")) rideVoice.speak(said, true);
+        showCue(said);
+        const fix = rideRef.current.goodFix ?? rideRef.current.fix;
+        setSuddenAsk({ name: step.closure.name, distance: formatDistance(step.aheadM), toM: step.closure.toM, at: fix?.point ?? null });
       }
-      if (prefsRef.current.output === "neither") setPolite((p) => ({ text: said, count: p.count + 1 }));
     }
-  }, [watched, watchAt, suddenAsk, deliver, showToast]);
+  }, [watched, watchAt, suddenAsk, showToast]);
+  // Left unanswered while the rider rides on, it closes as Keep going (as Start first does, RESTART_AUTO_M): past the
+  // closure, or that far from where it was asked (the v0.26.0 accessibility review).
+  const fixNow = ride.goodFix ?? ride.fix;
+  useEffect(() => {
+    if (!suddenAsk) return;
+    const passed = progress !== null && progress >= suddenAsk.toM;
+    const rode = !!(fixNow && suddenAsk.at && fixNow.accuracyM <= POOR_FIX_M && haversineM(fixNow.point, suddenAsk.at) >= RESTART_AUTO_M);
+    if (passed || rode) setSuddenAsk(null);
+  }, [suddenAsk, progress, fixNow]);
   const suddenReroute = () => {
     setSuddenAsk(null);
     const fix = rideRef.current.goodFix ?? rideRef.current.fix;
@@ -4539,7 +4558,10 @@ export function RideMode({
       </dialog>
       <RestartStopsDialog stops={restart} onContinue={continueRestart} />
       <StartFirstDialog open={startAsk} onChoose={(start) => chooseStart(start)} />
-      <SuddenClosureDialog ask={suddenAsk} onReroute={suddenReroute} onKeep={() => setSuddenAsk(null)} />
+      <SuddenClosureDialog ask={suddenAsk} onReroute={suddenReroute} onKeep={() => setSuddenAsk(null)}>
+        {/* The modal makes the ride's own regions inert: its cues go on being heard from in here, as in Ride settings. */}
+        {suddenAsk && <PopupLiveRegions polite={polite} assertive={assertive} />}
+      </SuddenClosureDialog>
     </section>
   );
 }
