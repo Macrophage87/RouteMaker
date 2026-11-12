@@ -268,7 +268,7 @@ import {
 } from "./lib/nearest.ts";
 import { AppStatusBar, useAppStatus } from "./InstallableApp.tsx";
 import { OFFLINE_LAST_ROUTE, OFFLINE_SAID, offlineLine } from "./lib/appWorker.ts";
-import { isStandalone } from "./lib/installOffer.ts";
+import { installedApp } from "./lib/installedApp.ts";
 import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
 import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { anyKept, askPersist } from "./lib/offlineRouteStore.ts";
@@ -352,14 +352,6 @@ import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
-/**
- * Running as an installed app: the installed web app (standalone), or the Android app, whose WebView is not a
- * standalone display, so it kept no "Last ride" (backlog 2026-11-12, area 13 item 11: a ride in a dead spot
- * should reopen in the Play app as in the installed web app).
- */
-function installedApp(): boolean {
-  return isStandalone() || nativeBridge() !== null;
-}
 
 
 // Before the map adds the stress source (MapView, after its first probe).

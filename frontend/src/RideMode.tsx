@@ -1830,7 +1830,8 @@ export function RideMode({
         // The rider asked for it (or rode on away from the line): said, and the ride goes on as Join from here.
         const said = !result || (!result.ok && result.error.kind === "network") ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
         setReplanNote(said);
-        sayDetour(said);
+        // No signal: the ride goes on as Join from here, so the way back to the planned line is said with it, as drawn.
+        sayDetour(said === REPLAN_NO_SIGNAL ? noSignalSaid(wayBack(modelRef.current, rideRef.current)) : said);
         return false;
       }
       const was = plan.current;

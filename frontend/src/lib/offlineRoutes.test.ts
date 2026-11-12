@@ -199,7 +199,11 @@ test("a removal that fails says so, and that the route is still kept", () => {
 // is not a standalone display, so isStandalone alone left it out.
 test("the Android app counts as installed for Keep for offline and the last ride", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /function installedApp\(\): boolean \{\s*return isStandalone\(\) \|\| nativeBridge\(\) !== null;/);
+  const lib = readFileSync(new URL("./installedApp.ts", import.meta.url), "utf8");
+  assert.match(lib, /return isStandalone\(\) \|\| nativeBridge\(\) !== null;/);
+  // Kept routes' storage note drops Safari's seven-day line in the Android app too.
+  const kept = readFileSync(new URL("../InstallableApp.tsx", import.meta.url), "utf8");
+  assert.equal(kept.match(/storageNote\(kept, installedApp\(\)\)/g)?.length, 2);
   assert.match(app, /keepOffered\(installedApp\(\)\)/);
   assert.match(app, /if \(!rest && shown && installedApp\(\) && routedKey\.current\)/);
   assert.match(app, /keepLastRide=\{installedApp\(\)\}/);
