@@ -10227,3 +10227,26 @@ Python 3.11 or later, standard library only.
   passes), and the changeset must be closed holding exactly the upload's changes. A failure, or a check
   that could not run, exits 3 with what differs.
   `python3 scripts/osm_edit.py check edit.json` runs it again later.
+
+## Off-grid way back: the offline road network
+
+Off-grid riding (the owner, 2026-11-12: "the one mile would be a default, with a whole
+region pack an optional download"). Every rebuild writes `{schema}.offline_way` during the
+segment stage: one row per way a bicycle may ride (open access only, mountain-bike
+singletrack left out) with its node ids, line, stress level times 2 (10 is Avoid), one-way
+for a bicycle, walk and unpaved flags and name. The run's log line reads `ways in the offline
+road network: N`; zero on a full rebuild means the writer failed.
+
+Ride fetches `POST /api/offline/network` with each route it rides: the ways within a mile
+(`CORRIDOR_M`) of the route's line, at most 40,000 (our default, unmeasured), cut at their
+junctions, plus the ride type's price for each level. When a re-plan then fails for no
+signal, the phone finds the way back to the line on that network and says it as rough; when
+the signal returns, the server plans it again.
+
+- Before the first rebuild that writes the table the endpoint answers `503 not_built`, and
+  Ride rides as before (no offline way back). Nothing to do but rebuild.
+- `503 too_slow`: the corridor read ran past 5 seconds (`TIMEOUT_MS`, our default,
+  unmeasured). Check that `offline_way_geom_idx` exists in the live schema.
+- Rate limit 12 a minute per client (`OFFLINE_NETWORK`, our default).
+- Privacy: the request carries the route's line only; nothing about the rider is logged or
+  kept, and the phone keeps the network in memory for the ride only.
