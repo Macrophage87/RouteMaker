@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import bisect
+import contextvars
 import dataclasses
 import itertools
 import json
@@ -67,6 +68,20 @@ DRAFT_NAME_SCHEMA = {
         " end, else a revision keeps its draft's name."
     ),
 }
+# A call that only tests or checks RouteMaker, not one for the rider (the owner, 2026-11-12:
+# "When a test route is made from an agent, it somehow keeps loading on my account in beta.
+# Archive them when done."): its drafts are archived as they are made, never listed in the app's
+# Load route or my_drafts, and go after a week as every draft does.
+TEST_SCHEMA = {
+    "type": "boolean",
+    "description": (
+        "true when this plan only tests or checks RouteMaker and is not a route the rider asked"
+        " for: the draft is archived at once (kept out of the rider's Load route and my_drafts,"
+        " gone in a week). Default false."
+    ),
+}
+# Set while a call with `test` runs (Server.call): the draft stores archive what they keep.
+TEST_CALL: contextvars.ContextVar[bool] = contextvars.ContextVar("TEST_CALL", default=False)
 PLAN_BUDGET_S = 48  # the longest one plan can take: the site's long-plan budget, and a little
 # Another plan starts while one more as long as the longest timed so far, by this factor and
 # these seconds over, still fits before the call's deadline (as _best_order always has; the
@@ -5159,6 +5174,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "name": DRAFT_NAME_SCHEMA,
+                "test": TEST_SCHEMA,
                 "points": {
                     "type": "array",
                     "items": POINT_SCHEMA,
@@ -5313,6 +5329,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "name": DRAFT_NAME_SCHEMA,
+                "test": TEST_SCHEMA,
                 "target_miles": {
                     "type": "number",
                     "minimum": 5,
@@ -5358,6 +5375,7 @@ TOOLS = [
             "properties": {
                 "link": {"type": "string", "minLength": 3},
                 "max_miles_from_metro": RIDE_OPTIONS["max_miles_from_metro"],
+                "test": TEST_SCHEMA,
             },
             "required": ["link"],
         },
@@ -5660,9 +5678,31 @@ TOOLS = [
                     "maxLength": 120,
                     "description": "Words each draft's name must hold.",
                 },
+                "archived": {
+                    "type": "boolean",
+                    "description": "true: list the archived drafts instead. Default false.",
+                },
             },
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "archive_draft",
+        "description": (
+            "Archive a draft (every revision of its route): it leaves the rider's Load route and"
+            " my_drafts, and still goes a week after it was made. For a draft that only tested"
+            " or checked RouteMaker: archive it as soon as you are done with it (or plan with"
+            " test: true). archived false restores it. Never touches My routes."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {"type": "string"},
+                "archived": {"type": "boolean", "description": "Default true."},
+            },
+            "required": ["draft_id"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     },
     {
         "name": "organize_route",
@@ -5922,6 +5962,8 @@ class MemoryDrafts:
         # Each draft's first draft (the route it revises, or itself), when it was made, and
         # whether it was saved (my_drafts).
         self._made: dict[str, tuple[str, datetime, bool]] = {}
+        # The routes archived, by their first draft (archive_draft, or a `test` call's).
+        self._archived: set[str] = set()
         self._lock = threading.Lock()
 
     def get(self, draft_id: str) -> Draft | None:
@@ -5935,19 +5977,25 @@ class MemoryDrafts:
             before = self._made.get(draft.revises or "")
             root = before[0] if before else draft_id
             self._made[draft_id] = (root, datetime.now(UTC), False)
+            if TEST_CALL.get():
+                self._archived.add(root)
             while len(self._drafts) > MAX_DRAFTS:  # the oldest go first
                 oldest = next(iter(self._drafts))
                 del self._drafts[oldest]
                 self._made.pop(oldest, None)
         return draft_id
 
-    def listing(self) -> list[dict]:
+    def listing(self, archived: bool = False) -> list[dict]:
         """Each route's newest draft not saved, newest first (my_drafts): `draft_id`, `draft`,
-        `made` (UTC) and `route_id` (its link's, or None)."""
+        `made` (UTC) and `route_id` (its link's, or None). The archived ones instead with
+        `archived`."""
         with self._lock:
             newest: dict[str, dict] = {}
             for draft_id, draft in self._drafts.items():
                 root, made, saved = self._made.get(draft_id, (draft_id, None, False))
+                if (root in self._archived) != archived:
+                    newest.pop(root, None)
+                    continue
                 newest[root] = {
                     "draft_id": draft_id,
                     "draft": draft,
@@ -5969,6 +6017,18 @@ class MemoryDrafts:
             for key, (root, made, _saved) in list(self._made.items()):
                 if root == found[0] and made <= found[1]:
                     self._made[key] = (root, made, True)
+
+    def archive(self, draft_id: str, archived: bool = True) -> bool:
+        """Archive the draft's route, every revision (or restore it); whether it was found."""
+        with self._lock:
+            found = self._made.get(draft_id)
+            if found is None:
+                return False
+            if archived:
+                self._archived.add(found[0])
+            else:
+                self._archived.discard(found[0])
+        return True
 
     def shared(self, draft_id: str, route_id: str) -> None:
         """The draft's link was kept under `route_id`. Nothing to tie here: on the site's own
@@ -7034,7 +7094,8 @@ class Server:
     def my_drafts(self, args: dict, call: Call) -> dict:
         now = datetime.now(UTC)
         rows = []
-        for found in self.drafts.listing():
+        archived = bool(args.get("archived"))
+        for found in self.drafts.listing(archived=archived):
             draft: Draft = found["draft"]
             plan = draft.plan
             row = {
@@ -7055,14 +7116,26 @@ class Server:
         words = str(args.get("search") or "").casefold().split()
         if words:
             rows = [r for r in rows if all(w in str(r["name"]).casefold() for w in words)]
-        return {
-            "drafts": rows,
-            "note": (
+        if archived:
+            note = (
+                "the drafts archived (archive_draft, or planned with test), newest first: kept out"
+                " of the rider's Load route, each still going a week after it was made"
+            )
+        else:
+            note = (
                 "the routes planned here and not saved, newest revision of each, newest first;"
                 " each goes on its own a week after it was made (our default). Revise one with"
                 " revise_route, or keep it with save_route on the rider's word"
-            ),
-        }
+            )
+        return {"drafts": rows, "note": note}
+
+    # archive_draft
+    def archive_draft(self, args: dict, call: Call) -> dict:
+        draft_id = str(args["draft_id"])
+        archived = args.get("archived", True) is not False
+        if not self.drafts.archive(draft_id, archived):
+            raise ToolError(f"no draft {draft_id}: drafts go a week after they are made")
+        return {"draft_id": draft_id, "archived": archived}
 
     def _draft_link(self, draft: Draft, route_id: str) -> str:
         """The draft's link, as `_draft` gave it: its exact line and its plan's inputs."""
@@ -8127,6 +8200,7 @@ class Server:
             "ride_conditions": self.ride_conditions,
             "my_routes": self.my_routes,
             "my_drafts": self.my_drafts,
+            "archive_draft": self.archive_draft,
             "organize_route": self.organize_route,
             "reach": self.reach,
             "compare_places": self.compare_places,
@@ -8137,12 +8211,16 @@ class Server:
         if handler is None:
             raise ToolError(f"no tool named {name}")
         call = call or Call()
+        # A test call's drafts are archived as they are made (TEST_CALL).
+        testing = TEST_CALL.set(bool((args or {}).get("test")))
         try:
             out = handler(args or {}, call)
         except KeyError as missing:
             raise ToolError(f"missing argument {missing}") from None
         except (TypeError, ValueError, OverflowError) as wrong:
             raise ToolError(f"an argument is not in the expected form: {wrong}") from None
+        finally:
+            TEST_CALL.reset(testing)
         if isinstance(out, dict):
             view = out.pop(VIEW_PRIVATE, None)
             if view is not None and name in VIEW_TOOLS:
@@ -8218,7 +8296,9 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                 " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."
                 " Give distances in miles first, km in brackets. Share the link so the rider can"
                 " open the route in the app, whole with its # part: after a week only that part"
-                " can plan the route again. Save to My routes only when asked."
+                " can plan the route again. Save to My routes only when asked. Planning only to"
+                " test or check RouteMaker, not for the rider: pass test: true, or archive_draft"
+                " each draft when done, so it stays out of the rider's Load route."
             ),
         }
     elif method == "ping":
