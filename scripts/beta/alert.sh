@@ -11,7 +11,8 @@
 #                                  failure seen twice in a row is posted, and posted again only
 #                                  when it changes or once a day while it lasts; "working again"
 #                                  is posted when it clears. Also posts when the PC's copy of the
-#                                  backups ($RM_STATE/pc-backup-pull) is over 36 h old. Skipped
+#                                  backups ($RM_STATE/pc-backup-pull) is over 36 h old, and once
+#                                  per nightly route scorecard run that found trips moved. Skipped
 #                                  while a deploy pass runs.
 #   alert.sh send KEY ID MESSAGE   post MESSAGE unless KEY last posted the same ID (within a day)
 #   alert.sh note MESSAGE          post MESSAGE (no repeat check)
@@ -178,7 +179,18 @@ cmd_watch() {
 		failing operations "$(same_id "$out")" "check_operations reports:"$'\n'"$out"
 	fi
 	watch_pc_pull
+	watch_scorecard
 	return 0
+}
+
+# The nightly route scorecard (docs/SCORECARD.md): one post per run when trips moved, read from
+# the worker. Its id line keeps it to one post; a run with nothing moved says nothing.
+watch_scorecard() {
+	local out id
+	out=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" exec -T worker ./manage.py route_scorecard --latest-findings 2>/dev/null </dev/null) || return 0
+	id=$(printf '%s\n' "$out" | head -n 1 | tr -cd '0-9')
+	[ -n "$id" ] || return 0
+	cmd_send scorecard "$id" "$(printf '%s\n' "$out" | tail -n +2)"
 }
 
 # The owner's PC copies the nightly dumps off this host (scripts/pc/pull-beta-backups.sh) and,

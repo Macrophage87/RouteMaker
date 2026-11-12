@@ -66,7 +66,24 @@ python3 scripts/route_scorecard.py http --base-url http://localhost:8000 --label
 direct from Default is `--stress 25` (`core.presets.stress_notches("default", 70)`).
 `--only id,id`, `--no-contrast` and `--no-stability` cut the set down. Long trips go to the service one per request, so one slow calm search cannot lose other answers; `collect` lists any request that came back `busy` or `timeout` under `request_errors`: queue that file again.
 
+## Nightly on beta
+
+The owner, 2026-11-12, chose both: nightly on beta's own routers, and on the PC when he starts it.
+The worker's `route_scorecard` task (config.procrastinate, 08:00 UTC: 3 AM Eastern in winter, 4 AM
+in summer; our default) plans the whole set through the app's own /api/route code, one plan at a
+time with a 2 s pause, and stops starting plans after 90 minutes (both our defaults, unmeasured).
+A plan refused because the long-ride slot is held by a rider waits a minute and tries once more.
+A night with a map rebuild running is skipped. Each run is kept (`ScorecardRun`, the last 60) and
+compared with the night before; the run row's detail on the operations page says how many trips
+moved, and `scripts/beta/alert.sh watch` posts the findings to the owner's Discord channel once
+per run, only when something moved. A missed night (over 30 hours) shows on `check_operations`.
+
+```sh
+./manage.py route_scorecard --report            # the newest run against the one before
+./manage.py route_scorecard --now               # run it now
+```
+
 ## Not yet decided
 
-Whether it also runs by itself each night on beta's routers, and which of the owner's own rides
-join the trip list as "must not get worse" trips (public landmarks only) are the owner's calls.
+Which of the owner's own rides join the trip list as "must not get worse" trips (public landmarks
+only) is the owner's call.

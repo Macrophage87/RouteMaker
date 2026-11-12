@@ -44,6 +44,9 @@ echo "PASS  healthz (200)"
 """
 STUB_COMPOSE = """#!/bin/sh
 echo "$*" >> "$STUB_DIR/compose.log"
+case "$*" in
+  *route_scorecard*) [ -f "$STUB_DIR/scorecard" ] && cat "$STUB_DIR/scorecard"; exit 0 ;;
+esac
 if [ -f "$STUB_DIR/ops-fails" ]; then cat "$STUB_DIR/ops-fails"; exit 1; fi
 echo "ok"
 """
@@ -487,3 +490,23 @@ def test_install_writes_the_heartbeat_timer_beside_the_checks(box: Box) -> None:
     assert 'alert.sh" heartbeat' in (units / "routemaker-beta-heartbeat.service").read_text()
     assert (units / "routemaker-beta-alert.timer").exists()
     assert "no HEALTHCHECK_PING_URL" in done.stdout
+
+
+def test_a_scorecard_run_that_found_moves_is_posted_once(box: Box) -> None:
+    """The nightly route scorecard (docs/SCORECARD.md): one post per run that found trips
+    moved, none for a run with nothing moved, and a new run posts again."""
+    box.hook()
+    box.run("watch")
+    assert box.posts() == []
+    found = "route scorecard 2026-11-13: 1 trips moved\nmall · default · base: miles 2.00 -> 3.00"
+    (box.tmp / "scorecard").write_text("42\n" + found + "\n")
+    box.run("watch")
+    box.run("watch")
+    assert box.posts() == ["RouteMaker beta: " + found]
+    assert (
+        "exec -T worker ./manage.py route_scorecard --latest-findings"
+        in (box.tmp / "compose.log").read_text()
+    )
+    (box.tmp / "scorecard").write_text("43\n" + found + "\n")
+    box.run("watch")
+    assert len(box.posts()) == 2

@@ -111,6 +111,12 @@ DC_CLOSURES_TIMEOUT_S = 6 * 60
 SAVED_ROUTE_CLOSURES_CRON = "7-59/15 * * * *"
 SAVED_ROUTE_CLOSURES_TIMEOUT_S = 5 * 60
 
+# The route scorecard (docs/SCORECARD.md; the owner, 2026-11-12: nightly on beta's routers at
+# about 3 AM): 08:00 UTC is 3 AM Eastern in winter, 4 AM in summer. One plan at a time for
+# about half an hour; `core.scorecard_nightly.BUDGET_S` (90 minutes) stops it starting more.
+# Our default, unmeasured. A tick during a running map rebuild is skipped.
+ROUTE_SCORECARD_CRON = "0 8 * * *"
+
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for
 # retry, after the retry decision, so the first failure is judged at
@@ -1137,6 +1143,21 @@ def check_saved_route_closures(timestamp: int) -> None:
         run.detail = run_with_deadline(
             refresh_all, SAVED_ROUTE_CLOSURES_TIMEOUT_S, "check_saved_route_closures"
         )
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=ROUTE_SCORECARD_CRON)
+@app.task(name="route_scorecard", queue="maintenance", queueing_lock="route_scorecard")
+def route_scorecard(timestamp: int) -> None:
+    """Plan the scorecard's fixed trips on the live routers, compare them with the night
+    before and keep the run (core.scorecard_nightly). Not retried: the next night is the
+    retry. Report-only: what moved is on the run row and in `route_scorecard
+    --latest-findings`, never a failure of the task."""
+    from core.runs import record
+    from core.scorecard_nightly import run_nightly
+
+    with record("route_scorecard") as run:
+        run.detail = run_nightly()
         run.save(update_fields=["detail"])
 
 
