@@ -5866,6 +5866,36 @@ if (mine()) {
   await forced.close();
 }
 
+// ---- My routes' popup, from Save & load (Stephen, 2026-11-12; the v0.26.0 a11y review) ----
+// On a phone, signed in: Tab stays in the popup, and Back to Save & load or Escape returns the focus to My routes.
+if (mine()) {
+  const p = await open({ width: 375, height: 812, mobile: true, ride: false, suggester: true });
+  const onButton = "document.activeElement?.matches('#sheet-gpx .my-routes-open button') && !document.getElementById('sheet-gpx').hidden && document.getElementById('sheet-routes').hidden";
+  await openMyRoutes(p);
+  // At its edges: Tab from the last control goes round to the first, Shift+Tab from the first to the last.
+  const ends = "(() => { const d = document.getElementById('sheet-routes'); const all = [...d.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter((e) => e.tabIndex >= 0 && e.getClientRects().length > 0); return all; })()";
+  await p.eval(`(() => { const all = ${ends}; all[all.length - 1].focus(); return true; })()`);
+  await p.tab();
+  const fromLast = await p.eval(`(() => { const all = ${ends}; return { count: all.length, first: document.activeElement === all[0] }; })()`);
+  await p.eval(`(() => { ${ends}[0].focus(); return true; })()`);
+  await p.tab(true);
+  const fromFirst = await p.eval(`(() => { const all = ${ends}; return document.activeElement === all[all.length - 1]; })()`);
+  check("my routes popup: on a phone, Tab from its last control goes to its first and Shift+Tab from its first to its last",
+    fromLast.count >= 2 && fromLast.first && fromFirst, JSON.stringify({ fromLast, fromFirst }));
+  const backText = await p.eval("document.querySelector('#sheet-routes .sheet-back')?.textContent.trim()");
+  await p.eval("document.querySelector('#sheet-routes .sheet-back').focus(); true");
+  await p.enter();
+  const viaBack = await p.waitFor(onButton, 3000);
+  check("my routes popup: \"Back to Save & load\" goes back to Save & load with the focus on My routes", backText === "Back to Save & load" && viaBack, JSON.stringify({ backText, focus: await focused(p) }));
+  await p.enter();
+  const reopened = await p.waitFor("!document.getElementById('sheet-routes')?.hidden", 8000);
+  await sleep(300);
+  await p.escape();
+  const viaEscape = await p.waitFor(onButton, 3000);
+  check("my routes popup: Enter on My routes opens it again, and Escape goes back to Save & load with the focus on My routes", reopened && viaEscape, await focused(p));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
@@ -5886,7 +5916,8 @@ const failed = results.filter((r) => !r.ok);
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
 // The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
-const EXPECTED = 712;
+// My routes' popup (the v0.26.0 a11y review) adds three: Tab inside, Back and Escape back to its button.
+const EXPECTED = 715;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);
