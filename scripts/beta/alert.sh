@@ -22,9 +22,10 @@
 #   alert.sh scorecard             the nightly route scorecard (docs/SCORECARD.md): plan the fixed
 #                                  trips on the local api, keep the run in $RM_STATE/scorecard, and
 #                                  post once what moved since the nights before; nothing when
-#                                  nothing moved. A run during which the api or a map changed is
-#                                  kept as mixed, never compared and never posted. Skipped while a
-#                                  deploy pass runs.
+#                                  nothing moved. A run during which a container or a map changed
+#                                  is kept as mixed, never compared and never posted. Waits up to
+#                                  10 minutes for a deploy or watch pass; a run that fails is
+#                                  posted once that day.
 #   alert.sh scorecard-report      the newest kept run's whole table, against the nights before
 #   alert.sh install [--no-enable] copy this script into $RM_STATE/cd/bin and write three systemd
 #                                  --user timers: `watch` about every 10 minutes, `heartbeat`
@@ -192,13 +193,14 @@ cmd_watch() {
 # The nightly route scorecard (docs/SCORECARD.md; the owner, 2026-11-12, "Both": nightly on the
 # beta and on the PC when he starts it). It plans through the api's own /api/route on this host,
 # so riders' routing slots and rate limits apply to it as to anyone, one plan at a time. What
-# serves the plans is fingerprinted before and after (the api container and each graph's
-# `current` build): a run that saw a deploy or a map swap is kept as mixed and says nothing.
+# serves the plans is fingerprinted before and after (every container, routers included, and each
+# graph's `current` build): a run that saw a deploy, a map swap or a router restart is kept as
+# mixed and says nothing.
 scorecard_dir() { printf '%s/scorecard' "$RM_STATE"; }
-scorecard_print() { # what serves routes: the api container and every graph's current build
+scorecard_print() { # what serves routes: every container (api and routers) and each graph's build
 	local data link
-	"${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" ps -q api 2>/dev/null </dev/null
-	data=${RM_SCORECARD_DATA_ROOT:-$(env_value DATA_ROOT)}
+	"${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" ps -q 2>/dev/null </dev/null | sort
+	data=${RM_SCORECARD_DATA_ROOT:-${RM_DATA:-$(env_value DATA_ROOT)}}
 	[ -n "$data" ] || return 0
 	for link in "$data"/tiles/*/current; do
 		[ -e "$link" ] || [ -L "$link" ] || continue
@@ -209,7 +211,8 @@ cmd_scorecard() {
 	local port host dir before after newest out id
 	if [ -f "$cd_dir/lock" ]; then
 		exec 9<"$cd_dir/lock"
-		flock -n 9 || { echo "alert: a deploy pass is running; scorecard skipped tonight"; return 0; }
+		# The watch pass holds this lock for a minute or two every few minutes, a deploy for longer.
+		flock -w "${RM_SCORECARD_LOCK_WAIT_S:-600}" 9 || { echo "alert: a deploy pass held the lock for 10 minutes; scorecard skipped tonight"; return 0; }
 		flock -u 9
 	fi
 	port=$(env_value BETA_API_PORT)
@@ -220,7 +223,11 @@ cmd_scorecard() {
 	mkdir -p "$dir" && chmod 700 "$dir"
 	before=$(scorecard_print | sha256sum | cut -c1-16)
 	"$py" "$RM_SRC/scripts/route_scorecard.py" nightly --base-url "http://127.0.0.1:${port:-8087}" \
-		--host "$host" --dir "$dir" </dev/null || { echo "alert: the scorecard run failed" >&2; return 0; }
+		--host "$host" --dir "$dir" </dev/null || {
+		echo "alert: the scorecard run failed" >&2
+		cmd_send scorecard-failed "$(date -u +%F)" "the nightly route scorecard did not run (see journalctl --user -u $SCORECARD_UNIT)"
+		return 0
+	}
 	after=$(scorecard_print | sha256sum | cut -c1-16)
 	newest=$(find "$dir" -maxdepth 1 -name 'run-*Z.json' | sort | tail -n 1)
 	[ -n "$newest" ] || return 0

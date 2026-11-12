@@ -541,3 +541,14 @@ def test_nightly_keeps_a_bounded_history(tmp_path, monkeypatch):
     )
     kept = sorted(p.name for p in tmp_path.iterdir())
     assert len(kept) == 3 and "run-20261100T0800Z.json" not in kept
+
+
+def test_a_trip_that_stays_broken_is_posted_when_it_breaks_and_when_it_mends(tmp_path):
+    _night(tmp_path, "20261110T0800Z", 2.0)
+    _night(tmp_path, "20261111T0800Z", 2.0, status=422)
+    assert "no longer plans (422" in _findings(tmp_path)
+    _night(tmp_path, "20261112T0800Z", 2.0, status=422)
+    assert _findings(tmp_path) == "", "still broken: said already"
+    _night(tmp_path, "20261113T0800Z", 2.0)
+    text = _findings(tmp_path)
+    assert "plans again" in text and "miles" not in text

@@ -76,11 +76,13 @@ one plan at a time, a 2 s pause, a plan refused as busy (429 or 503) tries once 
 later, and no new plan starts after 90 minutes (all our defaults, unmeasured). Runs are kept in
 `$RM_STATE/scorecard/` (the last 60, our default), never in the database or the repository.
 
-- A run during which the api container or any graph's `current` build changed (a deploy, a map
-  swap) is kept as `.mixed.json` and never compared or posted. A deploy pass running at the start
-  skips the night.
-- Each trip is compared with the newest earlier night where it planned (up to a week back), so a
-  night with the routers down is reported once and does not hide the next night's changes.
+- A run during which any container (the api, a router) or any graph's `current` build changed (a
+  deploy, a map swap, a router restart) is kept as `.mixed.json` and never compared or posted. It
+  waits up to 10 minutes for a deploy or a watch pass holding the lock, then skips the night. A run
+  that fails outright is posted once that day.
+- Each trip's figures are compared with the newest earlier night where it planned (any kept
+  night). A trip that stops planning is posted the night it stops and the night it plans again,
+  not every night in between.
 - What moved is posted once to the owner's Discord channel (the alert webhook), only when
   something moved, at most 12 lines.
 

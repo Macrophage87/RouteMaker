@@ -496,6 +496,8 @@ STUB_SCORECARD = """import os, sys, pathlib, time
 stub = pathlib.Path(os.environ["STUB_DIR"])
 args = sys.argv[1:]
 (stub / "scorecard.log").open("a").write(" ".join(args) + "\\n")
+if args[0] == "nightly" and (stub / "crash").exists():
+    sys.exit("Traceback: something broke")
 if args[0] == "nightly":
     folder = pathlib.Path(args[args.index("--dir") + 1])
     n = len(list(folder.glob("run-*"))) + 1
@@ -553,16 +555,36 @@ def test_a_scorecard_run_that_saw_a_map_swap_is_kept_as_mixed_and_says_nothing(b
     assert "findings" not in (box.tmp / "scorecard.log").read_text()
 
 
-def test_the_scorecard_waits_out_a_deploy(box: Box) -> None:
+def test_the_scorecard_waits_for_the_lock_and_skips_a_long_deploy(box: Box) -> None:
     env = scorecard_box(box)
     cd = box.state / "cd"
     cd.mkdir()
     (cd / "lock").write_text("")
-    holder = subprocess.Popen(["flock", str(cd / "lock"), "sleep", "5"])
+    # A watch pass holding the lock briefly: the scorecard waits, then runs.
+    holder = subprocess.Popen(["flock", str(cd / "lock"), "sleep", "2"])
     try:
         time.sleep(0.3)
-        done = box.run("scorecard", **env)
+        done = box.run("scorecard", RM_SCORECARD_LOCK_WAIT_S="30", **env)
     finally:
         holder.kill()
-    assert "deploy pass is running" in done.stdout
+    assert "nightly" in (box.tmp / "scorecard.log").read_text()
+    # A deploy holding it past the wait: the night is skipped.
+    (box.tmp / "scorecard.log").unlink()
+    holder = subprocess.Popen(["flock", str(cd / "lock"), "sleep", "10"])
+    try:
+        time.sleep(0.3)
+        done = box.run("scorecard", RM_SCORECARD_LOCK_WAIT_S="1", **env)
+    finally:
+        holder.kill()
+    assert "scorecard skipped tonight" in done.stdout
     assert not (box.tmp / "scorecard.log").exists()
+
+
+def test_a_scorecard_run_that_fails_is_posted_once_a_day(box: Box) -> None:
+    box.hook()
+    env = scorecard_box(box)
+    (box.tmp / "crash").write_text("")
+    box.run("scorecard", **env)
+    box.run("scorecard", **env)
+    (only,) = box.posts()
+    assert "the nightly route scorecard did not run" in only

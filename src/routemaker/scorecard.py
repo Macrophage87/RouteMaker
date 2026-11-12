@@ -169,7 +169,7 @@ def turn_count(description: list[dict] | None) -> int | None:
 
 def straight_line_m(points: Sequence[Sequence[float]]) -> float:
     total = 0.0
-    for a, b in zip(points, points[1:], strict=False):
+    for a, b in zip(points, points[1:]):
         total += _haversine(a, b)
     return total
 
@@ -241,7 +241,7 @@ def _project(coords: Sequence[Sequence[float]], lat0: float) -> list[tuple[float
 def _samples(xy: list[tuple[float, float]], step: float) -> list[tuple[float, float]]:
     out = [xy[0]] if xy else []
     carry = 0.0
-    for (x1, y1), (x2, y2) in zip(xy, xy[1:], strict=False):
+    for (x1, y1), (x2, y2) in zip(xy, xy[1:]):
         seg = math.hypot(x2 - x1, y2 - y1)
         if seg == 0:
             continue
@@ -279,7 +279,7 @@ def overlap(
     axy, bxy = _project(a, lat0), _project(b, lat0)
     cell = max(near_m, 1.0) * 2
     grid: dict[tuple[int, int], list[int]] = {}
-    for i, ((x1, y1), (x2, y2)) in enumerate(zip(bxy, bxy[1:], strict=False)):
+    for i, ((x1, y1), (x2, y2)) in enumerate(zip(bxy, bxy[1:])):
         lo_x, hi_x = sorted((x1, x2))
         lo_y, hi_y = sorted((y1, y2))
         for gx in range(int(math.floor(lo_x / cell)), int(math.floor(hi_x / cell)) + 1):
@@ -463,6 +463,26 @@ def baseline(older: Sequence[dict]) -> dict:
                 rows[key] = row
     meta = dict(older[0].get("meta", {})) if older else {}
     return {"meta": meta, "rows": rows}
+
+
+def night_compare(new: dict, previous: dict | None, older: Sequence[dict]) -> dict:
+    """A night's diff: figures against each trip's last good night (`baseline` over `older`,
+    newest first), and failures only when they start or end, against `previous` (the run just
+    before), so a trip that stays broken is posted once and its recovery is posted too."""
+    diff = compare(baseline(older), new)
+    prev_rows = (previous or {}).get("rows", {})
+    found = diff["findings"]
+    for key, row in new.get("rows", {}).items():
+        before = prev_rows.get(key)
+        if before is None:
+            continue
+        failing_now = row.get("status") != 200
+        failing_before = before.get("status") != 200
+        if failing_now and failing_before and key in found:
+            del found[key]  # still broken: said already
+        elif failing_before and not failing_now:
+            found.setdefault(key, []).insert(0, "plans again")
+    return diff
 
 
 def night_text(new: dict, diff: dict) -> str:

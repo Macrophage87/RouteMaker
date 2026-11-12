@@ -70,7 +70,7 @@ def _entries(args) -> list[dict]:
 def _meta(args, **more) -> dict:
     meta = {
         "label": args.label,
-        "made": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M UTC"),
+        "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
     if args.stress is not None:
         meta["stress"] = args.stress
@@ -279,7 +279,7 @@ def _runs(folder: Path) -> list[Path]:
 def cmd_nightly(args) -> int:
     folder = Path(args.dir)
     folder.mkdir(parents=True, exist_ok=True)
-    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%MZ")
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%MZ")
     args.label = f"nightly {stamp}"
     out = folder / f"run-{stamp}.json"
     run = plan_http(_entries(args), args, out, _meta(args, base_url=args.base_url))
@@ -301,10 +301,10 @@ def cmd_findings(args) -> int:
     if age_h > FRESH_H:
         return 0
     new = json.loads(newest.read_text())
-    older = [json.loads(p.read_text()) for p in runs[1 : 1 + args.lookback]]
+    older = [json.loads(p.read_text()) for p in runs[1:]]
     if not older:
         return 0
-    diff = scorecard.compare(scorecard.baseline(older), new)
+    diff = scorecard.night_compare(new, older[0], older)
     lines = scorecard.night_text(new, diff).splitlines()
     if not lines:
         return 0
@@ -314,8 +314,9 @@ def cmd_findings(args) -> int:
             break
         shown.append(line)
     more = len(lines) - len(shown)
-    print(newest.stem.removeprefix("run-"))
-    print(f"route scorecard {newest.stem.removeprefix('run-')}: {len(lines)} changes")
+    stamp = newest.stem[len("run-") :]
+    print(stamp)
+    print(f"route scorecard {stamp}: {len(lines)} changes")
     print("\n".join(shown))
     if more:
         print(f"...and {more} more")
@@ -330,7 +331,7 @@ def cmd_report(args) -> int:
             print("No kept run yet.")
             return 0
         new = json.loads(runs[0].read_text())
-        older = [json.loads(p.read_text()) for p in runs[1:8]]
+        older = [json.loads(p.read_text()) for p in runs[1:]]
         old = scorecard.baseline(older) if older else None
     elif args.run:
         new = json.loads(Path(args.run).read_text())
@@ -399,7 +400,6 @@ def main(argv: list[str] | None = None) -> int:
 
     f = sub.add_parser("findings", help="What the newest kept run moved, for the alert script.")
     f.add_argument("--dir", required=True)
-    f.add_argument("--lookback", type=int, default=7, help="Older runs a baseline draws on.")
     f.set_defaults(fn=cmd_findings)
 
     r = sub.add_parser("report", help="Write the Markdown report.")
