@@ -18,7 +18,7 @@ import { t } from "./i18n.ts";
  * the bottom bar, the map's chips and Go's Menu open (UI-CLEANUP, the approved mockup of 2026-10-11). The
  * legend is in Layers, each key in its own layer's section (the owner, 2026-10-19).
  */
-export type PanelView = "planner" | "layers" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points" | "reach";
+export type PanelView = "planner" | "layers" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points" | "reach" | "routes";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
@@ -47,6 +47,9 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   // Reach (Stephen, 2026-11-04): where you can be in 15, 30, 45 and 60 minutes, from Plan's Find chips. Worded as
   // Plan's other chips are (Spanish covers Plan too).
   reach: t("Reach"),
+  // My routes (Stephen, 2026-11-12: "Put the load rides in a popout and have save load be mostly about saving and
+  // exporting"): the saved routes and those kept for offline, a step in from Save & load, so its export is not under them.
+  routes: t("My routes"),
 };
 
 /** The Files sheet's name on its buttons and its heading (the owner, 2026-10-18), short enough for the bar. */
@@ -82,7 +85,7 @@ const BAR_SHEETS: Record<BarItem["id"], readonly PanelView[]> = {
   plan: ["planner"],
   layers: ["layers"],
   suggest: ["suggest", "review"],
-  gpx: ["gpx"],
+  gpx: ["gpx", "routes"],
   settings: ["settings"],
 };
 
@@ -100,7 +103,7 @@ export const BACK_LABEL = t("Back to planner");
  * over the map; on a computer the same sheet is the panel's side panel, as before. Repair, Places to see and Edit route
  * stay sheets in the panel.
  */
-export const POPUP_VIEWS: readonly PanelView[] = ["settings", "ride", "layers", "gpx", "suggest", "nearest", "food"];
+export const POPUP_VIEWS: readonly PanelView[] = ["settings", "ride", "layers", "gpx", "routes", "suggest", "nearest", "food"];
 
 /** A popup's way out to the map: Close, or Back to Settings where Go's Settings opened it. */
 export const POPUP_CLOSE = t("Close");

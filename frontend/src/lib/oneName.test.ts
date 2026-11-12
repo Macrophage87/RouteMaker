@@ -37,7 +37,7 @@ test("P12: saved routes: Save & load the page, My routes the list, Load route th
   assert.equal(LOAD_ROUTE, "Load route");
   // The list's heading is My routes; the saved ones under it are named for where they are, not My routes again.
   const your = src("../YourRoutes.tsx");
-  assert.match(your, /<h3 id=\{`\$\{id\}-heading`\}>\{MY_ROUTES\}<\/h3>/);
+  assert.match(your, /<h3 id=\{`\$\{id\}-heading`\} className="visually-hidden">\{MY_ROUTES\}<\/h3>/);
   assert.match(src("../MyRoutes.tsx"), /<h4 id=\{headingId\}>\{ACCOUNT_ROUTES\}<\/h4>/);
   assert.equal(ACCOUNT_ROUTES, "Saved to your account");
   // Load route's popup has one title, from Plan's bar and Go's More chip alike.

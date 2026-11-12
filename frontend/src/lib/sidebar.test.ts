@@ -734,7 +734,7 @@ test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real bu
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
   // One name per thing (P12): Save & load as on its buttons, and each place sheet as its chip says it.
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save & load", "Settings", "Nearest", "Eat", "Ride", "Repair", "Places to see", "Edit route", "Reach"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save & load", "Settings", "Nearest", "Eat", "Ride", "Repair", "Places to see", "Edit route", "Reach", "My routes"]);
   assert.equal(SHEET_TITLES.gpx, SAVE_LOAD);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
@@ -857,8 +857,8 @@ test("a sheet's Escape: back, except in a dialog, on the place search, or when a
 });
 
 test("the popups (the owner, 2026-10-28): which destinations, and the app's words said inside the open one", () => {
-  assert.deepEqual(POPUP_VIEWS, ["settings", "ride", "layers", "gpx", "suggest", "nearest", "food"]);
-  for (const id of ["sheet-settings", "sheet-ride", "sheet-layers", "sheet-gpx", "sheet-suggest", "sheet-nearest", "sheet-food"]) {
+  assert.deepEqual(POPUP_VIEWS, ["settings", "ride", "layers", "gpx", "routes", "suggest", "nearest", "food"]);
+  for (const id of ["sheet-settings", "sheet-ride", "sheet-layers", "sheet-gpx", "sheet-routes", "sheet-suggest", "sheet-nearest", "sheet-food"]) {
     const at = app.indexOf(`id="${id}"`);
     assert.ok(at > 0, id);
     assert.match(app.slice(at, app.indexOf(">\n", at) + 1), /\bpopup\b/, `${id} is a popup`);
@@ -1076,13 +1076,13 @@ test("App dispatches the focus decision to the right element (the mutation re-ch
   assert.match(app, /<BottomBar view=\{view\} onOpen=\{openSheet\}/);
 });
 
-test("the bar's current button: the sheet showing, or one opened from it (Suggest's Review)", () => {
-  const views: PanelView[] = ["planner", "layers", "suggest", "review", "gpx", "settings", "nearest", "food", "ride"];
+test("the bar's current button: the sheet showing, or one opened from it (Suggest's Review, Save & load's My routes)", () => {
+  const views: PanelView[] = ["planner", "layers", "suggest", "review", "gpx", "routes", "settings", "nearest", "food", "ride"];
   const of: Record<string, PanelView[]> = {
     plan: ["planner"],
     layers: ["layers"],
     suggest: ["suggest", "review"],
-    gpx: ["gpx"],
+    gpx: ["gpx", "routes"],
     settings: ["settings"],
   };
   for (const view of views) for (const item of BAR_ITEMS) assert.equal(barCurrent(item, view), of[item.id].includes(view), `${view} ${item.id}`);
