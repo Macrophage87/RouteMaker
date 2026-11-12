@@ -949,7 +949,10 @@ ends. Only map tiles are kept, never where you were. If none of it could be kept
 the bottom of the screen says "Map not saved offline: it needs a signal." (shown, not said); the route line and the cues work
 without it. Off the route with no signal to plan again, the ride says where the planned route is ("No signal: the
 planned route is still shown. The planned route is 400 feet to the northeast.") and draws a dashed line from you to
-its nearest point ahead, as it does after Keep going and on a fixed route.</li>
+its nearest point ahead, as it does after Keep going and on a fixed route. From the next map rebuild, the
+roads within about a mile [1.6 km] of the route are fetched at Start ride too and kept for the ride only, so with no
+signal the phone finds a rough way back with its turns ("No signal: a rough way back to your route, found
+offline."); it is planned again properly once the signal returns.</li>
 <li><strong>Pauses to save battery:</strong> a ride pauses after 10 minutes staying in one place once you
 have arrived, and Roam after 10 minutes without moving; in a browser, either also pauses after 10 minutes out of
 sight. A pause stops the map and the cues following you and lets the screen sleep. After a stay, your location is
@@ -1378,6 +1381,12 @@ has no voice for the language (Amharic or Tigrinya on many phones) the cues are 
 English.</li>
 <li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
 new version is ready, a line says so with Reload; it never interrupts a ride.</li>
+<li><strong>When something is down,</strong> a line at the top of Go and Plan says so, such as "Updating. Back in a
+few minutes." or "Route planning is down right now." It is checked when the app opens or comes back to the front, and
+every minute while it shows (our default). No line means it is working.</li>
+<li><strong>Send feedback</strong> (under About, and in the Beta note): say what happened, in 3 to 2,000 characters,
+with no account needed. It goes to the owner on Discord with the app version, browser and ride type ("Sent with the
+app version, browser and ride type. Never where you are."); RouteMaker's server keeps no copy.</li>
 <li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
 saved routes with your account. <strong>Sign out</strong> ends this session, and <strong>Sign out
 everywhere</strong> ends every session of your account, this one too, and disconnects your AI assistant apps,
@@ -1533,6 +1542,10 @@ Garmin Connect directly once Garmin is connected. Connecting works in the app fr
 then, connect on the website and the connection works in the app too.</li>
 <li><strong>Send to Wahoo</strong> works the same way once Wahoo is connected; connecting it in the app works
 from the app's next update.</li>
+<li>At the first Start ride after installing, if the phone saves battery on RouteMaker and its maker is known
+to stop apps mid-ride, a line says "Your phone may stop RouteMaker during a ride." Its button, <strong>Set battery to
+Unrestricted</strong>, opens the app's settings, where you set its battery use to Unrestricted. Shown once (our
+default).</li>
 <li>Locked-screen cues, the ride notification and the buzzes: <a href="/about/accessibility.html#android">Accessibility</a>.</li>
 </ul>
 

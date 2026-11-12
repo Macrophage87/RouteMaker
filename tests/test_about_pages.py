@@ -30,8 +30,9 @@ DOCS = (
     "acknowledgements",
 )
 SET = (*DOCS, "stress")
-# Outside the menu (the owner, 2026-10-31): the guide we send Android testers, with no docs menu.
-GUIDES = ("android-beta",)
+# Outside the menu (the owner, 2026-10-31): the guide we send Android testers, and the welcome we send every new
+# tester (backlog 2026-11-12), each with no docs menu.
+GUIDES = ("android-beta", "welcome")
 
 
 def read(name: str) -> str:
@@ -179,3 +180,15 @@ def test_the_android_guide_keeps_its_three_steps_on_the_first_screen() -> None:
     assert len(re.findall(r"<li><strong>", page)) == 3
     assert '<a class="back" href="/">Back to the map</a>' in page
     assert "https://play.google.com/apps/testing/com.routemakerdc.app" in page
+
+
+def test_the_welcome_page_gives_each_device_its_block_and_no_email() -> None:
+    """The welcome we send every new tester (backlog 2026-11-12): no docs menu, a block per device reached from the
+    first screen (no script, so it cannot pick one), and no e-mail address, whose domain is the beta's."""
+    page = read("welcome")
+    assert '<nav class="docs"' not in page
+    for anchor in ("android", "iphone", "computer"):
+        assert f'href="#{anchor}"' in page and f'id="{anchor}"' in page, anchor
+    assert "mailto:" not in page and "@" not in re.sub(r"<style>.*?</style>", "", page, flags=re.S)
+    assert 'href="/about/accessibility.html"' in page
+    assert "Send feedback" in page and "Set battery to Unrestricted" in page
