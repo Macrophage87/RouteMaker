@@ -5872,24 +5872,27 @@ if (mine()) {
   const p = await open({ width: 375, height: 812, mobile: true, ride: false, suggester: true });
   const onButton = "document.activeElement?.matches('#sheet-gpx .my-routes-open button') && !document.getElementById('sheet-gpx').hidden && document.getElementById('sheet-routes').hidden";
   await openMyRoutes(p);
-  const inside = [];
-  for (let i = 0; i < 10; i++) {
-    await p.tab(i % 3 === 2);
-    inside.push(await p.eval("!!document.activeElement?.closest('#sheet-routes')"));
-  }
-  check("my routes popup: on a phone, Tab and Shift+Tab stay inside it", inside.every(Boolean), JSON.stringify(inside));
+  // At its edges: Tab from the last control goes round to the first, Shift+Tab from the first to the last.
+  const ends = "(() => { const d = document.getElementById('sheet-routes'); const all = [...d.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter((e) => e.tabIndex >= 0 && e.getClientRects().length > 0); return all; })()";
+  await p.eval(`(() => { const all = ${ends}; all[all.length - 1].focus(); return true; })()`);
+  await p.tab();
+  const fromLast = await p.eval(`(() => { const all = ${ends}; return { count: all.length, first: document.activeElement === all[0] }; })()`);
+  await p.eval(`(() => { ${ends}[0].focus(); return true; })()`);
+  await p.tab(true);
+  const fromFirst = await p.eval(`(() => { const all = ${ends}; return document.activeElement === all[all.length - 1]; })()`);
+  check("my routes popup: on a phone, Tab from its last control goes to its first and Shift+Tab from its first to its last",
+    fromLast.count >= 2 && fromLast.first && fromFirst, JSON.stringify({ fromLast, fromFirst }));
   const backText = await p.eval("document.querySelector('#sheet-routes .sheet-back')?.textContent.trim()");
   await p.eval("document.querySelector('#sheet-routes .sheet-back').focus(); true");
   await p.enter();
-  await sleep(400);
-  const viaBack = await p.eval(onButton);
+  const viaBack = await p.waitFor(onButton, 3000);
   check("my routes popup: \"Back to Save & load\" goes back to Save & load with the focus on My routes", backText === "Back to Save & load" && viaBack, JSON.stringify({ backText, focus: await focused(p) }));
   await p.enter();
-  await p.waitFor("!document.getElementById('sheet-routes')?.hidden", 8000);
+  const reopened = await p.waitFor("!document.getElementById('sheet-routes')?.hidden", 8000);
   await sleep(300);
   await p.escape();
-  await sleep(400);
-  check("my routes popup: Escape goes back to Save & load with the focus on My routes", await p.eval(onButton), await focused(p));
+  const viaEscape = await p.waitFor(onButton, 3000);
+  check("my routes popup: Enter on My routes opens it again, and Escape goes back to Save & load with the focus on My routes", reopened && viaEscape, await focused(p));
   await p.close();
 }
 
