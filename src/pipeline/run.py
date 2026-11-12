@@ -3256,7 +3256,10 @@ def build_handlers(
                 [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
             )
             crossings = facility.side_path_crossings(
-                ((way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways),
+                (
+                    (way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates)
+                    for way in context.ways
+                ),
                 context.side_streets,
                 lambda osm_id: (
                     level_of(context.stress_by_way[osm_id])
