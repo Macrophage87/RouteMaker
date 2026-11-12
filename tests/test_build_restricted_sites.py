@@ -172,3 +172,22 @@ def test_a_small_unshaded_sites_gate_is_not_its_neighbours():
     ]
     found = mod.collection(areas(military=[area(yard, "w8", "Armory")]), ways)
     assert by(found, "gate") == []
+
+
+def test_a_site_mapped_twice_is_shaded_and_gated_once():
+    # An old base name mapped inside the joint base: one site, its gate the joint base's.
+    inner = [
+        (W + 0.001, S),
+        (E - 0.001, S),
+        (E - 0.001, N - 0.001),
+        (W + 0.001, N - 0.001),
+        (W + 0.001, S),
+    ]
+    found = mod.collection(areas(military=[area(inner, "w5", "Old Air Force Base")]), WAYS)
+    assert [f["properties"]["site"] for f in by(found, "kind")] == ["w1"]
+    assert [f["properties"]["gate"] for f in by(found, "gate")] == ["w1"]
+
+
+def test_a_public_event_venue_is_not_a_closed_site():
+    venue = area(SQUARE, "w298594982", "D.C. Armory")
+    assert mod.sites_of({kind: [] for kind in ra.KINDS} | {ra.MILITARY: [venue]}) == []

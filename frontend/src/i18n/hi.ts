@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "तय रास्ते पर वापस आ गए हैं।",
   "No route found ahead. Make a U-turn.": "आगे कोई रास्ता नहीं मिला। यू-टर्न लें।",
   "No signal: the planned route is still shown.": "सिग्नल नहीं है: तय रास्ता अब भी दिखाया जा रहा है।",
+  "No signal: a rough way back to your route, found offline.": "सिग्नल नहीं है: आपके रास्ते पर लौटने का एक अनुमानित रास्ता ऑफ़लाइन मिला।",
   "No new route found. The planned route is still shown.": "कोई नया रास्ता नहीं मिला। तय रास्ता अब भी दिखाया जा रहा है।",
   "No new route found. Go back to the planned route.": "कोई नया रास्ता नहीं मिला। तय रास्ते पर लौटें।",
   "New route found. It rejoins your route ahead.": "नया रास्ता मिला। यह आगे आपके रास्ते से फिर मिलता है।",

@@ -5909,15 +5909,20 @@ filled in the browser from Nixle. Each needs its own look before it can be watch
    towpath FIRST [LAST]` prints the towpath's lines between the mileposts (one milepost: about 160 ft
    either side, our default) and how much of the stretch the mile lines cover; where under 95% (the
    mile lines have gaps, e.g. about mile 9 to 19.6), draw the rest from the OSM ways
-   (`python scripts/ddot_advisories.py lines WAY ...`). "Detour" in an NPS line usually means
+   (`python scripts/ddot_advisories.py lines WAY ...`). Join a closure's ways into one
+   continuous line where they run end to end: each line is its own zone, trimmed 20 m at both
+   ends (`workzones.TRIM_M`), so a crossing at the join of two short lines is left open. "Detour" in an NPS line usually means
    the towpath itself is closed there; "High Water Detour" is only when the river is up: leave it
    out (it has no dates). Work that leaves the trail open ("expect intermittent delays", "one
    lane") stays out.
-3. Enter it as the owner's rule for these closures says (the decision is in the backlog thread
-   "Add trail and county closures"; until it is made, only what the owner confirms). Evidence is
-   the agency's words and what a rider saw, never another map. A closure that starts before the
-   next release reaches riders only through a reviewer closure (the road panel's "Mark closed",
-   an admin's), so for a short one that is the way.
+3. Enter it by the owner's rule (2026-11-12, "Clearly dated ones go in"): a closure the agency
+   posts with its dates (a first and a last day) and a clear place (named cross streets, mileposts,
+   a named bridge) goes in without asking, and the owner is told after, with the alert's link. One
+   with no dates, an open end ("until further notice", "through spring") or a place that cannot be
+   pinned down waits for the owner's word. Evidence is the agency's words and what a rider saw,
+   never another map. A closure that starts before the next release reaches riders only through a
+   reviewer closure (the road panel's "Mark closed", an admin's), so for a short one that is the
+   way.
 4. `python scripts/park_alerts.py watch --mark` adds every item now on the pages read to `seen`
    and sets `updated` to today. An item whose words change is listed again.
 5. Ship the file in the next release, as for the other hand-read files.
@@ -5925,7 +5930,9 @@ filled in the browser from Nixle. Each needs its own look before it can be watch
 The first watch (2026-11-12) listed 2 NOVA Parks trail items (Falls Church crosswalk detours,
 Nov 17-24; the Sterling Blvd overpass, delays only), 6 C&O trail items (among them the Dam No. 5
 towpath detour, miles 106 to 106.8, and the Polly Pond bridge, mile 134.3, past the map's edge) and
-3 Anne Arundel ones (none a closure of the B&A); nothing was entered or marked read.
+3 Anne Arundel ones (none a closure of the B&A). After the owner's rule, the W&OD crosswalk
+detour (Nov 17-24) was entered and the first items marked read; the Dam No. 5 detour (no dates)
+waits for the owner.
 
 ## Deer-management closures (v0.12.3)
 
@@ -7983,7 +7990,10 @@ only at the next map rebuild.
   (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
   built there, `migrate`, the worker recreated so it picks up `refresh_alertdc`, the front end built
   on the PC), `smoke-test.sh --local`, then `smoke-test.sh --public <url> --passwords-file <file>`,
-  then `auto-release.sh mark-deployed v0.26.0` and `auto-release.sh resume`.
+  then `auto-release.sh mark-deployed v0.26.0`, then `"$RM_SRC/scripts/beta/auto-release.sh" install`
+  (a hand ship does not reinstall the agent, and v0.26.0 changes it: #1195's quick deploys,
+  `rollback`, `rollback-map`, `ship-held` and the workflow image pull start with the next release),
+  then `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
   with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
   means the host is not answering (the run itself only fails after 45 minutes); `GET /api/closures/stamp` answers 200 (20 a minute per address, our default: a group of more than 20
@@ -10219,3 +10229,26 @@ Python 3.11 or later, standard library only.
   passes), and the changeset must be closed holding exactly the upload's changes. A failure, or a check
   that could not run, exits 3 with what differs.
   `python3 scripts/osm_edit.py check edit.json` runs it again later.
+
+## Off-grid way back: the offline road network
+
+Off-grid riding (the owner, 2026-11-12: "the one mile would be a default, with a whole
+region pack an optional download"). Every rebuild writes `{schema}.offline_way` during the
+segment stage: one row per way a bicycle may ride (open access only, mountain-bike
+singletrack left out) with its node ids, line, stress level times 2 (10 is Avoid), one-way
+for a bicycle, walk and unpaved flags and name. The run's log line reads `ways in the offline
+road network: N`; zero on a full rebuild means the writer failed.
+
+Ride fetches `POST /api/offline/network` with each route it rides: the ways within a mile
+(`CORRIDOR_M`) of the route's line, at most 40,000 (our default, unmeasured), cut at their
+junctions, plus the ride type's price for each level. When a re-plan then fails for no
+signal, the phone finds the way back to the line on that network and says it as rough; when
+the signal returns, the server plans it again.
+
+- Before the first rebuild that writes the table the endpoint answers `503 not_built`, and
+  Ride rides as before (no offline way back). Nothing to do but rebuild.
+- `503 too_slow`: the corridor read ran past 5 seconds (`TIMEOUT_MS`, our default,
+  unmeasured). Check that `offline_way_geom_idx` exists in the live schema.
+- Rate limit 12 a minute per client (`OFFLINE_NETWORK`, our default).
+- Privacy: the request carries the route's line only; nothing about the rider is logged or
+  kept, and the phone keeps the network in memory for the ride only.

@@ -88,6 +88,8 @@ export interface OfflineWayBack {
   durationS: number;
   turns: OfflineTurn[];
   startStreet: string | null;
+  /** The way to set off, degrees from north, over its first FIRST_TURN_M or more: Ride says "Head east on …". */
+  startBearingDeg: number;
   /** Along the planned line, the metres at which the way back meets it. */
   joinAtM: number;
   /** The worst stress level ridden (times 2, as the network's). */
@@ -369,6 +371,11 @@ export function offlineWayBack(
     pieces.push({ pts, e: leg.e });
     line2.push(...pts.slice(1));
   }
+  // Where the rider sets off: the first piece, or the edge after it where that piece is under FIRST_TURN_M (the rider
+  // is on a junction, so its turn is the way they set off, not a turn said).
+  const opening = pieces.length > 1 && pathM(pieces[0].pts) < FIRST_TURN_M ? pieces[1] : pieces[0];
+  const openPts = distinct(opening === pieces[0] ? opening.pts : [...pieces[0].pts, ...opening.pts]);
+  const startBearingDeg = bearing(openPts[0], openPts[Math.min(openPts.length - 1, 1)]);
   // Turns: at each node between two edges, where the street changes or the direction turns by TURN_DEG or more.
   const turns: OfflineTurn[] = [];
   let atM = pathM(pieces[0].pts);
@@ -402,7 +409,8 @@ export function offlineWayBack(
     distanceM: pathM(line2),
     durationS: secs[goal] + startNear.distM / Math.max(w.speedMps, 0.1),
     turns,
-    startStreet: nameOf(g, start.e),
+    startStreet: nameOf(g, opening.e),
+    startBearingDeg,
     joinAtM: joinAt.get(goal) as number,
     worstLevel2: worst,
   };

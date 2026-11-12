@@ -270,7 +270,7 @@ function joinedSides(sides: RouteResponse["leg_arrival_sides"], kept: ReadonlyMa
 }
 
 /** A joined stretch's words where the planned route turned onto it: what Ride mode says of it, with no turn. */
-function continueWords(street: string | null): string {
+export function continueWords(street: string | null): string {
   return street ? t("Continue on {street}.", { street: wayWords(street) }) : t("Continue.");
 }
 

@@ -25,7 +25,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 | `~/routemaker-beta-passwords.txt` | Mode 600: the testers' passwords, for the owner to read and hand out | the owner deletes it (`shred -u`) |
 | `~/routemaker-beta-state/cd`, `~/.config/systemd/user/routemaker-beta-cd.*` | Only once continuous deployment is installed ("Continuous deployment", below): the release agent, its state, logs and pre-release snapshots, and its user timer | `auto-release.sh uninstall`, then `rm -rf` the `cd` directory |
 | `~/routemaker-beta-state/cd/bin/restart-routers.sh`, `~/.config/systemd/user/routemaker-beta-routers.*` | Only once the router hook is installed ("The routers after a map swap", below): the script and its user timer | `restart-routers.sh uninstall`, then `rm` the script |
-| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*`, `~/.config/systemd/user/routemaker-beta-heartbeat.*` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, the check timer and the uptime heartbeat's timer | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` directory |
+| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*`, `~/.config/systemd/user/routemaker-beta-heartbeat.*`, `~/.config/systemd/user/routemaker-beta-scorecard.*`, `~/routemaker-beta-state/scorecard` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, the check timer, the uptime heartbeat's timer, and the nightly route scorecard's timer and kept runs (docs/SCORECARD.md) | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` and `scorecard` directories |
 
 Every RouteMaker path above is created only after a check that it **does not exist yet**; if one
 does, stop and ask the owner. Nothing here changes the owner, group or mode of a directory that
@@ -1173,7 +1173,13 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    the newest run of each) green: either one red holds the tag, either one unfinished waits. The check is an unauthenticated read of the public API, a few calls an hour at
    most; a rate limit or a network failure is tried again next pass. Signed tags: the repository has
    none today; setting `RM_CD_REQUIRE_SIGNED_TAGS=1` makes `git verify-tag` a requirement too (the
-   server then needs the signer's public key in its keyring).
+   server then needs the signer's public key in its keyring). A tag made by the release workflow
+   ("The release workflow", below) names the api image it built, by digest, in its message
+   (`api-image: ghcr.io/macrophage87/routemaker-api@sha256:...`): the agent first reads GitHub's
+   build provenance for that digest, which must name this repository's release workflow on `main`
+   (if not, the tag is held), then pulls the image and tags it with the release's `TAG` instead of
+   building one (GitHub or the registry not answering waits for the next pass). Workflow tags are not
+   signed, so `RM_CD_REQUIRE_SIGNED_TAGS=1` holds every one of them.
 5. The gate, over `git diff <deployed>..<new>` (only a code release deploys by itself):
 
 | A change to | Means | What the agent does |
@@ -1186,8 +1192,8 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
 | a compose `image:` line | a third-party image to pull, maybe a data mismatch | **stops** |
-| `docker/api.Dockerfile`, `docker/requirements*.txt`, `docker/api-entrypoint.sh` | a new base image, system package or dependency in the api image | **stops** |
-| `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops** |
+| `docker/api.Dockerfile`, `docker/requirements*.txt`, `docker/api-entrypoint.sh` | a new base image, system package or dependency in the api image | **stops**, unless the tag names the release workflow's image: then deploys with that image (the owner, 2026-11-12) |
+| `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops**; `ship-held` ships it with its map ("Day to day") |
 | `FORMAT_VERSION` in `src/core/stress_tiles.py` or `src/core/mass_tiles.py` | a new tile format (the cache is keyed on it; no data from home) | deploys, then the agent runs the step 8 pre-draw (`predraw_stress_tiles`, which draws both tile sets) and waits for it. The release is already live and smoke-tested by then, so a pre-draw that fails or runs out of its budget is a warning in the report, not a rollback: the tiles not yet drawn are drawn on request |
 | a migration that names the live schema, or a migration removed | data from home | **stops** |
 | a file name with a space, a quote, a backslash, or a control or non-ASCII character | a path the gate cannot be sure of | **stops** (check it by hand) |
@@ -1206,7 +1212,13 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    from home) and, if `frontend/` changed, the front end (`--memory 1536m` and
    `--oom-score-adj 1000`, so a host short of memory kills it first; the api build runs in the
    daemon and is not capped). A build that fails leaves the running release alone and marks the
-   tag failed (`retry <tag>`). Then the runbook's steps, from the stop of the api and worker. The
+   tag failed (`retry <tag>`). **A release with no migration file** (most of them) then skips the
+   stop and the snapshot: the api and worker keep serving while the checkout, `TAG`, the compose gate
+   and the front end move, and `up -d api worker` swaps them onto the new image, a few seconds of
+   "Router unavailable" at most; any failure from there swaps them back (step 7). A migration found
+   pending although no migration file changed fails the deploy before the api moves.
+   `RM_CD_ALWAYS_STOP=1` in `vars.sh` keeps the stop-and-snapshot path for every release. **A release
+   with a migration** takes the runbook's steps, from the stop of the api and worker. Its
    downtime is the stop to the smoke tests (the snapshot, migrations, the start, `/healthz`, the
    smoke tests, and a minute more when they are retried), usually under 5 minutes. During it nginx
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
@@ -1354,6 +1366,12 @@ journalctl --user -u routemaker-beta-cd --since today  # the passes, if the jour
 "$A" hold v0.2.0 "why"            # keep a tag from being deployed
 "$A" mark-deployed v0.2.0         # after shipping by hand, or to clear BROKEN once the owner has looked
 "$A" mark-deployed --force v0.2.0 # the same over a half-done deploy's record (IN PROGRESS), once the owner has put the stack right by hand
+"$A" rollback --dry-run           # the release before the deployed one: what putting it back would do
+"$A" rollback                     # put it back (the agent's own deploy and checks); the undone tag is held
+"$A" rollback-map --dry-run       # the previous map: which graphs, and whether the tables go too
+"$A" rollback-map                 # put it back (no sudo); run it again to bring the newer map back
+"$A" ship-held v0.2.0 --map s3://<bucket>/rebuild-checkpoints/transfer/<run> --dry-run   # a release held for its map
+"$A" ship-held v0.2.0 --map s3://<bucket>/rebuild-checkpoints/transfer/<run>             # its code, then its map (asks for sudo)
 systemctl --user stop routemaker-beta-cd.timer        # or stop the timer altogether
 ```
 
@@ -1395,6 +1413,67 @@ newest 3 of each kind of its own safety dumps in `DATA_ROOT/backups` (`pre-updat
 
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
+
+### One-command rollbacks and map releases
+
+**`rollback`** puts the release before the deployed one (`$RM_STATE/cd/previous-tag`; `mark-deployed`
+records it for a hand ship too) back on through the agent's own deploy: the api image (kept on the
+host for this), the front end rebuilt from that tag, photon and the routers if compose or a router
+setting changed, `/healthz`, the smoke tests. A failure puts the deployed release back by itself.
+The undone tag is held, so no pass deploys it again; a later tag is the way forward (or `retry
+<tag>`). If the release being undone carried a migration it asks which way the database goes:
+`--keep-db` leaves it (fine when the migration only added tables or columns with database
+defaults, as the project's migrations do), `--restore-db` puts back the snapshot taken just before
+that release was deployed (`$RM_STATE/cd/deployed-snapshot`), **losing accounts, saved routes and
+rides changed since**; a snapshot of the database as it is is taken first and kept. A release that
+changed the map side, nginx or compose images is refused unless `--force` (only the code goes
+back): put the old map back first with `rollback-map`.
+
+**`rollback-map`** is rollback A and "B by rename" above in one line, with no sudo: every graph with
+a `previous` build trades `current` and `previous` (moved as the directory's owner, in the postgis
+image already on the host), then, if the last update left `live_old` and unless `--graphs-only`,
+`live` and `live_old` trade names in one short transaction (every live table locked first) and the
+stress-tile cache is emptied. The routers' settings rows follow (`sync_upstreams`), the running
+routers restart one at a time, the pre-draw runs, and the smoke tests. Home's overrides and junction
+ratings stay the newer ones, as in "B by rename". Because it trades places, running it again puts
+the newer map back. A Photon index has no `previous`: it is not rolled back. A failure part-way
+marks the agent BROKEN with what moved.
+
+**`ship-held vX.Y.Z --map RUN_URL`** replaces the per-release hand-ship scripts for a release held
+because it needs a map (`lua/`, the pipeline's graph or table builders, a graph-build setting, a
+migration naming the live schema). It makes the same checks as a pass (release tag, on main,
+descends from the deployed release, CI green), pauses the agent, deploys the code through the
+agent's deploy (with its automatic rollback), then runs `scripts/cloud/import-result.sh --beta
+RUN_URL` and `--swap RUN_URL` (which asks for sudo for the files and the table rename, restarts the
+routers one at a time, pre-draws and smoke-tests), and resumes the agent if it paused it.
+`--allow-sha-mismatch` passes through when the run was built from another commit than the tag;
+`--no-map` ships the code alone. A held release that needs nginx, sudo or a new data path is still
+refused, and so is one whose migration reads the map tables (it must run after the new map is in):
+ship those by hand. It also waits out a running pre-draw and the nightly backup's slot. If the map fails after the code is live, the code stays, the agent stays
+paused, and the report says what to run next.
+
+### The release workflow
+
+`.github/workflows/release.yml` (the owner, 2026-11-12: a workflow he approves may make the tag and
+build the image). Once the release branch has merged into main and CI is green there: GitHub,
+Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`; `docs/releases/vX.Y.Z.md`
+must be in the commit) and, optionally, the commit (main's newest by default). It checks the
+version (strict, newer than every tag, not taken), the commit (on main), the notes, and that `test`
+and `a11y` are green on that commit, then **waits for the owner's approval** (the `release`
+environment). Approved, it builds the api image from that commit, checks that it starts, records
+GitHub build provenance for it, publishes it as `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag,
+whose message names the image by digest. The agent deploys the tag on its next pass as above,
+pulling that exact image. Tagging from the PC still works as before.
+
+Once, by the owner, before the first run:
+
+1. Repository Settings, Environments, New environment `release`: Required reviewers, add yourself;
+   Deployment branches and tags, Selected, add `main`. That approval is the release button.
+2. After the first run has published the image: the package's page (your GitHub profile, Packages,
+   `routemaker-api`), Package settings, Change visibility, Public, so the beta pulls it without a
+   token (the image holds no secret and no server address). If GitHub refuses the first push
+   because a `routemaker-api` package already exists, give the repository Write under that
+   package's Manage Actions access first.
 
 ### The trail routers, once, after v0.10.1 deploys
 

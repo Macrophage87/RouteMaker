@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "Ou tounen sou wout ki te planifye a.",
   "No route found ahead. Make a U-turn.": "Nou pa jwenn wout devan. Fè demi-tou.",
   "No signal: the planned route is still shown.": "Pa gen siyal: wout ki te planifye a toujou parèt.",
+  "No signal: a rough way back to your route, found offline.": "Pa gen siyal: yo jwenn yon chemen apeprè pou retounen sou wout ou, san entènèt.",
   "No new route found. The planned route is still shown.": "Nou pa jwenn nouvo wout. Wout ki te planifye a toujou parèt.",
   "No new route found. Go back to the planned route.": "Nou pa jwenn nouvo wout. Tounen sou wout ki te planifye a.",
   "New route found. It rejoins your route ahead.": "Nou jwenn yon nouvo wout. Li rejwenn wout ou pi devan.",

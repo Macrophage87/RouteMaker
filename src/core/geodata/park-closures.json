@@ -1,5 +1,138 @@
 {
  "updated": "2026-11-12",
- "closures": [],
- "seen": {}
+ "closures": [
+  {
+   "id": "wod-falls-church-crosswalks",
+   "project": "NOVA Parks",
+   "page": "https://www.novaparks.com/",
+   "advisory": "https://www.novaparks.com/alert/wod-november-17-24-trail-detours-will-be-in-place-for-construction-in-falls-church-at-grove",
+   "posted": "2026-11-12",
+   "road": "W&OD Trail in Falls Church, N. West St to Grove Ave",
+   "reason": "Trail detoured while the W&OD's crosswalks at N. West St, Park Ave and Grove Ave are rebuilt (NOVA Parks: Nov 17-24, about a week).",
+   "first_day": "2026-11-17",
+   "last_day": "2026-11-24",
+   "ways": [
+    1174600442,
+    1373500125,
+    1373500124,
+    97095513
+   ],
+   "lines": [
+    [
+     [
+      -77.18229,
+      38.89142
+     ],
+     [
+      -77.18259,
+      38.8914
+     ],
+     [
+      -77.18262,
+      38.8914
+     ],
+     [
+      -77.18264,
+      38.8914
+     ],
+     [
+      -77.18267,
+      38.89141
+     ],
+     [
+      -77.18272,
+      38.89144
+     ],
+     [
+      -77.18279,
+      38.89149
+     ],
+     [
+      -77.1828,
+      38.8915
+     ],
+     [
+      -77.18293,
+      38.89154
+     ],
+     [
+      -77.18303,
+      38.89155
+     ],
+     [
+      -77.18362,
+      38.89164
+     ],
+     [
+      -77.18383,
+      38.89168
+     ],
+     [
+      -77.18384,
+      38.89168
+     ],
+     [
+      -77.18393,
+      38.89169
+     ],
+     [
+      -77.18399,
+      38.89169
+     ],
+     [
+      -77.18401,
+      38.89169
+     ],
+     [
+      -77.1842,
+      38.89171
+     ],
+     [
+      -77.18433,
+      38.89171
+     ]
+    ]
+   ]
+  }
+ ],
+ "seen": {
+  "aacounty": [
+   "2bb765e29ce8",
+   "5102913fa806",
+   "6677b33cee44",
+   "6bed11d231af",
+   "6d8b304dfcd8",
+   "6d9ca99791ba",
+   "6ef16aec5c2c",
+   "896333a0685a",
+   "89be7a3873fa",
+   "9cb4c13ecad2",
+   "ae6a43a8f36a"
+  ],
+  "choh": [
+   "0bb9a3f76917",
+   "24464d6f660a",
+   "301a3c18f7c3",
+   "3030aeec2a0d",
+   "384eb65051aa",
+   "43a73123cf59",
+   "475709ef27bd",
+   "4df7d4d8673f",
+   "60b716a2b614",
+   "60b7b3bcd66e",
+   "752ad4ad5d27",
+   "76ed2d10d4a3",
+   "86847d21f2c9",
+   "8d239f9165b7",
+   "a8d015c042dc",
+   "c22e515b7d9c",
+   "cf436f519632",
+   "d4260d274d51",
+   "e6ef945b33b1"
+  ],
+  "nova": [
+   "185adfc0e60b",
+   "1c6ae07bf347"
+  ]
+ }
 }
