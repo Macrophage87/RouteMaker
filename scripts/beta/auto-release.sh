@@ -43,7 +43,9 @@
 #   6. "A new release sha" from the runbook without sudo, inside RM_CD_WINDOW if one is set: the
 #      tag's tree is exported (`git archive`), and the api image (3 tries; skipped if it is already
 #      on the host) and, if frontend/ changed, the front end are built while the beta still runs;
-#      then the api and worker stop, the database is snapshotted (pg_dump into $RM_STATE/cd/backups), the front end's top-level files
+#      then, only for a release that carries a migration file (or with RM_CD_ALWAYS_STOP=1), the api
+#      and worker stop and the database is snapshotted (pg_dump into $RM_STATE/cd/backups); any
+#      other release keeps them running and `up -d` swaps them onto the new image. The front end's top-level files
 #      (index.html, beta-build.txt) are saved, the checkout moves to the tag, TAG is set in .env,
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
 #      (index.html last), the api and worker start, photon and the routers are recreated if a
@@ -76,6 +78,8 @@
 #   RM_CD_DOCKER_FREE_GIB        GiB that must be free on Docker's root before a deploy [3]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
+#   RM_CD_ALWAYS_STOP            1: stop the api and worker and snapshot for every release, not only
+#                                one that carries a migration file [0]
 #   RM_CD_WAIT_ALERT_MIN         minutes a release may wait (CI, node_modules, the node image, the
 #                                network) before the owner is alerted [30]
 #   RM_CD_PAVED_MIN_MIB          MiB of available memory plus what this project's running containers
@@ -713,14 +717,24 @@ deploy() { # tag new-sha gate-file
 		build_frontend "$src" "$new" "$out" || { say "FAILED: the front-end test or build"; return 3; }
 	fi
 
-	# The runbook's "A new release sha", steps 2 to 8, without sudo.
-	mark stopped "stop the api and worker" || return 1
-	step "stop the api and worker" bc stop api worker </dev/null || return 1
-	mark snapshot "snapshot the database (pre-release)" || return 1
-	dump=$(RECEIVE_DATA_REPO="$RM_SRC" "$receive" --env-file "$RM_SRC/.env" --backups-dir "$cd_dir/backups" snapshot-db --label release </dev/null 2>>"$run_log") && [ -s "$dump" ] ||
-		{ say "FAILED: the database snapshot"; return 1; }
-	printf '%s\n' "$dump" >"$cd_dir/run-snapshot"
-	say "snapshot: $dump"
+	# The runbook's "A new release sha", steps 2 to 8, without sudo. A release that carries no
+	# migration file (most of them) keeps the api and worker running and takes no snapshot: the
+	# database is not changed, so there is nothing to snapshot, and `up -d` below swaps them onto
+	# the new image in seconds instead of minutes of "Router unavailable" (backlog 2026-11-12,
+	# area 09 item 3). RM_CD_ALWAYS_STOP=1 keeps the old stop-and-snapshot path for every release.
+	local quick=0
+	if [ "$(kv migrations "$gate_file")" != 1 ] && [ "${RM_CD_ALWAYS_STOP:-0}" != 1 ]; then quick=1; fi
+	if [ "$quick" = 1 ]; then
+		say "step: no migration in this release: the api and worker keep running and no snapshot is taken; they are swapped onto the new image below"
+	else
+		mark stopped "stop the api and worker" || return 1
+		step "stop the api and worker" bc stop api worker </dev/null || return 1
+		mark snapshot "snapshot the database (pre-release)" || return 1
+		dump=$(RECEIVE_DATA_REPO="$RM_SRC" "$receive" --env-file "$RM_SRC/.env" --backups-dir "$cd_dir/backups" snapshot-db --label release </dev/null 2>>"$run_log") && [ -s "$dump" ] ||
+			{ say "FAILED: the database snapshot"; return 1; }
+		printf '%s\n' "$dump" >"$cd_dir/run-snapshot"
+		say "snapshot: $dump"
+	fi
 	mark index_saved "save the front end's top-level files (index.html, beta-build.txt)" || return 1
 	saved="$cd_dir/backups/frontend.pre-release-$stamp"
 	step "save the front end's top-level files" save_frontend_top "$saved" || return 1
@@ -732,6 +746,10 @@ deploy() { # tag new-sha gate-file
 	step "set TAG in .env" set_tag "$new_short" || return 1
 	compose_gate || { say "FAILED: the compose gate (check_beta_compose.py --env-file .env); its output is in the run log"; return 1; }
 	if ! bc run --rm --no-deps migrate ./manage.py migrate --check </dev/null >>"$run_log" 2>&1; then
+		# Never a migration without its snapshot: a pending one the gate did not see (no migration
+		# file changed, so the database is behind the release for some other reason) fails the
+		# deploy here, before the api moves; the rollback puts the checkout and TAG back.
+		[ "$quick" = 0 ] || { say "FAILED: a migration is pending although the release carries no migration file; deploy it with the stop and the snapshot (RM_CD_ALWAYS_STOP=1, then auto-release.sh retry $tag)"; return 1; }
 		mark migrate "migrate (after the snapshot)" || return 1
 		step "migrate" bc run --rm --no-deps migrate ./manage.py migrate --noinput </dev/null || return 1
 	else
@@ -741,8 +759,13 @@ deploy() { # tag new-sha gate-file
 		mark frontend "install the front end (index.html last)" || return 1
 		install_frontend "$out" || { say "FAILED: the front-end install"; return 1; }
 	fi
-	mark started "start the api and worker" || return 1
-	step "start the api and worker" bc up -d api worker </dev/null || return 1
+	if [ "$quick" = 1 ]; then
+		mark started "swap the api and worker onto the new image" || return 1
+		step "swap the api and worker onto the new image" bc up -d api worker </dev/null || return 1
+	else
+		mark started "start the api and worker" || return 1
+		step "start the api and worker" bc up -d api worker </dev/null || return 1
+	fi
 	# The routers to recreate or restart: the four, and each trail router whose tiles are there.
 	# Road Bike's router is the one a short host leaves stopped (BETA-RUNBOOK.md, the memory
 	# threshold): a stopped one without room for its startup peak is dropped from the list, so
@@ -1055,8 +1078,10 @@ pass() {
 		backup_at=$(backup_minute)
 		! in_backup_slot "$backup_at" || { rm -f "$gate_file"; finish waiting "$tag: the nightly backup runs at $(hhmm "$backup_at") UTC; deploying after $(hhmm $(((backup_at + 30) % 1440))) UTC"; return 0; }
 		predraw_running && { rm -f "$gate_file"; finish waiting "$tag: a stress-tile pre-draw is running; deploying after it"; return 0; }
-		free=$(free_kib "$cd_dir/backups")
-		[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
+		if [ "$(kv migrations "$gate_file")" = 1 ] || [ "${RM_CD_ALWAYS_STOP:-0}" = 1 ]; then
+			free=$(free_kib "$cd_dir/backups")
+			[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
+		fi
 		root=$(docker_root)
 		free=""; [ -z "$root" ] || free=$(free_kib "$root")
 		if [ -z "$free" ]; then

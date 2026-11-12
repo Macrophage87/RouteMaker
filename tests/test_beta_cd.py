@@ -490,6 +490,13 @@ def test_every_file_the_agent_installs_is_an_agent_file() -> None:
                 "smoke",
             ],
         ),
+        # Without a migration the api and worker are never stopped: once swapped onto the new
+        # image ("started") they are swapped back, and smoke-tested.
+        (["index_saved", "checkout", "tag_set"], ["checkout-old", "tag-old", "gate"]),
+        (
+            ["index_saved", "checkout", "tag_set", "frontend", "started"],
+            ["checkout-old", "tag-old", "gate", "restore-index", "start-app", "smoke"],
+        ),
     ],
 )
 def test_the_rollback_plan(done: list, plan: list) -> None:
@@ -714,6 +721,9 @@ exec REAL_DATE "$@"
 GITHUB = "https://github.com/Macrophage87/RouteMaker.git"
 API = "ghcr.io/macrophage87/routemaker-api"
 ROUTERS = "valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+# A migration file: a release carrying one is deployed with the stop and the snapshot; any other
+# release keeps the api and worker running and swaps them onto the new image.
+MIG = {"src/core/migrations/0002_two.py": "from django.db import migrations\n"}
 
 
 class Beta:
@@ -1027,7 +1037,7 @@ def test_a_build_that_fails_once_is_tried_again_and_deploys(beta: Beta) -> None:
 def test_a_failure_after_the_stop_rolls_back_and_starts_the_old_release(beta: Beta) -> None:
     # The image is "there", so the deploy goes on to stop the app; the snapshot then fails
     # (the stub compose reports no postgis running) and the agent rolls back.
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1")
     assert done.returncode == 1, done.stdout
     assert "rolled-back" in beta.status(), done.stdout
@@ -1048,7 +1058,7 @@ def _order(calls: str, *needles: str) -> None:
 
 
 def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> None:
-    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status(), done.stdout
@@ -1077,6 +1087,66 @@ def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> N
     assert "up-to-date: v0.2.0" in beta.status()
     # the deploy's report outlives the idle pass after it
     assert "result: deployed: v0.2.0" in (beta.cd / "last-release-report.txt").read_text()
+
+
+def test_a_release_without_a_migration_never_stops_the_api_or_snapshots(beta: Beta) -> None:
+    # Backlog 2026-11-12, area 09 item 3: no "Router unavailable" gap for a plain code release.
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status(), done.stdout
+    calls = beta.calls()
+    assert "stop api worker" not in calls and "pg_dump" not in calls
+    assert not list((beta.cd / "backups").glob("pre-release-*.dump"))
+    assert "swap the api and worker onto the new image" in done.stdout
+    _order(
+        calls,
+        "migrate ./manage.py migrate --check",
+        "up -d api worker",
+        "exec -T api ./manage.py migrate --check",
+        "smoke --local",
+    )
+    assert beta.head() == sha and f"TAG={sha[:12]}\n" in (beta.src / ".env").read_text()
+
+
+def test_a_quick_deploy_that_fails_swaps_back_to_the_old_release(beta: Beta) -> None:
+    beta.release(
+        "v0.2.0", {"src/core/a.py": "x = 2\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS}
+    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 1
+    assert "rolled-back" in beta.status(), done.stdout
+    calls = beta.calls()
+    assert "stop api worker" not in calls and "pg_restore" not in calls
+    assert calls.count("up -d api worker") == 2
+    assert calls.index("smoke-new --local") < calls.rindex("up -d api worker")
+    assert calls.rindex("up -d api worker") < calls.index("smoke --local")
+    assert beta.head() == beta.v1 and f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+
+
+def test_a_pending_migration_without_a_migration_file_fails_before_the_api_moves(
+    beta: Beta,
+) -> None:
+    # Never a migration without its snapshot: the deploy stops before `up -d` and puts the
+    # checkout and TAG back; the running api was never touched.
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
+    assert done.returncode == 1
+    assert "a migration is pending although the release carries no migration file" in done.stdout
+    assert "rolled-back" in beta.status()
+    calls = beta.calls()
+    assert "migrate --noinput" not in calls and "up -d api worker" not in calls
+    assert "stop api worker" not in calls
+    assert beta.head() == beta.v1 and f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+
+
+def test_always_stop_keeps_the_stop_and_snapshot_for_every_release(beta: Beta) -> None:
+    with beta.vars.open("a") as f:
+        f.write("export RM_CD_ALWAYS_STOP=1\n")
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    _order(beta.calls(), "stop api worker", "pg_dump", "up -d api worker", "smoke --local")
 
 
 def test_a_release_that_changes_the_agent_reinstalls_it_after_the_deploy(beta: Beta) -> None:
@@ -1123,7 +1193,7 @@ def test_a_deploy_prunes_old_images_and_node_modules_but_not_the_previous(beta: 
 def test_a_deployed_release_s_files_are_readable_by_the_containers(beta: Beta) -> None:
     """The pass runs under umask 077; the v0.8.1 deploy checked out an owner-only manage.py,
     which the migrate container could not read."""
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", "src/core/b.py": "y = 1\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", "src/core/b.py": "y = 1\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
     assert "deployed: v0.2.0" in beta.status(), done.stdout + done.stderr
     for name in ("src/core/a.py", "src/core/b.py"):
@@ -1179,7 +1249,8 @@ def test_a_code_release_runs_no_predraw(beta: Beta) -> None:
 
 def test_a_failed_smoke_test_after_a_migration_restores_the_snapshot(beta: Beta) -> None:
     beta.release(
-        "v0.2.0", {"src/core/a.py": "x = 2\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS}
+        "v0.2.0",
+        {"src/core/a.py": "x = 2\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS, **MIG},
     )
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
     assert done.returncode == 1
@@ -1750,7 +1821,7 @@ def test_a_new_lockfile_waits_even_when_the_old_one_has_node_modules(beta: Beta)
 
 def test_a_front_end_release_is_built_before_the_stop_and_installed(beta: Beta) -> None:
     beta.node_modules(b"{}\n")
-    sha = beta.release("v0.2.0", {"frontend/src/x.ts": "export {}\n"})
+    sha = beta.release("v0.2.0", {"frontend/src/x.ts": "export {}\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
@@ -1829,7 +1900,7 @@ def test_a_new_tag_on_the_deployed_commit_is_only_recorded(beta: Beta) -> None:
 
 
 def test_a_pass_stopped_mid_deploy_records_it_and_the_next_pass_rolls_it_back(beta: Beta) -> None:
-    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
     done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE="TERM", **run)
     assert done.returncode == 143, done.stdout + done.stderr
@@ -1856,7 +1927,7 @@ def test_a_pass_stopped_mid_deploy_records_it_and_the_next_pass_rolls_it_back(be
 
 
 def test_a_pass_killed_outright_mid_deploy_is_rolled_back_next_time(beta: Beta) -> None:
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
     done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE="KILL", **run)
     assert done.returncode == -9
@@ -2054,7 +2125,7 @@ def test_a_docs_only_release_whose_compose_gate_fails_is_not_recorded(beta: Beta
 
 
 def test_a_code_release_whose_compose_gate_fails_is_rolled_back(beta: Beta) -> None:
-    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_GATE_FAIL=sha[:12])
     assert done.returncode == 1, done.stdout + done.stderr
     assert "FAILED: the compose gate" in done.stdout
@@ -2070,7 +2141,7 @@ def test_a_code_release_whose_compose_gate_fails_is_rolled_back(beta: Beta) -> N
 
 @pytest.mark.parametrize(("sig", "rc"), [("TERM", 143), ("INT", 130), ("HUP", 129)])
 def test_each_stop_signal_leaves_an_interrupted_record(beta: Beta, sig: str, rc: int) -> None:
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
     done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE=sig, **run)
     assert done.returncode == rc, done.stdout + done.stderr
@@ -2338,7 +2409,7 @@ def test_a_deploy_also_posts_the_releases_notes_for_riders(beta: Beta) -> None:
 
 
 # What a full code deploy needs from the stubs (as in the green code release test).
-DEPLOY = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
+DEPLOY = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis"}
 
 
 def test_a_deploy_refreshes_the_installed_alert_script_first(beta: Beta) -> None:

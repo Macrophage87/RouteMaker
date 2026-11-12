@@ -376,7 +376,7 @@ STEPS = (
     "tag_set",  # TAG= in .env set to the new release
     "migrate",  # migrate started (the database may have moved forward)
     "frontend",  # front end install started (the index may be the new one)
-    "started",  # api and worker started on the new image
+    "started",  # api and worker started (or, without a stop, swapped) on the new image
     "services",  # photon and the routers recreated for a compose change
     "routers",  # the routers restarted for a valhalla/*.json change
 )
@@ -409,7 +409,9 @@ def rollback_plan(done: Iterable[str]) -> list:
         plan.append("restore-db")
     if "frontend" in did:
         plan.append("restore-index")
-    if "stopped" in did:
+    # A release without a migration is deployed with the api and worker running (no "stopped"):
+    # once "started" swapped them onto the new image, `up -d` on the old TAG swaps them back.
+    if "stopped" in did or "started" in did:
         plan.append("start-app")
     if "services" in did:
         plan.append("recreate-services")
@@ -417,7 +419,7 @@ def rollback_plan(done: Iterable[str]) -> list:
         plan.append("restart-routers")
     if "migrate" in did:
         plan.append("predraw")
-    if "stopped" in did:
+    if "stopped" in did or "started" in did:
         plan.append("smoke")
     return plan
 
