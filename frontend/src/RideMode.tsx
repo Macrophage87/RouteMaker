@@ -42,7 +42,7 @@ import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
-import { rejoinsFirst, startsWayBack, toStartRoute, wayBackRoute } from "./lib/rejoin.ts";
+import { rejoinsFirst, startsWayBack, steadyPoint, toStartRoute, wayBackRoute, wayBackShown } from "./lib/rejoin.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -500,6 +500,8 @@ export interface RideView {
   onLettered?: (index: number) => void;
   /** The train or bus waited for or ridden past the line, its stops ahead (lib/onBoard.ts onBoardPath). */
   transitPath?: OnBoardPath | null;
+  /** Off the route with the way back shown (lib/rejoin.ts wayBackShown): the planned line's nearest point ahead. */
+  wayBackTo?: LonLat | null;
 }
 
 /** A train's part (a bus stop has no exits to name). */
@@ -854,6 +856,15 @@ export const FIXED_SAID = t("This ride stays on its route, never re-routed.");
 
 function wayBackSaid(back: { metres: number; direction: string }): string {
   return t("The planned route is {distance} to the {direction}.", { distance: spokenDistance(back.metres), direction: back.direction });
+}
+
+/**
+ * No signal for a re-plan, said with the way back to the planned line where there is one ("No signal: the planned
+ * route is still shown. The planned route is 400 feet to the northeast."), from what is on the phone: the rider is
+ * not left with only the first half (backlog 2026-11-12, area 06 item 4a). The screen shows the way back on its own.
+ */
+function noSignalSaid(back: { metres: number; direction: string } | null): string {
+  return back ? `${REPLAN_NO_SIGNAL} ${wayBackSaid(back)}` : REPLAN_NO_SIGNAL;
 }
 
 /** No food, repair or place search given (a test's ride): those detours say they are unavailable. */
@@ -1627,7 +1638,7 @@ export function RideMode({
         gate.finish(false);
         setReplanning(false);
         setReplanNote(REPLAN_NO_SIGNAL);
-        tell(REPLAN_NO_SIGNAL);
+        tell(noSignalSaid(wayBack(modelRef.current, rideRef.current)));
       }, REPLAN_TIMEOUT_MS);
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
@@ -1729,7 +1740,7 @@ export function RideMode({
         if (released) return false;
         const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
         setReplanNote(said);
-        tell(said);
+        tell(failed === "network" ? noSignalSaid(wayBack(modelRef.current, rideRef.current)) : said);
         return false;
       }
       plan.current = { points, loop: false };
@@ -2418,6 +2429,12 @@ export function RideMode({
     openMenu("detour");
   };
   const onLettered = useCallback((index: number) => openOnRow.current(index), []);
+  // The way back to the planned line, drawn from the rider (MapView), where Ride says it: moved only once its point
+  // has moved WAY_BACK_STEP_M, so App is not drawn again at every fix (lib/rideViewKept.ts).
+  const backShown = wayBackShown(ride.off, keepPlanned, fixedRef.current, replanNote === REPLAN_NO_SIGNAL);
+  const wayBackKept = useRef<LonLat | null>(null);
+  const wayBackTo = steadyPoint(wayBackKept.current, backShown ? (wayBack(model, ride)?.point ?? null) : null);
+  wayBackKept.current = wayBackTo;
   useEffect(() => {
     onView({
       route,
@@ -2428,8 +2445,9 @@ export function RideMode({
       lettered,
       onLettered,
       transitPath,
+      wayBackTo,
     });
-  }, [route, other, fix, onView, vehicle, stops, lettered, onLettered, transitPath]);
+  }, [route, other, fix, onView, vehicle, stops, lettered, onLettered, transitPath, wayBackTo]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), kept a day for the same route
@@ -3848,7 +3866,7 @@ export function RideMode({
             <div>
               <p className="cue-text">{t("Off the planned route.")}</p>
               {replanning && <p className="cue-then">{t("Finding a new way from here…")}</p>}
-              {(keepPlanned || fixedRef.current) && back && (
+              {backShown && back && (
                 <p className="cue-then">
                   {t("The planned route is {distance} to the {direction}.", { distance: formatDistance(back.metres), direction: back.direction })}
                 </p>
