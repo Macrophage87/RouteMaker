@@ -94,6 +94,7 @@ from . import (
     mass_capacity,
     overrides,
     promotion,
+    rated_facts,
     reconcile,
     rematch,
     restricted_areas,
@@ -864,7 +865,8 @@ class RebuildContext:
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
     # Each unnamed bike way's named street alongside (`facility.side_streets`), found once
-    # after the override rows: for the side-path step and the side-path names. None until then.
+    # at the end of `classify_facilities`: for the side-path step and the side-path names.
+    # None until then.
     side_streets: dict[int, object] | None = None
     # The `bicycle=use_sidepath` roads with a side path mapped beside them, to that
     # path's name (None where it has none), rated Avoid by `classify_stress` and said
@@ -2011,6 +2013,31 @@ def apply_beside_busy_road(
     return moved
 
 
+def rate_side_paths(ways, stress_by_way: dict) -> tuple[dict, int]:
+    """The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
+    the owner, 2026-11-12): each unnamed bike way's named street alongside
+    (`facility.side_streets`), what the path crosses (`facility.side_path_crossings`), and the
+    level it takes from them (`apply_beside_busy_road`). Returns the streets found, kept for
+    the side-path names (`write_segments`), and how many ways the step moved.
+
+    Run once every street's level is final: after the rows (a row on the street sets the
+    level the path reads, a row on the path stands), after the circle parks', Capitol
+    grounds' and Mall's walks are opened, and after `car_free_tier_1` and
+    `raise_ridden_sidewalks` (`classify_facilities`), so a road closed to cars for good,
+    lowered to LTS 1 there, never lifts the path beside it."""
+    side_streets = facility.side_streets([(way.osm_id, way.tags, way.coordinates) for way in ways])
+    crossings = facility.side_path_crossings(
+        [(way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates) for way in ways],
+        side_streets,
+        lambda osm_id: (
+            level_of(stress_by_way[osm_id])
+            if osm_id in stress_by_way and stress_by_way[osm_id].tier is not None
+            else None
+        ),
+    )
+    return side_streets, apply_beside_busy_road(stress_by_way, side_streets, crossings)
+
+
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
     """Make a road closed to motor traffic for good tier 1, as the weekend graph
     makes a weekend closure; True when it did.
@@ -3138,6 +3165,56 @@ def build_handlers(
             "override re-match",
         )
 
+    def write_rated_facts_report(before_rows: dict, rematch_report) -> None:
+        """`reports/rated-facts-changed.{md,csv}`: the pinned roads whose facts (class, speed,
+        lanes, count, bike facility) moved since the row was rated (`pipeline.rated_facts`).
+        The road keeps our level (the owner, 2026-11-12: "Keep our level, queue it for you");
+        the list feeds Review's "Facts changed since rated". A report, not the stage's output:
+        it never fails the rebuild."""
+        try:
+            stored = rated_facts.follow_rematch(rated_facts.load(), rematch_report.entries)
+            # Only while the row the facts came from is the one applied: a road re-rated in
+            # the road panel or Review, or pinned by another file's row, is not compared with
+            # facts it was never rated from (review of #1183).
+            ours: dict[int, float] = {}
+            for w, r in list(stored.items()):
+                result = context.stress_by_way.get(w)
+                adjustment = getattr(result, "adjustment", None) if w in before_rows else None
+                if adjustment is None or adjustment.adjustment_id != r.adjustment_id:
+                    del stored[w]
+                    continue
+                ours[w] = level_of(result)
+
+            def formula_of(result) -> float | None:
+                # The formula's own level where an agency's replaced it (`formula_tier`).
+                tier = getattr(result, "formula_tier", None)
+                if tier is not None:
+                    return int(tier) + (0.5 if result.formula_half else 0.0)
+                return level_of(result) if result.tier is not None else None
+
+            def facility_of(way_id: int, tags) -> str:
+                return str(facility.facility(dict(context.class_tags_by_way.get(way_id, tags))))
+
+            changed, checked = rated_facts.compare(
+                stored, context.ways_by_id, before_rows, ours, facility_of, formula_of
+            )
+            write_reports(
+                context.work_dir,
+                {
+                    f"{rated_facts.REPORT_NAME}.md": rated_facts.report_markdown(changed, checked),
+                    f"{rated_facts.REPORT_NAME}.csv": rated_facts.report_csv(changed),
+                },
+                "facts changed since rated",
+            )
+            logger.info(
+                "pinned roads whose facts changed since rated: %d of %d checked, in %s.md",
+                len(changed),
+                checked,
+                rated_facts.REPORT_NAME,
+            )
+        except Exception:
+            logger.warning("facts changed since rated: report not written", exc_info=True)
+
     def write_newer_osm_report(rows) -> None:
         """The District ways OSM edited after DC's record that disagree with what it
         applied, for the owner's call (`pipeline.dc_osm_newer`; the owner, 2026-11-08:
@@ -3243,6 +3320,10 @@ def build_handlers(
                 entry.reason,
             )
         write_rematch_report(rematch_report)
+        # The classifier's result on each way a stress row pins, before the row replaces it,
+        # for the facts-changed report (`pipeline.rated_facts`).
+        pinned = {row.osm_way_id for row in rows if row.kind == "stress"}
+        before_rows = {w: context.stress_by_way[w] for w in pinned if w in context.stress_by_way}
         try:
             access, access_missing, superseding = overrides.apply_access(context.ways, rows)
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
@@ -3269,31 +3350,6 @@ def build_handlers(
                 "opened to bicycles",
                 len(context.mall_ways),
             )
-            # The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
-            # the owner, 2026-11-12), after the rows so the street's own level is the one its row
-            # set and a row on the path itself stands, and after the circle parks', Capitol
-            # grounds' and Mall's walks are opened, so they are matched (and named) too. The
-            # street each runs beside is kept for the side-path names (`write_segments`).
-            context.side_streets = facility.side_streets(
-                [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
-            )
-            crossings = facility.side_path_crossings(
-                [
-                    (way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates)
-                    for way in context.ways
-                ],
-                context.side_streets,
-                lambda osm_id: (
-                    level_of(context.stress_by_way[osm_id])
-                    if osm_id in context.stress_by_way
-                    and context.stress_by_way[osm_id].tier is not None
-                    else None
-                ),
-            )
-            stepped = apply_beside_busy_road(context.stress_by_way, context.side_streets, crossings)
-            logger.info(
-                "side paths and protected lanes beside a busy road, rated from it: %d", stepped
-            )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
             # same way: an approved row asking for something an override may not
@@ -3305,6 +3361,7 @@ def build_handlers(
             raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
         write_newer_osm_report(rows)
+        write_rated_facts_report(before_rows, rematch_report)
         context.reviewer_surface_by_way = surfaces
         missing = tuple(
             sorted({*access_missing, *stress_missing, *jurisdiction_missing, *surface_missing})
@@ -3676,6 +3733,9 @@ def build_handlers(
                 context.facility_shown_by_way.pop(way.osm_id, None)
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
+        # Last, once every street's level is final (`rate_side_paths`).
+        context.side_streets, stepped = rate_side_paths(context.ways, context.stress_by_way)
+        logger.info("side paths and protected lanes beside a busy road, rated from it: %d", stepped)
         logger.info(
             "contraflow-only facilities shown on the map where the rider with the traffic "
             "has none: %s",

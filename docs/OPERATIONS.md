@@ -5425,10 +5425,15 @@ A row the owner leaves is open again next week.
 
 ### AADT smoothing, named corridors and the override re-match
 
-Three more reports land beside the discrepancy report, in
+Four more reports land beside the discrepancy report, in
 `${DATA_ROOT}/rebuild/reports/`, each replaced by every rebuild. Like it, a
 failure to write one is a warning in the log and never fails the rebuild.
 
+- `rated-facts-changed.md` and `.csv` (the owner, 2026-11-12): every pinned road whose
+  facts (class, speed, lanes, count, bike facility) moved since its row was rated
+  (`pipeline.rated_facts`; docs/stress/overrides.md). The road keeps our level; Review's
+  "Facts changed since rated" queue lists them for a ruling. The log line is "pinned
+  roads whose facts changed since rated: N of M checked".
 - `override-rematch.md` and `.csv` (OWNER-DECISIONS 282): every approved override
   row whose OSM way is missing from the extract, and what became of it:
   `rematched` (re-pointed at the ways that now stand for it, by stored geometry
@@ -5903,15 +5908,20 @@ filled in the browser from Nixle. Each needs its own look before it can be watch
    towpath FIRST [LAST]` prints the towpath's lines between the mileposts (one milepost: about 160 ft
    either side, our default) and how much of the stretch the mile lines cover; where under 95% (the
    mile lines have gaps, e.g. about mile 9 to 19.6), draw the rest from the OSM ways
-   (`python scripts/ddot_advisories.py lines WAY ...`). "Detour" in an NPS line usually means
+   (`python scripts/ddot_advisories.py lines WAY ...`). Join a closure's ways into one
+   continuous line where they run end to end: each line is its own zone, trimmed 20 m at both
+   ends (`workzones.TRIM_M`), so a crossing at the join of two short lines is left open. "Detour" in an NPS line usually means
    the towpath itself is closed there; "High Water Detour" is only when the river is up: leave it
    out (it has no dates). Work that leaves the trail open ("expect intermittent delays", "one
    lane") stays out.
-3. Enter it as the owner's rule for these closures says (the decision is in the backlog thread
-   "Add trail and county closures"; until it is made, only what the owner confirms). Evidence is
-   the agency's words and what a rider saw, never another map. A closure that starts before the
-   next release reaches riders only through a reviewer closure (the road panel's "Mark closed",
-   an admin's), so for a short one that is the way.
+3. Enter it by the owner's rule (2026-11-12, "Clearly dated ones go in"): a closure the agency
+   posts with its dates (a first and a last day) and a clear place (named cross streets, mileposts,
+   a named bridge) goes in without asking, and the owner is told after, with the alert's link. One
+   with no dates, an open end ("until further notice", "through spring") or a place that cannot be
+   pinned down waits for the owner's word. Evidence is the agency's words and what a rider saw,
+   never another map. A closure that starts before the next release reaches riders only through a
+   reviewer closure (the road panel's "Mark closed", an admin's), so for a short one that is the
+   way.
 4. `python scripts/park_alerts.py watch --mark` adds every item now on the pages read to `seen`
    and sets `updated` to today. An item whose words change is listed again.
 5. Ship the file in the next release, as for the other hand-read files.
@@ -5919,7 +5929,9 @@ filled in the browser from Nixle. Each needs its own look before it can be watch
 The first watch (2026-11-12) listed 2 NOVA Parks trail items (Falls Church crosswalk detours,
 Nov 17-24; the Sterling Blvd overpass, delays only), 6 C&O trail items (among them the Dam No. 5
 towpath detour, miles 106 to 106.8, and the Polly Pond bridge, mile 134.3, past the map's edge) and
-3 Anne Arundel ones (none a closure of the B&A); nothing was entered or marked read.
+3 Anne Arundel ones (none a closure of the B&A). After the owner's rule, the W&OD crosswalk
+detour (Nov 17-24) was entered and the first items marked read; the Dam No. 5 detour (no dates)
+waits for the owner.
 
 ## Deer-management closures (v0.12.3)
 
