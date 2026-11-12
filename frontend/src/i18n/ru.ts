@@ -2156,6 +2156,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "значки эмодзи",
   "Road closed ahead": "Впереди дорога перекрыта",
   "Road closed ahead, {distance}: {name}": "Впереди дорога перекрыта, {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Какой-то участок ощущался не так, как его оценка?",
+  "Which stretch?": "Какой участок?",
+  "You marked a road closed.": "Вы отметили одну дорогу как закрытую.",
+  "You marked {n} roads closed.": "Вы отметили закрытые дороги: {n}.",
+  "Send for review": "Отправить на проверку",
+  "Only the road and the day are sent.": "Отправляются только дорога и день.",
+  "Sent 1 closed road for review. Thank you.": "Закрытая дорога отправлена на проверку. Спасибо.",
+  "Sent {n} closed roads for review. Thank you.": "Закрытые дороги отправлены на проверку: {n}. Спасибо.",
+  "Not sent. Try again shortly.": "Не отправлено. Попробуйте ещё раз чуть позже.",
+  "That road can't be looked up right now. Try again shortly.": "Сейчас нельзя найти эту дорогу. Попробуйте ещё раз чуть позже.",
+  "Looking up the road…": "Ищем дорогу…",
+  "Sending…": "Отправка…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "Нет доступа для посторонних",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Скопировать журнал подсказок",
+  "Cue log copied.": "Журнал подсказок скопирован.",
+  "Could not copy the cue log.": "Не удалось скопировать журнал подсказок.",
 };

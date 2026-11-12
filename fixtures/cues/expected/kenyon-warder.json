@@ -1,0 +1,26 @@
+[
+ {
+  "turn": "Start",
+  "road": "Kenyon St NW bike Ln",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Left",
+  "road": "Warder St NW",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Left",
+  "road": "Quebec Pl NW",
+  "then": "then right onto Svc Rd, then left onto Svc Rd",
+  "arrow": "turn left,right,left"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

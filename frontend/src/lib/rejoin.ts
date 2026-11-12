@@ -21,6 +21,27 @@ export const REJOIN_FURTHER_M = [500, 1500] as const;
 const REJOIN_SAME_M = 50;
 
 /**
+ * The way back to the planned line moves on the map only once its point has moved this far (about 50 ft), so the
+ * map and App are not drawn again at every fix for a point that barely moved. Our default, unmeasured.
+ */
+export const WAY_BACK_STEP_M = 15;
+
+/**
+ * Whether Ride shows (and draws) the way back to the planned line: off the route, where no new route is coming,
+ * that is with no signal for a re-plan (its note `noSignal`), after Keep the planned route, or on a fixed route.
+ * With no signal the rider had only "the planned route is still shown" before (backlog 2026-11-12, area 06 item 4a).
+ */
+export function wayBackShown(off: boolean, keepPlanned: boolean, fixed: boolean, noSignal: boolean): boolean {
+  return off && (keepPlanned || fixed || noSignal);
+}
+
+/** `next`, unless `was` is within WAY_BACK_STEP_M of it: then `was`, the same object, so nothing is drawn again. */
+export function steadyPoint(was: LonLat | null, next: LonLat | null): LonLat | null {
+  if (!next) return null;
+  return was && haversineM(was, next) < WAY_BACK_STEP_M ? was : next;
+}
+
+/**
  * Whether a failed re-plan is worth a way back: not with no signal (a way back would not get through either)
  * nor when the planner asked the rider to slow down (it would be refused too).
  */

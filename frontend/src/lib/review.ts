@@ -13,7 +13,7 @@ import { streetViewUrl } from "./roadInfo.ts";
 
 type Fetch = typeof fetch;
 
-export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane" | "dc_no_bike";
+export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane" | "dc_no_bike" | "facts_changed";
 /** Review's own lists: its queues, then the reviews that were in Settings. */
 export type ListKey = QueueKey | "suggestions" | "hazards" | "closures";
 export type Decision = "accept" | "reject" | "set";
@@ -139,6 +139,7 @@ export const LISTS: { key: ListKey; label: string }[] = [
   { key: "rematch", label: "Overrides not re-matched" },
   { key: "painted_lane", label: "Painted lanes, agency against formula" },
   { key: "dc_no_bike", label: "DC ways closed to bikes" },
+  { key: "facts_changed", label: "Facts changed since rated" },
   { key: "suggestions", label: "Rider suggestions" },
   { key: "hazards", label: "Mass Ride hazard reports" },
   { key: "closures", label: "Closure reports" },
@@ -267,9 +268,11 @@ export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string;
   painted_lane: { colour: "#000000", colourName: "black", dash: [4, 1, 1, 1, 1, 1], pattern: "dash and two dots" },
   // Yellow is near the light basemap, so its halo is dark (about 1.2:1 on white otherwise).
   dc_no_bike: { colour: "#F0E442", colourName: "yellow", dash: [5, 3], pattern: "very long dashes", halo: "#333333" },
+  // Okabe-Ito's eight colours are taken: the ninth is Paul Tol's wine, from his colour-blind-safe muted scheme.
+  facts_changed: { colour: "#882255", colourName: "wine", dash: [1, 2], pattern: "spaced dots" },
 };
 
-export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane", "dc_no_bike"];
+export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane", "dc_no_bike", "facts_changed"];
 
 /**
  * What Review's map shows of the view (GET /api/review/map): the roads of the lists switched on inside it, up to the
