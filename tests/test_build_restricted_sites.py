@@ -54,6 +54,13 @@ WAYS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def no_hand_drawn_areas(tmp_path, monkeypatch):
+    """The repo's own hand-drawn areas (`fixtures/restricted-sites/`, the Patuxent closed area)
+    stay out of these synthetic sites; `drawn_features` has its own tests below."""
+    monkeypatch.setattr(mod, "DRAWN", tmp_path / "no-drawn-areas")
+
+
 def by(found, key):
     return [f for f in found["features"] if key in f["properties"]]
 

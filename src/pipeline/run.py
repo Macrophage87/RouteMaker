@@ -865,7 +865,8 @@ class RebuildContext:
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
     # Each unnamed bike way's named street alongside (`facility.side_streets`), found once
-    # after the override rows: for the side-path step and the side-path names. None until then.
+    # at the end of `classify_facilities`: for the side-path step and the side-path names.
+    # None until then.
     side_streets: dict[int, object] | None = None
     # The `bicycle=use_sidepath` roads with a side path mapped beside them, to that
     # path's name (None where it has none), rated Avoid by `classify_stress` and said
@@ -2010,6 +2011,31 @@ def apply_beside_busy_road(
             stress_by_way[path_id] = stepped
             moved += 1
     return moved
+
+
+def rate_side_paths(ways, stress_by_way: dict) -> tuple[dict, int]:
+    """The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
+    the owner, 2026-11-12): each unnamed bike way's named street alongside
+    (`facility.side_streets`), what the path crosses (`facility.side_path_crossings`), and the
+    level it takes from them (`apply_beside_busy_road`). Returns the streets found, kept for
+    the side-path names (`write_segments`), and how many ways the step moved.
+
+    Run once every street's level is final: after the rows (a row on the street sets the
+    level the path reads, a row on the path stands), after the circle parks', Capitol
+    grounds' and Mall's walks are opened, and after `car_free_tier_1` and
+    `raise_ridden_sidewalks` (`classify_facilities`), so a road closed to cars for good,
+    lowered to LTS 1 there, never lifts the path beside it."""
+    side_streets = facility.side_streets([(way.osm_id, way.tags, way.coordinates) for way in ways])
+    crossings = facility.side_path_crossings(
+        [(way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates) for way in ways],
+        side_streets,
+        lambda osm_id: (
+            level_of(stress_by_way[osm_id])
+            if osm_id in stress_by_way and stress_by_way[osm_id].tier is not None
+            else None
+        ),
+    )
+    return side_streets, apply_beside_busy_road(stress_by_way, side_streets, crossings)
 
 
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
@@ -3324,31 +3350,6 @@ def build_handlers(
                 "opened to bicycles",
                 len(context.mall_ways),
             )
-            # The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
-            # the owner, 2026-11-12), after the rows so the street's own level is the one its row
-            # set and a row on the path itself stands, and after the circle parks', Capitol
-            # grounds' and Mall's walks are opened, so they are matched (and named) too. The
-            # street each runs beside is kept for the side-path names (`write_segments`).
-            context.side_streets = facility.side_streets(
-                [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
-            )
-            crossings = facility.side_path_crossings(
-                [
-                    (way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates)
-                    for way in context.ways
-                ],
-                context.side_streets,
-                lambda osm_id: (
-                    level_of(context.stress_by_way[osm_id])
-                    if osm_id in context.stress_by_way
-                    and context.stress_by_way[osm_id].tier is not None
-                    else None
-                ),
-            )
-            stepped = apply_beside_busy_road(context.stress_by_way, context.side_streets, crossings)
-            logger.info(
-                "side paths and protected lanes beside a busy road, rated from it: %d", stepped
-            )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
             # same way: an approved row asking for something an override may not
@@ -3732,6 +3733,9 @@ def build_handlers(
                 context.facility_shown_by_way.pop(way.osm_id, None)
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
+        # Last, once every street's level is final (`rate_side_paths`).
+        context.side_streets, stepped = rate_side_paths(context.ways, context.stress_by_way)
+        logger.info("side paths and protected lanes beside a busy road, rated from it: %d", stepped)
         logger.info(
             "contraflow-only facilities shown on the map where the rider with the traffic "
             "has none: %s",

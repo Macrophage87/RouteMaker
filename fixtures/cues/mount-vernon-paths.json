@@ -1,0 +1,2305 @@
+{
+ "name": "mount-vernon-paths",
+ "about": "Path beside Mount Vernon Memorial Hwy, then side streets and short path pieces (three bears in 50 m)",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.132416,
+     38.716591
+    ],
+    [
+     -77.132246,
+     38.716669
+    ],
+    [
+     -77.132063,
+     38.716325
+    ],
+    [
+     -77.132132,
+     38.716279
+    ],
+    [
+     -77.132064,
+     38.716158
+    ],
+    [
+     -77.131981,
+     38.71601
+    ],
+    [
+     -77.131868,
+     38.71581
+    ],
+    [
+     -77.131794,
+     38.715667
+    ],
+    [
+     -77.131759,
+     38.715598
+    ],
+    [
+     -77.131727,
+     38.715512
+    ],
+    [
+     -77.1317,
+     38.715433
+    ],
+    [
+     -77.131646,
+     38.715339
+    ],
+    [
+     -77.131523,
+     38.715142
+    ],
+    [
+     -77.131456,
+     38.715065
+    ],
+    [
+     -77.131329,
+     38.714921
+    ],
+    [
+     -77.13123,
+     38.71477
+    ],
+    [
+     -77.131078,
+     38.714525
+    ],
+    [
+     -77.130981,
+     38.714367
+    ],
+    [
+     -77.130947,
+     38.714314
+    ],
+    [
+     -77.130784,
+     38.714059
+    ],
+    [
+     -77.130754,
+     38.714
+    ],
+    [
+     -77.130743,
+     38.713954
+    ],
+    [
+     -77.13074,
+     38.713871
+    ],
+    [
+     -77.130734,
+     38.713788
+    ],
+    [
+     -77.130725,
+     38.713746
+    ],
+    [
+     -77.130713,
+     38.71372
+    ],
+    [
+     -77.130661,
+     38.713633
+    ],
+    [
+     -77.130597,
+     38.713532
+    ],
+    [
+     -77.130512,
+     38.713398
+    ],
+    [
+     -77.130362,
+     38.713151
+    ],
+    [
+     -77.130171,
+     38.71284
+    ],
+    [
+     -77.129992,
+     38.712545
+    ],
+    [
+     -77.129656,
+     38.712003
+    ],
+    [
+     -77.129484,
+     38.711722
+    ],
+    [
+     -77.129403,
+     38.7116
+    ],
+    [
+     -77.129286,
+     38.711438
+    ],
+    [
+     -77.12927,
+     38.711419
+    ],
+    [
+     -77.129191,
+     38.711321
+    ],
+    [
+     -77.129138,
+     38.711254
+    ],
+    [
+     -77.129063,
+     38.711161
+    ],
+    [
+     -77.128954,
+     38.711053
+    ],
+    [
+     -77.128894,
+     38.710993
+    ],
+    [
+     -77.128793,
+     38.710887
+    ],
+    [
+     -77.128623,
+     38.710729
+    ],
+    [
+     -77.128498,
+     38.710616
+    ],
+    [
+     -77.128304,
+     38.710452
+    ],
+    [
+     -77.128146,
+     38.710335
+    ],
+    [
+     -77.128066,
+     38.71028
+    ],
+    [
+     -77.127898,
+     38.710162
+    ],
+    [
+     -77.127599,
+     38.70998
+    ],
+    [
+     -77.127386,
+     38.709859
+    ],
+    [
+     -77.127193,
+     38.709761
+    ],
+    [
+     -77.126857,
+     38.709617
+    ],
+    [
+     -77.126594,
+     38.709511
+    ],
+    [
+     -77.126359,
+     38.709428
+    ],
+    [
+     -77.125905,
+     38.709284
+    ],
+    [
+     -77.125504,
+     38.709168
+    ],
+    [
+     -77.125256,
+     38.709102
+    ],
+    [
+     -77.124888,
+     38.70901
+    ],
+    [
+     -77.124318,
+     38.708864
+    ],
+    [
+     -77.123079,
+     38.708552
+    ],
+    [
+     -77.12261,
+     38.708434
+    ],
+    [
+     -77.122389,
+     38.708379
+    ],
+    [
+     -77.122123,
+     38.708313
+    ],
+    [
+     -77.121617,
+     38.708198
+    ],
+    [
+     -77.121196,
+     38.708113
+    ],
+    [
+     -77.12073,
+     38.708028
+    ],
+    [
+     -77.120299,
+     38.70796
+    ],
+    [
+     -77.119956,
+     38.707911
+    ],
+    [
+     -77.119623,
+     38.707868
+    ],
+    [
+     -77.119359,
+     38.707841
+    ],
+    [
+     -77.119085,
+     38.707815
+    ],
+    [
+     -77.118718,
+     38.707781
+    ],
+    [
+     -77.118458,
+     38.707765
+    ],
+    [
+     -77.118283,
+     38.707755
+    ],
+    [
+     -77.117892,
+     38.707738
+    ],
+    [
+     -77.117712,
+     38.707732
+    ],
+    [
+     -77.117665,
+     38.707737
+    ],
+    [
+     -77.11759,
+     38.707767
+    ],
+    [
+     -77.117542,
+     38.707786
+    ],
+    [
+     -77.117402,
+     38.707832
+    ],
+    [
+     -77.117358,
+     38.70784
+    ],
+    [
+     -77.117315,
+     38.707844
+    ],
+    [
+     -77.117116,
+     38.707843
+    ],
+    [
+     -77.116791,
+     38.707847
+    ],
+    [
+     -77.116359,
+     38.707849
+    ],
+    [
+     -77.116041,
+     38.707853
+    ],
+    [
+     -77.115771,
+     38.707855
+    ],
+    [
+     -77.11569,
+     38.707854
+    ],
+    [
+     -77.115635,
+     38.707849
+    ],
+    [
+     -77.115538,
+     38.707837
+    ],
+    [
+     -77.11546,
+     38.707832
+    ],
+    [
+     -77.115376,
+     38.707832
+    ],
+    [
+     -77.115359,
+     38.707833
+    ],
+    [
+     -77.115301,
+     38.707837
+    ],
+    [
+     -77.115216,
+     38.707844
+    ],
+    [
+     -77.115084,
+     38.707855
+    ],
+    [
+     -77.115045,
+     38.707861
+    ],
+    [
+     -77.115018,
+     38.707869
+    ],
+    [
+     -77.114983,
+     38.707886
+    ],
+    [
+     -77.114943,
+     38.707906
+    ],
+    [
+     -77.114902,
+     38.707928
+    ],
+    [
+     -77.114848,
+     38.70796
+    ],
+    [
+     -77.114791,
+     38.707989
+    ],
+    [
+     -77.11475,
+     38.708004
+    ],
+    [
+     -77.114702,
+     38.708014
+    ],
+    [
+     -77.114608,
+     38.708031
+    ],
+    [
+     -77.114553,
+     38.708041
+    ],
+    [
+     -77.11436,
+     38.708055
+    ],
+    [
+     -77.114238,
+     38.708063
+    ],
+    [
+     -77.113809,
+     38.708114
+    ],
+    [
+     -77.113575,
+     38.70815
+    ],
+    [
+     -77.113481,
+     38.708167
+    ],
+    [
+     -77.112655,
+     38.708323
+    ],
+    [
+     -77.111779,
+     38.708518
+    ],
+    [
+     -77.11134,
+     38.708628
+    ],
+    [
+     -77.11088,
+     38.708767
+    ],
+    [
+     -77.109665,
+     38.709185
+    ],
+    [
+     -77.109122,
+     38.709389
+    ],
+    [
+     -77.108944,
+     38.709442
+    ],
+    [
+     -77.108823,
+     38.709463
+    ],
+    [
+     -77.108763,
+     38.709474
+    ],
+    [
+     -77.108575,
+     38.709515
+    ],
+    [
+     -77.108106,
+     38.709725
+    ],
+    [
+     -77.107786,
+     38.709901
+    ],
+    [
+     -77.107655,
+     38.709952
+    ],
+    [
+     -77.107563,
+     38.70998
+    ],
+    [
+     -77.107494,
+     38.710008
+    ],
+    [
+     -77.107411,
+     38.710042
+    ],
+    [
+     -77.107385,
+     38.710057
+    ],
+    [
+     -77.10737,
+     38.710057
+    ],
+    [
+     -77.107341,
+     38.710058
+    ],
+    [
+     -77.107325,
+     38.71006
+    ],
+    [
+     -77.107283,
+     38.710073
+    ],
+    [
+     -77.10722,
+     38.710105
+    ],
+    [
+     -77.107033,
+     38.710208
+    ],
+    [
+     -77.106719,
+     38.710384
+    ],
+    [
+     -77.10624,
+     38.710668
+    ],
+    [
+     -77.10594,
+     38.710858
+    ],
+    [
+     -77.105837,
+     38.710931
+    ],
+    [
+     -77.105716,
+     38.711017
+    ],
+    [
+     -77.105538,
+     38.711135
+    ],
+    [
+     -77.105624,
+     38.711213
+    ],
+    [
+     -77.105451,
+     38.711329
+    ],
+    [
+     -77.106204,
+     38.711525
+    ],
+    [
+     -77.108983,
+     38.712194
+    ],
+    [
+     -77.108857,
+     38.712487
+    ],
+    [
+     -77.108811,
+     38.712565
+    ],
+    [
+     -77.108755,
+     38.712639
+    ],
+    [
+     -77.108691,
+     38.712709
+    ],
+    [
+     -77.108609,
+     38.712781
+    ],
+    [
+     -77.107882,
+     38.713289
+    ],
+    [
+     -77.107775,
+     38.713388
+    ],
+    [
+     -77.107701,
+     38.713479
+    ],
+    [
+     -77.107639,
+     38.713576
+    ],
+    [
+     -77.107524,
+     38.713831
+    ],
+    [
+     -77.10721,
+     38.71455
+    ],
+    [
+     -77.107057,
+     38.714889
+    ],
+    [
+     -77.107004,
+     38.714984
+    ],
+    [
+     -77.106965,
+     38.715037
+    ],
+    [
+     -77.106928,
+     38.715079
+    ],
+    [
+     -77.106741,
+     38.715253
+    ],
+    [
+     -77.106696,
+     38.715303
+    ],
+    [
+     -77.106667,
+     38.715345
+    ],
+    [
+     -77.106594,
+     38.715497
+    ],
+    [
+     -77.106793,
+     38.715538
+    ],
+    [
+     -77.10712,
+     38.715616
+    ],
+    [
+     -77.107159,
+     38.71564
+    ],
+    [
+     -77.108188,
+     38.715902
+    ],
+    [
+     -77.108477,
+     38.715976
+    ],
+    [
+     -77.109185,
+     38.716151
+    ],
+    [
+     -77.109102,
+     38.716317
+    ],
+    [
+     -77.10889,
+     38.716879
+    ],
+    [
+     -77.10885,
+     38.71705
+    ],
+    [
+     -77.108837,
+     38.717293
+    ],
+    [
+     -77.108825,
+     38.717379
+    ],
+    [
+     -77.108799,
+     38.717474
+    ],
+    [
+     -77.108755,
+     38.717577
+    ],
+    [
+     -77.108671,
+     38.717711
+    ],
+    [
+     -77.108612,
+     38.717784
+    ],
+    [
+     -77.108554,
+     38.717843
+    ],
+    [
+     -77.108451,
+     38.717929
+    ],
+    [
+     -77.108169,
+     38.718121
+    ],
+    [
+     -77.108115,
+     38.718165
+    ],
+    [
+     -77.108076,
+     38.718205
+    ],
+    [
+     -77.108038,
+     38.718254
+    ],
+    [
+     -77.107993,
+     38.718336
+    ],
+    [
+     -77.10789,
+     38.718588
+    ],
+    [
+     -77.107571,
+     38.719384
+    ],
+    [
+     -77.107366,
+     38.719903
+    ],
+    [
+     -77.10732,
+     38.719994
+    ],
+    [
+     -77.107269,
+     38.720071
+    ],
+    [
+     -77.107133,
+     38.720229
+    ],
+    [
+     -77.106364,
+     38.720947
+    ],
+    [
+     -77.106256,
+     38.721061
+    ],
+    [
+     -77.106164,
+     38.72117
+    ],
+    [
+     -77.106019,
+     38.721369
+    ],
+    [
+     -77.105897,
+     38.721576
+    ],
+    [
+     -77.105797,
+     38.721793
+    ],
+    [
+     -77.105722,
+     38.722002
+    ],
+    [
+     -77.10571,
+     38.722065
+    ],
+    [
+     -77.105709,
+     38.722139
+    ],
+    [
+     -77.105721,
+     38.722213
+    ],
+    [
+     -77.105741,
+     38.722274
+    ],
+    [
+     -77.105772,
+     38.722338
+    ],
+    [
+     -77.105807,
+     38.72239
+    ],
+    [
+     -77.105853,
+     38.722443
+    ],
+    [
+     -77.105915,
+     38.722499
+    ],
+    [
+     -77.10602,
+     38.722566
+    ],
+    [
+     -77.106127,
+     38.722612
+    ],
+    [
+     -77.106766,
+     38.722805
+    ],
+    [
+     -77.107657,
+     38.723071
+    ],
+    [
+     -77.109514,
+     38.723627
+    ],
+    [
+     -77.110448,
+     38.723905
+    ],
+    [
+     -77.110513,
+     38.723917
+    ],
+    [
+     -77.110592,
+     38.723925
+    ],
+    [
+     -77.110659,
+     38.723925
+    ],
+    [
+     -77.110726,
+     38.72392
+    ],
+    [
+     -77.110792,
+     38.723909
+    ],
+    [
+     -77.110857,
+     38.723893
+    ],
+    [
+     -77.110931,
+     38.723868
+    ],
+    [
+     -77.11099,
+     38.723842
+    ],
+    [
+     -77.111962,
+     38.723299
+    ],
+    [
+     -77.112003,
+     38.723276
+    ],
+    [
+     -77.112064,
+     38.723252
+    ],
+    [
+     -77.112128,
+     38.723233
+    ],
+    [
+     -77.112194,
+     38.723219
+    ],
+    [
+     -77.112261,
+     38.72321
+    ],
+    [
+     -77.11233,
+     38.723207
+    ],
+    [
+     -77.112451,
+     38.723214
+    ],
+    [
+     -77.112518,
+     38.723226
+    ],
+    [
+     -77.112595,
+     38.723246
+    ],
+    [
+     -77.112657,
+     38.723268
+    ],
+    [
+     -77.112716,
+     38.723294
+    ],
+    [
+     -77.112824,
+     38.723359
+    ],
+    [
+     -77.112872,
+     38.723398
+    ],
+    [
+     -77.112954,
+     38.723486
+    ],
+    [
+     -77.112986,
+     38.723534
+    ],
+    [
+     -77.113103,
+     38.723764
+    ],
+    [
+     -77.113153,
+     38.723862
+    ],
+    [
+     -77.113186,
+     38.723927
+    ],
+    [
+     -77.113274,
+     38.72412
+    ],
+    [
+     -77.113345,
+     38.724315
+    ],
+    [
+     -77.113474,
+     38.72472
+    ],
+    [
+     -77.113503,
+     38.72481
+    ],
+    [
+     -77.113686,
+     38.725389
+    ],
+    [
+     -77.11371,
+     38.725454
+    ],
+    [
+     -77.113755,
+     38.725543
+    ],
+    [
+     -77.113897,
+     38.725755
+    ],
+    [
+     -77.113911,
+     38.725774
+    ],
+    [
+     -77.11393,
+     38.725798
+    ],
+    [
+     -77.114007,
+     38.725898
+    ],
+    [
+     -77.114023,
+     38.725919
+    ],
+    [
+     -77.114192,
+     38.726007
+    ],
+    [
+     -77.114301,
+     38.726091
+    ],
+    [
+     -77.114311,
+     38.726131
+    ],
+    [
+     -77.114318,
+     38.726162
+    ],
+    [
+     -77.114377,
+     38.726354
+    ],
+    [
+     -77.114455,
+     38.726606
+    ],
+    [
+     -77.114496,
+     38.726674
+    ],
+    [
+     -77.114513,
+     38.72672
+    ],
+    [
+     -77.114742,
+     38.727486
+    ],
+    [
+     -77.114903,
+     38.728026
+    ],
+    [
+     -77.115063,
+     38.72856
+    ],
+    [
+     -77.115093,
+     38.728661
+    ],
+    [
+     -77.115229,
+     38.729119
+    ],
+    [
+     -77.115255,
+     38.729205
+    ],
+    [
+     -77.115366,
+     38.72955
+    ],
+    [
+     -77.115418,
+     38.729667
+    ],
+    [
+     -77.115296,
+     38.729697
+    ],
+    [
+     -77.115325,
+     38.729756
+    ],
+    [
+     -77.115376,
+     38.729767
+    ],
+    [
+     -77.115421,
+     38.729828
+    ],
+    [
+     -77.115528,
+     38.729887
+    ],
+    [
+     -77.115638,
+     38.729891
+    ],
+    [
+     -77.115766,
+     38.729924
+    ],
+    [
+     -77.115814,
+     38.729972
+    ],
+    [
+     -77.115787,
+     38.729995
+    ],
+    [
+     -77.115772,
+     38.730128
+    ],
+    [
+     -77.115758,
+     38.73022
+    ],
+    [
+     -77.115794,
+     38.73028
+    ],
+    [
+     -77.115832,
+     38.730332
+    ],
+    [
+     -77.115784,
+     38.730356
+    ],
+    [
+     -77.115732,
+     38.730417
+    ],
+    [
+     -77.115673,
+     38.730574
+    ],
+    [
+     -77.115572,
+     38.730725
+    ],
+    [
+     -77.115778,
+     38.730989
+    ],
+    [
+     -77.115837,
+     38.731116
+    ],
+    [
+     -77.115942,
+     38.731366
+    ],
+    [
+     -77.115853,
+     38.731389
+    ],
+    [
+     -77.116453,
+     38.73276
+    ],
+    [
+     -77.116617,
+     38.733132
+    ],
+    [
+     -77.116829,
+     38.733606
+    ],
+    [
+     -77.117272,
+     38.734599
+    ],
+    [
+     -77.117321,
+     38.734675
+    ],
+    [
+     -77.117373,
+     38.734737
+    ],
+    [
+     -77.117518,
+     38.73488
+    ],
+    [
+     -77.117662,
+     38.734771
+    ],
+    [
+     -77.117735,
+     38.734733
+    ],
+    [
+     -77.117819,
+     38.7347
+    ],
+    [
+     -77.1179,
+     38.734685
+    ],
+    [
+     -77.118112,
+     38.734682
+    ],
+    [
+     -77.118207,
+     38.734666
+    ],
+    [
+     -77.118267,
+     38.734648
+    ],
+    [
+     -77.118341,
+     38.734611
+    ],
+    [
+     -77.118399,
+     38.73457
+    ],
+    [
+     -77.118551,
+     38.734529
+    ],
+    [
+     -77.118234,
+     38.734265
+    ],
+    [
+     -77.118149,
+     38.734181
+    ],
+    [
+     -77.118111,
+     38.734136
+    ],
+    [
+     -77.118073,
+     38.734073
+    ],
+    [
+     -77.118018,
+     38.733915
+    ],
+    [
+     -77.118002,
+     38.733843
+    ],
+    [
+     -77.117995,
+     38.733752
+    ],
+    [
+     -77.118001,
+     38.733656
+    ],
+    [
+     -77.118027,
+     38.733551
+    ],
+    [
+     -77.118061,
+     38.733471
+    ],
+    [
+     -77.118121,
+     38.733371
+    ],
+    [
+     -77.118165,
+     38.733313
+    ],
+    [
+     -77.118291,
+     38.733181
+    ],
+    [
+     -77.118495,
+     38.732987
+    ],
+    [
+     -77.118907,
+     38.733243
+    ],
+    [
+     -77.118982,
+     38.733276
+    ],
+    [
+     -77.119084,
+     38.733301
+    ],
+    [
+     -77.119181,
+     38.733307
+    ],
+    [
+     -77.119264,
+     38.733304
+    ],
+    [
+     -77.119889,
+     38.733178
+    ],
+    [
+     -77.121123,
+     38.732936
+    ],
+    [
+     -77.121733,
+     38.732817
+    ]
+   ]
+  },
+  "distance_m": 7418.0,
+  "duration_s": 1690.0,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.00231,
+    3.4
+   ],
+   [
+    0.00789,
+    16.1
+   ],
+   [
+    0.00896,
+    21.7
+   ],
+   [
+    0.01664,
+    35.2
+   ],
+   [
+    0.04058,
+    71.9
+   ],
+   [
+    0.04058,
+    79.9
+   ],
+   [
+    0.18188,
+    296.8
+   ],
+   [
+    0.18188,
+    304.8
+   ],
+   [
+    0.24188,
+    396.9
+   ],
+   [
+    0.24188,
+    408.9
+   ],
+   [
+    0.36686,
+    600.8
+   ],
+   [
+    0.36686,
+    608.8
+   ],
+   [
+    0.3956,
+    652.9
+   ],
+   [
+    0.39706,
+    654.7
+   ],
+   [
+    0.39706,
+    662.7
+   ],
+   [
+    0.39714,
+    662.8
+   ],
+   [
+    0.39981,
+    669.8
+   ],
+   [
+    0.44314,
+    723.9
+   ],
+   [
+    0.50124,
+    812.3
+   ],
+   [
+    0.50128,
+    812.4
+   ],
+   [
+    0.50128,
+    824.4
+   ],
+   [
+    0.53315,
+    868.4
+   ],
+   [
+    0.77215,
+    1249.0
+   ],
+   [
+    0.77215,
+    1273.0
+   ],
+   [
+    0.8293,
+    1364.0
+   ],
+   [
+    0.82931,
+    1364.0
+   ],
+   [
+    0.82931,
+    1372.0
+   ],
+   [
+    0.83079,
+    1377.2
+   ],
+   [
+    0.83873,
+    1388.0
+   ],
+   [
+    0.84448,
+    1396.6
+   ],
+   [
+    0.86186,
+    1417.7
+   ],
+   [
+    0.86194,
+    1418.1
+   ],
+   [
+    0.86194,
+    1430.1
+   ],
+   [
+    0.86296,
+    1435.3
+   ],
+   [
+    0.91901,
+    1519.4
+   ],
+   [
+    0.9191,
+    1519.5
+   ],
+   [
+    0.9191,
+    1527.5
+   ],
+   [
+    0.93266,
+    1548.5
+   ],
+   [
+    0.93272,
+    1548.6
+   ],
+   [
+    0.93272,
+    1556.6
+   ],
+   [
+    0.95967,
+    1597.4
+   ],
+   [
+    0.95969,
+    1597.4
+   ],
+   [
+    0.95969,
+    1605.4
+   ],
+   [
+    0.97775,
+    1636.2
+   ],
+   [
+    0.97775,
+    1644.2
+   ],
+   [
+    0.99258,
+    1669.4
+   ],
+   [
+    0.99258,
+    1677.4
+   ],
+   [
+    1.0,
+    1690.0
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 66,
+    "from_mi": 0.0,
+    "to_mi": 0.04,
+    "street": "service road beside Mount Vernon Memorial Highway",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 220 ft (66 m): Service road beside Mount Vernon Memorial Highway, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 66,
+    "to_m": 123,
+    "from_mi": 0.04,
+    "to_mi": 0.08,
+    "street": "service road beside Mount Vernon Memorial Highway",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "service road beside Mount Vernon Memorial Highway",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": -73,
+      "others": [
+       0
+      ],
+      "main": "after",
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.1 km), for 190 ft (57 m): Left to stay on the service road beside Mount Vernon Memorial Highway, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 123,
+    "to_m": 2965,
+    "from_mi": 0.08,
+    "to_mi": 1.84,
+    "street": "path beside Mount Vernon Memorial Highway",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": "path beside Mount Vernon Memorial Highway",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.1 to 1.8 mi (0.1 to 3.0 km): Continue onto the path beside Mount Vernon Memorial Highway, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2965,
+    "to_m": 3287,
+    "from_mi": 1.84,
+    "to_mi": 2.04,
+    "street": "Southwood Drive",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Southwood Drive",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.8 to 2.0 mi (3.0 to 3.3 km): Left onto Southwood Drive, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3287,
+    "to_m": 3719,
+    "from_mi": 2.04,
+    "to_mi": 2.31,
+    "street": "Adrienne Drive",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Adrienne Drive",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.0 to 2.3 mi (3.3 to 3.7 km): Right onto Adrienne Drive, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3719,
+    "to_m": 3956,
+    "from_mi": 2.31,
+    "to_mi": 2.46,
+    "street": "Old Mill Road",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Old Mill Road",
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.3 to 2.5 mi (3.7 to 4.0 km): Left onto Old Mill Road, no signal mapped (Higher stress junction), fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3956,
+    "to_m": 5471,
+    "from_mi": 2.46,
+    "to_mi": 3.4,
+    "street": "Gateshead Road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Gateshead Road",
+     "control": "none",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.5 to 3.4 mi (4.0 to 5.5 km): Right onto Gateshead Road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 5471,
+    "to_m": 5728,
+    "from_mi": 3.4,
+    "to_mi": 3.56,
+    "street": "Forest Place",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "straight",
+     "onto": "Forest Place",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "3.4 to 3.6 mi (5.5 to 5.7 km): Continue onto Forest Place, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 5728,
+    "to_m": 6215,
+    "from_mi": 3.56,
+    "to_mi": 3.86,
+    "street": "Sky View Drive",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "straight",
+     "onto": "Sky View Drive",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 14,
+      "others": [
+       -59,
+       115
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "3.6 to 3.9 mi (5.7 to 6.2 km): Continue onto Sky View Drive, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 6215,
+    "to_m": 6222,
+    "from_mi": 3.86,
+    "to_mi": 3.87,
+    "street": "path",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "3.9 mi (6.2 km), for 23 ft (7 m): Bear right onto the path, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 6222,
+    "to_m": 6265,
+    "from_mi": 3.87,
+    "to_mi": 3.89,
+    "street": "path",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": 60,
+      "others": [
+       -100
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "3.9 mi (6.2 km), for 140 ft (43 m): Bear right to stay on the path, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 6265,
+    "to_m": 6394,
+    "from_mi": 3.89,
+    "to_mi": 3.97,
+    "street": "path",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "3.9 mi (6.3 km), for 420 ft (129 m): Bear right to stay on the path, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 6394,
+    "to_m": 6402,
+    "from_mi": 3.97,
+    "to_mi": 3.98,
+    "street": "Pole Road",
+    "tier": 4,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Pole Road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "4.0 mi (6.4 km), for 26 ft (8 m): Right onto Pole Road, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 6402,
+    "to_m": 6818,
+    "from_mi": 3.98,
+    "to_mi": 4.24,
+    "street": "Keeler Street",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Keeler Street",
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "4.0 to 4.2 mi (6.4 to 6.8 km): Left onto Keeler Street, no signal mapped (Higher stress junction), low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 6818,
+    "to_m": 6919,
+    "from_mi": 4.24,
+    "to_mi": 4.3,
+    "street": "Sprayer Street",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Sprayer Street",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "4.2 mi (6.8 km), for 330 ft (101 m): Left onto Sprayer Street, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 6919,
+    "to_m": 7119,
+    "from_mi": 4.3,
+    "to_mi": 4.42,
+    "street": "Ackley Street",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Ackley Street",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -112,
+      "others": [
+       2,
+       66
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "4.3 to 4.4 mi (6.9 to 7.1 km): Left onto Ackley Street, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 7119,
+    "to_m": 7418,
+    "from_mi": 4.42,
+    "to_mi": 4.61,
+    "street": "Shirley Street",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "Shirley Street",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "4.4 to 4.6 mi (7.1 to 7.4 km): Right onto Shirley Street, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   328
+  ],
+  "arrival_side": null,
+  "leg_arrival_sides": [
+   null
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 17,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 17,
+    "to_m": 66,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 66,
+    "to_m": 123,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 123,
+    "to_m": 2945,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2945,
+    "to_m": 3287,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 3287,
+    "to_m": 3718,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 3718,
+    "to_m": 3955,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 3955,
+    "to_m": 5470,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 5470,
+    "to_m": 5727,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 5727,
+    "to_m": 6151,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 6151,
+    "to_m": 6162,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 6162,
+    "to_m": 6401,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 6401,
+    "to_m": 6817,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 6817,
+    "to_m": 7417,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}

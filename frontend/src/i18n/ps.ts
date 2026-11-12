@@ -2156,4 +2156,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "د ایموجي نښې",
   "Road closed ahead": "مخکې سړک تړل شوی",
   "Road closed ahead, {distance}: {name}": "مخکې سړک تړل شوی، {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "ایا کومه برخه د خپلې درجې څخه توپیر لرونکې احساس شوه؟",
+  "Which stretch?": "کومه برخه؟",
+  "You marked a road closed.": "تاسو یوه سړک تړل شوی په نښه کړ.",
+  "You marked {n} roads closed.": "تاسو {n} سړکونه تړل شوي په نښه کړل.",
+  "Send for review": "د بیاکتنې لپاره ولېږئ",
+  "Only the road and the day are sent.": "یوازې سړک او ورځ لېږل کېږي.",
+  "Sent 1 closed road for review. Thank you.": "۱ تړل شوی سړک د بیاکتنې لپاره ولېږل شو. مننه.",
+  "Sent {n} closed roads for review. Thank you.": "{n} تړل شوي سړکونه د بیاکتنې لپاره ولېږل شول. مننه.",
+  "Not sent. Try again shortly.": "ونه لېږل شو. لږ وروسته بیا هڅه وکړئ.",
+  "That road can't be looked up right now. Try again shortly.": "دا سړک اوس نشي لټول کېدای. لږ وروسته بیا هڅه وکړئ.",
+  "Looking up the road…": "سړک لټول کېږي…",
+  "Sending…": "لېږل کېږي…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "عام خلک نشي ننوتلی",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "د لارښوونو لاګ کاپي کړئ",
+  "Cue log copied.": "د لارښوونو لاګ کاپي شو.",
+  "Could not copy the cue log.": "د لارښوونو لاګ کاپي نه شو.",
 };

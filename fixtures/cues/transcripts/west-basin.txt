@@ -1,0 +1,45 @@
+# west-basin: Ohio Dr path to West Basin Dr: a bear across Ohio Dr then a right onto the path beside it (#1028)
+
+## The cues Ride made
+    58 m  #0 calmer Path: Calmer riding on the path beside Ohio Drive Southwest.
+   841 m  #1 bear_left Path: Cross Ohio Drive Southwest, then right onto the path beside Ohio Drive Southwest, then immediately bear left onto the path beside West Basin Drive Southwest.
+   853 m  #2 right Path (joined): Right onto the path beside Ohio Drive Southwest, then immediately bear left onto the path beside West Basin Drive Southwest.
+   925 m  #3 bear_left Path (joined): Bear left onto the path beside West Basin Drive Southwest.
+  1231 m  #4 end: The end of the route. Destination on your left.
+
+## west-basin at 8 mph, steady
+    0 s      0 m  #0 calmer Path advance: "In 190 feet, calmer riding on the path beside Ohio Drive Southwest." -> said
+  194 s    694 m  #1 bear_left Path advance: "In 500 feet, cross Ohio Drive Southwest, then right onto the path beside Ohio Drive Southwest, then immediately bear left onto the path beside West Basin Drive Southwest." -> said
+  223 s    798 m  #1 bear_left Path prepare: "In 140 feet, cross Ohio Drive Southwest, then right, then immediately bear left." -> said
+  232 s    830 m  #1 bear_left Path now (urgent): "Cross Ohio Drive Southwest now." -> said
+  237 s    848 m  #2 right Path now (urgent): "Right now onto the path beside Ohio Drive Southwest." -> said
+  255 s    912 m  #3 bear_left Path now (urgent): "Bear left now onto the path beside West Basin Drive Southwest." -> said
+  339 s   1212 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## west-basin at 12 mph, steady
+    0 s      0 m  #0 calmer Path advance: "In 190 feet, calmer riding on the path beside Ohio Drive Southwest." -> said
+  129 s    692 m  #1 bear_left Path advance: "In 500 feet, cross Ohio Drive Southwest, then right onto the path beside Ohio Drive Southwest, then immediately bear left onto the path beside West Basin Drive Southwest." -> said
+  147 s    789 m  #1 bear_left Path prepare: "In 170 feet, cross Ohio Drive Southwest, then right, then immediately bear left." -> said
+  155 s    831 m  #1 bear_left Path now (urgent): "Cross Ohio Drive Southwest now." -> said
+  157 s    842 m  #2 right Path now (urgent): "Right now onto the path beside Ohio Drive Southwest." -> held 0.5 s
+  170 s    912 m  #3 bear_left Path now (urgent): "Bear left now onto the path beside West Basin Drive Southwest." -> said
+  226 s   1212 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## west-basin at 18 mph, steady
+    0 s      0 m  #0 calmer Path advance: "In 190 feet, calmer riding on the path beside Ohio Drive Southwest." -> said
+   78 s    628 m  #1 bear_left Path advance: "In 700 feet, cross Ohio Drive Southwest, then right onto the path beside Ohio Drive Southwest, then immediately bear left onto the path beside West Basin Drive Southwest." -> said
+   95 s    764 m  #1 bear_left Path prepare: "In 250 feet, cross Ohio Drive Southwest, then right, then immediately bear left." -> said
+  103 s    829 m  #1 bear_left Path now (urgent): "Cross Ohio Drive Southwest now." -> said
+  105 s    845 m  #2 right Path now (urgent): "Right now onto the path beside Ohio Drive Southwest." -> held 0.5 s
+  113 s    909 m  #3 bear_left Path now (urgent): "Bear left now onto the path beside West Basin Drive Southwest." -> said
+  151 s   1215 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## west-basin at 12 mph, weak-gps
+    0 s      0 m  #0 calmer Path advance: "In 190 feet, calmer riding on the path beside Ohio Drive Southwest." -> said
+  126 s           note: "GPS is weak: turn cues paused."
+  145 s    778 m  #1 bear_left Path advance: "In 200 feet, cross Ohio Drive Southwest, then right onto the path beside Ohio Drive Southwest, then immediately bear left onto the path beside West Basin Drive Southwest." -> said, cut 9.7 s in
+  147 s    789 m  #1 bear_left Path prepare: "In 170 feet, cross Ohio Drive Southwest, then right, then immediately bear left." -> dropped
+  155 s    831 m  #1 bear_left Path now (urgent): "Cross Ohio Drive Southwest now." -> said
+  157 s    842 m  #2 right Path now (urgent): "Right now onto the path beside Ohio Drive Southwest." -> held 0.5 s
+  170 s    912 m  #3 bear_left Path now (urgent): "Bear left now onto the path beside West Basin Drive Southwest." -> said
+  226 s   1212 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said

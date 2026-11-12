@@ -1,0 +1,2192 @@
+{
+ "name": "rock-creek-trail",
+ "about": "Rock Creek Trail and Western Ridge Trail: forks along one trail, a crossing of Broad Branch Rd",
+ "route": {
+  "preset": "trailmaxxing",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.051988,
+     38.920985
+    ],
+    [
+     -77.051934,
+     38.921012
+    ],
+    [
+     -77.051854,
+     38.921079
+    ],
+    [
+     -77.051738,
+     38.921228
+    ],
+    [
+     -77.05164,
+     38.921388
+    ],
+    [
+     -77.051609,
+     38.921424
+    ],
+    [
+     -77.051508,
+     38.921507
+    ],
+    [
+     -77.051378,
+     38.921567
+    ],
+    [
+     -77.051305,
+     38.921595
+    ],
+    [
+     -77.051255,
+     38.9216
+    ],
+    [
+     -77.051235,
+     38.921601
+    ],
+    [
+     -77.051165,
+     38.921604
+    ],
+    [
+     -77.051127,
+     38.921606
+    ],
+    [
+     -77.051083,
+     38.9216
+    ],
+    [
+     -77.051013,
+     38.921596
+    ],
+    [
+     -77.050937,
+     38.921593
+    ],
+    [
+     -77.050864,
+     38.921598
+    ],
+    [
+     -77.050753,
+     38.921626
+    ],
+    [
+     -77.050638,
+     38.921672
+    ],
+    [
+     -77.050371,
+     38.921803
+    ],
+    [
+     -77.050271,
+     38.921868
+    ],
+    [
+     -77.050172,
+     38.92195
+    ],
+    [
+     -77.050063,
+     38.92206
+    ],
+    [
+     -77.04998,
+     38.922123
+    ],
+    [
+     -77.049876,
+     38.922216
+    ],
+    [
+     -77.049776,
+     38.922283
+    ],
+    [
+     -77.049668,
+     38.922359
+    ],
+    [
+     -77.049573,
+     38.922448
+    ],
+    [
+     -77.049482,
+     38.922581
+    ],
+    [
+     -77.04944,
+     38.922657
+    ],
+    [
+     -77.049234,
+     38.923075
+    ],
+    [
+     -77.049191,
+     38.923185
+    ],
+    [
+     -77.049171,
+     38.923289
+    ],
+    [
+     -77.049128,
+     38.923504
+    ],
+    [
+     -77.049044,
+     38.923742
+    ],
+    [
+     -77.048956,
+     38.923958
+    ],
+    [
+     -77.048912,
+     38.924021
+    ],
+    [
+     -77.048832,
+     38.924092
+    ],
+    [
+     -77.0485,
+     38.924304
+    ],
+    [
+     -77.048488,
+     38.924314
+    ],
+    [
+     -77.048484,
+     38.924355
+    ],
+    [
+     -77.048531,
+     38.924445
+    ],
+    [
+     -77.048577,
+     38.924554
+    ],
+    [
+     -77.048632,
+     38.924699
+    ],
+    [
+     -77.048652,
+     38.924799
+    ],
+    [
+     -77.04868,
+     38.924934
+    ],
+    [
+     -77.048697,
+     38.92502
+    ],
+    [
+     -77.048749,
+     38.925096
+    ],
+    [
+     -77.048855,
+     38.92522
+    ],
+    [
+     -77.049026,
+     38.925415
+    ],
+    [
+     -77.049115,
+     38.925519
+    ],
+    [
+     -77.049193,
+     38.925626
+    ],
+    [
+     -77.049273,
+     38.925772
+    ],
+    [
+     -77.049319,
+     38.925899
+    ],
+    [
+     -77.04936,
+     38.926036
+    ],
+    [
+     -77.049367,
+     38.926195
+    ],
+    [
+     -77.049382,
+     38.926309
+    ],
+    [
+     -77.049402,
+     38.926447
+    ],
+    [
+     -77.049424,
+     38.926579
+    ],
+    [
+     -77.049471,
+     38.926732
+    ],
+    [
+     -77.049505,
+     38.926896
+    ],
+    [
+     -77.049535,
+     38.927016
+    ],
+    [
+     -77.04958,
+     38.927148
+    ],
+    [
+     -77.049614,
+     38.927285
+    ],
+    [
+     -77.049636,
+     38.927443
+    ],
+    [
+     -77.049658,
+     38.927584
+    ],
+    [
+     -77.049632,
+     38.927667
+    ],
+    [
+     -77.049567,
+     38.927711
+    ],
+    [
+     -77.049504,
+     38.927734
+    ],
+    [
+     -77.049439,
+     38.927739
+    ],
+    [
+     -77.04929,
+     38.927734
+    ],
+    [
+     -77.049198,
+     38.927734
+    ],
+    [
+     -77.049129,
+     38.927732
+    ],
+    [
+     -77.04893,
+     38.927681
+    ],
+    [
+     -77.048786,
+     38.927619
+    ],
+    [
+     -77.048615,
+     38.927531
+    ],
+    [
+     -77.048465,
+     38.927442
+    ],
+    [
+     -77.048277,
+     38.927319
+    ],
+    [
+     -77.048138,
+     38.927203
+    ],
+    [
+     -77.048032,
+     38.927059
+    ],
+    [
+     -77.047972,
+     38.926959
+    ],
+    [
+     -77.047916,
+     38.926886
+    ],
+    [
+     -77.04784,
+     38.926796
+    ],
+    [
+     -77.047775,
+     38.926737
+    ],
+    [
+     -77.047737,
+     38.926712
+    ],
+    [
+     -77.047559,
+     38.926606
+    ],
+    [
+     -77.047192,
+     38.926373
+    ],
+    [
+     -77.047031,
+     38.926301
+    ],
+    [
+     -77.046915,
+     38.926255
+    ],
+    [
+     -77.046737,
+     38.926098
+    ],
+    [
+     -77.046613,
+     38.925981
+    ],
+    [
+     -77.046493,
+     38.925921
+    ],
+    [
+     -77.046317,
+     38.925878
+    ],
+    [
+     -77.046217,
+     38.925871
+    ],
+    [
+     -77.04611,
+     38.925884
+    ],
+    [
+     -77.045993,
+     38.925903
+    ],
+    [
+     -77.04569,
+     38.926035
+    ],
+    [
+     -77.045409,
+     38.92618
+    ],
+    [
+     -77.045293,
+     38.926244
+    ],
+    [
+     -77.045188,
+     38.926307
+    ],
+    [
+     -77.045035,
+     38.926397
+    ],
+    [
+     -77.044859,
+     38.926523
+    ],
+    [
+     -77.044673,
+     38.926661
+    ],
+    [
+     -77.044538,
+     38.926763
+    ],
+    [
+     -77.044454,
+     38.92684
+    ],
+    [
+     -77.044367,
+     38.926928
+    ],
+    [
+     -77.044284,
+     38.927061
+    ],
+    [
+     -77.044206,
+     38.927218
+    ],
+    [
+     -77.044142,
+     38.927385
+    ],
+    [
+     -77.044099,
+     38.92752
+    ],
+    [
+     -77.044085,
+     38.927578
+    ],
+    [
+     -77.044081,
+     38.927592
+    ],
+    [
+     -77.044077,
+     38.927605
+    ],
+    [
+     -77.04407,
+     38.927632
+    ],
+    [
+     -77.044062,
+     38.927662
+    ],
+    [
+     -77.044058,
+     38.927676
+    ],
+    [
+     -77.044051,
+     38.927708
+    ],
+    [
+     -77.044022,
+     38.927852
+    ],
+    [
+     -77.043986,
+     38.927965
+    ],
+    [
+     -77.043962,
+     38.928182
+    ],
+    [
+     -77.043991,
+     38.928363
+    ],
+    [
+     -77.044014,
+     38.928451
+    ],
+    [
+     -77.044073,
+     38.92863
+    ],
+    [
+     -77.044137,
+     38.928773
+    ],
+    [
+     -77.044234,
+     38.928947
+    ],
+    [
+     -77.044349,
+     38.929117
+    ],
+    [
+     -77.044481,
+     38.92929
+    ],
+    [
+     -77.044593,
+     38.92943
+    ],
+    [
+     -77.044753,
+     38.92961
+    ],
+    [
+     -77.04487,
+     38.929741
+    ],
+    [
+     -77.045021,
+     38.929884
+    ],
+    [
+     -77.045194,
+     38.930025
+    ],
+    [
+     -77.045327,
+     38.930128
+    ],
+    [
+     -77.045464,
+     38.930233
+    ],
+    [
+     -77.045614,
+     38.930339
+    ],
+    [
+     -77.045799,
+     38.930474
+    ],
+    [
+     -77.045914,
+     38.930566
+    ],
+    [
+     -77.046031,
+     38.930659
+    ],
+    [
+     -77.046212,
+     38.930809
+    ],
+    [
+     -77.046403,
+     38.93096
+    ],
+    [
+     -77.046569,
+     38.93113
+    ],
+    [
+     -77.04671,
+     38.93127
+    ],
+    [
+     -77.046809,
+     38.93137
+    ],
+    [
+     -77.046934,
+     38.931496
+    ],
+    [
+     -77.047092,
+     38.931622
+    ],
+    [
+     -77.047248,
+     38.931711
+    ],
+    [
+     -77.047498,
+     38.931808
+    ],
+    [
+     -77.047718,
+     38.931882
+    ],
+    [
+     -77.04797,
+     38.931951
+    ],
+    [
+     -77.048149,
+     38.931998
+    ],
+    [
+     -77.048477,
+     38.932086
+    ],
+    [
+     -77.048707,
+     38.932136
+    ],
+    [
+     -77.048892,
+     38.932179
+    ],
+    [
+     -77.049117,
+     38.932229
+    ],
+    [
+     -77.049324,
+     38.932279
+    ],
+    [
+     -77.04958,
+     38.932332
+    ],
+    [
+     -77.049742,
+     38.932365
+    ],
+    [
+     -77.049931,
+     38.932403
+    ],
+    [
+     -77.050112,
+     38.932493
+    ],
+    [
+     -77.050276,
+     38.932602
+    ],
+    [
+     -77.050318,
+     38.932661
+    ],
+    [
+     -77.050348,
+     38.932724
+    ],
+    [
+     -77.050376,
+     38.932923
+    ],
+    [
+     -77.050461,
+     38.933055
+    ],
+    [
+     -77.050556,
+     38.933164
+    ],
+    [
+     -77.050611,
+     38.933235
+    ],
+    [
+     -77.05068,
+     38.933331
+    ],
+    [
+     -77.050688,
+     38.933348
+    ],
+    [
+     -77.050693,
+     38.933368
+    ],
+    [
+     -77.050684,
+     38.933384
+    ],
+    [
+     -77.050664,
+     38.933394
+    ],
+    [
+     -77.050633,
+     38.933402
+    ],
+    [
+     -77.050601,
+     38.933416
+    ],
+    [
+     -77.050536,
+     38.933452
+    ],
+    [
+     -77.050475,
+     38.933492
+    ],
+    [
+     -77.050408,
+     38.933551
+    ],
+    [
+     -77.05035,
+     38.93361
+    ],
+    [
+     -77.050293,
+     38.93367
+    ],
+    [
+     -77.050235,
+     38.933724
+    ],
+    [
+     -77.050169,
+     38.933771
+    ],
+    [
+     -77.050045,
+     38.933835
+    ],
+    [
+     -77.049921,
+     38.933883
+    ],
+    [
+     -77.050026,
+     38.93401
+    ],
+    [
+     -77.050038,
+     38.93404
+    ],
+    [
+     -77.050075,
+     38.934128
+    ],
+    [
+     -77.050093,
+     38.934171
+    ],
+    [
+     -77.049776,
+     38.934226
+    ],
+    [
+     -77.04976,
+     38.934227
+    ],
+    [
+     -77.049617,
+     38.934245
+    ],
+    [
+     -77.049456,
+     38.934253
+    ],
+    [
+     -77.049296,
+     38.934255
+    ],
+    [
+     -77.049242,
+     38.934252
+    ],
+    [
+     -77.048575,
+     38.934166
+    ],
+    [
+     -77.048515,
+     38.934171
+    ],
+    [
+     -77.048417,
+     38.934196
+    ],
+    [
+     -77.048349,
+     38.934255
+    ],
+    [
+     -77.04827,
+     38.934348
+    ],
+    [
+     -77.048185,
+     38.934503
+    ],
+    [
+     -77.048114,
+     38.93461
+    ],
+    [
+     -77.048057,
+     38.934726
+    ],
+    [
+     -77.048017,
+     38.934786
+    ],
+    [
+     -77.047936,
+     38.934885
+    ],
+    [
+     -77.047854,
+     38.935004
+    ],
+    [
+     -77.047793,
+     38.935114
+    ],
+    [
+     -77.04776,
+     38.935185
+    ],
+    [
+     -77.047712,
+     38.935313
+    ],
+    [
+     -77.047701,
+     38.935346
+    ],
+    [
+     -77.047688,
+     38.935393
+    ],
+    [
+     -77.047678,
+     38.935442
+    ],
+    [
+     -77.047667,
+     38.9355
+    ],
+    [
+     -77.047658,
+     38.935573
+    ],
+    [
+     -77.047646,
+     38.935722
+    ],
+    [
+     -77.047648,
+     38.935845
+    ],
+    [
+     -77.047658,
+     38.935964
+    ],
+    [
+     -77.04767,
+     38.93605
+    ],
+    [
+     -77.047701,
+     38.936314
+    ],
+    [
+     -77.047696,
+     38.936612
+    ],
+    [
+     -77.04769,
+     38.936733
+    ],
+    [
+     -77.047686,
+     38.936836
+    ],
+    [
+     -77.047687,
+     38.93692
+    ],
+    [
+     -77.047715,
+     38.937009
+    ],
+    [
+     -77.047753,
+     38.937078
+    ],
+    [
+     -77.047808,
+     38.937147
+    ],
+    [
+     -77.047863,
+     38.937203
+    ],
+    [
+     -77.047906,
+     38.937236
+    ],
+    [
+     -77.048015,
+     38.937298
+    ],
+    [
+     -77.048179,
+     38.937377
+    ],
+    [
+     -77.048394,
+     38.937453
+    ],
+    [
+     -77.048459,
+     38.937478
+    ],
+    [
+     -77.048525,
+     38.937492
+    ],
+    [
+     -77.048609,
+     38.937499
+    ],
+    [
+     -77.048689,
+     38.937488
+    ],
+    [
+     -77.04882,
+     38.937461
+    ],
+    [
+     -77.048887,
+     38.937456
+    ],
+    [
+     -77.048956,
+     38.937458
+    ],
+    [
+     -77.049128,
+     38.937476
+    ],
+    [
+     -77.049271,
+     38.937471
+    ],
+    [
+     -77.04939,
+     38.937461
+    ],
+    [
+     -77.049581,
+     38.93744
+    ],
+    [
+     -77.049701,
+     38.937416
+    ],
+    [
+     -77.049845,
+     38.93739
+    ],
+    [
+     -77.049959,
+     38.937403
+    ],
+    [
+     -77.050164,
+     38.937428
+    ],
+    [
+     -77.050284,
+     38.937447
+    ],
+    [
+     -77.050416,
+     38.937486
+    ],
+    [
+     -77.050524,
+     38.937521
+    ],
+    [
+     -77.050595,
+     38.937537
+    ],
+    [
+     -77.050654,
+     38.937542
+    ],
+    [
+     -77.050753,
+     38.937538
+    ],
+    [
+     -77.050822,
+     38.937522
+    ],
+    [
+     -77.050885,
+     38.937514
+    ],
+    [
+     -77.050961,
+     38.937524
+    ],
+    [
+     -77.051041,
+     38.937547
+    ],
+    [
+     -77.051158,
+     38.937604
+    ],
+    [
+     -77.051229,
+     38.937666
+    ],
+    [
+     -77.051376,
+     38.93778
+    ],
+    [
+     -77.051425,
+     38.93781
+    ],
+    [
+     -77.051539,
+     38.937853
+    ],
+    [
+     -77.051619,
+     38.937883
+    ],
+    [
+     -77.051692,
+     38.937919
+    ],
+    [
+     -77.051749,
+     38.937979
+    ],
+    [
+     -77.051779,
+     38.938035
+    ],
+    [
+     -77.051792,
+     38.93808
+    ],
+    [
+     -77.051799,
+     38.938162
+    ],
+    [
+     -77.051804,
+     38.938217
+    ],
+    [
+     -77.051812,
+     38.938247
+    ],
+    [
+     -77.051838,
+     38.938274
+    ],
+    [
+     -77.051875,
+     38.938292
+    ],
+    [
+     -77.052054,
+     38.93838
+    ],
+    [
+     -77.052147,
+     38.938426
+    ],
+    [
+     -77.052196,
+     38.938454
+    ],
+    [
+     -77.052225,
+     38.938484
+    ],
+    [
+     -77.052232,
+     38.938508
+    ],
+    [
+     -77.052236,
+     38.938528
+    ],
+    [
+     -77.052233,
+     38.938548
+    ],
+    [
+     -77.052175,
+     38.938698
+    ],
+    [
+     -77.052159,
+     38.938768
+    ],
+    [
+     -77.052156,
+     38.938922
+    ],
+    [
+     -77.052134,
+     38.938967
+    ],
+    [
+     -77.052073,
+     38.939014
+    ],
+    [
+     -77.051982,
+     38.939068
+    ],
+    [
+     -77.051875,
+     38.939421
+    ],
+    [
+     -77.051841,
+     38.939511
+    ],
+    [
+     -77.051831,
+     38.939542
+    ],
+    [
+     -77.051816,
+     38.939582
+    ],
+    [
+     -77.05179,
+     38.939623
+    ],
+    [
+     -77.051753,
+     38.939657
+    ],
+    [
+     -77.051698,
+     38.939686
+    ],
+    [
+     -77.051647,
+     38.939752
+    ],
+    [
+     -77.051622,
+     38.939821
+    ],
+    [
+     -77.051612,
+     38.939944
+    ],
+    [
+     -77.051607,
+     38.940013
+    ],
+    [
+     -77.051596,
+     38.9401
+    ],
+    [
+     -77.051582,
+     38.940146
+    ],
+    [
+     -77.051576,
+     38.940198
+    ],
+    [
+     -77.051575,
+     38.940266
+    ],
+    [
+     -77.051578,
+     38.940347
+    ],
+    [
+     -77.051556,
+     38.940541
+    ],
+    [
+     -77.051552,
+     38.940927
+    ],
+    [
+     -77.051568,
+     38.94109
+    ],
+    [
+     -77.051585,
+     38.941186
+    ],
+    [
+     -77.051609,
+     38.941267
+    ],
+    [
+     -77.051561,
+     38.941384
+    ],
+    [
+     -77.05151,
+     38.941556
+    ],
+    [
+     -77.051462,
+     38.941667
+    ],
+    [
+     -77.051324,
+     38.941867
+    ],
+    [
+     -77.051103,
+     38.942197
+    ],
+    [
+     -77.050951,
+     38.942403
+    ],
+    [
+     -77.050708,
+     38.94277
+    ],
+    [
+     -77.050576,
+     38.943032
+    ],
+    [
+     -77.050449,
+     38.943274
+    ],
+    [
+     -77.05039,
+     38.943384
+    ],
+    [
+     -77.050352,
+     38.943485
+    ],
+    [
+     -77.05029,
+     38.943624
+    ],
+    [
+     -77.050248,
+     38.94373
+    ],
+    [
+     -77.050214,
+     38.943851
+    ],
+    [
+     -77.050167,
+     38.944058
+    ],
+    [
+     -77.050149,
+     38.9441
+    ],
+    [
+     -77.050062,
+     38.944209
+    ],
+    [
+     -77.050019,
+     38.944243
+    ],
+    [
+     -77.049995,
+     38.94425
+    ],
+    [
+     -77.049935,
+     38.944243
+    ],
+    [
+     -77.049872,
+     38.944221
+    ],
+    [
+     -77.049854,
+     38.944211
+    ],
+    [
+     -77.04981,
+     38.944188
+    ],
+    [
+     -77.049797,
+     38.944209
+    ],
+    [
+     -77.04977,
+     38.944252
+    ],
+    [
+     -77.049736,
+     38.944302
+    ],
+    [
+     -77.049746,
+     38.944342
+    ],
+    [
+     -77.049724,
+     38.944369
+    ],
+    [
+     -77.049467,
+     38.944443
+    ],
+    [
+     -77.049429,
+     38.94446
+    ],
+    [
+     -77.049416,
+     38.944449
+    ],
+    [
+     -77.049405,
+     38.94444
+    ],
+    [
+     -77.049495,
+     38.944396
+    ],
+    [
+     -77.04956,
+     38.94436
+    ],
+    [
+     -77.049633,
+     38.944314
+    ],
+    [
+     -77.049641,
+     38.944308
+    ],
+    [
+     -77.049663,
+     38.944291
+    ],
+    [
+     -77.049679,
+     38.944277
+    ],
+    [
+     -77.049711,
+     38.944233
+    ],
+    [
+     -77.049725,
+     38.94421
+    ],
+    [
+     -77.049737,
+     38.944164
+    ],
+    [
+     -77.049742,
+     38.944071
+    ],
+    [
+     -77.049739,
+     38.944015
+    ],
+    [
+     -77.04971,
+     38.943859
+    ],
+    [
+     -77.049656,
+     38.94367
+    ],
+    [
+     -77.049633,
+     38.943571
+    ],
+    [
+     -77.049623,
+     38.943523
+    ],
+    [
+     -77.049623,
+     38.943488
+    ],
+    [
+     -77.049622,
+     38.943459
+    ],
+    [
+     -77.049639,
+     38.943369
+    ],
+    [
+     -77.049676,
+     38.94331
+    ],
+    [
+     -77.049746,
+     38.943223
+    ],
+    [
+     -77.04985,
+     38.943106
+    ],
+    [
+     -77.049898,
+     38.943014
+    ],
+    [
+     -77.04992,
+     38.942991
+    ],
+    [
+     -77.049936,
+     38.94297
+    ]
+   ]
+  },
+  "distance_m": 4523.0,
+  "duration_s": 920.9,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.0132,
+    14.3
+   ],
+   [
+    0.02146,
+    21.0
+   ],
+   [
+    0.02146,
+    51.0
+   ],
+   [
+    0.11365,
+    125.0
+   ],
+   [
+    0.28937,
+    273.6
+   ],
+   [
+    0.55446,
+    489.6
+   ],
+   [
+    0.57428,
+    505.8
+   ],
+   [
+    0.57876,
+    513.2
+   ],
+   [
+    0.57876,
+    525.2
+   ],
+   [
+    0.58217,
+    530.9
+   ],
+   [
+    0.6116,
+    552.0
+   ],
+   [
+    0.64758,
+    581.3
+   ],
+   [
+    0.79117,
+    698.1
+   ],
+   [
+    0.86315,
+    757.5
+   ],
+   [
+    0.94745,
+    829.8
+   ],
+   [
+    0.94934,
+    833.1
+   ],
+   [
+    0.94934,
+    853.1
+   ],
+   [
+    0.9516,
+    857.0
+   ],
+   [
+    0.95847,
+    862.6
+   ],
+   [
+    0.95915,
+    863.1
+   ],
+   [
+    0.96726,
+    870.6
+   ],
+   [
+    0.96726,
+    890.6
+   ],
+   [
+    1.0,
+    920.9
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 512,
+    "from_mi": 0.0,
+    "to_mi": 0.32,
+    "street": "Rock Creek Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.3 mi (0.0 to 0.5 km): Rock Creek Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "junction",
+    "from_m": 103,
+    "to_m": 103,
+    "from_mi": 0.06,
+    "to_mi": 0.06,
+    "street": "Shoreham Drive Northwest",
+    "tier": null,
+    "facility": null,
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": null,
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "At 0.1 mi (0.1 km): Cross Shoreham Drive Northwest (LTS 3.5), no signal mapped (Higher stress junction).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 512,
+    "to_m": 1308,
+    "from_mi": 0.32,
+    "to_mi": 0.81,
+    "street": "Zoo Loop Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "Zoo Loop Trail",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -39,
+      "others": [
+       49
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.3 to 0.8 mi (0.5 to 1.3 km): Left onto Zoo Loop Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1308,
+    "to_m": 2503,
+    "from_mi": 0.81,
+    "to_mi": 1.56,
+    "street": "Rock Creek Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": "Rock Creek Trail",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": -17,
+      "others": [
+       146
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 to 1.6 mi (1.3 to 2.5 km): Continue onto Rock Creek Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2503,
+    "to_m": 2597,
+    "from_mi": 1.56,
+    "to_mi": 1.61,
+    "street": "Rock Creek Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "Rock Creek Trail",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.6 mi (2.5 km), for 310 ft (94 m): Right to stay on Rock Creek Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2597,
+    "to_m": 2633,
+    "from_mi": 1.61,
+    "to_mi": 1.64,
+    "street": "path",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.6 mi (2.6 km), for 120 ft (36 m): Left onto the path, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2633,
+    "to_m": 2767,
+    "from_mi": 1.64,
+    "to_mi": 1.72,
+    "street": "path",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "path",
+     "control": "none",
+     "severity": "orange",
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.6 mi (2.6 km), for 440 ft (134 m): Right to stay on the path, no signal mapped (Higher stress junction), low stress (LTS 1), protected bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2767,
+    "to_m": 2930,
+    "from_mi": 1.72,
+    "to_mi": 1.82,
+    "street": "path beside Beach Drive Northwest",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_left",
+     "onto": "path beside Beach Drive Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.7 to 1.8 mi (2.8 to 2.9 km): Bear left onto the path beside Beach Drive Northwest, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 2930,
+    "to_m": 3578,
+    "from_mi": 1.82,
+    "to_mi": 2.22,
+    "street": "Rock Creek Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": "Rock Creek Trail",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.8 to 2.2 mi (2.9 to 3.6 km): Continue onto Rock Creek Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3578,
+    "to_m": 3904,
+    "from_mi": 2.22,
+    "to_mi": 2.43,
+    "street": "Western Ridge Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "Western Ridge Trail",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.2 to 2.4 mi (3.6 to 3.9 km): Bear right onto Western Ridge Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 3904,
+    "to_m": 4268,
+    "from_mi": 2.43,
+    "to_mi": 2.65,
+    "street": "Western Ridge Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "Western Ridge Trail",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": {
+      "out": 31,
+      "others": [
+       -20
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.4 to 2.7 mi (3.9 to 4.3 km): Bear right to stay on Western Ridge Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4268,
+    "to_m": 4286,
+    "from_mi": 2.65,
+    "to_mi": 2.66,
+    "street": "Western Ridge Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "Western Ridge Trail",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.7 mi (4.3 km), for 59 ft (18 m): Bear right to stay on Western Ridge Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4286,
+    "to_m": 4305,
+    "from_mi": 2.66,
+    "to_mi": 2.67,
+    "street": "Western Ridge Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "Western Ridge Trail",
+     "control": "cross_stop",
+     "severity": null,
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": "Broad Branch Road Northwest",
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.7 mi (4.3 km), for 62 ft (19 m): Cross Broad Branch Road Northwest where cross traffic stops, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4305,
+    "to_m": 4339,
+    "from_mi": 2.67,
+    "to_mi": 2.7,
+    "street": "Rock Creek Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "bear_right",
+     "onto": "Rock Creek Trail",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 63,
+      "others": [
+       -94,
+       -3,
+       132
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.7 mi (4.3 km), for 110 ft (34 m): Bear right onto Rock Creek Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4339,
+    "to_m": 4375,
+    "from_mi": 2.7,
+    "to_mi": 2.72,
+    "street": "Beach Drive Northwest",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "Beach Drive Northwest",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 101,
+      "others": [
+       -65
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.7 mi (4.3 km), for 120 ft (36 m): Right onto Beach Drive Northwest, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4375,
+    "to_m": 4518,
+    "from_mi": 2.72,
+    "to_mi": 2.81,
+    "street": "Beach Drive Northwest",
+    "tier": 2,
+    "facility": "none",
+    "oneway": true,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.7 mi (4.4 km), for 470 ft (143 m): Continue on Beach Drive Northwest, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 4518,
+    "to_m": 4523,
+    "from_mi": 2.81,
+    "to_mi": 2.81,
+    "street": "Beach Drive Northwest",
+    "tier": 3,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "2.8 mi (4.5 km), for 16 ft (5 m): Continue on Beach Drive Northwest, busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   357
+  ],
+  "arrival_side": "right",
+  "leg_arrival_sides": [
+   "right"
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 2631,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2631,
+    "to_m": 2765,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 2765,
+    "to_m": 4372,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 4372,
+    "to_m": 4520,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   }
+  ]
+ }
+}

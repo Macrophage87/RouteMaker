@@ -29,6 +29,8 @@ class Way:
     def __init__(self, osm_id: int, **tags: str) -> None:
         self.osm_id = osm_id
         self.tags = dict(tags)
+        self.coordinates = ()
+        self.node_ids = ()
 
 
 def test_an_access_override_rewrites_the_tag_before_the_transform() -> None:

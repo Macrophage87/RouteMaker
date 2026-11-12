@@ -2156,4 +2156,23 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "siy emoji",
   "Road closed ahead": "Wout fèmen pi devan",
   "Road closed ahead, {distance}: {name}": "Wout fèmen pi devan, {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "Èske gen yon moso ki te santi diferan de nòt li?",
+  "Which stretch?": "Ki moso?",
+  "You marked a road closed.": "Ou make yon wout fèmen.",
+  "You marked {n} roads closed.": "Ou make {n} wout fèmen.",
+  "Send for review": "Voye pou revizyon",
+  "Only the road and the day are sent.": "Se sèlman wout la ak jou a yo voye.",
+  "Sent 1 closed road for review. Thank you.": "Yo voye 1 wout fèmen pou revizyon. Mèsi.",
+  "Sent {n} closed roads for review. Thank you.": "Yo voye {n} wout fèmen pou revizyon. Mèsi.",
+  "Not sent. Try again shortly.": "Pa voye. Eseye ankò talè.",
+  "That road can't be looked up right now. Try again shortly.": "Nou pa ka chèche wout sa a kounye a. Eseye ankò talè.",
+  "Looking up the road…": "N ap chèche wout la…",
+  "Sending…": "N ap voye…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Piblik pa ka antre",
+  // ---- The ride summary's cue log (lib/cueRecorder.ts) ----
+  "Copy cue log": "Kopye jounal endikasyon yo",
+  "Cue log copied.": "Jounal endikasyon yo kopye.",
+  "Could not copy the cue log.": "Pa t kapab kopye jounal endikasyon yo.",
 };

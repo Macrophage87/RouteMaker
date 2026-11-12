@@ -1,0 +1,80 @@
+[
+ {
+  "turn": "Start",
+  "road": "Path",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Right",
+  "road": "Woodmont Ave",
+  "then": "then left onto Saint Elmo Ave",
+  "arrow": "turn right,left"
+ },
+ {
+  "turn": "Right",
+  "road": "Norfolk Ave",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Cross",
+  "road": "",
+  "then": "then right onto Bethesda Trolley Trl",
+  "arrow": "turn across right"
+ },
+ {
+  "turn": "Bear left",
+  "road": "Path",
+  "then": "then bear left onto Bethesda Trolley Trl",
+  "arrow": "turn bear_left,bear_left"
+ },
+ {
+  "turn": "Right",
+  "road": "Bethesda Trolley Trl",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Bethesda Trolley Trl",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Bear right",
+  "road": "Bethesda Trolley Trl",
+  "then": "",
+  "arrow": "turn bear_right"
+ },
+ {
+  "turn": "Right",
+  "road": "Bethesda Trolley Trl",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Alta Vista Rd",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Balfour Dr",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Balfour Ct",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

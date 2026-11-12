@@ -280,6 +280,11 @@ export async function fetchQuickTicket(origin: string, wayId: number, run: Fetch
 }
 
 export interface QuickRequest {
+  /**
+   * Sent from the ride summary (lib/rideFeedback.ts): the server keeps the day only, never the time, and keeps the
+   * road out of the per-device count (core/signed_out_suggestions.py, from_ride).
+   */
+  from_ride?: boolean;
   osm_way_id: number;
   lat: number;
   lon: number;

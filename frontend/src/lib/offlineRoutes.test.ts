@@ -194,3 +194,18 @@ test("the sweep deletes only what no kept route names; tile URLs are compared as
 test("a removal that fails says so, and that the route is still kept", () => {
   assert.equal(removeFailedSaid("Dupont Circle to Union Station"), "Could not remove Dupont Circle to Union Station. It is still kept; try again.");
 });
+
+// The Android app keeps the last ride as the installed web app does (backlog 2026-11-12, area 13 item 11): its WebView
+// is not a standalone display, so isStandalone alone left it out.
+test("the Android app counts as installed for Keep for offline and the last ride", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const lib = readFileSync(new URL("./installedApp.ts", import.meta.url), "utf8");
+  assert.match(lib, /return isStandalone\(\) \|\| nativeBridge\(\) !== null;/);
+  // Kept routes' storage note drops Safari's seven-day line in the Android app too.
+  const kept = readFileSync(new URL("../InstallableApp.tsx", import.meta.url), "utf8");
+  assert.equal(kept.match(/storageNote\(kept, installedApp\(\)\)/g)?.length, 2);
+  assert.match(app, /keepOffered\(installedApp\(\)\)/);
+  assert.match(app, /if \(!rest && shown && installedApp\(\) && routedKey\.current\)/);
+  assert.match(app, /keepLastRide=\{installedApp\(\)\}/);
+  assert.doesNotMatch(app, /isStandalone\(\) && routedKey|keepLastRide=\{isStandalone\(\)\}/);
+});
