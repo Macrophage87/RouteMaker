@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "絵文字の目印",
   "Road closed ahead": "この先 通行止め",
   "Road closed ahead, {distance}: {name}": "この先 通行止め、{distance}：{name}",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "フィードバックを送る",
+  "What happened?": "何がありましたか？",
+  "Sent with the app version, browser and ride type. Never where you are.": "アプリのバージョン、ブラウザ、ライドタイプと一緒に送ります。現在地は送りません。",
+  "Sent. Thank you.": "送信しました。ありがとうございます。",
+  "Could not send. Try again later.": "送信できませんでした。後でもう一度お試しください。",
+  "Your phone may stop RouteMaker during a ride.": "ライド中にスマホが RouteMaker を止めることがあります。",
+  "Set battery to Unrestricted": "バッテリーを「制限なし」にする",
+  "Updating. Back in a few minutes.": "更新中です。数分で戻ります。",
+  "Route planning is down right now.": "ルート計画は現在使えません。",
+  "Some ride types are not working right now.": "一部のライドタイプは現在使えません。",
+  "Place search is down right now.": "場所の検索は現在使えません。",
 };

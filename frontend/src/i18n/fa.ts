@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "نشانه‌های ایموجی",
   "Road closed ahead": "جاده جلوتر بسته است",
   "Road closed ahead, {distance}: {name}": "جاده جلوتر بسته است، {distance}: {name}",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "ارسال بازخورد",
+  "What happened?": "چه اتفاقی افتاد؟",
+  "Sent with the app version, browser and ride type. Never where you are.": "همراه با نسخهٔ برنامه، مرورگر و نوع سواری فرستاده می‌شود. هرگز جایی که هستید.",
+  "Sent. Thank you.": "فرستاده شد. سپاس.",
+  "Could not send. Try again later.": "فرستاده نشد. بعداً دوباره امتحان کنید.",
+  "Your phone may stop RouteMaker during a ride.": "ممکن است گوشی شما RouteMaker را هنگام سواری متوقف کند.",
+  "Set battery to Unrestricted": "باتری را روی «بدون محدودیت» بگذارید",
+  "Updating. Back in a few minutes.": "در حال به‌روزرسانی. تا چند دقیقهٔ دیگر برمی‌گردیم.",
+  "Route planning is down right now.": "برنامه‌ریزی مسیر اکنون کار نمی‌کند.",
+  "Some ride types are not working right now.": "برخی از انواع سواری اکنون کار نمی‌کنند.",
+  "Place search is down right now.": "جست‌وجوی مکان اکنون کار نمی‌کند.",
 };

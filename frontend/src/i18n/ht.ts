@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "siy emoji",
   "Road closed ahead": "Wout fèmen pi devan",
   "Road closed ahead, {distance}: {name}": "Wout fèmen pi devan, {distance}: {name}",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "Voye kòmantè",
+  "What happened?": "Kisa k te pase?",
+  "Sent with the app version, browser and ride type. Never where you are.": "Nou voye l ak vèsyon aplikasyon an, navigatè a ak kalite woulib la. Pa janm kote w ye.",
+  "Sent. Thank you.": "Li ale. Mèsi.",
+  "Could not send. Try again later.": "Nou pa t ka voye l. Eseye ankò pita.",
+  "Your phone may stop RouteMaker during a ride.": "Telefòn ou ka fè RouteMaker kanpe pandan w ap woule.",
+  "Set battery to Unrestricted": "Mete batri a sou San restriksyon",
+  "Updating. Back in a few minutes.": "N ap mete ajou. N ap tounen nan kèk minit.",
+  "Route planning is down right now.": "Planifikasyon wout pa mache kounye a.",
+  "Some ride types are not working right now.": "Kèk kalite woulib pa mache kounye a.",
+  "Place search is down right now.": "Rechèch kote pa mache kounye a.",
 };

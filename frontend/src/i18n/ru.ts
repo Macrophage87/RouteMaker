@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "значки эмодзи",
   "Road closed ahead": "Впереди дорога перекрыта",
   "Road closed ahead, {distance}: {name}": "Впереди дорога перекрыта, {distance}: {name}",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "Отправить отзыв",
+  "What happened?": "Что случилось?",
+  "Sent with the app version, browser and ride type. Never where you are.": "Отправляется с версией приложения, браузером и типом поездки. Никогда — где вы находитесь.",
+  "Sent. Thank you.": "Отправлено. Спасибо.",
+  "Could not send. Try again later.": "Не удалось отправить. Попробуйте позже.",
+  "Your phone may stop RouteMaker during a ride.": "Телефон может остановить RouteMaker во время поездки.",
+  "Set battery to Unrestricted": "Включить для батареи «Без ограничений»",
+  "Updating. Back in a few minutes.": "Обновление. Вернёмся через несколько минут.",
+  "Route planning is down right now.": "Построение маршрутов сейчас не работает.",
+  "Some ride types are not working right now.": "Некоторые типы поездок сейчас не работают.",
+  "Place search is down right now.": "Поиск мест сейчас не работает.",
 };

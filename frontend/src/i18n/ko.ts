@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "이모지 표시",
   "Road closed ahead": "앞쪽 도로 통제",
   "Road closed ahead, {distance}: {name}": "앞쪽 도로 통제, {distance}: {name}",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "의견 보내기",
+  "What happened?": "무슨 일이 있었나요?",
+  "Sent with the app version, browser and ride type. Never where you are.": "앱 버전, 브라우저, 라이드 유형과 함께 보내집니다. 현재 위치는 절대 보내지 않습니다.",
+  "Sent. Thank you.": "보냈습니다. 감사합니다.",
+  "Could not send. Try again later.": "보내지 못했습니다. 나중에 다시 시도하세요.",
+  "Your phone may stop RouteMaker during a ride.": "라이드 중에 휴대폰이 RouteMaker를 멈출 수 있습니다.",
+  "Set battery to Unrestricted": "배터리를 제한 없음으로 설정",
+  "Updating. Back in a few minutes.": "업데이트 중입니다. 몇 분 뒤에 돌아옵니다.",
+  "Route planning is down right now.": "지금은 경로 계획을 쓸 수 없습니다.",
+  "Some ride types are not working right now.": "지금은 일부 라이드 유형이 작동하지 않습니다.",
+  "Place search is down right now.": "지금은 장소 검색을 쓸 수 없습니다.",
 };

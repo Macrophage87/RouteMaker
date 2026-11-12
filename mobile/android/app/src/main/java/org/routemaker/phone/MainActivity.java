@@ -30,6 +30,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SharePlugin.class);
         registerPlugin(SpeechPlugin.class);
         registerPlugin(VoiceFocusPlugin.class);
+        registerPlugin(BatteryPlugin.class);
         JSONObject json = SiteStore.readConfig(this);
         String address = SiteStore.address(this, json);
         if (json == null) {

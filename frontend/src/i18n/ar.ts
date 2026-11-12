@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "علامات الرموز التعبيرية",
   "Road closed ahead": "طريق مغلق أمامك",
   "Road closed ahead, {distance}: {name}": "طريق مغلق أمامك، {distance}: {name}",
+  // Ready for a dozen testers (2026-11-12): the status line, Send feedback and the battery line.
+  "Send feedback": "إرسال ملاحظات",
+  "What happened?": "ماذا حدث؟",
+  "Sent with the app version, browser and ride type. Never where you are.": "تُرسل مع إصدار التطبيق والمتصفح ونوع الرحلة. لا يُرسل موقعك أبدًا.",
+  "Sent. Thank you.": "أُرسلت. شكرًا لك.",
+  "Could not send. Try again later.": "تعذّر الإرسال. حاول لاحقًا.",
+  "Your phone may stop RouteMaker during a ride.": "قد يوقف هاتفك RouteMaker أثناء الرحلة.",
+  "Set battery to Unrestricted": "اضبط البطارية على «غير مقيّد»",
+  "Updating. Back in a few minutes.": "جارٍ التحديث. نعود خلال دقائق.",
+  "Route planning is down right now.": "تخطيط المسارات متوقف الآن.",
+  "Some ride types are not working right now.": "بعض أنواع الرحلات لا تعمل الآن.",
+  "Place search is down right now.": "البحث عن الأماكن متوقف الآن.",
 };

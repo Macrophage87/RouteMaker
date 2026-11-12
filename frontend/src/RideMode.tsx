@@ -183,6 +183,7 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
+import { BatteryNote } from "./BatteryNote.tsx";
 import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
@@ -4473,6 +4474,8 @@ export function RideMode({
               {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
               {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />}
               <ScreenSleepNote note={wakeNote} kind={phone} />
+              {/* The Android app's battery saver may stop the ride: one line, at the first Start ride only. */}
+              <BatteryNote />
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
                 <p className="notice">
