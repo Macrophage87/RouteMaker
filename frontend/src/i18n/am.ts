@@ -358,7 +358,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Change what to find": "የሚፈለገውን ቀይር",
   "Detour here: {place}": "እዚህ ዞር በል፦ {place}",
   "Detour here": "እዚህ ዞር በል",
-  "Search: {credits}": "ፍለጋ፦ {credits}",
   "Dock": "ጣቢያ",
   "Docked at {dock}.": "በ{dock} ተመልሷል።",
   "Undocked about {time}.": "ገደማ {time} ተወስዷል።",

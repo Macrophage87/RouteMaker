@@ -358,7 +358,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Change what to find": "Đổi thứ cần tìm",
   "Detour here: {place}": "Ghé qua đây: {place}",
   "Detour here": "Ghé qua đây",
-  "Search: {credits}": "Tìm kiếm: {credits}",
   "Dock": "Trạm",
   "Docked at {dock}.": "Đã trả xe tại {dock}.",
   "Undocked about {time}.": "Đã lấy xe lúc khoảng {time}.",
