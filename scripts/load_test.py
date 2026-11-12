@@ -24,8 +24,9 @@ straight from the api (beta's BETA_API_PORT on 127.0.0.1, or inside the compose 
 Caddy or nginx it is replaced and all riders share one budget, which the report says.
 
 Where it may run: a loopback or private address only (the PC stack, a cloud box given beta's
-compose.beta.yaml caps), and never on the beta host (refused when ~/routemaker-beta-state/vars.sh
-exists). --allow-host NAME adds one more name, for a cloud box reached by name.
+compose.beta.yaml caps). On the beta host it refuses to run (~/routemaker-beta-state/vars.sh or
+$RM_VARS exists); aimed at beta from elsewhere it cannot tell, so never point it there.
+--allow-host NAME adds one more name, for a cloud box reached by name.
 
 --docker-stats (on the host running the stack): samples `docker stats` every 5 s for each
 container's memory peak, and compares each container's restart count and OOM flag before and
@@ -38,6 +39,7 @@ import argparse
 import ipaddress
 import json
 import math
+import os
 import random
 import shutil
 import socket
@@ -302,7 +304,10 @@ def report(log: Log, args: argparse.Namespace, took: float, direct: bool) -> lis
 
 def allowed(base: str, extra: list[str]) -> str | None:
     """Why the target is refused, or None."""
-    if Path.home().joinpath("routemaker-beta-state", "vars.sh").exists():
+    beta_vars = [Path.home().joinpath("routemaker-beta-state", "vars.sh")]
+    if os.environ.get("RM_VARS"):
+        beta_vars.append(Path(os.environ["RM_VARS"]))
+    if any(path.exists() for path in beta_vars):
         return (
             "this machine is the beta host (~/routemaker-beta-state/vars.sh); "
             "the load test never runs on beta"

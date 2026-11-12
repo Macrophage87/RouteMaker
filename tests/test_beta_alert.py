@@ -655,3 +655,31 @@ def test_riders_see_what_is_down_once_it_is_seen_twice(box: Box) -> None:
 def test_no_status_directory_writes_nothing(box: Box) -> None:
     assert box.run("status", "updating", RM_DATA=str(box.tmp / "data")).returncode == 0
     assert not (box.tmp / "data").exists()
+
+
+def test_restarts_in_back_to_back_checks_are_each_posted(box: Box) -> None:
+    """The review of #1197: the alert's own record must not overwrite the counts it compares."""
+    box.hook()
+    (box.tmp / "ps").write_text("abc123\n")
+    inspect = box.tmp / "inspect"
+    for count in range(4):
+        inspect.write_text(f"/beta-api-1 {count} true\n")
+        box.run("watch")
+    assert len([p for p in box.posts() if "beta-api-1 restarted" in p]) == 3
+
+
+def test_the_planners_busy_503_is_not_a_server_error(box: Box) -> None:
+    box.hook()
+    (box.tmp / "api-log").write_text(log_line("/api/route", 503, 1000) * 6)
+    box.run("watch")
+    assert not any("server error" in p for p in box.posts())
+
+
+def test_riders_see_the_fault_even_when_discord_refuses_the_alert(box: Box) -> None:
+    (box.tmp / "data" / "status").mkdir(parents=True)
+    env = {"RM_DATA": str(box.tmp / "data")}
+    box.hook()
+    (box.tmp / "smoke-fails").write_text("FAIL  place search finds Union Station: no match\n")
+    box.run("watch", STUB_CODE="500", **env)
+    box.run("watch", STUB_CODE="500", **env)
+    assert status_of(box) == {"state": "degraded", "parts": ["search"]}

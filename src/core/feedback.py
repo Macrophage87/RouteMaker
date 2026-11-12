@@ -14,6 +14,7 @@ where it works. The address is a secret and is never printed.
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import urllib.error
@@ -91,7 +92,14 @@ def send(text: str, details: dict[str, str]) -> None:
             # Not a forum (a plain channel's webhook refuses a thread name): one post instead.
             body.pop("thread_name")
             status = _post(body)
-    except (urllib.error.URLError, TimeoutError, OSError) as failed:
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        http.client.HTTPException,
+    ) as failed:
+        # ValueError and http.client.InvalidURL: a malformed address, whose message holds it.
         # The reason only: never the words, never the address.
         logger.warning("feedback: Discord could not be reached (%s)", type(failed).__name__)
         raise NotSent from None

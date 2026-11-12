@@ -129,3 +129,13 @@ def test_each_client_sends_a_few_an_hour(client, discord) -> None:
         for _ in range(6)
     ]
     assert codes == [200] * 5 + [429]
+
+
+def test_a_malformed_webhook_address_is_not_sent_and_never_logged(settings, caplog) -> None:
+    settings.FEEDBACK_WEBHOOK_URL = (
+        "https://discord.com/api/webhooks/1/placeholder token with spaces"
+    )
+    caplog.set_level(logging.DEBUG)
+    with pytest.raises(feedback.NotSent):
+        feedback.send("hello there", {})
+    assert "placeholder" not in caplog.text

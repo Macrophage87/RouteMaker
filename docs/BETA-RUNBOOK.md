@@ -1481,7 +1481,8 @@ What is posted, each as one short message starting "RouteMaker beta:":
     row; and the **certificate** ending in under 14 days (certbot renews at 30, so that means
     renewal has failed). No `RM_BETA_HOST` in `.env`, no check; no `openssl`, no certificate check.
     The address itself is never in a message.
-  - **server errors**: 3 or more 5xx answers in the api's access log over the last 10 minutes;
+  - **server errors**: 3 or more 5xx answers in the api's access log over the last 10 minutes
+    (not the planner's own 503 "busy", which the slow-plans count covers);
     and **slow plans**: 3 or more `/api/route` answers that took over 30 s (riders waiting for one
     of the two routing slots).
   - **restarts**: any container whose restart count went up since the last check, with "killed for
@@ -1500,17 +1501,17 @@ What is posted, each as one short message starting "RouteMaker beta:":
   `{"state": "degraded", "parts": [...]}` (`routing`, `trails`, `search`) once a smoke-test failure
   is seen twice, and removes the file when all is well. nginx serves it at `/status.json`
   (never cached), even while the api is stopped; the app reads it at open and when a request
-  fails, and shows one short line. Install once (no sudo for the directory; nginx needs a
-  re-render for the new location):
+  fails, and shows one short line. Install once, as the beta's login user (the directory is
+  new, so it is created behind `rm_absent`, readable by nginx):
 
   ```sh
   . "$HOME/routemaker-beta-state/vars.sh"
-  mkdir "$RM_DATA/status" && chmod 755 "$RM_DATA/status"
-  "$RM_SRC/scripts/beta/render-nginx.sh" --stage full --diff "$NGINX_SITE"   # shows the one new location
+  rm_absent "$RM_DATA/status" && mkdir -m 755 "$RM_DATA/status"
   ```
 
-  then install the rendered file as in step 10 (`nginx -t` before the reload). Without the
-  directory nothing is written and riders see no line.
+  then the nginx template's new `/status.json` location goes in as in "A new release sha", step 9
+  (re-render, `--diff "$NGINX_SITE"`, install, `sudo nginx -t && sudo nginx -s reload`). Without the
+directory nothing is written and riders see no line.
 - **The PC's copy of the backups:** once the owner's PC pulls the nightly dumps
   (docs/OPERATIONS.md, "Off-box copies of beta backups"), each run that ends ok writes
   `~/routemaker-beta-state/pc-backup-pull`. The same check posts once that file is over 36 h old

@@ -180,13 +180,16 @@ cmd_watch() {
 	out=$("${RM_ALERT_SMOKE:-$RM_SRC/scripts/beta/smoke-test.sh}" --local $trails 2>&1 </dev/null); rc=$?
 	if [ "$rc" = 0 ]; then
 		cmd_clear site "working again: the local smoke tests pass"
+		rm -f "$state/rider-strike"
 		rider_parts ""
 	else
 		fails=$(printf '%s\n' "$out" | grep -E '^(FAIL|smoke-test:)' | head -n 8)
 		failing site "$(same_id "$fails")" \
 			"the local smoke tests fail:"$'\n'"${fails:-$(printf '%s\n' "$out" | tail -n 4)}"
-		# Riders hear of it once it is posted (seen twice), not at a router's one-off restart.
-		if [ -f "$state/site" ]; then rider_parts "$(parts_of "$out")"; else rider_parts ""; fi
+		# Riders hear of it once it is seen twice in a row (the second check), not at a router's
+		# one-off restart, whether or not Discord took the alert.
+		if [ -f "$state/rider-strike" ]; then rider_parts "$(parts_of "$out")"; else rider_parts ""; fi
+		: >"$state/rider-strike"
 	fi
 	out=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" exec -T worker ./manage.py check_operations 2>&1 </dev/null); rc=$?
 	if [ "$rc" = 0 ]; then
@@ -274,7 +277,7 @@ watch_public() {
 	fi
 	rm -f "$body"
 	command -v "${RM_ALERT_OPENSSL:-openssl}" >/dev/null 2>&1 || return 0
-	end=$("${RM_ALERT_OPENSSL:-openssl}" s_client -servername "$host" -connect "$host:443" </dev/null 2>/dev/null |
+	end=$(timeout 20 "${RM_ALERT_OPENSSL:-openssl}" s_client -servername "$host" -connect "$host:443" </dev/null 2>/dev/null |
 		"${RM_ALERT_OPENSSL:-openssl}" x509 -noout -enddate 2>/dev/null | sed -n 's/^notAfter=//p')
 	[ -n "$end" ] || return 0
 	end=$(date -u -d "$end" +%s 2>/dev/null) || return 0
@@ -293,12 +296,12 @@ watch_api_log() {
 	local lines n5 slow
 	lines=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" logs --no-color --no-log-prefix --since 10m api 2>/dev/null </dev/null |
 		grep -oE '"[A-Z]+ [^" ]+" [0-9]{3} [0-9-]+ [0-9]+') || lines=""
-	n5=$(printf '%s
-' "$lines" | awk '$3 ~ /^5/' | grep -c .)
-	slow=$(printf '%s
-' "$lines" | awk -v s="${RM_ALERT_SLOW_S:-30}" '$2 ~ /^\/api\/route/ && $5 >= s * 1000000' | grep -c .)
+	# 500, 502, 504 and up: a 503 is the planner's own "busy, try again" when both routing
+	# slots are full, which the slow-plans check below reports as what it is.
+	n5=$(printf '%s\n' "$lines" | awk '$3 ~ /^5/ && $3 != 503' | grep -c .)
+	slow=$(printf '%s\n' "$lines" | awk -v s="${RM_ALERT_SLOW_S:-30}" '$2 ~ /^\/api\/route"?$/ && $5 >= s * 1000000' | grep -c .)
 	if [ "$n5" -ge "${RM_ALERT_5XX:-3}" ]; then
-		cmd_send server-errors "5xx" "the api answered $n5 requests with a server error in the last 10 minutes:"$'\n'"$(printf '%s\n' "$lines" | awk '$3 ~ /^5/ { print $1, $2, $3 }' | tr -d '"' | sort | uniq -c | sort -rn | head -n 5)"
+		cmd_send server-errors "5xx" "the api answered $n5 requests with a server error in the last 10 minutes:"$'\n'"$(printf '%s\n' "$lines" | awk '$3 ~ /^5/ && $3 != 503 { print $1, $2, $3 }' | tr -d '"' | sort | uniq -c | sort -rn | head -n 5)"
 	else
 		cmd_clear server-errors "server errors are back under ${RM_ALERT_5XX:-3} in 10 minutes"
 	fi
@@ -310,10 +313,10 @@ watch_api_log() {
 }
 
 # Each container's restarts and out-of-memory kills, against the last check's counts
-# ($state/restarts): compose restarts a killed container on its own, so without this a memory
+# ($state/restart-counts, never an alert key): compose restarts a killed container on its own, so without this a memory
 # spike in the middle of a ride leaves no trace but a failed plan.
 watch_containers() {
-	local ids now prev="$state/restarts" news=""
+	local ids now prev="$state/restart-counts" news=""
 	command -v "${RM_ALERT_DOCKER:-docker}" >/dev/null 2>&1 || return 0
 	ids=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" --profile offroad ps -a -q 2>/dev/null </dev/null | grep -E '^[0-9a-f]+$') || return 0
 	# shellcheck disable=SC2086
@@ -324,7 +327,7 @@ watch_containers() {
 		news=$(awk 'NR == FNR { seen[$1] = $2; next } ($1 in seen) && $2 > seen[$1] { printf "%s restarted %d time(s)%s\n", $1, $2 - seen[$1], ($3 == "true" ? ", killed for memory" : "") }' "$prev" - <<<"$now")
 	fi
 	printf '%s\n' "$now" >"$prev"
-	[ -z "$news" ] || cmd_send restarts "$(date -u +%s)" "containers restarted since the last check:"$'\n'"$news"
+	[ -z "$news" ] || cmd_send restarts "$(printf '%s' "$now" | sha256sum | cut -c1-16)" "containers restarted since the last check:"$'\n'"$news"
 }
 
 # The host itself: memory available to new processes (beta has no swap, so a spike kills a

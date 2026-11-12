@@ -8,7 +8,7 @@
  * while the api is stopped, so it can say "Updating" when the planner itself says nothing useful. Any other answer (the
  * usual 404, the PC's Caddy handing back the page, no network) means no line.
  *
- * Read at open, when the page comes back to the front, when a plan or search fails, and every minute while a line is
+ * Read at open, when the page comes back to the front, when a plan fails, and every minute while a line is
  * shown, so the line goes once the fault does.
  */
 

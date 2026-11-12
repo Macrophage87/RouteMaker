@@ -13,11 +13,14 @@ export const FEEDBACK_SENT_WITH = () => t("Sent with the app version, browser an
 export const FEEDBACK_SENT = () => t("Sent. Thank you.");
 export const FEEDBACK_FAILED = () => t("Could not send. Try again later.");
 
-/** Whether this server takes feedback, asked once per page (GET /api/feedback). */
-let asked: Promise<boolean> | null = null;
-function serverTakesFeedback(): Promise<boolean> {
-  asked ??= feedbackOn(window.location.origin);
-  return asked;
+/**
+ * Whether this server takes feedback (GET /api/feedback). A yes is kept for the page; a no is asked again when the box is
+ * next drawn, since it may only mean the api was stopped for an update at the time.
+ */
+let takes = false;
+async function serverTakesFeedback(): Promise<boolean> {
+  if (!takes) takes = await feedbackOn(window.location.origin);
+  return takes;
 }
 
 export function FeedbackBox({ details, onSay }: { details: () => FeedbackDetails; onSay?: (text: string) => void }) {
@@ -89,7 +92,8 @@ export function FeedbackBox({ details, onSay }: { details: () => FeedbackDetails
         <button type="submit" disabled={state === "sending" || text.trim().length < FEEDBACK_MIN}>
           {t("Send")}
         </button>
-        <p className="hint feedback-said" role="status">
+        {/* Said once, through the page's own live region (onSay); shown here. */}
+        <p className="hint feedback-said">
           {state === "sent" ? FEEDBACK_SENT() : state === "failed" ? FEEDBACK_FAILED() : ""}
         </p>
       </form>

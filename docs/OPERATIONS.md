@@ -2636,8 +2636,7 @@ pans the map, rides with Ride's 2-minute checks and re-routes once half way. Rid
 60 s, ride 10 minutes and pan 12 tiles: all our defaults, chosen to look like a group's Saturday
 start, not measured.
 
-It never runs on beta: it refuses a public address (unless `--allow-host` names your own test box)
-and refuses to run at all on the beta host. Run it on the PC stack, or better on a cloud box given
+It never runs on beta: it refuses a public address (unless `--allow-host` names your own test box), refuses to run on the beta host (its `vars.sh` there), and cannot tell beta apart when aimed at it from elsewhere, so never point it there. Run it on the PC stack, or better on a cloud box given
 beta's `compose.beta.yaml` caps, since those caps are what it is meant to test. Point it at the api
 itself (beta's overlay publishes it on `127.0.0.1:$BETA_API_PORT`), not through Caddy or nginx:
 only then does each rider count as its own client, as on beta.
