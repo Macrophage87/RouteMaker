@@ -352,6 +352,15 @@ import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
+/**
+ * Running as an installed app: the installed web app (standalone), or the Android app, whose WebView is not a
+ * standalone display, so it kept no "Last ride" (backlog 2026-11-12, area 13 item 11: a ride in a dead spot
+ * should reopen in the Play app as in the installed web app).
+ */
+function installedApp(): boolean {
+  return isStandalone() || nativeBridge() !== null;
+}
+
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -2024,7 +2033,7 @@ export function App() {
   const [keepSpoken, setKeepSpoken] = useState({ text: "", count: 0 });
   const keepAbort = useRef<AbortController | null>(null);
   // Keep for offline: the installed app's (465a) and, by the owner's choice of 2026-10-10, a tab's too (keepOffered is the one switch).
-  const keepShown = keepOffered(isStandalone());
+  const keepShown = keepOffered(installedApp());
   // Once a while after load (not at it: the store's first open takes about a second), what a keep or a
   // removal cut short left unnamed is deleted (offlineKeep.ts sweepKept).
   useEffect(() => {
@@ -4070,7 +4079,7 @@ export function App() {
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
     keepAbort.current?.abort();
-    if (!rest && shown && isStandalone() && routedKey.current) {
+    if (!rest && shown && installedApp() && routedKey.current) {
       void keepLastRide({ plan: routedKey.current, title: keptTitle(), distanceM: shown.distance_m, answer: shown })
         .then(() => setKeptVersion((v) => v + 1))
         .catch(() => undefined);
@@ -7303,7 +7312,7 @@ export function App() {
           geocode={detourGeocode}
           stopName={rideStopName}
           trailMiles={trailMiles}
-          keepLastRide={isStandalone()}
+          keepLastRide={installedApp()}
           fixed={rideStart.fixed}
           onBroadcast={rideCanBroadcast ? broadcastFromRide : null}
           onBroadcastHold={rideCanBroadcast ? broadcastQrFromRide : null}
