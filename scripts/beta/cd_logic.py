@@ -11,6 +11,7 @@ functions the tests call directly (tests/test_beta_cd.py):
   gate        whether the change between two commits is a code release the server may deploy
               by itself, or needs the owner (data from home, sudo, nginx); and which optional
               steps the deploy needs (front end, router restart, services to recreate)
+  tag-image   the api image a release tag's message names by digest (the release workflow's)
   rollback    which undo steps a failed deploy needs, from the steps it got through
 
 Standard library only, Python 3.8 or newer: it runs on the server with whatever python3 is
@@ -22,7 +23,8 @@ check-run JSON.
   cd_logic.py semver v0.2.0                               # exit 0 if strict vX.Y.Z
   cd_logic.py ci-verdict --sha <40 hex> < check-runs.json # green | pending | red
   cd_logic.py lock-hash < frontend/package-lock.json      # 64 hex
-  cd_logic.py gate --repo DIR --old SHA --new SHA         # KEY=VALUE lines
+  cd_logic.py gate --repo DIR --old SHA --new SHA [--ci-image]  # KEY=VALUE lines
+  cd_logic.py tag-image < tag-message.txt                 # the image@sha256:..., or nothing
   cd_logic.py rollback --done stopped,snapshot,...        # one undo action per line
 """
 
@@ -187,6 +189,14 @@ AGENT_FILES = (
     "scripts/beta/frontend-build.sh",
     "scripts/beta/alert.sh",
 )
+# The api image's own files: they stop a release the agent would build itself, but not one whose
+# image the release workflow built from the tagged commit and named, by digest, in the tag
+# (.github/workflows/release.yml; the owner, 2026-11-12, "Yes, behind your approval").
+CI_IMAGE_PREFIXES = ("docker/api.Dockerfile", "docker/requirements", "docker/api-entrypoint.sh")
+# The line the release workflow writes into the annotated tag's message: the image by digest.
+TAG_IMAGE = re.compile(
+    r"(?m)^api-image: (ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64})\s*$"
+)
 MIGRATION = re.compile(r"^src/[^/]+/migrations/[^/]+\.py$")
 # A migration that names the live schema reads or reshapes data that comes from home. A
 # comment that merely mentions it stops the release too: that errs closed.
@@ -269,16 +279,25 @@ def compose_change(diff_text: str) -> list:
     return sorted(set(reasons))
 
 
+def tag_image(message: str) -> Optional[str]:
+    """The api image a release tag names by digest (the release workflow's `api-image:` line),
+    or None. Exactly one such line, or none counts: two are refused (None)."""
+    found = TAG_IMAGE.findall(message)
+    return found[0] if len(found) == 1 else None
+
+
 def gate(
     changes: Sequence[tuple],
     show: Callable[[str, str], Optional[str]],
     compose_diff: str = "",
+    ci_image: bool = False,
 ) -> dict:
     """The verdict on a release.
 
     `changes` is git's --name-status as (status, path[, new path]) tuples; `show(side, path)`
     returns a file's text at "old" or "new" (None if absent there); `compose_diff` is the -U0
-    diff of the compose files. Returns verdict ("deploy" or "stop"), reasons, and the flags the
+    diff of the compose files; `ci_image`: the tag names an image the release workflow built,
+    so the api image's own files need no hand ship. Returns verdict ("deploy" or "stop"), reasons, and the flags the
     deploy acts on."""
     reasons: list = []
     result: dict = {
@@ -309,7 +328,12 @@ def gate(
         result["changed_files"] += 1
         for prefix, why in STOP_PREFIXES:
             if path == prefix or path.startswith(prefix):
-                reasons.append(f"{path}: {why}")
+                if ci_image and prefix in CI_IMAGE_PREFIXES:
+                    result["notes"].append(
+                        f"{path}: {why}; the release workflow built the image, which is pulled"
+                    )
+                else:
+                    reasons.append(f"{path}: {why}")
                 break
         if path.startswith("frontend/"):
             result["frontend"] = True
@@ -455,7 +479,7 @@ def parse_name_status_z(text: str) -> list:
     return changes
 
 
-def git_gate(repo: str, old: str, new: str) -> dict:
+def git_gate(repo: str, old: str, new: str, ci_image: bool = False) -> dict:
     """gate() over the git history of `repo` between two full commit ids."""
     for sha in (old, new):
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -477,7 +501,7 @@ def git_gate(repo: str, old: str, new: str) -> dict:
         done = _git(repo, "show", f"{old if side == 'old' else new}:{path}")
         return done.stdout if done.returncode == 0 else None
 
-    return gate(changes, show, compose.stdout)
+    return gate(changes, show, compose.stdout, ci_image)
 
 
 def _clean(text: str) -> str:
@@ -496,6 +520,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     g.add_argument("--repo", required=True)
     g.add_argument("--old", required=True)
     g.add_argument("--new", required=True)
+    g.add_argument("--ci-image", action="store_true")
+    sub.add_parser("tag-image")
     sub.add_parser("rollback").add_argument("--done", default="")
     args = parser.parse_args(argv)
 
@@ -517,7 +543,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(lock_hash(sys.stdin.read()))
         return 0
     if args.command == "gate":
-        result = git_gate(args.repo, args.old, args.new)
+        result = git_gate(args.repo, args.old, args.new, args.ci_image)
         print(f"verdict={result['verdict']}")
         for key in (
             "frontend",
@@ -534,6 +560,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"reason={_clean(reason)}")
         for note in result["notes"]:
             print(f"note={_clean(note)}")
+        return 0
+    if args.command == "tag-image":
+        image = tag_image(sys.stdin.read())
+        if image:
+            print(image)
         return 0
     if args.command == "rollback":
         for action in rollback_plan(step for step in args.done.split(",") if step):

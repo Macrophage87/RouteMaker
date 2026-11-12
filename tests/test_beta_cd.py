@@ -653,7 +653,11 @@ STUB_DOCKER = """#!/bin/sh
 # (/saved into /dest).
 echo "docker $*" >> "$STUB_LOG"
 case "$*" in
-  "image inspect"*) [ -n "${STUB_HAS_IMAGES:-}" ] && exit 0; exit 1 ;;
+  "image inspect"*) [ -n "${STUB_HAS_IMAGES:-}" ] && exit 0
+    [ -n "${STUB_PULLED:-}" ] && [ -f "$STUB_PULLED" ] && exit 0; exit 1 ;;
+  # STUB_PULLED: a file the pull writes, after which the image is on the host; STUB_PULL_RC fails it
+  pull*) [ -n "${STUB_PULL_RC:-}" ] && exit "$STUB_PULL_RC"
+    [ -n "${STUB_PULLED:-}" ] && : > "$STUB_PULLED"; exit 0 ;;
   "image ls"*) [ -n "${STUB_IMAGE_TAGS:-}" ] && printf '%s\n' $STUB_IMAGE_TAGS; exit 0 ;;
   build*)
     if [ -n "${STUB_BUILD_FAIL_ONCE:-}" ] && [ ! -f "$STUB_BUILD_FAIL_ONCE" ]; then
@@ -2794,3 +2798,94 @@ def test_rollback_map_with_nothing_to_go_back_to_changes_nothing(beta: Beta) -> 
     done = beta.agent("rollback-map", **UP)
     assert done.returncode == 1 and "nothing to go back to" in beta.status()
     assert "docker run" not in beta.calls()
+
+
+# --- the image the release workflow built (the owner, 2026-11-12) ---
+
+DIGEST = "ghcr.io/macrophage87/routemaker-api@sha256:" + "ab" * 32
+
+
+def test_the_tag_s_image_line_is_read_exactly() -> None:
+    assert cd_logic.tag_image(f"Release v0.2.0\n\napi-image: {DIGEST}\n") == DIGEST
+    assert cd_logic.tag_image("Release v0.2.0\n") is None
+    assert cd_logic.tag_image(f"api-image: {DIGEST}\napi-image: {DIGEST}\n") is None
+    other = "api-image: ghcr.io/someone/else@sha256:" + "ab" * 32
+    assert cd_logic.tag_image(other) is None
+    assert cd_logic.tag_image(f"api-image: {DIGEST[:-1]}\n") is None
+    assert cd_logic.tag_image(DIGEST.replace("@sha256:", ":") + "\n") is None
+
+
+@pytest.mark.parametrize(
+    "path", ["docker/api.Dockerfile", "docker/requirements.txt", "docker/api-entrypoint.sh"]
+)
+def test_an_image_file_change_deploys_only_with_the_workflow_s_image(path: str) -> None:
+    assert _gate({path: ("a", "b")})["verdict"] == "stop"
+    changes = [("M", path)]
+    result = cd_logic.gate(changes, lambda side, p: "x", "", ci_image=True)
+    assert result["verdict"] == "deploy" and any("pulled" in n for n in result["notes"])
+    # it never lets anything else through
+    lua = cd_logic.gate([("M", "lua/tags.lua")], lambda side, p: "x", "", ci_image=True)
+    assert lua["verdict"] == "stop"
+
+
+def _workflow_release(beta: Beta, files: dict[str, str]) -> str:
+    sha = commit(beta.origin, files)
+    git(beta.origin, "tag", "-a", "v0.2.0", "-m", f"Release v0.2.0\n\napi-image: {DIGEST}")
+    beta.sha = sha
+    beta.green()
+    return sha
+
+
+def test_a_workflow_tag_pulls_its_image_and_deploys_a_dockerfile_change(beta: Beta) -> None:
+    sha = _workflow_release(beta, {"docker/requirements.txt": "django==9\n"})
+    pulled = beta.tmp / "pulled"
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_PULLED=str(pulled))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    calls = beta.calls()
+    assert f"docker pull {DIGEST}" in calls
+    assert f"docker tag {DIGEST} {API}:{sha[:12]}" in calls
+    assert "docker build -f" not in calls
+    _order(calls, "docker pull", "up -d api worker", "smoke --local")
+
+
+def test_a_pull_that_fails_waits_and_touches_nothing(beta: Beta) -> None:
+    _workflow_release(beta, {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_PULL_RC="1")
+    assert done.returncode == 0, done.stdout
+    assert "waiting" in beta.status() and "could not pull" in beta.status()
+    calls = beta.calls()
+    assert "up -d" not in calls and "docker build -f" not in calls and beta.head() == beta.v1
+
+
+def test_a_hand_made_tag_still_holds_a_dockerfile_change(beta: Beta) -> None:
+    beta.release("v0.2.0", {"docker/api.Dockerfile": "FROM x\n"})
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status()
+    assert "docker pull" not in beta.calls()
+
+
+def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval() -> None:
+    import yaml
+
+    wf = yaml.safe_load((REPO / ".github" / "workflows" / "release.yml").read_text())
+    assert wf["permissions"] == {}
+    jobs = wf["jobs"]
+    # the one job that publishes waits for the `release` environment's reviewer, and the tag
+    # can only follow it
+    assert jobs["image"]["environment"] == "release"
+    assert jobs["image"]["permissions"] == {"contents": "read", "packages": "write"}
+    assert "image" in jobs["tag"]["needs"] and jobs["tag"]["permissions"] == {"contents": "write"}
+    for name, job in jobs.items():
+        if name != "image":
+            assert "packages" not in job.get("permissions", {}), name
+        if name != "tag":
+            assert job["permissions"].get("contents") == "read", name
+        for step in job["steps"]:
+            # pinned by commit, and no expression pasted into a script (inputs come in by env)
+            if "uses" in step:
+                assert re.search(r"@[0-9a-f]{40}$", step["uses"]), step["uses"]
+            assert "${{" not in step.get("run", ""), (name, step.get("name"))
+    # the tag line is the one the agent reads
+    assert "api-image: %s" in jobs["tag"]["steps"][0]["run"]
+    assert cd_logic.TAG_IMAGE.pattern.startswith("(?m)^api-image: ")

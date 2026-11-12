@@ -42,6 +42,11 @@
 #      origin/main and a descendant of the deployed release, and GitHub's `test` and `a11y` check
 #      runs green for that commit (an unauthenticated read of the public repository; a rate limit
 #      is tried again next pass).
+#      A tag the release workflow made (.github/workflows/release.yml) names the api image it built
+#      from the tagged commit by digest (`api-image: ...@sha256:...` in its message): that image is
+#      pulled and tagged here instead of built, and a change to the image's own files (Dockerfile,
+#      requirements, entrypoint) is deployed rather than held for a hand ship (the owner,
+#      2026-11-12). A pull that fails waits for the next pass.
 #   5. the gate (cd_logic.py gate): only a code release is deployed by itself. Anything needing
 #      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>. A
 #      release with nothing for the server (documentation, CI) is only recorded, if the running api
@@ -1018,7 +1023,7 @@ recover() {
 
 # --- one pass -------------------------------------------------------------------------------------
 pass() {
-	local cur cur_sha tag new verdict reason gate_file why free h root noop=0
+	local cur cur_sha tag new verdict reason gate_file why free h root noop=0 ci_image=""
 	predraw_warning=""
 	[ -f "$cd_dir/BROKEN" ] && { finish broken "a rollback failed earlier and needs the owner (see $cd_dir/BROKEN); after fixing, auto-release.sh mark-deployed <tag>"; return 1; }
 	[ -f "$cd_dir/PAUSED" ] && { finish paused "$(head -n 1 "$cd_dir/PAUSED")"; return 0; }
@@ -1061,6 +1066,12 @@ pass() {
 	fi
 	gitc merge-base --is-ancestor "$new" refs/remotes/origin/main || { hold "$tag" "its commit $new is not on main"; return 0; }
 	gitc merge-base --is-ancestor "$cur_sha" "$new" || { hold "$tag" "it does not descend from the deployed release $cur"; return 0; }
+	# A tag the release workflow made names the api image it built from this commit, by digest
+	# (.github/workflows/release.yml): that image is pulled instead of built, and a change to the
+	# image's own files needs no hand ship (the owner, 2026-11-12).
+	ci_image=""
+	if annotated "$tag"; then ci_image=$(gitc for-each-ref --format='%(contents)' "refs/tags/$tag" | "$py" "$logic" tag-image); fi
+	[ -z "$ci_image" ] || say "the tag names the api image the release workflow built: $ci_image"
 	verdict=$(ci_status "$new")
 	case "$verdict" in
 		green) say "CI: the test and a11y check runs are green on $new" ;;
@@ -1070,7 +1081,7 @@ pass() {
 	esac
 
 	gate_file=$(mktemp)
-	"$py" "$logic" gate --repo "$RM_SRC" --old "$cur_sha" --new "$new" >"$gate_file" || { rm -f "$gate_file"; finish error "the gate failed to run"; return 1; }
+	"$py" "$logic" gate --repo "$RM_SRC" --old "$cur_sha" --new "$new" ${ci_image:+--ci-image} >"$gate_file" || { rm -f "$gate_file"; finish error "the gate failed to run"; return 1; }
 	say "gate: $(kv verdict "$gate_file") ($(kv changed_files "$gate_file") server-relevant files changed since $cur)"
 	sed -n 's/^note=/note: /p' "$gate_file" | while IFS= read -r reason; do say "$reason"; done
 	if [ "$(kv verdict "$gate_file")" != deploy ]; then
@@ -1107,6 +1118,16 @@ pass() {
 			rm -f "$gate_file"
 			finish waiting "$tag: less than $docker_free_gib GiB free on Docker's root ($root) for the image build; the owner frees space (old api images: docker image ls $API_IMAGE)"
 			return 0
+		fi
+	fi
+	if [ "$noop" = 0 ] && [ -n "$ci_image" ] && ! dk image inspect "$API_IMAGE:${new:0:12}" >/dev/null 2>&1; then
+		if [ "$dry_run" = 1 ]; then
+			say "dry run: would pull $ci_image as $API_IMAGE:${new:0:12}"
+		else
+			say "step: pull the api image the release workflow built ($ci_image)"
+			if ! { quiet dk pull "$ci_image" </dev/null && quiet dk tag "$ci_image" "$API_IMAGE:${new:0:12}" </dev/null; }; then
+				rm -f "$gate_file"; finish waiting "$tag: could not pull $ci_image (the network, or the package is not public); trying again next pass"; return 0
+			fi
 		fi
 	fi
 	if [ "$dry_run" = 1 ]; then
