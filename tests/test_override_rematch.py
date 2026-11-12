@@ -956,3 +956,30 @@ def test_a_groups_fingerprints_are_read_by_way(tmp_path) -> None:
     }
     (tmp_path / "a.json").write_text(json.dumps({"version": 1, "groups": [group]}))
     assert rematch.load_fingerprints(tmp_path) == {("stress", 7): print_}
+
+
+def test_the_stage_lists_a_pinned_road_whose_facts_moved(tmp_path, monkeypatch) -> None:
+    """Facts changed since rated (`pipeline.rated_facts`; the owner, 2026-11-12): a re-matched
+    row's facts follow it to the new ways, the road keeps the row's level, and the report says
+    what moved and the formula's level beside ours."""
+    from pipeline import rated_facts
+    from pipeline.rebuild import Stage
+    from pipeline.run import build_handlers
+
+    tags = {"highway": "primary", "name": "Harford Road", "lanes": "4"}
+    ways = [StageWay(11, dict(tags), line(0, 0, 45)), StageWay(12, dict(tags), line(0, 45, 45))]
+    stress = {w.osm_id: StressResult(Stress.LTS3, "x") for w in ways}
+    context = context_with(tmp_path, ways, stress)
+    facts = {"highway": "primary", "lanes": 2, "speed_mph": None, "facility": "none"}
+    monkeypatch.setattr(
+        rated_facts, "load", lambda: {1: rated_facts.Rated(facts, "x.json", "2026-11-09")}
+    )
+    rows = [replace(stress_row(1, tier=1), fingerprint=fingerprint())]
+    build_handlers(context, load_overrides=lambda: rows)[Stage.APPLY_OVERRIDES]()
+
+    assert context.stress_by_way[11].tier is Stress.LTS1, "our level stands"
+    reports = tmp_path / "work" / "reports"
+    text = (reports / "rated-facts-changed.md").read_text()
+    assert "Pinned roads with stored facts, in this extract: 2" in text
+    assert "| 11 | Harford Road | primary | 1.0 | 3.0 | 2026-11-09 | lanes 2 -> 4 |" in text
+    assert "12,Harford Road" in (reports / "rated-facts-changed.csv").read_text()

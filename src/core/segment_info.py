@@ -747,12 +747,59 @@ def stress_rows(row: dict) -> list[dict]:
     category = row.get("stress_adjustment_category")
     if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
+    grade = evidence_grade(row)
+    if grade is not None:
+        rows.append(_row("How sure", GRADE_DETAIL[grade], None))
     if row.get("stress_pending") is True:
         # A stress edit since the router's graph was built (`stress_edits.routing_pending`;
         # hunt finding X3, 2026-11-08): the map and the ranking have it now, the router's own
         # costs only from the next rebuild.
         rows.append(_row("Routing", ROUTING_PENDING, None))
     return rows + rating_rows(row)
+
+
+# How sure a road's level is (backlog 2026-11-12 item 6; the owner chose the placement
+# separately): from what the level rests on, never from who set it, except that a level the
+# owner set from the road panel or a reviewed community rating is rider-checked. Most own-picks
+# roads have neither a count nor a posted speed (70% no count, 72% no posted speed of 222,844
+# ways), so their grade says so. None on a path or trail: no traffic to measure.
+MEASURED = "measured"
+PART_ASSUMED = "part_assumed"
+INFERRED = "inferred"
+RIDER_CHECKED = "rider_checked"
+GRADE_WORDS = {
+    MEASURED: "measured",
+    PART_ASSUMED: "part assumed",
+    INFERRED: "inferred from surroundings",
+    RIDER_CHECKED: "rider-checked",
+}
+GRADE_DETAIL = {
+    MEASURED: "Measured: a traffic count and a posted speed",
+    PART_ASSUMED: "Part assumed: a traffic count or a posted speed, not both",
+    INFERRED: "Inferred from surroundings: no traffic count and no posted speed",
+    RIDER_CHECKED: "Rider-checked: set from the road panel or a reviewed rider rating",
+}
+# A road-panel edit's adjustment id (`core.stress_edits`), and a Review ruling's.
+PANEL_EDIT_PREFIX = "edit-"
+
+
+def evidence_grade(row: dict) -> str | None:
+    """How sure the way's level is (`GRADE_WORDS`), or None on a path or trail."""
+    if row.get("is_trail_class"):
+        return None
+    adjustment = row.get("stress_adjustment_id")
+    if adjustment is not None and (
+        str(adjustment).startswith(PANEL_EDIT_PREFIX)
+        or agency_lts.adjustment_source(adjustment) == agency_lts.COMMUNITY
+    ):
+        return RIDER_CHECKED
+    counted = row.get("volume_aadt") is not None
+    speed = row.get("road_speed_mph") is not None
+    if counted and speed:
+        return MEASURED
+    if counted or speed:
+        return PART_ASSUMED
+    return INFERRED
 
 
 # The panel's word while a stress edit waits for the next rebuild, as the editor says it

@@ -5425,10 +5425,15 @@ A row the owner leaves is open again next week.
 
 ### AADT smoothing, named corridors and the override re-match
 
-Three more reports land beside the discrepancy report, in
+Four more reports land beside the discrepancy report, in
 `${DATA_ROOT}/rebuild/reports/`, each replaced by every rebuild. Like it, a
 failure to write one is a warning in the log and never fails the rebuild.
 
+- `rated-facts-changed.md` and `.csv` (the owner, 2026-11-12): every pinned road whose
+  facts (class, speed, lanes, count, bike facility) moved since its row was rated
+  (`pipeline.rated_facts`; docs/stress/overrides.md). The road keeps our level; Review's
+  "Facts changed since rated" queue lists them for a ruling. The log line is "pinned
+  roads whose facts changed since rated: N of M checked".
 - `override-rematch.md` and `.csv` (OWNER-DECISIONS 282): every approved override
   row whose OSM way is missing from the extract, and what became of it:
   `rematched` (re-pointed at the ways that now stand for it, by stored geometry

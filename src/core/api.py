@@ -10748,6 +10748,7 @@ REVIEW_QUEUES = Literal[
     "rematch",
     "painted_lane",
     "dc_no_bike",
+    "facts_changed",
 ]
 
 

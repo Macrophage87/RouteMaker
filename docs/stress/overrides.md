@@ -179,3 +179,23 @@ reported as `rematched`, `covered`, `failed` or `drifted` in
 run row. A failed row is left as it was and still counted as matching no way. A row
 typed into the admin has no fingerprint and cannot be re-matched. Nor can the
 crosswalk-links file's rows, which by decision 442 carry way ids only.
+
+## Facts changed since rated (the owner, 2026-11-12)
+
+The re-match watches a way's line, name and class only. A pinned level (an own-picks
+row, or any stress row that states its facts) also rests on the road's speed, lanes,
+traffic count and bike facility, and those can change under it: a new protected lane, a
+lower posted speed, a new count. Each own-picks group's `evidence` sentence already lists
+those facts, and a row or group may carry them as a `facts` object instead
+(`src/pipeline/rated_facts.py`, `FACT_KEYS`). At each rebuild `rated_facts.compare`
+checks every approved, pinned way against what this extract and the agency layers now
+say, and writes the ways whose facts moved to `rated-facts-changed.md`/`.csv` in the
+rebuild's report directory. What counts as moved (our defaults, unmeasured): a
+different class; a speed now read or no longer read, or 5 mph or more apart; a different
+`lanes` tag; a count where there was none, or more than 20% outside the stored band;
+a different bike facility class. A count that disappears is not listed (the match
+changed, not the road).
+
+The road **keeps our level** (the owner's call, 2026-11-12: "Keep our level, queue it
+for you"). The list is Review's queue "Facts changed since rated", where Accept keeps the
+level and Change LTS re-rates the road.

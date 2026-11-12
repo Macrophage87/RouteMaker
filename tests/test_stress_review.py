@@ -666,6 +666,32 @@ class TestRulings:
         assert made[0].access_override is None
         assert not Override.objects.filter(osm_way_id=SAME, kind="access").exists()
 
+    def test_a_road_whose_facts_changed_since_rated_is_queued(self, tables, tmp_path) -> None:
+        """The rebuild's facts-changed list (pipeline.rated_facts; the owner, 2026-11-12: "Keep
+        our level, queue it for you"): read into its own queue; Accept records only."""
+        from pipeline import rated_facts
+
+        live, staging = tables
+        rated = rated_facts.Rated(
+            rated_facts.from_evidence(
+                "group G00001: secondary, urban, speed 35 posted, lanes 2, two way, "
+                "8,000-11,999, facility none; r"
+            ),
+            "x.json",
+            "2026-11-09",
+        )
+        changed = [
+            rated_facts.Changed(SAME, "Park Path", "secondary", 2.5, 3.0, rated, ["lanes 2 -> 4"])
+        ]
+        (tmp_path / f"{rated_facts.REPORT_NAME}.csv").write_text(rated_facts.report_csv(changed))
+        counts = stress_review.compute_all(BUILD, live, staging, tmp_path)
+        assert counts["facts_changed"] == 1
+        found = items("facts_changed")
+        assert found[SAME].reason == "Facts changed since rated: lanes 2 -> 4"
+        assert "reject" not in stress_review.actions(found[SAME])
+        made, refused = stress_review.rule(make_user(), "facts_changed", [SAME], "accept")
+        assert refused == [] and made[0].access_override is None
+
     def test_a_batch_and_what_it_cannot_rule_on(self, queued) -> None:
         admin = make_user()
         made, refused = stress_review.rule(admin, "rebuild", [DROP, RISE, NEW_ONLY], "accept")

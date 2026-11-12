@@ -1483,3 +1483,30 @@ class TestTappedTrail:
         assert client.get("/api/trails/505/profile", **fresh_client()).status_code == 404
         # The refusal was not kept: the next ask is answered.
         assert client.get("/api/trails/505/profile", **fresh_client()).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("row", "grade"),
+    [
+        ({"volume_aadt": 6400, "road_speed_mph": 50}, "measured"),
+        ({"volume_aadt": 6400, "road_speed_mph": None}, "part_assumed"),
+        ({"volume_aadt": None, "road_speed_mph": 30}, "part_assumed"),
+        ({}, "inferred"),
+        # An own-picks row rests on its facts like any other level...
+        ({"stress_adjustment_id": "md-own-g00007-1"}, "inferred"),
+        # ...but the owner's own edit in the road panel is checked by a rider.
+        ({"stress_adjustment_id": "edit-12"}, "rider_checked"),
+        ({"is_trail_class": True}, None),
+    ],
+)
+def test_how_sure_a_level_is(row, grade) -> None:
+    """The evidence grade (backlog 2026-11-12 item 6): what the level rests on."""
+    assert segment_info.evidence_grade(row) == grade
+
+
+def test_the_details_say_how_sure_the_level_is() -> None:
+    row = {"stress_tier": 2, "stress_rule": "mixed traffic", "volume_aadt": None}
+    rows = {r["label"]: r for r in segment_info.stress_rows(row)}
+    assert rows["How sure"]["value"] == (
+        "Inferred from surroundings: no traffic count and no posted speed"
+    )
