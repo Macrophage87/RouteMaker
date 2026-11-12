@@ -2156,6 +2156,19 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "علامات الرموز التعبيرية",
   "Road closed ahead": "طريق مغلق أمامك",
   "Road closed ahead, {distance}: {name}": "طريق مغلق أمامك، {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "هل شعرت أن أي جزء يختلف عن تقييمه؟",
+  "Which stretch?": "أي جزء؟",
+  "You marked a road closed.": "حددت طريقًا مغلقًا.",
+  "You marked {n} roads closed.": "حددت {n} طرق مغلقة.",
+  "Send for review": "إرسال للمراجعة",
+  "Only the road and the day are sent.": "يُرسل الطريق واليوم فقط.",
+  "Sent 1 closed road for review. Thank you.": "أُرسل طريق مغلق واحد للمراجعة. شكرًا.",
+  "Sent {n} closed roads for review. Thank you.": "أُرسلت {n} طرق مغلقة للمراجعة. شكرًا.",
+  "Not sent. Try again shortly.": "لم يُرسل. حاول مرة أخرى بعد قليل.",
+  "That road can't be looked up right now. Try again shortly.": "لا يمكن البحث عن هذا الطريق الآن. حاول مرة أخرى بعد قليل.",
+  "Looking up the road…": "جارٍ البحث عن الطريق…",
+  "Sending…": "جارٍ الإرسال…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "لا دخول للعامة",
   // ---- The ride summary's cue log (lib/cueRecorder.ts) ----

@@ -2156,6 +2156,19 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "ምልክታት ኢሞጂ",
   "Road closed ahead": "ኣብ ቅድሚት መገዲ ተዓጽዩ",
   "Road closed ahead, {distance}: {name}": "ኣብ ቅድሚት መገዲ ተዓጽዩ፣ {distance}፦ {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "ካብ ደረጃኡ ዝተፈልየ ዝተሰመዐካ ክፋል ነይሩ ድዩ?",
+  "Which stretch?": "ኣየናይ ክፋል?",
+  "You marked a road closed.": "ሓደ መገዲ ዕጹው ኢልካ ምልክት ገይርካ።",
+  "You marked {n} roads closed.": "{n} መገድታት ዕጹዋት ኢልካ ምልክት ገይርካ።",
+  "Send for review": "ንግምገማ ስደድ",
+  "Only the road and the day are sent.": "ዝለኣኽ መገዲን መዓልትን ጥራይ እዩ።",
+  "Sent 1 closed road for review. Thank you.": "1 ዕጹው መገዲ ንግምገማ ተላኢኹ። የቐንየልና።",
+  "Sent {n} closed roads for review. Thank you.": "{n} ዕጹዋት መገድታት ንግምገማ ተላኢኾም። የቐንየልና።",
+  "Not sent. Try again shortly.": "ኣይተላእከን። ቁሩብ ደሓር እንደገና ፈትን።",
+  "That road can't be looked up right now. Try again shortly.": "እቲ መገዲ ሕጂ ክድለ ኣይክእልን። ቁሩብ ደሓር እንደገና ፈትን።",
+  "Looking up the road…": "መገዲ ይድለ ኣሎ…",
+  "Sending…": "ይለኣኽ ኣሎ…",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "ንህዝቢ ክፉት ኣይኮነን",
   // ---- The ride summary's cue log (lib/cueRecorder.ts) ----

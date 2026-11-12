@@ -9794,6 +9794,10 @@ class SignedOutSuggestionIn(Schema):
     other: str = Field(default="", max_length=1000, description="Other's words, at most 200.")
     ticket: str = Field(max_length=500)
     website: str = Field(default="", max_length=200, description="Left empty (a honeypot).")
+    from_ride: StrictBool = Field(
+        default=False,
+        description="Sent from the ride summary: the day is kept, never the time.",
+    )
 
 
 SIGNED_OUT_THANKS = (
@@ -9848,6 +9852,7 @@ def stress_suggestion_signed_out(request, body: SignedOutSuggestionIn, response:
             body.other,
             body.ticket,
             body.website,
+            from_ride=body.from_ride,
         )
     except quick.Dropped:
         return Status(200, {"id": 0, "message": SIGNED_OUT_THANKS})
