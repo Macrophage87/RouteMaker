@@ -44,6 +44,7 @@ from routemaker import (
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 from routemaker.facility import SHARED_PREFIXES
 from routemaker.stress import (
+    BESIDE_BUSY_ROAD_RULE,
     BUSY_RURAL_HIGHWAY_RULE,
     BUSY_STREET_RULE,
     FAST_MULTILANE_PREFIX,
@@ -619,6 +620,16 @@ def _rule_words(rule: str) -> str:
         return "Owner-rated corridor"
     if "curated lane at" in rule:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
+    if rule.startswith(BESIDE_BUSY_ROAD_RULE):
+        # The owner, 2026-11-12: protected lanes along busy roads "might not be LTS 1".
+        road = re.search(r"road at LTS (\d(?:\.5)?)", rule)
+        level = f" (LTS {road.group(1)})" if road else ""
+        crossed = re.search(r"crossings score (\d+) a mile", rule)
+        extra = ["many or busy street and driveway crossings"] if crossed else []
+        if "crosses a slip lane" in rule:
+            extra.append("crosses a slip lane")
+        tail = ", ".join(extra) if extra else "driveways, turning cars and traffic beside it"
+        return f"Path beside a busy road{level}: {tail}"
     if rule.startswith(USE_SIDEPATH_RULE):
         return "Avoid: riders are asked to use the side path"
     if rule.startswith(USE_SIDEPATH_ON_ROAD_RULE):

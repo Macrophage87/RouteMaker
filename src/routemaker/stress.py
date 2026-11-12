@@ -1100,6 +1100,80 @@ def service_road_step(result: StressResult, tags: dict[str, str]) -> StressResul
     return replace(result, half=True, rule=f"{result.rule}, {SERVICE_ROAD_RULE}")
 
 
+# A side path or protected lane beside a busy road (the owner, 2026-11-12, of the marked
+# protected lanes along Old Georgetown Road: "While they are fine for experienced cyclists,
+# they might not be LTS 1."). An unnamed trail-class way the rebuild finds running along a
+# named street (`facility.side_streets`) takes a level from that street: 1.5 beside a road at
+# LTS 3 or 3.5, 2 beside one at LTS 4 or above. Between junctions a rider there still meets
+# driveways, turning cars and the traffic beside them; the junctions themselves are priced by
+# the road's own traffic (`intersections.traffic_level`). Our default, not measured. A named
+# trail is never asked (it is its own route, the Custis Trail beside I-66), and an owner row
+# on the way itself is the more specific call. THIS TEXT IS READ BACK by
+# `core.segment_info.rule_words`.
+BESIDE_BUSY_ROAD_RULE = "path beside a busy road"
+# (the road's level at least, the path's level), busiest first. Our defaults, not measured.
+BESIDE_BUSY_ROAD_STEPS = ((4.0, 2.0), (3.0, 1.5))
+# The share of a path's length beside one of the street's ways for that way's level to count,
+# so a few metres along a busier carriageway's end do not set the whole path. Our default.
+BESIDE_BUSY_ROAD_MIN_SHARE = 0.3
+# Half a level more for every CROSSING_SCORE_STEP of crossing score a mile along the path's run
+# (`facility.side_path_crossings`: each crossing weighted by how bad it is) and for a slip lane
+# the way crosses, up to 4.5: nothing is Avoid (the owner, 2026-11-12). 20 a mile is about ten
+# street crossings at LTS 2, or five across roads at LTS 4. Our defaults, not measured.
+BESIDE_BUSY_ROAD_CROSSINGS_STEP = 0.5
+CROSSING_SCORE_STEP = 20.0
+BESIDE_BUSY_ROAD_MAX = 4.5
+
+
+def level_of(result) -> float:
+    """A way's level as it stands, half step included: an owner row's half where a row set
+    the tier (`StressResult.adjustment`), else the result's own (an agency's, a rule's)."""
+    adjustment = getattr(result, "adjustment", None)
+    half = getattr(adjustment, "half", False) if adjustment is not None else result.half
+    return int(result.tier) + (0.5 if half else 0.0)
+
+
+def beside_busy_road_step(
+    result: StressResult,
+    road_level: float | None,
+    *,
+    crossing_score: float | None = None,
+    slip_lane: bool = False,
+) -> StressResult:
+    """The side-path step (`BESIDE_BUSY_ROAD_RULE`) over a trail-class way at a flat LTS 1,
+    from the level of the street it runs beside (None where it runs beside none), half a level
+    more for every `CROSSING_SCORE_STEP` of crossing score a mile along its run (each crossing
+    weighted by how bad it is) and for a slip lane the way crosses (the owner, 2026-11-12:
+    "If there are lots of intersections, especially sliplanes it could get an even larger
+    bump"). A way an owner row set (`result.adjustment`) and a way already above LTS 1 are
+    left alone."""
+    if road_level is None or getattr(result, "adjustment", None) is not None:
+        return result
+    if result.tier is not Stress.LTS1 or result.half:
+        return result
+    for at_least, level in BESIDE_BUSY_ROAD_STEPS:
+        if road_level >= at_least:
+            why = [f"road at LTS {road_level:g}"]
+            # Half a level for every CROSSING_SCORE_STEP, with no cap of its own (the owner,
+            # 2026-11-12: "no upper limit. There could be some really terrible bike paths"),
+            # and half a level for a slip lane; never past 4.5 ("nothing is avoid").
+            score = crossing_score or 0.0
+            steps = int(score // CROSSING_SCORE_STEP)
+            if steps:
+                why.append(f"crossings score {round(score):d} a mile")
+            if slip_lane:
+                why.append("crosses a slip lane")
+                steps += 1
+            level = min(BESIDE_BUSY_ROAD_MAX, level + steps * BESIDE_BUSY_ROAD_CROSSINGS_STEP)
+            return replace(
+                result,
+                tier=Stress(int(level)),
+                half=level % 1 == 0.5,
+                rule=f"{BESIDE_BUSY_ROAD_RULE} ({'; '.join(why)}), {result.rule}",
+            )
+    return result
+
+
 # The rule on a `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).
 # The owner, 2026-10-16: "It's very much not recommended, but I believe still legal", and
 # "For the use-sidepath roads, make sure there's a sidepath marked." THIS TEXT IS READ BACK

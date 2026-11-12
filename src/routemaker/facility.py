@@ -45,8 +45,9 @@ to prefer it.
 from __future__ import annotations
 
 import math
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from enum import StrEnum
+from typing import NamedTuple
 
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
 from .ridetime import closed_settings
@@ -934,7 +935,26 @@ def side_street_names(
     | Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
 ) -> dict[int, str]:
     """Each unnamed bike way's name from the named street it runs alongside
-    (`sidepath_name`), by osm id; ways with none are left out.
+    (`sidepath_name`), by osm id; ways with none are left out (`side_streets`)."""
+    return {osm_id: found.name for osm_id, found in side_streets(ways).items()}
+
+
+class SideStreet(NamedTuple):
+    """The named street an unnamed bike way runs alongside (`side_streets`): the way's
+    name from it (`sidepath_name`), and the metres of the bike way found beside each of
+    the street's ways, by osm id (the share of the street's level a way carries, for
+    `stress.beside_busy_road_step`)."""
+
+    name: str
+    metres_by_way: dict[int, float]
+
+
+def side_streets(
+    ways: Sequence[tuple[int, dict[str, str], Sequence[tuple[float, float]]]]
+    | Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+) -> dict[int, SideStreet]:
+    """Each unnamed bike way's named street alongside, by osm id; ways with none are left
+    out.
 
     `ways` is (osm id, tags, [(lon, lat), ...]). A way is asked when it is trail
     class, has no `name`, and a bicycle may ride it as a path or a protected lane
@@ -962,8 +982,10 @@ def side_street_names(
     for _osm_id, _tags, points in candidates:
         for p, _bearing_at, _metres in _samples(points, SIDE_STREET_STEP_M):
             wanted.add((int(p[0] // cell), int(p[1] // cell)))
-    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], str]]] = {}
-    for _osm_id, tags, coords in ways:
+    grid: dict[
+        tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], str, int]]
+    ] = {}
+    for street_id, tags, coords in ways:
         name = (tags.get("name") or "").strip()
         if not name or tags.get("highway") not in SIDE_STREET_HIGHWAY or len(coords) < 2:
             continue
@@ -974,26 +996,133 @@ def side_street_names(
             for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
                 for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
                     if (gx, gy) in wanted:
-                        grid.setdefault((gx, gy), []).append((a, b, name))
-    found: dict[int, str] = {}
+                        grid.setdefault((gx, gy), []).append((a, b, name, street_id))
+    found: dict[int, SideStreet] = {}
     for osm_id, tags, points in candidates:
         total = 0.0
         beside: dict[str, float] = {}
+        by_way: dict[str, dict[int, float]] = {}
         for p, bearing, metres in _samples(points, SIDE_STREET_STEP_M):
             total += metres
-            near: str | None = None
+            near: tuple[str, int] | None = None
             nearest = SIDE_STREET_M
-            for a, b, name in grid.get((int(p[0] // cell), int(p[1] // cell)), ()):
+            for a, b, name, street_id in grid.get((int(p[0] // cell), int(p[1] // cell)), ()):
                 d = _point_segment_m(p, a, b)
                 if d <= nearest and _angle_between(bearing, _bearing(a, b)) <= SIDE_STREET_ANGLE:
-                    near, nearest = name, d
+                    near, nearest = (name, street_id), d
             if near is not None:
-                beside[near] = beside.get(near, 0.0) + metres
+                beside[near[0]] = beside.get(near[0], 0.0) + metres
+                along = by_way.setdefault(near[0], {})
+                along[near[1]] = along.get(near[1], 0.0) + metres
         if total <= 0 or not beside:
             continue
         street, metres = max(beside.items(), key=lambda item: (item[1], item[0]))
         if metres >= SIDE_STREET_FRACTION * total:
-            found[osm_id] = sidepath_name(street, tags)
+            found[osm_id] = SideStreet(sidepath_name(street, tags), by_way[street])
+    return found
+
+
+# --- What a side path beside a busy road crosses (the owner, 2026-11-12) --------------------
+
+# The owner, 2026-11-12: "Bike paths besides busy roads should get a bump. If there are lots of
+# intersections, especially sliplanes it could get an even larger bump", and "it's not always
+# number of crossings, but also how bad they are." A crossing is a node a side path shares
+# with a way cars use: a street, a driveway, a service road, a slip lane (a `*_link`). Each
+# counts by how bad it is: the crossed way's own level (`level_of`, the rebuild's tier for it;
+# a class default where it has none), and SLIP_LANE_WEIGHT more for a slip lane. The weights
+# are summed over the run of side path along one street (its ways joined end to end), so a
+# path split at every driveway is read as one, and read as a score a mile. A run under
+# CROSSING_RUN_MIN_M is too short to read a rate from. Our defaults, not measured.
+CROSSING_WEIGHT_BY_CLASS = {
+    "service": 1.5,
+    "residential": 2.0, "unclassified": 2.0, "living_street": 2.0,
+    "tertiary": 2.5, "tertiary_link": 2.5,
+    "secondary": 3.0, "secondary_link": 3.0,
+    "primary": 4.0, "primary_link": 4.0, "trunk": 4.0, "trunk_link": 4.0,
+}  # fmt: skip
+SLIP_LANE_HIGHWAY = frozenset({"trunk_link", "primary_link", "secondary_link", "tertiary_link"})
+SLIP_LANE_WEIGHT = 2.0
+CROSSING_RUN_MIN_M = 160.0
+_MILE_M = 1609.344
+
+
+class SidePathCrossings(NamedTuple):
+    """What a side path crosses (`side_path_crossings`): its run's crossing score a mile (None
+    where the run is too short to read a rate from) and whether the way itself crosses a slip
+    lane."""
+
+    score_per_mile: float | None
+    slip_lane: bool
+
+
+def _length_m(coordinates: Sequence[tuple[float, float]]) -> float:
+    lat0 = coordinates[0][1] if coordinates else 38.9
+    points = [_xy(lon, lat, lat0) for lon, lat in coordinates]
+    return sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False))
+
+
+def side_path_crossings(
+    ways: Iterable[tuple[int, dict[str, str], Sequence[int], Sequence[tuple[float, float]]]],
+    side: dict[int, SideStreet],
+    level_of: Callable[[int], float | None] | None = None,
+) -> dict[int, SidePathCrossings]:
+    """For each side path in `side` (`side_streets`), what it crosses, by osm id.
+
+    `ways` is (osm id, tags, node ids, [(lon, lat), ...]) for every way; `level_of` gives a
+    crossed way's level by osm id (None where it has none). A run is the side paths along one
+    street name joined at shared end nodes."""
+    road_nodes: dict[int, tuple[float, bool]] = {}
+    paths: dict[int, tuple[Sequence[int], float]] = {}
+    for osm_id, tags, nodes, coords in ways:
+        if osm_id in side:
+            paths[osm_id] = (nodes, _length_m(coords))
+            continue
+        highway = tags.get("highway", "")
+        if highway not in CROSSING_WEIGHT_BY_CLASS:
+            continue
+        level = level_of(osm_id) if level_of is not None else None
+        slip = highway in SLIP_LANE_HIGHWAY
+        weight = (level if level is not None else CROSSING_WEIGHT_BY_CLASS[highway]) + (
+            SLIP_LANE_WEIGHT if slip else 0.0
+        )
+        for node in nodes:
+            held = road_nodes.get(node)
+            road_nodes[node] = (
+                (weight, slip) if held is None else (max(held[0], weight), held[1] or slip)
+            )
+    # Runs: union the paths of one street name that share an end node.
+    parent = {osm_id: osm_id for osm_id in paths}
+
+    def root(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    ends: dict[tuple[str, int], int] = {}
+    for osm_id, (nodes, _length) in paths.items():
+        if not nodes:
+            continue
+        for node in (nodes[0], nodes[-1]):
+            key = (side[osm_id].name, node)
+            if key in ends:
+                parent[root(osm_id)] = root(ends[key])
+            else:
+                ends[key] = osm_id
+    run_nodes: dict[int, set[int]] = {}
+    run_length: dict[int, float] = {}
+    for osm_id, (nodes, length) in paths.items():
+        r = root(osm_id)
+        run_nodes.setdefault(r, set()).update(n for n in nodes if n in road_nodes)
+        run_length[r] = run_length.get(r, 0.0) + length
+    found: dict[int, SidePathCrossings] = {}
+    for osm_id, (nodes, _length) in paths.items():
+        r = root(osm_id)
+        length = run_length[r]
+        score = sum(road_nodes[n][0] for n in run_nodes[r])
+        rate = score / (length / _MILE_M) if length >= CROSSING_RUN_MIN_M else None
+        slip = any(road_nodes[n][1] for n in nodes if n in road_nodes)
+        found[osm_id] = SidePathCrossings(rate, slip)
     return found
 
 
