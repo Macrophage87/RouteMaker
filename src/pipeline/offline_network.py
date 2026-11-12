@@ -1,21 +1,16 @@
 """The road network a phone searches with no signal (off-grid riding; Stephen, 2026-11-12: "the one
-mile would be a
-default, with a whole region pack an optional download").
+mile would be a default, with a whole region pack an optional download").
 
-Each rebuild writes every way a bicycle may ride to `{schema}.offline_way` (`offline_way`,
-streamed in batches by
-`pipeline.writers.write_offline_ways`, so nothing region-wide is held in memory): its located OSM
-node ids, its line,
-stress level (times 2, so 3.5 is 7 and Avoid is 10), whether it is one-way for a bicycle, walked
-or unpaved, and its
-name. The API reads the ways around a route and cuts them at the junctions among them
-(`split_edges`, over a mile's
-corridor only; `core.offline_network`), and the phone searches that (frontend lib/offlineRouter.ts).
+Each rebuild writes every way a bicycle may ride to `{schema}.offline_way` (`offline_way`, streamed
+in batches by `pipeline.writers.OfflineWayWriter`, so nothing region-wide is held in memory): its
+located OSM node ids, its line, stress level (times 2, so 3.5 is 7 and Avoid is 10), whether it is
+one-way for a bicycle, walked or unpaved, and its name. The API reads the ways around a route and
+cuts them at the junctions among them (`split_edges`, over a mile's corridor only;
+`core.offline_network`), and the phone searches that (frontend lib/offlineRouter.ts).
 
-It is a simpler network than the router's: no turn restrictions, junction costs or graph
-variants. It answers "a way
-back to the line" with no signal, which the app labels approximate; the server's routing is
-unchanged.
+It is a simpler network than the router's: no turn restrictions, junction costs or graph variants.
+It answers "a way back to the line" with no signal, which the app labels approximate; the server's
+routing is unchanged.
 """
 
 from __future__ import annotations
@@ -72,10 +67,8 @@ def bicycle_direction(tags: Mapping[str, str]) -> int:
     """1 where a bicycle may ride only along the way's order, -1 only against it, 0 either way.
 
     `oneway:bicycle` wins; a contraflow cycle lane (`cycleway=opposite*`, or a side's
-    `cycleway:*=opposite_lane`)
-    opens the other way; otherwise `oneway` (with -1 reversed) and roundabouts as
-    `routemaker.tags.is_oneway` reads
-    them."""
+    `cycleway:*=opposite_lane`) opens the other way; otherwise `oneway` (with -1 reversed) and
+    roundabouts as `routemaker.tags.is_oneway` reads them."""
     own = tags.get("oneway:bicycle")
     if own == "no":
         return 0
@@ -118,11 +111,9 @@ def offline_way(
     unpaved: bool | None,
     mtb_only: bool,
 ) -> OfflineWay | None:
-    """The way as the network takes it, or None where a bicycle may not ride it (an access reason
-    that closes it, a
-    singletrack trail kept for mountain biking, which the way back never sends a rider onto) or
-    it has under two
-    located nodes."""
+    """The way as the network takes it, or None where a bicycle may not ride it (an access
+    reason that closes it, a singletrack trail kept for mountain biking, which the way back never
+    sends a rider onto) or it has under two located nodes."""
     if access_reason not in OPEN_REASONS or mtb_only or not tags.get("highway"):
         return None
     if len(coordinates) < 2 or len(located) != len(coordinates):
@@ -157,9 +148,9 @@ def length_m(points: Sequence[tuple[float, float]]) -> float:
 
 
 def split_edges(ways: Iterable[OfflineWay]) -> list[OfflineEdge]:
-    """Every way cut at its junctions: a node that two or more ways share, or that a way passes
-    twice, and each way's
-    ends. A one-way edge runs the way it may be ridden (its `a_node` first)."""
+    """Every way cut at its junctions: a node that two or more ways share, or that a way
+    passes twice, and each way's ends. A one-way edge runs the way it may be ridden (its `a_node`
+    first)."""
     ways = list(ways)
     uses: Counter[int] = Counter()
     for way in ways:

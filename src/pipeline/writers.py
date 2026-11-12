@@ -409,7 +409,8 @@ class OfflineWayWriter:
                     (osm_way_id, node_ids, geometry, level2, flags, direction, name)
                     VALUES {args} ON CONFLICT (osm_way_id) DO NOTHING"""
             )
-        self.written += len(self.pending)
+            # Rows written, not offered: a way met twice (ON CONFLICT) is one row.
+            self.written += max(cursor.rowcount, 0)
         self.pending = []
 
     def close(self) -> int:

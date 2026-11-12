@@ -13,6 +13,7 @@ import { METRES_PER_MILE } from "./format.ts";
 import { turnWords } from "./navigate.ts";
 import { offlineWayBack, readableGraph, type CorridorGraph, type OfflineWayBack, type OfflineWeights } from "./offlineRouter.ts";
 import { continueWords, joinRoutes } from "./rejoin.ts";
+import { thinForMatch } from "./gpxMatch.ts";
 
 /** The network and the ride's prices for it, as the API answers. */
 export interface OfflineNetwork {
@@ -26,6 +27,10 @@ export const OFFLINE_WALK_MPS = 1.3;
 /** An unpaved stretch at this share of the paved speed. Our default, unmeasured. */
 export const OFFLINE_UNPAVED_FACTOR = 0.8;
 
+/** At most this many points of the route's line are sent: the server simplifies it anyway (core/offline_network.py SIMPLIFY_DEG), and a mile's
+ * width either side hides the rest. Our default, unmeasured. */
+export const OFFLINE_LINE_POINTS = 2000;
+
 /** The network around `line`, or null (no signal, not built yet, refused). Never throws. */
 export async function fetchOfflineNetwork(
   line: readonly LonLat[],
@@ -36,7 +41,7 @@ export async function fetchOfflineNetwork(
     const answer = await fetcher("/api/offline/network", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ line: line.map((p) => [p[0], p[1]]), preset: ride.preset, stress: ride.stress ?? null, carrying: ride.carrying ?? null }),
+      body: JSON.stringify({ line: thinForMatch(line, OFFLINE_LINE_POINTS), preset: ride.preset, stress: ride.stress ?? null, carrying: ride.carrying ?? null }),
     });
     if (!answer.ok) return null;
     const body = (await answer.json()) as CorridorGraph & { level_factor?: number[] };

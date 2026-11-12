@@ -1080,6 +1080,9 @@ export function RideMode({
   const dockChosen = useRef<string | null>(plannedTrip?.docked ?? null);
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
+  // The rough way back found on the phone (lib/offlineWayBack.ts) being ridden, if it is: planned again on the server when
+  // the signal returns.
+  const offlineRoute = useRef<RouteResponse | null>(null);
   // The rider has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone goes onto a
   // dirt trail, any reroutes should include dirt"): every re-plan of the ride may ride any dirt trail. Set from what
   // the rider rode (rideTrip.ts rodeDirt, at each fix), never from the route alone: a plan or re-plan whose route uses
@@ -1714,14 +1717,18 @@ export function RideMode({
       }
       // No signal for a re-plan or the way back: the way back found on the phone, over the network kept with the route
       // (lib/offlineWayBack.ts), said as rough. Not for a detour, a held U-turn's check or a restart, whose places the
-      // planned line does not lead to. The server's answer, if a late one comes, still replaces it.
+      // planned line does not lead to. Ridden only until the signal is back: the `online` retry below then plans again
+      // from where the rider is (offlineRoute).
+      let rough = false;
       if (!found && failed === "network" && !via && !check && !done && !voided()) {
         const net = offlineNet.current;
         // The last network fetched, even for an earlier route of this ride (a new one is fetched only with a signal): it
         // covers the planned line this ride set out on, which a way back or a re-plan mostly keeps to.
-        const offline = net ? offlineWayBackRoute(net.network, routeRef.current, here, progressM, keptPoints) : null;
+        // Never back onto a road the rider marked closed: joined past it, as the server's way back is.
+        const offline = net ? offlineWayBackRoute(net.network, routeRef.current, here, Math.max(progressM, closed), keptPoints) : null;
         if (offline) {
           found = offline;
+          rough = true;
           points = keptLeft;
           note = REPLAN_OFFLINE;
         }
@@ -1791,6 +1798,7 @@ export function RideMode({
       // A route that rides a dirt trail is not the rider on one: that is set as they ride it (onFix, rodeDirt).
       if (found.dirt_closed) dirtClosed.current = true;
       setRoute(found);
+      offlineRoute.current = rough ? found : null;
       // The ride as it now stands is what a page closed mid-ride resumes (lib/rideResume.ts); never a trip's leg.
       if (!trip && keepLeft) keepLeftRide({ route: found, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current, replans: rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current, mtbDone.current) }, VIA_MARKS, Date.now());
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
@@ -2409,11 +2417,17 @@ export function RideMode({
     };
   }, [paused, pausedWhy, env, pausedFixes]);
 
-  // No signal: a failed re-plan tries again as the connection comes back.
+  // No signal: a failed re-plan tries again as the connection comes back. So does a rough way back found on the phone
+  // (lib/offlineWayBack.ts), still ridden: the server plans it properly, wherever the rider is on it.
   useEffect(() => {
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
+      const rough = offlineRoute.current !== null && offlineRoute.current === routeRef.current;
+      if (rough && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix && state.goodFix.accuracyM <= OFF_SURE_M) {
+        void replan(state.goodFix.point);
+        return;
+      }
       if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix && state.goodFix.accuracyM <= OFF_SURE_M && !replanHeld(replannedFrom.current, state.goodFix.point)) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);

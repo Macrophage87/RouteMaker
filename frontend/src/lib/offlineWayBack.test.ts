@@ -7,7 +7,7 @@ import type { DescriptionEntry, RouteResponse, StressSpan } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { REPLAN_OFFLINE, replanTold } from "./navigate.ts";
 import { CORRIDOR_GRAPH_VERSION, GRAPH_DEG, type CorridorGraph } from "./offlineRouter.ts";
-import { fetchOfflineNetwork, offlineWayBackRoute, type OfflineNetwork } from "./offlineWayBack.ts";
+import { fetchOfflineNetwork, OFFLINE_LINE_POINTS, offlineWayBackRoute, type OfflineNetwork } from "./offlineWayBack.ts";
 
 const LAT = 38.9;
 const KX = 111_195 * Math.cos((LAT * Math.PI) / 180);
@@ -100,6 +100,32 @@ test("Ride fetches the network with each route and uses it when a re-plan fails 
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /fetchOfflineNetwork\(route\.geometry\.coordinates as LonLat\[\], \{ preset, stress: dialsRef\.current\.stress, carrying: dialsRef\.current\.carrying \}\)/);
   assert.match(ride, /if \(!found && failed === "network" && !via && !check && !done && !voided\(\)\) \{/);
-  assert.match(ride, /offlineWayBackRoute\(net\.network, routeRef\.current, here, progressM, keptPoints\)/);
+  assert.match(ride, /offlineWayBackRoute\(net\.network, routeRef\.current, here, Math\.max\(progressM, closed\), keptPoints\)/);
   assert.match(ride, /note = REPLAN_OFFLINE;/);
+  // Ridden only until the signal is back: then planned again on the server.
+  assert.match(ride, /offlineRoute\.current = rough \? found : null;/);
+  assert.match(ride, /const rough = offlineRoute\.current !== null && offlineRoute\.current === routeRef\.current;/);
+});
+
+test("a long route's line is thinned before it is sent, its ends kept", async () => {
+  let sent: LonLat[] = [];
+  const ok = (async (_url: string, init: RequestInit) => {
+    sent = (JSON.parse(String(init.body)) as { line: LonLat[] }).line;
+    return new Response(JSON.stringify({ ...grid(2, 2), level_factor: NETWORK.levelFactor }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const long = Array.from({ length: 9000 }, (_, i) => at(i * 5, 0));
+  await fetchOfflineNetwork(long, { preset: "default" }, ok);
+  assert.equal(sent.length, OFFLINE_LINE_POINTS);
+  assert.deepEqual(sent[0], [Math.round(long[0][0] * 1e6) / 1e6, Math.round(long[0][1] * 1e6) / 1e6]);
+  assert.deepEqual(sent[sent.length - 1], [Math.round(long[8999][0] * 1e6) / 1e6, Math.round(long[8999][1] * 1e6) / 1e6]);
+});
+
+test("the way back never joins behind a road the rider marked closed", () => {
+  // Rider beside A Street at 200 m, road closed up to 600 m: the join is past it.
+  const route = offlineWayBackRoute(NETWORK, planned(), at(200, 390), 600, []);
+  assert.ok(route);
+  const line = route.geometry.coordinates;
+  const joinedAt = line.findIndex((p, i) => i > 0 && Math.abs(p[1] - LAT) < 1e-6);
+  assert.ok(joinedAt > 0);
+  assert.ok((line[joinedAt][0] - -77) * KX >= 600 - 1, `${(line[joinedAt][0] - -77) * KX}`);
 });

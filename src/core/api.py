@@ -3844,6 +3844,8 @@ def offline_network_view(request, body: OfflineNetworkIn):
         graph = offline_network.corridor_graph(body.line)
     except offline_network.NotBuilt:
         return Status(503, {"error": "not_built"})
+    except offline_network.TooSlow:
+        return Status(503, {"error": "too_slow"})
     factors = offline_network.level_factors(body.preset, body.stress, body.carrying)
     return {**graph, "level_factor": factors}
 

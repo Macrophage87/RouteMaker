@@ -1,12 +1,11 @@
 """The road network around a route, for the phone to search with no signal (off-grid riding;
-Stephen, 2026-11-12:
-"the one mile would be a default, with a whole region pack an optional download").
+Stephen, 2026-11-12: "the one mile would be a default, with a whole region pack an optional
+download").
 
 Reads the live `offline_way` table (`pipeline.offline_network`), takes the ways within
-`CORRIDOR_M` of the route's
-line, cuts them at the junctions among them, and answers in the format frontend
-lib/offlineRouter.ts reads (v1).
-Map data for an area: nothing about the rider is kept or logged.
+`CORRIDOR_M` of the route's line, cuts them at the junctions among them, and answers in the format
+frontend lib/offlineRouter.ts reads (v1). Map data for an area: nothing about the rider is kept or
+logged.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 
 from pipeline.offline_network import AVOID_LEVEL2, OfflineWay, split_edges
 from pipeline.schema import validate_schema_name
@@ -27,20 +26,28 @@ VERSION = 1
 SCALE = 1_000_000
 # About a mile either side of the line (Stephen, 2026-11-12: "the one mile would be a default").
 CORRIDOR_M = 1609
-# At most this many ways in one answer, nearest the line first, so a long ride through the city
-# stays a download of a
-# few MB at most. Our default, unmeasured.
+# At most this many ways in one answer, so a long ride through the city stays a download of a few MB
+# at most. Our default, unmeasured.
 MAX_WAYS = 40_000
 # The line is simplified to about this (degrees, ~30 ft) before the search, so a long route's
-# thousands of points do
-# not slow the corridor query; a mile's width hides the difference.
+# thousands of points do not slow the corridor query; a mile's width hides the difference.
 SIMPLIFY_DEG = 0.0003
 # At most this many points of the route's line are read from a request.
 MAX_LINE_POINTS = 20_000
+# The corridor's buffer is cut into pieces of at most this many vertices, so the GiST index finds
+# the ways along a long or diagonal route rather than inside its whole bounding box.
+SUBDIVIDE_VERTICES = 64
+# The longest the corridor read may take before it is given up (the API answers 503). Our default,
+# unmeasured.
+TIMEOUT_MS = 5000
 
 
 class NotBuilt(Exception):
     """The live map was built before the offline network existed: the next rebuild adds it."""
+
+
+class TooSlow(Exception):
+    """The corridor read ran past TIMEOUT_MS."""
 
 
 def _table(schema: str) -> bool:
@@ -52,27 +59,37 @@ def _table(schema: str) -> bool:
 def corridor_ways(
     line: Sequence[tuple[float, float]], width_m: float = CORRIDOR_M
 ) -> list[OfflineWay]:
-    """The ways within `width_m` of the line, nearest first, at most MAX_WAYS."""
+    """The ways within `width_m` of the line, at most MAX_WAYS, nearest first."""
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     if not _table(schema):
         raise NotBuilt
     wkt = "LINESTRING(" + ",".join(f"{lon} {lat}" for lon, lat in line) + ")"
-    # A box first (degrees: a mile is under 0.03 degrees of longitude here), then the true distance
-    # in metres.
-    pad = width_m / 111_195 / 0.75
+    # The buffer in metres (geography), cut into small pieces that the geometry index can match one
+    # by one; a way touching two pieces is taken once.
     query = f"""
-        WITH route AS (SELECT ST_Simplify(ST_GeomFromText(%s, 4326), %s) AS g)
-        SELECT w.osm_way_id, w.node_ids, ST_AsText(w.geometry), w.level2, w.flags, w.direction,
-        w.name
-        FROM {schema}.offline_way AS w, route
-        WHERE w.geometry && ST_Expand(route.g, %s)
-          AND ST_DWithin(w.geometry::geography, route.g::geography, %s)
-        ORDER BY ST_Distance(w.geometry::geography, route.g::geography)
+        WITH route AS (SELECT ST_Simplify(ST_GeomFromText(%s, 4326), %s) AS g),
+        pieces AS (
+            SELECT ST_Subdivide(ST_Buffer(route.g::geography, %s)::geometry, %s) AS p FROM route
+        ),
+        near AS (
+            SELECT DISTINCT w.osm_way_id
+            FROM pieces JOIN {schema}.offline_way AS w ON ST_Intersects(w.geometry, pieces.p)
+        )
+        SELECT w.osm_way_id, w.node_ids, ST_AsText(w.geometry), w.level2, w.flags,
+               w.direction, w.name
+        FROM near JOIN {schema}.offline_way AS w USING (osm_way_id), route
+        ORDER BY w.geometry <-> route.g
         LIMIT %s
     """
-    with connection.cursor() as cursor:
-        cursor.execute(query, [wkt, SIMPLIFY_DEG, pad, width_m, MAX_WAYS])
-        rows = cursor.fetchall()
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(TIMEOUT_MS)])
+            cursor.execute(query, [wkt, SIMPLIFY_DEG, width_m, SUBDIVIDE_VERTICES, MAX_WAYS])
+            rows = cursor.fetchall()
+    except DatabaseError as error:
+        if "statement timeout" in str(error) or "canceling statement" in str(error):
+            raise TooSlow from error
+        raise
     return [
         OfflineWay(
             osm_id=int(way_id),
@@ -130,23 +147,26 @@ def graph_of(ways: Sequence[OfflineWay]) -> dict:
 
 
 def corridor_graph(line: Sequence[tuple[float, float]], width_m: float = CORRIDOR_M) -> dict:
-    """The network within `width_m` of the line. NotBuilt before a rebuild has written it."""
+    """The network within `width_m` of the line. NotBuilt before a rebuild has written it;
+    TooSlow past TIMEOUT_MS."""
     return graph_of(corridor_ways(line[:MAX_LINE_POINTS], width_m))
 
 
 def level_factors(
     preset_name: str, stress: int | None = None, carrying: str | None = None
 ) -> list[float]:
-    """By stress level times 2 (index 2 to 10; 0 and 1 unused), the multiple of a stretch's riding
-    time the phone's
-    search charges for it: the ride's own calm metres per metre (`routemaker.calm.multiplier`),
-    the figure the route
-    ranking and the rolling chart price each level at for this ride type and stress slider, so
-    the offline way back
-    prefers the levels the server's plan would. Facility classes are left out (the network does
-    not carry them)."""
+    """By stress level times 2 (index 2 to 10; 0 and 1 unused), the multiple of a stretch's
+    riding time the phone's search charges for it: the ride's own calm metres per metre
+    (`routemaker.calm.multiplier`), the figure the route ranking and the rolling chart price each
+    level at for this ride type and stress slider, so the offline way back prefers the levels the
+    server's plan would. Facility classes are left out (the network does not carry them). An
+    unknown ride type is priced as Default, and a load the ride type does not take as its own
+    first."""
     if preset_name not in presets.PRESETS:
         preset_name = "default"
+    own = presets.PRESETS[preset_name].carrying
+    if carrying is not None and (own is None or carrying not in own):
+        carrying = None
     dial = presets.stress_start(preset_name, carrying) if stress is None else int(stress)
     exposure = presets.exposure_for(preset_name, carrying)
     pricing = calm.Pricing(
@@ -162,7 +182,7 @@ def level_factors(
         value = calm.multiplier(tier, None, pricing, half)
         factors.append(round(max(value or 1.0, 1.0), 3))
     # Avoid costs at least twice LTS 4 offline: the server charges its entry on top of the level
-    # (the alley mark and
-    # `quiet_cost_s`), which the network does not carry. Our default, unmeasured.
+    # (the alley mark and `quiet_cost_s`), which the network does not carry. Our default,
+    # unmeasured.
     factors[AVOID_LEVEL2] = max(factors[AVOID_LEVEL2], round(2 * factors[8], 3))
     return factors

@@ -110,10 +110,8 @@ class Decision:
 ROUTING = Limit(scope="route", requests=60, window_s=60)
 
 # The road network around a route, for the phone to search with no signal (POST
-# /api/offline/network; off-grid
-# riding, 2026-11-12): fetched once at Start ride and once per re-plan's new route, so a few a
-# minute is plenty.
-# Our default, unmeasured.
+# /api/offline/network; off-grid riding, 2026-11-12): fetched once at Start ride and once per new
+# route, so a few a minute is plenty. Our default, unmeasured.
 OFFLINE_NETWORK = Limit(scope="offline-network", requests=12, window_s=60)
 
 # Reach (POST /api/reach): counted apart from ROUTING, so a rider trying Reach's settings never
