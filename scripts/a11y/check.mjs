@@ -119,6 +119,14 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
  * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
  * hazard reports list.
  */
+/** Save & load, then its My routes button: the saved and kept routes' own popup (Stephen, 2026-11-12). */
+async function openMyRoutes(p) {
+  await openSheet(p, "Save & load");
+  await p.eval("document.querySelector('#sheet-gpx .my-routes-open button')?.click(); true");
+  await p.waitFor("!document.getElementById('sheet-routes')?.hidden", 8000);
+  await sleep(250);
+}
+
 async function openSheet(p, label = "Layers") {
   const name = label === "Map layers" ? "Layers" : label;
   const review = name === "Review" || name === "Review hazards";
@@ -4316,20 +4324,21 @@ if (mine()) {
   check("offline: the top of the planner says so, and it is said once, politely",
     off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Save & load\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
 
-  // Save & load lists the kept route (in Settings until v0.9.0); Open (by keyboard) shows it with no signal, with the planner's notice.
-  await openSheet(p, "Save & load");
-  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-gpx .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
-    return { heading: s.querySelector('h4')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h4')?.id, list: s.querySelector('ul')?.tagName,
+  // My routes lists the kept route (in Settings until v0.9.0; in Save & load until 2026-11-12, now its own popup from there,
+  // Stephen: "Put the load rides in a popout"); Open (by keyboard) shows it with no signal, with the planner's notice.
+  await openMyRoutes(p);
+  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-routes .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
+    return { heading: s.querySelector('h3')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h3')?.id, list: s.querySelector('ul')?.tagName,
       rows: rows.map((r) => ({ title: r.querySelector('.kept-title')?.textContent, detail: r.querySelector('.kept-detail')?.textContent, buttons: [...r.querySelectorAll('button')].map((b) => ({ text: b.textContent, h: b.getBoundingClientRect().height, type: b.type })) })),
       note: s.querySelector('.setting-info')?.textContent, noteHidden: s.querySelector('.setting-info')?.hidden, tip: s.querySelector('.info-tip')?.textContent }; })()`);
   const row = list.rows[0];
-  check("kept routes: Save & load lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
+  check("kept routes: My routes lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
     list.heading === "Routes kept for offline" && list.labelled && list.list === "UL" && list.rows.length === 1 && / mi \([0-9.]+ km\)\. Kept [A-Z][a-z]{2} \d+\./.test(row?.detail ?? ""), JSON.stringify(list));
   check("kept routes: each row has Open and Remove, real buttons 44 px tall whose names include the route", row && row.buttons.length === 2 && row.buttons[0].text === `Open ${row.title}` && row.buttons[1].text === `Remove ${row.title}` && row.buttons.every((x) => x.h >= 44 && x.type === "button"), JSON.stringify(row));
   check("kept routes: behind the heading's (i) (\"About routes kept for offline\"), the list says they stay on this device and are never sent", /Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? "") && list.noteHidden === true && list.tip === "About routes kept for offline", JSON.stringify({ note: list.note, hidden: list.noteHidden, tip: list.tip }));
-  const openAx = await axNode(p, "#sheet-gpx .kept-route button");
+  const openAx = await axNode(p, "#sheet-routes .kept-route button");
   check("kept routes: Open's accessible name names the route and its description gives the details", openAx?.name === `Open ${row?.title}` && / mi \(/.test(openAx?.description ?? ""), JSON.stringify(openAx));
-  await p.eval("document.querySelector('#sheet-gpx .kept-route button').focus(); true");
+  await p.eval("document.querySelector('#sheet-routes .kept-route button').focus(); true");
   await p.enter();
   const shown = await p.waitFor("!!document.querySelector('.summary')", 20000);
   await sleep(1200);
@@ -4339,12 +4348,12 @@ if (mine()) {
   await p.shot(`${SHOTS}/kept_offline.png`);
 
   // Remove, by keyboard: said, and the focus goes to the heading when none is left.
-  await openSheet(p, "Save & load");
-  await p.eval("document.querySelectorAll('#sheet-gpx .kept-route button')[1].focus(); true");
+  await openMyRoutes(p);
+  await p.eval("document.querySelectorAll('#sheet-routes .kept-route button')[1].focus(); true");
   await p.enter();
-  await p.waitFor("document.querySelectorAll('#sheet-gpx .kept-route').length === 0", 10000);
+  await p.waitFor("document.querySelectorAll('#sheet-routes .kept-route').length === 0", 10000);
   await sleep(300);
-  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-gpx .kept-routes > p.hint:not(.setting-info):not([role=status])')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
+  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-routes .kept-routes > p.hint:not(.setting-info):not([role=status])')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
   check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
     removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
   // The freeing follows the removal once the kept routes' lock is free (no keep runs here: at once).
