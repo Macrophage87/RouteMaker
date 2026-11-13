@@ -21,9 +21,11 @@
 #       Also plan a short Mountain Bike ride, a Gravel one, a weekday Road Bike one and a weekend
 #       Road Bike one and check each came back on its own graph (`variant` mtb / offroad / paved /
 #       paved-weekend), not the standard one: for a beta whose trail routers run (their tiles are on
-#       the host). Without it those checks are skipped, and say so. The weekend one is skipped, and
+#       the host). Without it those checks are skipped, and say so. Each Road Bike one is skipped, and
 #       says so, when this checkout's compose (beta-compose.sh ps; RM_SMOKE_COMPOSE stands in for it)
-#       shows valhalla-paved-weekend not running: a short host leaves it stopped (BETA-RUNBOOK.md).
+#       shows its router (valhalla-paved, valhalla-paved-weekend) not running: a short host leaves
+#       them stopped (BETA-RUNBOOK.md). So a Road Bike router that crashed and stayed stopped is not
+#       reported here either; alert.sh's restart and out-of-memory check covers a crash loop.
 #   --no-401-page
 #       With --public, after the runbook's step 10 recovery (render-nginx.sh --no-401-page): skip
 #       the check of the sign-in page's text, which nginx's own 401 page does not carry.

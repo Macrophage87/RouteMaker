@@ -7933,7 +7933,8 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
     `valhalla-paved-weekend` and leaves a stopped one stopped, with a warning, when it is short.
   - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
     `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
-    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).
+    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short); since
+    v0.26.0 the weekday one is likewise skipped while `valhalla-paved` is stopped.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where
     installed, `scripts/beta/restart-routers.sh install`, from the new checkout, after
     `mark-deployed`; then `resume`.

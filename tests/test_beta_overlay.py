@@ -3347,13 +3347,11 @@ def test_the_trails_smoke_test_skips_a_stopped_road_bike_router(tmp_path: Path) 
     assert "SKIP  the weekend Road Bike graph" in done.stdout
     assert "PASS  a mountain-bike route is planned on the mtb graph" in done.stdout
     assert "PASS  a gravel route is planned on the offroad graph" in done.stdout
-    assert "on the paved graph" not in done.stdout.replace("ride plans on the paved graph", "")
+    assert "route is planned on the paved graph" not in done.stdout
     # Where compose cannot be asked, Road Bike's graph is checked (and here fails).
     compose.write_text("#!/bin/sh\nexit 1\n")
     asked = run("bash", script, "--local", "--port", "1", "--trails", env=env)
-    assert (
-        "FAIL" in asked.stdout and "road-bike route is planned on the paved graph" in asked.stdout
-    )
+    assert "FAIL  a road-bike route is planned on the paved graph" in asked.stdout
 
 
 def test_the_v0_7_0_server_steps_start_with_the_betas_name() -> None:
