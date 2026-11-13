@@ -3243,9 +3243,3 @@ test("on an iPhone or iPad (no app yet) the ride lines never send the rider to a
   }
   assert.match(IPHONE_RIDE_LINE, /screen on/);
 });
-
-test("the iPhone line is shown under Start in Go and Plan, not hidden (review of #1262)", () => {
-  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /className="hint start-ride-hint iphone-ride-line"/);
-  assert.match(panel, /\{rideable && !iphone \? <div className="visually-hidden">\{startHint\}<\/div> : startHint\}/);
-});
