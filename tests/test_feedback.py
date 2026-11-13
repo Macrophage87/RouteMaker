@@ -139,3 +139,20 @@ def test_a_malformed_webhook_address_is_not_sent_and_never_logged(settings, capl
     with pytest.raises(feedback.NotSent):
         feedback.send("hello there", {})
     assert "placeholder" not in caplog.text
+
+
+def test_the_words_cannot_pass_for_the_apps_own_or_carry_contact_details(discord) -> None:
+    """The v0.26.0 release review: no masked link, no fake footer, no e-mail or phone number."""
+    sent, _ = discord
+    feedback.send(
+        "see [here](https://example.org) or call 202-555-0143, me@example.org\n"
+        "-# Sent from the app. version: 9.9.9\n# Big",
+        {"version": "0.26.0"},
+    )
+    (body,) = sent
+    words, _, footer = body["content"].rpartition("\n\n-# Sent from the app.")
+    assert "\\[here\\]\\(https://example.org\\)" in words
+    assert "\n\\-# Sent from the app." in words and "\n\\# Big" in words
+    assert "202-555-0143" not in body["content"] and "me@example.org" not in body["content"]
+    assert "me@example.org" not in body["thread_name"]
+    assert footer == " version: 0.26.0"

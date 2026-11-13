@@ -10,7 +10,7 @@ import { nativeBridge, type CapacitorBridge } from "./nativeShell.ts";
 import { t } from "./i18n.ts";
 
 export const BATTERY_PLUGIN = "RouteMakerBattery";
-/** Set once the line has been shown, so it is the first Start ride's only (our default: once per install). */
+/** Set once the rider has closed the line or pressed its button (our default: once per install). */
 export const BATTERY_SHOWN_KEY = "routemaker.batteryNoteShown";
 
 export const BATTERY_LINE = () => t("Your phone may stop RouteMaker during a ride.");
@@ -46,17 +46,23 @@ function hasPlugin(bridge: CapacitorBridge): boolean {
   }
 }
 
-/** Whether to show the line now: the app, the plugin, not shown before, optimised, a strict maker. Marks it shown. */
+/**
+ * Whether to show the line now: the app, the plugin, not dismissed before, optimised, a strict maker. It is marked
+ * seen only when the rider closes it or presses its button (markBatteryNoteSeen), so a line drawn while the ride's
+ * notes were folded away comes back at the next Start ride.
+ */
 export async function batteryNoteDue(bridge: CapacitorBridge | null = nativeBridge(), shown: Shown = shownOnThisDevice): Promise<boolean> {
   if (!bridge || !hasPlugin(bridge) || shown.get()) return false;
   try {
     const answer = (await bridge.nativePromise(BATTERY_PLUGIN, "check", {})) as { optimised?: unknown; strictMaker?: unknown } | null;
-    if (answer?.optimised !== true || answer.strictMaker !== true) return false;
+    return answer?.optimised === true && answer.strictMaker === true;
   } catch {
     return false;
   }
+}
+
+export function markBatteryNoteSeen(shown: Shown = shownOnThisDevice): void {
   shown.set();
-  return true;
 }
 
 export async function openBatterySettings(bridge: CapacitorBridge | null = nativeBridge()): Promise<boolean> {

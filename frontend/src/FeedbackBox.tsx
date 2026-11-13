@@ -89,7 +89,9 @@ export function FeedbackBox({ details, onSay }: { details: () => FeedbackDetails
         <p id={`${id}-note`} className="hint">
           {FEEDBACK_SENT_WITH()}
         </p>
-        <button type="submit" disabled={state === "sending" || text.trim().length < FEEDBACK_MIN}>
+        {/* aria-disabled, not disabled: a disabled button drops keyboard focus to the page when a send ends. send()
+            itself refuses while sending or with too little text. */}
+        <button type="submit" aria-disabled={state === "sending" || text.trim().length < FEEDBACK_MIN ? true : undefined}>
           {t("Send")}
         </button>
         {/* Said once, through the page's own live region (onSay); shown here. */}

@@ -308,6 +308,10 @@ test("each of DC's languages has every turn sentence Ride says (the owner, 2026-
  */
 const GO_RIDE_SCREENS = ["app/Go.tsx", "RideMode.tsx", "RideGroup.tsx", "RoamMode.tsx", "app/Sheets.tsx"];
 const GO_RIDE_ALSO = [
+  // Ready for a dozen testers (2026-11-12): Send feedback, the server's status line, the battery line.
+  "FeedbackBox.tsx",
+  "BatteryNote.tsx",
+  "lib/serverStatus.ts",
   "TransitSummary.tsx",
   // Stop by stop and turn by turn on foot (2026-11-02): the on-board card and its words.
   "OnBoardCard.tsx",

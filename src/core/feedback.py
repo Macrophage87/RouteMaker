@@ -17,6 +17,7 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 
@@ -54,10 +55,34 @@ def clean_details(details: object) -> dict[str, str]:
     return kept
 
 
+# Markdown that could pass for the app's own words in the forum: a masked link's brackets, and a
+# line starting with Discord's small-text mark (the footer below uses it) or a heading.
+_LINK_MARKS = re.compile(r"([\[\]()<>])")
+_LINE_MARK = re.compile(r"^(\s*)(-#|#{1,3}\s|>)", re.M)
+
+
+def screen_title(text: str) -> str:
+    """The post's title: plain text in Discord, so only addresses and numbers are taken out."""
+    from .signed_out_suggestions import screen
+
+    return screen(text.strip())
+
+
+def clean_text(text: str) -> str:
+    """The words as the forum shows them: e-mail addresses and phone numbers taken out (as
+    signed-out
+    suggestions do), and the markdown above shown as plain characters."""
+    from .signed_out_suggestions import screen
+
+    text = screen(text.strip())
+    text = _LINK_MARKS.sub(r"\\\1", text)
+    return _LINE_MARK.sub(lambda m: m.group(1) + "\\" + m.group(2), text)
+
+
 def message(text: str, details: dict[str, str]) -> dict:
     """The webhook's body: a new forum post titled with the words' start, mentions off."""
-    words = text.strip()
-    title = " ".join(words.split())
+    words = clean_text(text)
+    title = " ".join(screen_title(text).split())
     title = title if len(title) <= TITLE_MAX else title[: TITLE_MAX - 1] + "…"
     line = " · ".join(f"{key.replace('_', ' ')}: {value}" for key, value in details.items())
     footer = f"\n\n-# Sent from the app. {line}" if line else "\n\n-# Sent from the app."
