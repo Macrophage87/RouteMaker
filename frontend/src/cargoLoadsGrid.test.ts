@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { CARRYINGS } from "./lib/dials.ts";
 
 const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-// node --test runs no .tsx, so the picker is read as source, as passengersName.test.ts does.
-const picker = readFileSync(new URL("./RideTypePicker.tsx", import.meta.url), "utf8");
+// What the picker shows and says is rendered and checked in RideTypePicker.test.tsx; the grid is layout, which only a
+// browser draws, so its rule is read here.
 
 test("each load has a short summary, shorter than its full hint", () => {
   for (const load of CARRYINGS) {
@@ -21,11 +21,4 @@ test("the Cargo Bike card spans two rows of the dialog's grid, on a subgrid", ()
   assert.match(rule, /grid-row: span 2/);
   assert.match(rule, /grid-template-rows: subgrid/);
   assert.match(css, /\.ride-type-loads button \{[^}]*align-content: start/);
-});
-
-test("the choices show the summary hidden from screen readers, which hear the full hint once", () => {
-  assert.match(picker, /carries\(option\.id\) && "with-loads"/);
-  const loads = picker.slice(picker.indexOf('className="ride-type-loads"'));
-  assert.match(loads, /\{full \? \(\s*<span className="hint">\{load\.hint\}<\/span>/);
-  assert.match(loads, /<span className="hint" aria-hidden="true">\s*\{load\.summary\}\s*<\/span>\s*<span className="visually-hidden">\{load\.hint\}<\/span>/);
 });

@@ -64,7 +64,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import partial, wraps
 from typing import Annotated, Literal
 
@@ -101,6 +101,7 @@ from . import (
     micromobility,
     nearest,
     offline_network,
+    offline_packs,
     parallel,
     plan_cancel,
     presets,
@@ -417,6 +418,17 @@ class RouteIn(Schema):
             " `possible`), never a description line, a spoken cue or the closure check."
         ),
     )
+    barrier_avoid: list[LonLat] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            'Cargo and Tandem, "Go around" on a barrier\'s mark: barriers on the route'
+            " (`barriers.items[]`, their `lon` and `lat`) the rider chose to go around, for this"
+            " plan. Each is planned round as a stile is (`barrier_round`); where no way round is"
+            " found it stays on the route and is named. Other ride types ignore it. Never"
+            " remembered by the server."
+        ),
+    )
     blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
         default_factory=list,
         max_length=10,
@@ -512,6 +524,15 @@ class RouteIn(Schema):
             " answer's `loop` says how much it shares. Not on Mass Ride."
         ),
     )
+    out_and_back: StrictBool = Field(
+        default=False,
+        description=(
+            "On a loop (`loop`, or a ride ending where it starts): come back the same way (Plan's"
+            " Out and back; Stephen 2026-11-13). The way back is planned as any leg is, with no"
+            " push off the way out and no price on riding a way twice, so on one destination it"
+            " is the way out ridden back. Ignored on a ride that is not a loop."
+        ),
+    )
     mtb_level: StrictInt | None = Field(
         default=None,
         ge=1,
@@ -583,13 +604,15 @@ class RouteIn(Schema):
     depart_at: datetime | None = Field(
         default=None,
         description=(
-            "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
-            " local time in Washington), within a year of now. Absent: now. Each system's own"
-            " calendar for that day is used, holidays and published closures included; a run"
-            " that starts or is estimated to finish after civil dusk or before civil dawn"
-            " favours lit ways. Where `when` is absent,"
-            " the bike legs, junction waits and closures are planned at this moment's ride"
-            " time too (`routemaker.ridetime.when_at`)."
+            "When the ride or trip starts, ISO 8601 (with an offset, or local time in"
+            " Washington), within a year of now; not on Bikeshare or Rebalance Ride, which"
+            " plan from the docks as they are now. Absent: now. A transit trip uses each"
+            " system's own calendar for that day, holidays and published closures included; a"
+            " run that starts or is estimated to finish after civil dusk or before civil dawn"
+            " favours lit ways; a bike ride's closures are those in force then (Plan's start"
+            " time, the owner, 2026-11-13). Where `when` is absent, the rides, junction waits"
+            " and closures are planned at this moment's ride time too"
+            " (`routemaker.ridetime.when_at`)."
         ),
     )
     transit_option: str | None = Field(
@@ -826,8 +849,12 @@ class RouteIn(Schema):
                 )
             if self.loop:
                 raise ValueError("Transit ride types do not plan loops")
-        elif self.transit_option is not None or (self.depart_at is not None and not run):
-            raise ValueError("transit_option and depart_at apply to the transit ride types only")
+        elif self.transit_option is not None:
+            raise ValueError("transit_option applies to the transit ride types only")
+        if self.depart_at is not None and self.preset in presets.BIKESHARE_PRESETS:
+            # The docks are read as they are now; a later start would plan with bikes that
+            # may be gone by then.
+            raise ValueError("Bikeshare and Rebalance Ride plan from the docks as they are now")
         if self.preset in presets.BIKESHARE_PRESETS:
             # A start, stops and an end (Stephen, 2026-11-03: each stop starts a new trip; for
             # Bikeshare in v0.22.0): each leg is a trip of its own. Rebalance Ride: a start alone.
@@ -1073,6 +1100,9 @@ class DialsOut(Schema):
         description="The rider total system weight the effort was weighed with, if set.",
     )
     loop: bool = Field(default=False, description="Whether the route was planned as a loop.")
+    out_and_back: bool = Field(
+        default=False, description="Whether the loop was planned to come back the same way."
+    )
 
 
 class HillClimbOut(Schema):
@@ -3023,6 +3053,10 @@ class LoopOut(Schema):
     return_m: float | None = None
     excluded: int = Field(default=0, description="Points along the way out the way back avoided.")
     tried: int = Field(default=0, description="Routes asked for the way back.")
+    same_way: bool = Field(
+        default=False,
+        description="The rider asked to come back the same way (`out_and_back`): nothing was avoided.",
+    )
     fallback: str | None = Field(
         default=None,
         description=(
@@ -3982,6 +4016,59 @@ def offline_network_view(request, body: OfflineNetworkIn):
         return Status(503, {"error": "too_slow"})
     factors = offline_network.level_factors(body.preset, body.stress, body.carrying)
     return {**graph, "level_factor": factors}
+
+
+class OfflinePacksIn(Schema):
+    preset: str = Field(
+        default="default", max_length=40, description="The ride type, for the levels' prices."
+    )
+    stress: int | None = Field(
+        default=None, ge=0, le=100, description="The stress slider; none: the ride type's own."
+    )
+    carrying: str | None = Field(
+        default=None, max_length=20, description="Cargo Bike's load, as the route was asked."
+    )
+
+
+@api.get(
+    "/offline/packs",
+    response={200: dict, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="The region packs for riding off grid, and the ride's prices for their levels",
+    description=(
+        "The whole road network of a riding area, an optional download (core.offline_packs):"
+        " each region's name, size and address (served by the web server under"
+        " /offline-packs/), and `level_factor` as POST /offline/network answers it. 503"
+        " `not_built` until the first map rebuild that builds them."
+    ),
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.OFFLINE_PACKS),
+    same_site("the offline region packs answer this site's own pages only"),
+    errors_as_json,
+)
+def offline_packs_view(request, params: Query[OfflinePacksIn]):
+    found = offline_packs.manifest()
+    if found is None:
+        return Status(503, {"error": "not_built"})
+    build = found["build_id"]
+    packs = [
+        {
+            "id": pack["id"],
+            "name": pack["name"],
+            "bytes": pack["bytes"],
+            "sha256": pack["sha256"],
+            "url": f"/offline-packs/{found['dir']}/{pack['file']}",
+        }
+        for pack in found["packs"]
+    ]
+    factors = offline_network.level_factors(params.preset, params.stress, params.carrying)
+    return {
+        "build_id": build,
+        "built_at": found["built_at"],
+        "graph_v": found["graph_v"],
+        "packs": packs,
+        "level_factor": factors,
+    }
 
 
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
@@ -5991,14 +6078,23 @@ def _blocked(body: RouteIn) -> tuple[tuple[tuple[float, float], ...], ...]:
 
 
 def _bike_dials(body: RouteIn) -> routing.Dials:
-    """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked."""
+    """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked.
+
+    With a start time (`depart_at`, Plan's day and time; the owner, 2026-11-13: Plan only),
+    the ride time is that moment's where the rider chose none, and the closures are those in
+    force then, as a transit trip's are (`_ride_when`)."""
+    at = body.depart_at
+    if at is not None and at.tzinfo is None:
+        at = at.replace(tzinfo=ridetime.ZONE)
     return routing.Dials(
         stress=body.stress,
         hills=body.hills,
-        when=body.when,
+        when=body.when or (ridetime.when_at(at) if at is not None else None),
+        zones_at=at,
         closure_bypass=tuple(body.closure_bypass),
         closures_now=body.closures_now,
         blocked=_blocked(body),
+        barrier_avoid=tuple((p[0], p[1]) for p in body.barrier_avoid),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -6010,6 +6106,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         system_weight_kg=body.system_weight_kg,
         cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         loop=body.loop,
+        out_and_back=body.out_and_back,
         debug_junctions=body.debug_junctions,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
@@ -6046,7 +6143,8 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
     answered within its life (`core.route_cache`, v0.7.0 "Faster routing" step 5), else
     planned and kept there where it may be."""
     timings = timing.current()
-    when = body.when or routing.default_when()
+    # The dials' ride time where they have one: a start time's (`_bike_dials`), not now's.
+    when = dials.when or body.when or routing.default_when()
     key = route_cache.key_for(
         body.model_dump(mode="json"),
         when,
@@ -6257,6 +6355,7 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
         loop=body.loop,
+        out_and_back=body.out_and_back,
     )
     started = getattr(request, "routing_started", None)
     try:
@@ -6771,11 +6870,31 @@ def coverage_ring() -> list[list[float]]:
 @decorate_view(ratelimit.rate_limited(ratelimit.COVERAGE), errors_as_json)
 def coverage(request, response: HttpResponse):
     response["Cache-Control"] = f"public, max-age={COVERAGE_MAX_AGE_S}"
+    built = map_data_date()
     return {
         "type": "Feature",
         "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
-        "properties": {},
+        # The live map's date, for Settings' About line ("Map data from Nov 10, 2026"; backlog item
+        # "Data that says how old it is", 2026-11-13). Left out before a first build.
+        "properties": {"map_data": built.isoformat()} if built else {},
     }
+
+
+def map_data_date() -> date | None:
+    """The day the map being served was built: the date part of the standard graph's build id
+    (`20261110T170245Z`, `pipeline.run.new_build_id`), which `sync_upstreams` writes on a server
+    that receives its map rather than building it. The OpenStreetMap extract it was built from is
+    at most `SOURCE_EXTRACT_MAX_AGE` (six days) older. None with no promoted build, or an id that
+    is not a date, or when the row cannot be read: the coverage answer never fails
+    for want of a date."""
+    from core.models import ValhallaUpstream
+
+    try:
+        rows = ValhallaUpstream.objects.filter(variant="standard")
+        build_id = rows.values_list("build_id", flat=True).first()
+        return datetime.strptime((build_id or "")[:8], "%Y%m%d").date()
+    except Exception:  # noqa: BLE001 - a date is a nicety; the coverage mask must not fail over it
+        return None
 
 
 # --- Place search and place names ---------------------------------------------
@@ -9564,6 +9683,23 @@ def feedback_send(request):
     out = JsonResponse({"sent": True})
     out["Cache-Control"] = "no-store"
     return out
+
+
+@api.post("/usage", summary="Count one use of a tool only the browser sees (a ride started)")
+@decorate_view(same_site_only, ratelimit.rate_limited(ratelimit.USAGE), errors_as_json)
+def usage_count(request):
+    """Adds one to today's total for `tool` (core.usage): a name from `usage.CLIENT_TOOLS` and
+    nothing else, so nothing about the rider or the ride is sent or kept."""
+    from . import usage
+
+    body, refusal = _json_body(request, 256)
+    if refusal is not None:
+        return refusal
+    tool = body.get("tool") if isinstance(body, dict) else None
+    if tool not in usage.CLIENT_TOOLS:
+        return _error(400, "tool is one of: " + ", ".join(sorted(usage.CLIENT_TOOLS)) + ".")
+    usage.tally(tool)
+    return HttpResponse(status=204)
 
 
 @api.post("/report311/where", summary="Which 311 website takes a problem at a point")
