@@ -89,6 +89,7 @@ from . import (
     elevation,
     extract,
     hazard_layer,
+    known_roads,
     lts_sentinels,
     major_corridors,
     mass_capacity,
@@ -1835,6 +1836,23 @@ def assert_zoo_rule(context: RebuildContext) -> None:
     )
     if problems:
         raise ValidationFailed("the Zoo rule no longer fits the extract: " + "; ".join(problems))
+
+
+def assert_known_roads(schema: str, path) -> list:
+    """Each road the owner has called (`REBUILD_KNOWN_ROADS`, `pipeline.known_roads`) came
+    out at his level, read back from the staging schema by where it is, not by way id, so
+    an override row a re-match lost is caught. Off with an empty path."""
+    roads = known_roads.load(path)
+    if not roads:
+        return []
+    found, read = known_roads.check(schema, roads)
+    for tiers in read:
+        logger.info(
+            "known road %s: %.0f%% at %s", tiers.road.name, 100 * tiers.share, tiers.road.wanted
+        )
+    if found:
+        raise ValidationFailed("; ".join(found))
+    return read
 
 
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
@@ -4664,6 +4682,9 @@ def build_handlers(
                 calm_path_sentinels,
                 calm_street_sentinels,
                 _setting("REBUILD_CALM_RUN_FLOORS"),
+            )
+            failures.check(
+                assert_known_roads, context.staging_schema, _setting("REBUILD_KNOWN_ROADS")
             )
         except Exception as error:
             if own and not isinstance(error, ValidationFailed):
