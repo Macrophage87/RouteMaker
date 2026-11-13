@@ -100,6 +100,8 @@ import {
   OFF_SURE_M,
   GPS_WEAK_SAID,
   weighFix,
+  estimateStep,
+  weakNoteAfterMs,
   CUE_SHEET_SAID,
   cueSheet,
   cueSheetAfterMs,
@@ -2012,12 +2014,22 @@ export function RideMode({
     (now: number) => {
       const state = rideRef.current;
       if (ended.current || state.arrived || pausedRef.current) return;
+      // Weak GPS on the line: the next turn still said, as an estimate, for up to ESTIMATE_MS (lib/navigate.ts
+      // estimateStep). Not on the way to the dock or the start, nor while a question holds the ride.
+      if (gpsWeak.current.goodAt < now && !tripRef.current.walking && !dockingRef.current && !toStartAsking.current) {
+        const est = estimateStep(modelRef.current, state, now - gpsWeak.current.goodAt, prefsRef.current.verbosity);
+        if (est.state !== state) {
+          rideRef.current = est.state;
+          setRide(est.state);
+          say(est.events);
+        }
+      }
       const sheet = cueSheetShown(gpsWeak.current, now, cueSheetAfterMs(modelRef.current, state.progressM ?? 0, state.speedMs));
       if (sheet && !cueSheetRef.current) notify(CUE_SHEET_SAID);
       cueSheetRef.current = sheet;
       setCueSheetOn(sheet);
     },
-    [notify],
+    [notify, say],
   );
   useEffect(() => {
     // The same timer gives the app's heartbeat and the destination's stay check (everyTick, below), so no timer more.
@@ -2121,7 +2133,7 @@ export function RideMode({
       lastRealFix.current = fix;
       lastFixAt.current = Date.now();
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
-      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
+      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current, weakNoteAfterMs(rideRef.current));
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
       if (weighed.sayNow) rideCueLog.note("gps-weak", Date.now());
       if (weighed.sayNow && !gpsQuietRef.current) notify(GPS_WEAK_SAID);
@@ -3177,8 +3189,9 @@ export function RideMode({
   // the notice itself skips an update that changes nothing, and is cleared with the watch at End ride.
   useEffect(() => {
     if (arrived) return;
-    showTurnCard(turnCard(model, progress));
-  }, [model, progress, arrived]);
+    // Weak GPS: the card counts down from where the ride is reckoned to be (estimateStep), as the voice does.
+    showTurnCard(turnCard(model, ride.estM ?? progress));
+  }, [model, progress, ride.estM, arrived]);
   // The time to go at the rider's own pace against the plan's (lib/arrival.ts), and the clock it ends at.
   const togo = progress === null ? null : atPace(toGo(model, progress), paceFactor(paceRef.current));
   // A tick every 30 s keeps the clock times current while no fix comes (paused, in a tunnel); a fix renders sooner.

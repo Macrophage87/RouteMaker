@@ -86,11 +86,11 @@
  2090 s   7475 m  #22 bear_right High Park Ln prepare: "In 140 feet, bear right, then immediately left." -> said
  2098 s   7503 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
  2107 s   7535 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
- 2108 s   7539 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
+ 2108 s   7539 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.7 s
  2132 s   7625 m  #24 left Svc Rd prepare: "In 140 feet, left, then immediately bear left." -> said
  2140 s   7653 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
  2156 s   7711 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
- 2157 s   7714 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
+ 2157 s   7714 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.5 s
  2185 s   7814 m  #26 left Svc Rd prepare: "In 150 feet, left, then immediately bear left." -> said
  2194 s   7846 m  #26 left Svc Rd now (urgent): "Left now." -> said
  2214 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said
@@ -154,11 +154,11 @@
  1392 s   7467 m  #22 bear_right High Park Ln prepare: "In 160 feet, bear right, then immediately left." -> said
  1399 s   7505 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
  1405 s   7537 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
- 1406 s   7542 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
+ 1406 s   7542 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.7 s
  1420 s   7618 m  #24 left Svc Rd prepare: "In 160 feet, left, then immediately bear left." -> said
  1427 s   7655 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
  1438 s   7714 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
- 1439 s   7719 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
+ 1439 s   7719 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.5 s
  1455 s   7805 m  #26 left Svc Rd prepare: "In 170 feet, left, then immediately bear left." -> said
  1463 s   7848 m  #26 left Svc Rd now (urgent): "Left now." -> said
  1476 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said
@@ -187,7 +187,7 @@
   166 s   1336 m  #7 right Oakridge Ave advance: "In 700 feet, right onto Oakridge Avenue, then immediately left onto Leland Street." -> said
   183 s   1473 m  #7 right Oakridge Ave prepare: "In 250 feet, right, then immediately left." -> said
   191 s   1537 m  #7 right Oakridge Ave now (urgent): "Right now onto Oakridge Avenue." -> said
-  193 s   1553 m  #8 left Leland St now (urgent): "Left now onto Leland Street." -> held 0.5 s
+  193 s   1553 m  #8 left Leland St now (urgent): "Left now onto Leland Street." -> held 0.7 s
   207 s   1666 m  #9 bear_right Leland St advance: "In 700 feet, bear right to stay on Leland Street." -> said
   224 s   1802 m  #9 bear_right Leland St prepare: "In 250 feet, bear right to stay on Leland Street." -> said
   232 s   1867 m  #9 bear_right Leland St now (urgent): "Keep right now." -> said
@@ -222,15 +222,15 @@
   925 s   7443 m  #22 bear_right High Park Ln prepare: "In 250 feet, bear right, then immediately left." -> said
   933 s   7508 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
   937 s   7540 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
-  938 s   7548 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
-  943 s   7588 m  #24 left Svc Rd prepare: "In 250 feet, left, then immediately bear left." -> held 3.6 s, as "In 200 feet, left, then immediately bear left."
+  938 s   7548 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.7 s
+  943 s   7588 m  #24 left Svc Rd prepare: "In 250 feet, left, then immediately bear left." -> held 4.0 s, as "In 200 feet, left, then immediately bear left."
   951 s   7652 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
   958 s   7709 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
-  959 s   7717 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
-  967 s   7781 m  #26 left Svc Rd prepare: "In 250 feet, left, then immediately bear left." -> said
+  959 s   7717 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.5 s
+  967 s   7781 m  #26 left Svc Rd prepare: "In 250 feet, left, then immediately bear left." -> held 0.3 s
   975 s   7846 m  #26 left Svc Rd now (urgent): "Left now." -> said
   984 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said
-  985 s   7926 m  #28 right Svc Rd advance: "In 600 feet, right to stay on the service road, then immediately right onto the parking aisle." -> held 0.3 s
+  985 s   7926 m  #28 right Svc Rd advance: "In 600 feet, right to stay on the service road, then immediately right onto the parking aisle." -> held 0.5 s
   997 s   8023 m  #28 right Svc Rd prepare: "In 250 feet, right, then immediately right." -> said
  1005 s   8087 m  #28 right Svc Rd now (urgent): "Right now." -> said
  1010 s   8127 m  #29 right parking aisle now (urgent): "Right now onto the parking aisle." -> said
@@ -279,7 +279,7 @@
   719 s   3857 m  #11 bear_left Leland St now (urgent): "Keep left now." -> said
   736 s   3948 m  #12 bear_left Path advance: "In 500 feet, cross Beach Drive, then right onto Rock Creek Trail." -> said
   754 s   4045 m  #12 bear_left Path prepare: "In 170 feet, cross Beach Drive, then right." -> said
-  773 s           note: "GPS is weak: turn cues paused."
+  791 s           note: "GPS is weak: turn cues paused."
   823 s   4415 m  #14 bear_right Rock Creek Trl advance: "In 500 feet, bear right to stay on Rock Creek Trail, then immediately left to stay on Rock Creek Trail." -> said
   841 s   4512 m  #14 bear_right Rock Creek Trl prepare: "In 170 feet, bear right, then immediately left." -> said
   848 s   4549 m  #14 bear_right Rock Creek Trl now (urgent): "Keep right now." -> said
@@ -302,11 +302,11 @@
  1392 s   7467 m  #22 bear_right High Park Ln prepare: "In 160 feet, bear right, then immediately left." -> said
  1399 s   7505 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
  1405 s   7537 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
- 1406 s   7542 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
+ 1406 s   7542 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.7 s
  1420 s   7618 m  #24 left Svc Rd prepare: "In 160 feet, left, then immediately bear left." -> said
  1427 s   7655 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
  1438 s   7714 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
- 1439 s   7719 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
+ 1439 s   7719 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.5 s
  1455 s   7805 m  #26 left Svc Rd prepare: "In 170 feet, left, then immediately bear left." -> said
  1463 s   7848 m  #26 left Svc Rd now (urgent): "Left now." -> said
  1476 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said

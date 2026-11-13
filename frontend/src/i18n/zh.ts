@@ -106,6 +106,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have reached stop {stop}, {name}.": "您已到达经停点{stop}，{name}。",
   "You have reached stop {stop}.": "您已到达经停点{stop}。",
   "In {distance}, {cue}": "{distance}后，{cue}",
+  "In about {distance}, {cue}": "大约{distance}后，{cue}",
+  "About here: {cue}": "大约在这里：{cue}",
   "{n} feet": "{n}英尺",
   "1 mile": "1英里",
   "{n} miles": "{n}英里",

@@ -31,7 +31,7 @@
   551 s   1971 m  #5 right Belle Crest Ln now (urgent): "Right now onto Belle Crest Lane." -> said
   571 s   2042 m  #6 left Hathaway Dr now (urgent): "Left now onto Hathaway Drive." -> said
   583 s   2085 m  #7 right Dressler Ln now (urgent): "Right now onto Dressler Lane." -> said
-  584 s   2089 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.4 s
+  584 s   2089 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.6 s
   606 s   2167 m  #8 right Lutes Dr prepare: "In 140 feet, right onto Lutes Drive." -> said
   614 s   2196 m  #8 right Lutes Dr now (urgent): "Right now onto Lutes Drive." -> said
   623 s   2228 m  #9 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
@@ -55,7 +55,7 @@
   367 s   1969 m  #5 right Belle Crest Ln now (urgent): "Right now onto Belle Crest Lane." -> said
   381 s   2044 m  #6 left Hathaway Dr now (urgent): "Left now onto Hathaway Drive." -> said
   389 s   2087 m  #7 right Dressler Ln now (urgent): "Right now onto Dressler Lane." -> said
-  390 s   2092 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.4 s
+  390 s   2092 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.6 s
   402 s   2157 m  #8 right Lutes Dr prepare: "In 170 feet, right onto Lutes Drive." -> said
   409 s   2194 m  #8 right Lutes Dr now (urgent): "Right now onto Lutes Drive." -> said
   415 s   2226 m  #9 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
@@ -70,7 +70,7 @@
    62 s    499 m  #2 right May St advance: "In 700 feet, right onto May Street." -> said
    79 s    636 m  #2 right May St prepare: "In 250 feet, right onto May Street." -> said
    87 s    700 m  #2 right May St now (urgent): "Right now onto May Street." -> said
-   88 s    708 m  #3 onto Rippling Brook Dr advance: "In 600 feet, continue onto Rippling Brook Drive." -> held 1.2 s
+   88 s    708 m  #3 onto Rippling Brook Dr advance: "In 600 feet, continue onto Rippling Brook Drive." -> held 1.4 s
   156 s   1255 m  #4 right Beechmont Ln advance: "In 700 feet, right onto Beechmont Lane." -> said
   173 s   1392 m  #4 right Beechmont Ln prepare: "In 250 feet, right onto Beechmont Lane." -> said
   181 s   1456 m  #4 right Beechmont Ln now (urgent): "Right now onto Beechmont Lane." -> said
@@ -79,7 +79,7 @@
   245 s   1971 m  #5 right Belle Crest Ln now (urgent): "Right now onto Belle Crest Lane." -> said
   254 s   2044 m  #6 left Hathaway Dr now (urgent): "Left now onto Hathaway Drive." -> said
   259 s   2084 m  #7 right Dressler Ln now (urgent): "Right now onto Dressler Lane." -> said
-  260 s   2092 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.4 s
+  260 s   2092 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.6 s
   265 s   2132 m  #8 right Lutes Dr prepare: "In 250 feet, right onto Lutes Drive." -> held 3.0 s, as "In 200 feet, right onto Lutes Drive."
   273 s   2197 m  #8 right Lutes Dr now (urgent): "Right now onto Lutes Drive." -> said
   277 s   2229 m  #9 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
@@ -105,8 +105,8 @@
   123 s    660 m  #2 right May St prepare: "In 170 feet, right onto May Street." -> said
   131 s    703 m  #2 right May St now (urgent): "Right now onto May Street." -> said
   138 s    740 m  #3 onto Rippling Brook Dr advance: "In 500 feet, continue onto Rippling Brook Drive." -> said
-  221 s           note: "GPS is weak: turn cues paused."
-  246 s   1320 m  #4 right Beechmont Ln advance: "In 500 feet, right onto Beechmont Lane." -> said
+  239 s           note: "GPS is weak: turn cues paused."
+  246 s   1320 m  #4 right Beechmont Ln advance: "In 500 feet, right onto Beechmont Lane." -> held 1.0 s
   264 s   1416 m  #4 right Beechmont Ln prepare: "In 170 feet, right onto Beechmont Lane." -> said
   272 s   1459 m  #4 right Beechmont Ln now (urgent): "Right now onto Beechmont Lane." -> said
   342 s   1835 m  #5 right Belle Crest Ln advance: "In 500 feet, right onto Belle Crest Lane, then immediately left onto Hathaway Drive, then immediately right onto Dressler Lane." -> said
@@ -114,7 +114,7 @@
   367 s   1969 m  #5 right Belle Crest Ln now (urgent): "Right now onto Belle Crest Lane." -> said
   381 s   2044 m  #6 left Hathaway Dr now (urgent): "Left now onto Hathaway Drive." -> said
   389 s   2087 m  #7 right Dressler Ln now (urgent): "Right now onto Dressler Lane." -> said
-  390 s   2092 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.4 s
+  390 s   2092 m  #8 right Lutes Dr advance: "In 400 feet, right onto Lutes Drive." -> held 1.6 s
   402 s   2157 m  #8 right Lutes Dr prepare: "In 170 feet, right onto Lutes Drive." -> said
   409 s   2194 m  #8 right Lutes Dr now (urgent): "Right now onto Lutes Drive." -> said
   415 s   2226 m  #9 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
