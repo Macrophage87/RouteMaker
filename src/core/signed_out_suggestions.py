@@ -34,9 +34,11 @@ From the ride summary (`from_ride`; frontend lib/rideFeedback.ts, the 2026-11-12
 send there says where the rider just was, so it keeps less (the owner's rule: nothing identifying
 stays on the server longer than two minutes). The suggestion keeps the day, never the time
 (`created_at` is midnight, Washington's day, as the 311 log keeps it); the per-device count row
-keeps the road only as a one-way code mixed with the device's (`ride_road_code`), so the row
-names no road, yet one-a-road still holds (a ride's retry, or Keep riding and End ride again, is
-refused as "already sent", not counted twice); and the audit row names no suggestion.
+is dated by the day too and keeps the road only as a one-way code mixed with the device's
+(`ride_road_code`), so the row names no road, yet one-a-road still holds, whichever form sent it
+(a ride's retry, or Keep riding and End ride again, is refused as "already sent", not counted
+twice); and the audit row names no suggestion and is dated by the day. Rows of each kind are
+made one a send, in step, so a row's exact time would otherwise date the suggestion.
 """
 
 from __future__ import annotations
@@ -201,12 +203,18 @@ def create(
                 device=device, created_at__gte=now - KEEP
             )
         )
-        road = ride_road_code(device, way_id) if from_ride else way_id
-        if any(s.osm_way_id == road for s in sends):
+        code = ride_road_code(device, way_id)
+        road = code if from_ride else way_id
+        # One a road whichever form sent it: the road panel's (the road) or a ride's (its code).
+        if any(s.osm_way_id in (way_id, code) for s in sends):
             raise Again("You've sent a suggestion for this road today. Thank you.")
         if len(sends) >= DAILY_MAX:
             raise Limited(f"That's {DAILY_MAX} suggestions today. Thank you; try again tomorrow.")
-        SignedOutSend.objects.create(device=device, osm_way_id=road, created_at=now)
+        # A ride's count row is dated by the day too: rows and suggestions are made one each per
+        # send, in step, so a row's time would date the suggestion it was made with.
+        SignedOutSend.objects.create(
+            device=device, osm_way_id=road, created_at=ride_day(now) if from_ride else now
+        )
         suggestion = StressSuggestion.objects.create(
             created_at=ride_day(now) if from_ride else now,
             suggester=None,
@@ -225,10 +233,13 @@ def create(
             reason=reason_words(chosen, other),
         )
     # A ride's send: the audit row's time would be the send's, so it names no suggestion.
-    audit.record(
+    entry = audit.record(
         None, "stress_suggest_signed_out", "stress_suggestion", "" if from_ride else suggestion.pk,
         AuditLogEntry.Outcome.ALLOWED,
     )  # fmt: skip
+    if from_ride and entry is not None:
+        # Its audit row too: one a send, in step with the suggestions, so dated by the day.
+        AuditLogEntry.objects.filter(pk=entry.pk).update(at=ride_day(now))
     return suggestion
 
 

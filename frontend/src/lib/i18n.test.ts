@@ -350,6 +350,10 @@ const GO_RIDE_ALSO = [
   // A place shared into Go with no map point, and the Bikeshare docks layer's Closed (the 2026-11-05 review).
   "app/sharedLaunch.ts",
   "lib/bikeshareDocks.ts",
+  // The ride summary's two lines that learn from the ride (the v0.26.0 release review); the suggestion form they open
+  // is Plan's, in English, and marked lang="en" there.
+  "RideFeedback.tsx",
+  "lib/rideFeedback.ts",
 ];
 
 function goRideFiles(): string[] {
