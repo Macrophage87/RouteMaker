@@ -130,6 +130,9 @@ services:
       # The base map (PMTiles, glyphs, sprites), written by
       # scripts/fetch_basemap.sh and served at /basemap/* by the Caddyfile.
       - ${DATA_ROOT}/basemap:/srv/basemap:ro
+      # The region packs for riding off grid, written by the rebuild after each map swap and
+      # served at /offline-packs/* by the Caddyfile.
+      - ${DATA_ROOT}/tiles:/srv/tiles:ro
       # The built public front end, copied here by the deploy step
       # (docs/DEPLOYMENT.md, "The public front end") and served at /.
       - ${DATA_ROOT}/frontend:/srv/frontend:ro

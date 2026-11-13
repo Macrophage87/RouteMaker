@@ -10372,3 +10372,38 @@ the signal returns, the server plans it again.
   about 250 miles (`MAX_LINE_M`, our default) is refused with a 400.
 - Privacy: the request carries the route's line only; nothing about the rider is logged or
   kept, and the phone keeps the network in memory for the ride only.
+
+### Region packs (v0.27.0)
+
+The optional whole-area download beside each ride's mile-wide network (the owner, 2026-11-12:
+"Potentially split it by subregion"; "Beltway, NoVA, NW exurbs, Baltimore and suburbs, etc.").
+Five packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
+exurbs, Baltimore and suburbs, and the rest of the map (the coverage box less the others). The
+borders are our draft, approximate; each pack also takes the roads within a mile of its border.
+
+- **Built after every map swap**, first thing in the rebuild's last stage, from the live
+  `offline_way` table: `${DATA_ROOT}/tiles/offline-packs/packs-<build id>/<region>.json.gz`,
+  then `manifest.json` beside it is replaced in one rename to name that folder. The folder is
+  named `packs-...`, not a bare build id, so the tile pruning and the beta ship script never
+  take it for a router graph. The manifest's build and the one before it are kept. The log
+  reads `offline pack <region>: N ways, B bytes` for each; that is where the sizes come from.
+  A failure is logged (`offline region packs not built`) and never fails the rebuild: the map
+  is already live, and the previous packs stay listed. A retry with the same build id reuses
+  the packs already written.
+- **Beta** runs no rebuild: `scripts/beta/ship-data.sh` sends the packs as their own part,
+  `packs` (the manifest and the folder it names), and `receive-data.sh files` installs the
+  folder, then the manifest by rename, and keeps one build before it. Without packs at home
+  the ship script warns; `--without packs` says so.
+- **Listed** by `GET /api/offline/packs` (each pack's name, bytes, checksum and address, and
+  the ride's level prices); 503 `not_built` before the first build. 30 a minute per client
+  (our default).
+- **Served** by the web server, never an api worker:
+  `/offline-packs/packs-<build id>/<region>.json.gz`, pack files only (never the manifest),
+  same-site only, kept a day. Compose's Caddy mounts `${DATA_ROOT}/tiles` read-only at
+  `/srv/tiles`; beta's nginx reads the folder directly. **Deploy steps:** on beta, render the
+  nginx template again and reload nginx (the new `/offline-packs/` location); on compose,
+  `docker compose up -d caddy` for the new mount.
+- To build the packs by hand for the live map (after a swap whose pack build failed), in
+  `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
+  then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
+  settings.COVERAGE_BBOX)`.

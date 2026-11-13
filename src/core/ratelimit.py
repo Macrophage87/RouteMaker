@@ -113,6 +113,9 @@ ROUTING = Limit(scope="route", requests=60, window_s=60)
 # /api/offline/network; off-grid riding, 2026-11-12): fetched once at Start ride and once per new
 # route, so a few a minute is plenty. Our default, unmeasured.
 OFFLINE_NETWORK = Limit(scope="offline-network", requests=12, window_s=60)
+# The region packs' list (GET /api/offline/packs): a small file read, asked when Settings opens
+# the packs and before a download. Our default, unmeasured.
+OFFLINE_PACKS = Limit(scope="offline-packs", requests=30, window_s=60)
 
 # Reach (POST /api/reach): counted apart from ROUTING, so a rider trying Reach's settings never
 # spends the budget Go's plans and a ride's re-routes need; the routing slots are shared all
