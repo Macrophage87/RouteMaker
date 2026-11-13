@@ -2540,12 +2540,13 @@ class BarrierRoundOut(Schema):
 
     rounds: int = Field(default=0, description="Rounds of asking again round them.")
     impassable: int = Field(default=0, description="Impassable barriers still on the route.")
-    limited: Literal["time", "no_way_round", "at_stop", "no_data"] | None = Field(
+    limited: Literal["time", "no_way_round", "at_stop", "no_data", "excludes_full"] | None = Field(
         default=None,
         description=(
             "Why some are still on the route: `time`, `no_way_round` (no route without them"
             " was found), `at_stop` (beside one of the plan's own points, so not excluded) or"
-            " `no_data` (no barrier list loaded)."
+            " `no_data` (no barrier list loaded) or `excludes_full` (the request's own"
+            " exclusions fill the router's limit, so none could be added)."
         ),
     )
     in_the_way: list[BarrierInTheWayOut] = Field(default_factory=list)

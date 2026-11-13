@@ -5157,7 +5157,9 @@ map". No map rebuild and no new control.
   points are excluded and the plan's request asked again, up to 4 rounds (our default,
   unmeasured), the route with the fewest kept. It is not held to the level rounds' guard
   (`refine.level_round_keeps`): a barrier that ends the trip outweighs a busier or longer way
-  round. The exclusions join `level_excludes`, so the
+  round. The request's own exclusions (closed spots) are always sent whole and first; the
+  barrier points get what is left of the router's 200, at most 150, and none that repeat one
+  already sent (`excludes_full` where nothing is left). The exclusions join `level_excludes`, so the
   later passes keep them out; a barrier within 25 m of one of the plan's points is not excluded
   (`at_stop`; our default). `barrier_round` (`BarrierRoundOut`) says what is still in the way
   and why (`no_way_round`, `at_stop`, `time`, `no_data`); the answer cache does not keep a
@@ -5168,8 +5170,8 @@ map". No map rebuild and no new control.
   or the end." for `at_stop`; plainly on a drawn or followed line, a first route or a round cut
   short), else a hint listing them ("On this route: gate,
   bollard ×2 (width not mapped)."), counts as "×2" so no language needs a plural; the map marks
-  each with an octagon and a bar (red with a white rim where it cannot pass, amber with a dark
-  rim otherwise, 22 px, named from
+  each with an octagon: red with a white bar and rim where it cannot pass (a no-entry sign),
+  amber with a dark "!" and rim otherwise, so shape tells them apart as well as colour, 22 px, named from
   zoom 13 red and 15 amber). The connector's summary has the same line as `barriers`. The 16
   phrases are drafted in every Go and Ride language and need a native check.
 - **Coverage.** `scripts/barrier_census.py` (without `--json`) prints how much of this OSM
