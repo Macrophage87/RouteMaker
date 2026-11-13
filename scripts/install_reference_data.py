@@ -399,6 +399,25 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
         year = mdot_aadt.current_year({key for _, properties in features for key in properties})
     skipped = 0
     rows = []
+    # A Maryland section's line stops at the busy junctions either side of its station
+    # (`mdot_aadt.cut_at_junctions`): past one, the station did not count that traffic.
+    cut: dict[int, list[tuple[float, float]]] = {}
+    if maryland:
+        single = [
+            (number, geometry, properties)
+            for number, (geometry, properties) in enumerate(features)
+            if geometry.geom_type == "LineString" and mdot_aadt.usable(properties)
+        ]
+        lines = mdot_aadt.cut_at_junctions(
+            [([(x, y) for x, y, *_ in g.coords], p) for _n, g, p in single]
+        )
+        cut = {number: line for (number, _g, _p), line in zip(single, lines, strict=True)}
+        shortened = sum(
+            1
+            for (_n, g, _p), line in zip(single, lines, strict=True)
+            if line != [(x, y) for x, y, *_ in g.coords]
+        )
+        print(f"  {volume}: {shortened} Maryland sections cut at a busy junction")
     for number, (geometry, properties) in enumerate(features):
         value = properties.get(aadt_property)
         if value in (None, ""):
@@ -423,7 +442,11 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
                     # keys exclusivity on this id, so two counties' counts
                     # sharing an id would have one claiming the other's span.
                     "id": f"{agency}-{volume.stem}-{properties.get('OBJECTID', number)}-{part}",
-                    "coordinates": [[x, y] for x, y, *_ in line.coords],
+                    "coordinates": (
+                        [[x, y] for x, y in cut[number]]
+                        if number in cut
+                        else [[x, y] for x, y, *_ in line.coords]
+                    ),
                     "aadt": int(float(value)),
                     "source": tier,
                     "agency": agency,

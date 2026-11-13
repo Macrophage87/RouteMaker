@@ -2673,6 +2673,17 @@ def build_handlers(
             # A count line that names another street is not this way's (`conflate`'s `names`).
             names={way.osm_id: (way.name, way.tags.get("ref")) for way in context.ways},
         )
+        # A trunk or primary road counted at under 200 a day is read as uncounted
+        # (`conflation.drop_implausible`), here before any carriageway shares the count.
+        result, implausible = conflation.drop_implausible(
+            result, {way.osm_id: way.tags.get("highway") for way in context.ways}
+        )
+        if implausible:
+            logger.info(
+                "%d counts under %d a day on trunk or primary ways not read",
+                len(implausible),
+                conflation.IMPLAUSIBLE_AADT,
+            )
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
         # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy

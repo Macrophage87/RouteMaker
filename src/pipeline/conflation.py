@@ -67,6 +67,14 @@ FREEWAY_LINES_FREEWAY_ONLY = True
 # freeway's (`conflate`'s `layers`). Our default, unmeasured: a freeway count, not a
 # street's; Water Street NW took 37,593 under the Whitehurst Freeway.
 FREEWAY_STACKED_MIN_AADT = 20_000
+# A count under this on a road OSM classes trunk or primary is not read
+# (`drop_implausible`): the road's own class says far more traffic, so the line belongs to
+# something else or was keyed wrong. Piscataway Road (primary, MD 223) took 40 a day from
+# MDOT SHA's "FLORAL PARK RD" section and was rated on it (the methodology audit, area 04,
+# 2026-11-13). Our default, unmeasured; MDOT SHA's lowest Maryland-route sections run 32 to
+# 45 a day on short spurs that OSM classes below primary.
+IMPLAUSIBLE_AADT = 200
+IMPLAUSIBLE_CLASSES = frozenset({"trunk", "primary"})
 
 # Beyond this the features are not the same road, whatever their bearing.
 MAX_SEPARATION_M = 20.0
@@ -140,6 +148,30 @@ class ConflationResult:
     # two agencies disagreeing about the same road rather than only the winner.
     rejected: list[tuple[int, Match]]
     unmatched_features: list[str]
+
+
+def drop_implausible(
+    result: ConflationResult, highways: Mapping[int, str | None]
+) -> tuple[ConflationResult, list[Match]]:
+    """`result` without the counts under IMPLAUSIBLE_AADT on a trunk or primary way
+    (`highways`, each way's OSM `highway`), and the matches dropped. Such a way is rated as
+    an uncounted one is, and its count is listed with the rejected ones for a reviewer."""
+    dropped = [
+        match
+        for way_id, match in result.matched.items()
+        if match.aadt < IMPLAUSIBLE_AADT and highways.get(way_id) in IMPLAUSIBLE_CLASSES
+    ]
+    if not dropped:
+        return result, []
+    gone = {match.osm_way_id for match in dropped}
+    return (
+        ConflationResult(
+            matched={w: m for w, m in result.matched.items() if w not in gone},
+            rejected=result.rejected + [(m.osm_way_id, m) for m in dropped],
+            unmatched_features=result.unmatched_features,
+        ),
+        dropped,
+    )
 
 
 def _mean_bearing(coordinates: Sequence[tuple[float, float]]) -> float | None:
@@ -865,8 +897,13 @@ def _precedence(feature: AgencyFeature) -> int:
 # measures a block layer: probe by probe, against the count line it runs along there,
 # with the heading taken locally. The lines that win `MIN_BLOCK_PROBES` of its probes are
 # the ones it lies along; where they between them cover `min_overlap` of the way, the way
-# takes the highest of their counts (of the best-ranked source among them), the
-# stress-averse reading of a street whose stretches were counted differently. Each line's
+# takes the count most of its length carries (`_typical_count`: the median weighted by the
+# probes each line wins, the lower of two at a tie, from the best-ranked source among them).
+# It took the highest until 2026-11-13, the opposite of `aadt_smoothing`, which lowers a
+# count above its street's median as "probably bunching by the intersection"; the
+# methodology audit (area 04, suggestion 4) found about 30 mi taking a busier link's count
+# that way, and the owner asked for the audit's changes ("Let's implement all the
+# reccomended changes in logic"). Each line's
 # stretch is claimed as in the first pass, so a way lying alongside one that already took
 # that stretch - the other carriageway, a frontage road - still does not.
 def _along_counts(
@@ -932,11 +969,30 @@ def _along_counts(
         for position, spots in sorted(lying_along.items())
     ]
     near_by = [d for position in lying_along for d in distances[position]]
-    chosen = min(
-        (features[position] for position in lying_along),
-        key=lambda feature: (_precedence(feature), -feature.aadt, feature.feature_id),
-    )
+    chosen = _typical_count(features, lying_along)
     return chosen, min(1.0, covered), sum(near_by) / len(near_by), spans
+
+
+def _typical_count(
+    features: Sequence[AgencyFeature], lying_along: Mapping[int, list[float]]
+) -> AgencyFeature:
+    """Of the lines a way lies along, the best-ranked source's line whose count is the median
+    weighted by how much of the way each covers (probes won), the lower one at a tie."""
+    best = min(_precedence(features[position]) for position in lying_along)
+    ranked = sorted(
+        (
+            (features[position].aadt, features[position].feature_id, len(spots), position)
+            for position, spots in lying_along.items()
+            if _precedence(features[position]) == best
+        )
+    )
+    total = sum(weight for _aadt, _fid, weight, _position in ranked)
+    running = 0
+    for _aadt, _fid, weight, position in ranked:
+        running += weight
+        if 2 * running >= total:
+            return features[position]
+    return features[ranked[-1][3]]
 
 
 def share_with_carriageways(

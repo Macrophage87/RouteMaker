@@ -793,9 +793,18 @@ in the database still names it: delete that row in the admin when loading the fi
   VA own-picks rows that rated Arlington Boulevard Service Road 4 on the boulevard's own 42,000
   a day; adds no row, so the formula reads the service road again.
 
-- `2026-11-13-owner-md-urban-borrowed-counts.json` (DRAFT, not approved; do not load until the
-  owner confirms the file): the owner's Bucklodge Rd call applied as a guide to 50 ways on eight
-  Maryland urban roads (East Joppa Rd, Brock Bridge Rd, Obrecht Rd, South Potomac St, Garland
-  Groh Blvd, Baltimore Annapolis Blvd, Tuckerman Ln, Ritchie Marlboro Rd) whose level rested on
-  an MDOT SHA count taken past a junction: each is rated from its own traffic by the urban
-  anchors. Load after the 2026-11-09 Maryland own-picks file.
+- `2026-11-13-retire-md-borrowed-count-pins.json` (DRAFT, not approved; do not load until the
+  owner confirms the file): withdraws the 50 rows on eight Maryland urban roads (East Joppa Rd,
+  Brock Bridge Rd, Obrecht Rd, South Potomac St, Garland Groh Blvd, Baltimore Annapolis Blvd,
+  Tuckerman Ln, Ritchie Marlboro Rd) whose pinned level rested on an MDOT SHA count taken past a
+  junction or on another street's section; adds none. The data is fixed instead: a section's
+  count stops at the busy junctions either side of its station (`mdot_aadt.cut_at_junctions`)
+  and a line named for another street does not reach the road (`conflation.same_road`). Needs
+  `volume.json` reinstalled at the next rebuild. Replaces the earlier draft that re-pinned the
+  50 ways at estimated levels (the methodology audit, area 04: 30 of them were on the road's
+  own section, which its name test had missed).
+
+- `2026-11-13-retire-darnestown-lts4-pin.json` (DRAFT, not approved): withdraws the 2026-10-14
+  LTS 4 pin on Darnestown Road's five ways, so Montgomery's 5 reads as 4.5, the level the
+  owner gave on 2026-11-13 ("Darnestown makes sense at 4.5") and the one `fixtures/known-roads`
+  asks for; with the pin the known-roads check refuses the build.

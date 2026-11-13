@@ -1281,3 +1281,27 @@ def test_mdot_route_numbers_read_as_osm_refs() -> None:
     assert same_road(
         ("Interstate 95", "I 95"), AgencyFeature("f", [], 1, "state", name="X", ref="I 95")
     )
+
+
+def test_a_way_along_several_lines_takes_the_count_most_of_it_carries() -> None:
+    """Gap fill took the highest of the lines a way lies along; it now takes the median
+    weighted by length (the methodology audit, area 04, suggestion 4)."""
+    way = [(-77.030, 38.9560), (-77.016, 38.9560)]
+    spans = [(-77.030, 0.0063, 5000), (-77.0237, 0.0042, 20000), (-77.0195, 0.0035, 3000)]
+    lines = [
+        feature(f"b{i}", [(x0, 38.95601), (x0 + length, 38.95601)], aadt, "state", "vdot")
+        for i, (x0, length, aadt) in enumerate(spans)
+    ]
+    assert conflate([(1, way)], lines).matched[1].aadt == 5000
+
+
+def test_a_primary_counted_at_40_a_day_is_read_as_uncounted() -> None:
+    """Piscataway Road (primary) took 40 a day from MDOT SHA's FLORAL PARK RD section."""
+    from pipeline.conflation import drop_implausible
+
+    road = [(-77.0200, 38.70000), (-77.0100, 38.70000)]
+    line = feature("fp", [(-77.0205, 38.70001), (-77.0095, 38.70001)], 40, "state", "mdot-sha")
+    result = conflate([(1, road)], [line])
+    kept, dropped = drop_implausible(result, {1: "primary"})
+    assert 1 not in kept.matched and [m.aadt for m in dropped] == [40]
+    assert drop_implausible(result, {1: "tertiary"})[0].matched[1].aadt == 40
