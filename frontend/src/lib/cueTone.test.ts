@@ -109,3 +109,18 @@ test("the tone travels with the cue: Announcer to the outputs, Voice to the utte
   voice.speak("Busy road on R St", true);
   assert.equal(utterances[2].chime, undefined);
 });
+
+test("a turn's warning is never held back by a road note said just before it; notes still keep their gap", () => {
+  const delivered: Said[] = [];
+  let now = 0;
+  const timers: (() => void)[] = [];
+  const announcer = new Announcer((s) => delivered.push(s), () => now, (fn) => (timers.push(fn), 0) as unknown as ReturnType<typeof setTimeout>, () => undefined);
+  announcer.say("Busy road on Maryland Avenue Northeast.", false);
+  now = 1000;
+  announcer.say("In 300 feet, right onto G Street Northeast.", false, false, undefined, "turn");
+  assert.deepEqual(delivered.map((s) => s.text), ["Busy road on Maryland Avenue Northeast.", "In 300 feet, right onto G Street Northeast."]);
+  now = 2000;
+  announcer.say("Heavy traffic.", false);
+  announcer.say("In 150 feet, right onto G Street Northeast.", false, false, undefined, "turn");
+  assert.equal(delivered.length, 2, "within the gap of each: both wait, the newer in place of the older");
+});

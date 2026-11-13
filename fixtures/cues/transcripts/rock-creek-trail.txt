@@ -130,7 +130,7 @@
   216 s   1159 m  #2 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> said
   439 s   2355 m  #3 right Rock Creek Trl advance: "In about 500 feet, right to stay on Rock Creek Trail, then immediately left onto the path, then immediately right to stay on the path." -> said
   451 s           note: "GPS is weak: turn cues paused."
-  456 s   2446 m  #3 right Rock Creek Trl prepare: "In 180 feet, right, then immediately left, then immediately right." -> held 3.0 s, cut 4.7 s in, as "In 140 feet, right, then immediately left, then immediately right."
+  456 s   2446 m  #3 right Rock Creek Trl prepare: "In 180 feet, right, then immediately left, then immediately right." -> said
   464 s   2489 m  #3 right Rock Creek Trl now (urgent): "Right now." -> said
   481 s   2580 m  #4 left Path now (urgent): "Left now onto the path." -> said
   488 s   2618 m  #5 right Path now (urgent): "Right now." -> said

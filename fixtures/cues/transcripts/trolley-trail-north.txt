@@ -60,9 +60,8 @@
  1070 s   3827 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
  1080 s   3862 m  #17 right Balfour Ct advance: "In 500 feet, right onto Balfour Court." -> said
  1109 s   3966 m  #17 right Balfour Ct prepare: "In 140 feet, right onto Balfour Court." -> said
- 1117 s   3995 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
- 1118 s   3998 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said
-  ! cut at 4010 m (#17): "Right now onto Balfour Court." cut off 0.7 s in by #18's arrive
+ 1117 s   3995 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said
+ 1118 s   3998 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> held 1.6 s
 
 ## trolley-trail-north at 12 mph, steady
     0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said, cut 4.7 s in
@@ -103,9 +102,8 @@
   714 s   3830 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
   720 s   3862 m  #17 right Balfour Ct advance: "In 500 feet, right onto Balfour Court." -> said
   738 s   3959 m  #17 right Balfour Ct prepare: "In 170 feet, right onto Balfour Court." -> said
-  745 s   3997 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
-  746 s   4002 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said
-  ! cut at 4010 m (#17): "Right now onto Balfour Court." cut off 0.7 s in by #18's arrive
+  745 s   3997 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said
+  746 s   4002 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> held 1.6 s
 
 ## trolley-trail-north at 18 mph, steady
     0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said, cut 2.7 s in
@@ -119,7 +117,7 @@
    62 s    499 m  #3 left unnamed Rd now (urgent): "Cross the road now." -> said
    64 s    515 m  #4 right Bethesda Trolley Trl now (urgent): "Right now onto Bethesda Trolley Trail." -> said
    78 s    628 m  #5 crossing Battery Ln prepare: "In 250 feet, cross Battery Lane." -> said
-   81 s    652 m  #6 bear_left Path advance: "In 700 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail." -> held 5.0 s, as "In 600 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail."
+   81 s    652 m  #6 bear_left Path advance: "In 700 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail." -> said
    98 s    789 m  #6 bear_left Path prepare: "In 250 feet, bear left, then immediately bear left." -> said
   106 s    853 m  #6 bear_left Path now (urgent): "Bear left now onto the path." -> said
   109 s    877 m  #7 bear_left Bethesda Trolley Trl now (urgent): "Bear left now onto Bethesda Trolley Trail." -> said
@@ -146,9 +144,8 @@
   476 s   3830 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
   477 s   3838 m  #17 right Balfour Ct advance: "In 600 feet, right onto Balfour Court." -> held 1.6 s
   489 s   3935 m  #17 right Balfour Ct prepare: "In 250 feet, right onto Balfour Court." -> said
-  497 s   3999 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
-  498 s   4007 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said
-  ! cut at 4010 m (#17): "Right now onto Balfour Court." cut off 0.7 s in by #18's arrive
+  497 s   3999 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said
+  498 s   4007 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> held 1.6 s
 
 ## trolley-trail-north at 12 mph, missed-turn
     0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said, cut 4.7 s in
@@ -171,7 +168,7 @@
   211 s   1132 m  #8 right Bethesda Trolley Trl now (urgent): "Right now." -> said
   218 s   1147 m  #9 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
   222 s   1147 m  alongside: "Off the planned route." -> held 4.0 s
-  231 s   1147 m  #9 right Bethesda Trolley Trl prepare: "In 160 feet, right to stay on Bethesda Trolley Trail." -> held 3.0 s, as "In 130 feet, right to stay on Bethesda Trolley Trail."
+  231 s   1147 m  #9 right Bethesda Trolley Trl prepare: "In 160 feet, right to stay on Bethesda Trolley Trail." -> said
   239 s   1147 m  #9 right Bethesda Trolley Trl now (urgent): "Right now." -> said
   257 s   1147 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
   off route said 232 m past the missed turn
@@ -215,5 +212,5 @@
   714 s   3830 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
   720 s   3862 m  #17 right Balfour Ct advance: "In 500 feet, right onto Balfour Court." -> said
   738 s   3959 m  #17 right Balfour Ct prepare: "In 170 feet, right onto Balfour Court." -> said
-  745 s   3997 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
-  746 s   4002 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said
+  745 s   3997 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said
+  746 s   4002 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> held 1.6 s

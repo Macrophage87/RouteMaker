@@ -106,7 +106,7 @@
   131 s    703 m  #2 right May St now (urgent): "Right now onto May Street." -> said
   138 s    740 m  #3 onto Rippling Brook Dr advance: "In 500 feet, continue onto Rippling Brook Drive." -> said
   239 s           note: "GPS is weak: turn cues paused."
-  246 s   1320 m  #4 right Beechmont Ln advance: "In 500 feet, right onto Beechmont Lane." -> held 1.0 s
+  246 s   1320 m  #4 right Beechmont Ln advance: "In 500 feet, right onto Beechmont Lane." -> said
   264 s   1416 m  #4 right Beechmont Ln prepare: "In 170 feet, right onto Beechmont Lane." -> said
   272 s   1459 m  #4 right Beechmont Ln now (urgent): "Right now onto Beechmont Lane." -> said
   342 s   1835 m  #5 right Belle Crest Ln advance: "In 500 feet, right onto Belle Crest Lane, then immediately left onto Hathaway Drive, then immediately right onto Dressler Lane." -> said

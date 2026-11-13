@@ -195,6 +195,8 @@ export class Announcer {
   /** Told of a polite sentence dropped unsaid (replaced while it waited, or dropped by an urgent one): the cue log. */
   onDrop: ((text: string) => void) | null = null;
   private lastPolite: number | null = null;
+  /** The last polite turn warning's time: a turn's next warning waits a gap after this one alone. */
+  private lastTurn: number | null = null;
   private waiting: Said | null = null;
   /** The waiting sentence built afresh as it is said (say's `again`). */
   private again: (() => string | null) | null = null;
@@ -229,9 +231,14 @@ export class Announcer {
       return;
     }
     const now = this.now();
-    if (this.lastPolite === null || now - this.lastPolite >= POLITE_GAP_MS) {
+    // A turn's warning waits only for the gap after the last turn's, never behind a road note said just before it (the
+    // cue bench: "busy road on Maryland Avenue" held G Street's turn warning back to 5 s before the turn at 18 mph). The
+    // voice still lets the note finish first.
+    const since = mark ? this.lastTurn : this.lastPolite;
+    if (since === null || now - since >= POLITE_GAP_MS) {
       this.drop();
       this.lastPolite = now;
+      if (mark) this.lastTurn = now;
       this.deliver({ text, urgent: false, ...marked });
       return;
     }
@@ -249,9 +256,10 @@ export class Announcer {
         if (next && !text) this.onDrop?.(next.text);
         if (next && text) {
           this.lastPolite = this.now();
+          if (next.mark) this.lastTurn = this.lastPolite;
           this.deliver({ ...next, text });
         }
-      }, POLITE_GAP_MS - (now - this.lastPolite));
+      }, POLITE_GAP_MS - (now - (since ?? now)));
     }
   }
 

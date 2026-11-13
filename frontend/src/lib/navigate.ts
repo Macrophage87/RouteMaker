@@ -2066,7 +2066,8 @@ export function step(
       if (left <= ARRIVE_M && arrivable) {
         said[cue.index] = phases.map((p) => p.phase);
         next.arrived = true;
-        events.push({ kind: "cue", spoken: cueSpoken(cue, "arrive", 0), urgent: true, cue, phase: "arrive" });
+        // After the turn's "now" being said, not over it (the cue bench: arrival cut "Right now onto Balfour Court" off).
+        events.push({ kind: "cue", spoken: cueSpoken(cue, "arrive", 0), urgent: true, after: true, cue, phase: "arrive" });
       } else if (cue.farSide && !done.includes("advance")) {
         // A destination across a busy road (D26): said once within its advance distance, but never stacked on the
         // cue before (the last turn's "now"): only FAR_SIDE_GAP_M past it, and dropped within FAR_SIDE_LAST_M.
@@ -2111,7 +2112,8 @@ export function step(
         kind: "cue",
         spoken: cueSpoken(cue, phase.phase, distance, first),
         urgent,
-        ...(cue.joined ? { after: true } : {}),
+        // A jog's later turn, and reaching a stop, wait for the turn being said instead of cutting it off.
+        ...(cue.joined || phase.phase === "arrive" ? { after: true } : {}),
         // A turn's or a hazard's "In 500 feet, ..." (a stop's is said on reaching it, with no distance).
         ...(!urgent && cue.kind !== "stop" ? { respoken: (at: number) => (cue.atM - at > 0 ? cueSpoken(cue, phase.phase, cue.atM - at, first) : null) } : {}),
         cue,

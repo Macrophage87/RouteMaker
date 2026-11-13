@@ -161,7 +161,7 @@
   683 s   3664 m  #4 left Old Mill Rd prepare: "In 170 feet, left onto Old Mill Road." -> said
   710 s   3809 m  #5 right Gateshead Rd advance: "In about 450 feet, right onto Gateshead Road." -> said
   720 s           note: "GPS is weak: turn cues paused."
-  727 s   3900 m  #5 right Gateshead Rd prepare: "In 180 feet, right onto Gateshead Road." -> held 1.0 s
+  727 s   3900 m  #5 right Gateshead Rd prepare: "In 180 feet, right onto Gateshead Road." -> said
   735 s   3943 m  #5 right Gateshead Rd now (urgent): "Right now onto Gateshead Road." -> said
  1040 s   5579 m  #6 onto Sky View Dr advance: "In 500 feet, continue onto Sky View Drive." -> said
  1130 s   6062 m  #7 bear_right Path advance: "In 500 feet, bear right onto the path, then immediately bear right to stay on the path, then immediately bear right to stay on the path." -> said
