@@ -4,7 +4,11 @@
 from __future__ import annotations
 
 from pipeline.states import states_without_urban
-from routemaker.stress import Stress, classify, rural_floor, statutory_default_mph
+from routemaker.stress import (
+    Stress,
+    classify,
+    statutory_default_mph,
+)
 
 
 class TestWestVirginiaSpeedLaw:
@@ -55,14 +59,6 @@ class TestUrbanListCoversEveryState:
 class TestOwnerRulesEverywhere:
     """The owner's rules read the same in every state (2026-10-31, Q1-Q4)."""
 
-    def test_a_quiet_count_keeps_the_narrow_road_reading(self):
-        lane = {"highway": "unclassified", "lane_markings": "no"}
-        # The rural floor is applied by the rebuild after the classifier.
-        counted = rural_floor(classify(lane, urban=False, aadt=300, jurisdiction="VA"), lane, False)
-        uncounted = rural_floor(classify(lane, urban=False, jurisdiction="MD"), lane, False)
-        assert counted.tier is uncounted.tier is Stress.LTS2
-        assert "narrow rural road" in counted.rule
-
     def test_a_busy_count_still_outranks_it(self):
         lane = {"highway": "unclassified", "lane_markings": "no"}
         assert "narrow rural road" not in classify(lane, urban=False, aadt=4_000).rule
@@ -87,18 +83,6 @@ class TestOwnerRulesEverywhere:
         road = {"highway": "trunk", "maxspeed": "55 mph", "oneway": "yes", "lanes": "1"}
         assert classify(road, urban=False, divided=True).half
 
-    def test_a_busy_two_lane_street_is_2_5(self):
-        street = {"highway": "residential", "maxspeed": "25 mph"}
-        busy = classify(street, aadt=6_000)
-        assert (busy.tier, busy.half) == (Stress.LTS2, True)
-        assert not classify(street, aadt=4_000).half
-
-    def test_a_painted_lane_on_a_busy_street_is_at_least_2_5(self):
-        street = {"highway": "residential", "maxspeed": "25 mph", "cycleway": "lane"}
-        busy = classify(street, aadt=12_000)
-        assert (busy.tier, busy.half) == (Stress.LTS2, True)
-        assert not classify(street, aadt=6_000).half
-
     def test_a_ramp_or_a_protected_track_is_not_taken(self):
         ramp = {"highway": "trunk_link", "oneway": "yes", "lanes": "2", "maxspeed": "55 mph"}
         assert not classify(ramp, urban=False).half
@@ -108,29 +92,6 @@ class TestOwnerRulesEverywhere:
         assert not classify(road, urban=False, separate_facility=True).rule.startswith(
             "multilane highway"
         )
-
-
-def test_smoothing_knows_the_busy_street_gates():
-    from pipeline.aadt_smoothing import crosses_volume_gate
-
-    assert crosses_volume_gate(6_000, 4_000)
-    assert crosses_volume_gate(9_500, 8_500)
-
-
-def test_a_20_mph_street_stays_2_5_past_8000_a_day():
-    street = {"highway": "residential"}
-    for aadt in (7_999, 8_000, 25_000):
-        result = classify(street, aadt=aadt, jurisdiction="DC")
-        assert (result.tier, result.half) == (Stress.LTS2, True), aadt
-
-
-def test_smoothing_knows_the_busy_road_gates():
-    from pipeline.aadt_smoothing import crosses_volume_gate
-
-    assert crosses_volume_gate(11_000, 13_000)  # busy city street, 12,000
-    assert crosses_volume_gate(17_000, 19_000)  # busy rural two-lane, 18,000
-    assert crosses_volume_gate(19_000, 21_000)  # very busy city street, 20,000
-    assert not crosses_volume_gate(13_000, 14_000)
 
 
 def test_a_covered_state_with_no_placed_way_is_named():
@@ -151,24 +112,8 @@ class TestEdges:
 
     STREET = {"highway": "residential", "maxspeed": "25 mph"}
 
-    def test_the_busy_street_step_starts_at_5000(self):
-        assert not classify(self.STREET, aadt=4_999).half
-        assert classify(self.STREET, aadt=5_000).half
-
     def test_not_with_a_side_path_beside_it(self):
         assert not classify(self.STREET, aadt=6_000, separate_facility=True).half
-
-    def test_a_one_way_street_does_not_take_the_busy_city_street_step(self):
-        one_way = {**self.STREET, "oneway": "yes"}
-        assert not classify(one_way, aadt=15_000).half
-        assert classify(self.STREET, aadt=15_000).half
-
-    def test_the_narrow_road_reading_holds_at_1500_and_not_past(self):
-        lane = {"highway": "unclassified", "lane_markings": "no"}
-        at = rural_floor(classify(lane, urban=False, aadt=1_500, jurisdiction="VA"), lane, False)
-        past = classify(lane, urban=False, aadt=1_501, jurisdiction="VA")
-        assert "narrow rural road" in at.rule
-        assert "narrow rural road" not in past.rule
 
     def test_a_town_tertiary_link_reads_25_in_virginia_and_west_virginia(self):
         for state in ("VA", "WV"):

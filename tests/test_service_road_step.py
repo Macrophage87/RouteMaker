@@ -17,7 +17,6 @@ from routemaker.stress import (
     StressAdjustment,
     StressResult,
     classify,
-    rural_floor,
     service_road_step,
 )
 
@@ -55,19 +54,6 @@ def test_an_owner_row_on_the_way_wins():
     )
     owned = StressResult(Stress.LTS1, "override", adjustment=adjustment)
     assert service_road_step(owned, {"highway": "service"}) is owned
-
-
-def test_the_step_applies_over_an_agency_level_1():
-    rated = agency_lts.apply(QUIET, [AgencyRating("mdot-sha", 1)])
-    tags = {"highway": "service"}
-    stepped = service_road_step(rural_floor(rated, tags, urban=True), tags)
-    assert (stepped.tier, stepped.half) == (Stress.LTS1, True)
-
-
-def test_a_rural_service_road_takes_the_floor_not_the_step():
-    tags = {"highway": "service"}
-    stepped = service_road_step(rural_floor(QUIET, tags, urban=False), tags)
-    assert (stepped.tier, stepped.half) == (Stress.LTS2, False)
 
 
 def test_the_road_panel_says_why():

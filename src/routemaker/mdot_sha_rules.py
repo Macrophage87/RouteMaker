@@ -34,7 +34,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
 
-from routemaker.stress import BUSY_RURAL_HIGHWAY_AADT, BUSY_STREET_MIN_AADT
+from routemaker.stress import BUSY_RURAL_HIGHWAY_AADT
+
+# The count from which the 2026-10 reading of SHA's levels called a street busy. The
+# classifier no longer has a step there (2026-11-13); this reading is comparison-only.
+BUSY_STREET_MIN_AADT = 8_000
 
 # Maryland's county code for Baltimore City, the first two characters of a route id.
 BALTIMORE_CITY = "24"

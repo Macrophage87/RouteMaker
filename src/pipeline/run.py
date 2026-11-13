@@ -70,8 +70,7 @@ from routemaker.stress import (
     is_rough,
     level_of,
     painted_lane_multilane,
-    rural_floor,
-    rural_floor_applies,
+    rural_minimum_applies,
     service_road_step,
 )
 
@@ -1888,15 +1887,11 @@ def agency_rated(result, ratings, tags: Mapping[str, str], *, urban: bool):
     service-road step again, which rank above them (`apply_agency_ratings`)."""
     mapped = facility.facility(dict(tags))
     return service_road_step(
-        rural_floor(
-            agency_lts.apply(
-                result,
-                ratings,
-                facility_mapped=mapped is not facility.Facility.NONE,
-                painted_lane=mapped is facility.Facility.LANE,
-            ),
-            tags,
-            urban=urban,
+        agency_lts.apply(
+            result,
+            ratings,
+            facility_mapped=mapped is not facility.Facility.NONE,
+            painted_lane=mapped is facility.Facility.LANE,
         ),
         tags,
     )
@@ -1915,7 +1910,7 @@ def osm_tags_tier(result, tags: Mapping[str, str], ratings, *, urban: bool, owne
     tier."""
     if owner_lane:
         result = bike_lanes.owner_tier(result, tags)
-    result = service_road_step(rural_floor(result, tags, urban=urban), tags)
+    result = service_road_step(result, tags)
     if ratings and not owner_lane:
         result = agency_rated(result, ratings, tags, urban=urban)
     return result
@@ -1946,7 +1941,7 @@ def assert_rating_rules(context: RebuildContext) -> None:
     for way_id in lts_sentinels.rural_lts1_ways(schema):
         way = by_id.get(way_id)
         tags = context.class_tags_by_way.get(way_id, way.tags if way is not None else {})
-        if rural_floor_applies(tags, urban=False):
+        if rural_minimum_applies(tags):
             rural.append(way_id)
     # A `moco-lts5-*` row keeps Avoid where our own rules already said Avoid
     # (`overrides.stress_adjustment`'s `own_avoid`), as `agency_lts.apply` does for the layer.
@@ -2987,10 +2982,10 @@ def build_handlers(
                 context.stress_by_way[way.osm_id] = bike_lanes.owner_tier(
                     context.stress_by_way[way.osm_id], tags
                 )
-            # The owner's rural floor (2026-10-13) and service-road step (2026-11-01), over
+            # The service-road step (2026-11-01), over
             # the classifier's tier and under the owner's own corridors and rows below.
             context.stress_by_way[way.osm_id] = service_road_step(
-                rural_floor(context.stress_by_way[way.osm_id], tags, urban=not rural), tags
+                context.stress_by_way[way.osm_id], tags
             )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(

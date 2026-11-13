@@ -305,7 +305,7 @@ def test_the_rating_rules_say_what_is_wrong_in_words() -> None:
     found = lts_sentinels.rating_rule_problems(list(range(1, 13)), [7], [11])
     assert len(found) == 3
     assert found[0].startswith("12 ways (1, 2, 3") and "+2 more" in found[0]
-    assert "rural floor" in found[0]
+    assert "rural minimum" in found[0]
     assert found[1].startswith("1 way (7)") and "4.5" in found[1]
     assert "MDOT SHA" in found[2]
 

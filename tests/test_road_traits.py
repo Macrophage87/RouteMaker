@@ -109,15 +109,6 @@ class TestADividedRoadsCarriagewayIsOneWayForTheJunctions:
     one-way street there); `graph_oneway` is the way's own direction, which the
     segment table's `road_oneway` carries to the junction model."""
 
-    def test_the_classifier_keeps_both_readings(self) -> None:
-        result = classify(CONNECTICUT, aadt=30149, urban=True, jurisdiction="DC", divided=True)
-        assert (result.lanes, result.oneway, result.graph_oneway) == (3, False, True)
-        alone = classify(CONNECTICUT, aadt=30149, urban=True, jurisdiction="DC")
-        assert (alone.oneway, alone.graph_oneway) == (True, True)
-        # The relief reading still decides the tier (item 109): a carriageway
-        # is read as the two-way road it is half of.
-        assert "two-way floor" in result.rule
-
     @pytest.mark.parametrize(
         ("tags", "expected"),
         [

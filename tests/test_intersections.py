@@ -163,8 +163,8 @@ class TestByTraffic:
 
     def test_a_protected_lane_does_not_make_a_busy_road_easier_to_cross(self) -> None:
         # The owner, 2026-10-31: "a protected bike lane on a busy road is just as hard to
-        # cross". A 35 mph road, one lane each way, 15,000 a day, LTS 1 on the map.
-        protected = Road(1, speed_mph=35, lanes=1, oneway=False, aadt=15_000, urban=True)
+        # cross". A 40 mph road, one lane each way, 15,000 a day, LTS 1 on the map.
+        protected = Road(1, speed_mph=40, lanes=1, oneway=False, aadt=15_000, urban=True)
         plain = replace(protected, tier=4)
         for control in (Control.STOP, Control.NONE, Control.SIGNAL):
             for when in (None, ridetime.WEEKDAY_RUSH):

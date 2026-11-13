@@ -14,15 +14,24 @@ from routemaker.intersections import Control, Junction, Movement, Road, assess, 
 from routemaker.stress import classify, single_lane_traffic_level
 
 SPEEDS = (20, 25, 30, 35, 40, 45, 50)
-COUNTS = (None, 1_000, 1_501, 3_000, 5_000, 7_999, 8_000, 11_999, 12_000, 19_999, 20_000)
+COUNTS = (None, 500, 1_000, 1_001, 1_500, 1_501, 3_000, 8_000, 20_000)
 
 
 @pytest.mark.parametrize(
     ("speed", "aadt", "oneway", "urban"),
-    list(itertools.product(SPEEDS, COUNTS, (False, True), (True, False))),
+    list(itertools.product(SPEEDS, COUNTS, (False, True), (True,))),
 )
 def test_the_single_lane_reading_is_the_classifiers(speed, aadt, oneway, urban) -> None:
-    tags = {"highway": "residential", "maxspeed": f"{speed} mph", "surface": "asphalt"}
+    # A minor through street with a centerline, in town: Furth's centerline row, which is
+    # the row the junction reads for every road (the segment table keeps no class), and with
+    # no count the same class figure. Outside the urban areas the classifier reads Oregon's
+    # rural table at 45 mph or more, which the junction does not.
+    tags = {
+        "highway": "unclassified",
+        "lane_markings": "yes",
+        "maxspeed": f"{speed} mph",
+        "surface": "asphalt",
+    }
     tags |= {"oneway": "yes", "lanes": "1"} if oneway else {"lanes": "2"}
     result = classify(tags, aadt=aadt, urban=urban)
     assert single_lane_traffic_level(speed, oneway, aadt, urban) == (result.tier, result.half)

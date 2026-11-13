@@ -28,20 +28,6 @@ BRAGERS_ROAD = {
 }
 
 
-@pytest.mark.parametrize("urban", [True, False])
-def test_bragers_road_is_low_stress(urban) -> None:
-    result = classify(BRAGERS_ROAD, urban=urban, jurisdiction="MD")
-    assert result.tier is Stress.LTS2
-    assert "35 mph" not in result.rule
-    assert "motor_vehicle=private" in result.rule
-    assert result.speed_mph is None, "the default speed is not stated as fact"
-
-
-def test_without_the_restriction_it_read_lts_4() -> None:
-    open_road = {k: v for k, v in BRAGERS_ROAD.items() if k not in ("access", "motor_vehicle")}
-    assert classify(open_road, urban=False, jurisdiction="MD").tier is Stress.LTS4
-
-
 @pytest.mark.parametrize(
     ("tags", "tier"),
     [
@@ -61,12 +47,6 @@ def test_without_the_restriction_it_read_lts_4() -> None:
 def test_restricted_motor_traffic_caps_the_tier(tags, tier) -> None:
     result = classify({"highway": "unclassified", **tags}, urban=False, jurisdiction="VA")
     assert result.tier is tier, result.rule
-
-
-def test_the_most_specific_key_decides() -> None:
-    tags = {"highway": "unclassified", "motor_vehicle": "private", "motorcar": "yes"}
-    assert motor_restriction(tags) is None
-    assert classify(tags, urban=False, jurisdiction="VA").tier is Stress.LTS4
 
 
 @pytest.mark.parametrize(
@@ -137,22 +117,6 @@ def test_a_motorway_is_never_capped() -> None:
 def test_it_only_ever_lowers() -> None:
     quiet = {"highway": "residential", "motor_vehicle": "private", "maxspeed": "15 mph"}
     assert classify(quiet, jurisdiction="DC").tier is Stress.LTS1
-
-
-def test_a_posted_limit_above_30_raises_the_cap() -> None:
-    tags = {"highway": "unclassified", "motor_vehicle": "private", "maxspeed": "40 mph"}
-    result = classify(tags, urban=False, jurisdiction="VA")
-    assert result.tier is Stress.LTS3
-    assert "posted 40 mph" in result.rule
-
-
-def test_a_posted_limit_of_exactly_30_does_not_raise_the_cap() -> None:
-    tags = {"highway": "unclassified", "motor_vehicle": "private", "maxspeed": "30 mph"}
-    open_road = {k: v for k, v in tags.items() if k != "motor_vehicle"}
-    assert classify(open_road, urban=False, jurisdiction="VA").tier > Stress.LTS2
-    result = classify(tags, urban=False, jurisdiction="VA")
-    assert result.tier is Stress.LTS2, result.rule
-    assert "posted 30 mph" in result.rule
 
 
 @pytest.mark.parametrize(

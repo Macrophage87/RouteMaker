@@ -46,13 +46,14 @@ from routemaker.facility import SHARED_PREFIXES
 from routemaker.stress import (
     BESIDE_BUSY_ROAD_RULE,
     BUSY_RURAL_HIGHWAY_RULE,
-    BUSY_STREET_RULE,
+    CLASS_COUNT_RULE,
     FAST_MULTILANE_PREFIX,
+    NOTE_4_RULE,
     RURAL_EXPRESSWAY_PREFIX,
+    RURAL_MIN_RULE,
     SERVICE_ROAD_RULE,
     USE_SIDEPATH_ON_ROAD_RULE,
     USE_SIDEPATH_RULE,
-    VERY_BUSY_STREET_RULE,
 )
 
 # How far from the spot a way may be and still be the one the rider meant: a
@@ -580,8 +581,18 @@ _MIXED_PARTS = {
     "narrow rural road": "a narrow or winding rural road",
     "rural road floor": "a rural road open to cars, so rated at least LTS 2",
     SERVICE_ROAD_RULE: "an alley or service road: delivery trucks and blind exits, so LTS 1.5",
-    BUSY_STREET_RULE: "a busy city street, so half a level higher",
-    VERY_BUSY_STREET_RULE: "a very busy city street, so a level higher",
+    # Rule texts of the classifier before 2026-11-13, which a table built then still carries.
+    "busy city street": "a busy city street, so half a level higher",
+    "very busy city street": "a very busy city street, so a level higher",
+    # The published tables' words (2026-11-13).
+    "unlaned": "a local street, read as having no centerline",
+    "2 lanes each way": "two lanes each way",
+    "3 or more lanes each way": "three or more lanes each way",
+    "any volume": "at any traffic count",
+    CLASS_COUNT_RULE: "no traffic count, so its traffic is read from the kind of road it is",
+    NOTE_4_RULE: "rated as the street itself: its bike lane cannot make it worse",
+    RURAL_MIN_RULE: "a rural road open to cars, so rated at least LTS 2",
+    "shoulder unknown": "shoulder not recorded on the map",
     BUSY_RURAL_HIGHWAY_RULE: "a busy two-lane rural highway, so half a level higher",
     agency_lts.READ_AS_REASON: COUNTY_FIVE_WORDS,
 }

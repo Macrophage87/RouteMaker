@@ -881,3 +881,11 @@ def shoulder_width_m(tags: dict[str, str]) -> float | None:
         if surveyed:
             widths.append(max(surveyed))
     return min(widths) if widths else None
+
+
+def cycleway_shoulder(tags: dict[str, str]) -> bool:
+    """Whether `cycleway=shoulder` (OSM's value for a shoulder a bicycle can use) speaks for
+    every side a rider may be made to use: both sides of a two-way road, either side of a
+    one-way."""
+    marked = [_first(tags, CYCLEWAY_SIDE_KEYS[side]) == "shoulder" for side in SIDES]
+    return any(marked) if is_oneway(tags) else all(marked)

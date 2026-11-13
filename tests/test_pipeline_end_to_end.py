@@ -379,14 +379,10 @@ def test_a_full_rebuild_populates_the_staging_schema(workspace, states) -> None:
 
     assert tiers[200] == 1, "a trail is lowest stress"
     assert tiers[300] == 1, "a gravel farm track is a low-stress choice, not a hazard"
-    # `>= 3` was exactly weak enough to let the classifier's 35 -> 45 mph
-    # boundary mutation through: 35 mph is the LTS3/LTS4 boundary and the most
-    # common arterial posting in the region, and a tier-3 reading here would be
-    # the boundary having moved. Beginner's "zero top-tier distance" invariant
-    # and the road-exposure report both key on LTS4, so the difference between
-    # 3 and 4 is the difference between routing a beginner onto this road and
-    # not.
-    assert tiers[100] == 4, "a 35 mph secondary with no facility is top-tier stress"
+    # Pinned exactly, not `>= 3`: Furth v2.2's mixed-traffic table reads one lane each
+    # way at 35 mph as LTS 3 at any count and 40 mph as LTS 4, so a 4 here is the 35/40
+    # column boundary having moved.
+    assert tiers[100] == 3, "a 35 mph secondary with no facility is LTS 3 (Furth v2.2)"
 
 
 def test_the_border_node_reaches_the_staged_crossings_table(workspace, states) -> None:
@@ -501,7 +497,7 @@ def test_stress_reaches_the_extract_the_tiles_are_built_from(workspace, states) 
 
     # The classifier's own answer for each way, from the run that just happened.
     expected = {way_id: str(int(stress.tier)) for way_id, stress in context.stress_by_way.items()}
-    assert expected[100] == "4", "a 35 mph secondary with no facility is top-tier stress"
+    assert expected[100] == "3", "a 35 mph secondary with no facility is LTS 3 (Furth v2.2)"
     assert expected[200] == "1", "and a trail is lowest"
 
     for variant in Variant:
@@ -1110,14 +1106,17 @@ def test_the_district_default_and_a_divided_road_reach_the_classifier(
     tmp_path, segment_schemas, states
 ) -> None:
     """OWNER-DECISIONS 108 and 109, through the rebuild: an unposted District
-    way is read at 20 mph from the state layer, a two-lane one-way street on
-    the single-lane row, and a carriageway of a divided road as the two-way
-    road it is."""
+    way is read at 20 mph from the state layer, and a carriageway of a divided
+    road as the two-way road it is. A two-lane one-way street reads the row for
+    its own two lanes (Furth v2.2), not the single-lane row of item 108."""
     context, _stored = run_dials_extract(tmp_path)
     traits = _segment_traits(context.staging_schema)
     for way_id in (DIVIDED_NORTH_ID, DIVIDED_SOUTH_ID):
         stress = context.stress_by_way[way_id]
-        assert stress.rule == "mixed traffic, 20 mph or below, urban multilane, two-way floor"
+        assert stress.rule == (
+            "mixed traffic, 20 mph or below, 2 lanes each way, high volume, "
+            "no count: traffic read from the road's class"
+        )
         assert int(stress.tier) == 3, way_id
         # Two-way for the tier (item 109), one-way for the junction model: the
         # segment row says the graph's direction (correctness re-check of
@@ -1125,13 +1124,18 @@ def test_the_district_default_and_a_divided_road_reach_the_classifier(
         assert (stress.oneway, stress.graph_oneway) == (False, True), way_id
         assert traits[way_id][2] is True, way_id
     one_way = context.stress_by_way[ONE_WAY_ID]
-    assert one_way.rule == "mixed traffic, 20 mph or below, urban multilane"
-    assert int(one_way.tier) == 1
+    # Two lanes in one direction are Furth v2.2's two-lanes-a-direction row, one-way or
+    # not: the single-lane reading of OWNER-DECISIONS 108 is no longer applied.
+    assert one_way.rule.startswith("mixed traffic, 20 mph or below, 2 lanes each way")
+    assert int(one_way.tier) == 3
     # OWNER-DECISIONS 141: the secondary whose lane is mapped as the trail 5 m
     # beside it has bike infrastructure, so the arterial floor passes it by.
     beside = context.stress_by_way[SEPARATE_ROAD_ID]
     assert "arterial floor" not in beside.rule
-    assert int(beside.tier) == 2
+    # Its 3 is the base table's (one lane, 25 mph, an arterial nobody counted read at the
+    # class figure), not a floor.
+    assert beside.rule.startswith("mixed traffic, 25 mph, single lane, high volume")
+    assert int(beside.tier) == 3
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1184,8 +1188,11 @@ def test_a_curated_speed_limit_reaches_the_classifier(
     context, _stored = run_dials_extract(tmp_path)
     assert context.speed_corrected == {ONE_WAY_ID}
     one_way = context.stress_by_way[ONE_WAY_ID]
-    assert one_way.rule == "mixed traffic, 25 mph, urban multilane"
-    assert int(one_way.tier) == 2
+    assert one_way.rule == (
+        "mixed traffic, 25 mph, 2 lanes each way, high volume, "
+        "no count: traffic read from the road's class"
+    )
+    assert int(one_way.tier) == 3
     assert context.stress_by_way[WEEKEND_CLOSED_ID].rule.startswith("mixed traffic, 30 mph")
 
 
@@ -1246,8 +1253,8 @@ def test_volume_reaches_the_classifier(workspace, states) -> None:
 
 
 def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) -> None:
-    """v0.7.0 (the owner's order, 2026-10-13): the county's rating over the state's
-    over the formula, every one kept for the road panel in `stress_ratings`."""
+    """Agency ratings are kept for the road panel in `stress_ratings` and compared with
+    the formula; none of them sets the tier (`agency_lts.COMPARISON_ONLY`)."""
     source, root = workspace
     staging = settings.SEGMENT_SCHEMA_STAGING
     line = [[-77.02, 38.90], [-76.98, 38.90]]
@@ -1269,8 +1276,10 @@ def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) 
     ]
     context, _ = run_pipeline(source, root, agency_lts=agency_lts, skip=NOT_SWAPPED)
     stress = context.stress_by_way[100]
-    assert (int(stress.tier), stress.half) == (2, True)
-    assert stress.rule.startswith("agency rating: Montgomery County Planning LTS 2.5")
+    # Agency ratings are compared, never used (agency_lts.COMPARISON_ONLY): the formula
+    # stands, and every rating is still kept for the road panel.
+    assert (int(stress.tier), stress.half) == (3, False)
+    assert not stress.rule.startswith("agency rating")
     with connection.cursor() as cursor:
         cursor.execute(
             f"SELECT stress_tier, stress_half, stress_ratings FROM {staging}.segment "
@@ -1278,8 +1287,8 @@ def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) 
         )
         tier, half, held = cursor.fetchone()
     held = json.loads(held) if isinstance(held, str) else held
-    assert (tier, half) == (2, True)
-    assert held["used"] == "moco"
+    assert (tier, half) == (3, False)
+    assert held["used"] == "formula"
     assert [a["agency"] for a in held["agencies"]] == ["moco", "mdot-sha"]
     assert held["formula"] is not None
     # A way no agency rates keeps the formula and records nothing.
@@ -4275,11 +4284,8 @@ def test_the_report_s_osm_only_tier_reads_the_divided_road_flag(states, monkeypa
     bare, _ = run_pipeline(plain, plain.parent, skip=NOT_SWAPPED)
     speed = next(r for r in _report_rows(context) if r["type"] == "speed")
     assert speed["tier_osm_only"] == str(int(bare.stress_by_way[100].tier))
-    # The flag moves this street's tier, so the test can tell.
-    osm = {"highway": "residential", **tags}
-    assert int(classify(osm, jurisdiction="DC", urban=True).tier) != int(
-        bare.stress_by_way[100].tier
-    )
+    # Two lanes in the direction of travel read Furth's two-lanes-a-direction row with the
+    # flag or without it, so the tier alone no longer tells the two readings apart here.
 
 
 def test_the_report_s_osm_only_tier_reads_the_curated_speed(tmp_path, states, monkeypatch) -> None:
@@ -4953,7 +4959,7 @@ def test_a_car_free_agency_way_keeps_its_provenance_and_every_block_to_the_cap(s
     facts = context.road_facts_by_way[100]
     assert len(facts.blocks) > MAX_RECORDED_BLOCKS
     stress = context.stress_by_way[100]
-    assert int(stress.tier) == 1 and stress.rule.startswith("closed to motor traffic")
+    assert int(stress.tier) == 1 and stress.rule.startswith("mixed traffic, 25 mph, unlaned")
     stored = _segment_traits(context.staging_schema)[100][3]
     assert stored["maxspeed"] == "dc-roadway-block"
     assert stored["blocks"] == list(facts.blocks[:MAX_RECORDED_BLOCKS])

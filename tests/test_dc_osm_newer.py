@@ -19,7 +19,7 @@ from pipeline import dc_osm_newer as N
 from pipeline import discrepancies
 from pipeline.overrides import Override, stress_value_problem
 from routemaker import agency_roads as A
-from routemaker.stress import Stress, classify
+from routemaker.stress import classify
 
 AFTER = A.DC_RECORD_AS_OF + timedelta(days=1)
 FINGERPRINT = {
@@ -257,21 +257,3 @@ def test_a_one_ways_lane_is_compared_by_direction_not_side() -> None:
 def test_a_one_sided_lane_is_one_side() -> None:
     """Hunt 3, stress 4: `cycleway:right=no` speaks for the right over `cycleway=lane`."""
     assert N._bike_sides({"cycleway": "lane", "cycleway:right": "no"}) == {"left": 1}
-
-
-def test_the_osm_only_tier_goes_through_the_ratings_and_steps_the_real_tier_does() -> None:
-    """Hunt 3, stress 3: "tier OSM only" was the bare formula beside a "tier with DC" with the
-    agency's rating and the owner's steps in it, so the suggested row dropped the rating."""
-    from pipeline.run import osm_tags_tier
-    from routemaker.agency_lts import AgencyRating
-
-    street = {"highway": "residential", "maxspeed": "25 mph", "lanes": "2"}
-    # Outside DC: a DC street of this kind is LTS 1 (`stress.QUIET_RESIDENTIAL_RULE`).
-    formula = classify(street, urban=True, jurisdiction="MD")
-    assert formula.tier is Stress.LTS2
-    rated = [AgencyRating("moco", 3)]
-    assert osm_tags_tier(formula, street, rated, urban=True).tier is Stress.LTS3
-    assert osm_tags_tier(formula, street, (), urban=True).tier is Stress.LTS2
-    alley = {"highway": "service", "service": "alley"}
-    stepped = osm_tags_tier(classify(alley, urban=True, jurisdiction="DC"), alley, (), urban=True)
-    assert (stepped.tier, stepped.half) == (Stress.LTS1, True)

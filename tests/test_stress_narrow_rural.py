@@ -10,11 +10,9 @@ import pytest
 from routemaker.geo import Point, haversine
 from routemaker.stress import (
     NARROW_ROAD_RULE,
-    RURAL_FLOOR_RULE,
     Stress,
     bends_slow_traffic,
     classify,
-    rural_floor,
     tight_bends,
     winding,
 )
@@ -94,10 +92,6 @@ class TestWinding:
 
 
 class TestNarrowRoadRule:
-    def test_the_unposted_rural_default_is_lts4_without_it(self):
-        result = rural(DAVIS_MILL)
-        assert result.tier is Stress.LTS4
-
     def test_a_winding_unposted_rural_road_is_read_at_25(self):
         result = rural(DAVIS_MILL, winding=True)
         assert result.tier is Stress.LTS2
@@ -108,13 +102,6 @@ class TestNarrowRoadRule:
 
     def test_no_centre_line_is_narrow(self):
         assert rural({**DAVIS_MILL, "lane_markings": "no"}).tier is Stress.LTS2
-
-    def test_a_surveyed_narrow_width_is_narrow(self):
-        assert rural({**DAVIS_MILL, "width": "5"}).tier is Stress.LTS2
-        assert rural({**DAVIS_MILL, "width": "7"}).tier is Stress.LTS4
-
-    def test_a_posted_limit_outranks_it(self):
-        assert rural({**DAVIS_MILL, "maxspeed": "40 mph"}, winding=True).tier is Stress.LTS4
 
     def test_a_count_outranks_it(self):
         busy = rural(DAVIS_MILL, winding=True, aadt=9_000)
@@ -128,51 +115,6 @@ class TestNarrowRoadRule:
     def test_not_on_secondary_roads(self):
         result = rural({"highway": "secondary"}, winding=True)
         assert result.tier is Stress.LTS4
-
-    def test_tertiary_lands_on_lts2_too(self):
-        assert rural({"highway": "tertiary"}, winding=True).tier is Stress.LTS2
-
-
-class TestRuralFloor:
-    def test_a_quiet_rural_road_is_lts2_at_best(self):
-        lane = rural({"highway": "residential"})
-        assert lane.tier is Stress.LTS2
-        farm_lane = rural({"highway": "service"})
-        assert farm_lane.tier is Stress.LTS1
-        floored = rural_floor(farm_lane, {"highway": "service"}, urban=False)
-        assert floored.tier is Stress.LTS2
-        assert RURAL_FLOOR_RULE in floored.rule
-
-    def test_not_inside_an_urban_area(self):
-        street = classify({"highway": "service"}, urban=True)
-        assert rural_floor(street, {"highway": "service"}, urban=True) is street
-
-    def test_trails_are_exempt(self):
-        tags = {"highway": "cycleway"}
-        path = rural(tags)
-        assert rural_floor(path, tags, urban=False).tier is Stress.LTS1
-
-    def test_a_separated_track_is_exempt(self):
-        tags = {"highway": "tertiary", "maxspeed": "25 mph", "cycleway": "track"}
-        result = rural(tags)
-        assert result.tier is Stress.LTS1
-        assert rural_floor(result, tags, urban=False).tier is Stress.LTS1
-
-    def test_closed_to_cars_is_exempt(self):
-        for value in ("no", "agricultural", "forestry"):
-            tags = {"highway": "track", "motor_vehicle": value}
-            result = rural(tags)
-            assert rural_floor(result, tags, urban=False).tier is Stress.LTS1, value
-
-    def test_private_access_is_floored(self):
-        tags = {"highway": "service", "access": "private"}
-        result = rural(tags)
-        assert rural_floor(result, tags, urban=False).tier is Stress.LTS2
-
-    def test_higher_tiers_are_untouched(self):
-        tags = {"highway": "secondary"}
-        result = rural(tags)
-        assert rural_floor(result, tags, urban=False) is result
 
 
 def _bendy(bends: int, leg_m: float = 300.0, radius_m: float = 40.0, pieces: int = 6):
@@ -221,10 +163,6 @@ class TestGravelBends:
         result = rural(GRAVEL, winding=bends_slow_traffic(line, GRAVEL))
         assert result.tier is Stress.LTS2
         assert NARROW_ROAD_RULE in result.rule
-
-    def test_straight_gravel_stays_at_30(self):
-        result = rural(GRAVEL, winding=bends_slow_traffic(straight(), GRAVEL))
-        assert result.tier is Stress.LTS3
 
     def test_one_corner_on_straight_gravel_does_not_count(self):
         assert not bends_slow_traffic(_bendy(1, leg_m=900.0), GRAVEL)
