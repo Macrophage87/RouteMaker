@@ -204,7 +204,7 @@ class TestFewerTurnsAndAllPaved:
         sent = maneuver_and_surface_sent(fake)
         assert (
             presets.use_roads_for(70),
-            presets.FEWER_TURNS_PENALTY_S,
+            presets.turn_cost_s(own, fewer_turns=True),
             own["avoid_bad_surfaces"],
         ) in sent
         assert (

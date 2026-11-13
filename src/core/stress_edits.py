@@ -966,6 +966,65 @@ def routing_pending(way_id: int) -> bool:
     return _tier_of(edits[0].before, way_id) != _tier_of(edits[-1].after, way_id)
 
 
+def _level_of(state: dict, way_id: int) -> float | None:
+    """A way's level in an edit's `before` or `after`: the highest of its rows (a way with a
+    row each direction is priced by the worse), a half step as .5; None with no tier."""
+    levels = [
+        float(tier) + (0.5 if half else 0.0)
+        for _key, tier, half in _tier_of(state, way_id)
+        if isinstance(tier, (int, float))
+    ]
+    return max(levels) if levels else None
+
+
+# How long one worker keeps `pending_levels` (seconds): a route plan reads it once, and an
+# edit made in the last minute reaching the ranking's graph-gap price a minute late is no
+# worse than the plan that was already running. Our default, unmeasured.
+PENDING_TTL_S = 60.0
+# The most edits read (the newest): a table that never said when its rebuild read the
+# overrides counts every edit as pending, and a plan must not read thousands of rows.
+PENDING_MAX_EDITS = 2000
+_pending_cache: tuple[float, dict] | None = None
+
+
+def pending_levels(now_s: float | None = None) -> dict[int, tuple[float, float]]:
+    """{OSM way: (the level the router's graph was built with, the live level)} for every
+    way whose traffic stress was changed since the live table's rebuild read the overrides
+    and is not back at the built level (`routing_pending`, for all ways at once). The
+    ranking prices the difference on the ways a route rides (`refine.graph_gap_m`), so a
+    road just raised is not ridden as cheaply as the graph still has it while the ranking
+    already avoids crossing it. Empty with no live table. Kept `PENDING_TTL_S` a worker."""
+    global _pending_cache
+    import time
+
+    clock = time.monotonic() if now_s is None else now_s
+    if _pending_cache is not None and clock - _pending_cache[0] < PENDING_TTL_S:
+        return _pending_cache[1]
+    found: dict[int, tuple[float, float]] = {}
+    oid = live_oid(live_schema())
+    if oid is not None:
+        generation = LiveEditGeneration.objects.filter(table_oid=oid).first()
+        read_at = getattr(generation, "overrides_read_at", None)
+        edits = StressEdit.objects.all()
+        if read_at is not None:
+            edits = edits.filter(at__gt=read_at)
+        newest = list(edits.order_by("-id")[:PENDING_MAX_EDITS])
+        first: dict[int, float | None] = {}
+        last: dict[int, float | None] = {}
+        for edit in reversed(newest):
+            for way in edit.osm_way_ids or []:
+                way = int(way)
+                if way not in first:
+                    first[way] = _level_of(edit.before, way)
+                last[way] = _level_of(edit.after, way)
+        for way, built in first.items():
+            live = last.get(way)
+            if built is not None and live is not None and built != live:
+                found[way] = (built, live)
+    _pending_cache = (clock, found)
+    return found
+
+
 def can_undo(edit: StressEdit, now: datetime) -> bool:
     """Whether `edit` can be undone now: a change, within the window, not yet undone, and
     no later edit has touched its ways."""

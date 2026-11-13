@@ -41,115 +41,14 @@ NL = "\n"
 
 MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     # --- the threshold (272) -----------------------------------------------------
-    (
-        "threshold: half a mile",
-        DD,
-        "MIN_AVOIDED_M = 0.25 * 1609.344",
-        "MIN_AVOIDED_M = 0.5 * 1609.344",
-        TD,
-    ),
-    (
-        "threshold: an eighth of a mile",
-        DD,
-        "MIN_AVOIDED_M = 0.25 * 1609.344",
-        "MIN_AVOIDED_M = 0.125 * 1609.344",
-        TD,
-    ),
-    (
-        "threshold: nothing is enough",
-        DD,
-        "MIN_AVOIDED_M = 0.25 * 1609.344",
-        "MIN_AVOIDED_M = 0.0",
-        TD,
-    ),
-    (
-        "threshold: exactly enough is not enough",
-        DD,
-        "    if (avoided > needed) if tie else (avoided >= needed):",
-        "    if (avoided > needed) if tie else (avoided > needed):",
-        TD,
-    ),
-    (
-        "threshold: everything is kept",
-        DD,
-        "    if (avoided > needed) if tie else (avoided >= needed):",
-        "    if True:",
-        TD,
-    ),
-    (
-        "threshold: nothing is kept for its stress",
-        DD,
-        "    if (avoided > needed) if tie else (avoided >= needed):",
-        "    if False:",
-        TD,
-    ),
     # --- the turn weighting (254) ------------------------------------------------
-    ("turns: no charge", DD, "TURN_CHARGE_M = 80.0", "TURN_CHARGE_M = 0.0", TD),
-    ("turns: a heavy charge", DD, "TURN_CHARGE_M = 80.0", "TURN_CHARGE_M = 800.0", TD),
-    (
-        "turns: the charge lowers the bar",
-        DD,
-        "MIN_AVOIDED_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
-        "MIN_AVOIDED_M - TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
-        TD,
-    ),
     ("turns: the first turn is charged", DD, "BASE_TURNS = 2", "BASE_TURNS = 1", TD),
     ("turns: the third turn is not charged", DD, "BASE_TURNS = 2", "BASE_TURNS = 3", TD),
-    (
-        "turns: a main road with more turns lowers the bar",
-        DD,
-        "TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
-        "TURN_CHARGE_M * (turns_saved - BASE_TURNS)",
-        TD,
-    ),
     (
         "turns: the turns are the dodge's less the direct's, reversed",
         DD,
         "    saved = turn_count(dodge.pieces) - turn_count(direct.pieces)",
         "    saved = turn_count(direct.pieces) - turn_count(dodge.pieces)",
-        TD,
-    ),
-    ("turns: a turn is a slight bend", DD, "TURN_DEGREES = 40.0", "TURN_DEGREES = 5.0", TD),
-    (
-        "turns: a turn is a right angle and more",
-        DD,
-        "TURN_DEGREES = 40.0",
-        "TURN_DEGREES = 100.0",
-        TD,
-    ),
-    (
-        "turns: a heading change of the threshold is not a turn",
-        DD,
-        "        elif bearing_delta(here.heading_out, there.heading_in) >= TURN_DEGREES:",
-        "        elif bearing_delta(here.heading_out, there.heading_in) > TURN_DEGREES:",
-        TD,
-    ),
-    (
-        "turns: a split way is a turn",
-        DD,
-        "        if here.way_id == there.way_id:" + NL + "            continue" + NL,
-        "",
-        TD,
-    ),
-    (
-        "turns: a bend in one street is a turn",
-        DD,
-        "        if {normal(n) for n in here.names} & {normal(n) for n in there.names}:"
-        + NL
-        + "            continue"
-        + NL,
-        "",
-        TD,
-    ),
-    (
-        "turns: without headings nothing is a turn",
-        DD,
-        "        if here.heading_out is None or there.heading_in is None:"
-        + NL
-        + "            turns += 1",
-        "        if here.heading_out is None or there.heading_in is None:"
-        + NL
-        + "            turns += 0",
         TD,
     ),
     # --- the stress avoided (258-260) ----------------------------------------------
@@ -931,87 +830,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     # The tie step on every preset (OWNER-DECISIONS 298(1); it was the top of the
     # slider's alone, review r0 item 1, which "r1 top: on every plan" mutated to).
     (
-        "298(1) tie: the switch off",
-        DD,
-        "TIE_RULE_ALL_PRESETS = True",
-        "TIE_RULE_ALL_PRESETS = False",
-        TD + TP,
-    ),
-    (
         "r1 top: the first level's step",
         DD,
         "TIE_STEP_M = refine.MAXCALM_STEPS[1]",
         "TIE_STEP_M = refine.MAXCALM_STEPS[0]",
         TD,
     ),
-    (
-        "298(1) tie: the top of the slider's alone again",
-        DD,
-        "    return TIE_RULE_ALL_PRESETS",
-        "    return False",
-        TD + TP,
-    ),
-    (
-        "r1 top: the turns charged",
-        DD,
-        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)"
-        + NL
-        + "        return TIE_STEP_M",
-        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)"
-        + NL
-        + "        return TIE_STEP_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
-        TD,
-    ),
-    (
-        "r1 top: the step itself is kept",
-        DD,
-        "    if (avoided > needed) if tie else (avoided >= needed):",
-        "    if (avoided >= needed) if tie else (avoided >= needed):",
-        TD,
-    ),
-    (
-        "r1 top: the verdict ignores the rule",
-        DD,
-        "        saved, tie, turn_lts3_m(ctx), presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
-        "        saved",
-        TD,
-    ),
     # --- the every-setting turn charge (owner decision 254, 2026-11-12) ------------------------
-    (
-        "turns: the charge ignores the switch",
-        DD,
-        "        if charge_turns:",
-        "        if True:",
-        TD,
-    ),
-    (
-        "turns: the turns not charged with the switch on",
-        DD,
-        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)",
-        "            return TIE_STEP_M",
-        TD,
-    ),
-    (
-        "turns: item 254's 80 m in place of the router's price",
-        DD,
-        "        saved, tie, turn_lts3_m(ctx), presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
-        "        saved, tie, TURN_CHARGE_M, presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
-        TD,
-    ),
-    (
-        "turns: the rider's Fewer turns not charged",
-        DD,
-        "presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
-        "presets.TURN_CHARGE_EVERY_SETTING",
-        TD,
-    ),
-    (
-        "turns: the rider's Fewer turns at the plain price",
-        DD,
-        "    rank_s = presets.FEWER_TURNS_PENALTY_S if ctx.fewer_turns else refine.TURN_RANK_S",
-        "    rank_s = refine.TURN_RANK_S",
-        TD,
-    ),
     (
         "turns: a negative saving charged",
         DD,
@@ -1334,24 +1159,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         TD + TP,
     ),
     (
-        "r0 review: turn charge on abs",
-        DD,
-        "TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
-        "TURN_CHARGE_M * abs(turns_saved - BASE_TURNS)",
-        TD + TP,
-    ),
-    ("r0 review: turn charge 60", DD, "TURN_CHARGE_M = 80.0", "TURN_CHARGE_M = 60.0", TD + TP),
-    ("r0 review: turn degrees 60", DD, "TURN_DEGREES = 40.0", "TURN_DEGREES = 60.0", TD + TP),
-    (
-        "r0 review: turns: same name not skipped",
-        DD,
-        "        if {normal(n) for n in here.names} & {normal(n) for n in there.names}:"
-        + NL
-        + "            continue",
-        "        if False:" + NL + "            continue",
-        TD + TP,
-    ),
-    (
         "r0 review: deadline: no reserve",
         DD,
         "    stop_at = min(ctx.deadline.at - refine.REFINE_TRACE_RESERVE_S, routing.clock() + budget_s)",
@@ -1524,6 +1331,83 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '        elif refined.get("no_fit") and dodges and dodges["removed"] and refined["fits"]:',
         '        elif refined.get("no_fit") and dodges and dodges["removed"]:',
         TP,
+    ),
+    (
+        "turns 2026-11-13: a turn is a slight bend",
+        RF,
+        "TURN_DEGREES = 40.0\n",
+        "TURN_DEGREES = 20.0\n",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: a same-name bend with no choice is a turn",
+        RF,
+        '            elif getattr(there, "choice", None):',
+        "            elif True:",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: a same-name turn is the router's",
+        RF,
+        "                turns += 1\n                unpriced += 1",
+        "                turns += 1",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: the score has no turn term",
+        RF,
+        "            + turn_price_s(ctx) * self.unpriced_turns\n",
+        "            + 0.0 * self.unpriced_turns\n",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: the ranking ignores the request's price",
+        RF,
+        "    price = presets.turn_cost_s(options) if sent is None else float(sent)",
+        "    price = presets.turn_cost_s(options)",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: the rider's Fewer turns not charged",
+        RF,
+        "    if ctx.fewer_turns:\n        price = max(price, presets.turn_cost_s(options, fewer_turns=True))",
+        "    if False:\n        price = max(price, presets.turn_cost_s(options, fewer_turns=True))",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: turns decide between a calm and a busy route",
+        RF,
+        "    return busy_a <= _allowance(busy_b) and busy_b <= _allowance(busy_a)",
+        "    return True",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: turns never decide",
+        RF,
+        "    return busy_a <= _allowance(busy_b) and busy_b <= _allowance(busy_a)",
+        "    return False",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: alternatives asked with the turn charge",
+        RF,
+        '            "bicycle": {**options, "maneuver_penalty": 0.0},',
+        '            "bicycle": {**options},',
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "turns 2026-11-13: a dodge's turns not charged",
+        DD,
+        "    return TIE_STEP_M + per_turn_m * max(0, turns_saved)",
+        "    return TIE_STEP_M",
+        TD + ["tests/test_refine.py"],
+    ),
+    (
+        "graph gap 2026-11-13: not in the score",
+        RF,
+        "            + ctx.quiet_cost * self.graph_gap_m\n",
+        "            + 0.0 * self.graph_gap_m\n",
+        TD + ["tests/test_refine.py"],
     ),
 ]
 

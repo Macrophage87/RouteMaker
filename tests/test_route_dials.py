@@ -990,7 +990,7 @@ def test_every_preset_charges_entering_a_legal_but_avoid_way(name):
     use_roads 1.0 included (core.presets.AVOID_ENTRY_PENALTY_S), and
     destination-only ways keep Valhalla's own penalty: none is sent."""
     options = presets.costing(name)["bicycle"]
-    assert options["alley_penalty"] == presets.AVOID_ENTRY_PENALTY_S
+    assert options["alley_penalty"] == presets.avoid_entry_cost_s(options)
     assert presets.AVOID_ENTRY_PENALTY_S >= 15 * 60
     assert "destination_only_penalty" not in options
     assert "service_penalty" not in options
@@ -1738,6 +1738,7 @@ def test_the_calm_search_swaps_the_routers_climbing_charge_for_the_riders():
     )
     ctx = type("Ctx", (), {})()
     ctx.rate, ctx.weight, ctx.quiet_cost, ctx.wait_weight = 0.0, 1.0, 0.44, 1.0
+    ctx.costing, ctx.fewer_turns = {}, False
     assert read.score(ctx) == pytest.approx(600.0 + 0.44 * (2000.0 - 1300.0))
 
 

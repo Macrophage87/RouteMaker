@@ -4,8 +4,8 @@ Why. The calm search (`core.refine`) steers the router with `exclude_locations`
 and each round excludes what the last one rode, so its candidates are nested:
 from the calm rate of about 2 up, the same few routes win, and "90" and "100"
 plan the same line (docs/DEVELOPMENT.md, "The top of the slider: what 150 would
-do"). The wider search, through points off the straight line at fixed offsets
-(`core.refine.wide_points`), did not help either: it asked for routes through
+do"). A wider search, through points off the straight line at fixed offsets
+(tried and removed, 2026-11-13), did not help either: it asked for routes through
 places nobody wants to ride. OWNER-DECISIONS 194, FOLLOWUP-TRAIL-SEEK: "a
 candidate generator that seeks out trails and protected lanes near the line".
 

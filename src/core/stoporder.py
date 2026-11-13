@@ -105,7 +105,7 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     costing = presets.costing(preset_name, stress, hills, assist=assist)
     if dials.cycling_speed_kmh is not None:
         # As the plan times its route (`routing._plan`).
-        costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
+        presets.set_speed(costing, float(dials.cycling_speed_kmh))
     return variant, costing
 
 

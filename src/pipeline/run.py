@@ -4109,7 +4109,9 @@ def build_handlers(
                 # DDOT's pavement band for the street (DC-PCI; lua/routemaker_remap.lua).
                 pci = context.pci_by_way.get(way.osm_id)
                 if pci is not None and pci.applied:
-                    derived["pci"] = pci.applied
+                    # Never rougher than good in the router: a rough band was a discount
+                    # (`pavement.graph_band`).
+                    derived["pci"] = pavement.graph_band(pci.applied)
                 # A reviewer's surface penalty (v0.7.0 surface overrides): the remap reads it
                 # as a rougher surface, bounded so the edge stays ridable (`bounded_surface`).
                 penalty = context.reviewer_surface_by_way.get(way.osm_id)

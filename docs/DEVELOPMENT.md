@@ -3470,11 +3470,12 @@ What it shows:
   route at all.
 - "125" plans exactly what "150" does on these trips.
 
-**The wider search.** To give the top end routes the nesting cannot reach,
-`core.refine` can also ask the router for the route through a point off the
-straight line, either side of its middle at a quarter and a half of the span
-(`WIDE_OFFSETS`), as a `through` location, each scored and guarded as every
-other candidate (`WIDE_SEARCH_FROM_RATE`, off). Measured:
+**The wider search (tried, removed 2026-11-13).** To give the top end routes the
+nesting cannot reach, `core.refine` could also ask the router for the route through a
+point off the straight line, either side of its middle at a quarter and a half of the
+span, as a `through` location, each scored and guarded as every other candidate. It was
+never switched on; the code went with the 2026-11-13 audit and the measurements stay
+here. Measured:
 
 | Trip | 100 | 100 + wide | "150" | "150" + wide |
 |---|---|---|---|---|
@@ -3493,8 +3494,8 @@ and changed one route: Bowie - Annapolis, 18.6 mi longer for 1.5 mi less LTS 3+,
 with 5 red and 29 orange markers against 4 and 11.
 
 **Not adopted.** Neither "150" nor the wider search is clearly better, so the
-slider is unchanged (100 is the top, at a rate of 10) and the wider search is
-off (`WIDE_SEARCH_FROM_RATE = None`). The constraint at the top end is the
+slider is unchanged (100 is the top, at a rate of 10) and the wider search was
+never switched on (its code was removed 2026-11-13). The constraint at the top end is the
 candidates, not the rate: past about 10 the search keeps choosing among the
 same nested few. What would make the top end differ is a candidate generator
 that goes looking for calm infrastructure (via points on the trails and
@@ -3858,9 +3859,7 @@ A seek candidate is refused, outcome `doubles_back`, where it retraces more than
 started from, never the best so far, so each candidate taken cannot raise the bar).
 The outcomes are tried in the order `busier`, `more_lts4`, `doubles_back`,
 `too_long`, then `taken` or `not_better`; a refused candidate is not offered among the
-routes to choose from. The wide search holds its candidates the same way against the
-route it started from (it is off, `WIDE_SEARCH_FROM_RATE = None`; the guard keeps its
-guards alike). On the plan above both seek candidates are now refused: the one taken
+routes to choose from. On the plan above both seek candidates are now refused: the one taken
 before only scored calmer because of its spur, and the route carries 272 ft (83 m) more
 LTS 3 for dropping it, never more LTS 4 or Avoid.
 
@@ -6575,7 +6574,7 @@ stress page's cost table.
 | Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
 | Living streets | 1.0 (fully preferred) | as Trailmaxxing |
 | Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
-| Turn penalty | Default's 15 s (`presets.CALM_MANEUVER_PENALTY_S`, every setting since 2026-11-12) | as Default; item 254's higher charge for groups stays Group Ride's 30 s |
+| Turn penalty | Default's 222 ft of quiet riding (`presets.TURN_FT`, every setting; 15 cost seconds before 2026-11-13) | as Default; item 254's higher charge for groups stays Group Ride's (`presets.FEWER_TURNS_FT`, 391 ft) |
 | Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
 
 At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
@@ -7287,7 +7286,7 @@ from, below):
    (LTS 4 and Avoid metres plus the cost of red junctions) plus the second (LTS 3 plus the cost of orange
    junctions): `Analysis.top_m` and `second_m`, the two figures of items 258 to 260.
    - **On every ride type, Default included** (item 298(1), "Same as Trailmaxxing (Recommended)";
-     `dedodge.TIE_RULE_ALL_PRESETS`), the dodge is kept if it avoids more than the second level's tie
+     `dedodge.TIE_STEP_M`), the dodge is kept if it avoids more than the second level's tie
      step, `dedodge.TIE_STEP_M` (`refine.MAXCALM_STEPS[1]`, 50 m [160 ft]), and no turns are charged.
      Distance ranks below LTS 3 in the order (258 to 262), and the search itself takes 5 m of extra
      distance for each metre of LTS 3 it saves (268). A dodge that avoids no more than a tie step is a
@@ -7300,8 +7299,9 @@ from, below):
      Measured at Default, that gave back up to 0.34 mi of LTS 3 a dodge to save 130 to 650 m (the
      table below: LTS 3 16.80 to 18.04 mi over the twelve trips for 1.2 mi less riding), against the
      stress-averse default. 298(1) amends 272's quarter mile, and the turn charge went with it.
-     `TIE_RULE_ALL_PRESETS = False` (read by `dedodge.tie_rule()`) restores 272's rule, which is kept
-     as the documented fallback and still tested with the switch off.
+     272's rule was kept as a switched-off fallback until 2026-11-13, when it was removed with its
+     constants (`MIN_AVOIDED_M`, `TURN_CHARGE_M`); since #1207 a dodge is charged its added turns at
+     the one turn price (`dedodge.turn_lts3_m`, docs/stress/routing-costs.md, "Turns").
 
    Otherwise the main road replaces the dodge.
 5. **Guards**, which override the rule: the dodge is kept where taking it out would put the top figure more
@@ -9042,7 +9042,7 @@ restated as `routemaker.avoid_junctions.AVOID_JUNCTION_PENALTY_S` and held equal
   diminishing-returns weights (`stress_weight_m`, `_top_weight_m`), so at the top of the slider
   the way round is worth its extra miles. `crossing_targets` puts the junction's own point first
   among a round's exclusions (`avoid_targets`), clear of the route's ends. The Traffic-wins guard
-  (`_busier`, on the router's alternatives, the rounds and the wide search) counts each pass's
+  (`_busier`, on the router's alternatives and the rounds) counts each pass's
   `avoid_junction_m` as exposure on both sides, so the LTS 3 a way round takes on in place of an
   Avoid junction does not make it "busier"; the LTS 4 hold (250) and the trail seek's guard are
   unchanged.

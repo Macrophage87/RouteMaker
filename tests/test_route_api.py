@@ -1023,7 +1023,10 @@ class TestWhatIsSentToTheRouter:
         on_foot = [p for _, p in fake.calls if p["costing"] == "pedestrian"]
         assert not on_foot or name == "novice"
         ridden = [p for _, p in fake.calls if p["costing"] != "pedestrian"]
-        assert all(p["costing_options"] in (presets.costing(name), middle) for p in ridden)
+        # The search's ask for alternatives is made with turns free (`_alternates_request`).
+        own = presets.costing(name)
+        turns_free = {"bicycle": {**own["bicycle"], "maneuver_penalty": 0.0}}
+        assert all(p["costing_options"] in (own, middle, turns_free) for p in ridden)
         assert fake.calls[0][1]["costing_options"] == presets.costing(name)
         assert all(p["costing"] == "bicycle" for p in ridden)
 

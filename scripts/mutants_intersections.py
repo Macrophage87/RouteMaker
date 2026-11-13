@@ -351,15 +351,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "improvement margin",
         R,
-        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
-        "        if read.score(ctx) >= best.score(ctx):\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx):\n            return False\n        return read.length_m <= best.length_m",
         REFINE,
     ),
     (
         "any improvement wins nothing",
         R,
-        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
-        "        if read.score(ctx) > best.score(ctx) + IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) > score(best, ctx) + IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
         REFINE,
     ),
     (
@@ -400,8 +400,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "crossings in the first round only",
         R,
-        "        new = crossing_targets(current, ctx, no_way)\n",
-        "        new = crossing_targets(current, ctx, no_way) if number == 0 else []\n",
+        "        new = crossing_targets(current, ctx, no_way) + pending_targets(current, ctx)\n",
+        "        new = (crossing_targets(current, ctx, no_way) if number == 0 else []) + pending_targets(current, ctx)\n",
         REFINE,
     ),
     (
@@ -803,49 +803,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         R,
         "        if metres < CALM_MIN_EDGE_M:\n            continue\n",
         "",
-        REFINE,
-    ),
-    (
-        "wide busier taken",
-        R,
-        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
-        "        if better(read, best, ctx):\n            best, best_trip = read, candidate",
-        REFINE,
-    ),
-    (
-        "wide via breaks",
-        R,
-        '            {"lon": lon, "lat": lat, "type": "through"},',
-        '            {"lon": lon, "lat": lat, "type": "break"},',
-        REFINE,
-    ),
-    (
-        "wide sides flipped",
-        R,
-        "    left_east, left_north = -north / length, east / length",
-        "    left_east, left_north = north / length, -east / length",
-        REFINE,
-    ),
-    (
-        "wide on by default",
-        R,
-        "WIDE_SEARCH_FROM_RATE: float | None = None",
-        "WIDE_SEARCH_FROM_RATE: float | None = 0.0",
-        REFINE,
-    ),
-    (
-        "wide margin",
-        R,
-        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
-        "        if read.score(ctx) < best.score(ctx) and not busier:\n            best, best_trip = read, candidate",
-        REFINE,
-    ),
-    (
-        "wide unread taken",
-        R,
-        # The wide search's own check; the seek's whole-trip check is the same line.
-        "        if read is None or read.events is None:\n            continue\n        busier = _busier(read, first_exposure, ctx)",
-        "        if read is None:\n            continue\n        busier = _busier(read, first_exposure, ctx)",
         REFINE,
     ),
     # --- the answer --------------------------------------------------------
