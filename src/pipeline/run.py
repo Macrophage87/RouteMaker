@@ -52,6 +52,7 @@ from routemaker import (
     mtbmode,
     pavement,
     ridetime,
+    setting,
     sidewalks,
     singletrack,
     speed_corrections,
@@ -551,6 +552,11 @@ class ReferenceData:
     # licence is confirmed), from `signals.json`. Optional like `roadway.json`: without it the map
     # keeps OSM's signals only, and the load logs that it is absent.
     agency_signal_list: tuple[agency_signals.Signal, ...] = ()
+    # People, homes and jobs within half a mile of each way, with the area counted
+    # (`routemaker.setting`), from `setting.json`, for the road panel's Setting line.
+    # Optional like `roadway.json`: without it the line says urban or rural alone.
+    # Never read by the classifier.
+    setting_by_way: dict[int, list] = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -682,6 +688,7 @@ class ReferenceData:
                 )
             ),
             agency_signal_list=agency_signals.load(directory / agency_signals.FILE_NAME),
+            setting_by_way=cls.load_setting(directory / setting.FILE_NAME),
             **dict(
                 zip(
                     ("scenic_features", "scenic_labels"),
@@ -710,6 +717,18 @@ class ReferenceData:
             )
             return ()
         return tuple(pavement.Block.from_json(row) for row in json.loads(path.read_text()))
+
+    @staticmethod
+    def load_setting(path: Path) -> dict[int, list]:
+        """People, homes and jobs around each way, or none (with a warning)."""
+        if not path.exists():
+            logger.warning(
+                "%s is absent, so the road panel's Setting line says urban or rural alone. "
+                "Install it with scripts/install_reference_data.py --census-blocks --lodes-wac",
+                path,
+            )
+            return {}
+        return {int(way_id): row for way_id, row in json.loads(path.read_text()).items()}
 
     @staticmethod
     def load_road_blocks(path: Path) -> tuple[conflation.RoadFeature, ...]:
@@ -4524,11 +4543,15 @@ def build_handlers(
                         else None,
                         walk_bike=way.osm_id in context.walk_bike,
                         button_operated=way.osm_id in button_ways,
+                        # The pavement survey for the road panel (DC-PCI), on a street
+                        # the layer speaks for; shown even where OSM's reading routes.
+                        **pavement.panel_columns(context.pci_by_way.get(way.osm_id)),
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_default_speed_mph=_smallint(
                             getattr(stress, "default_speed_mph", None)
                         ),
                         road_urban=way.osm_id in reference.urban_way_ids,
+                        **setting.panel_columns(reference.setting_by_way.get(way.osm_id)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
                         mass_usable_width_m=massflow.usable_width_rounded(
                             way.tags,

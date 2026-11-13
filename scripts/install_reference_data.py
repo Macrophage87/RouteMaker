@@ -31,6 +31,15 @@ single-valued option could not express the input that makes the arbitration
 mean anything: installing DDOT after VDOT overwrote the file and left one
 agency, and the precedence rule had nothing to choose between.
 
+People, homes and jobs within half a mile of every way go to `setting.json`,
+optional, read by the rebuild for the road panel's Setting line, never by the
+classifier (`routemaker.setting`). Both repeat, one file per state:
+
+    --census-blocks tl_2020_11_tabblock20.zip   Census TIGER/Line 2020 blocks
+    --lodes-wac dc_wac_S000_JT00_2023.csv.gz     LEHD LODES 8 jobs by block
+
+(with --extract). Both are U.S. Census Bureau products, public domain.
+
 Census county polygons go to `counties.geojson`, optional, read only by the cloud
 import's stress change report (`core.stress_changes`: totals by county), and
 filtered to the counties the coverage box reaches:
@@ -102,7 +111,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
-from routemaker import mdot_aadt  # noqa: E402 - needs the path above
+from routemaker import mdot_aadt, setting  # noqa: E402 - needs the path above
 
 CROSSINGS_FIXTURE = REPO / "fixtures" / "crossings" / "potomac-anacostia.json"
 REQUIRED = ("crossings.json", "urban-areas.json", "volume.json")
@@ -340,6 +349,44 @@ def urban_way_ids(
 # cannot import without a configured Django; tests/test_reference_data_install.py holds
 # the two the same.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+
+
+def install_setting(
+    extract: Path, census_blocks: list[Path], lodes_wac: list[Path], target: Path
+) -> int:
+    """People, homes and jobs within half a mile of every way (`routemaker.setting`), for
+    the road panel's Setting line; never a stress input. Blocks outside the coverage box
+    (with half a mile and more to spare) are dropped before counting."""
+    from pipeline.extract import read_ways
+
+    jobs: dict[str, int] = {}
+    for path in lodes_wac:
+        jobs.update(setting.wac_jobs(path))
+    west, south, east, north = COVERAGE_BBOX
+    margin = 0.05
+    blocks = []
+    for path in census_blocks:
+        rows = [
+            row
+            for row in setting.block_rows(path)
+            if west - margin <= row[1] <= east + margin
+            and south - margin <= row[2] <= north + margin
+        ]
+        blocks.extend(setting.join_jobs(rows, jobs))
+    if not blocks:
+        raise SystemExit("the --census-blocks files hold no blocks inside the coverage box")
+    # Roads only: a path or footway has no traffic facts, so no Setting line, and the
+    # rebuild holds this file in memory.
+    counts = setting.count_around(
+        (
+            (way.osm_id, way.coordinates)
+            for way in read_ways(extract)
+            if way.tags.get("highway") not in setting.NOT_ROADS
+        ),
+        blocks,
+    )
+    target.write_text(json.dumps({str(way_id): row for way_id, row in counts.items()}))
+    return len(counts)
 
 
 def install_counties(counties: Path, target: Path) -> int:
@@ -602,6 +649,20 @@ def main(argv: list[str] | None = None) -> int:
         help="the dock-to-dock trip counts (scripts/build_bikeshare_trips.py), for the "
         "popular bike corridors; never published",
     )
+    parser.add_argument(
+        "--census-blocks",
+        type=Path,
+        action="append",
+        default=[],
+        help="Census TIGER/Line 2020 TABBLOCK20 zip, one per state, for the Setting line",
+    )
+    parser.add_argument(
+        "--lodes-wac",
+        type=Path,
+        action="append",
+        default=[],
+        help="LEHD LODES 8 WAC file (S000 JT00, .csv.gz), one per state, for the Setting line",
+    )
     parser.add_argument("--byway-name-field", default=None)
     parser.add_argument("--rustic-name-field", default=None)
     args = parser.parse_args(argv)
@@ -658,6 +719,13 @@ def main(argv: list[str] | None = None) -> int:
         ids = urban_way_ids(args.extract, args.urban_areas)
         (reference / "urban-areas.json").write_text(json.dumps(ids))
         print(f"wrote {reference / 'urban-areas.json'}: {len(ids)} urban ways")
+
+    if args.census_blocks or args.lodes_wac:
+        if not (args.extract and args.census_blocks and args.lodes_wac):
+            parser.error("--census-blocks and --lodes-wac go together, with --extract")
+        target = reference / setting.FILE_NAME
+        counted = install_setting(args.extract, args.census_blocks, args.lodes_wac, target)
+        print(f"wrote {target}: people, homes and jobs around {counted} ways")
 
     if args.volume:
         # Refused rather than defaulted, for the reason `source_tier` refuses an

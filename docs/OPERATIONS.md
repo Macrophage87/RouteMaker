@@ -4730,6 +4730,32 @@ the first host to run it is the first test of it.
        --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson </dev/null
    ```
 
+   **The road panel's Setting line (optional, v0.27.0).** People, homes and jobs
+   within half a mile of each way go to `setting.json`; without it the line says
+   urban or rural alone. One Census block file and one LODES jobs file per state
+   the extract covers (DC 11, MD 24, VA 51, WV 54, PA 42), copied into
+   `"$DATA_ROOT/reference/inputs"` first
+   (`https://www2.census.gov/geo/tiger/TIGER2020/TABBLOCK20/tl_2020_<FIPS>_tabblock20.zip`,
+   `https://lehd.ces.census.gov/data/lodes/LODES8/<st>/wac/<st>_wac_S000_JT00_2023.csv.gz`).
+   Never a stress input. Like `urban-areas.json` it lists the way ids of the extract
+   it was made from, so **remake it whenever the extract changes**: a way added later
+   has no counts and its line falls back to plain urban or rural.
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --extract /data/extracts/source.osm.pbf \
+       --census-blocks /data/reference/inputs/tl_2020_11_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_24_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_51_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_54_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_42_tabblock20.zip \
+       --lodes-wac /data/reference/inputs/dc_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/md_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/va_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/wv_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/pa_wac_S000_JT00_2023.csv.gz </dev/null
+   ```
+
    **Every input path is absolute and inside the container.** A bare
    `tl_2024_us_uac20.geojson` resolves against the image's working directory,
    `/app`, where the file is not and cannot be: the script would exit on a
