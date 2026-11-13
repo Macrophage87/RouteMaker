@@ -463,6 +463,8 @@ test("surface by kind: gravel, dirt and unpaved of a kind not said; untagged as 
   assert.equal(surfaceFigure(untagged), "1.9 mi (3.0 km) paved; 0.6 mi (1.0 km) not known");
   assert.deepEqual(surfaceGlanceParts(untagged), [], "a paved route's line stays as it was");
   assert.equal(surfaceFigure([] as never), NOT_AVAILABLE);
+  // Nothing tagged: no "0 ft paved".
+  assert.equal(surfaceFigure([{ from_m: 0, to_m: 5000, tier: 1, facility: "none", unpaved: null }] as never), "3.1 mi (5.0 km) not known");
   // Go's plain line ends with the unpaved riding.
   assert.deepEqual(stressPlainParts({ stress_m: { "1": 4700 }, facility_m: { none: 4700 }, stress_spans: spans }), [
     "All calm",

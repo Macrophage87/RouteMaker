@@ -732,7 +732,12 @@ function StressFigure({ segments, go, line = null, surface = [] }: { segments: S
           </p>
         )}
         {/* Surface at a glance (Plan item 10): the unpaved riding by kind, where the route has some. */}
-        {surface.length > 0 && <p className="stress-key surface-line">{surface.join(" · ")}</p>}
+        {surface.length > 0 && (
+          <p className="stress-key surface-line">
+            <span aria-hidden="true">{surface.join(" · ")}</span>
+            <span className="visually-hidden">{`${surface.join(", ")}.`}</span>
+          </p>
+        )}
       </figure>
     );
   }

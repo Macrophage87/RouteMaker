@@ -149,14 +149,17 @@ export function surfaceFigure(spans: RouteResponse["stress_spans"] | undefined):
   const unpavedSaid = rough >= UNPAVED_SAID_M;
   const paved = s.paved + (sayUnknown ? 0 : s.unknown) + (unpavedSaid ? 0 : rough);
   const tail = sayUnknown ? `; ${formatDistance(s.unknown)} not known` : "";
-  if (!unpavedSaid) return (sayUnknown ? `${formatDistance(paved)} paved` : "All paved") + tail;
+  if (!unpavedSaid) {
+    if (!sayUnknown) return "All paved";
+    return paved >= PLAIN_MIN_M ? `${formatDistance(paved)} paved${tail}` : `${formatDistance(s.unknown)} not known`;
+  }
   const parts = [
     paved >= PLAIN_MIN_M ? `${formatDistance(paved)} paved` : null,
     s.gravel >= PLAIN_MIN_M ? `${formatDistance(s.gravel)} gravel` : null,
     s.dirt >= PLAIN_MIN_M ? `${formatDistance(s.dirt)} dirt` : null,
     s.unpaved >= PLAIN_MIN_M ? `${formatDistance(s.unpaved)} unpaved` : null,
   ].filter((part): part is string => part !== null);
-  return parts.join(", ") + tail;
+  return parts.length ? parts.join(", ") + tail : tail.slice(2);
 }
 
 /** "4 min", "Under 1 min" or "None": the time the route waits at signals and stop signs (`junction_delay_s`, inside the moving time). */
