@@ -4062,7 +4062,7 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
 - The list (`IntersectionList`, `junctionRows`): a group is a disclosure button over its crossings, the ordinary rows. Closed first; nothing announced; the focus stays on the button.
 - A group never spans a stop (OWNER-DECISIONS 247): `number_groups(events, stops)` closes the run at each leg end, and `core.routing.plan` numbers the events again with the plan's `stops_m` (each leg's end along the traced length, the events' own measure), since the search's readings were numbered without them. A crossing at the stop begins the next leg's run. A crossing that is also the turn into a stretch is counted in the group and said in the turn.
 - Density on live DC (Mass Ride, weekend, read-only): Lincoln Memorial to the Capitol along Constitution Ave, 9 flags in 2.52 mi (3.6 a mile), list entries 9 to 3; with vias on Constitution Ave, 13 flags in 3.20 mi (4.1), 13 to 7; Pennsylvania Ave NW from Washington Circle with vias, 23 flags in 3.52 mi (6.5), 23 to 5; direct, 23 in 2.78 mi (8.3), 23 to 3.
-- Tests: `tests/test_crossing_groups.py` (joining, the window and its edge, breaks, wording, description, API rows, and item 235's flagging rules), `frontend/src/lib/intersectionMarkers.test.ts`, `frontend/src/a11yFixes.test.ts`, and the browser check (`scripts/a11y/check.mjs`, section 6). Mutants: `scripts/mutants_groups.py`.
+- Tests: `tests/test_crossing_groups.py` (joining, the window and its edge, breaks, wording, description, API rows, and item 235's flagging rules), `frontend/src/lib/intersectionMarkers.test.ts`, `frontend/src/a11yStyleRules.test.ts`, and the browser check (`scripts/a11y/check.mjs`, section 6). Mutants: `scripts/mutants_groups.py`.
 
 ### Known gaps, and what would close them
 
@@ -5137,7 +5137,7 @@ map". No map rebuild and no new control.
 - **The list.** `src/core/geodata/barriers.json` is a committed snapshot of the barrier nodes
   and steps on the bikeable network, written from the region extract by
   `scripts/barrier_census.py --json` (refreshed by hand, as the water and food snapshots are:
-  docs/OPERATIONS.md, "Barrier list"). The graph cannot tell them apart (`remap_node` makes a
+  docs/OPERATIONS.md, "Licences, and the credits every map must carry", the barrier list paragraph). The graph cannot tell them apart (`remap_node` makes a
   stile, kissing gate, turnstile, cycle barrier and narrow bollard one kind of gate), so the
   kind and mapped width come from the snapshot. Each row carries a point or two on the
   barrier's own way beside it (4 m off, our default), on a trail's way where the barrier is on
@@ -5157,7 +5157,9 @@ map". No map rebuild and no new control.
   points are excluded and the plan's request asked again, up to 4 rounds (our default,
   unmeasured), the route with the fewest kept. It is not held to the level rounds' guard
   (`refine.level_round_keeps`): a barrier that ends the trip outweighs a busier or longer way
-  round. The exclusions join `level_excludes`, so the
+  round. The request's own exclusions (closed spots) are always sent whole and first; the
+  barrier points get what is left of the router's 200, at most 150, and none that repeat one
+  already sent (`excludes_full` where nothing is left). The exclusions join `level_excludes`, so the
   later passes keep them out; a barrier within 25 m of one of the plan's points is not excluded
   (`at_stop`; our default). `barrier_round` (`BarrierRoundOut`) says what is still in the way
   and why (`no_way_round`, `at_stop`, `time`, `no_data`); the answer cache does not keep a
@@ -5168,8 +5170,8 @@ map". No map rebuild and no new control.
   or the end." for `at_stop`; plainly on a drawn or followed line, a first route or a round cut
   short), else a hint listing them ("On this route: gate,
   bollard ×2 (width not mapped)."), counts as "×2" so no language needs a plural; the map marks
-  each with an octagon and a bar (red with a white rim where it cannot pass, amber with a dark
-  rim otherwise, 22 px, named from
+  each with an octagon: red with a white bar and rim where it cannot pass (a no-entry sign),
+  amber with a dark "!" and rim otherwise, so shape tells them apart as well as colour, 22 px, named from
   zoom 13 red and 15 amber). The connector's summary has the same line as `barriers`. The 16
   phrases are drafted in every Go and Ride language and need a native check.
 - **Coverage.** `scripts/barrier_census.py` (without `--json`) prints how much of this OSM
@@ -6565,7 +6567,7 @@ stress page's cost table.
 | Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
 | Living streets | 1.0 (fully preferred) | as Trailmaxxing |
 | Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
-| Turn penalty | Default's 5 s (Valhalla's own) | item 254 suggests a higher one for groups and young riders; that is FOLLOWUP-TURN-LOAD's to decide |
+| Turn penalty | Default's 15 s (`presets.CALM_MANEUVER_PENALTY_S`, every setting since 2026-11-12) | as Default; item 254's higher charge for groups stays Group Ride's 30 s |
 | Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
 
 At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
@@ -8445,7 +8447,7 @@ keys (I, the arrows, + and -) work in both modes.
   note tells riders to turn it on once.
 - **Tests.** `lib/accessMode.test.ts` (storage, blocked and missing storage, the press, the
   wording), `pointText.test.ts`, `roadInfo.test.ts`, `sidebar.test.ts`,
-  `a11yFixes.test.ts`; the browser suite (`scripts/a11y/check.mjs`, EXPECTED 319): section
+  `a11yStyleRules.test.ts`; the browser suite (`scripts/a11y/check.mjs`, EXPECTED 319): section
   1 checks that the switch is the first stop, not pressed, shown and 44 px tall when
   focused and off screen otherwise; 7 checks before the Map tools ones cover off by
   default, the help when off, Enter turning it on (Map tools closed and focused, kept),

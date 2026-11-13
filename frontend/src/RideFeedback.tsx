@@ -65,17 +65,21 @@ export function FeltDifferent({ origin, stretches }: { origin: string; stretches
   }
   if (form) {
     const { info, stretch } = form;
+    // The short form is Plan's, in English (its reasons are the server's words): marked so, so a screen reader on a
+    // translated Ride reads it with an English voice, left to right (the v0.26.0 release review).
     return (
-      <SuggestQuick
-        origin={origin}
-        wayId={info.osm_way_id as number}
-        title={info.title || stretch.street || ""}
-        current={roadStep(info)}
-        point={info.on_way ?? stretch.point}
-        halfSteps={info.half_steps === true}
-        fromRide
-        onClose={() => setForm(null)}
-      />
+      <div lang="en" dir="ltr">
+        <SuggestQuick
+          origin={origin}
+          wayId={info.osm_way_id as number}
+          title={info.title || stretch.street || ""}
+          current={roadStep(info)}
+          point={info.on_way ?? stretch.point}
+          halfSteps={info.half_steps === true}
+          fromRide
+          onClose={() => setForm(null)}
+        />
+      </div>
     );
   }
   return (

@@ -25,7 +25,8 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: the move to 26.04 broke the Postgres client once (below).
+    runs-on: ubuntu-26.04
     # Far above a normal run; a hung test fails here instead of holding a runner for six hours.
     timeout-minutes: 60
 
@@ -192,7 +193,8 @@ jobs:
   # no network), beside the tests rather than after them, in three shards on their own runners
   # (check.mjs --shard: every third section each). A failing shard keeps its screenshots.
   a11y-shard:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: the move to 26.04 broke the Postgres client once (below).
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -236,7 +238,8 @@ jobs:
   a11y:
     needs: a11y-shard
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: the move to 26.04 broke the Postgres client once (below).
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     # actions: read for `gh run download` of the shards' counts; contents: read for the checkout.
     permissions:

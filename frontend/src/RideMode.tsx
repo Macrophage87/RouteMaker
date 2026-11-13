@@ -2525,7 +2525,7 @@ export function RideMode({
   useEffect(() => {
     let current = true;
     if (offlineNet.current?.route !== route) {
-      void fetchOfflineNetwork(route.geometry.coordinates as LonLat[], { preset, stress: dialsRef.current.stress, carrying: dialsRef.current.carrying }).then((network) => {
+      void fetchOfflineNetwork(route.geometry.coordinates as LonLat[], { preset, stress: dialsRef.current.stress, carrying: dialsRef.current.carrying }, undefined, undefined, () => current && !ended.current).then((network) => {
         if (current && network && !ended.current) offlineNet.current = { route, network };
       });
     }
@@ -3564,7 +3564,7 @@ export function RideMode({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", shown);
     };
-  }, [watchOn, model]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watchOn, model]);
   const watchAt = progress === null ? null : Math.floor(progress / 100);
   useEffect(() => {
     if (watched === null || watchAt === null || suddenAsk) return;
@@ -4342,7 +4342,6 @@ export function RideMode({
                       ))}
                     </ol>
                     {(detourList.kind === "water" || detourList.kind === "restroom") && <p className="hint">{WATER_CAUTION}</p>}
-                    {detourList.attribution && <p className="hint">{t("Search: {credits}", { credits: detourList.attribution.join("; ") })}</p>}
                   </div>
                 )}
                 {/* Said once by screen readers; no longer shown under every list (the UI review, 2026-10-28). */}
@@ -4595,7 +4594,7 @@ export function RideMode({
               {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />}
               <ScreenSleepNote note={wakeNote} kind={phone} />
               {/* The Android app's battery saver may stop the ride: one line, at the first Start ride only. */}
-              <BatteryNote />
+              <BatteryNote onDone={() => headingRef.current?.focus({ preventScroll: true })} />
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
                 <p className="notice">

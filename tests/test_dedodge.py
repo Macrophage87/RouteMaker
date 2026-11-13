@@ -1965,8 +1965,8 @@ class TestAReadingCutShort:
 class TestTurnsChargedEverySetting:
     """Owner decision 254's every-preset half (the backlog's "fewer turns" item, 2026-11-12):
     with `presets.TURN_CHARGE_EVERY_SETTING` on, a dodge must avoid the tie step plus each
-    turn the main road saves, a turn priced as the router prices it (`turn_lts3_m`). Off
-    until the owner's yes, so switched on here."""
+    turn the main road saves, a turn priced as the router prices it (`turn_lts3_m`). On as
+    shipped (the owner's "Every setting"); pinned on here so the class reads the rule itself."""
 
     @pytest.fixture(autouse=True)
     def _turns_on(self, monkeypatch) -> None:

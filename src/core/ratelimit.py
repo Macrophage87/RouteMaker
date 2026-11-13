@@ -627,6 +627,24 @@ TILES_IN_FLIGHT = InFlight(
 )
 
 
+# The road network around a route for the phone's offline way back (POST /api/offline/network,
+# off-grid riding): a PostGIS read of up to 5 s and a few MB built in Python, so it takes a
+# slot as a tile draw does, from the tiles' own deployment slots (TILE_CONCURRENCY: no worker
+# beyond what the pools already hold), one per client, in a client class of its own. Refused
+# at once; the phone asks again after the Retry-After (frontend lib/offlineWayBack.ts). Load
+# protection: a burst of these never holds more workers than the tile pool's.
+OFFLINE_NETWORK_IN_FLIGHT = InFlight(
+    scope_id=6,
+    per_client=1,
+    total_setting="TILE_CONCURRENCY",
+    total_scope_id=TILES_IN_FLIGHT.scope_id,
+    client_busy="The road network for offline riding is already being fetched for this address.",
+    deployment_busy="The road network for offline riding is busy; try again in a moment.",
+    client_retry_s=2,
+    deployment_retry_s=2,
+)
+
+
 # Place search and place names, one slot per client and `GEOCODE_CONCURRENCY`
 # in all (two, see settings), so a stalled Photon holds two workers at most,
 # plus at most `max_waiters` waiting for them. The front end keeps one

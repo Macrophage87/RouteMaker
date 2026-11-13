@@ -2540,12 +2540,13 @@ class BarrierRoundOut(Schema):
 
     rounds: int = Field(default=0, description="Rounds of asking again round them.")
     impassable: int = Field(default=0, description="Impassable barriers still on the route.")
-    limited: Literal["time", "no_way_round", "at_stop", "no_data"] | None = Field(
+    limited: Literal["time", "no_way_round", "at_stop", "no_data", "excludes_full"] | None = Field(
         default=None,
         description=(
             "Why some are still on the route: `time`, `no_way_round` (no route without them"
             " was found), `at_stop` (beside one of the plan's own points, so not excluded) or"
-            " `no_data` (no barrier list loaded)."
+            " `no_data` (no barrier list loaded) or `excludes_full` (the request's own"
+            " exclusions fill the router's limit, so none could be added)."
         ),
     )
     in_the_way: list[BarrierInTheWayOut] = Field(default_factory=list)
@@ -3906,6 +3907,23 @@ def route_cancel(request, body: CancelIn):
 # --- Off-grid riding: the road network around a route (the owner, 2026-11-12) ---------------
 
 
+def same_site(refusal: str):
+    """A view decorator: refuse a request the browser says a foreign page sent, before it is
+    counted, with `refusal`."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+            if site and site not in ("same-origin", "none"):
+                return _error(403, refusal)
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 class OfflineNetworkIn(Schema):
     line: list[tuple[float, float]] = Field(
         min_length=2,
@@ -3929,12 +3947,14 @@ class OfflineNetworkIn(Schema):
         for lon, lat in line:
             if not (west <= lon <= east and south <= lat <= north):
                 raise ValueError("the line must be inside the area this map covers")
+        if offline_network.line_length_m(line) > offline_network.MAX_LINE_M:
+            raise ValueError("the line is longer than the offline network is fetched for")
         return line
 
 
 @api.post(
     "/offline/network",
-    response={200: dict, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    response={200: dict, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
     summary="The road network within a mile of a route, for re-routing on the phone offline",
     description=(
         "Every way a bicycle may ride within about a mile of the line, cut at its junctions,"
@@ -3944,7 +3964,15 @@ class OfflineNetworkIn(Schema):
         " map rebuild that writes it."
     ),
 )
-@decorate_view(ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK), json_body_only, errors_as_json)
+# The last runs first, as on /api/route: the error guard, the site check, the content-type and
+# size check, the count, then the slot, so a refused request never holds a tile slot.
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.OFFLINE_NETWORK_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK),
+    json_body_up_to(offline_network.MAX_BODY_BYTES),
+    same_site("the offline road network answers this site's own pages only"),
+    errors_as_json,
+)
 def offline_network_view(request, body: OfflineNetworkIn):
     try:
         graph = offline_network.corridor_graph(body.line)
@@ -4048,9 +4076,15 @@ def route_neighbours(request, body: RouteIn):
     direct, calmer = presets.stress_notches(body.preset, stress)
     # "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): the rider's
     # own setting with the one choice on; not where the body already has it, nor on Bikeshare
-    # (its ride between the docks is the option there). Planned in the order asked, so the
-    # page puts the one it wants most first, and one the budget leaves no time for is the last.
-    same = None if body.preset in (presets.BIKESHARE, "mass-ride", presets.RUN) else stress
+    # (its ride between the docks is the option there), Mass Ride, Run or a transit ride type.
+    # Planned in the order asked, so the page puts the one it wants most first, and one the
+    # budget leaves no time for is the last.
+    same = (
+        None
+        if body.preset in (presets.BIKESHARE, "mass-ride", presets.RUN)
+        or body.preset in presets.TRANSIT_PRESETS
+        else stress
+    )
     at = {
         "direct": direct,
         "calmer": calmer,
@@ -4076,11 +4110,12 @@ def route_neighbours(request, body: RouteIn):
     ]
     # Each plan past the two the decorator counted is counted too (Go's More direct and
     # Trailmaxxed, then Fewer turns and All paved): where the client has not the room, the
-    # last ones are left out, never the request refused.
+    # last ones are left out, never the request refused, and nothing is counted for them
+    # (`ratelimit.take`), so the client's next plan is not refused for options it never got.
     extra = len(wanted) - NEIGHBOURS_COST
     if extra > 0:
         client = ratelimit.client_key(ratelimit.client_address(request))
-        if not ratelimit.hit(ratelimit.ROUTING, client, extra).allowed:
+        if not ratelimit.take(ratelimit.ROUTING, client, extra).allowed:
             wanted = wanted[:NEIGHBOURS_COST]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
@@ -6848,17 +6883,7 @@ class PlacesOut(Schema):
     attribution: list[str]
 
 
-def same_site_only(view):
-    """Refuse a request the browser says a foreign page sent, before it is counted."""
-
-    @wraps(view)
-    def wrapped(request, *args, **kwargs):
-        site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
-        if site and site not in ("same-origin", "none"):
-            return _error(403, "place search answers this site's own pages only")
-        return view(request, *args, **kwargs)
-
-    return wrapped
+same_site_only = same_site("place search answers this site's own pages only")
 
 
 GEOCODE_RESPONSES = {

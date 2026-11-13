@@ -183,7 +183,7 @@ test("a place search that fails says why when nothing else matched, and is not n
   );
 });
 
-test("the place search's credit shows when its places are listed; 'anything' is not every food place", async () => {
+test("'anything' is not every food place, and the list carries no search credit (it is in Help)", async () => {
   const { d } = deps({
     geocode: async () => ({ ok: true, places: [geoPlace("Safeway", 400)], attribution: ["Photon, OpenStreetMap"] }),
   });
@@ -192,9 +192,7 @@ test("the place search's credit shows when its places are listed; 'anything' is 
     out.found?.items.map((i) => i.place.title),
     ["Safeway"],
   );
-  assert.deepEqual(out.found?.attribution, ["Photon, OpenStreetMap"]);
-  const { d: onlyFood } = deps({ geocode: async () => ({ ok: true, places: [], attribution: ["Photon, OpenStreetMap"] }) });
-  assert.equal((await findDetour(onlyFood, { query: "coffee" })).found?.attribution, undefined);
+  assert.equal(out.found && "attribution" in out.found, false);
 });
 
 test("a rounded point outside the map's area is not sent", () => {

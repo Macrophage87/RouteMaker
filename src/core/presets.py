@@ -200,10 +200,11 @@ CALM_MANEUVER_PENALTY_S = 15
 # every preset", whose every-preset half the above-80 change (#1139) left unbuilt; the backlog's
 # "fewer turns" item (2026-11-12). With it on, Valhalla's 5 s becomes CALM_MANEUVER_PENALTY_S at
 # every position, the ranking counts turns everywhere (`refine.turn_m`), and the side-street
-# dodge pass charges the turns a dodge adds (`dedodge.needed_m`). OFF until the owner says yes
-# after a before/after table (the route scorecard); False keeps every plan on the above-80-only
-# rule. 15 s stays our default, not measured.
-TURN_CHARGE_EVERY_SETTING = False
+# dodge pass charges the turns a dodge adds (`dedodge.needed_m`). The owner turned it on
+# 2026-11-12 ("Every setting") after the route scorecard's before/after table (at 70: 4% fewer
+# turns, LTS 4 flat; at 25: 7% fewer turns, 1.7 mi more LTS 4 across 38 trips). False would put
+# every plan back on the above-80-only rule. 15 s stays our default, not measured.
+TURN_CHARGE_EVERY_SETTING = True
 
 # A rider's "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12; `Dials.fewer_turns`,
 # the API's `fewer_turns`, Go's and Plan's "Fewer turns" option): the router's turn charge of a

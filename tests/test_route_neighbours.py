@@ -260,12 +260,11 @@ class TestFewerTurnsAndAllPaved:
         answer = post(client, body_for("group-ride", options=["fewer_turns", "paved"])).json()
         assert [o["kind"] for o in answer["options"]] == ["paved"]
 
-    def test_each_plan_past_two_is_counted_and_left_out_where_there_is_no_room(
+    def test_each_plan_past_two_is_counted_and_left_out_uncounted_where_there_is_no_room(
         self,
         client,
         segments,  # noqa: F811
         router,  # noqa: F811
-        monkeypatch,
     ) -> None:
         from core.models import RateLimitWindow
 
@@ -274,17 +273,28 @@ class TestFewerTurnsAndAllPaved:
         answer = post(client, body_for(stress=70, options=four)).json()
         assert [o["kind"] for o in answer["options"]] == four
         assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [4]
-        # No room left for the extra two: Go's two are planned, the request is not refused.
-        real = ratelimit.hit
-        calls: list[int] = []
-
-        def full_after_the_first(limit, key, cost=1):
-            calls.append(cost)
-            return real(limit, key, cost) if len(calls) == 1 else ratelimit.Decision(False, 5)
-
-        monkeypatch.setattr(ratelimit, "hit", full_after_the_first)
+        # No room left for the extra two: Go's two are planned, the request is not refused,
+        # and the two refused are never counted (`ratelimit.take`), so the next plan has
+        # its room (the v0.26.0 release review: `hit` counted them anyway).
+        RateLimitWindow.objects.update(hits=ratelimit.ROUTING.requests - 2)
         answer = post(client, body_for(stress=70, options=four)).json()
         assert [o["kind"] for o in answer["options"]] == ["direct", "calmer"]
+        assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [
+            ratelimit.ROUTING.requests
+        ]
+
+    @pytest.mark.parametrize("preset", sorted(presets.TRANSIT_PRESETS))
+    def test_none_on_a_transit_ride_type(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+        preset,
+    ) -> None:
+        router(standard_router())
+        named = ["fewer_turns", "paved"]
+        answer = post(client, body_for(preset, options=named)).json()
+        assert answer["options"] == []
 
     def test_an_unknown_option_is_refused(self, client, segments) -> None:  # noqa: F811
         assert post(client, body_for(options=["flatter"])).status_code == 400

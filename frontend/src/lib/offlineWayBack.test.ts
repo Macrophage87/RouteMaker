@@ -7,7 +7,7 @@ import type { DescriptionEntry, RouteResponse, StressSpan } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { REPLAN_OFFLINE, replanTold } from "./navigate.ts";
 import { CORRIDOR_GRAPH_VERSION, GRAPH_DEG, type CorridorGraph } from "./offlineRouter.ts";
-import { fetchOfflineNetwork, OFFLINE_LINE_POINTS, offlineWayBackRoute, type OfflineNetwork } from "./offlineWayBack.ts";
+import { fetchOfflineNetwork, OFFLINE_LINE_POINTS, OFFLINE_RETRIES, OFFLINE_RETRY_MAX_S, offlineWayBackRoute, type OfflineNetwork } from "./offlineWayBack.ts";
 
 const LAT = 38.9;
 const KX = 111_195 * Math.cos((LAT * Math.PI) / 180);
@@ -98,7 +98,7 @@ test("the offline way back is said as found, also to the stoker", () => {
 
 test("Ride fetches the network with each route and uses it when a re-plan fails for no signal", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /fetchOfflineNetwork\(route\.geometry\.coordinates as LonLat\[\], \{ preset, stress: dialsRef\.current\.stress, carrying: dialsRef\.current\.carrying \}\)/);
+  assert.match(ride, /fetchOfflineNetwork\(route\.geometry\.coordinates as LonLat\[\], \{ preset, stress: dialsRef\.current\.stress, carrying: dialsRef\.current\.carrying \}, undefined, undefined, \(\) => current && !ended\.current\)/);
   assert.match(ride, /if \(!found && failed === "network" && !via && !check && !done && !voided\(\)\) \{/);
   assert.match(ride, /offlineWayBackRoute\(net\.network, routeRef\.current, here, Math\.max\(progressM, closed\), keptPoints\)/);
   assert.match(ride, /note = REPLAN_OFFLINE;/);
@@ -118,6 +118,53 @@ test("a long route's line is thinned before it is sent, its ends kept", async ()
   assert.equal(sent.length, OFFLINE_LINE_POINTS);
   assert.deepEqual(sent[0], [Math.round(long[0][0] * 1e6) / 1e6, Math.round(long[0][1] * 1e6) / 1e6]);
   assert.deepEqual(sent[sent.length - 1], [Math.round(long[8999][0] * 1e6) / 1e6, Math.round(long[8999][1] * 1e6) / 1e6]);
+});
+
+test("a busy server is asked again after its Retry-After; not built is not", async () => {
+  const waits: number[] = [];
+  const wait = async (s: number) => {
+    waits.push(s);
+  };
+  let calls = 0;
+  const busyOnce = (async () => {
+    calls += 1;
+    if (calls === 1) return new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "Retry-After": "2" } });
+    return new Response(JSON.stringify({ ...grid(2, 2), level_factor: NETWORK.levelFactor }), { status: 200 });
+  }) as unknown as typeof fetch;
+  assert.ok(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, busyOnce, wait));
+  assert.deepEqual(waits, [2]);
+  let built = 0;
+  const notBuilt = (async () => {
+    built += 1;
+    return new Response(JSON.stringify({ error: "not_built" }), { status: 503 });
+  }) as unknown as typeof fetch;
+  assert.equal(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, notBuilt, wait), null);
+  assert.equal(built, 1);
+  let busy = 0;
+  const alwaysBusy = (async () => {
+    busy += 1;
+    return new Response("{}", { status: 503, headers: { "Retry-After": "2" } });
+  }) as unknown as typeof fetch;
+  assert.equal(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, alwaysBusy, wait), null);
+  assert.equal(busy, 1 + OFFLINE_RETRIES);
+  assert.ok(Math.max(...waits) <= OFFLINE_RETRY_MAX_S);
+  // The per-minute count's long wait, an empty header, or a ride ended meanwhile: not asked again.
+  for (const headers of [{ "Retry-After": "60" }, { "Retry-After": "" }]) {
+    let n = 0;
+    const once = (async () => {
+      n += 1;
+      return new Response("{}", { status: 429, headers });
+    }) as unknown as typeof fetch;
+    assert.equal(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, once, wait), null);
+    assert.equal(n, 1);
+  }
+  let ended = 0;
+  const busyAgain = (async () => {
+    ended += 1;
+    return new Response("{}", { status: 503, headers: { "Retry-After": "1" } });
+  }) as unknown as typeof fetch;
+  assert.equal(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, busyAgain, wait, () => false), null);
+  assert.equal(ended, 1);
 });
 
 test("the way back never joins behind a road the rider marked closed", () => {

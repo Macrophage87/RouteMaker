@@ -4,7 +4,7 @@ import { type Frame, type LineEdit, type StressAvailability } from "./MapView.ts
 import { LiveMap, LiveRiderPoint, type LiveRider } from "./app/LiveMap.tsx";
 import { liveValue } from "./lib/liveValue.ts";
 import { BikeLoopPicker } from "./BikeLoopPicker.tsx";
-import { FINISH_NAME, shapePoints } from "./lib/bikeLoop.ts";
+import { FINISH_NAME, shapePoints, showsBikeLoop } from "./lib/bikeLoop.ts";
 import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
@@ -3699,10 +3699,14 @@ export function App() {
     writeLastReview(next === "review");
   };
   // A place shared to RouteMaker (the Share sheet, or a geo: link on desktop): Go's destination (app/sharedLaunch.ts).
+  const [whereToTyped, setWhereToTyped] = useState<{ text: string; n: number } | null>(null);
   useSharedLaunch((place) => {
     if (modeRef.current !== "go") changeMode("go");
     goToPlace(place);
-  }, setNotice);
+  }, setNotice, (query) => {
+    if (modeRef.current !== "go") changeMode("go");
+    setWhereToTyped((last) => ({ text: query, n: (last?.n ?? 0) + 1 }));
+  });
   // "Same ride or a new one?" (SameRideDialog; 2026-11-05): a Group or Mass Ride plan of the page's own whose link went
   // out more than 12 hours ago (lib/rideGroup.ts asksSameRide) is asked about before its link goes out again or its ride
   // starts. Same ride keeps the key; New ride makes a new one, for every plan that had the old; going back does nothing.
@@ -5355,7 +5359,7 @@ export function App() {
   const detailsForFeedback = () =>
     feedbackDetails({ userAgent: navigator.userAgent, rideType: preset, language: language(), mode, nativeApp: findShell() !== null });
   // The server's own line while something is down (lib/serverStatus.ts): asked again when a plan fails.
-  const serverLine = useServerStatusLine(status.kind === "error");
+  const serverLine = useServerStatusLine(status.kind === "error", announce, appStatus.offline);
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
   // opensIntoRide): a route's broadcast starts its ride as Start's press does (no closure check: the leader's, Stephen
   // 2026-10-26); a Roam broadcast starts Roam. Judged
@@ -6710,6 +6714,9 @@ export function App() {
       <RideSection key="presets"
         {...{
           preset, dials, choosePreset, commitDials, route, typeCard: mode !== "go",
+          // One distance control (the v0.26.0 review): while Plan's Loop by distance box shows, the Target distance
+          // dial does not.
+          hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,
@@ -7477,6 +7484,8 @@ export function App() {
                   onPick={goToPlace}
                   onTopPlace={goEarlyToPlace}
                   onWhereToFocus={goWarmFix}
+                  whereToTyped={whereToTyped}
+                  onWhereToTyped={() => setWhereToTyped(null)}
                   places={{
                     homeReady: myGo.home !== null,
                     home: myGo.home,

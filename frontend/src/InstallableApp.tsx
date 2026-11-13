@@ -142,7 +142,7 @@ export function useAppStatus(riding: boolean, onSay: (text: string) => void, off
  * The riders' status line from the server (lib/serverStatus.ts): read at open, when the page comes back to the front,
  * when `failed` turns true (a plan that failed), and every minute while a line is shown. Null when all is well.
  */
-export function useServerStatusLine(failed: boolean): string | null {
+export function useServerStatusLine(failed: boolean, onSay?: (text: string) => void, offline = false): string | null {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const asking = useRef(false);
   const ask = useCallback(() => {
@@ -166,7 +166,16 @@ export function useServerStatusLine(failed: boolean): string | null {
     const timer = window.setInterval(ask, RECHECK_MS);
     return () => window.clearInterval(timer);
   }, [status, ask]);
-  return serverStatusLine(status);
+  // Offline, the bar hides the line (it cannot be current), so it is not said either; back online, it is said again.
+  const line = offline ? null : serverStatusLine(status);
+  // Said once each time it appears or changes, through the page's own live region (as the offline and update lines
+  // are): a role="status" drawn already holding its text is often not spoken.
+  const said = useRef<string | null>(null);
+  useEffect(() => {
+    if (line && line !== said.current) onSay?.(line);
+    said.current = line;
+  }, [line, onSay]);
+  return line;
 }
 
 /**
@@ -190,7 +199,7 @@ export function AppStatusBar({
     <div className="app-status">
       {offlineShown && <p className="app-offline">{offlineShown}</p>}
       {serverShown && (
-        <p className="app-offline app-server" role="status">
+        <p className="app-offline app-server">
           {serverShown}
         </p>
       )}

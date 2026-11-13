@@ -71,8 +71,10 @@ ALONG_M = 3.0
 # Mountain Bike's level rounds would allow, fewer since each round names its barriers exactly.
 ROUNDS = 4
 # Valhalla's own limit is 200 `exclude_locations` (valhalla/*.json); a round adds at most this
-# many, and the whole list is kept under EXCLUDE_CAP with the plan's other exclusions.
+# many: the request's own exclusions are sent whole and first, and the barrier points get what
+# is left of ROUTER_EXCLUDE_LIMIT, at most EXCLUDE_CAP of it.
 EXCLUDE_CAP = 150
+ROUTER_EXCLUDE_LIMIT = 200
 # A barrier this close to one of the plan's own points is not excluded: the router must be able
 # to leave and arrive. It is still named. Our default, unmeasured.
 CLEARANCE_M = 25.0
@@ -342,8 +344,13 @@ def settle(
 ) -> tuple[dict, dict]:
     """The route a Cargo or Tandem plan answers, and what the answer says of the rounds
     (`barrier_round`). As `easy_mtb.settle`: `level_excludes` takes the exclusions the answered
-    route was asked with, so the passes after this one keep the barriers out; `keeps` says
-    whether a round's route may replace a route the calm search chose."""
+    route was asked with, so the passes after this one keep the barriers out; `keeps`, where
+    given, says whether a round's route may replace the one asked (the plan passes none: a
+    barrier that ends the trip outweighs a busier way round).
+
+    The request's own exclusions (the rider's and the planner's closed spots) are always sent
+    whole and first; the barrier points get what is left of the router's 200, at most
+    EXCLUDE_CAP, so a closed spot is never dropped to make room for a barrier."""
     from . import routing
 
     index = snapshot() if index is None else index
@@ -357,20 +364,26 @@ def settle(
     excludes: list[tuple[float, float]] = []
     best_excludes: list[tuple[float, float]] = []
     others = [e for e in (request.get("exclude_locations") or []) if isinstance(e, dict)]
+    sent = {(e.get("lon"), e.get("lat")) for e in others}
     base = {k: v for k, v in request.items() if k not in ("alternates", "exclude_locations")}
     at_stop: list[Barrier] = []
     while current and info["rounds"] < ROUNDS:
         more, kept = exclusion_points(current, points)
         at_stop.extend(b for b in kept if b not in at_stop)
-        more = [p for p in more if p not in excludes]
+        more = [p for p in more if p not in excludes and p not in sent]
         if not more:
             break
-        more = more[: max(0, EXCLUDE_CAP - len(excludes))]
+        room = min(EXCLUDE_CAP, ROUTER_EXCLUDE_LIMIT - len(others))
+        if room <= 0:
+            # The request's own exclusions fill the router's limit: no barrier can be added.
+            info["limited"] = "excludes_full"
+            break
+        more = more[: max(0, room - len(excludes))]
         if not more:
             break
         excludes = excludes + more
         info["rounds"] += 1
-        asked = others[: max(0, 200 - len(excludes))] + [{"lon": x, "lat": y} for x, y in excludes]
+        asked = others + [{"lon": x, "lat": y} for x, y in excludes]
         try:
             answer, _timed_out = routing._route(
                 variant, {**base, "exclude_locations": asked}, deadline

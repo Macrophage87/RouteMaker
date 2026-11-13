@@ -116,9 +116,9 @@ class TestCalmRate:
 
 class TestTurnAndHillCostsStayActive:
     """The literature review: "keep turn and intersection costs active at every
-    slider position" and "keep hill aversion strong at the relaxed end". The turn charge
-    only rises above the old top (`presets.CALM_MANEUVER_PENALTY_S`; the owner, 2026-11-10,
-    fewer fiddly turns on calm routes): it never falls."""
+    slider position" and "keep hill aversion strong at the relaxed end". The turn charge is
+    `presets.CALM_MANEUVER_PENALTY_S` at every position with `presets.TURN_CHARGE_EVERY_SETTING`
+    (the owner's yes, 2026-11-12), and above the old top without it: it never falls."""
 
     @pytest.mark.parametrize("stress", [0, 40, 70, 80, 90, 100])
     def test_maneuver_and_hill_options_do_not_depend_on_the_stress(self, stress) -> None:

@@ -121,3 +121,16 @@ test("a rider on a junction hears no made-up first turn, and bad input finds not
   assert.equal(offlineWayBack(g, CALM, at(200, 400), PLANNED, Number.NaN), null);
   assert.equal(offlineWayBack(g, CALM, [Number.NaN, LAT], PLANNED, 0), null);
 });
+
+test("a large network and a long route stay quick: the join is looked for only near the line ahead", () => {
+  // 40,000 nodes (200 x 200 streets, 200 m apart) and a 3,000-point line along Row 0: the release review's case,
+  // 10.5 s on a desktop before the line was windowed and gridded. A phone is several times slower, on the main thread.
+  const g = grid(200, 200);
+  const line: LonLat[] = Array.from({ length: 3000 }, (_, i) => at((i * 39_800) / 2999, 0));
+  const started = performance.now();
+  const way = offlineWayBack(g, CALM, at(20_000, 590), line, 19_000);
+  const took = performance.now() - started;
+  assert.ok(way, "a way back is found");
+  assert.ok(way.joinAtM > 19_000 && way.joinAtM < 19_000 + 100 + 8000, `${way.joinAtM}`);
+  assert.ok(took < 500, `${Math.round(took)} ms`);
+});

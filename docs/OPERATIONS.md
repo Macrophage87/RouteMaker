@@ -179,8 +179,9 @@ for the rebuild, the task's own figure otherwise — one table, in
 `core.runs.job_budgets`) is reported as wedged, on both surfaces, and
 `check_operations` exits non-zero on it.
 
-There is no paging integration and no scraper yet; the plan records both as
-follow-ups. What exists is the thing that has to exist first — the state is
+Paging now exists on the beta: `scripts/beta/alert.sh` posts to a Discord channel and pings
+an off-host uptime check (Healthchecks.io) (docs/BETA-RUNBOOK.md, "Alerts"). There is still
+no metrics scraper; the plan records it as a follow-up. What exists is the thing that has to exist first — the state is
 computed, and it is visible.
 
 ## What is watched, and for how long
@@ -3862,8 +3863,8 @@ compressed, and is named by the published front end's script.
 
 The barrier list Cargo and Tandem plan round (`src/core/geodata/barriers.json`,
 `core.barriers`; docs/DEVELOPMENT.md, "Barriers on Cargo and Tandem routes") is OpenStreetMap
-data too, a committed snapshot the weekly rebuild does not refresh. Until the first build-host
-run it is empty, and routes say nothing of barriers. A refresh, read only, after a map rebuild,
+data too, a committed snapshot the weekly rebuild does not refresh (the first, #1210, from the
+2026-11-02 extract: 11,734 barriers). A refresh, read only, after a map rebuild,
 on the build host with pyosmium:
 
     python scripts/barrier_census.py --pbf <DATA_ROOT>/extracts/source.osm.pbf \
@@ -7932,7 +7933,8 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
     `valhalla-paved-weekend` and leaves a stopped one stopped, with a warning, when it is short.
   - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
     `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
-    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).
+    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short); since
+    v0.26.0 the weekday one is likewise skipped while `valhalla-paved` is stopped.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where
     installed, `scripts/beta/restart-routers.sh install`, from the new checkout, after
     `mark-deployed`; then `resume`.
@@ -7987,38 +7989,61 @@ wide gates), so the beta agent stops on the tag.
 
 ## Deploying v0.26.0
 
-My routes in its own window (#1168), archived assistant test drafts (#1169), sudden closures from
-AlertDC with Ride's closure window (#1175), closed sites shaded and routed to their gate with the big
-parks named (#1173), and three override files: Whip-poor-will Way (#1170), the Patuxent Research
-Refuge's closed area (#1172), and quieter side streets with the Arlington comfort index (#1174).
-**No `lua/`, `valhalla/`, compose, Caddyfile, nginx (`deploy/`) or requirements change.** What
-changes: migration 0062; a new worker task, `refresh_alertdc`, every minute (its alert window 10
-minutes, `runs.STALE_AFTER`), reading the same AlertDC host as before (no new outbound host); a new
-endpoint, `GET /api/closures/stamp`, asked once a minute by a ride, through `location /` like the
-rest of `/api/`; one line in `docker/api.Dockerfile` copying
-`frontend/src/restricted-data/restricted-sites.json`, so the beta agent's gate stops on the tag and
-the beta is a hand ship; and `src/pipeline/run.py` (the side-path step, #1174), which takes effect
-only at the next map rebuild.
+The first wave: My routes in its own window (#1168), archived assistant test drafts (#1169), sudden
+closures from AlertDC with Ride's closure window (#1175), closed sites shaded and routed to their
+gate with the big parks named (#1173, data #1199), and three override files: Whip-poor-will Way
+(#1170), the Patuxent Research Refuge's closed area (#1172), and quieter side streets with the
+Arlington comfort index (#1174). The backlog of 2026-11-12, which the owner put in this release:
+the route scorecard (#1179), off-grid riding and its offline way back (#1180, #1192), ratings kept
+true with an evidence grade (#1183), the ride summary's lines (#1184), Go's first screen (#1185),
+the cue bench (#1187), barriers on Cargo and Tandem routes (#1188, list #1210), Montgomery County
+and park trail closures (#1189, #1198, #1201), small fixes (#1191, #1208), bike loops (#1193),
+releases without the PC (#1195), testers' alerts, status line, Send feedback and battery line
+(#1197), and fewer turns, with the turn charge at every setting on the owner's yes (#1200, #1207).
 
-- [ ] **Closed sites file** **(owner, PC, before the tag)**. `restricted-sites.json` ships as an
-  empty FeatureCollection: no shading, no gate routing. Run `python3 scripts/build_restricted_sites.py
-  --pbf <DATA_ROOT>/extracts/source.osm.pbf` on the PC and commit the result to the release branch
-  before the tag; the front end and the api image both read it. The rider notes and the Routing page
-  promise Goddard's shading and the gate: if the file is not built, take line 3 of
-  `docs/releases/v0.26.0.md` and the Routing page's closed-site lines out before the tag (routing is
-  then as v0.25.1). Built before the closed-area override is loaded and the map rebuilt, the Patuxent
-  closed area is shaded and a point in it goes to the gate while its roads stay routable until then.
+**No `lua/`, `valhalla/` or requirements change.** What changes for a deploy:
+
+- migrations 0062 (`ConnectorDraft.archived_at`, a nullable column) and 0063 (the review queue's
+  new "Facts changed since rated" choice, no column change);
+- a new worker task, `refresh_alertdc`, every minute (its alert window 10 minutes,
+  `runs.STALE_AFTER`), reading the same AlertDC host as before;
+- one new outbound host, `www7.montgomerycountymd.gov` (443), for `refresh_dc_closures` (#1189);
+- new endpoints: `GET /api/closures/stamp` (20 a minute per address, our default),
+  `POST /api/offline/network` (12 a minute, our default; `503 not_built` until the next rebuild),
+  `POST /api/route/loop-shapes` (counts 3 on the routing limit and takes one of the routing
+  slots), and `GET`/`POST /api/feedback` (sending: 5 an hour per client, 60 an hour in all), all through
+  `location /` like the rest of `/api/`. Feedback is posted by the api to `discord.com`, so on a
+  filtered beta the api needs that host even without Discord sign-in;
+- `compose.yaml`: one optional secret for the api, `FEEDBACK_WEBHOOK_URL` (unset: no Send
+  feedback entry);
+- the beta's nginx template (#1197, #1191): a `/status.json` location for the riders' status line,
+  gzip level 6, and the map's glyphs compressed;
+- `docker/api.Dockerfile`: `restricted-sites.json` and `trail-miles.json` copied in, so the beta
+  agent's gate stops on the tag and **the beta is a hand ship**;
+- `scripts/beta/` (`alert.sh`, `auto-release.sh`, `cd_logic.py`), refreshed by the ship but not
+  reinstalled;
+- pipeline changes that take effect only at the next map rebuild, in its own thread: the side-path
+  step (#1174, #1190), `{schema}.offline_way` (#1192) and the rated-facts report (#1183);
+- the Android app: the battery line needs a new app build; nothing on the server waits for it.
+
+The closed sites file is built and committed (#1199: 144 sites, 63 labels, 582 gates), and the
+barrier list too (#1210: 11,734 barriers from the 2026-11-02 extract). Neither is an owner step
+before the tag.
+
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.26.0
-  (annotated) on that commit, from the PC.
-- [ ] **Outbound host** (trail and county closures, #1189). Add `www7.montgomerycountymd.gov` (443)
-  to beta's egress list, and home's if it is filtered: the worker's `refresh_dc_closures` now reads
-  Montgomery County DOT's road closures (source `moco`, routed round as `sha` is); with no good read
-  in 45 minutes the run fails. The same run now also fails at once with "read as nothing: <source>"
-  where a usually busy source parses to nothing (its last copy kept). The park agencies' trail
-  closures (`park_alert`) are a hand-read file that ships empty: nothing to deploy for them.
-- [ ] **Migration.** 0062 (`ConnectorDraft.archived_at`) adds a nullable column with no default: the
-  v0.25.1 api inserts drafts without it (null, listed) in the minutes between `migrate` and its
-  recreation, and after a rollback of the images, and never reads it. Reversible.
+  (annotated) on that commit, from the PC. The new Release workflow (#1195) does not apply yet:
+  it needs its one-time setup (docs/BETA-RUNBOOK.md, "The release workflow"), and the beta is a
+  hand ship this time anyway.
+- [ ] **Outbound host.** Add `www7.montgomerycountymd.gov` (443) to beta's egress list, and
+  home's if it is filtered: the worker's `refresh_dc_closures` now reads Montgomery County DOT's
+  road closures (source `moco`, routed round as `sha` is); with no good read in 45 minutes the run
+  fails. The same run also fails at once with "read as nothing: <source>" where a usually busy
+  source parses to nothing (its last copy kept). The park agencies' trail closures (`park_alert`)
+  are a hand-read file in the release (two entered: the W&OD crosswalk detour, Nov 17-24, and the
+  C&O at Dam No. 5): nothing to deploy for them.
+- [ ] **Migrations.** 0062 adds a nullable column with no default: the v0.25.1 api inserts drafts
+  without it (null, listed) in the minutes between `migrate` and its recreation, and after a
+  rollback of the images, and never reads it. 0063 changes choices only. Both reversible.
 - [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
   api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
   api rebuild` (tag the pipeline image `pre-rel-<short>` too: the rebuild's calm-road sentinel moved
@@ -8028,36 +8053,55 @@ only at the next map rebuild.
 - [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
   (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
   built there, `migrate`, the worker recreated so it picks up `refresh_alertdc`, the front end built
-  on the PC), `smoke-test.sh --local`, then `smoke-test.sh --public <url> --passwords-file <file>`,
-  then `auto-release.sh mark-deployed v0.26.0`, then `"$RM_SRC/scripts/beta/auto-release.sh" install`
-  (a hand ship does not reinstall the agent, and v0.26.0 changes it: #1195's quick deploys,
-  `rollback`, `rollback-map`, `ship-held` and the workflow image pull start with the next release),
-  then `auto-release.sh resume`.
+  on the PC). Before the smoke test, the three one-time steps of BETA-RUNBOOK "Alerts" (#1197):
+  `rm_absent "$RM_DATA/status" && sudo install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$RM_DATA/status"`
+  (the data root is root's, and the login user's agent and alert.sh write the file); the nginx template re-rendered,
+  `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload` (as in "A new release
+  sha", step 9); and, when the owner has the bug-reports forum's webhook, `FEEDBACK_WEBHOOK_URL=` in
+  `.env` and `beta-compose.sh up -d api`. Then `smoke-test.sh --local`, then `smoke-test.sh --public
+  <url> --passwords-file <file>`, then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
+  (the new script's, not the installed v0.25.x copy's: only the new one records v0.25.1 as the
+  release `rollback` puts back), then
+  `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not reinstall the agent, and
+  v0.26.0 changes it: #1195's quick deploys, `rollback`, `rollback-map`, `ship-held` and the
+  workflow image pull start with the next release), then `~/routemaker-beta-state/cd/bin/alert.sh
+  install` (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship
+  refreshes the script, not its timers), then `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
   with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
-  means the host is not answering (the run itself only fails after 45 minutes); `GET /api/closures/stamp` answers 200 (20 a minute per address, our default: a group of more than 20
-  riders on one Wi-Fi gets some 429s, which the app skips until the next minute). The
-  AlertDC parser was written from a made-up sample: when the live list next carries a police or crash
-  road item, check that it shows as a closure (the map, the road panel) with the title "Police
-  activity: streets closed near ..." for police items.
+  means the host is not answering (the run itself only fails after 45 minutes), and the next
+  `refresh_dc_closures` succeeds with the new host. `GET /api/closures/stamp` answers 200 (a group
+  of more than 20 riders on one Wi-Fi gets some 429s, which the app skips until the next minute);
+  `GET /status.json` answers 404 when all is well (if it reads "trails" for good, the
+  watch's trail check is failing, for example on the Road Bike router the agent leaves stopped on
+  a host short of memory: set `RM_ALERT_TRAILS=0` and say so in the thread); `POST /api/offline/network` answers `503
+  not_built` until the next map rebuild, and Ride rides as before. The AlertDC parser was written
+  from a made-up sample: when the live list next carries a police or crash road item, check that it
+  shows as a closure (the map, the road panel) with the title "Police activity: streets closed
+  near ..." for police items.
 - [ ] **The three override files** (optional, separate, each on the owner's go). On the PC with
   `load_access_overrides`, a dry run each, then `--confirm` with the owner's go per file:
   `2026-11-12-owner-patuxent-whip-poor-will-way.json`, `2026-11-12-owner-patuxent-closed-area.json`,
   `2026-11-12-owner-side-streets-and-arlington-index.json` (12,396 rows, each retiring its own-picks
-  row; if its dry run reports ways without fingerprints, run the fingerprint backfill first, as for the own-picks files). All take effect at the
-  next map rebuild, in its own thread, not with this release.
+  row; if its dry run reports ways without fingerprints, run the fingerprint backfill first, as for
+  the own-picks files). All take effect at the next map rebuild, in its own thread, not with this
+  release. That rebuild also writes the offline road network and the rated-facts report, and
+  checks the new sentinel way 11507801 (estimated, not yet measured on a build).
 - [ ] **Spot checks.** Save & load: Save and Share at the top, My routes opens its own window with
   "Back to Save & load". Through the connector: a `plan_route` with `test: true` stays out of Load
-  route, and `archive_draft` drops another. With the closed sites file built: the map shades NASA
-  Goddard with "No public access", and a route to a point inside it ends at a gate with "Restricted
-  site. Route ends at the gate." Rock Creek Park, Greenbelt Park and the Patuxent Research Refuge have their names on the map, and
-  the refuge's closed area is shaded.
+  route, and `archive_draft` drops another. The map shades NASA Goddard with "No public access",
+  and a route to a point inside it ends at a gate with "Restricted site. Route ends at the gate."
+  Rock Creek Park, Greenbelt Park and the Patuxent Research Refuge have their names on the map,
+  and the refuge's closed area is shaded. Go's first screen shows the warnings above the fold; a
+  Plan bike loop from a start and a distance draws its shapes; a Cargo route past a known
+  bollard names it.
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.25.1 front end.
   Leave `rebuild` on the v0.26.0 image: the `pre-rel` pipeline image still checks way 86073896, which
   the closed-area file closes once it is loaded. A police area already in the closures row is read by
   the v0.25.1 api as a line along its outline (routed round the edge) until it drops, at most 3 h.
-  The `archived_at` column stays; on v0.25.1 archived drafts list again until they expire. On the
-  beta, the images and `index.html` alone: no `restore-dump`, as 0062 only adds a column.
+  The `archived_at` column stays; on v0.25.1 archived drafts list again until they expire. The
+  nginx `/status.json` location and the status directory can stay (404 with no file). On the beta,
+  the images and `index.html` alone: no `restore-dump`, as 0062 and 0063 change no data.
 
 ## Deploying v0.25.1
 
@@ -9637,8 +9681,9 @@ scripts/cloud/import-result.sh <-- out/  7 graphs, staging schema dump        <-
 ```
 
 `scripts/cloud/launch.sh` runs the three from here with one command ("The launcher",
-below); "A run" is the same thing by hand. There are no S3 checkpoints and no on-demand
-fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
+below); "A run" is the same thing by hand. There are no S3 checkpoints. A run stopped by a spot
+reclaim can be run again on the standing on-demand box ("Two boxes: spot and on-demand", below),
+and this host stays the last fallback (its weekly rebuild is paused during active development).
 
 ### One-time setup (the owner, in the AWS console)
 
@@ -10278,7 +10323,7 @@ for a bicycle, walk and unpaved flags and name. The run's log line reads `ways i
 road network: N`; zero on a full rebuild means the writer failed.
 
 Ride fetches `POST /api/offline/network` with each route it rides: the ways within a mile
-(`CORRIDOR_M`) of the route's line, at most 40,000 (our default, unmeasured), cut at their
+(`CORRIDOR_M`) of the route's line, at most 25,000 (our default, unmeasured), cut at their
 junctions, plus the ride type's price for each level. When a re-plan then fails for no
 signal, the phone finds the way back to the line on that network and says it as rough; when
 the signal returns, the server plans it again.
@@ -10287,6 +10332,12 @@ the signal returns, the server plans it again.
   Ride rides as before (no offline way back). Nothing to do but rebuild.
 - `503 too_slow`: the corridor read ran past 5 seconds (`TIMEOUT_MS`, our default,
   unmeasured). Check that `offline_way_geom_idx` exists in the live schema.
-- Rate limit 12 a minute per client (`OFFLINE_NETWORK`, our default).
+- Rate limit 12 a minute per client (`OFFLINE_NETWORK`, our default), and one fetch at a time
+  per client from the tile pool's slots (`OFFLINE_NETWORK_IN_FLIGHT`), so a burst never holds
+  more workers than tile drawing may. A refusal is 429 or 503 with Retry-After; the phone asks
+  again for about 10 seconds when the slot is busy (it shares the slot with the ride's own tile
+  draws at Start ride), never past the per-minute count.
+- The body may be up to 64 KB (the phone sends at most 1,500 points), and a line longer than
+  about 250 miles (`MAX_LINE_M`, our default) is refused with a 400.
 - Privacy: the request carries the route's line only; nothing about the rider is logged or
   kept, and the phone keeps the network in memory for the ride only.

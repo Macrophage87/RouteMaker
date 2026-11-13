@@ -1018,7 +1018,7 @@ export interface BarrierReading {
 export interface BarrierRound {
   rounds: number;
   impassable: number;
-  limited: "time" | "no_way_round" | "at_stop" | "no_data" | null;
+  limited: "time" | "no_way_round" | "at_stop" | "no_data" | "excludes_full" | null;
   in_the_way: { kind: string; word: BarrierItem["word"]; lon: number; lat: number }[];
 }
 

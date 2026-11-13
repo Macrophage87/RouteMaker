@@ -217,7 +217,7 @@ finish() { # word message
 		# The last pass that did something about a release, kept past the idle passes after it.
 		case "$word" in deployed | rolled-back | failed | broken | held | interrupted) [ -z "$report" ] || cp "$report" "$cd_dir/last-release-report.txt" ;; esac
 		notify "$word" "$*"
-		rider_status done
+		rider_status "done"
 		# A held, waiting or failed newer tag leaves the deployed one live: its notes are still due.
 		# A release shipped by hand is nearly always followed by such a tag.
 		case "$word" in deployed | up-to-date | held | waiting | failed) release_notes "$cd_dir/bin/alert.sh" ;; esac
@@ -235,7 +235,7 @@ rider_status() { # updating | done
 	if [ -x "$cd_dir/bin/alert.sh" ]; then
 		"$cd_dir/bin/alert.sh" status "$1" >/dev/null 2>&1 </dev/null || return 0
 	fi
-	[ "$1" != done ] || rm -f "$cd_dir/rider-updating"
+	[ "$1" != "done" ] || rm -f "$cd_dir/rider-updating"
 }
 # The owner's alert channel (alert.sh, review OPS-1): a result that needs the owner is posted once
 # (again once a day while it lasts), a deploy always. alert.sh posts nothing without a webhook and
@@ -714,21 +714,21 @@ build_api() { # src-dir short-sha
 # then the pull, tagged with the release's TAG; the digest reference is dropped again so pruning the
 # tag frees the image. Returns 0 when the image is here, 1 when its provenance does not check out
 # (hold the tag), 2 when GitHub or the registry did not answer (try again next pass).
-pull_ci_image() { # image@sha256:... short-sha
-	local image=$1 short=$2 body code verdict
+pull_ci_image() { # image@sha256:... commit
+	local image=$1 commit=$2 short=${2:0:12} body code verdict
 	body=$(mktemp)
 	code=$("${CURL:-curl}" -sS --max-time 30 -o "$body" -w '%{http_code}' \
 		-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' -H 'User-Agent: routemaker-beta-cd' \
 		"https://api.github.com/repos/$gh_repo/attestations/sha256:${image##*@sha256:}" 2>>"$run_log") || code=000
 	case "$code" in
-		200) verdict=$("$py" "$logic" provenance --digest "$image" --repo "$gh_repo" <"$body") ;;
+		200) verdict=$("$py" "$logic" provenance --digest "$image" --repo "$gh_repo" --commit "$commit" <"$body") ;;
 		404) verdict=no ;;
 		*) verdict=unknown ;;
 	esac
 	rm -f "$body"
 	case "$verdict" in
-		ok) say "the image's provenance checks out: built by $gh_repo's release workflow on main" ;;
-		no) say "the image's provenance does not check out: GitHub has no attestation that $gh_repo's release workflow on main built $image"; return 1 ;;
+		ok) say "the image's provenance checks out: built by $gh_repo's release workflow on main, from $commit" ;;
+		no) say "the image's provenance does not check out: GitHub has no attestation that $gh_repo's release workflow on main built $image from the tag's commit $commit"; return 1 ;;
 		*) say "GitHub answered HTTP $code for the image's attestations"; return 2 ;;
 	esac
 	say "step: pull the api image the release workflow built ($image)"
@@ -1175,10 +1175,10 @@ pass() {
 		if [ "$dry_run" = 1 ]; then
 			say "dry run: would check the provenance of $ci_image and pull it as $API_IMAGE:${new:0:12}"
 		else
-			pull_ci_image "$ci_image" "${new:0:12}"
+			pull_ci_image "$ci_image" "$new"
 			case $? in
 				0) ;;
-				1) rm -f "$gate_file"; hold "$tag" "the image its tag names was not built by the release workflow on main (no matching attestation)"; return 0 ;;
+				1) rm -f "$gate_file"; hold "$tag" "the image its tag names was not built by the release workflow on main from this commit (no matching attestation)"; return 0 ;;
 				*) rm -f "$gate_file"; finish waiting "$tag: could not check or pull $ci_image (GitHub, the network, or the package is not public); trying again next pass"; return 0 ;;
 			esac
 		fi
@@ -1321,7 +1321,7 @@ ship_held_pass() { # tag map-url no-map allow dry
 		printf '%s ship-held %s\n' "$(utc)" "$tag" >"$cd_dir/PAUSED"; we_paused=1
 	fi
 	if [ -n "$ci_image" ] && ! dk image inspect "$API_IMAGE:${new:0:12}" >/dev/null 2>&1; then
-		pull_ci_image "$ci_image" "${new:0:12}" ||
+		pull_ci_image "$ci_image" "$new" ||
 			{ rm -f "$gate_file"; [ "$we_paused" = 0 ] || rm -f "$cd_dir/PAUSED"; finish error "the image $ci_image did not check out or could not be pulled (above); nothing was changed"; return 1; }
 	fi
 	say "deploying $tag's code ($new) over $cur at $(utc)"

@@ -75,15 +75,14 @@ export function BikeLoopPicker({ preset, dials, points, onPick, announce }: Bike
     if (found && !kept) setFound(null);
     if (stale) stop();
     // `stop` reads refs only: the same work whichever render made it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [found, kept, stale]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => stop(), []);
 
   if (!offersBikeLoop(preset) || (!askable && !kept)) return null;
 
   const label = metricFirst() ? t("Distance (km)") : t("Distance (miles)");
   const find = async () => {
+    if (busy) return;
     const metres = parseTarget(text, LOOP_MAX_M);
     if (metres === undefined || metres === null || metres < LOOP_MIN_M) {
       setProblem(t("Enter {range}.", { range: milesRange(3, 100, LOOP_MIN_M, LOOP_MAX_M) }));
@@ -139,7 +138,8 @@ export function BikeLoopPicker({ preset, dials, points, onPick, announce }: Bike
             aria-invalid={problem ? true : undefined}
             onChange={(event) => setText(event.target.value)}
           />
-          <button type="submit" disabled={busy} aria-busy={busy || undefined}>
+          {/* aria-disabled, not disabled, so the focus stays on it while the search runs (the v0.26.0 review). */}
+          <button type="submit" aria-disabled={busy || undefined} aria-busy={busy || undefined}>
             {busy ? t("Finding…") : t("Find loops")}
           </button>
         </form>

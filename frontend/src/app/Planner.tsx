@@ -469,6 +469,8 @@ export interface RideSectionProps {
   typeCard: boolean;
   /** The rider's riding speed in whole mph, or null for the ride type's own (lib/ridingSpeed.ts). */
   ridingSpeed?: RidingSpeedControl;
+  /** Leave out the Target distance dial: Plan's Loop by distance box is the distance control then (BikeLoopPicker). */
+  hideTarget?: boolean;
 }
 
 /**
@@ -476,7 +478,7 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget } = props;
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} /> : null;
   return (
     <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection}>
@@ -486,6 +488,7 @@ export function RideSection(props: RideSectionProps) {
         onCommit={commitDials}
         resolvedWhen={route?.dials?.when ?? null}
         ridingSpeed={ridingSpeed}
+        hideTarget={hideTarget}
       />
     </RideSettings>
   );

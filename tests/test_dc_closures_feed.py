@@ -116,6 +116,8 @@ class TestRefresh:
         net = Net()
         line = sources.refresh(net, no_sleep, lambda: NOW, Placer())
         assert line.startswith("closures: dc 2 closures, 0 notices, mpd ")
+        # The planned-work layers answer no features here: an empty read says so in its own words.
+        assert " EMPTY (read, 0 items)" in line and "0 closures, 0 notices" not in line
         assert not any("nps.gov" in url for url, _h in net.asked)
         assert {z["id"] for z in stored("dc")["zones"]} == {"dc-PA261001", "dc-PA261002"}
         mpd = stored("mpd")

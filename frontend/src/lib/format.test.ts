@@ -204,3 +204,15 @@ test("a set distance in feet: whole feet with a thousands comma, whole metres", 
   assert.equal(formatFeet(304.8), "1,000 ft (305 m)");
   assert.equal(formatFeet(15.24), "50 ft (15 m)");
 });
+
+test("spelled units follow the language in force, with the app's own figures (backlog 2026-11-12)", async () => {
+  const { setLanguageForTest } = await import("./i18n.ts");
+  try {
+    setLanguageForTest("es");
+    assert.equal(formatSeconds(5), "5 segundos");
+    assert.equal(formatSeconds(1), "1 segundo");
+  } finally {
+    setLanguageForTest("en");
+  }
+  assert.equal(formatSeconds(5), "5 seconds");
+});
