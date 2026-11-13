@@ -48,8 +48,13 @@ public class RideCuePlugin extends Plugin {
     static final int CARD_ID = 8081;
     static final String CHANNEL = "routemaker-turn-card";
 
-    /** Tone length, our default (unmeasured): long enough to hear in wind, short enough not to delay the turn. */
+    /**
+     * Tone length, our default (unmeasured): long enough to hear in wind, short enough not to delay the turn. Off route
+     * is two short beeps instead (OFF_BEEP_MS each, OFF_GAP_MS apart), so the two are told apart without words.
+     */
     static final int CHIME_MS = 150;
+    static final int OFF_BEEP_MS = 90;
+    static final int OFF_GAP_MS = 50;
     /** The pause after the tone before the voice starts. */
     static final int CHIME_GAP_MS = 60;
 
@@ -97,9 +102,14 @@ public class RideCuePlugin extends Plugin {
         return ringerMode != AudioManager.RINGER_MODE_SILENT;
     }
 
-    /** The tone: one beep before a turn, a double one before "off route". */
-    static int tone(String kind) {
-        return "off".equals(kind) ? ToneGenerator.TONE_PROP_BEEP2 : ToneGenerator.TONE_PROP_BEEP;
+    /** How many beeps a tone has: one before a turn, two before "off route". */
+    static int beeps(String kind) {
+        return "off".equals(kind) ? 2 : 1;
+    }
+
+    /** How long a tone and its pause take before the voice starts. */
+    static int chimeMs(String kind) {
+        return ("off".equals(kind) ? 2 * OFF_BEEP_MS + OFF_GAP_MS : CHIME_MS) + CHIME_GAP_MS;
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -126,10 +136,11 @@ public class RideCuePlugin extends Plugin {
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
                 .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setSound(null)
+                .setVibrate(null)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .setSilent(true)
                 .setShowWhen(false)
                 .setRequestPromotedOngoing(true)
                 .setContentIntent(openApp(context));
@@ -151,16 +162,25 @@ public class RideCuePlugin extends Plugin {
     public void chime(PluginCall call) {
         String kind = call.getString("kind", "turn");
         main.post(() -> {
-            try {
-                if (tones == null) {
-                    tones = new ToneGenerator(AudioManager.STREAM_MUSIC, 80);
-                }
-                tones.startTone(tone(kind), CHIME_MS);
-            } catch (RuntimeException e) {
-                // No tone generator on this phone: the voice goes on without it.
+            // The phone's own short beep (ToneGenerator.TONE_PROP_BEEP), at the music volume the voice uses.
+            int length = beeps(kind) == 2 ? OFF_BEEP_MS : CHIME_MS;
+            beep(length);
+            if (beeps(kind) == 2) {
+                main.postDelayed(() -> beep(OFF_BEEP_MS), OFF_BEEP_MS + OFF_GAP_MS);
             }
-            main.postDelayed(call::resolve, CHIME_MS + CHIME_GAP_MS);
+            main.postDelayed(call::resolve, chimeMs(kind));
         });
+    }
+
+    private void beep(int ms) {
+        try {
+            if (tones == null) {
+                tones = new ToneGenerator(AudioManager.STREAM_MUSIC, 80);
+            }
+            tones.startTone(ToneGenerator.TONE_PROP_BEEP, ms);
+        } catch (RuntimeException e) {
+            // No tone generator on this phone: the voice goes on without it.
+        }
     }
 
     @PluginMethod
@@ -210,9 +230,10 @@ public class RideCuePlugin extends Plugin {
         if (channelMade || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return;
         }
-        // Low importance: shown on the lock screen and the shade, never a sound, buzz or heads-up of its own (the voice
-        // and the buzz above are the alerts), and no TalkBack announcement on each update.
-        NotificationChannel channel = new NotificationChannel(CHANNEL, "Turn card", NotificationManager.IMPORTANCE_LOW);
+        // Default importance with no sound and no vibration: a low-importance ("silent") notification is hidden from the
+        // lock screen on many phones, which is the card's whole point. Never a heads-up (that needs high importance);
+        // setOnlyAlertOnce keeps TalkBack to one announcement when the card first shows, none on each update.
+        NotificationChannel channel = new NotificationChannel(CHANNEL, "Turn card", NotificationManager.IMPORTANCE_DEFAULT);
         channel.setDescription("The next turn while a ride is going");
         channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
         channel.enableVibration(false);

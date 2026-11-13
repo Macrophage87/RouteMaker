@@ -197,6 +197,8 @@ export class Announcer {
   private lastPolite: number | null = null;
   /** The last polite turn warning's time: a turn's next warning waits a gap after this one alone. */
   private lastTurn: number | null = null;
+  /** When the waiting sentence's timer is due. */
+  private dueAt = 0;
   private waiting: Said | null = null;
   /** The waiting sentence built afresh as it is said (say's `again`). */
   private again: (() => string | null) | null = null;
@@ -245,7 +247,15 @@ export class Announcer {
     if (this.waiting) this.onDrop?.(this.waiting.text);
     this.waiting = { text, urgent: false, ...marked };
     this.again = again ?? null;
+    // Due a gap after what this one waits on (the last turn warning for a turn's, the last of any for a note): a
+    // timer set for the one it replaced is set again when that differs.
+    const due = (since ?? now) + POLITE_GAP_MS;
+    if (this.timer !== null && this.dueAt !== due) {
+      this.unschedule(this.timer);
+      this.timer = null;
+    }
     if (this.timer === null) {
+      this.dueAt = due;
       this.timer = this.schedule(() => {
         this.timer = null;
         const next = this.waiting;
@@ -259,7 +269,7 @@ export class Announcer {
           if (next.mark) this.lastTurn = this.lastPolite;
           this.deliver({ ...next, text });
         }
-      }, POLITE_GAP_MS - (now - (since ?? now)));
+      }, due - now);
     }
   }
 

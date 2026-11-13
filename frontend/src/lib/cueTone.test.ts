@@ -124,3 +124,26 @@ test("a turn's warning is never held back by a road note said just before it; no
   announcer.say("In 150 feet, right onto G Street Northeast.", false, false, undefined, "turn");
   assert.equal(delivered.length, 2, "within the gap of each: both wait, the newer in place of the older");
 });
+
+test("a turn warning that takes a waiting note's place goes a gap after the last turn warning, not after the note's", () => {
+  const delivered: Said[] = [];
+  let now = 0;
+  const timers: { at: number; live: boolean }[] = [];
+  const announcer = new Announcer(
+    (s) => delivered.push(s),
+    () => now,
+    (_fn, ms) => (timers.push({ at: now + ms, live: true }), timers.length - 1) as unknown as ReturnType<typeof setTimeout>,
+    (timer) => void (timers[timer as unknown as number].live = false),
+  );
+  announcer.say("In 500 feet, left onto A St.", false, false, undefined, "turn"); // 0 s: a turn warning
+  now = 5000;
+  announcer.answer("You are on A Street."); // "Where am I?" at 5 s: a note now waits a gap after it
+  now = 6000;
+  announcer.say("Busy road on R St.", false);
+  assert.equal(timers.filter((t) => t.live)[0].at, 13_000);
+  now = 6500;
+  announcer.say("In 300 feet, right onto G St.", false, false, undefined, "turn"); // in its place: due 8 s, not 13 s
+  const live = timers.filter((t) => t.live);
+  assert.equal(live.length, 1);
+  assert.equal(live[0].at, 8000);
+});

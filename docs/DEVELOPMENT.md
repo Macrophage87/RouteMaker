@@ -10062,26 +10062,35 @@ The owner, 2026-11-13, picked "All three, no new switches" from the backlog's po
 added; every figure below is our default, unmeasured.
 
 - **Live turn card** (`lib/turnCard.ts`, `nativeShell.ts` `showTurnCard`, `mobile/.../RideCuePlugin.java`): one
-  silent, lock-screen-public notification with the next turn, stop or end from `cueSheet`: "450 ft · Left", the
+  lock-screen-public notification (default importance with no sound or vibration of its own: a low-importance card
+  is hidden from the lock screen on many phones; `setOnlyAlertOnce`, so TalkBack hears it once, not each update) with the next turn, stop or end from `cueSheet`: "450 ft · Left", the
   street, and "Then in 0.3 mi · Right · R St NW". The distance is in the rider's unit alone (`format.ts`
   `cardDistance`), to the nearest 50 ft or m, so it changes every few seconds. `CueNotice` skips an update that
-  changes nothing; an older app without the plugin gets the old "Latest cue" with the turn and street only.
+  changes nothing; an older app without the plugin gets the old "Latest cue" with the turn and street only. It
+  follows a units switch, and goes on arrival (a walk or train after the line has its own cues).
   Android 16: `setRequestPromotedOngoing` (Live Update) where the phone allows it.
 - **Tone before a turn cue** (`lib/cueTone.ts`): `cueMark` gives a turn's cue a tone (its "now" also a buzz for
   its side) and off route its own tone; nothing else gets one. `Announcer` carries the mark, `Voice` puts it on
   the utterance (`UtteranceLike.chime`), and the speech env plays it first: `RideCuePlugin.chime` inside the
   voice's audio turn in the app, Web Audio (`chimed`, `browserChime`) in a browser. A cancel during the tone
-  drops the words. One 880 Hz beep of 150 ms for a turn, two 660 Hz beeps for off route, 60 ms before the words.
+  drops the words. One beep of 150 ms for a turn, two of 90 ms 50 ms apart for off route, 60 ms before the words:
+  the phone's own short beep (`ToneGenerator.TONE_PROP_BEEP`) in the app, 880 Hz and 660 Hz sine in a browser.
 - **Buzz for left and right** (`rideBuzz`): at a turn's "now", one 450 ms buzz for left (and a U-turn), two of
   140 ms for right; `RideCuePlugin.buzz` skips a phone set to silent; a browser uses `navigator.vibrate`. Not
   with the cue output "Neither".
 - **Estimated cues through weak GPS** (`navigate.ts` `estimateStep`, `ESTIMATE_MS` 30 s, `ESTIMATE_AFTER_MS`
-  5 s): with no good fix for 5 s while riding the line (not off route, alongside, arrived, or under about
-  2 mph), RideMode's 3 s check carries the ride on along the line at the last speed (`RideState.estM`, never
-  `progressM`) and says the next turn's phases as estimates: "In about 450 feet, ...", "About here: ...". A
-  stop, the end and road notes wait for a real fix; nothing goes off route or re-plans on a guess. The weak-GPS
-  note waits until the estimates end (`weakNoteAfterMs`). The cue bench's weak-GPS variant rides it.
+  5 s, `ESTIMATE_MIN_SPEED_MS` about 4.5 mph): with no good fix for 5 s while poor fixes come (a stopped rider's
+  GPS sends none, so a rider at a light is never reckoned on), riding the line (not off route, alongside,
+  arrived, walking to a dock, docking, or asked about the start) with a turn next before any stop or the end,
+  RideMode's 3 s check carries the ride on along the line at the slower of the last fix's speed and the
+  smoothed one (`RideState.estM`, never `progressM`), and says the next turn's phases as estimates: "In about
+  450 feet, ...", "About here: ...". What it says is kept in `estSaid`: a good fix counts its warnings as said
+  but never its "now", so a reckoning that ran ahead still gets the real "now" at the turn, and nothing is
+  dropped as passed on a guess. A stop, the end and road notes wait for a real fix; nothing goes off route or
+  re-plans on a guess. The weak-GPS note waits until the estimates end where they can run (`weakNoteAfterMs`).
+  The cue bench's weak-GPS variant rides it.
 - **Cue timing** (cue bench findings): a polite turn warning waits only for the gap after the last turn
-  warning, never behind a road note (`Announcer.lastTurn`); arriving at a stop or the end is `after`, so it
-  waits for the turn's "now" being said instead of cutting it off.
+  warning, never behind a road note or a "Where am I?" answer (`Announcer.lastTurn`; the voice still lets
+  what is being said finish); arriving at a stop or the end is `after`, so it waits for the turn's "now" being
+  said instead of cutting it off (and a screen reader gets it in the polite region, after the turn).
 
