@@ -3,7 +3,7 @@
  "decided": "2026-11-13",
  "decided_by": "the deployment owner",
  "status": "Re-rate asked for by the owner in conversation on 2026-11-13; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
- "annotations": "Every road re-rated on 2026-11-13 with one lean rater brief: one rater for every road, a second for the doubtful ones, a third where those two disagreed. This file holds only the ways whose level changed; rows from earlier files that it replaces are retired. Rows from the owner's own earlier rating files are replaced too (the owner, 2026-11-13: \"Ignore my own calls\"); closed roads, streets rated from Baltimore City's bike facility records (2026-10-01, a fact the raters were not given), ways with only an access row and ways whose level did not change are left as they are. Method and results: reports/rerate-2026-11-13/REPORT.md.",
+ "annotations": "Every road re-rated on 2026-11-13 with one lean rater brief: one rater for every road, a second for the doubtful ones, a third where those two disagreed. This file holds only the ways whose level changed, plus (Maryland) the Baltimore streets whose bike facility the city records and the map lacks, re-rated with that record as a fact; rows from earlier files that it replaces are retired. Rows from the owner's own earlier rating files are replaced too (the owner, 2026-11-13: \"Ignore my own calls\"); closed roads, ways with only an access row and ways whose level did not change are left as they are. Method and results: reports/rerate-2026-11-13/REPORT.md.",
  "retire": [
   {
    "kind": "stress",
@@ -5931,28 +5931,30 @@
    "osm_way_id": 597013766,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6968",
+    "adjustment_id": "wv-own-g00229-50",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,800 homes and 5,700 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,800 homes and 5,700 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 589457132,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6893",
+    "adjustment_id": "wv-own-g00229-73",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,600 homes and 5,800 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,600 homes and 5,800 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
@@ -26261,98 +26263,105 @@
    "osm_way_id": 548661813,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6676",
+    "adjustment_id": "wv-own-g00009-693",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 1,100 homes and 7,500 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 1,100 homes and 7,500 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15497629,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4059",
+    "adjustment_id": "wv-own-g00009-731",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 1,100 homes and 7,300 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 1,100 homes and 7,300 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 343930369,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-5949",
+    "adjustment_id": "wv-own-g00009-1142",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 1,800 homes and 5,700 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 1,800 homes and 5,700 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15498260,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4060",
+    "adjustment_id": "wv-own-g00009-1197",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 920 homes and 7,600 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 920 homes and 7,600 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15498931,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4061",
+    "adjustment_id": "wv-own-g00009-1252",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 980 homes and 7,900 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 980 homes and 7,900 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15496823,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4058",
+    "adjustment_id": "wv-own-g00009-1346",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 910 homes and 7,700 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 910 homes and 7,700 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15496769,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4057",
+    "adjustment_id": "wv-own-g00009-1440",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 920 homes and 7,500 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 920 homes and 7,500 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
@@ -49319,322 +49328,345 @@
    "osm_way_id": 544058254,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6639",
+    "adjustment_id": "wv-own-g00009-668",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,900 homes and 6,000 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,900 homes and 6,000 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 544058255,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6640",
+    "adjustment_id": "wv-own-g00009-669",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,800 homes and 6,100 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,800 homes and 6,100 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 544058257,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6639",
+    "adjustment_id": "wv-own-g00009-668",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,900 homes and 6,000 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,900 homes and 6,000 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 544901299,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6644",
+    "adjustment_id": "wv-own-g00009-671",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,300 homes and 5,700 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,300 homes and 5,700 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 596923635,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6966",
+    "adjustment_id": "wv-own-g00009-698",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,200 homes and 5,600 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,200 homes and 5,600 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 596923627,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4062",
+    "adjustment_id": "wv-own-g00009-700",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,400 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,400 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15499697,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4062",
+    "adjustment_id": "wv-own-g00009-700",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,400 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,400 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15501721,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4066",
+    "adjustment_id": "wv-own-g00009-880",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,500 homes and 5,000 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,500 homes and 5,000 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 545777620,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6652",
+    "adjustment_id": "wv-own-g00009-914",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,400 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,400 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 596923640,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4064",
+    "adjustment_id": "wv-own-g00009-1087",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,200 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,200 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 596923643,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4580",
+    "adjustment_id": "wv-own-g00009-1088",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,200 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,200 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15502567,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4069",
+    "adjustment_id": "wv-own-g00009-1109",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,700 homes and 5,600 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,700 homes and 5,600 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 72656874,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4580",
+    "adjustment_id": "wv-own-g00009-1088",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,200 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,200 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15501377,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4063",
+    "adjustment_id": "wv-own-g00009-1219",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,200 homes and 5,500 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,200 homes and 5,500 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 596923613,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4068",
+    "adjustment_id": "wv-own-g00009-1241",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,300 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,300 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15502546,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4067",
+    "adjustment_id": "wv-own-g00009-1263",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,600 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,600 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 545777621,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4063",
+    "adjustment_id": "wv-own-g00009-1219",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,200 homes and 5,500 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,200 homes and 5,500 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 584371435,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6882",
+    "adjustment_id": "wv-own-g00009-1336",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 3,700 homes and 5,500 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 3,700 homes and 5,500 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15501422,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4064",
+    "adjustment_id": "wv-own-g00009-1087",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,200 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,200 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 596923626,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6964",
+    "adjustment_id": "wv-own-g00009-1518",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,300 homes and 5,800 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,300 homes and 5,800 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 600922867,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6641",
+    "adjustment_id": "wv-own-g00009-1563",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,600 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,600 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15501630,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4065",
+    "adjustment_id": "wv-own-g00009-1578",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,600 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,600 homes and 5,100 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 596923609,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6963",
+    "adjustment_id": "wv-own-g00009-1602",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,400 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,400 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
@@ -50789,14 +50821,15 @@
    "osm_way_id": 1013061598,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-7857",
+    "adjustment_id": "wv-own-g00229-98",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 910 homes and 7,600 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 910 homes and 7,600 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
@@ -51531,70 +51564,75 @@
    "osm_way_id": 596923629,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6965",
+    "adjustment_id": "wv-own-g00229-49",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,300 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,300 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 544392403,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6641",
+    "adjustment_id": "wv-own-g00229-70",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,600 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,600 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15502987,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4070",
+    "adjustment_id": "wv-own-g00229-78",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,800 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,800 homes and 5,400 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 15502557,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-4068",
+    "adjustment_id": "wv-own-g00229-85",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,300 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,300 homes and 5,300 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
    "osm_way_id": 544392404,
    "value": {
     "tier": 2,
-    "adjustment_id": "fix-wv-2026-11-12-6641",
+    "adjustment_id": "wv-own-g00229-70",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "About 2,600 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): a side street; jobs nearby don't send traffic down it, so 2.",
+    "public_note": "About 2,600 homes and 5,200 jobs per square mile around it (2020 Census, LODES 2023): destinations nearby bring more traffic, so 2.5.",
     "visibility": "public",
-    "display": "map"
+    "display": "map",
+    "half": true
    },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-12-owner-side-streets-and-arlington-index.json)."
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-wv-own-picks.json)."
   },
   {
    "kind": "stress",
