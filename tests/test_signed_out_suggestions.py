@@ -4,7 +4,7 @@ the per-device daily limits kept as a salted daily hash, and the review list's g
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.test import Client
@@ -258,6 +258,21 @@ class TestFromRide:
         assert quick.prune() == 0
         with pytest.raises(quick.Again):
             send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+
+    def test_one_a_road_holds_through_a_washington_evening(self, live, monkeypatch) -> None:
+        # The release review: a ride's rows are dated by Washington's day, but the device's code
+        # changed at UTC midnight (7 or 8 PM here), so the same road went again that evening.
+        # timezone.now() is UTC, as Django's is.
+        early = datetime(2026, 11, 12, 18, 0, tzinfo=quick.DAY_ZONE).astimezone(UTC)
+        monkeypatch.setattr(timezone, "now", lambda: early)
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        monkeypatch.setattr(timezone, "now", lambda: early + timedelta(hours=5, minutes=30))
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        # A new Washington day: a new code, and a new day's count.
+        monkeypatch.setattr(timezone, "now", lambda: early + timedelta(hours=6, minutes=30))
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        assert StressSuggestion.objects.count() == 2
 
     def test_one_a_road_holds_across_the_road_panel_and_a_ride(self, live) -> None:
         send()

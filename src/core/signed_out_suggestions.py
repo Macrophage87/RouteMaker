@@ -128,7 +128,8 @@ def ticket_ok(value: str | None, way_id: int) -> bool:
 def device_hash(address: str, day=None) -> str:
     """A salted hash of the address and the day: one device for a day, never reversible, and
     not matchable across days. The key is derived from the server's secret."""
-    day = day or timezone.now().date()
+    # Washington's day, the one a ride's rows are dated by: the code changes when they lapse.
+    day = day or timezone.now().astimezone(DAY_ZONE).date()
     key = hmac.new(settings.SECRET_KEY.encode(), DEVICE_SALT, hashlib.sha256).digest()
     return hmac.new(key, f"{day.isoformat()}|{address}".encode(), hashlib.sha256).hexdigest()
 
@@ -233,13 +234,15 @@ def create(
             reason=reason_words(chosen, other),
         )
     # A ride's send: the audit row's time would be the send's, so it names no suggestion.
-    entry = audit.record(
-        None, "stress_suggest_signed_out", "stress_suggestion", "" if from_ride else suggestion.pk,
-        AuditLogEntry.Outcome.ALLOWED,
-    )  # fmt: skip
-    if from_ride and entry is not None:
-        # Its audit row too: one a send, in step with the suggestions, so dated by the day.
-        AuditLogEntry.objects.filter(pk=entry.pk).update(at=ride_day(now))
+    with transaction.atomic():
+        entry = audit.record(
+            None, "stress_suggest_signed_out", "stress_suggestion",
+            "" if from_ride else suggestion.pk, AuditLogEntry.Outcome.ALLOWED,
+        )  # fmt: skip
+        if from_ride and entry is not None:
+            # Its audit row too: one a send, in step with the suggestions, so dated by the day; in
+            # the same transaction, so the exact time is never committed.
+            AuditLogEntry.objects.filter(pk=entry.pk).update(at=ride_day(now))
     return suggestion
 
 
