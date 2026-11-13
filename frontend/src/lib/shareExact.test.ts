@@ -143,7 +143,9 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix && state\.goodFix\.accuracyM <= OFF_SURE_M && !replanHeld\(replannedFrom\.current, state\.goodFix\.point\)\) void replan/);
   // The way back is said once on leaving it and shown while off; Keep is not offered (it is always kept).
   assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(`\$\{FIXED_SAID\} \$\{wayBackSaid\(back\)\}`\);/);
-  assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);
+  // The way back shows on a fixed route, as after Keep the planned route or with no signal (lib/rejoin.ts wayBackShown).
+  assert.match(ride, /wayBackShown\(ride\.off, keepPlanned, fixedRef\.current, replanNote === REPLAN_NO_SIGNAL\)/);
+  assert.match(ride, /\{backShown && back && \(/);
   assert.match(ride, /\{!fixedRef\.current && \(\s*<button type="button" className="secondary ride-off-button" onClick=\{keep\}/);
   // Re-plan from here stays, the rider's own choice.
   assert.match(ride, /<button type="button" className="secondary ride-off-button" onClick=\{replanNow\} aria-disabled=\{replanning\}>\s*<Icon name="routes" size=\{22\} \/>\s*\{t\("Reroute"\)\}/);

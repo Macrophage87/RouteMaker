@@ -1,0 +1,158 @@
+name: Release
+
+# The owner's release button (the owner, 2026-11-12: "Yes, behind your approval"). Run it from
+# GitHub (Actions, "Release", Run workflow, on main; the phone app works) once the release branch
+# has merged into main and CI is green there. It checks the commit, then WAITS for the owner's
+# approval in the `release` environment; once approved it builds the api image from that commit,
+# publishes it, and makes the annotated release tag, which names the image by digest. The beta's
+# release agent (scripts/beta/auto-release.sh) deploys the tag as it always has, pulling that exact
+# image instead of building one. Nothing here touches the beta, and no step runs before approval
+# except the read-only checks. One-time setup: docs/BETA-RUNBOOK.md, "The release workflow".
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The release, as vX.Y.Z (docs/releases/vX.Y.Z.md must exist at the commit)"
+        required: true
+        type: string
+
+# Nothing by default; each job asks for what it needs.
+permissions: {}
+
+# One release at a time, and never a run cancelled part-way.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      # Pinned by commit (the tag each pointed to); bump deliberately.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        name: Check the version, the commit and its CI
+        env:
+          VERSION: ${{ inputs.version }}
+          # The commit this run started at, main's newest: the only one it builds and tags, so the
+          # image's provenance (which names the commit the workflow ran at) names the tag's commit.
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [ "$REF" = refs/heads/main ] || { echo "::error::run the release workflow on main, not $REF"; exit 1; }
+          [[ $VERSION =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] ||
+            { echo "::error::the version must be vX.Y.Z (no leading zeros, nothing after)"; exit 1; }
+          git fetch --quiet --tags origin
+          ! git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null ||
+            { echo "::error::$VERSION is already a tag; a tag is never moved: release the next patch version"; exit 1; }
+          highest=$(git tag -l 'v*' | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -n 1 || true)
+          if [ -n "$highest" ] && [ "$(printf '%s\n%s\n' "$highest" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
+            echo "::error::$VERSION is not newer than the highest release tag, $highest"; exit 1
+          fi
+          sha=$COMMIT
+          [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the commit must be a full 40-character id"; exit 1; }
+          git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha is not on main"; exit 1; }
+          git cat-file -e "$sha:docs/releases/$VERSION.md" 2>/dev/null ||
+            { echo "::error::docs/releases/$VERSION.md is not in $sha: the release notes come first"; exit 1; }
+          # The same verdict the beta's agent reads: `test` and `a11y` green on exactly this commit.
+          verdict=$(gh api "repos/$REPO/commits/$sha/check-runs?filter=latest&per_page=100" |
+            python3 scripts/beta/cd_logic.py ci-verdict --sha "$sha")
+          [ "$verdict" = green ] || { echo "::error::CI on $sha is $verdict, not green (test and a11y)"; exit 1; }
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          {
+            echo "### $VERSION is ready to release"
+            echo "Commit \`$sha\`, CI green. Approve the \`release\` environment to build the image and make the tag."
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # Waits for the owner's approval (the `release` environment's required reviewer). The only job
+  # that can publish a package; it cannot write to the repository.
+  image:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      # the build provenance the beta's agent checks before it pulls the image
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+          persist-credentials: false
+      - name: Build the api image from the release commit
+        env:
+          SHA: ${{ needs.check.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$SHA" ]
+          docker build -f docker/api.Dockerfile -t "ghcr.io/macrophage87/routemaker-api:${SHA:0:12}" .
+          # It starts and imports its framework (a broken install fails here, not on the beta).
+          docker run --rm --network none --entrypoint python "ghcr.io/macrophage87/routemaker-api:${SHA:0:12}" -c "import django; print('django', django.get_version())"
+      - id: push
+        name: Publish it and read its digest
+        env:
+          SHA: ${{ needs.check.outputs.sha }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/macrophage87/routemaker-api:${SHA:0:12}"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push "$image"
+          docker logout ghcr.io
+          digest=$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$image" | grep '^ghcr.io/macrophage87/routemaker-api@sha256:' | head -n 1)
+          [[ $digest =~ ^ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64}$ ]] || { echo "::error::no digest for $image"; exit 1; }
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+          echo "sha256=${digest#*@}" >>"$GITHUB_OUTPUT"
+          echo "Image: \`$digest\`" >>"$GITHUB_STEP_SUMMARY"
+      # Build provenance for the digest: names this workflow, its ref (main) and the run. The beta's
+      # agent pulls the image only if GitHub holds this attestation (scripts/beta/cd_logic.py,
+      # provenance), so an image published any other way is never deployed.
+      - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-name: ghcr.io/macrophage87/routemaker-api
+          subject-digest: ${{ steps.push.outputs.sha256 }}
+          push-to-registry: true
+
+  # Runs only after the approved image job: the annotated tag on the checked commit, naming the
+  # image by digest. The beta's agent reads that line (scripts/beta/cd_logic.py, tag-image).
+  tag:
+    needs: [check, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Make the annotated release tag
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ needs.check.outputs.sha }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ $DIGEST =~ ^ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad digest"; exit 1; }
+          message=$(printf 'Release %s\n\napi-image: %s\n\nMade by the release workflow after the owner approved it: %s\n' "$VERSION" "$DIGEST" "$RUN_URL")
+          object=$(gh api "repos/$REPO/git/tags" -f tag="$VERSION" -f message="$message" -f object="$SHA" -f type=commit --jq .sha)
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$VERSION" -f sha="$object" >/dev/null
+          echo "Tagged \`$VERSION\` on \`$SHA\`. The beta's release agent deploys it on its next pass." >>"$GITHUB_STEP_SUMMARY"

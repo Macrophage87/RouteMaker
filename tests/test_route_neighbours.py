@@ -168,6 +168,138 @@ class TestEndpoint:
         assert [o["kind"] for o in answer["options"]] == ["direct"]
 
 
+def maneuver_and_surface_sent(fake) -> set[tuple[float, float, float]]:
+    """(use_roads, maneuver_penalty, avoid_bad_surfaces) of each route ask."""
+    return {
+        (
+            payload["costing_options"]["bicycle"]["use_roads"],
+            payload["costing_options"]["bicycle"]["maneuver_penalty"],
+            payload["costing_options"]["bicycle"]["avoid_bad_surfaces"],
+        )
+        for url, payload in fake.calls
+        if url.endswith("/route")
+    }
+
+
+@db
+class TestFewerTurnsAndAllPaved:
+    """The backlog's "fewer turns" item (2026-11-12): named options at the rider's own setting,
+    asked for with `options`, planned in the order asked."""
+
+    def test_the_two_are_the_riders_own_setting_with_one_choice_on(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        fake = router(standard_router())
+        answer = post(client, body_for(stress=70, options=["fewer_turns", "paved"])).json()
+        assert [(o["kind"], o["stress"]) for o in answer["options"]] == [
+            ("fewer_turns", 70),
+            ("paved", 70),
+        ]
+        dials = [o["route"]["dials"] for o in answer["options"]]
+        assert [(d["fewer_turns"], d["paved"]) for d in dials] == [(True, False), (False, True)]
+        own = presets.costing("default", 70)["bicycle"]
+        sent = maneuver_and_surface_sent(fake)
+        assert (
+            presets.use_roads_for(70),
+            presets.FEWER_TURNS_PENALTY_S,
+            own["avoid_bad_surfaces"],
+        ) in sent
+        assert (
+            presets.use_roads_for(70),
+            own["maneuver_penalty"],
+            presets.PAVED_SURFACE_AVOIDANCE,
+        ) in sent
+
+    def test_planned_in_the_order_asked_and_none_asked_twice(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        router(standard_router())
+        asked = ["paved", "direct", "paved", "fewer_turns"]
+        answer = post(client, body_for(stress=70, options=asked)).json()
+        assert [o["kind"] for o in answer["options"]] == ["paved", "direct", "fewer_turns"]
+
+    def test_not_offered_where_the_body_already_has_it_nor_paved_on_road_bike(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        router(standard_router())
+        options = ["fewer_turns", "paved"]
+        answer = post(client, body_for(stress=70, options=options, fewer_turns=True)).json()
+        assert [o["kind"] for o in answer["options"]] == ["paved"]
+        # Road Bike: never paved (it is), and it already charges a turn Fewer turns' price.
+        answer = post(client, body_for("road-bike", options=options)).json()
+        assert answer["options"] == []
+        answer = post(client, body_for("gravel", options=options)).json()
+        assert [o["kind"] for o in answer["options"]] == ["fewer_turns", "paved"]
+
+    def test_without_options_it_is_go_as_before(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        router(standard_router())
+        answer = post(client, body_for(stress=70)).json()
+        assert [o["kind"] for o in answer["options"]] == ["direct", "calmer"]
+
+    def test_fewer_turns_is_not_planned_where_the_ride_type_already_charges_that_much(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        router(standard_router())
+        answer = post(client, body_for("group-ride", options=["fewer_turns", "paved"])).json()
+        assert [o["kind"] for o in answer["options"]] == ["paved"]
+
+    def test_each_plan_past_two_is_counted_and_left_out_uncounted_where_there_is_no_room(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        from core.models import RateLimitWindow
+
+        router(standard_router())
+        four = ["direct", "calmer", "fewer_turns", "paved"]
+        answer = post(client, body_for(stress=70, options=four)).json()
+        assert [o["kind"] for o in answer["options"]] == four
+        assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [4]
+        # No room left for the extra two: Go's two are planned, the request is not refused,
+        # and the two refused are never counted (`ratelimit.take`), so the next plan has
+        # its room (the v0.26.0 release review: `hit` counted them anyway).
+        RateLimitWindow.objects.update(hits=ratelimit.ROUTING.requests - 2)
+        answer = post(client, body_for(stress=70, options=four)).json()
+        assert [o["kind"] for o in answer["options"]] == ["direct", "calmer"]
+        assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [
+            ratelimit.ROUTING.requests
+        ]
+
+    @pytest.mark.parametrize("preset", sorted(presets.TRANSIT_PRESETS))
+    def test_none_on_a_transit_ride_type(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+        preset,
+    ) -> None:
+        router(standard_router())
+        named = ["fewer_turns", "paved"]
+        answer = post(client, body_for(preset, options=named)).json()
+        assert answer["options"] == []
+
+    def test_an_unknown_option_is_refused(self, client, segments) -> None:  # noqa: F811
+        assert post(client, body_for(options=["flatter"])).status_code == 400
+
+
 @db
 class TestBikeshare:
     def test_options_keep_the_riders_docks_and_vary_only_the_ride(self, client, world) -> None:  # noqa: F811

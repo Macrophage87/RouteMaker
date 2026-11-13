@@ -11,21 +11,20 @@ override rows in `APPLY_OVERRIDES` (`run.py:2262-2370`). Stage order is at
 
 ## The scale
 
-| Tier | Name in the code | Road panel words (`src/core/segment_info.py:63-69`) | Legend words (`frontend/src/stressStyle.js:56-62`) |
-|---|---|---|---|
-| 1 | `Stress.LTS1` | Comfortable for everyone | Comfortable for most people |
-| 2 | `Stress.LTS2` | Fine for adults | Comfortable for most adults |
-| 3 | `Stress.LTS3` | For experienced cyclists | For confident riders |
-| 4 | `Stress.LTS4` | High stress: busy, fast traffic | Heavy or fast traffic |
-| 5 | `Stress.AVOID` | Avoid | Legal, but best avoided |
+| Tier | Name in the code | Words, in the road panel and the legend alike (`frontend/src/lib/stepWords.ts`, `frontend/src/stressStyle.js` `TIER_SHAPES`) |
+|---|---|---|
+| 1 | `Stress.LTS1` | Comfortable for everyone |
+| 2 | `Stress.LTS2` | Fine for adults |
+| 3 | `Stress.LTS3` | For experienced cyclists |
+| 4 | `Stress.LTS4` | High stress: busy, fast traffic |
+| 5 | `Stress.AVOID` | Avoid |
 
 `src/routemaker/stress.py:117-128`. Tiers 1-4 are Furth's levels. Tier 5 is the owner's
 "legal but to be avoided" (2026-09-27) and is never produced by the Furth tables. The
-two sets of words differ today: the panel uses the owner's 441l words, and the legend
-still has the earlier ones (460.10 says the legend switches to 441l's, with the
-half-step editor). Half-step words (1.5 "Probably comfortable for older children",
+panel and the legend use one set of words, the owner's 441l (checked 2026-11-12), and
+the half steps have theirs (`STEP_WORDS`): 1.5 "Probably comfortable for older children",
 2.5 "Fine for most confident adults", 3.5 "Stressful even for experienced cyclists",
-4.5 "A very high-stress road") are **planned** (441l).
+4.5 "A very high-stress road".
 
 ## Inputs
 
@@ -85,7 +84,30 @@ recorded in `assumed` (`stress.py:135-137`).
    stretches do not come out as the files say (`src/pipeline/lts_sentinels.py`).
 4. **Stress override rows** (`run.py:2309`, `overrides.apply_stress`): they outrank
    everything above. See [overrides.md](overrides.md).
-5. **Car-free for good** (`run.py:1484-`, called at `:2511`): a road closed to motor
+5. **Side paths beside busy roads** (`run.py`, `rate_side_paths`, `apply_beside_busy_road`;
+   `stress.beside_busy_road_step`; the owner, 2026-11-12: protected lanes along roads like
+   Old Georgetown Road "are fine for experienced cyclists, they might not be LTS 1"), once
+   every street's level is final: after the rows, and after the car-free and ridden-sidewalk
+   corrections in `classify_facilities` (so a road closed to cars for good, lowered to LTS 1
+   there, never lifts the path beside it). An unnamed trail-class way the rebuild finds along a named street
+   (`facility.side_streets`, the same match that names it "path beside ...") and rated a
+   flat LTS 1 takes a level from that street: 1.5 beside LTS 3 or 3.5, 2 beside LTS 4 or
+   above (the street's busiest way that runs along at least 30% of the path,
+   `BESIDE_BUSY_ROAD_MIN_SHARE`). Then half a level more for every 20 points a mile of crossings along its run (its
+   ways along one street joined end to end, at least 0.1 mi [160 m]; each street, driveway or
+   service-road crossing scores the crossed way's own level, a slip lane 2 more, and a
+   crossing mapped as its own way scores the worst road it crosses: "it's not
+   always number of crossings, but also how bad they are"), and half a level more where the
+   way crosses a slip lane (a `*_link`; `facility.side_path_crossings`), with no cap of its
+   own but never past 4.5 ("no upper limit. There could be some really
+   terrible bike paths"). Our defaults, not measured. A named trail, a way an owner row set
+   and a way already above 1 are left alone; the junctions are still priced by the road's
+   own traffic (`intersections.traffic_level`). It runs after step 6 and after the ridden
+   sidewalks are raised (`raise_ridden_sidewalks`), so a way either of those already moved
+   is not a flat LTS 1 and is left alone. Map,
+   road panel and route stress only: the router does not yet price trail-class ways by
+   their tier (`lua/routemaker_remap.lua`).
+6. **Car-free for good** (`run.py:1484-`, called at `:2511`): a road closed to motor
    traffic outright, including by an approved `motor_vehicle=no` access row, becomes
    LTS 1 and a path, unless a curated stress row set its tier. A road closed to cars
    only at set times keeps its tier in the table. For a ride inside the closure it reads

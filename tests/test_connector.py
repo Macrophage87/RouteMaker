@@ -1536,6 +1536,41 @@ class TestDraftsListed:
         assert not saved["isError"], saved
         assert call(token, "my_drafts", {})["structuredContent"]["drafts"] == []
 
+    def test_a_test_or_archived_draft_is_not_listed_in_load_route(self, planner) -> None:
+        """The owner, 2026-11-12: "When a test route is made from an agent, it somehow keeps
+        loading on my account in beta. Archive them when done." Before: every agent plan was
+        listed in Load route. After: a `test` plan, its revisions, and an archived draft are not."""
+        user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        kept = self.plan(token, "Bakery")
+        tested = call(
+            token,
+            "plan_route",
+            {"points": self.POINTS, "name": "Agent check", "test": True},
+        )["structuredContent"]
+        revised = call(token, "revise_route", {"draft_id": tested["draft_id"]})
+        revised = revised["structuredContent"]
+        browser, _user, _csrf = signed_in(user)
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        assert [d["id"] for d in listed] == [self.route_id(kept)]
+        archived = call(token, "my_drafts", {"archived": True})["structuredContent"]["drafts"]
+        assert [d["draft_id"] for d in archived] == [revised["draft_id"]]
+        # Archive when done: every revision; restore brings it back.
+        out = call(token, "archive_draft", {"draft_id": kept["draft_id"]})
+        assert not out["isError"], out
+        assert browser.get("/api/me/drafts", **addr()).json()["drafts"] == []
+        call(token, "archive_draft", {"draft_id": kept["draft_id"], "archived": False})
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        assert [d["id"] for d in listed] == [self.route_id(kept)]
+        # Another rider's app cannot archive this rider's draft.
+        _other, other_tokens, _ = tokens_for()
+        stranger_token = other_tokens["access_token"]
+        stranger = call(stranger_token, "archive_draft", {"draft_id": kept["draft_id"]})
+        assert stranger["isError"]
+        # Archived drafts still go at a week.
+        ConnectorDraft.objects.update(created_at=timezone.now() - ConnectorDraft.KEPT)
+        assert call(token, "my_drafts", {"archived": True})["structuredContent"]["drafts"] == []
+
     def test_an_expired_draft_is_not_listed(self, planner) -> None:
         user, tokens, _ = tokens_for()
         self.plan(tokens["access_token"])

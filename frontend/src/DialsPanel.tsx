@@ -49,6 +49,8 @@ interface Props {
   resolvedWhen?: When | null;
   /** The rider's own riding speed (lib/ridingSpeed.ts): kept apart from the dials, never in the link. */
   ridingSpeed?: RidingSpeedControl;
+  /** Leave out the Target distance dial (Plan's Loop by distance box is showing: one distance control). */
+  hideTarget?: boolean;
 }
 
 function Slider(props: {
@@ -268,7 +270,7 @@ function withBike(dials: Dials, bike: Bike): Dials {
   return next;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed, hideTarget }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -520,7 +522,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           <Bullets text={WHEN_HOW} />
         </DialInfo>
       </fieldset>
-      {view.target && (
+      {view.target && !hideTarget && (
         <NumberDial
           label={view.target.label}
           value={view.target.value}

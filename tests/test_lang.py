@@ -80,6 +80,7 @@ def built_keys() -> set[str]:
     keys |= set(steep_grades._STEEP_WORDS.values())
     keys |= {f"{avoid_junctions.NOUN} ahead at {{where}}", avoid_junctions.PLEA}
     keys.add(routing.NOT_PUBLIC_NOTE)
+    keys |= set(routing.RESTRICTED_NOTES.values())
     keys.add(mass_rails.RAIL_STREET_NOTE)
     return keys
 

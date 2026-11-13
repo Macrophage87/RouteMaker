@@ -52,7 +52,8 @@ test("Go's route sheet keeps one 'Add a stop' field, under the route card, with 
   // The edit-route redesign (Stephen 2026-10-18, "Keep stop box in Go"): the field stays one tap away, under the
   // route card, whose Edit route holds the rest (change the start or the destination, remove a stop).
   const panel = source("../app/RoutePanel.tsx");
-  assert.match(panel, /\{!go\.peek && go\.routeCard\}\s*\{!go\.peek && go\.addStop\}/);
+  // Under it, on one row with the bike rack offer (Stephen 2026-11-12: answer, stress, warnings, stops, ride type).
+  assert.match(panel, /\{!go\.peek && go\.routeCard\}[\s\S]{0,200}<div className="go-stop-row">\s*\{go\.addStop\}\s*\{go\.endRack\}/);
   assert.match(source("../App.tsx"), /addStop: goStops \? \(\s*<GoAddStop/);
   assert.match(source("../App.tsx"), /routeCard:\s*!riding && \(points\.length >= 2 \|\| plansFromStart\(preset, points, planDials\)\) \? \(\s*<GoRouteCard/);
   assert.match(source("../App.tsx"), /onEdit=\{\(opener\) => openView\("points", opener\)\}/);

@@ -183,3 +183,9 @@ def test_the_favicon_ico_is_the_favicon_at_16_32_and_48_px() -> None:
         assert struct.unpack(">II", frame[16:24]) == (width, height)
         sizes.append(width)
     assert sizes == [16, 32, 48]
+
+
+def test_the_site_description_is_index_html_s() -> None:
+    """The preview a link fetcher gets says what the app's own page says (frontend/index.html)."""
+    index = (Path(__file__).resolve().parents[1] / "frontend/index.html").read_text()
+    assert f'<meta name="description" content="{share_preview.SITE_DESCRIPTION}" />' in index

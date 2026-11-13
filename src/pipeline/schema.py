@@ -831,6 +831,23 @@ CREATE TABLE {schema}.border_crossing (
 );
 
 CREATE INDEX border_crossing_way_idx ON {schema}.border_crossing (osm_way_id);
+
+-- The road network a phone searches with no signal (`pipeline.offline_network`; off-grid
+-- riding, the owner, 2026-11-12): every way a bicycle may ride, with its located OSM node
+-- ids (two ways meet where they share one), its stress level times 2, one-way for a bicycle
+-- (`direction`: 1 along, -1 against, 0 both), the flags of frontend lib/offlineRouter.ts
+-- (2 walk, 4 unpaved) and its name. The API cuts a route's corridor from it
+-- (`core.offline_network`). Created whole on every rebuild with the segment table; a live
+-- schema built before it has none, and the API then answers that it is not built yet.
+CREATE TABLE {schema}.offline_way (
+    osm_way_id      bigint      PRIMARY KEY,
+    node_ids        bigint[]    NOT NULL,
+    geometry        geometry(LineString, 4326) NOT NULL,
+    level2          smallint    NOT NULL CHECK (level2 BETWEEN 2 AND 10),
+    flags           smallint    NOT NULL DEFAULT 0,
+    direction       smallint    NOT NULL DEFAULT 0 CHECK (direction IN (-1, 0, 1)),
+    name            text
+);
 """
 
 
@@ -840,6 +857,7 @@ CREATE INDEX border_crossing_way_idx ON {schema}.border_crossing (osm_way_id);
 # row through a multi-million-row insert, and gives tighter trees.
 SEGMENT_INDEX_DDL = """
 CREATE INDEX IF NOT EXISTS segment_way_idx ON {schema}.segment (osm_way_id);
+CREATE INDEX IF NOT EXISTS offline_way_geom_idx ON {schema}.offline_way USING gist (geometry);
 CREATE INDEX IF NOT EXISTS segment_geom_idx ON {schema}.segment USING gist (geometry);
 CREATE INDEX IF NOT EXISTS segment_stress_idx ON {schema}.segment (stress_tier);
 -- The stress tiles' zoomed-out levels draw only the paths and trails

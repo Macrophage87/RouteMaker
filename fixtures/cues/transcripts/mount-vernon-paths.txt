@@ -1,0 +1,185 @@
+# mount-vernon-paths: Path beside Mount Vernon Memorial Hwy, then side streets and short path pieces (three bears in 50 m)
+
+## The cues Ride made
+    66 m  #0 left Svc Rd: Left to stay on the service road beside Mount Vernon Memorial Highway.
+   123 m  #1 onto Path: Continue onto the path beside Mount Vernon Memorial Highway.
+  2963 m  #2 left Southwood Dr: Left onto Southwood Drive.
+  3285 m  #3 right Adrienne Dr: Right onto Adrienne Drive.
+  3717 m  #4 left Old Mill Rd: Left onto Old Mill Road.
+  3953 m  #5 right Gateshead Rd: Right onto Gateshead Road.
+  5724 m  #6 onto Sky View Dr: Continue onto Sky View Drive.
+  6211 m  #7 bear_right Path: Bear right onto the path, then immediately bear right to stay on the path, then immediately bear right to stay on the path.
+  6218 m  #8 bear_right Path (joined): Bear right to stay on the path, then immediately bear right to stay on the path.
+  6261 m  #9 bear_right Path (joined): Bear right to stay on the path.
+  6390 m  #10 right Pole Rd: Right onto Pole Road, then immediately left onto Keeler Street.
+  6398 m  #11 left Keeler St (joined): Left onto Keeler Street.
+  6814 m  #12 left Sprayer St: Left onto Sprayer Street.
+  6915 m  #13 left Ackley St: Left onto Ackley Street.
+  7114 m  #14 right Shirley St: Right onto Shirley Street.
+  7413 m  #15 end: The end of the route.
+
+## mount-vernon-paths at 8 mph, steady
+    0 s      0 m  #0 left Svc Rd advance: "In 200 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> said
+    6 s     21 m  #0 left Svc Rd prepare: "In 150 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> held 2.0 s, as "In 130 feet, left to stay on the service road beside Mount Vernon Memorial Highway."
+   15 s     54 m  #0 left Svc Rd now (urgent): "Left now." -> said
+   16 s     57 m  #1 onto Path advance: "In 200 feet, continue onto the path beside Mount Vernon Memorial Highway." -> said
+  787 s   2815 m  #2 left Southwood Dr advance: "In 500 feet, left onto Southwood Drive." -> said
+  816 s   2918 m  #2 left Southwood Dr prepare: "In 150 feet, left onto Southwood Drive." -> said
+  825 s   2950 m  #2 left Southwood Dr now (urgent): "Left now onto Southwood Drive." -> said
+  877 s   3136 m  #3 right Adrienne Dr advance: "In 500 feet, right onto Adrienne Drive." -> said
+  906 s   3240 m  #3 right Adrienne Dr prepare: "In 150 feet, right onto Adrienne Drive." -> said
+  915 s   3272 m  #3 right Adrienne Dr now (urgent): "Right now onto Adrienne Drive." -> said
+  998 s   3569 m  #4 left Old Mill Rd advance: "In 500 feet, left onto Old Mill Road. Busy junction." -> said
+ 1027 s   3673 m  #4 left Old Mill Rd prepare: "In 140 feet, left onto Old Mill Road." -> said
+ 1036 s   3705 m  #4 left Old Mill Rd now (urgent): "Left now onto Old Mill Road." -> said
+ 1064 s   3805 m  #5 right Gateshead Rd advance: "In 500 feet, right onto Gateshead Road." -> said
+ 1093 s   3909 m  #5 right Gateshead Rd prepare: "In 150 feet, right onto Gateshead Road." -> said
+ 1102 s   3941 m  #5 right Gateshead Rd now (urgent): "Right now onto Gateshead Road." -> said
+ 1559 s   5575 m  #6 onto Sky View Dr advance: "In 500 feet, continue onto Sky View Drive." -> said
+ 1695 s   6062 m  #7 bear_right Path advance: "In 500 feet, bear right onto the path, then immediately bear right to stay on the path, then immediately bear right to stay on the path." -> said
+ 1725 s   6169 m  #7 bear_right Path prepare: "In 140 feet, bear right, then immediately bear right, then immediately bear right." -> said
+ 1733 s   6198 m  #7 bear_right Path now (urgent): "Bear right now onto the path." -> said
+ 1737 s   6212 m  #8 bear_right Path now (urgent): "Keep right now." -> said
+ 1747 s   6248 m  #9 bear_right Path now (urgent): "Keep right now." -> said
+ 1748 s   6251 m  #10 right Pole Rd advance: "In 450 feet, right onto Pole Road, then immediately left onto Keeler Street." -> held 0.4 s
+ 1775 s   6348 m  #10 right Pole Rd prepare: "In 140 feet, right, then immediately left." -> said
+ 1783 s   6377 m  #10 right Pole Rd now (urgent): "Right now onto Pole Road." -> said
+ 1787 s   6391 m  #11 left Keeler St now (urgent): "Left now onto Keeler Street." -> said
+ 1864 s   6666 m  #12 left Sprayer St advance: "In 500 feet, left onto Sprayer Street." -> said
+ 1893 s   6770 m  #12 left Sprayer St prepare: "In 140 feet, left onto Sprayer Street." -> said
+ 1902 s   6802 m  #12 left Sprayer St now (urgent): "Left now onto Sprayer Street." -> said
+ 1903 s   6806 m  #13 left Ackley St advance: "In 350 feet, left onto Ackley Street." -> held 1.4 s
+ 1921 s   6870 m  #13 left Ackley St prepare: "In 150 feet, left onto Ackley Street." -> said
+ 1930 s   6902 m  #13 left Ackley St now (urgent): "Left now onto Ackley Street." -> said
+ 1948 s   6967 m  #14 right Shirley St advance: "In 500 feet, right onto Shirley Street." -> said
+ 1977 s   7070 m  #14 right Shirley St prepare: "In 140 feet, right onto Shirley Street." -> said
+ 1986 s   7103 m  #14 right Shirley St now (urgent): "Right now onto Shirley Street." -> said
+ 2068 s   7396 m  #15 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! bend at 6159 m: the line bends left 70 degrees with no cue within 40 m
+
+## mount-vernon-paths at 12 mph, steady
+    0 s      0 m  #0 left Svc Rd advance: "In 200 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> said
+    4 s     21 m  #0 left Svc Rd prepare: "In 150 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> held 4.0 s, cut 1.7 s in, as "In 90 feet, left to stay on the service road beside Mount Vernon Memorial Highway."
+   10 s     54 m  #0 left Svc Rd now (urgent): "Left now." -> said
+   11 s     59 m  #1 onto Path advance: "In 200 feet, continue onto the path beside Mount Vernon Memorial Highway." -> held 5.0 s, as "In 140 feet, continue onto the path beside Mount Vernon Memorial Highway."
+  525 s   2816 m  #2 left Southwood Dr advance: "In 500 feet, left onto Southwood Drive." -> said
+  543 s   2913 m  #2 left Southwood Dr prepare: "In 160 feet, left onto Southwood Drive." -> said
+  550 s   2950 m  #2 left Southwood Dr now (urgent): "Left now onto Southwood Drive." -> said
+  585 s   3138 m  #3 right Adrienne Dr advance: "In 500 feet, right onto Adrienne Drive." -> said
+  603 s   3235 m  #3 right Adrienne Dr prepare: "In 160 feet, right onto Adrienne Drive." -> said
+  610 s   3272 m  #3 right Adrienne Dr now (urgent): "Right now onto Adrienne Drive." -> said
+  665 s   3567 m  #4 left Old Mill Rd advance: "In 500 feet, left onto Old Mill Road. Busy junction." -> said
+  683 s   3664 m  #4 left Old Mill Rd prepare: "In 170 feet, left onto Old Mill Road." -> said
+  691 s   3707 m  #4 left Old Mill Rd now (urgent): "Left now onto Old Mill Road." -> said
+  710 s   3809 m  #5 right Gateshead Rd advance: "In 450 feet, right onto Gateshead Road." -> said
+  727 s   3900 m  #5 right Gateshead Rd prepare: "In 180 feet, right onto Gateshead Road." -> said
+  735 s   3943 m  #5 right Gateshead Rd now (urgent): "Right now onto Gateshead Road." -> said
+ 1040 s   5579 m  #6 onto Sky View Dr advance: "In 500 feet, continue onto Sky View Drive." -> said
+ 1130 s   6062 m  #7 bear_right Path advance: "In 500 feet, bear right onto the path, then immediately bear right to stay on the path, then immediately bear right to stay on the path." -> said
+ 1148 s   6158 m  #7 bear_right Path prepare: "In 170 feet, bear right, then immediately bear right, then immediately bear right." -> said
+ 1156 s   6201 m  #7 bear_right Path now (urgent): "Bear right now onto the path." -> said
+ 1158 s   6212 m  #8 bear_right Path now (urgent): "Keep right now." -> held 0.4 s
+ 1165 s   6250 m  #9 bear_right Path now (urgent): "Keep right now." -> said
+ 1166 s   6255 m  #10 right Pole Rd advance: "In 450 feet, right onto Pole Road, then immediately left onto Keeler Street." -> held 0.4 s
+ 1182 s   6341 m  #10 right Pole Rd prepare: "In 160 feet, right, then immediately left." -> said
+ 1189 s   6378 m  #10 right Pole Rd now (urgent): "Right now onto Pole Road." -> said
+ 1192 s   6394 m  #11 left Keeler St now (urgent): "Left now onto Keeler Street." -> said
+ 1243 s   6668 m  #12 left Sprayer St advance: "In 500 feet, left onto Sprayer Street." -> said
+ 1261 s   6765 m  #12 left Sprayer St prepare: "In 160 feet, left onto Sprayer Street." -> said
+ 1268 s   6802 m  #12 left Sprayer St now (urgent): "Left now onto Sprayer Street." -> said
+ 1269 s   6808 m  #13 left Ackley St advance: "In 350 feet, left onto Ackley Street." -> held 1.4 s
+ 1279 s   6861 m  #13 left Ackley St prepare: "In 180 feet, left onto Ackley Street." -> said
+ 1287 s   6904 m  #13 left Ackley St now (urgent): "Left now onto Ackley Street." -> said
+ 1299 s   6968 m  #14 right Shirley St advance: "In 500 feet, right onto Shirley Street." -> said
+ 1317 s   7065 m  #14 right Shirley St prepare: "In 160 feet, right onto Shirley Street." -> said
+ 1324 s   7103 m  #14 right Shirley St now (urgent): "Right now onto Shirley Street." -> said
+ 1379 s   7398 m  #15 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! bend at 6159 m: the line bends left 70 degrees with no cue within 40 m
+
+## mount-vernon-paths at 18 mph, steady
+    0 s      0 m  #0 left Svc Rd advance: "In 200 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> said
+    2 s     16 m  #0 left Svc Rd prepare: "In 160 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> dropped
+    7 s     56 m  #0 left Svc Rd now (urgent): "Left now." -> said
+    8 s     64 m  #1 onto Path advance: "In 190 feet, continue onto the path beside Mount Vernon Memorial Highway." -> said
+  342 s   2752 m  #2 left Southwood Dr advance: "In 700 feet, left onto Southwood Drive." -> said
+  359 s   2889 m  #2 left Southwood Dr prepare: "In 250 feet, left onto Southwood Drive." -> said
+  367 s   2953 m  #2 left Southwood Dr now (urgent): "Left now onto Southwood Drive." -> said
+  382 s   3074 m  #3 right Adrienne Dr advance: "In 700 feet, right onto Adrienne Drive." -> said
+  399 s   3211 m  #3 right Adrienne Dr prepare: "In 250 feet, right onto Adrienne Drive." -> said
+  407 s   3275 m  #3 right Adrienne Dr now (urgent): "Right now onto Adrienne Drive." -> said
+  435 s   3500 m  #4 left Old Mill Rd advance: "In 700 feet, left onto Old Mill Road. Busy junction." -> said
+  452 s   3637 m  #4 left Old Mill Rd prepare: "In 250 feet, left onto Old Mill Road." -> said
+  460 s   3701 m  #4 left Old Mill Rd now (urgent): "Left now onto Old Mill Road." -> said
+  465 s   3742 m  #5 right Gateshead Rd advance: "In 700 feet, right onto Gateshead Road." -> said
+  482 s   3879 m  #5 right Gateshead Rd prepare: "In 250 feet, right onto Gateshead Road." -> said
+  490 s   3943 m  #5 right Gateshead Rd now (urgent): "Right now onto Gateshead Road." -> said
+  685 s   5512 m  #6 onto Sky View Dr advance: "In 700 feet, continue onto Sky View Drive." -> said
+  745 s   5995 m  #7 bear_right Path advance: "In 700 feet, bear right onto the path, then immediately bear right to stay on the path, then immediately bear right to stay on the path." -> said
+  762 s   6132 m  #7 bear_right Path prepare: "In 250 feet, bear right, then immediately bear right, then immediately bear right." -> said
+  770 s   6196 m  #7 bear_right Path now (urgent): "Bear right now onto the path." -> said
+  772 s   6212 m  #8 bear_right Path now (urgent): "Keep right now." -> held 0.4 s
+  777 s   6252 m  #9 bear_right Path now (urgent): "Keep right now." -> said
+  778 s   6260 m  #10 right Pole Rd advance: "In 450 feet, right onto Pole Road, then immediately left onto Keeler Street." -> held 0.4 s
+  785 s   6317 m  #10 right Pole Rd prepare: "In 250 feet, right, then immediately left." -> held 1.0 s
+  793 s   6381 m  #10 right Pole Rd now (urgent): "Right now onto Pole Road." -> said
+  795 s   6397 m  #11 left Keeler St now (urgent): "Left now onto Keeler Street." -> held 0.1 s
+  820 s   6598 m  #12 left Sprayer St advance: "In 700 feet, left onto Sprayer Street." -> said
+  837 s   6735 m  #12 left Sprayer St prepare: "In 250 feet, left onto Sprayer Street." -> said
+  845 s   6799 m  #12 left Sprayer St now (urgent): "Left now onto Sprayer Street." -> said
+  846 s   6808 m  #13 left Ackley St advance: "In 350 feet, left onto Ackley Street." -> held 1.4 s
+  850 s   6840 m  #13 left Ackley St prepare: "In 250 feet, left onto Ackley Street." -> held 4.0 s, as "In 170 feet, left onto Ackley Street."
+  858 s   6904 m  #13 left Ackley St now (urgent): "Left now onto Ackley Street." -> said
+  859 s   6912 m  #14 right Shirley St advance: "In 700 feet, right onto Shirley Street." -> held 3.0 s, as "In 600 feet, right onto Shirley Street."
+  875 s   7041 m  #14 right Shirley St prepare: "In 250 feet, right onto Shirley Street." -> said
+  883 s   7105 m  #14 right Shirley St now (urgent): "Right now onto Shirley Street." -> said
+  919 s   7395 m  #15 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! bend at 6159 m: the line bends left 70 degrees with no cue within 40 m
+
+## mount-vernon-paths at 12 mph, missed-turn
+    0 s      0 m  #0 left Svc Rd advance: "In 200 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> said
+    4 s     21 m  #0 left Svc Rd prepare: "In 150 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> held 4.0 s, cut 1.7 s in, as "In 90 feet, left to stay on the service road beside Mount Vernon Memorial Highway."
+   10 s     54 m  #0 left Svc Rd now (urgent): "Left now." -> said
+   11 s     59 m  #1 onto Path advance: "In 200 feet, continue onto the path beside Mount Vernon Memorial Highway." -> held 5.0 s, as "In 140 feet, continue onto the path beside Mount Vernon Memorial Highway."
+  525 s   2816 m  #2 left Southwood Dr advance: "In 500 feet, left onto Southwood Drive." -> said
+  543 s   2913 m  #2 left Southwood Dr prepare: "In 160 feet, left onto Southwood Drive." -> said
+  550 s   2950 m  #2 left Southwood Dr now (urgent): "Left now onto Southwood Drive." -> said
+  567 s   2963 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 79 m past the missed turn
+
+## mount-vernon-paths at 12 mph, weak-gps
+    0 s      0 m  #0 left Svc Rd advance: "In 200 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> said
+    4 s     21 m  #0 left Svc Rd prepare: "In 150 feet, left to stay on the service road beside Mount Vernon Memorial Highway." -> held 4.0 s, cut 1.7 s in, as "In 90 feet, left to stay on the service road beside Mount Vernon Memorial Highway."
+   10 s     54 m  #0 left Svc Rd now (urgent): "Left now." -> said
+   11 s     59 m  #1 onto Path advance: "In 200 feet, continue onto the path beside Mount Vernon Memorial Highway." -> held 5.0 s, as "In 140 feet, continue onto the path beside Mount Vernon Memorial Highway."
+  525 s   2816 m  #2 left Southwood Dr advance: "In 500 feet, left onto Southwood Drive." -> said
+  543 s   2913 m  #2 left Southwood Dr prepare: "In 160 feet, left onto Southwood Drive." -> said
+  550 s   2950 m  #2 left Southwood Dr now (urgent): "Left now onto Southwood Drive." -> said
+  585 s   3138 m  #3 right Adrienne Dr advance: "In 500 feet, right onto Adrienne Drive." -> said
+  603 s   3235 m  #3 right Adrienne Dr prepare: "In 160 feet, right onto Adrienne Drive." -> said
+  610 s   3272 m  #3 right Adrienne Dr now (urgent): "Right now onto Adrienne Drive." -> said
+  665 s   3567 m  #4 left Old Mill Rd advance: "In 500 feet, left onto Old Mill Road. Busy junction." -> said
+  683 s   3664 m  #4 left Old Mill Rd prepare: "In 170 feet, left onto Old Mill Road." -> said
+  702 s           note: "GPS is weak: turn cues paused."
+  721 s   3868 m  #5 right Gateshead Rd advance: "In 300 feet, right onto Gateshead Road." -> said
+  727 s   3900 m  #5 right Gateshead Rd prepare: "In 180 feet, right onto Gateshead Road." -> held 2.0 s, as "In 160 feet, right onto Gateshead Road."
+  735 s   3943 m  #5 right Gateshead Rd now (urgent): "Right now onto Gateshead Road." -> said
+ 1040 s   5579 m  #6 onto Sky View Dr advance: "In 500 feet, continue onto Sky View Drive." -> said
+ 1130 s   6062 m  #7 bear_right Path advance: "In 500 feet, bear right onto the path, then immediately bear right to stay on the path, then immediately bear right to stay on the path." -> said
+ 1148 s   6158 m  #7 bear_right Path prepare: "In 170 feet, bear right, then immediately bear right, then immediately bear right." -> said
+ 1156 s   6201 m  #7 bear_right Path now (urgent): "Bear right now onto the path." -> said
+ 1158 s   6212 m  #8 bear_right Path now (urgent): "Keep right now." -> held 0.4 s
+ 1165 s   6250 m  #9 bear_right Path now (urgent): "Keep right now." -> said
+ 1166 s   6255 m  #10 right Pole Rd advance: "In 450 feet, right onto Pole Road, then immediately left onto Keeler Street." -> held 0.4 s
+ 1182 s   6341 m  #10 right Pole Rd prepare: "In 160 feet, right, then immediately left." -> said
+ 1189 s   6378 m  #10 right Pole Rd now (urgent): "Right now onto Pole Road." -> said
+ 1192 s   6394 m  #11 left Keeler St now (urgent): "Left now onto Keeler Street." -> said
+ 1243 s   6668 m  #12 left Sprayer St advance: "In 500 feet, left onto Sprayer Street." -> said
+ 1261 s   6765 m  #12 left Sprayer St prepare: "In 160 feet, left onto Sprayer Street." -> said
+ 1268 s   6802 m  #12 left Sprayer St now (urgent): "Left now onto Sprayer Street." -> said
+ 1269 s   6808 m  #13 left Ackley St advance: "In 350 feet, left onto Ackley Street." -> held 1.4 s
+ 1279 s   6861 m  #13 left Ackley St prepare: "In 180 feet, left onto Ackley Street." -> said
+ 1287 s   6904 m  #13 left Ackley St now (urgent): "Left now onto Ackley Street." -> said
+ 1299 s   6968 m  #14 right Shirley St advance: "In 500 feet, right onto Shirley Street." -> said
+ 1317 s   7065 m  #14 right Shirley St prepare: "In 160 feet, right onto Shirley Street." -> said
+ 1324 s   7103 m  #14 right Shirley St now (urgent): "Right now onto Shirley Street." -> said
+ 1379 s   7398 m  #15 end arrive (urgent): "You have arrived at the end of the route." -> said

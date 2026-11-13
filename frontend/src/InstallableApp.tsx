@@ -26,16 +26,17 @@ import {
   IOS_INSTALL,
   installOffer,
   installState,
-  isStandalone,
   promptInstall,
   subscribeInstall,
 } from "./lib/installOffer.ts";
 import { removeKept } from "./lib/offlineKeep.ts";
+import { installedApp } from "./lib/installedApp.ts";
 import { matchSaid, matching } from "./lib/routeSearch.ts";
 import { KEPT_HEADING, KEPT_HOW, KEPT_NONE, KEPT_NONE_SHORT, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
 import { InfoButton } from "./SettingRow.tsx";
 import { t } from "./lib/i18n.ts";
+import { RECHECK_MS, fetchServerStatus, serverStatusLine, type ServerStatus } from "./lib/serverStatus.ts";
 
 // ---- The new version and the network --------------------------------------------------------------
 
@@ -138,15 +139,70 @@ export function useAppStatus(riding: boolean, onSay: (text: string) => void, off
 }
 
 /**
- * At the top of the panel: offline, and the new version with its Reload. Empty, it is not drawn. `offline`: the
- * offline line as the page has it (lib/appWorker.ts offlineLine), null where something else says it.
+ * The riders' status line from the server (lib/serverStatus.ts): read at open, when the page comes back to the front,
+ * when `failed` turns true (a plan that failed), and every minute while a line is shown. Null when all is well.
  */
-export function AppStatusBar({ status, offline = status.offline ? OFFLINE_SAID : null }: { status: AppStatus; offline?: string | null }) {
+export function useServerStatusLine(failed: boolean, onSay?: (text: string) => void, offline = false): string | null {
+  const [status, setStatus] = useState<ServerStatus | null>(null);
+  const asking = useRef(false);
+  const ask = useCallback(() => {
+    if (asking.current) return;
+    asking.current = true;
+    void fetchServerStatus(window.location.origin)
+      .then(setStatus)
+      .finally(() => (asking.current = false));
+  }, []);
+  useEffect(() => {
+    ask();
+    const back = () => document.visibilityState === "visible" && ask();
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, [ask]);
+  useEffect(() => {
+    if (failed) ask();
+  }, [failed, ask]);
+  useEffect(() => {
+    if (!status) return;
+    const timer = window.setInterval(ask, RECHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [status, ask]);
+  // Offline, the bar hides the line (it cannot be current), so it is not said either; back online, it is said again.
+  const line = offline ? null : serverStatusLine(status);
+  // Said once each time it appears or changes, through the page's own live region (as the offline and update lines
+  // are): a role="status" drawn already holding its text is often not spoken.
+  const said = useRef<string | null>(null);
+  useEffect(() => {
+    if (line && line !== said.current) onSay?.(line);
+    said.current = line;
+  }, [line, onSay]);
+  return line;
+}
+
+/**
+ * At the top of the panel: offline, the server's own line while something is down (useServerStatusLine), and the new
+ * version with its Reload. Empty, it is not drawn. `offline`: the offline line as the page has it (lib/appWorker.ts
+ * offlineLine), null where something else says it. Offline, the server's line is not shown: it cannot be current.
+ */
+export function AppStatusBar({
+  status,
+  offline = status.offline ? OFFLINE_SAID : null,
+  server = null,
+}: {
+  status: AppStatus;
+  offline?: string | null;
+  server?: string | null;
+}) {
   const offlineShown = status.offline ? offline : null;
-  if (!status.updateShown && !offlineShown) return null;
+  const serverShown = status.offline ? null : server;
+  if (!status.updateShown && !offlineShown && !serverShown) return null;
   return (
     <div className="app-status">
       {offlineShown && <p className="app-offline">{offlineShown}</p>}
+      {serverShown && (
+        <p className="app-offline app-server">
+          {serverShown}
+        </p>
+      )}
       {status.updateShown && (
         <div className="app-update">
           <p id="app-update-text">{UPDATE_READY}</p>
@@ -297,7 +353,7 @@ export function KeptRoutes({
       </div>
       {compact && (
         <p className="hint setting-info" id={`${id}-info`} hidden={!infoOpen}>
-          {KEPT_HOW} {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
+          {KEPT_HOW} {KEPT_PRIVATE} {storageNote(kept, installedApp())}
         </p>
       )}
       {routes !== null && routes.length > 0 && (
@@ -342,7 +398,7 @@ export function KeptRoutes({
       )}
       {!compact && (
         <p className="hint">
-          {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
+          {KEPT_PRIVATE} {storageNote(kept, installedApp())}
         </p>
       )}
     </section>

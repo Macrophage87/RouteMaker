@@ -55,6 +55,8 @@ STALE_AFTER = {
     # DC's closures (v0.7.0), every fifteen minutes: past an hour the worker is not
     # refreshing them.
     "refresh_dc_closures": 60 * 60,
+    # AlertDC (2026-11-12), every minute: past ten minutes sudden closures are going unseen.
+    "refresh_alertdc": 10 * 60,
     # The closures on saved routes (v0.7.0), every fifteen minutes: past an hour riders'
     # My routes are not being told of new closures.
     "check_saved_route_closures": 60 * 60,

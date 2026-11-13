@@ -8,7 +8,7 @@
  * All of it comes from fields the planner already returns (`stress_m`,
  * `facility_m`, `intersections`); nothing here asks for more.
  */
-import { formatDistance } from "./format.ts";
+import { formatDistance, formatDuration } from "./format.ts";
 import { t } from "./i18n.ts";
 import { junctionCounts } from "./intersectionMarkers.ts";
 import { wholePercents } from "./stressBar.ts";
@@ -34,7 +34,7 @@ export function groupRideLine(route: Pick<RouteResponse, "description" | "stress
 }
 
 export interface QuickFigure {
-  key: "calm" | "heavy" | "junctions" | "path";
+  key: "calm" | "heavy" | "junctions" | "path" | "turns" | "waits" | "unpaved";
   label: string;
   value: string;
 }
@@ -76,10 +76,38 @@ export function junctionFigure(intersections: RouteResponse["intersections"] | u
   return parts.join(", ");
 }
 
-export function quickFigures(route: Pick<RouteResponse, "stress_m" | "facility_m" | "intersections">): QuickFigure[] {
+/**
+ * The metres on unpaved sections (`stress_spans`' `unpaved`, OWNER-DECISIONS 302), gravel and rough alike; null where
+ * the planner sent no sections (an older API), so "none" is never guessed.
+ */
+export function unpavedMetres(spans: RouteResponse["stress_spans"] | undefined): number | null {
+  if (!spans) return null;
+  return spans.reduce((sum, span) => sum + (span.unpaved === true ? Math.max(0, span.to_m - span.from_m) : 0), 0);
+}
+
+/** Under this (metres, 0.05 mi) unpaved is not said: a few metres where a route crosses a gravel lot. */
+export const UNPAVED_SAID_M = 80;
+
+/** "4 min", "Under 1 min" or "None": the time the route waits at signals and stop signs (`junction_delay_s`, inside the moving time). */
+export function waitFigure(seconds: number | null | undefined): string {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) return NOT_AVAILABLE;
+  if (seconds <= 0) return "None";
+  return seconds < 30 ? "Under 1 min" : formatDuration(seconds);
+}
+
+/**
+ * The quick figures (OWNER-DECISIONS 312's four), then the route's turn burden (owner decision 254, the backlog's
+ * "fewer turns" item, 2026-11-12): its turns, the time it waits at lights and stops, and its unpaved distance where it
+ * has any, so two routes that differ mainly in fiddliness no longer read the same.
+ */
+export function quickFigures(
+  route: Pick<RouteResponse, "stress_m" | "facility_m" | "intersections"> &
+    Partial<Pick<RouteResponse, "description" | "junction_delay_s" | "stress_spans">>,
+): QuickFigure[] {
   const calm = calmPercent(route.stress_m);
   const heavy = heavyMetres(route.stress_m);
   const path = metres(route.facility_m, "path");
+  const unpaved = unpavedMetres(route.stress_spans);
   return [
     { key: "calm", label: "Paths and quiet streets", value: calm === null ? NOT_AVAILABLE : `${calm}%` },
     {
@@ -93,6 +121,10 @@ export function quickFigures(route: Pick<RouteResponse, "stress_m" | "facility_m
       label: "Off-road path",
       value: route.facility_m === undefined ? NOT_AVAILABLE : path > 0 ? formatDistance(path) : "None",
     },
+    { key: "turns", label: "Turns", value: route.description == null ? NOT_AVAILABLE : turnTotal(route) > 0 ? String(turnTotal(route)) : "None" },
+    { key: "waits", label: "Waiting at lights and stops", value: waitFigure(route.junction_delay_s) },
+    // Said only where there is some: most routes have none, and "Unpaved: None" on each would be one more line to read.
+    ...(unpaved !== null && unpaved >= UNPAVED_SAID_M ? [{ key: "unpaved" as const, label: "Unpaved", value: formatDistance(unpaved) }] : []),
   ];
 }
 

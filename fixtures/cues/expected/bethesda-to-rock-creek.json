@@ -1,0 +1,122 @@
+[
+ {
+  "turn": "Start",
+  "road": "Path",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Right",
+  "road": "Waverly St",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Montgomery Ave Cycletrack",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Left",
+  "road": "Woodmont Ave Cycletrack",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Bear left",
+  "road": "Georgetown Branch Trl",
+  "then": "",
+  "arrow": "turn bear_left"
+ },
+ {
+  "turn": "Right",
+  "road": "Oakridge Ave",
+  "then": "then left onto Leland St",
+  "arrow": "turn right,left"
+ },
+ {
+  "turn": "Bear right",
+  "road": "Leland St",
+  "then": "",
+  "arrow": "turn bear_right"
+ },
+ {
+  "turn": "Caution",
+  "road": "Connecticut Ave",
+  "then": "",
+  "arrow": "caution"
+ },
+ {
+  "turn": "Bear left",
+  "road": "Leland St",
+  "then": "",
+  "arrow": "turn bear_left"
+ },
+ {
+  "turn": "Cross",
+  "road": "Beach Dr",
+  "then": "then right onto Rock Creek Trl",
+  "arrow": "turn across right"
+ },
+ {
+  "turn": "Bear right",
+  "road": "Rock Creek Trl",
+  "then": "then left onto Rock Creek Trl",
+  "arrow": "turn bear_right,left"
+ },
+ {
+  "turn": "Bear left",
+  "road": "Beach Dr",
+  "then": "",
+  "arrow": "turn bear_left"
+ },
+ {
+  "turn": "Bear left",
+  "road": "West Beach Dr NW",
+  "then": "",
+  "arrow": "turn bear_left"
+ },
+ {
+  "turn": "Right",
+  "road": "Kalmia Rd NW",
+  "then": "then left onto East Beach Dr NW, then bear right onto Portal Dr NW",
+  "arrow": "turn right,left,bear_right"
+ },
+ {
+  "turn": "Right",
+  "road": "High Park Ln",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Bear right",
+  "road": "High Park Ln",
+  "then": "then left onto Blair Mill Rd",
+  "arrow": "turn bear_right,left"
+ },
+ {
+  "turn": "Left",
+  "road": "Svc Rd",
+  "then": "then bear left onto Svc Rd",
+  "arrow": "turn left,bear_left"
+ },
+ {
+  "turn": "Left",
+  "road": "Svc Rd",
+  "then": "then bear left onto Svc Rd",
+  "arrow": "turn left,bear_left"
+ },
+ {
+  "turn": "Right",
+  "road": "Svc Rd",
+  "then": "then right onto parking aisle",
+  "arrow": "turn right,right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

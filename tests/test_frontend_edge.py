@@ -49,6 +49,7 @@ DOC_PAGES = (
     "trails",
     "architecture",
     "android-beta",
+    "welcome",
     "assistants",
     "acknowledgements",
 )

@@ -24,6 +24,7 @@ Contents:
 - [The 311 log's days (migration 0052, v0.15.0)](#the-311-logs-days-migration-0052-v0150)
 - [Transit schedule (TRANSIT-ASSIST, v0.6.0)](#transit-schedule-transit-assist-v060)
 - [Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)](#avoid-rated-junctions-adding-one-followup-isect-avoid-owner-decisions-307-310-335)
+- [A dozen riders at once: the load test](#a-dozen-riders-at-once-the-load-test)
 - [Backups](#backups)
 - [Restoring one](#restoring-one)
 - [Off-box copies of beta backups](#off-box-copies-of-beta-backups)
@@ -58,6 +59,7 @@ Contents:
 - [DDOT project advisories (v0.12.4)](#ddot-project-advisories-v0124)
 - [Purple Line construction closures (v0.13.0)](#purple-line-construction-closures-v0130)
 - [Fairfax park trail closures (v0.22.0)](#fairfax-park-trail-closures-v0220)
+- [Park agency trail closures (v0.26.0)](#park-agency-trail-closures-v0260)
 - [Deer-management closures (v0.12.3)](#deer-management-closures-v0123)
 - [DC pavement condition (DC-PCI)](#dc-pavement-condition-dc-pci)
 - [Agency traffic signals (signals.json)](#agency-traffic-signals-signalsjson)
@@ -90,6 +92,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.26.0](#deploying-v0260)
 - [Deploying v0.25.1](#deploying-v0251)
 - [Deploying v0.25.0](#deploying-v0250)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
@@ -102,6 +105,7 @@ Contents:
 - [Rebuilding on the cloud box](#rebuilding-on-the-cloud-box)
 - [Phone app (v0.8.0)](#phone-app-v080)
 - [Fixing OSM from a ride (scripts/osm_edit.py)](#fixing-osm-from-a-ride-scriptsosm_editpy)
+- [Off-grid way back: the offline road network](#off-grid-way-back-the-offline-road-network)
 
 <!-- /CONTENTS -->
 
@@ -175,8 +179,9 @@ for the rebuild, the task's own figure otherwise — one table, in
 `core.runs.job_budgets`) is reported as wedged, on both surfaces, and
 `check_operations` exits non-zero on it.
 
-There is no paging integration and no scraper yet; the plan records both as
-follow-ups. What exists is the thing that has to exist first — the state is
+Paging now exists on the beta: `scripts/beta/alert.sh` posts to a Discord channel and pings
+an off-host uptime check (Healthchecks.io) (docs/BETA-RUNBOOK.md, "Alerts"). There is still
+no metrics scraper; the plan records it as a follow-up. What exists is the thing that has to exist first — the state is
 computed, and it is visible.
 
 ## What is watched, and for how long
@@ -1363,8 +1368,10 @@ no named candidate may be left at 0 (the derive ran to the end); the path
 sentinels, the W&OD (OSM way 8810729) and the C&O towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
 (12.9 km) or more; the road sentinel, Wildlife Loop in the Patuxent Research Refuge
-(OSM way 86073896, LTS 2 in our own picks, in an 8.6 mi calm run; it was Gambrill Park
-Road until our own picks rated that piece 2.5, 2026-11-10, and Elmer School Road
+(OSM way 11507801, the loop's southern stretch, LTS 2 in our own picks, in a calm run of
+about 6 mi over Bailey Bridge, estimated; it was way 86073896 on the same loop until the refuge's
+2026-06-07 closed area took that stretch, 2026-11-12, Gambrill Park Road until our own
+picks rated that piece 2.5, 2026-11-10, and Elmer School Road
 before that, until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
 `settings.REBUILD_SENTINEL_CALM_STREET_WAYS` (the setting keeps its first name), must
 be in a calm run of 2 mi or more; and at least `settings.REBUILD_CALM_RUN_FLOORS`
@@ -2624,6 +2631,29 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 
 **Migration.** The table is `avoid_junction`, created by `core/migrations/0015_avoid_junction.py`.
 
+## A dozen riders at once: the load test
+
+`scripts/load_test.py` (backlog 2026-11-12, "Ready for a dozen testers") replays simulated riders
+against a stack and writes a short report: each kind of request's count, refusals (429/503), p50,
+p95 and slowest time, and with `--docker-stats` each container's memory peak against its cap, and
+any restart or out-of-memory kill during the run. Each rider opens the app, searches, plans a ride,
+pans the map, rides with Ride's 2-minute checks and re-routes once half way. Riders start within
+60 s, ride 10 minutes and pan 12 tiles: all our defaults, chosen to look like a group's Saturday
+start, not measured.
+
+It never runs on beta: it refuses a public address (unless `--allow-host` names your own test box), refuses to run on the beta host (its `vars.sh` there), and cannot tell beta apart when aimed at it from elsewhere, so never point it there. Run it on the PC stack, or better on a cloud box given
+beta's `compose.beta.yaml` caps, since those caps are what it is meant to test. Point it at the api
+itself (beta's overlay publishes it on `127.0.0.1:$BETA_API_PORT`), not through Caddy or nginx:
+only then does each rider count as its own client, as on beta.
+
+```sh
+python3 scripts/load_test.py --base http://127.0.0.1:8087 --host-header localhost \
+    --riders 12 --docker-stats --out load-12.md
+```
+
+`--time-scale 0.1` runs the ride's clock ten times faster for a quick pass. Read the plan and
+re-route rows first: their p95 is how long a rider waits for one of the two routing slots.
+
 ## Backups
 
 `pg_dump -Fc`, piped straight through `age` to
@@ -3830,6 +3860,19 @@ federal-land file and fetched when the layer is on, which it is by default; no
 edge, compose or deploy change. A release that first carries it adds to its
 checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
 compressed, and is named by the published front end's script.
+
+The barrier list Cargo and Tandem plan round (`src/core/geodata/barriers.json`,
+`core.barriers`; docs/DEVELOPMENT.md, "Barriers on Cargo and Tandem routes") is OpenStreetMap
+data too, a committed snapshot the weekly rebuild does not refresh (the first, #1210, from the
+2026-11-02 extract: 11,734 barriers). A refresh, read only, after a map rebuild,
+on the build host with pyosmium:
+
+    python scripts/barrier_census.py --pbf <DATA_ROOT>/extracts/source.osm.pbf \
+        --json src/core/geodata/barriers.json --built <extract date> --out barrier-census.md
+
+then commit the file. It ships with the api (a hand ship). The printed report is the coverage
+count (how many barriers carry a width the remap reads, and the rest); keep it with the
+release's notes, not in the repository's data.
 
 The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
 v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
@@ -5423,10 +5466,15 @@ A row the owner leaves is open again next week.
 
 ### AADT smoothing, named corridors and the override re-match
 
-Three more reports land beside the discrepancy report, in
+Four more reports land beside the discrepancy report, in
 `${DATA_ROOT}/rebuild/reports/`, each replaced by every rebuild. Like it, a
 failure to write one is a warning in the log and never fails the rebuild.
 
+- `rated-facts-changed.md` and `.csv` (the owner, 2026-11-12): every pinned road whose
+  facts (class, speed, lanes, count, bike facility) moved since its row was rated
+  (`pipeline.rated_facts`; docs/stress/overrides.md). The road keeps our level; Review's
+  "Facts changed since rated" queue lists them for a ruling. The log line is "pinned
+  roads whose facts changed since rated: N of M checked".
 - `override-rematch.md` and `.csv` (OWNER-DECISIONS 282): every approved override
   row whose OSM way is missing from the extract, and what became of it:
   `rematched` (re-pointed at the ways that now stand for it, by stored geometry
@@ -5680,17 +5728,31 @@ row keyed `closures` (`src/core/closure_sources.py`):
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
 | Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. One on an Interstate ("I 695", "WB I 695") or a road the map bars is not kept, as the WZDx feeds' are not. The reporting account (`Creator`) is never asked for |
+| Montgomery County DOT road closures (`moco`, v0.26.0) | `www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0/query` | 15 min | 45 min | 6 h | As `sha` (the same Reporter fields, `md_closures.parse_sha`): Montgomery County's own closures, which it does not post to the state's layers. Often legitimately empty |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
 without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
 `geo.dcwater.com` and `gisportal.wsscwater.com` for planned work and `mdgeodata.md.gov` for
-Maryland's Road Closure Reporter (PLAYBOOK §0).
+Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.26.0) `www7.montgomerycountymd.gov` for
+Montgomery County's road closures.
+
+**A source that reads as nothing** (v0.26.0). Each good read's count of closures and notices is
+kept (the last 8). A read of none from a source whose usual count (the median of those, once there
+are 3) is 5 or more is not taken: its last copy is kept, and the run fails at once with "read as
+nothing: <source>", so the operations page shows it the same day. It almost always means the page
+or layer changed shape (AlertDC's RSS turning into an HTML list in 2026): fetch it by hand and
+compare with its sample in `tests/data/closures`. A source that is often empty (Montgomery
+County's closures) never trips it, and MPD and AlertDC are left out (their closures end in the
+reading, so none left is real news). Once the kept copy is past its "Dropped after" age the empty
+read is taken, and further empty reads are quiet. Counts are zones and notices, so a closure along
+several stretches counts each. 8, 3 and 5 are our default, unmeasured
+(`COUNTS_KEPT`, `ZERO_ALARM_READS`, `ZERO_ALARM_USUAL` in src/core/closure_sources.py).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5706,7 +5768,8 @@ Maryland's Road Closure Reporter (PLAYBOOK §0).
    Status values; a permit count of zero with a successful run means one of them differs.
 3. MPD: confirm the newsroom lists "TRAFFIC ADVISORY" releases as links on `mpdc.dc.gov`
    and that a release's body still reads "X from A to B" lines with dates and times.
-4. AlertDC: the list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
+4. AlertDC: `runs` shows `refresh_alertdc` succeeding each minute (its detail says
+   `alertdc unchanged` when the page was the same). The list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
    its local date and time, a title linking to `/NRss/RssFeed/AlertDetails/<id>`, then the text.
    A page with no table, or with alert links but no row that reads, fails with `not an
    AlertDC list`; compare it with `tests/data/closures/alertdc-list.html`. A "has reopened"
@@ -5853,6 +5916,63 @@ The first watch listed 12 trail items, among them the Lake Accotink marina bridg
 (closed for repairs, "reopen by Friday, Nov. 13"), the Cross County Trail under the Dulles Toll
 Road ("until Fall 2026"), the Pimmit Run sewer work and several bridges closed until further
 notice; none was entered before the owner's review.
+
+## Park agency trail closures (v0.26.0)
+
+Backlog 2026-11-12, item 8: the Fairfax watch above, extended to the agencies whose trails riders
+use most. Each posts trail closures only in words, so, as for Fairfax, a person reads each new
+item and a closure goes in `src/core/geodata/park-closures.json` (`routemaker.park_alerts`,
+source `park_alert`, "Park agency trail alert"; the DDOT advisories file's shape, `project` the
+agency's name as in `park_alerts.AGENCIES`): routed round, red on the map, whole days, gone after
+the last day. What is read:
+
+| Agency (`--agency`) | Page | What an item is |
+|---|---|---|
+| NOVA Parks (`nova`) | the alerts linked from `www.novaparks.com` | one alert page: its title (trail and days) and body |
+| NPS, C&O Canal (`choh`) | `nps.gov/choh/planyourvisit/conditions.htm` | one state that is not plain "Open" at one place, with its milepost, or the stretch its words name ("Miles 106 - 106.8") |
+| Anne Arundel County (`aacounty`) | `aacounty.org/recreation-parks/about-us/closings-cancellations` | one entry: badge, title, words |
+
+Not read yet (checked 2026-11-12): **Montgomery Parks** posts trail closures as news items and
+has no closures list page (its rainout-line status covers natural-surface trails only);
+**Arlington County**'s pages answer 403 to a script; **Prince George's** parks' alerts page is
+filled in the browser from Nixle. Each needs its own look before it can be watched.
+
+1. `python scripts/park_alerts.py watch` (or `--agency choh`, repeatable) prints, for each agency,
+   the items not yet in the file's `seen`, the ones naming a trail, towpath, bridge, path or detour
+   in full, then the rest one line each (read those too); `CHECK:` lines first for a guessed last
+   day within 30 days or the file not updated in 45 days (`scripts/ddot_advisories.py watch` prints
+   these as well). It exits 1 where a page could not be read or answered with no items at all
+   (its layout has likely changed: look at the page by hand).
+2. For each item that closes a way a bicycle uses, draft an entry as for Fairfax (`id`, `project`,
+   `page` the agency's page, `advisory` the alert's own page, `posted`, `road`, `on_foot`,
+   `reason`, `first_day`, `last_day`, `lines`). For the C&O, `python scripts/park_alerts.py
+   towpath FIRST [LAST]` prints the towpath's lines between the mileposts (one milepost: about 160 ft
+   either side, our default) and how much of the stretch the mile lines cover; where under 95% (the
+   mile lines have gaps, e.g. about mile 9 to 19.6), draw the rest from the OSM ways
+   (`python scripts/ddot_advisories.py lines WAY ...`). Join a closure's ways into one
+   continuous line where they run end to end: each line is its own zone, trimmed 20 m at both
+   ends (`workzones.TRIM_M`), so a crossing at the join of two short lines is left open. "Detour" in an NPS line usually means
+   the towpath itself is closed there; "High Water Detour" is only when the river is up: leave it
+   out (it has no dates). Work that leaves the trail open ("expect intermittent delays", "one
+   lane") stays out.
+3. Enter it by the owner's rule (2026-11-12, "Clearly dated ones go in"): a closure the agency
+   posts with its dates (a first and a last day) and a clear place (named cross streets, mileposts,
+   a named bridge) goes in without asking, and the owner is told after, with the alert's link. One
+   with no dates, an open end ("until further notice", "through spring") or a place that cannot be
+   pinned down waits for the owner's word. Evidence is the agency's words and what a rider saw,
+   never another map. A closure that starts before the next release reaches riders only through a
+   reviewer closure (the road panel's "Mark closed", an admin's), so for a short one that is the
+   way.
+4. `python scripts/park_alerts.py watch --mark` adds every item now on the pages read to `seen`
+   and sets `updated` to today. An item whose words change is listed again.
+5. Ship the file in the next release, as for the other hand-read files.
+
+The first watch (2026-11-12) listed 2 NOVA Parks trail items (Falls Church crosswalk detours,
+Nov 17-24; the Sterling Blvd overpass, delays only), 6 C&O trail items (among them the Dam No. 5
+towpath detour, miles 106 to 106.8, and the Polly Pond bridge, mile 134.3, past the map's edge) and
+3 Anne Arundel ones (none a closure of the B&A). After the owner's rule, the W&OD crosswalk
+detour (Nov 17-24) was entered and the first items marked read; the Dam No. 5 detour (no dates)
+waits for the owner.
 
 ## Deer-management closures (v0.12.3)
 
@@ -7813,7 +7933,8 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
     `valhalla-paved-weekend` and leaves a stopped one stopped, with a warning, when it is short.
   - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
     `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
-    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).
+    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short); since
+    v0.26.0 the weekday one is likewise skipped while `valhalla-paved` is stopped.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where
     installed, `scripts/beta/restart-routers.sh install`, from the new checkout, after
     `mark-deployed`; then `resume`.
@@ -7865,6 +7986,122 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.26.0
+
+The first wave: My routes in its own window (#1168), archived assistant test drafts (#1169), sudden
+closures from AlertDC with Ride's closure window (#1175), closed sites shaded and routed to their
+gate with the big parks named (#1173, data #1199), and three override files: Whip-poor-will Way
+(#1170), the Patuxent Research Refuge's closed area (#1172), and quieter side streets with the
+Arlington comfort index (#1174). The backlog of 2026-11-12, which the owner put in this release:
+the route scorecard (#1179), off-grid riding and its offline way back (#1180, #1192), ratings kept
+true with an evidence grade (#1183), the ride summary's lines (#1184), Go's first screen (#1185),
+the cue bench (#1187), barriers on Cargo and Tandem routes (#1188, list #1210), Montgomery County
+and park trail closures (#1189, #1198, #1201), small fixes (#1191, #1208), bike loops (#1193),
+releases without the PC (#1195), testers' alerts, status line, Send feedback and battery line
+(#1197), and fewer turns, with the turn charge at every setting on the owner's yes (#1200, #1207).
+
+**No `lua/`, `valhalla/` or requirements change.** What changes for a deploy:
+
+- migrations 0062 (`ConnectorDraft.archived_at`, a nullable column) and 0063 (the review queue's
+  new "Facts changed since rated" choice, no column change);
+- a new worker task, `refresh_alertdc`, every minute (its alert window 10 minutes,
+  `runs.STALE_AFTER`), reading the same AlertDC host as before;
+- one new outbound host, `www7.montgomerycountymd.gov` (443), for `refresh_dc_closures` (#1189);
+- new endpoints: `GET /api/closures/stamp` (20 a minute per address, our default),
+  `POST /api/offline/network` (12 a minute, our default; `503 not_built` until the next rebuild),
+  `POST /api/route/loop-shapes` (counts 3 on the routing limit and takes one of the routing
+  slots), and `GET`/`POST /api/feedback` (sending: 5 an hour per client, 60 an hour in all), all through
+  `location /` like the rest of `/api/`. Feedback is posted by the api to `discord.com`, so on a
+  filtered beta the api needs that host even without Discord sign-in;
+- `compose.yaml`: one optional secret for the api, `FEEDBACK_WEBHOOK_URL` (unset: no Send
+  feedback entry);
+- the beta's nginx template (#1197, #1191): a `/status.json` location for the riders' status line,
+  gzip level 6, and the map's glyphs compressed;
+- `docker/api.Dockerfile`: `restricted-sites.json` and `trail-miles.json` copied in, so the beta
+  agent's gate stops on the tag and **the beta is a hand ship**;
+- `scripts/beta/` (`alert.sh`, `auto-release.sh`, `cd_logic.py`), refreshed by the ship but not
+  reinstalled;
+- pipeline changes that take effect only at the next map rebuild, in its own thread: the side-path
+  step (#1174, #1190), `{schema}.offline_way` (#1192) and the rated-facts report (#1183);
+- the Android app: the battery line needs a new app build; nothing on the server waits for it.
+
+The closed sites file is built and committed (#1199: 144 sites, 63 labels, 582 gates), and the
+barrier list too (#1210: 11,734 barriers from the 2026-11-02 extract). Neither is an owner step
+before the tag.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.26.0
+  (annotated) on that commit, from the PC. The new Release workflow (#1195) does not apply yet:
+  it needs its one-time setup (docs/BETA-RUNBOOK.md, "The release workflow"), and the beta is a
+  hand ship this time anyway.
+- [ ] **Outbound host.** Add `www7.montgomerycountymd.gov` (443) to beta's egress list, and
+  home's if it is filtered: the worker's `refresh_dc_closures` now reads Montgomery County DOT's
+  road closures (source `moco`, routed round as `sha` is); with no good read in 45 minutes the run
+  fails. The same run also fails at once with "read as nothing: <source>" where a usually busy
+  source parses to nothing (its last copy kept). The park agencies' trail closures (`park_alert`)
+  are a hand-read file in the release (two entered: the W&OD crosswalk detour, Nov 17-24, and the
+  C&O at Dam No. 5): nothing to deploy for them.
+- [ ] **Migrations.** 0062 adds a nullable column with no default: the v0.25.1 api inserts drafts
+  without it (null, listed) in the minutes between `migrate` and its recreation, and after a
+  rollback of the images, and never reads it. 0063 changes choices only. Both reversible.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
+  api rebuild` (tag the pipeline image `pre-rel-<short>` too: the rebuild's calm-road sentinel moved
+  to way 11507801, #1172, and a v0.25.1 `rebuild` image still checks way 86073896, which the closed
+  area file closes), `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api
+  worker rebuild` with no job todo or doing, then the front end. No router restart, no map rebuild.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, `migrate`, the worker recreated so it picks up `refresh_alertdc`, the front end built
+  on the PC). Before the smoke test, the three one-time steps of BETA-RUNBOOK "Alerts" (#1197):
+  `rm_absent "$RM_DATA/status" && sudo install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$RM_DATA/status"`
+  (the data root is root's, and the login user's agent and alert.sh write the file); the nginx template re-rendered,
+  `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload` (as in "A new release
+  sha", step 9); and, when the owner has the bug-reports forum's webhook, `FEEDBACK_WEBHOOK_URL=` in
+  `.env` and `beta-compose.sh up -d api`. Then `smoke-test.sh --local`, then `smoke-test.sh --public
+  <url> --passwords-file <file>`, then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
+  (the new script's, not the installed v0.25.x copy's: only the new one records v0.25.1 as the
+  release `rollback` puts back), then
+  `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not reinstall the agent, and
+  v0.26.0 changes it: #1195's quick deploys, `rollback`, `rollback-map`, `ship-held` and the
+  workflow image pull start with the next release), then `~/routemaker-beta-state/cd/bin/alert.sh
+  install` (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship
+  refreshes the script, not its timers), then `auto-release.sh resume`.
+- [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
+  with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
+  means the host is not answering (the run itself only fails after 45 minutes), and the next
+  `refresh_dc_closures` succeeds with the new host. `GET /api/closures/stamp` answers 200 (a group
+  of more than 20 riders on one Wi-Fi gets some 429s, which the app skips until the next minute);
+  `GET /status.json` answers 404 when all is well (if it reads "trails" for good, the
+  watch's trail check is failing, for example on the Road Bike router the agent leaves stopped on
+  a host short of memory: set `RM_ALERT_TRAILS=0` and say so in the thread); `POST /api/offline/network` answers `503
+  not_built` until the next map rebuild, and Ride rides as before. The AlertDC parser was written
+  from a made-up sample: when the live list next carries a police or crash road item, check that it
+  shows as a closure (the map, the road panel) with the title "Police activity: streets closed
+  near ..." for police items.
+- [ ] **The three override files** (optional, separate, each on the owner's go). On the PC with
+  `load_access_overrides`, a dry run each, then `--confirm` with the owner's go per file:
+  `2026-11-12-owner-patuxent-whip-poor-will-way.json`, `2026-11-12-owner-patuxent-closed-area.json`,
+  `2026-11-12-owner-side-streets-and-arlington-index.json` (12,396 rows, each retiring its own-picks
+  row; if its dry run reports ways without fingerprints, run the fingerprint backfill first, as for
+  the own-picks files). All take effect at the next map rebuild, in its own thread, not with this
+  release. That rebuild also writes the offline road network and the rated-facts report, and
+  checks the new sentinel way 11507801 (estimated, not yet measured on a build).
+- [ ] **Spot checks.** Save & load: Save and Share at the top, My routes opens its own window with
+  "Back to Save & load". Through the connector: a `plan_route` with `test: true` stays out of Load
+  route, and `archive_draft` drops another. The map shades NASA Goddard with "No public access",
+  and a route to a point inside it ends at a gate with "Restricted site. Route ends at the gate."
+  Rock Creek Park, Greenbelt Park and the Patuxent Research Refuge have their names on the map,
+  and the refuge's closed area is shaded. Go's first screen shows the warnings above the fold; a
+  Plan bike loop from a start and a distance draws its shapes; a Cargo route past a known
+  bollard names it.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.25.1 front end.
+  Leave `rebuild` on the v0.26.0 image: the `pre-rel` pipeline image still checks way 86073896, which
+  the closed-area file closes once it is loaded. A police area already in the closures row is read by
+  the v0.25.1 api as a line along its outline (routed round the edge) until it drops, at most 3 h.
+  The `archived_at` column stays; on v0.25.1 archived drafts list again until they expire. The
+  nginx `/status.json` location and the status directory can stay (404 with no file). On the beta,
+  the images and `index.html` alone: no `restore-dump`, as 0062 and 0063 change no data.
 
 ## Deploying v0.25.1
 
@@ -8235,6 +8472,21 @@ that point: "This end point is not typically open to the public, make sure you'r
 go here." (Spanish in `routemaker/lang_es.py`, for a native speaker's review). The start never
 gets one, and neither does a road the route only passes along. The page shows and says it as it
 does the moved points ("End: ...", `movedPointsNote` in `frontend/src/lib/summary.ts`).
+
+**A point inside a closed site goes to its gate** (the owner, 2026-11-12: "route them to the gate
+and they can figure it out themselves", then "That works for me"). The roads inside a military
+area or a secured compound are closed to bicycles, so a route cannot end on them; a start, stop
+or end inside such a site is moved to the site's nearest gate (where a road the rule closes meets
+a road or signed path open to bicycles) and `moved_points` says so (reason `restricted_gate`:
+"Restricted site. Route ends at the gate.", "... starts at ..." or "... goes to ..."). Not moved:
+a point within 100 m (our default) of a way inside the site that stays open (the Goddard Visitor
+Center's way in, a public road the outline takes in), a ride's re-plan's start, a drawn or opened
+line, a point whose gate is where the point before it is routed, and a point in a site with no
+gate found. The map washes, hatches and dashes the edge of each site, with its name and "No
+public access" on sites of 0.25 km2 or more (our default). Sites, gates and the hand-drawn closed
+areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
+PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
+rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
@@ -9429,8 +9681,9 @@ scripts/cloud/import-result.sh <-- out/  7 graphs, staging schema dump        <-
 ```
 
 `scripts/cloud/launch.sh` runs the three from here with one command ("The launcher",
-below); "A run" is the same thing by hand. There are no S3 checkpoints and no on-demand
-fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
+below); "A run" is the same thing by hand. There are no S3 checkpoints. A run stopped by a spot
+reclaim can be run again on the standing on-demand box ("Two boxes: spot and on-demand", below),
+and this host stays the last fallback (its weekly rebuild is paused during active development).
 
 ### One-time setup (the owner, in the AWS console)
 
@@ -10059,3 +10312,32 @@ Python 3.11 or later, standard library only.
   passes), and the changeset must be closed holding exactly the upload's changes. A failure, or a check
   that could not run, exits 3 with what differs.
   `python3 scripts/osm_edit.py check edit.json` runs it again later.
+
+## Off-grid way back: the offline road network
+
+Off-grid riding (the owner, 2026-11-12: "the one mile would be a default, with a whole
+region pack an optional download"). Every rebuild writes `{schema}.offline_way` during the
+segment stage: one row per way a bicycle may ride (open access only, mountain-bike
+singletrack left out) with its node ids, line, stress level times 2 (10 is Avoid), one-way
+for a bicycle, walk and unpaved flags and name. The run's log line reads `ways in the offline
+road network: N`; zero on a full rebuild means the writer failed.
+
+Ride fetches `POST /api/offline/network` with each route it rides: the ways within a mile
+(`CORRIDOR_M`) of the route's line, at most 25,000 (our default, unmeasured), cut at their
+junctions, plus the ride type's price for each level. When a re-plan then fails for no
+signal, the phone finds the way back to the line on that network and says it as rough; when
+the signal returns, the server plans it again.
+
+- Before the first rebuild that writes the table the endpoint answers `503 not_built`, and
+  Ride rides as before (no offline way back). Nothing to do but rebuild.
+- `503 too_slow`: the corridor read ran past 5 seconds (`TIMEOUT_MS`, our default,
+  unmeasured). Check that `offline_way_geom_idx` exists in the live schema.
+- Rate limit 12 a minute per client (`OFFLINE_NETWORK`, our default), and one fetch at a time
+  per client from the tile pool's slots (`OFFLINE_NETWORK_IN_FLIGHT`), so a burst never holds
+  more workers than tile drawing may. A refusal is 429 or 503 with Retry-After; the phone asks
+  again for about 10 seconds when the slot is busy (it shares the slot with the ride's own tile
+  draws at Start ride), never past the per-minute count.
+- The body may be up to 64 KB (the phone sends at most 1,500 points), and a line longer than
+  about 250 miles (`MAX_LINE_M`, our default) is refused with a 400.
+- Privacy: the request carries the route's line only; nothing about the rider is logged or
+  kept, and the phone keeps the network in memory for the ride only.
