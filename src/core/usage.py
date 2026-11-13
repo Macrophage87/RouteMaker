@@ -35,6 +35,8 @@ DAY_ZONE = ZoneInfo("America/New_York")
 
 # (method, Django route) -> the tool's name in the totals. Only things a rider does on purpose:
 # not the map's tiles, the polls a ride repeats every few seconds, or the account's own reads.
+# Nothing on a Group or Mass Ride link (api/rides/...): those endpoints write nothing to the
+# database at all (tests/test_ride_presence.py), and a count would be the one write.
 ROUTES: dict[tuple[str, str], str] = {
     ("POST", "api/route"): "plan route",
     ("POST", "api/route/loop-shapes"): "plan loop",
@@ -55,7 +57,6 @@ ROUTES: dict[tuple[str, str], str] = {
     # One total for both: a per-service row on a quiet day would point to the few linked accounts.
     ("POST", "api/me/garmin/courses"): "send to Garmin or Wahoo",
     ("POST", "api/me/wahoo/routes"): "send to Garmin or Wahoo",
-    ("POST", "api/rides/<ride_id>/alerts"): "group ride alert",
     ("POST", "api/report311/where"): "311 report",
     ("POST", "api/stress-suggestions"): "road suggestion",
     ("POST", "api/stress-suggestions/signed-out"): "road suggestion",
