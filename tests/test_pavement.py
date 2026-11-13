@@ -234,3 +234,18 @@ def test_the_installer_writes_what_the_rebuild_loads(tmp_path, monkeypatch, caps
     assert "wrote" in out and "6 pavement blocks (FY2025)" in out
     rows = json.loads((tmp_path / "reference" / "pavement.json").read_text())
     assert [pavement.Block.from_json(row) for row in rows] == blocks()
+
+
+class TestTheRouterNeverGetsADiscountForRoughPavement:
+    """Audit 2026-11-13 (areas/09, 3.3): fair and poor reached the graph as rougher surface
+    classes, which Valhalla's graph builder answers by cutting the road's speed, and a slower
+    road is a calmer one to the bicycle costing: a rough street cost less than a smooth one.
+    Before: the graph was given fair and poor. After: good for every band, so the price is the
+    same as a smooth street's and OSM's smoothness still comes off."""
+
+    @pytest.mark.parametrize("applied", pavement.BANDS)
+    def test_every_band_reaches_the_graph_as_good(self, applied) -> None:
+        assert pavement.graph_band(applied) == pavement.GOOD
+
+    def test_a_kept_osm_reading_is_passed_through(self) -> None:
+        assert pavement.graph_band(pavement.KEEP_OSM) == pavement.KEEP_OSM

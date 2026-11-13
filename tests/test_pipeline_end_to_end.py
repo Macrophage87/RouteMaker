@@ -3944,10 +3944,12 @@ def pci_block(block_id: str, pci: float, surveyed: str = "2026-02-27") -> dict:
     }
 
 
-def test_a_poor_pci_reaches_the_graph_as_its_band(workspace, states, monkeypatch) -> None:
-    """DDOT's PCI under 55 on a street reaches the variant extract as `rm:pci=poor`,
-    which lua/routemaker_remap.lua prices as the compacted class, and the
-    per-way report records it (once the owner has confirmed the licence)."""
+def test_a_poor_pci_reaches_the_graph_as_good_and_the_report_as_poor(
+    workspace, states, monkeypatch
+) -> None:
+    """DDOT's PCI under 55 on a street: the per-way report records the true band, and the
+    variant extract carries `rm:pci=good` (`pavement.graph_band`: before 2026-11-13 it
+    carried `poor`, which the graph priced below a smooth street on a busy road)."""
     from pipeline.extract import read_ways
     from pipeline.run import DISCREPANCY_REPORT_DIR, PAVEMENT_REPORT_NAME
     from routemaker import pavement
@@ -3957,7 +3959,7 @@ def test_a_poor_pci_reaches_the_graph_as_its_band(workspace, states, monkeypatch
     context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)
     assert context.pci_by_way[100].applied == "poor"
     tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
-    assert tags[100]["rm:pci"] == "poor"
+    assert tags[100]["rm:pci"] == "good"
     assert all("rm:pci" not in t for way_id, t in tags.items() if way_id != 100)
     report = (context.work_dir / DISCREPANCY_REPORT_DIR / PAVEMENT_REPORT_NAME).read_text()
     assert "\n100,41.5,poor,pci,2026-02-27,p-1\n" in report
