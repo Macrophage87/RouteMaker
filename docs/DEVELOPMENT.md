@@ -9162,11 +9162,12 @@ and from the I key on the junction, none away from it, and that the legend has n
 `A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
 
 `--shard I/N` (or `A11Y_SHARD=I/N` to `run.sh`) runs every Nth top-level section, from the Ith:
-each section is behind `if (mine())` and shares no page or state with another, so a new section
-needs the same prefix. A shard writes its check count to `a11y-count.txt` in the shots directory
-and skips the `EXPECTED` comparison; CI runs three shards on three runners (`a11y-shard`), and its
-`a11y` job is green only when all three passed and their counts add up to `EXPECTED`. Run alone, as
-at home, the check runs every section and compares with `EXPECTED` itself.
+each section is behind `if (mine(N))`, N the number of checks it makes, and shares no page or state
+with another, so a new section needs the same prefix with its own count. A section that makes other
+than its N checks fails the run with a `MISCOUNT` line naming it (it stopped early, or a check was
+added without raising N). Each section keeps its own count, so PRs adding sections no longer collide
+on one `EXPECTED` total (retired 2026-11-13). CI runs three shards on three runners (`a11y-shard`);
+its `a11y` job is green only when all three passed.
 
 ## Junction suggestions and junction overrides (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)
 
