@@ -1148,8 +1148,8 @@ export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = f
  * "public areas too should show up a bit higher, like the pautuxet research refuge, or Greenbelt Park". The base
  * map's place layer (`pois`) drew only `park`, never `national_park` or `nature_reserve`, which is what Rock Creek
  * Park and Greenbelt Park are (Protomaps' kinds, min_zoom 10 and 11 on the live tiles), and it sat under the
- * neighbourhood names, which took the space first. So the parks and reserves the tiles show by zoom 12 (the big ones:
- * Protomaps sets min_zoom by size) get a layer of their own, just over the neighbourhood names so a neighbourhood
+ * neighbourhood names, which took the space first. So the parks and reserves (and, since 2026-11-13, every named green
+ * place: below) get a layer of their own, just over the neighbourhood names so a neighbourhood
  * gives way to them (a town's name still wins), from the tiles' own min_zoom, a little larger, the bigger park first, and moved aside rather than
  * dropped where a trail's name or a station sits on its spot (Rock Creek Park at zoom 12.5). The `pois` layer leaves
  * them out, so a name is drawn once.
