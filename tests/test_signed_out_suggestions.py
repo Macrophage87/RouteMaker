@@ -4,7 +4,7 @@ the per-device daily limits kept as a salted daily hash, and the review list's g
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.test import Client
@@ -244,6 +244,44 @@ class TestFromRide:
             row.pk
         )
         assert abs((timezone.now() - row.created_at).total_seconds()) < 60
+
+    def test_a_ride_sends_count_and_audit_rows_keep_the_day_not_the_time(self, live) -> None:
+        # The release review: count rows, audit rows and suggestions are made one each per send,
+        # so the nth count or audit row's exact time would date the nth suggestion.
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        row = SignedOutSend.objects.get()
+        entry = AuditLogEntry.objects.get(action="stress_suggest_signed_out")
+        for at in (row.created_at, entry.at):
+            kept = at.astimezone(quick.DAY_ZONE)
+            assert (kept.hour, kept.minute, kept.second, kept.microsecond) == (0, 0, 0, 0)
+        # Dated by the day, it still counts toward today's limits, and is pruned within a day.
+        assert quick.prune() == 0
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+
+    def test_one_a_road_holds_through_a_washington_evening(self, live, monkeypatch) -> None:
+        # The release review: a ride's rows are dated by Washington's day, but the device's code
+        # changed at UTC midnight (7 or 8 PM here), so the same road went again that evening.
+        # timezone.now() is UTC, as Django's is.
+        early = datetime(2026, 11, 12, 18, 0, tzinfo=quick.DAY_ZONE).astimezone(UTC)
+        monkeypatch.setattr(timezone, "now", lambda: early)
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        monkeypatch.setattr(timezone, "now", lambda: early + timedelta(hours=5, minutes=30))
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        # A new Washington day: a new code, and a new day's count.
+        monkeypatch.setattr(timezone, "now", lambda: early + timedelta(hours=6, minutes=30))
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        assert StressSuggestion.objects.count() == 2
+
+    def test_one_a_road_holds_across_the_road_panel_and_a_ride(self, live) -> None:
+        send()
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        send(way=OTHER_ROAD, reasons=(quick.CLOSED,), from_ride=True)
+        with pytest.raises(quick.Again):
+            send(way=OTHER_ROAD, step=3, reasons=("fast_traffic",))
+        assert StressSuggestion.objects.count() == 2
 
     def test_a_ride_send_is_still_one_a_road(self, live) -> None:
         # A retry, or Keep riding then End ride again, or a forged from_ride: refused, not counted.
