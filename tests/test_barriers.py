@@ -179,3 +179,141 @@ def test_the_answer_schema_carries_both() -> None:
     assert BarriersOut(**reading).items[0].word == "stile"
     with pytest.raises(ValueError):
         BarrierRoundOut(rounds=1, impassable=1, limited="somehow", in_the_way=[])
+
+
+# ---- The round, past one pass (the v0.26.0 release review) ----
+
+
+def _stiles_index(lats: list[float]) -> barriers.Index:
+    """A stile on each of several parallel north-running trails, one per latitude given, the
+    trails 100 m apart east to west."""
+    rows = [
+        [east(100 * k), north(m), "stile", None, [[east(100 * k), north(m + 4)]]]
+        for k, m in enumerate(lats)
+    ]
+    return barriers.index_of({"built": "2026-11-12", "barriers": rows, "steps": []})
+
+
+def _through(k: int, m: float = 10) -> list:
+    """A line up trail k through its stile at `m` metres."""
+    return [
+        (east(100 * k), north(m - 10)),
+        (east(100 * k), north(m)),
+        (east(100 * k), north(m + 10)),
+    ]
+
+
+def test_more_than_one_round_until_the_way_is_clear(monkeypatch) -> None:
+    answers = iter([_trip(TRAIL[3:]), _trip(ROUND_THE_TRAIL)])
+    asked = []
+
+    def route(variant, request, deadline):
+        asked.append(list(request["exclude_locations"]))
+        return {"trip": next(answers)}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    excludes: list = []
+    trip, info = barriers.settle(
+        _trip(TRAIL[:3]), {}, "standard", None, [], level_excludes=excludes, index=INDEX
+    )
+    # Round 1 went round the stile but met the narrow gap; round 2 went round both.
+    assert info["rounds"] == 2 and info["impassable"] == 0 and info["limited"] is None
+    assert len(asked[0]) == 1 and len(asked[1]) == 2
+    assert asked[1][0] == asked[0][0]
+    assert excludes == asked[1]
+    assert trip == _trip(ROUND_THE_TRAIL)
+
+
+def test_the_rounds_stop_at_the_cap(monkeypatch) -> None:
+    index = _stiles_index([10] * (barriers.ROUNDS + 3))
+    calls = iter(range(1, 100))
+
+    def route(variant, request, deadline):
+        # Each way round meets the next trail's stile.
+        return {"trip": _trip(_through(next(calls)))}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    trip, info = barriers.settle(_trip(_through(0)), {}, "standard", None, [], index=index)
+    assert info["rounds"] == barriers.ROUNDS
+    assert info["limited"] == "no_way_round"
+    assert info["impassable"] == 1
+
+
+def test_a_veto_keeps_the_route_asked(monkeypatch) -> None:
+    monkeypatch.setattr(routing, "_route", lambda *a: ({"trip": _trip(ROUND_THE_TRAIL)}, False))
+    excludes: list = []
+    trip, info = barriers.settle(
+        _trip(TRAIL), {}, "standard", None, [], level_excludes=excludes,
+        keeps=lambda again: False, index=INDEX,
+    )  # fmt: skip
+    assert trip == _trip(TRAIL)
+    assert info["impassable"] == 2 and info["limited"] == "no_way_round"
+    # Nothing it did not answer with is passed on to the later passes.
+    assert excludes == []
+
+
+def test_the_requests_own_exclusions_are_never_dropped(monkeypatch) -> None:
+    index = _stiles_index(list(range(10, 160, 10)))  # 15 stiles, one per trail
+    line = [p for k in range(15) for p in _through(k, 10 + 10 * k)]
+    others = [{"lon": -76.5, "lat": 39.0 + i * 1e-4} for i in range(190)]
+    asked = []
+
+    def route(variant, request, deadline):
+        asked.append(request["exclude_locations"])
+        return {"trip": _trip(ROUND_THE_TRAIL)}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    barriers.settle(_trip(line), {"exclude_locations": others}, "standard", None, [], index=index)
+    assert asked[0][:190] == others
+    assert len(asked[0]) == barriers.ROUTER_EXCLUDE_LIMIT
+
+
+def test_the_barrier_points_stop_at_their_cap(monkeypatch) -> None:
+    n = barriers.EXCLUDE_CAP + 5
+    index = _stiles_index([10] * n)
+    line = [p for k in range(n) for p in _through(k)]
+    asked = []
+
+    def route(variant, request, deadline):
+        asked.append(request["exclude_locations"])
+        return {"trip": _trip(ROUND_THE_TRAIL)}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    barriers.settle(_trip(line), {}, "standard", None, [], index=index)
+    assert len(asked[0]) == barriers.EXCLUDE_CAP
+
+
+def test_running_out_of_time_says_time(monkeypatch) -> None:
+    def late(variant, request, deadline):
+        raise routing.DeadlineExceeded()
+
+    monkeypatch.setattr(routing, "_route", late)
+    trip, info = barriers.settle(_trip(TRAIL), {}, "standard", None, [], index=INDEX)
+    assert trip == _trip(TRAIL)
+    assert info["limited"] == "time" and info["impassable"] == 2
+
+
+def test_reread_after_a_later_pass() -> None:
+    info = {"rounds": 1, "impassable": 0, "limited": None, "in_the_way": []}
+    # A later pass put the stile back: said, as no way round.
+    barriers.reread(_trip(TRAIL[:3]), info, INDEX)
+    assert info["impassable"] == 1 and info["limited"] == "no_way_round"
+    assert [b["word"] for b in info["in_the_way"]] == ["stile"]
+    # A later pass cleared it.
+    barriers.reread(_trip(ROUND_THE_TRAIL), info, INDEX)
+    assert info == {"rounds": 1, "impassable": 0, "limited": None, "in_the_way": []}
+
+
+def test_reread_turns_at_stop_into_no_way_round_when_a_new_barrier_comes() -> None:
+    info = {
+        "rounds": 0,
+        "impassable": 1,
+        "limited": "at_stop",
+        "in_the_way": [{"kind": "stile", "word": "stile", "lon": LON, "lat": north(10)}],
+    }
+    # The same one barrier by the stop: still at_stop.
+    barriers.reread(_trip(TRAIL[:3]), info, INDEX)
+    assert info["limited"] == "at_stop"
+    # A later pass brought in the narrow gap too.
+    barriers.reread(_trip(TRAIL), info, INDEX)
+    assert info["limited"] == "no_way_round" and info["impassable"] == 2

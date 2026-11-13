@@ -5168,8 +5168,8 @@ map". No map rebuild and no new control.
   or the end." for `at_stop`; plainly on a drawn or followed line, a first route or a round cut
   short), else a hint listing them ("On this route: gate,
   bollard ×2 (width not mapped)."), counts as "×2" so no language needs a plural; the map marks
-  each with an octagon and a bar (red with a white rim where it cannot pass, amber with a dark
-  rim otherwise, 22 px, named from
+  each with an octagon: red with a white bar and rim where it cannot pass (a no-entry sign),
+  amber with a dark "!" and rim otherwise, so shape tells them apart as well as colour, 22 px, named from
   zoom 13 red and 15 amber). The connector's summary has the same line as `barriers`. The 16
   phrases are drafted in every Go and Ride language and need a native check.
 - **Coverage.** `scripts/barrier_census.py` (without `--json`) prints how much of this OSM

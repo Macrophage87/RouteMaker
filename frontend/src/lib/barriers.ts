@@ -10,8 +10,8 @@
  *
  * The map marks each one on the route (the owner, 2026-11-12: "Make those noticeable on the map"): an octagon with a
  * bar across it, as a road-closed sign, a shape no other route mark uses (hazards are circles, junctions triangles and
- * diamonds, steep grades squares). Red with a white bar where a cargo bike or tandem cannot pass, amber with a dark bar
- * and rim for the others, each a little larger than the other route marks, and named beside it ("stile") from zoom 13 for the
+ * diamonds, steep grades squares). Red with a white bar (a no-entry sign) where a cargo bike or tandem cannot pass, amber with a dark "!" and
+ * rim for the others, each a little larger than the other route marks, and named beside it ("stile") from zoom 13 for the
  * red ones and 15 for the rest. Never the mark alone: the line says the same.
  *
  * Nothing is said where the answer has no barrier list (`data` false): silence must never read as "none mapped".
@@ -173,7 +173,8 @@ function inOctagon(x: number, y: number, c: number, r: number): boolean {
   return dx <= apothem && dy <= apothem && dx + dy <= apothem * Math.SQRT2;
 }
 
-/** The mark: an octagon with a rim and a bar across it. */
+/** The mark: an octagon with a rim; across it a bar for "can't pass" (a no-entry sign), an "!" for the rest, so the two
+ * are told apart by shape as well as colour before their names show (the v0.26.0 release review, P3). */
 export function barrierIcon(
   level: BarrierLevel,
   pixelRatio = 2,
@@ -189,9 +190,15 @@ export function barrierIcon(
   return rasterise(size, pixelRatio, (x, y): Rgb | null => {
     if (!inOctagon(x, y, c, r)) return null;
     if (!inOctagon(x, y, c, r - rim)) return edge;
-    const inBar =
-      Math.abs(y - c) <= 0.11 * size && Math.abs(x - c) <= 0.3 * size;
-    return inBar ? mark : fill;
+    if (level === "blocked") {
+      const inBar =
+        Math.abs(y - c) <= 0.11 * size && Math.abs(x - c) <= 0.3 * size;
+      return inBar ? mark : fill;
+    }
+    const inStroke =
+      Math.abs(x - c) <= 0.075 * size && y >= 0.22 * size && y <= 0.58 * size;
+    const inDot = Math.hypot(x - c, y - 0.73 * size) <= 0.085 * size;
+    return inStroke || inDot ? mark : fill;
   });
 }
 

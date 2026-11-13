@@ -176,4 +176,19 @@ test("the mark is an octagon with a bar: transparent corners, the bar's colour a
   assert.equal(px(0, 0)[3], 0, "a corner is cut off");
   assert.deepEqual(px(11, 11).slice(0, 3), [255, 255, 255], "the white bar");
   assert.deepEqual(px(11, 5).slice(0, 3), [0xb9, 0x1c, 0x1c], "the red fill");
+  // The others carry an "!" instead: told apart by shape, not colour alone.
+  const noted = barrierIcon("noted", 1, 22);
+  const at = (x: number, y: number) =>
+    Array.from(
+      noted.data.slice(
+        (y * noted.width + x) * 4,
+        (y * noted.width + x) * 4 + 3,
+      ),
+    );
+  assert.deepEqual(at(11, 8), [0x11, 0x18, 0x27], "the stroke of the !");
+  assert.deepEqual(
+    at(6, 11),
+    [0xf5, 0x9e, 0x0b],
+    "amber where the bar would be",
+  );
 });
