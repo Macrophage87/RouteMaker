@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactElement } from "react";
+// Parts loaded on first use, and in the background once idle (app/later.tsx): `later(...)` below, a dialog's kept mounted by <Once>.
+import { Once, later, usePreloadLater } from "./app/later.tsx";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { LiveMap, LiveRiderPoint, type LiveRider } from "./app/LiveMap.tsx";
@@ -298,7 +300,7 @@ import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from ".
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
-import { ReviewMode } from "./ReviewMode.tsx";
+const ReviewMode = later(() => import("./ReviewMode.tsx").then((m) => m.ReviewMode));
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
@@ -326,7 +328,7 @@ import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { FullAccountDialog } from "./FullAccountDialog.tsx";
 import { SameRideDialog } from "./SameRideDialog.tsx";
-import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
+const BroadcastQrDialog = later(() => import("./BroadcastQrDialog.tsx").then((m) => m.BroadcastQrDialog));
 import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
 import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
@@ -339,12 +341,13 @@ import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
-import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
+import type { ShareCardSource } from "./ShareCardDialog.tsx";
+const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => m.ShareCardDialog));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
-import { RideGroup } from "./RideGroup.tsx";
-import { RoamMode } from "./RoamMode.tsx";
+const RideGroup = later(() => import("./RideGroup.tsx").then((m) => m.RideGroup));
+const RoamMode = later(() => import("./RoamMode.tsx").then((m) => m.RoamMode));
 import { RideGuard } from "./RideGuard.tsx";
 import { watchOpenLinks } from "./lib/rideLinks.ts";
 import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
@@ -494,6 +497,8 @@ const ignore = () => undefined;
 const OUTSIDE_NOTICE = t("That point is outside the area this map covers (the DC region to Baltimore).");
 
 export function App() {
+  // The parts loaded on first use start arriving once the first screen is up (app/later.tsx).
+  usePreloadLater();
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
   const [preset, setPreset] = useState<PresetId>(GO_START_RIDE ?? initialPlan.preset);
   const [dials, setDials] = useState<Dials>(() => (GO_START_RIDE ? startDials(GO_START_RIDE) : initialPlan.dials));
@@ -7150,18 +7155,22 @@ export function App() {
           else startRideChecked();
         }}
       />
-      <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
+      <Once when={qrAsk !== null}>
+        <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
+      </Once>
       {/* With a ride's dots (RideGroup), the sheet is theirs: shown with the dot question, or alone. */}
       <BroadcastJoinDialog ask={riding && !rideGroupLine ? joinAsk : null} onAction={joinAction} onClose={closeJoin} />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
-      <ShareCardDialog
-        open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
-        source={shareCardSource}
-        settled={shareCardSettled}
-        keepKey={JSON.stringify(keepFields(shareKeep))}
-        makeLink={shareCardLink}
-        onClose={() => setShareCardOpen(false)}
-      />
+      <Once when={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}>
+        <ShareCardDialog
+          open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
+          source={shareCardSource}
+          settled={shareCardSettled}
+          keepKey={JSON.stringify(keepFields(shareKeep))}
+          makeLink={shareCardLink}
+          onClose={() => setShareCardOpen(false)}
+        />
+      </Once>
       <GoSpotDialog
         request={spotOpen ? goSpot : null}
         lookup={spotLookup}
