@@ -59,7 +59,10 @@ AGENCY_RULE = "agency rating"
 # that means that I feel the formula is wrong" and "Many roads rated very dangerous in 2020 have
 # been targets for improvement in the 6 years since". The formula decides in the District from
 # the city's own counts, lanes and speeds; DDOT's level stays on the road panel beside it.
-COMPARISON_ONLY = frozenset({"ddot"})
+# Every agency, 2026-11-13 (trial build; the owner: "those have been so horribly off in parts
+# that I don't trust them. If the only row in why is agency, it's not a valid rating. Return it
+# for rerating."). MDOT SHA's prohibition (a bicycle ban, `prohibiting`) still closes the way.
+COMPARISON_ONLY = frozenset({"ddot", "moco", "mdot-sha"})
 
 # An agency layer older than the bike facilities on the ground. DDOT's is its 2020 Level of
 # Traffic Stress (`scripts/install_agency_lts.py`), from before K Street's, Irving Street's and
