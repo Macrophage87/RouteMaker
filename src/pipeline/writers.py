@@ -95,6 +95,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             _json_or_none(row.get("trail_tags")),
             _computed_half(row["stress"]),
             row.get("button_operated", False),
+            row.get("pavement_pci"),
+            row.get("pavement_surveyed"),
         )
         for row in rows
     ]
@@ -105,7 +107,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -153,6 +155,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         trail_tags,
                         computed_half,
                         button_operated,
+                        pavement_pci,
+                        pavement_surveyed,
                     ),
                 )
                 for (
@@ -202,6 +206,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     trail_tags,
                     computed_half,
                     button_operated,
+                    pavement_pci,
+                    pavement_surveyed,
                 ) in batch
             )
             cursor.execute(
@@ -219,7 +225,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
                      stress_half, mtb_level, mtb_name, stress_ratings, sidepath_name,
                      scenic, hazard,
-                     facility_shown, trail_tags, stress_computed_half, button_operated)
+                     facility_shown, trail_tags, stress_computed_half, button_operated,
+                     pavement_pci, pavement_surveyed)
                     VALUES {args}"""
             )
             written += len(batch)

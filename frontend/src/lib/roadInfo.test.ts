@@ -289,3 +289,16 @@ test("the lift of a press that opened the road panel sends no click; any other l
   assert.equal(liftOpenedInfo(null, 1500), false, "a lift with no map touch (a tap in the panel)");
   assert.equal(liftOpenedInfo(1000, 0), false, "no panel yet");
 });
+
+// The facts behind the level (the owner, 2026-11-13; core/segment_info.py road_facts).
+test("a fact's source line joins its source and year; the evidence marks put records first", async () => {
+  const { factSourceLine, evidenceMarks, factInfoLabel, shownFacts } = await import("./roadInfo.ts");
+  const fact = { id: "traffic", label: "Traffic", value: "24,100 vehicles a day", kind: "record" as const, source: "DDOT count", date: "2023", detail: "x", input: true };
+  assert.equal(factSourceLine(fact), "DDOT count, 2023");
+  assert.equal(factSourceLine({ ...fact, date: null }), "DDOT count");
+  assert.equal(factSourceLine({ ...fact, source: null, date: null }), "");
+  assert.equal(factInfoLabel(fact), "About Traffic");
+  assert.deepEqual(evidenceMarks({ records: 2, inputs: 5, strength: "thin", words: "" }), [true, true, false, false, false]);
+  // An older API has no facts: the panel shows none.
+  assert.deepEqual(shownFacts({ found: true, title: "x", tier: 3, open: true, osm_way_id: 1, distance_m: 1, sections: [], attribution: [] }), []);
+});

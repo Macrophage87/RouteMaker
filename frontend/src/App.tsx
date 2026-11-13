@@ -3085,7 +3085,7 @@ export function App() {
     namer.remember(home.point, home.label || t("Home"), home.label || t("Home"));
     void goTo(home.point, home.label || t("Home"));
   };
-  // Home at a spot on the map (the road panel's Set as Home, or Pick on the map then a tap): named by a name the page
+  // Home at a spot on the map (Pick on the map then a tap): named by a name the page
   // has, else the reverse look-up (through the page's one geocoding gate), else its coordinates.
   const setHomeAt = async (point: LonLat) => {
     if (!insideCoverage(point)) {
@@ -7147,7 +7147,6 @@ export function App() {
         }
         onRouteHere={mode === "go" ? goRouteHere : undefined}
         trailRider={trailRider}
-        onSetHome={(point) => void setHomeAt(point)}
         onAddNote={mode === "plan" ? addNoteAt : undefined}
         onSaveFavorite={me.signed_in ? (point) => void addFavoriteAt(point) : undefined}
       />

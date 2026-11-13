@@ -214,6 +214,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   smoothness reading, over OSM's `smoothness` (the owner, 2026-10-11: "DC score in
   most cases takes priority over OSM data"): 70 and over good, 55 to 69 fair (a small
   penalty), under 55 poor (rough), on streets only; alleys and trails keep OSM's.
+  The road panel also shows the street's score and survey date as its Pavement line
+  (`segment.pavement_pci`, `pavement_surveyed`; `core.segment_info.road_facts`), even where a
+  newer OSM `smoothness` keeps OSM's reading for routing (not where a correction overrides it).
   Fetched at rebuild time with `scripts/fetch_agency_layer.py` (docs/OPERATIONS.md,
   "DC pavement condition (DC-PCI)"); not yet downloaded, so no size or sha256 yet.
 - Publisher: District Department of Transportation and DC GIS (the service's

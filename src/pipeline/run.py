@@ -4524,6 +4524,9 @@ def build_handlers(
                         else None,
                         walk_bike=way.osm_id in context.walk_bike,
                         button_operated=way.osm_id in button_ways,
+                        # The pavement survey for the road panel (DC-PCI), on a street
+                        # the layer speaks for; shown even where OSM's reading routes.
+                        **pavement.panel_columns(context.pci_by_way.get(way.osm_id)),
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_default_speed_mph=_smallint(
                             getattr(stress, "default_speed_mph", None)
