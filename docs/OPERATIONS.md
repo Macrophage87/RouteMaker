@@ -7999,7 +7999,7 @@ true with an evidence grade (#1183), the ride summary's lines (#1184), Go's firs
 the cue bench (#1187), barriers on Cargo and Tandem routes (#1188, list #1210), Montgomery County
 and park trail closures (#1189, #1198, #1201), small fixes (#1191, #1208), bike loops (#1193),
 releases without the PC (#1195), testers' alerts, status line, Send feedback and battery line
-(#1197), and fewer turns (#1200).
+(#1197), and fewer turns, with the turn charge at every setting on the owner's yes (#1200, #1207).
 
 **No `lua/`, `valhalla/` or requirements change.** What changes for a deploy:
 
