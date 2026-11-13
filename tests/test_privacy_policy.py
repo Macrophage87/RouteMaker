@@ -353,6 +353,7 @@ class TestLawRequiredParts:
             "within 45 days",
             "data protection authority",
             "children under 13",
+            "parents, guardians and other caretakers",
             "Do Not Track or Global Privacy Control",
             "Changes to this page",
             "never to judge your health",
