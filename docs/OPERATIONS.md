@@ -5783,7 +5783,8 @@ turning into an HTML list in 2026), or a changed field made the parser drop most
 hand and compare with its sample in `tests/data/closures`. A source that is often empty or small
 (Montgomery County's closures) never trips it, and MPD and AlertDC are left out (their closures end
 in the reading, so few or none left is real news). Once the kept copy is past its "Dropped after"
-age the read is taken, and the usual count follows it from then on. Counts are zones and notices,
+age the read is taken and the counts start again from it, so the source is not judged again until
+it has 3 reads of its new size. Counts are zones and notices,
 so a closure along several stretches counts each. 8, 3, 5, 20 and a fifth are our default,
 unmeasured (`src/core/feed_sense.py`).
 
@@ -9718,12 +9719,15 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
    real reading here. Once a feed has 3 good reads (v0.27.0, `core.feed_sense`, as the closure
-   sources), a read of none from one that usually has 5 or more, or under a fifth of the usual from
-   one that usually has 20 or more, is not taken (the last copy is kept until it is 2 hours old)
-   and the run fails with `read did not make sense: md`. So does a feed whose own
+   sources), a read of none from one that usually has 5 or more is not taken (the last copy is kept
+   until it is 2 hours old) and the run fails with `read did not make sense: md`. The "under a
+   fifth" rule of the closure sources is not used here: zones in force now can fall a long way
+   when a night's work ends. So does a feed whose own
    `feed_info.update_date` is more than 3 days old (`md not updated by its publisher since ...`):
    its zones are still used, since they are still what the state publishes, but the feed has
-   stopped being fed and is worth a look. All these numbers are our default, unmeasured.
+   stopped being fed and is worth a look. There is no switch to silence it: every run fails until
+   the publisher updates the feed (or the feed is dropped, below). All these numbers are our
+   default, unmeasured.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.

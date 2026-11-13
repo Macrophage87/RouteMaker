@@ -137,6 +137,17 @@ class TestMakesSense:
             Feeds(md=_sample_with(zones=0, updated=late)), no_sleep, lambda: late
         )
         assert line == "work zones: md 0 zones"
+        stored = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
+        assert stored["counts"] == [0], "the counts start again from the read taken"
+
+    def test_a_small_share_is_not_doubted_for_work_zones(self) -> None:
+        """Zones in force now can fall a long way when a night's work ends."""
+        for n in range(3):
+            when = NOW + timedelta(minutes=5 * n)
+            workzones.refresh(Feeds(md=_sample_with(zones=30)), no_sleep, lambda w=when: w)
+        later = NOW + timedelta(minutes=15)
+        line = workzones.refresh(Feeds(md=_sample_with(zones=2)), no_sleep, lambda: later)
+        assert line == "work zones: md 2 zones"
 
     def test_a_feed_its_publisher_stopped_updating_is_taken_and_fails_the_run(self) -> None:
         later = NOW + timedelta(days=4)

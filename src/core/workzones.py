@@ -333,13 +333,14 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
         zones, placed = place(zones, (feeds.get(source) or {}).get("placed"), now(), out_of_time)
         zones = without_barred(zones)
         # A feed that still answers but has stopped making sense (`core.feed_sense`): a read of
-        # none, or of a small share, of its usual count is not taken while its last copy is in
-        # use; a feed its publisher stopped updating is taken but flagged. Both fail the run.
+        # none from a usually busy feed is not taken while its last copy is in use (not a small
+        # share: zones in force now can fall a long way when a night's work ends); a feed its
+        # publisher stopped updating is taken but flagged. Both fail the run.
         kept = feeds.get(source) or {}
         kept_at = rules._when(kept.get("read_at"))
         why = None
         if kept.get("zones") and kept_at and (now() - kept_at).total_seconds() <= DROP_AFTER_S:
-            why = feed_sense.doubt(kept.get("counts"), len(zones))
+            why = feed_sense.doubt(kept.get("counts"), len(zones), shrink=False)
         if why is not None:
             logger.warning("work zones: the %s feed %s; its last copy kept", source, why)
             feeds[source] = {**kept, "failed_at": now().isoformat()}
@@ -351,7 +352,7 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
             "failed_at": None,
             "zones": [zone.to_json() for zone in zones],
             "placed": placed,
-            "counts": feed_sense.remember(kept.get("counts"), len(zones)),
+            "counts": feed_sense.remember(kept.get("counts"), len(zones), shrink=False),
         }
         said.append(f"{source} {len(zones)} zones")
         if frozen is not None:

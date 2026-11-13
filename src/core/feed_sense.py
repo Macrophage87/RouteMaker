@@ -10,8 +10,10 @@ closure sources (`core.closure_sources`) and the work-zone feeds (`core.workzone
   `COUNTS_KEPT` good reads, once there are `USUAL_AFTER_READS`). None from a source that
   usually has `EMPTY_USUAL` or more, or under `SHRUNK_SHARE` of the usual from one that
   usually has `SHRUNK_USUAL` or more, is doubted: a parser that broke on a changed page, or
-  a layer that now returns a fraction of its records. A source that is often empty or small
-  (Montgomery County's closures) never trips it.
+  a layer that now returns a fraction of its records. (The work-zone feeds are judged on a
+  read of none only: zones in force now can fall a long way when a night's work ends.) A
+  source that is often empty or small (Montgomery County's closures) never trips it. A read
+  taken although it would be doubted (its kept copy too old to protect) starts the counts again.
 - How old the feed says its own data is (WZDx's `feed_info.update_date`): a feed still
   served but past `FROZEN_AFTER_S` since its publisher last updated it has stopped being
   fed.
@@ -43,21 +45,29 @@ def usual_count(counts: Iterable | None) -> int | None:
     return kept[len(kept) // 2]
 
 
-def doubt(counts: Iterable | None, found: int) -> str | None:
-    """Why a read of `found` items is not to be believed against the kept `counts`, or None."""
+def doubt(counts: Iterable | None, found: int, shrink: bool = True) -> str | None:
+    """Why a read of `found` items is not to be believed against the kept `counts`, or None.
+    `shrink` False judges only a read of none (the work-zone feeds: a feed of zones in force
+    now can fall a long way at the end of a night's work)."""
     usual = usual_count(counts)
     if usual is None:
         return None
     if found == 0 and usual >= EMPTY_USUAL:
         return f"read as nothing (usually {usual} items)"
-    if found and usual >= SHRUNK_USUAL and found < usual * SHRUNK_SHARE:
+    if shrink and found and usual >= SHRUNK_USUAL and found < usual * SHRUNK_SHARE:
         return f"read only {found} items (usually {usual})"
     return None
 
 
-def remember(counts: Iterable | None, found: int) -> list[int]:
-    """The kept counts with a taken read's added."""
-    return [*(c for c in counts or () if isinstance(c, int)), found][-COUNTS_KEPT:]
+def remember(counts: Iterable | None, found: int, shrink: bool = True) -> list[int]:
+    """The kept counts with a taken read's added. A read taken although it would be doubted
+    (the kept copy was past its drop age, or empty) starts the counts again: the source has
+    changed, so it is not judged until it has `USUAL_AFTER_READS` reads of its new size,
+    rather than alarming again at every read until the old counts are out of the median."""
+    if doubt(counts, found, shrink) is not None:
+        return [found]
+    kept = [c for c in counts or () if isinstance(c, int) and not isinstance(c, bool)]
+    return [*kept, found][-COUNTS_KEPT:]
 
 
 def frozen(document: Mapping, now: datetime) -> str | None:

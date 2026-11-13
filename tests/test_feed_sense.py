@@ -51,3 +51,17 @@ def test_a_feed_with_no_date_or_a_bad_one_is_not_judged() -> None:
     assert sense.frozen({}, NOW) is None
     assert sense.frozen({"feed_info": {"update_date": "soon"}}, NOW) is None
     assert sense.frozen({"feed_info": "x"}, NOW) is None
+
+
+def test_a_read_taken_although_doubted_starts_the_counts_again() -> None:
+    """Review: past the drop age a small read is taken; without a fresh start the old median
+    would doubt every read for days while the small counts work their way in."""
+    assert sense.remember([40] * 8, 3) == [3]
+    assert sense.doubt([3], 3) is None
+    assert sense.remember([40] * 8, 35) == [40] * 7 + [35]
+
+
+def test_without_shrink_only_none_is_doubted() -> None:
+    assert sense.doubt([200] * 5, 12, shrink=False) is None
+    assert sense.doubt([200] * 5, 0, shrink=False) == "read as nothing (usually 200 items)"
+    assert sense.remember([200] * 5, 12, shrink=False) == [200] * 5 + [12]
