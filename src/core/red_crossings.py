@@ -47,8 +47,8 @@ all. Now:
 Every ask excludes, besides the red, the request's own exclusions, Mountain Bike's level
 exclusions (`refine.Context.level_excludes`) and the reds already ridden round. A way
 round replaces the route where it has fewer red crossings, the search's own rule prefers
-it (`refine.better`: the score, which prices each red at `RED_DETOUR_S` of quiet riding on
-top of its cost, or the stress order at the top of the slider, with the worth-its-miles
+it (`refine.better`: the score, which prices each red at its junction cost, up to 2
+calm miles, or the stress order at the top of the slider, with the worth-its-miles
 rule), it is no busier by the Traffic-wins guard (each red counted at its cost,
 `refine._busier`'s rule), at the top of the slider not past the ceiling where the route
 was not, on a loop no more of the way back on the way out than the loop has

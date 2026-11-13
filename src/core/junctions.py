@@ -80,6 +80,7 @@ from routemaker.intersections import (
     assess_route,
     beacon_at,
     beacons_near,
+    class_edge,
     major_crossings,
     majors_of_events,
     rating_at,
@@ -250,6 +251,98 @@ def busy_by_tier(points: Sequence[tuple[int, float, float]]) -> set[int]:
     except DatabaseError:
         logger.warning("the junctions' tiers could not be read", exc_info=True)
         return set()
+
+
+# --- The road a side path runs beside ---------------------------------------------
+#
+# A rider on a side path or a protected lane mapped as its own way crosses each side
+# street's mouth beside the main road, and has that road's right of way there: the side
+# street's traffic stops for the main road and for the path alike. The junction model read
+# the path as the quiet way it is, so with the side street's stop sign not on the map the
+# rider was priced as the one who stops (720 to 800 ft a mouth, against 25 ft with the
+# sign mapped; the audit of 2026-11-13, section 3.7). So for a junction the route rides
+# straight through on a path, the busiest road within BESIDE_M of the node that runs
+# within BESIDE_ANGLE_DEG of parallel to the rider, and is not one of the roads met at the
+# node, is the road the path runs beside (`Junction.beside`, `intersections.has_priority`).
+# The distance and the angle are `routemaker.facility`'s own for naming a side path's
+# street (SIDE_STREET_M, SIDE_STREET_ANGLE); a default, unmeasured.
+BESIDE_M = 20.0
+BESIDE_ANGLE_DEG = 30.0
+# BESIDE_M as degrees, as `TIER_NEAR_DEG` is (a degree of longitude is shorter here, so
+# east to west it reaches about 16 m).
+BESIDE_DEG = BESIDE_M / 111_000.0
+
+_BESIDE_ROAD = """
+SELECT j.idx, best.way
+FROM unnest(%s::int[], %s::float8[], %s::float8[], %s::float8[]) AS j(idx, lon, lat, heading)
+CROSS JOIN LATERAL (
+    SELECT s.osm_way_id AS way
+    FROM {schema}.segment AS s
+    CROSS JOIN LATERAL (
+        SELECT ST_LineLocatePoint(s.geometry, ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)) AS f
+    ) AS at
+    CROSS JOIN LATERAL (
+        SELECT degrees(ST_Azimuth(
+            ST_LineInterpolatePoint(s.geometry, GREATEST(at.f - 0.05, 0)),
+            ST_LineInterpolatePoint(s.geometry, LEAST(at.f + 0.05, 1))
+        )) AS bearing
+    ) AS along
+    WHERE ST_DWithin(s.geometry, ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326), %s)
+      AND NOT s.is_trail_class
+      AND s.osm_way_id <> ALL(%s::bigint[])
+      AND abs(mod((along.bearing - j.heading + 720 + 90)::numeric, 180) - 90) <= %s
+    ORDER BY s.stress_tier DESC NULLS LAST,
+             s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
+    LIMIT 1
+) AS best
+"""
+
+
+def rides_a_path_through(raw: RawJunction) -> bool:
+    """The route arrives and leaves on a path, trail, cycletrack or sidewalk, straight on:
+    a side path crossing a side street's mouth, where it has a road beside it."""
+    return (
+        raw.movement is Movement.STRAIGHT
+        and raw.in_use in PATH_USES
+        and raw.out_use in PATH_USES
+        and raw.in_heading is not None
+    )
+
+
+def beside_roads(raws: Sequence[RawJunction], nodes: dict[int, Node]) -> dict[int, int]:
+    """By junction position, the way of the road the rider's path runs beside there
+    (`_BESIDE_ROAD`), one query for the route. A table that cannot be read reads none: the
+    rider is then priced as before, and the plan answered all the same."""
+    asked = [
+        (position, raw.lon, raw.lat, float(raw.in_heading or 0.0))
+        for position, raw in enumerate(raws)
+        if rides_a_path_through(raw)
+    ]
+    if not asked:
+        return {}
+    from django.db import DatabaseError
+
+    from .routing import plan_cursor
+
+    met: set[int] = set()
+    for position, _lon, _lat, _heading in asked:
+        raw = raws[position]
+        met |= {raw.in_way, raw.out_way}
+        node = nodes.get(position)
+        if node is not None:
+            met |= {arm.way_id for arm in node.arms}
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    arrays = [list(column) for column in zip(*asked, strict=True)]
+    try:
+        with plan_cursor() as cursor:
+            cursor.execute(
+                _BESIDE_ROAD.format(schema=schema),
+                [*arrays, BESIDE_DEG, sorted(met), BESIDE_ANGLE_DEG],
+            )
+            return {int(idx): int(way) for idx, way in cursor.fetchall()}
+    except DatabaseError:
+        logger.warning("the roads beside the route's paths could not be read", exc_info=True)
+        return {}
 
 
 def _rated(raw: RawJunction, ratings: Sequence[Rating]) -> bool:
@@ -1158,8 +1251,10 @@ def build_junctions(
     raws: Sequence[RawJunction],
     nodes: dict[int, Node],
     roads: dict[tuple[int, int], Road],
+    beside: dict[int, int] | None = None,
 ) -> list[Junction]:
-    """The model's junctions: each raw one with its roads and its control."""
+    """The model's junctions: each raw one with its roads and its control. `beside`: by
+    position, the way of the road the rider's path runs beside (`beside_roads`)."""
     junctions = []
     unknown = Road(None)
     for position, raw in enumerate(raws):
@@ -1210,6 +1305,15 @@ def build_junctions(
                 located=node is not None,
                 continues=continues,
                 ring_movement=raw.ring_movement,
+                class_edge=class_edge(
+                    raw.in_class,
+                    [
+                        cls
+                        for cls, (use, _one_way) in zip(raw.other_classes, raw.others, strict=False)
+                        if use not in NOT_A_ROAD_USES
+                    ],
+                ),
+                beside=roads.get((position, (beside or {}).get(position, 0))),
             )
         )
     return junctions
@@ -1263,9 +1367,12 @@ def events_of(
         for way in ways:
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
+    beside = beside_roads(raws, nodes)
+    for position, way in beside.items():
+        asked[(position, way)] = (position, way, raws[position].lon, raws[position].lat)
     closures = when if closure_when is None else closure_when
     roads = roads_by_way(list(asked.values()), closures, with_facility)
-    built = build_junctions(raws, nodes, roads)
+    built = build_junctions(raws, nodes, roads, beside)
     if beacons:
         signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]
         built = with_beacons(built, beacons, signs)

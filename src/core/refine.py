@@ -26,7 +26,8 @@ extra price, in the router's cost seconds, for what the router cannot see:
     router cost + QUIET COST x ( CALM RATE x (LTS 3 metres + 2 x LTS 4 + 3 x Avoid)
                                + INTERSECTION WEIGHT x (the junction events' cost in metres)
                                + HILL - ROUTER'S CLIMB CHARGE )
-                 + 2.2 x 600 s x INTERSECTION WEIGHT x (red junctions)  (`RED_DETOUR_S`)
+                 - what any one junction's stress cost and wait together come to past
+                   2 calm miles  (`JUNCTION_CAP_FT`, `junction_over_cap_m`)
 
 (The 1, 2 and 3 are the preset's `presets.Exposure`: Trailmaxxing and Cargo with
 passengers weigh LTS 4 at 8 and Avoid at 16, and never take a route with more
@@ -544,6 +545,11 @@ class Analysis:
     # Cargo with passengers, a half on Riding with kids, nothing elsewhere).
     lts2_m: float = 0.0
     lts2_weight: float = 0.0
+    # Metres of quiet riding by which this route's junctions, each one's stress cost at the
+    # intersection weight and its ranked wait together, pass JUNCTION_CAP_FT
+    # (`junction_over_cap_m`): taken off in `score`, so no one junction counts for more
+    # than about 2 miles.
+    junction_over_cap_m: float = 0.0
     # The route's effort-equivalent distance, metres (`routemaker.effort`,
     # OWNER-DECISIONS 262, 263): its length weighted by the grade it rides, which
     # the Hills slider blends with the actual distance.
@@ -619,8 +625,9 @@ class Analysis:
 
     def score(self, ctx: Context) -> float:
         """The router's cost plus the extra price (see the module docstring), 30
-        minutes for each pass through an Avoid-rated junction (308), `RED_DETOUR_S` of quiet
-        riding for each red junction at the intersection weight, with the router's own
+        minutes for each pass through an Avoid-rated junction (308), no one junction's
+        stress cost and wait together past 2 calm miles (`junction_over_cap_m`), with the
+        router's own
         climbing charge swapped for the rider's (`hill_m`, 2026-10-23). The hill's
         share of the exposure (`hill_exposure_m`, 409) counts at the calm rate where it is
         over 1 and one for one below it, so it counts at every slider position, Default's
@@ -642,13 +649,13 @@ class Analysis:
             + ctx.quiet_cost * extra
             + avoid_model.penalty_s(self.avoid_passages)
             + QUIET_COST_FACTOR * ctx.wait_weight * self.ranked_delay_s
-            + QUIET_COST_FACTOR * RED_DETOUR_S * ctx.weight * red_count(self)
+            - ctx.quiet_cost * self.junction_over_cap_m
         )
 
     @property
     def red_m(self) -> float:
         """The very high stress (red) junctions' summed cost, as metres of quiet
-        riding (the junction model's own cost, 2,000 to 4,500 ft each); with a shift,
+        riding (the junction model's own cost, 3,100 to 10,560 ft each); with a shift,
         the orange ones too (`presets.shifted_severity`)."""
         return junction_cost_m(self.events, "red", self.shift)
 
@@ -797,7 +804,7 @@ def avoidance_severity(event) -> str | None:
     owner asked for the cap on the map only ("Trail crossings whose signal is not mapped cap
     at orange and are labelled 'signal not mapped'"), and the model promises "The cost still
     counts in full where a route is chosen" (`intersections.MARKED_CROSSING_MAX_SEVERITY`);
-    keyed on the colour, every red-only pass (the score's `RED_DETOUR_S`, the top figure,
+    keyed on the colour, every red-only pass (the top figure,
     `top_by_leg`, `core.red_crossings`) skipped an unsignalised trail crossing of a 45 mph
     arterial that costs 1 to 2 calm miles (the 2026-11-08 hunt, J1). The colour the rider is
     shown is unchanged."""
@@ -982,19 +989,46 @@ def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
     return False
 
 
-# Seconds of quiet riding each red junction counts for in the score, below the top of the
-# slider, on top of its junction cost (the owner, 2026-10-23, of the unsignalised crossings
-# of University Blvd and Connecticut Ave in Kensington at rush hour: "essentially
-# impassable", and a rider would rather ride 10 minutes more). The junction cost alone
-# weighed a red as an equal sum of orange ones: on the PC's check of a NoMa to Twinbrook
-# commute at Default, a detour with one red where the router's route had two scored 606 s
-# worse for its oranges and delay, and a red-free one 40 s worse off peak. Scaled by the
-# intersection weight (`intersection_weight`): all of it from Default up, a quarter at the
-# traffic tolerant end. A price, not a rule ahead of the score, so the order stays total and
-# Avoid-rated junctions, LTS 3 and the oranges still count (review of PR #426). A red now
-# scores about as much as a pass through an Avoid-rated junction (1,800 cost seconds, 308);
-# the approved Avoid list is empty as shipped.
-RED_DETOUR_S = 600.0
+# The most one junction counts for in the score, everything about it together: its stress
+# cost (`routemaker.intersections`, at the intersection weight) and its ranked wait
+# (`routemaker.junction_delay`), in feet of quiet riding. The owner's choice,
+# OWNER-DECISIONS 467: "There's definitely intersections that I'd detour 2 miles to avoid,
+# though rare." The junction model already tops out there (`intersections.MAX_CROSSING_FT`);
+# this holds the SUM there, which the audit of 2026-11-13 (section 3.4) found at 3 to 4
+# miles for one crossing. Whether 2 miles meant the whole junction or its stress part alone
+# is a question put to the owner (the audit's question 5); this reads it as the whole.
+#
+# Until 2026-11-13 the score also added RED_DETOUR_S, 600 s of quiet riding (9,840 ft at
+# Default) for every red junction, from the owner's 2026-10-23 "rather bike 10 minutes"
+# of the unsignalised crossings of University Blvd and Connecticut Ave in Kensington at
+# rush hour. That sentence is now a calibration point of the junction model's one crossing
+# table, which puts those crossings at the 2 mi top at rush hour by their lanes, speed and
+# count, so it is charged once (the owner, 2026-11-13: "Own calls were mainly to help tune
+# the formula not override it"). With the surcharge every red, the mildest included, cost
+# 2.4 miles or more, against his "though rare". AN OWNER-DECIDED NUMBER REMOVED; the
+# owner to confirm.
+JUNCTION_CAP_FT = model.MAX_CROSSING_FT
+
+
+def junction_over_cap_m(events: list | None, found_waits, ctx: Context) -> float:
+    """What the route's junctions come to past JUNCTION_CAP_FT each, in metres of quiet
+    riding: an event's cost at the intersection weight, plus the ranked waits within
+    `intersections.MERGE_WITHIN_M` of it along the route (the same junction), less the cap,
+    where that is positive. A wait away from any event is a wait alone and far below it."""
+    if not events or ctx.quiet_cost <= 0:
+        return 0.0
+    cap_m = JUNCTION_CAP_FT / model.FEET_PER_METRE
+    waits = list(found_waits or ())
+    per_s = QUIET_COST_FACTOR * ctx.wait_weight / ctx.quiet_cost
+    over = 0.0
+    for event in events:
+        near = [w for w in waits if abs(w.m - event.m) <= model.MERGE_WITHIN_M]
+        wait_s = junction_delay.ranked_s(
+            near, ctx.wait_weight, road_bike_buttons=ctx.road_bike_buttons
+        )
+        total = ctx.weight * event.cost_ft / model.FEET_PER_METRE + per_s * wait_s
+        over += max(total - cap_m, 0.0)
+    return over
 
 
 def red_count(read: Analysis) -> int:
@@ -1230,6 +1264,7 @@ def analyse(
         adjustments=getattr(real_classes, "adjustments", None),
         turns=turns_of(trip),
         junction_delay_s=sum(w.seconds for w in found_waits),
+        junction_over_cap_m=junction_over_cap_m(events, found_waits, ctx),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
         junction_ranked_s=junction_delay.ranked_s(
