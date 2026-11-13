@@ -98,6 +98,11 @@ def corridor_ways(
         if "statement timeout" in str(error) or "canceling statement" in str(error):
             raise TooSlow from error
         raise
+    return ways_of(rows)
+
+
+def ways_of(rows) -> list[OfflineWay]:
+    """The ways of rows read as (id, node ids, WKT line, level2, flags, direction, name)."""
     return [
         OfflineWay(
             osm_id=int(way_id),

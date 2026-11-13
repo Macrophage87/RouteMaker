@@ -67,6 +67,7 @@ Contents:
 - [Agency stress ratings (agency-lts.json)](#agency-stress-ratings-agency-ltsjson)
 - [The Scenic layer (v0.8.0)](#the-scenic-layer-v080)
 - [Popular bike corridors (v0.11.0)](#popular-bike-corridors-v0110)
+- [Refreshing the places after a map rebuild](#refreshing-the-places-after-a-map-rebuild)
 - [Deployment actions](#deployment-actions)
 - [Build ids](#build-ids)
 - [After a host restart: the postgis bind race](#after-a-host-restart-the-postgis-bind-race)
@@ -773,7 +774,7 @@ Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 anywhere on it (near its ends too since routing hunt 4, J4-1) asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
 are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
-the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
+the crossing search did not cover (legs adding up past 37 mi [60 km], a long Trailmaxxing
 plan searched leg by leg, a search cut short, a climb seek, a loop, a route Mountain Bike's
 choice swapped in) asks round each red after it (`core.red_crossings`; an owner report of
 the GW Parkway at Tulane Dr on a long Mount Vernon ride): a plain one-leg plan first asks
@@ -3843,8 +3844,9 @@ only when a Mass Ride is open; no edge, compose or deploy change.
 The water and restrooms layer (`frontend/src/lib/waterRestrooms.ts`) is
 OpenStreetMap data and needs nothing beyond the ODbL credit. Its file,
 `frontend/src/amenity-data/water-restrooms.json`, is a committed snapshot built
-by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
-not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
+by `scripts/build_water_restrooms.py` from the extract; the rebuild does not write it, and
+`scripts/refresh_places.py` refreshes it after each map rebuild ("Refreshing the places after a
+map rebuild").
 Since 2026-10-10 the script merges a restroom node into the restroom building
 around it and leaves out historic springs (rules and merge order in that
 README); the committed file was refreshed with both on 2026-10-11, for v0.4.0.
@@ -3863,8 +3865,9 @@ compressed, and is named by the published front end's script.
 
 The barrier list Cargo and Tandem plan round (`src/core/geodata/barriers.json`,
 `core.barriers`; docs/DEVELOPMENT.md, "Barriers on Cargo and Tandem routes") is OpenStreetMap
-data too, a committed snapshot the weekly rebuild does not refresh (the first, #1210, from the
-2026-11-02 extract: 11,734 barriers). A refresh, read only, after a map rebuild,
+data too, a committed snapshot the rebuild does not write (the first, #1210, from the
+2026-11-02 extract: 11,734 barriers). `scripts/refresh_places.py` refreshes it with the places
+after each map rebuild ("Refreshing the places after a map rebuild"); on its own, read only,
 on the build host with pyosmium:
 
     python scripts/barrier_census.py --pbf <DATA_ROOT>/extracts/source.osm.pbf \
@@ -3877,8 +3880,8 @@ release's notes, not in the repository's data.
 The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
 v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
 Its file, `frontend/src/amenity-data/food.json`, is a committed snapshot built
-by `scripts/build_food.py` from the extract; like the water file, the weekly
-rebuild does not refresh it. The file committed with the feature was empty
+by `scripts/build_food.py` from the extract; like the water file, `scripts/refresh_places.py`
+refreshes it after each map rebuild. The file committed with the feature was empty
 (the search said "No food data yet"); the v0.5.0 rebuild on the build host
 ran it once on 2026-10-11 (15,480 places, committed in #92), next to the
 water layer's refresh by hand, and a later refresh runs the same:
@@ -3886,7 +3889,8 @@ water layer's refresh by hand, and a later refresh runs the same:
     .venv311/bin/python scripts/build_food.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
-then records the printed counts, size and digest in
+(after a map rebuild, `scripts/refresh_places.py` runs it with the
+others), then records the printed counts, size and digest in
 `frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
 the file. It is a hashed asset under `/assets/`, fetched on the first search
 only (2.3 MB, 555 KB with `gzip -9`, for the committed file) and left out of the service worker's
@@ -5768,17 +5772,21 @@ without it NPS is simply not read. The host needs egress to the four hosts, and 
 Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.26.0) `www7.montgomerycountymd.gov` for
 Montgomery County's road closures.
 
-**A source that reads as nothing** (v0.26.0). Each good read's count of closures and notices is
-kept (the last 8). A read of none from a source whose usual count (the median of those, once there
-are 3) is 5 or more is not taken: its last copy is kept, and the run fails at once with "read as
-nothing: <source>", so the operations page shows it the same day. It almost always means the page
-or layer changed shape (AlertDC's RSS turning into an HTML list in 2026): fetch it by hand and
-compare with its sample in `tests/data/closures`. A source that is often empty (Montgomery
-County's closures) never trips it, and MPD and AlertDC are left out (their closures end in the
-reading, so none left is real news). Once the kept copy is past its "Dropped after" age the empty
-read is taken, and further empty reads are quiet. Counts are zones and notices, so a closure along
-several stretches counts each. 8, 3 and 5 are our default, unmeasured
-(`COUNTS_KEPT`, `ZERO_ALARM_READS`, `ZERO_ALARM_USUAL` in src/core/closure_sources.py).
+**A source that has stopped making sense** (v0.26.0, widened in v0.27.0; `core.feed_sense`).
+Each good read's count of closures and notices is kept (the last 8). A read that does not fit the
+source's usual count (the median of those, once there are 3) is not taken: none from a source that
+usually has 5 or more, or under a fifth of the usual from one that usually has 20 or more. Its last
+copy is kept, and the run fails at once with "read did not make sense: <source>" (the detail says
+"read as nothing (usually N items)" or "read only N items (usually M)"), so the operations page
+shows it the same day. It almost always means the page or layer changed shape (AlertDC's RSS
+turning into an HTML list in 2026), or a changed field made the parser drop most items: fetch it by
+hand and compare with its sample in `tests/data/closures`. A source that is often empty or small
+(Montgomery County's closures) never trips it, and MPD and AlertDC are left out (their closures end
+in the reading, so few or none left is real news). Once the kept copy is past its "Dropped after"
+age the read is taken and the counts start again from it, so the source is not judged again until
+it has 3 reads of its new size. Counts are zones and notices,
+so a closure along several stretches counts each. 8, 3, 5, 20 and a fifth are our default,
+unmeasured (`src/core/feed_sense.py`).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5811,7 +5819,9 @@ several stretches counts each. 8, 3 and 5 are our default, unmeasured
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.
 
-Closures follow the ride time (the When setting). Only closures known to be in effect
+Closures follow the ride time (the When setting); with Plan's Leave at (v0.27.0, #1239: `depart_at`
+on a bike plan, not Bikeshare or Rebalance Ride) they are those in force at that start. Go
+and rides always plan for now. Only closures known to be in effect
 reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
 away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
 around anywhere and give no warning or cue, not even when the TOPS source cannot be
@@ -6586,6 +6596,51 @@ map's labels (`trail_name`; tile format 14). The class comes from two inputs:
 
 Refresh it about once a year: the classes are for drawing, not routing, and change slowly.
 
+## Refreshing the places after a map rebuild
+
+Backlog item "Data that says how old it is" (2026-11-13). The places riders act on in the moment
+(Find food, Places to see, water and restrooms, repair stands, bike racks, trail mile markers), the
+restricted sites with their gates, and the barrier list Cargo and Tandem plan round are committed
+files built from the OSM extract, and the rebuild does not write them. So after every map rebuild,
+once the swap is done, refresh them all from that rebuild's extract in one step, on the build host
+(pyosmium; each builder reads the whole extract in turn, so under the heavy-job lock with at least
+3,000 MB free):
+
+    free -m    # "available" at least 3,000 MB; else stop
+    flock <the host's heavy.lock> .venv311/bin/python scripts/refresh_places.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+Add `--cities` to fetch DDOT's and BCDOT's racks again (network); without it the cities' racks
+already in the file are kept, with their old date. The extract's day is the file's modified day
+(the day the rebuild downloaded and clipped it); give `--extract-date YYYY-MM-DD` when a copy lost
+it. It writes, in the checkout it runs from:
+
+- `frontend/src/amenity-data/` `water-restrooms.json`, `food.json`, `places.json`,
+  `trail-miles.json`, `bike-parking.json`, and `as-of.json` (each file's extract day, and the day
+  the cities' racks were fetched);
+- `frontend/src/restricted-data/restricted-sites.json` (the restricted sites and their gates; the
+  api image copies it too);
+- `src/core/geodata/barriers.json` (with the extract's day as its `built`); the census's coverage
+  report goes to `~/barrier-census-<day>.md`, kept with the release's notes, never committed.
+
+It ends with a change report, one line a file: the count before and after and how many came and
+went (`food: 15,663 -> 15,702 (+120, -81)`). A file left with under 80% of what it had (our
+default, unmeasured) is marked `CHECK`: a builder that read a truncated or wrong extract writes a
+small file rather than failing, so explain the drop before committing. Put the report in the
+rebuild's thread, update the counts in `frontend/src/amenity-data/README.md`'s "Status" sections
+when they matter, and commit the files on a branch for the next release. A builder that fails
+stops the run before `as-of.json` is written and prints the `git restore` line for the files it
+had already changed.
+
+The front-end files reach riders with the next front-end build; `barriers.json` and
+`restricted-sites.json` reach the router with the next api image (a hand ship). Riders see the dates in Settings, About, under the version: "Map data from
+Nov 10, 2026. Places and racks from Oct 9, 2026." The map's day is the live standard graph's build
+day (`GET /api/coverage`'s `properties.map_data`, from the `valhalla_upstream` row), so it moves
+with a map swap by itself; the places' day is the oldest in `as-of.json`, so it moves only with
+this refresh (it is also never newer than the cities' racks: run with `--cities` now and then).
+The climbs file is not part of it: it reads the live table, `manage.py build_climbs`
+("The Climbs layer").
+
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.
@@ -7091,9 +7146,9 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   before.
 - **Loops (item 266)** ask for the way back up to 4 more times (every point, then every 2nd, 4th and 8th),
   each a /route, its reading and the whole loop's reading, inside 14 s (`refine.LOOP_BUDGET_S`); the
-  search then runs as for any plan up to 19 mi (30 km) of straight line in all, and not at all past it.
-  A loop is never a long calm plan, and its straight line counts the way back too, so a Trailmaxxing
-  loop with a 9.5 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
+  search then runs as for any plan up to 37 mi (60 km) of straight line in all (19 mi (30 km) until
+  v0.27.0), and not at all past it. A loop is never a long calm plan, and its straight line counts the
+  way back too, so a Trailmaxxing loop with an 18.6 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
   fault. Such a loop still has its red crossings asked round, each by its own stretch so the way
   back stays as made (`core.red_crossings`), and at the top of the slider its target distance and
   ceiling still hold (`_fit_target`; the 2026-11-08 hunt, R1: before, a loop past the span lost
@@ -8514,8 +8569,9 @@ each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and
 access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
 15 (our defaults). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
-PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
-rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
+PC against the extract (`frontend/src/restricted-data/README.md`); `scripts/refresh_places.py`
+reruns it after each map rebuild ("Refreshing the places after a map rebuild"). No map rebuild
+is needed for it.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
@@ -9664,7 +9720,16 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    zones read before stay in use as the labels below say, and the failing runs are what turns
    `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
-   real reading here.
+   real reading here. Once a feed has 3 good reads (v0.27.0, `core.feed_sense`, as the closure
+   sources), a read of none from one that usually has 5 or more is not taken (the last copy is kept
+   until it is 2 hours old) and the run fails with `read did not make sense: md`. The "under a
+   fifth" rule of the closure sources is not used here: zones in force now can fall a long way
+   when a night's work ends. So does a feed whose own
+   `feed_info.update_date` is more than 3 days old (`md not updated by its publisher since ...`):
+   its zones are still used, since they are still what the state publishes, but the feed has
+   stopped being fed and is worth a look. There is no switch to silence it: every run fails until
+   the publisher updates the feed (or the feed is dropped, below). All these numbers are our
+   default, unmeasured.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
@@ -10372,3 +10437,38 @@ the signal returns, the server plans it again.
   about 250 miles (`MAX_LINE_M`, our default) is refused with a 400.
 - Privacy: the request carries the route's line only; nothing about the rider is logged or
   kept, and the phone keeps the network in memory for the ride only.
+
+### Region packs (v0.27.0)
+
+The optional whole-area download beside each ride's mile-wide network (the owner, 2026-11-12:
+"Potentially split it by subregion"; "Beltway, NoVA, NW exurbs, Baltimore and suburbs, etc.").
+Five packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
+exurbs, Baltimore and suburbs, and the rest of the map (the coverage box less the others). The
+borders are our draft, approximate; each pack also takes the roads within a mile of its border.
+
+- **Built after every map swap**, first thing in the rebuild's last stage, from the live
+  `offline_way` table: `${DATA_ROOT}/tiles/offline-packs/packs-<build id>/<region>.json.gz`,
+  then `manifest.json` beside it is replaced in one rename to name that folder. The folder is
+  named `packs-...`, not a bare build id, so the tile pruning and the beta ship script never
+  take it for a router graph. The manifest's build and the one before it are kept. The log
+  reads `offline pack <region>: N ways, B bytes` for each; that is where the sizes come from.
+  A failure is logged (`offline region packs not built`) and never fails the rebuild: the map
+  is already live, and the previous packs stay listed. A retry with the same build id reuses
+  the packs already written.
+- **Beta** runs no rebuild: `scripts/beta/ship-data.sh` sends the packs as their own part,
+  `packs` (the manifest and the folder it names), and `receive-data.sh files` installs the
+  folder, then the manifest by rename, and keeps one build before it. Without packs at home
+  the ship script warns; `--without packs` says so.
+- **Listed** by `GET /api/offline/packs` (each pack's name, bytes, checksum and address, and
+  the ride's level prices); 503 `not_built` before the first build. 30 a minute per client
+  (our default).
+- **Served** by the web server, never an api worker:
+  `/offline-packs/packs-<build id>/<region>.json.gz`, pack files only (never the manifest),
+  same-site only, kept a day. Compose's Caddy mounts `${DATA_ROOT}/tiles` read-only at
+  `/srv/tiles`; beta's nginx reads the folder directly. **Deploy steps:** on beta, render the
+  nginx template again and reload nginx (the new `/offline-packs/` location); on compose,
+  `docker compose up -d caddy` for the new mount.
+- To build the packs by hand for the live map (after a swap whose pack build failed), in
+  `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
+  then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
+  settings.COVERAGE_BBOX)`.

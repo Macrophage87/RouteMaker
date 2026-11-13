@@ -14,6 +14,7 @@ import {
   BETA_GUIDES_TEXT,
   BETA_SIGNUP_TEXT,
   BETA_SIGNUP_URL,
+  BETA_SIGNUP_URL_IPHONE,
   BetaChip,
   betaReportUrl,
   isBetaBuild,
@@ -69,7 +70,7 @@ test("for reports it links the public Discord, and in small print the testers' w
   assert.equal(BETA_SIGNUP_URL, "/about/welcome.html");
   assert.ok(existsSync(new URL("../../public/about/welcome.html", import.meta.url)), "the page it links is published");
   assert.equal(BETA_SIGNUP_TEXT, "Sign up to test here!");
-  const html = render({ enabled: true, initiallyOpen: true });
+  const html = render({ enabled: true, initiallyOpen: true, ios: false });
   const newTab = '<span class="visually-hidden"> (opens in a new tab)</span>';
   assert.ok(
     html.includes(
@@ -85,6 +86,14 @@ test("for reports it links the public Discord, and in small print the testers' w
     ),
     html,
   );
+  // On an iPhone or iPad (no app yet, Stephen 2026-11-13): the welcome page's iPhone steps instead.
+  assert.equal(BETA_SIGNUP_URL_IPHONE, "/about/welcome.html#iphone");
+  const welcome = readFileSync(new URL("../../public/about/welcome.html", import.meta.url), "utf8");
+  assert.match(welcome, /<details class="more" id="iphone">/, "the iPhone steps it links are published");
+  assert.match(welcome, /up to 30 miles \(48 km\) on iPhone/);
+  const onIphone = render({ enabled: true, initiallyOpen: true, ios: true });
+  assert.ok(onIphone.includes(`<a href="${BETA_SIGNUP_URL_IPHONE}" target="_blank" rel="noopener noreferrer">Sign up to test here!`), onIphone);
+  assert.ok(!onIphone.includes(BETA_SIGNUP_URL), "no Android page on an iPhone");
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   const button = css.match(/\.beta-chip-note \.beta-chip-actions a \{[^}]*\}/)?.[0] ?? "";
   for (const rule of ["min-height: 48px;", "background: var(--accent);", "color: var(--accent-text);", "text-decoration: none;"]) assert.ok(button.includes(rule), rule);
