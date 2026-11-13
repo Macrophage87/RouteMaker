@@ -770,3 +770,19 @@ in the database still names it: delete that row in the admin when loading the fi
   only old photos) keep their own-picks rows. The index says "agrees" only at the same level and
   "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
+
+- `2026-11-13-owner-bucklodge-road.json` (4 ways, 1.5 mi, 4 retired): Bucklodge Road (MD 117),
+  its northern 1.5 mi to Barnesville Road in Boyds, at 3. MDOT SHA counts MD 117 in one
+  section, "MD 28 TO MD 121", at a station 0.10 mi west of MD 121 in Boyds, east of the
+  junction where Barnesville Road (its own count 3,860 a day) joins, so the section's 5,641 a
+  day includes Barnesville Road's traffic. The 2026-11-01 review (3.5) and the 2026-11-09
+  own-picks (4) both rated Bucklodge from that 5,641; Bucklodge itself carries roughly 1,800 a
+  day (our estimate, 5,641 less 3,860), and a rural two-lane road with no shoulder at
+  1,500-3,000 a day is 3 by our rural rule. Montgomery Planning's Rustic Roads plan (Volume II,
+  adopted December 2023) adds the whole road as a rustic road. The owner, 2026-11-13, on a
+  decision card: "Bucklodge to 3 + audit others". The southern 2.6 mi (way 5976913) already
+  rates 3 in the own-picks and is left alone. The group carries a `facts` object with the
+  estimated band, so "Facts changed since rated" lists it while the build still reads 5,641.
+  It retires the 2026-11-01 Maryland review's row on 454980545 and the own-picks row
+  (`md-own-g00149-1`) on the other three. Load like the others; takes effect on the next
+  rebuild.

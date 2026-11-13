@@ -1,0 +1,127 @@
+{
+ "version": 1,
+ "decided": "2026-11-13",
+ "decided_by": "the deployment owner",
+ "status": "Decided by the owner on 2026-11-13 (decision card: Bucklodge to 3); not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
+ "annotations": "Bucklodge Road (MD 117), Darnestown Road (MD 28) to Barnesville Road in Boyds. MDOT SHA counts it in one section with Barnesville Road, 'MD 28 TO MD 121', at station B2763, 0.10 mi west of MD 121 in Boyds: east of the junction where Barnesville Road (CO 237, its own count 3,860 a day, station S2012150730) and Slidell Road join. The section's 5,641 a day therefore includes Barnesville Road's traffic; Bucklodge itself carries roughly 5,641 - 3,860 = about 1,800 a day (our estimate, not a count). Rural two-lane, no posted speed, 21-23 ft wide, no shoulders (Montgomery Planning, Rustic Roads Functional Master Plan Volume II, adopted December 2023, which adds the whole road as a rustic road). Our rural rule (ODOT with half steps): 1,500-3,000 a day with no shoulder -> 3. The southern 2.6 mi (way 5976913) already rates 3 in the 2026-11-09 own-picks and is left as it is.",
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 454980545,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p020569-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "half": true,
+    "public_note": "Montgomery County's LTS layer says 4; MDOT SHA's LTS layer says 4, but Bucklodge Road here is a rural road with no posted speed, about 5,600 cars a day, no bike lane, so 3.5.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: the count it was rated from (5,641) is measured in Boyds, past the Barnesville Rd junction (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 454980546,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00149-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural main road, no posted speed, one lane, about 5,600 cars a day, no bike lane: our level 4. Montgomery County's rating and MDOT SHA's rating agree.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: the count it was rated from (5,641) is measured in Boyds, past the Barnesville Rd junction (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1511744266,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00149-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural main road, no posted speed, one lane, about 5,600 cars a day, no bike lane: our level 4. Montgomery County's rating and MDOT SHA's rating agree.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: the count it was rated from (5,641) is measured in Boyds, past the Barnesville Rd junction (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1511744267,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00149-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural main road, no posted speed, one lane, about 5,600 cars a day, no bike lane: our level 4. Montgomery County's rating and MDOT SHA's rating agree.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: the count it was rated from (5,641) is measured in Boyds, past the Barnesville Rd junction (the owner, 2026-11-13)."
+  }
+ ],
+ "groups": [
+  {
+   "kind": "stress",
+   "value": {
+    "tier": 3,
+    "adjustment_id": "bucklodge-road-borrowed-count",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Bucklodge Rd (MD 117), a rustic road: MDOT's 5,641 a day is counted in Boyds past Barnesville Rd; Bucklodge carries about 1,800, no shoulder: 3. MoCo and MDOT SHA say 4.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "LTS 3: the owner, 2026-11-13, decision card 'Fix Bucklodge Rd and look for other roads with borrowed counts?': 'Bucklodge to 3 + audit others'. The 5,641 a day it was rated 3.5 and 4 from is counted in Boyds after Barnesville Rd joins.",
+   "evidence": "MDOT SHA AADT layer read 2026-11-13: section MD 117 'MD 28 TO MD 121' (station B2763 'MD117-.10 MI W OF MD121', AADT 5,641) and Barnesville Rd CO 237 'MD 109 TO SLIDELL RD' (station S2012150730, AADT 3,860), whose end meets Bucklodge's north end; Montgomery Planning Rustic Roads FMP Vol. II pp. 64-67.",
+   "facts": {
+    "highway": "secondary",
+    "urban": false,
+    "speed_mph": null,
+    "speed_source": null,
+    "lanes": 1,
+    "oneway": false,
+    "count_band": [
+     1500,
+     2999
+    ],
+    "facility": "none"
+   },
+   "ways": [
+    454980545,
+    454980546,
+    1511744266,
+    1511744267
+   ],
+   "fingerprints": {
+    "454980545": {
+     "name": "Bucklodge Road",
+     "highway": "secondary",
+     "length_m": 854.1,
+     "line": "-77.335366,39.192731 -77.334738,39.192975 -77.334457,39.193062 -77.334088,39.193157 -77.331779,39.193653 -77.331420,39.193748 -77.331092,39.193859 -77.330757,39.193996 -77.328594,39.195182 -77.328132,39.195365 -77.327851,39.195429 -77.327545,39.195451 -77.327210,39.195440 -77.326802,39.195332 -77.326400,39.195144"
+    },
+    "454980546": {
+     "name": "Bucklodge Road",
+     "highway": "secondary",
+     "length_m": 68.5,
+     "line": "-77.336067,39.192440 -77.335366,39.192731"
+    },
+    "1511744266": {
+     "name": "Bucklodge Road",
+     "highway": "secondary",
+     "length_m": 1468.3,
+     "line": "-77.348621,39.183811 -77.347198,39.184776 -77.346961,39.184959 -77.345993,39.185844 -77.345115,39.186527 -77.344772,39.186710 -77.342361,39.187801 -77.342109,39.187938 -77.341842,39.188121 -77.341552,39.188362 -77.341316,39.188621 -77.340684,39.189558 -77.340588,39.189660 -77.339653,39.190534 -77.339240,39.190856 -77.338886,39.191065 -77.337888,39.191473 -77.337406,39.191696 -77.336540,39.192211 -77.336067,39.192440"
+    },
+    "1511744267": {
+     "name": "Bucklodge Road",
+     "highway": "secondary",
+     "length_m": 11.8,
+     "line": "-77.348724,39.183742 -77.348621,39.183811"
+    }
+   }
+  }
+ ]
+}
