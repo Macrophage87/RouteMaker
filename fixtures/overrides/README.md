@@ -771,26 +771,27 @@ in the database still names it: delete that row in the admin when loading the fi
   "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
 
-- `2026-11-13-owner-dc-rerate.json`, `-md-rerate.json`, `-va-rerate.json`, `-wv-rerate.json`
-  (131,237 ways, 128,700 retired): every road re-rated on 2026-11-13 with one lean rater brief
-  (the owner, 2026-11-13: "Rerate the entire dataset on sonnet with the 'why' included. Then if
-  skepticism is needed, use opus to review them. If the values disagree, use a higher effort to
-  break the tie."). One rater rated all 280,996 ways blind to agency ratings, a second reviewed
-  the doubtful ones, and a third settled the 165 stretches where those two were more than half a
-  level apart. The files hold the ways whose level changed (most by half a level or one level),
-  each row replacing (and retiring) the row in force on that way where it had one, the owner's
-  own earlier rating rows among them (the owner, 2026-11-13: "Ignore my own calls" and "The goal
-  here is no specific overrides"). Two groups are replaced whatever the new level: the 257
-  Baltimore streets of `2026-10-01-owner-baltimore-facilities.json`, re-rated with the city's
-  record of the bike facility given to the rater as a fact, and the 386 Montgomery County LTS 5
-  rows still live on the PC (38 of them on ways outside the re-rate are only retired, so those
-  ways take the classifier's level). The retire lists are written against what the PC database
-  held on 2026-11-13, not against every file here: the 2026-11-12 side streets file, the North
-  Bethesda, Darnestown, Redland and Patuxent files were not loaded, and the Montgomery County
-  file's own retirements had not run. Load the re-rate INSTEAD of the unloaded rating files.
-  Left as they are: ways whose level did not change, access rows, and the 33 ways the raters
-  called closed (a closure is an access row with on-the-spot evidence, never a rating). 2,923
-  ways had no row before and carry no fingerprint yet
-  (`scripts/analysis/backfill_override_fingerprints.py` on the PC). Method and results:
+- `2026-11-13-owner-dc-rerate.json`, `-md-rerate-1.json`, `-md-rerate-2.json`,
+  `-va-rerate-1.json`, `-va-rerate-2.json`, `-wv-rerate.json` (280,901 ways, 273,232 retired;
+  Maryland and Virginia are split to keep each file under 100 MB): every road re-rated on
+  2026-11-13 with one lean rater brief (the owner, 2026-11-13: "Rerate the entire dataset on
+  sonnet with the 'why' included. Then if skepticism is needed, use opus to review them. If the
+  values disagree, use a higher effort to break the tie."). One rater rated all 280,996 ways
+  blind to agency ratings, a second reviewed the doubtful ones, and a third settled the 165
+  stretches where those two were more than half a level apart. There is a row for every way
+  rated, whether or not its level changed (149,665 did not), so no way is left to an agency
+  level or to a later formula change; each row retires the row in force on that way where it
+  had one, the owner's own earlier rating rows among them (the owner, 2026-11-13: "Ignore my own
+  calls" and "The goal here is no specific overrides"). The 257 Baltimore streets of
+  `2026-10-01-owner-baltimore-facilities.json` were re-rated with the city's record of the bike
+  facility given to the rater as a fact. All 386 Montgomery County LTS 5 rows still live on the
+  PC are retired (38 on ways outside the re-rate are only retired, so those ways take the
+  classifier's level). The retire lists are written against what the PC database held on
+  2026-11-13, not against every file here: the 2026-11-12 side streets file, the North Bethesda,
+  Darnestown, Redland and Patuxent files were not loaded, and the Montgomery County file's own
+  retirements had not run. Load the re-rate INSTEAD of the unloaded rating files. Left as they
+  are: access rows, and the 33 ways the raters called closed (a closure is an access row with
+  on-the-spot evidence, never a rating). 8,057 ways had no row before and carry no fingerprint
+  yet (`scripts/analysis/backfill_override_fingerprints.py` on the PC). Method and results:
   `reports/rerate-2026-11-13/REPORT.md` in the project files. Not loaded; load one file at a
   time after the owner confirms that file; takes effect on the next rebuild.
