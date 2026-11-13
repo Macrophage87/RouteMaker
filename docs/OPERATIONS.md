@@ -67,6 +67,7 @@ Contents:
 - [Agency stress ratings (agency-lts.json)](#agency-stress-ratings-agency-ltsjson)
 - [The Scenic layer (v0.8.0)](#the-scenic-layer-v080)
 - [Popular bike corridors (v0.11.0)](#popular-bike-corridors-v0110)
+- [Refreshing the places after a map rebuild](#refreshing-the-places-after-a-map-rebuild)
 - [Deployment actions](#deployment-actions)
 - [Build ids](#build-ids)
 - [After a host restart: the postgis bind race](#after-a-host-restart-the-postgis-bind-race)
