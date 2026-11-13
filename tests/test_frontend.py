@@ -66,7 +66,8 @@ def test_the_node_command_here_is_the_one_package_json_runs() -> None:
     import json
 
     script = json.loads((FRONTEND / "package.json").read_text())["scripts"]["test"]
-    assert script == " ".join(["node", *NODE_ARGS, "--test"]) + " " + " ".join(f'"{glob}"' for glob in TEST_GLOBS)
+    globs = " ".join(f'"{glob}"' for glob in TEST_GLOBS)
+    assert script == " ".join(["node", *NODE_ARGS, "--test", globs])
 
 
 def test_the_planners_coverage_box_is_the_settings_one() -> None:
