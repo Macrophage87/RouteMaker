@@ -6,7 +6,9 @@ lot of county to county crossing. These are more natural borders").
 
 The packs are built after each map swap (`pipeline.offline_packs`) as gzip JSON files in the
 format frontend lib/offlineRouter.ts reads (v1), one per region, under
-`TILES_DIR/offline-packs/<build id>/`, with a manifest; `current` names the newest. The web
+`TILES_DIR/offline-packs/packs-<build id>/`, named by `TILES_DIR/offline-packs/manifest.json`.
+The build host makes them and the beta ship script carries them (`scripts/beta/ship-data.sh`,
+part `packs`). The web
 server serves the files (Caddyfile and the beta nginx template, `/offline-packs/`), and
 `GET /api/offline/packs` lists them. Map data only: nothing about a rider.
 """
@@ -90,9 +92,11 @@ REGIONS: tuple[Region, ...] = (
     Region(
         id="nw-exurbs",
         name="Northwest exurbs",
-        # Upcounty Montgomery, Frederick and Washington Counties, Carroll and western Howard:
-        # north of the Potomac and west of about Columbia.
+        # Montgomery outside the Beltway (Potomac and Great Falls too), Frederick and Washington
+        # Counties, Carroll and western Howard: north of the Potomac and west of about Columbia.
+        # Drawn into the Beltway, which is cut out of it.
         outline=(
+            (-77.120, 38.940),
             (-77.250, 39.000),
             (-77.450, 39.070),
             (-77.520, 39.180),
@@ -104,8 +108,8 @@ REGIONS: tuple[Region, ...] = (
             (-77.000, 39.720),
             (-76.950, 39.200),
             (-76.980, 39.040),
-            (-77.120, 39.020),
-            (-77.250, 39.000),
+            (-77.040, 39.000),
+            (-77.120, 38.940),
         ),
     ),
     Region(
@@ -138,11 +142,11 @@ def packs_dir() -> Path:
 
 def manifest() -> dict | None:
     """The newest packs' manifest, or None before any rebuild has built them."""
-    path = packs_dir() / "current" / "manifest.json"
+    path = packs_dir() / "manifest.json"
     try:
         found = json.loads(path.read_text())
     except (OSError, ValueError):
         return None
-    if not isinstance(found, dict) or found.get("v") != PACKS_VERSION:
+    if not isinstance(found, dict) or found.get("v") != PACKS_VERSION or "dir" not in found:
         return None
     return found
