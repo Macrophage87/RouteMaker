@@ -11619,6 +11619,7 @@ button.route-note:focus-visible {
 
 .plan-compare-table {
   border-collapse: collapse;
+  font-size: 0.9em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -11627,6 +11628,10 @@ button.route-note:focus-visible {
   padding: 4px 8px;
   text-align: right;
   border-bottom: 1px solid var(--border, #d1d5db);
+}
+
+.plan-compare-table td {
+  white-space: nowrap;
 }
 
 .plan-compare-table th[scope="row"] {
