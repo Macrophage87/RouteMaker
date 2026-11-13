@@ -187,28 +187,30 @@ flowchart TD
     T -- yes --> B{"Slip lane, or a street<br/>at LTS 2.5 or more?"}
     B -- yes --> J["Not in the level:<br/>the junction model prices it<br/>when a route crosses it"]
     B -- "no: driveway or quiet street" --> G{"Signal there?"}
-    G -- no --> QF["267 ft per level:<br/>driveway 400 ft, LTS 2 street 533 ft"]
-    G -- yes --> SG["50 ft per level:<br/>driveway 75 ft, LTS 2 street 100 ft"]
+    G -- no --> QF["The junction model's price for passing it:<br/>driveway 135 ft, LTS 2 street 271 ft, LTS 1 street 0"]
+    G -- yes --> SG["The right hook only:<br/>driveway 125 ft, LTS 2 street 250 ft"]
 ```
 
 | Crossing point | Feet of quiet riding in the level | Source |
 |---|---|---|
-| Driveway or service road (LTS 1.5), no signal | 400 | junction model's unsignalled LTS 3 path crossing (800 ft) in proportion to the level; the proportion is our default, unmeasured |
-| Quiet street (LTS 2), no signal | 533 | the same |
-| Driveway or quiet street at a signal | 75, 100 | junction model's signalised LTS 3 figure (150 ft) in the same proportion |
+| Driveway or service road (LTS 1.5), no signal | 135 | the junction model's own price for riding straight on along a path beside a road past that mouth (`intersections.cost_of`): half of the LTS 2 figure, by its fade between levels 1 and 2 |
+| Quiet street (LTS 2), no signal | 271 | the same: the priority side's pass (25 ft) times the 83% of drivers who do not yield at a marked crossing, plus the right hook (250 ft) |
+| Quiet street at LTS 1 | 0 | the same: the junction model's fixed charges are nothing at level 1 |
+| Driveway or quiet street at a signal | 125, 250 | the same: at a signal the pass costs nothing and the right hook stays |
 | Street at LTS 2.5 or more | 0 | priced by the junction model at route time |
 | Slip lane | 0 | priced by the junction model at route time |
-| Half a level for every | 5,280 ft of crossings per mile of path | our default, calibrated below |
+| Half a level for every | 5,280 ft of crossings per mile of path | our default, unmeasured |
 
 <details>
 <summary>Full reasoning and citations (for review)</summary>
 
 - Code: `facility.side_path_crossings` finds the points; `facility.junction_priced` says
   which are the junction model's; `facility.crossing_point_ft` prices the rest;
-  `stress.CROSSING_FT_PER_HALF_STEP` turns feet per mile into half steps. The mouth
-  prices are `facility.MOUTH_AT_BUSY_FT` (800 ft) and `facility.SIGNALISED_MOUTH_AT_BUSY_FT`
-  (150 ft), our default, unmeasured: the junction model's figures until 2026-11-13, kept
-  when that model moved to Broach's prices so that side-path levels did not move. The
+  `stress.CROSSING_FT_PER_HALF_STEP` turns feet per mile into half steps. A mouth's
+  price is not a number of this rule's: `crossing_point_ft` asks the junction model
+  (`intersections.cost_of`) what passing it costs. Until 2026-11-13 two frozen copies of
+  that model's old figures (800 ft and 150 ft at LTS 3) stood here; they are gone, and
+  side-path levels moved with them (below). The
   busy line is `intersections.BUSY_TIER` ([intersections.md](intersections.md)).
 - **The owner's choice, 2026-11-12:** "If there are lots of intersections, especially
   sliplanes it could get an even larger bump", and "it's not always number of crossings,
@@ -246,20 +248,27 @@ flowchart TD
     split at every driveway is read as one. A run under 525 ft [160 m]
     (`CROSSING_RUN_MIN_M`, our default) is too short to read a rate from and gets no
     crossing steps.
-- **What each costs.** The junction model's unsignalled path crossing of an LTS 3 street
-  is 800 ft (its 1,600 ft halved, as it halves a path's crossing with no signal mapped). A
-  quiet point costs that in proportion to the crossed way's level: 800 / 3 = 267 ft a level
-  (a driveway is 1.5 by the service-road step, so 400 ft; a quiet street is 2, so 533 ft).
-  At a signal it is the model's signalised LTS 3 figure, 150 ft, in the same proportion. No
-  constant of ours is added; the straight line down from LTS 3 is our default, unmeasured.
-  A way the rebuild gave no level is read as 2 (`UNRATED_CROSSING_LEVEL`, our default).
-- **Calibration of 5,280 ft a mile (our default, unmeasured).** The rule this replaces
-  gave half a level for every 20 points a mile, a point for each level of the crossed way.
-  An unsignalled LTS 3 side street was 3 points, so the half step came at 6.7 of them a
-  mile. The junction model prices that crossing from a path at 800 ft; 6.7 x 800 = 5,333 ft,
-  rounded to one mile. Quiet ways take the same 267 ft a level, so ten LTS 2 side streets a
-  mile (5,333 ft) are half a level as before and nine are not; thirteen driveways a mile
-  (5,200 ft) are not and fourteen are.
+- **What each costs.** The junction model's price for the movement: straight on along a
+  path beside a road, past a mouth, holding the road's right of way
+  (`intersections.has_priority`). That is the priority side's pass (`PRIORITY_SIDE_FT`,
+  25 ft) times the share of drivers who do not yield at a marked crossing
+  (`MARKED_YIELD_SHARE`; no speed is known at a mouth, so the 35 mph figure, 83%), plus the
+  right hook (`RIGHT_HOOK_FT`, 250 ft). Both fade in from nothing at level 1 to whole at
+  level 2, as every fixed charge in that model does: 271 ft at an LTS 2 street, 135 ft at a
+  driveway (1.5 by the service-road step), nothing at an LTS 1 street. At a signal the pass
+  costs nothing and the hook stays (turning on green): 250 and 125 ft. No constant of ours
+  is added. A way the rebuild gave no level is read as 2 (`UNRATED_CROSSING_LEVEL`, our
+  default).
+- **5,280 ft a mile (our default, unmeasured).** "A calm mile of crossings for every mile
+  of path." It was first set to match a retired points rule (ten LTS 2 side streets a mile
+  were half a level) when a mouth was priced at 267 ft a level. With the junction model's
+  present prices a half step takes twenty LTS 2 side streets a mile, or forty driveways.
+  It was not re-fitted (1,790 ft a mile would give the earlier levels back): the mile is
+  what the rule means, and the fit was to a rule that is gone. Simulated on OpenStreetMap
+  data, not a build: Old Georgetown Road's separately mapped lanes stay LTS 2 (about
+  1,050 ft of mouths a mile, was 2,900); city cycle tracks with many mouths come down half
+  a level to a level (17th St NW mostly 2 to 1.5; 15th St NW's 2 stretch to 1.5); short
+  driveway-dense runs that reached 3 to 4 now read 1.5 to 2.5.
 - **Control data.** A signal is read from the crossing way's own tags
   (`crossing=traffic_signals`), from the node (`highway=traffic_signals`, or a crossing
   node tagged as signalised) and from the crossed way's nodes up to two either side of the
@@ -298,8 +307,9 @@ marked down twice for the same crossing.
 | | Feet, charged by the junction model on the route | Source |
 |---|---|---|
 | Slip lane, no signal | 1,000 | `intersections.SLIP_LANE_FT` (owner decisions 169, 195, 468) |
-| Path crossing of an LTS 3 street, no signal | 800 | `intersections.STOPPED_CROSSING_FT`, halved |
-| Path crossing of an LTS 4 road, no signal | 2,000 and up | the same, with its speed scale |
+| Side path past a busy side street's mouth, no signal | about 270 | `intersections.PRIORITY_SIDE_FT` at a marked crossing, plus `RIGHT_HOOK_FT` |
+| Trail crossing of an LTS 3 road where the rider stops, no signal | 215 to 460 | `intersections.STOPPED_CROSSING_FT` (550 ft) times the share of drivers not yielding |
+| The same of an LTS 4 road | 1,270 to 2,710 and up | the same (3,260 ft), or the wait for a gap where longer |
 
 <details>
 <summary>Full reasoning and citations (for review)</summary>

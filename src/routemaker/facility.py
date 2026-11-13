@@ -1286,36 +1286,33 @@ def _signalised(tags: dict[str, str]) -> bool:
     }  # fmt: skip
 
 
-# What the mouth of a street at the busy line (LTS 3) costs a rider on a side path, with no
-# signal and at one, in feet of quiet riding (`crossing_point_ft`). OUR DEFAULT, unmeasured.
-# They were the junction model's own figures for an unsignalled LTS 3 street crossed from a
-# path (1,600 ft x 0.5) and for a signalised one until 2026-11-13, when that model moved to
-# Broach's prices (550 ft at level 3, times the share of drivers not yielding at a marked
-# crossing; nothing at a signal) and dropped both constants. They are kept here as they
-# were, because `stress.CROSSING_FT_PER_HALF_STEP` was calibrated to the 800 ft and every
-# side path's level would move with them. OPEN: whether to re-derive both from the new
-# junction prices together (a mouth at 215 ft with the half step at about 1,430 ft a mile
-# gives the same levels).
-MOUTH_AT_BUSY_FT = 800.0
-SIGNALISED_MOUTH_AT_BUSY_FT = 150.0
-
-
 def crossing_point_ft(level: float, signal: bool = False) -> float:
     """What the mouth of a driveway or quiet street (below LTS 2.5) costs a rider on a side
-    path, in feet of quiet riding. The junction model prices nothing there
-    (`intersections.Road.busy`), so the figure for the nearest thing it prices, an
-    unsignalled LTS 3 street crossed from a path (`MOUTH_AT_BUSY_FT`), is carried down in
-    proportion to the crossed way's level: 267 ft a level, so a driveway (1.5) is 400 ft
-    and an LTS 2 street 533 ft. At a signal, `SIGNALISED_MOUTH_AT_BUSY_FT` in the same
-    proportion (50 ft a level). The straight line is our default, unmeasured.
+    path, in feet of quiet riding: the junction model's own price for that movement
+    (`intersections.cost_of`), asked of it here, so there is one source and no figure of
+    this module's. The movement is straight on along a path beside a road, past a mouth
+    whose crossing level is the crossed way's map level, the rider holding the road's
+    right of way (`intersections.has_priority`, `Junction.beside`): the priority side's
+    pass, times the share of drivers who do not yield at a marked crossing, plus the right
+    hook, both fading in from nothing at level 1 to whole at level 2. Today 271 ft at an
+    LTS 2 street, 135 ft at a driveway (1.5), nothing at an LTS 1 street; at a signal the
+    pass costs nothing and the hook stays (250 and 125 ft).
 
-    No right-hook term of its own: that charge is the junction model's (`intersections`,
-    PR #1241), in its one table."""
+    The junction model charges nothing at these mouths when a route rides through them
+    (`intersections.Road.busy`), so the level holds them and nothing is counted twice."""
     # Imported here: `intersections` reads `stress`, which reads this module.
-    from . import intersections
+    from . import intersections as ix
 
-    at_busy = SIGNALISED_MOUTH_AT_BUSY_FT if signal else MOUTH_AT_BUSY_FT
-    return at_busy * level / intersections.BUSY_TIER
+    tier = int(level)
+    mouth = ix.Road(tier, half=level > tier, cross=float(level))
+    path = ix.Road(1)
+    road = ix.Road(ix.BUSY_TIER + 1, cross=ix.MAP_LEVEL_MAX)
+    passing = ix.Junction(
+        0.0, 0.0, 0.0, ix.Movement.STRAIGHT, path, path, (mouth,),
+        ix.Control.SIGNAL if signal else ix.Control.NONE,
+        path_crossing=True, beside=road,
+    )  # fmt: skip
+    return ix.cost_of(passing)[0]
 
 
 def junction_priced(level: float, highway: str) -> bool:

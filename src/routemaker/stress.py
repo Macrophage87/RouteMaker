@@ -1252,17 +1252,19 @@ BESIDE_BUSY_ROAD_SHARE = 0.5
 # so a few metres along a busier carriageway's end do not set the whole path. Our default.
 BESIDE_BUSY_ROAD_MIN_SHARE = 0.3
 # Half a level more for every CROSSING_FT_PER_HALF_STEP a mile of driveways and quiet-street
-# mouths along the path's run (`facility.side_path_crossings`: each in feet of quiet riding
-# on the junction model's scale, `facility.crossing_point_ft`; a busy street or a slip lane
-# is a junction the junction model prices at route time, and is not counted twice: the
-# owner, decision 303, "we don't want to double count"). 5,280 ft a mile, "a calm mile of
-# crossings for every mile of path", is OUR DEFAULT, calibrated to the rule it replaces (20
-# points a mile, a point for each level of the crossed way): an unsignalled LTS 3 side
-# street was 3 points, so a half step came at 6.7 of them a mile; the junction model prices
-# that crossing from a path at 800 ft (1,600 ft at `intersections.MARKED_CROSSING_FACTOR`),
-# and 6.7 x 800 = 5,333 ft, rounded to the mile. Driveways and quiet streets take the same
-# 267 ft a level, so ten LTS 2 side streets a mile are half a level as before. Not measured.
-# One knob: it is the only number of ours in the crossing step.
+# mouths along the path's run (`facility.side_path_crossings`: each in feet of quiet riding,
+# the junction model's own price for passing that mouth on a path beside a road,
+# `facility.crossing_point_ft`; a busy street or a slip lane is a junction the junction
+# model prices at route time, and is not counted twice: the owner, decision 303, "we don't
+# want to double count"). 5,280 ft a mile, "a calm mile of crossings for every mile of
+# path", is OUR DEFAULT, not measured. It was set when a mouth was priced at 267 ft a level
+# (a frozen copy of the junction model's old figure, to match a retired points rule: ten
+# LTS 2 side streets a mile were half a level). With the junction model's present price
+# (271 ft at an LTS 2 mouth, 135 ft at a driveway, nothing at LTS 1) a half step takes
+# about twenty LTS 2 mouths or forty driveways a mile; the step was not re-fitted to the
+# old levels (1,790 ft a mile would give them back), because the mile is the rule's
+# meaning and the fit was to a rule that is gone. One knob: it is the only number of ours
+# in the crossing step.
 CROSSING_FT_PER_HALF_STEP = 5280.0
 # Nothing is Avoid (the owner, 2026-11-12): the top of the scale below it.
 BESIDE_BUSY_ROAD_MAX = 4.5
@@ -1596,33 +1598,9 @@ VOLUME_GATES = tuple(
 )
 
 
-# What a junction reads a crossed road with no count as carrying: Oregon's "Local /
-# Collector" band, since the segment table keeps no class.
-JUNCTION_UNCOUNTED_AADT = CLASS_AADT["unclassified"]
-
-
 def tier_and_half(level: float) -> tuple[Stress, bool]:
     """A level (1, 1.5, ... 4.5, 5) as the stored tier and its half-step flag."""
     return Stress(int(level)), level % 1 != 0
-
-
-def single_lane_traffic_level(
-    speed_mph: float,
-    oneway: bool | None,
-    aadt: int | None,
-    urban: bool | None,
-) -> tuple[Stress, bool]:
-    """The tier and half step of a road of one through lane a direction with no bike
-    provision, from the facts the segment table keeps, at a posted speed: Furth's centerline
-    row (`mixed_traffic_level`). What a junction reads such a road by (the owner, 2026-10-31:
-    "a protected bike lane on a busy road is just as hard to cross";
-    `intersections.traffic_level`). The road class is not kept there, so every road is read
-    on the centerline row, and a road with no count is read between a local street and a
-    collector (`JUNCTION_UNCOUNTED_AADT`; our default, unmeasured, for the junction package
-    to settle). The rural table is not read (`oneway` and `urban` are accepted for the
-    callers that pass them and not read)."""
-    level, _ = mixed_traffic_level(speed_mph, JUNCTION_UNCOUNTED_AADT if aadt is None else aadt)
-    return tier_and_half(level)
 
 
 def busy_road_steps(

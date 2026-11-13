@@ -921,7 +921,7 @@ def test_the_remap_reads_each_side_as_the_classifier_does() -> None:
 # `crossing=traffic_signals`) or on its crossing way alone is not one upstream, so
 # the remap derives it (FOLLOWUP-SIGNAL-DERIVE: `remap.derives_signal`,
 # `pipeline.signals`); a marked crossing still left with no signal flag is counted
-# at `MARKED_CROSSING_FACTOR`. These two tests are the tripwire: if upstream starts
+# by `MARKED_YIELD_SHARE`. These two tests are the tripwire: if upstream starts
 # reading another signal tag, the derivation may double up or be redundant.
 
 

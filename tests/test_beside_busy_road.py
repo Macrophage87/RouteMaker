@@ -222,26 +222,41 @@ def test_a_calm_mile_of_crossings_a_mile_adds_half_a_level():
     assert beside_busy_road_step(PATH, 2.0, crossing_ft_per_mile=9 * MILE) is PATH
 
 
-def test_the_calibration_matches_the_old_twenty_points_a_mile():
-    """Ten LTS 2 side streets a mile were 20 points, half a level; they still are, and nine
-    are not."""
+def test_a_half_step_is_a_calm_mile_of_mouths_a_mile():
+    """`CROSSING_FT_PER_HALF_STEP` is a mile, and a mouth is whatever the junction model
+    says it is: today twenty LTS 2 side streets a mile are half a level and nineteen are
+    not (it was ten, fitted to a retired points rule)."""
     from routemaker.stress import CROSSING_FT_PER_HALF_STEP
 
-    ten = 10 * facility.crossing_point_ft(2.0)
-    assert CROSSING_FT_PER_HALF_STEP <= ten == pytest.approx(5333.3, abs=0.1)
-    assert 9 * facility.crossing_point_ft(2.0) < CROSSING_FT_PER_HALF_STEP
+    assert CROSSING_FT_PER_HALF_STEP == MILE
+    assert 19 * facility.crossing_point_ft(2.0) < MILE <= 20 * facility.crossing_point_ft(2.0)
 
 
-def test_a_quiet_crossing_point_is_priced_on_the_junction_models_scale():
+def test_a_quiet_crossing_point_is_the_junction_models_own_price():
+    """One source: the price of a mouth is `intersections.cost_of` for a rider going
+    straight on along a path beside a road past it, with the road's right of way. Nothing
+    of this module's own is in it."""
+    from routemaker import intersections as ix
+
     cost = facility.crossing_point_ft
-    # An unsignalled LTS 3 path crossing (800 ft: the junction model's figure until
-    # 2026-11-13, kept as the side path's own), in proportion to the level.
-    assert cost(3.0) == facility.MOUTH_AT_BUSY_FT == 800.0
-    assert cost(1.5) == 400.0
-    assert cost(2.0) == pytest.approx(533.3, abs=0.1)
-    # At a signal, `SIGNALISED_MOUTH_AT_BUSY_FT` (150 ft) in the same proportion.
-    assert cost(2.0, signal=True) == 100.0
-    assert cost(1.5, signal=True) == 75.0
+    assert not hasattr(facility, "MOUTH_AT_BUSY_FT")
+    assert not hasattr(facility, "SIGNALISED_MOUTH_AT_BUSY_FT")
+    # The priority side's pass, at a marked crossing where 17% of drivers yield (no speed
+    # known: NCHRP 562's 35 mph figure), and the right hook.
+    not_yielding = 1.0 - ix.MARKED_YIELD_SHARE[-1][1]
+    whole = ix.PRIORITY_SIDE_FT * not_yielding + ix.RIGHT_HOOK_FT
+    assert cost(2.0) == pytest.approx(whole) == pytest.approx(270.75)
+    # Both fade in from level 1 (`intersections._fade`): a driveway is half, an LTS 1
+    # street nothing.
+    assert cost(1.5) == pytest.approx(whole / 2)
+    assert cost(1.0) == 0.0
+    # At a signal the pass costs nothing and the hook stays (turning on green).
+    assert cost(2.0, signal=True) == ix.RIGHT_HOOK_FT
+    assert cost(1.5, signal=True) == ix.RIGHT_HOOK_FT / 2
+    # And it moves with the junction model's numbers, not beside them.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ix, "RIGHT_HOOK_FT", 100.0)
+        assert cost(2.0, signal=True) == 100.0
 
 
 def test_a_busy_street_or_a_slip_lane_is_the_junction_models_not_the_levels():
@@ -294,7 +309,7 @@ def test_driveways_and_quiet_streets_are_summed_in_feet_over_the_run():
         # Two side-path ways joined at node 103.
         (10, {"highway": "cycleway"}, [100, 101, 102, 103], _line(39.0, 4)),
         (11, {"highway": "cycleway"}, [103, 104, 105, 106], _line(39.0015, 4)),
-        # A driveway at 101 (400 ft), a quiet street at 102 (533 ft).
+        # A driveway at 101 (135 ft), a quiet street at 102 (271 ft).
         (20, {"highway": "service", "service": "driveway"}, [101, 900], []),
         (21, {"highway": "residential"}, [102, 901], []),
         # A slip lane at 104 and a street the rebuild rates 3 at 105: the junction model's.
@@ -305,7 +320,7 @@ def test_driveways_and_quiet_streets_are_summed_in_feet_over_the_run():
     ]
     found = facility.side_path_crossings(ways, _side(10, 11), {20: 1.5, 21: 2.0, 22: 3.0}.get)
     miles = facility._length_m(_line(39.0, 7)) / 1609.344
-    assert _feet(found, 10, miles) == 400 + 533
+    assert _feet(found, 10, miles) == round(135.375 + 270.75)
     assert found[10].ft_per_mile == found[11].ft_per_mile
 
 
@@ -393,7 +408,7 @@ def test_a_street_crossed_in_two_halves_over_an_island_is_one_point():
     ]
     found = facility.side_path_crossings(ways, _side(10, 11))
     miles = 2 * facility._length_m(_line(39.0, 5)) / 1609.344
-    assert _feet(found, 10, miles) == 533
+    assert _feet(found, 10, miles) == 271
 
 
 def test_a_signal_lowers_the_point():
@@ -406,10 +421,10 @@ def test_a_signal_lowers_the_point():
     def feet(control_at):
         return _feet(facility.side_path_crossings(ways, _side(10), None, control_at), 10, miles)
 
-    assert feet(None) == 533
-    assert feet({101: facility.SIGNAL_NODE}) == 100
+    assert feet(None) == 271
+    assert feet({101: facility.SIGNAL_NODE}) == 250
     # The signal on the junction node next along the crossed street.
-    assert feet({901: facility.SIGNAL_NODE}) == 100
+    assert feet({901: facility.SIGNAL_NODE}) == 250
     # A crossing way that says it has a signal.
     signalised = {"highway": "cycleway", "cycleway": "crossing", "crossing": "traffic_signals"}
     ways = [
@@ -418,7 +433,7 @@ def test_a_signal_lowers_the_point():
         (30, signalised, [102, 300, 200], []),
         (21, {"highway": "residential", "name": "Cedar Lane"}, [300, 901], []),
     ]
-    assert _feet(facility.side_path_crossings(ways, _side(10, 11)), 10, miles) == 100
+    assert _feet(facility.side_path_crossings(ways, _side(10, 11)), 10, miles) == 250
 
 
 def test_riding_against_the_traffic_beside_doubles_the_unsignalled_points():
@@ -433,9 +448,9 @@ def test_riding_against_the_traffic_beside_doubles_the_unsignalled_points():
     with_flow = facility.side_path_crossings(ways, _side(10), level, lit)
     against = facility.side_path_crossings(ways, _side(10, contraflow=True), level, lit)
     miles = facility._length_m(_line(39.0, 6)) / 1609.344
-    assert _feet(with_flow, 10, miles) == 400 + 100
+    assert _feet(with_flow, 10, miles) == round(135.375 + 250)
     # The driveway doubles; the signalised crossing does not.
-    assert _feet(against, 10, miles) == 2 * 400 + 100
+    assert _feet(against, 10, miles) == round(2 * 135.375 + 250)
     assert facility.CONTRAFLOW_FACTOR == 2.0
 
 
@@ -564,9 +579,9 @@ def test_a_track_meets_the_side_streets_on_its_own_side_only():
     tracks = facility.on_road_tracks([(w[0], w[1], w[3]) for w in ways])
     found = facility.side_path_crossings(ways, tracks)
     miles = facility._length_m(here) / 1609.344
-    assert round(found[1].ft_per_mile * miles) == 533
+    assert round(found[1].ft_per_mile * miles) == 271
     both = {1: tracks[1]._replace(road_sides=("left", "right"))}
-    assert round(facility.side_path_crossings(ways, both)[1].ft_per_mile * miles) == 1067
+    assert round(facility.side_path_crossings(ways, both)[1].ft_per_mile * miles) == 542
 
 
 # --- Sidewalks: a tag that opens one never makes it worse (the audit, I8) -------------------
