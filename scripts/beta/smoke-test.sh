@@ -165,9 +165,23 @@ check_body "a route comes back with a distance and a line" '"distance_m".*"geome
 # the standard graph instead, the trail router is down or its settings row is missing
 # (manage.py sync_upstreams).
 if [ "$trails" = 1 ]; then
+	# A Road Bike router is skipped only when compose answers and shows it not running: the
+	# deploy agent leaves valhalla-paved and valhalla-paved-weekend stopped on a host short of
+	# memory (auto-release.sh). Where compose cannot be asked (a --public run from elsewhere),
+	# it is checked.
+	here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+	not_running() {
+		local cid
+		cid=$("${RM_SMOKE_COMPOSE:-$here/beta-compose.sh}" --profile offroad ps -q --status running "$1" </dev/null 2>/dev/null) &&
+			[ -z "$cid" ]
+	}
 	# Road Bike at a weekday ride time: with no "when" it is the time of the request, which on
 	# a weekend daytime is the paved-weekend graph.
 	for trail in mountain-bike:mtb gravel:offroad road-bike:paved; do
+		if [ "$trail" = road-bike:paved ] && not_running valhalla-paved; then
+			printf 'SKIP  %s\n' "the Road Bike graph (valhalla-paved is not running: Road Bike plans on the standard graph)"
+			continue
+		fi
 		when=""
 		[ "${trail%%:*}" = road-bike ] && when=',"when":"weekday_offpeak"'
 		check_body "a ${trail%%:*} route is planned on the ${trail#*:} graph" "\"variant\": ?\"${trail#*:}\"" \
@@ -176,11 +190,8 @@ if [ "$trails" = 1 ]; then
 	done
 	# Road Bike's weekend graph (the owner, 2026-11-08, "New weekend graph"): the weekend ride
 	# time; on the paved graph instead, valhalla-paved-weekend is down or its row is missing.
-	# Skipped only when compose answers and shows it not running (a short host leaves it
-	# stopped); where compose cannot be asked (a --public run from elsewhere), it is checked.
-	here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-	if weekend_cid=$("${RM_SMOKE_COMPOSE:-$here/beta-compose.sh}" --profile offroad ps -q --status running valhalla-paved-weekend </dev/null 2>/dev/null) &&
-		[ -z "$weekend_cid" ]; then
+	# Skipped the same way as the paved check above.
+	if not_running valhalla-paved-weekend; then
 		printf 'SKIP  %s\n' "the weekend Road Bike graph (valhalla-paved-weekend is not running: a weekend Road Bike ride plans on the paved graph)"
 	else
 		check_body "a weekend road-bike route is planned on the paved-weekend graph" '"variant": ?"paved-weekend"' \

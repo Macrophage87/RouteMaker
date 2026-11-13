@@ -3271,7 +3271,10 @@ def test_the_trails_smoke_test_pins_road_bikes_ride_time_and_skips_a_stopped_wee
     )
     curl.chmod(0o755)
     compose = stubs / "compose"
-    compose.write_text('#!/bin/sh\nprintf "%s" "$RUNNING"\n')
+    # A compose that shows the service named last running when it is listed in $RUNNING.
+    compose.write_text(
+        '#!/bin/sh\nfor last; do :; done\ncase " $RUNNING " in *" $last "*) printf c1 ;; esac\n'
+    )
     compose.chmod(0o755)
     env = {
         "PATH": f"{stubs}:{os.environ['PATH']}",
@@ -3279,7 +3282,15 @@ def test_the_trails_smoke_test_pins_road_bikes_ride_time_and_skips_a_stopped_wee
         "RM_BETA_HOST": "beta.test",
     }
     script = "scripts/beta/smoke-test.sh"
-    stopped = run("bash", script, "--local", "--port", "1", "--trails", env={**env, "RUNNING": ""})
+    stopped = run(
+        "bash",
+        script,
+        "--local",
+        "--port",
+        "1",
+        "--trails",
+        env={**env, "RUNNING": "valhalla-paved"},
+    )
     assert "PASS  a road-bike route is planned on the paved graph" in stopped.stdout
     assert "SKIP  the weekend Road Bike graph (valhalla-paved-weekend is not running" in (
         stopped.stdout
@@ -3290,10 +3301,59 @@ def test_the_trails_smoke_test_pins_road_bikes_ride_time_and_skips_a_stopped_wee
     assert not any('"when":"weekend"' in b for b in bodies)
     sent.unlink()
     running = run(
-        "bash", script, "--local", "--port", "1", "--trails", env={**env, "RUNNING": "c1"}
+        "bash",
+        script,
+        "--local",
+        "--port",
+        "1",
+        "--trails",
+        env={**env, "RUNNING": "valhalla-paved valhalla-paved-weekend"},
     )
     assert "PASS  a weekend road-bike route is planned on the paved-weekend graph" in running.stdout
     assert '"when":"weekend"' in sent.read_text()
+
+
+@needs_sh
+def test_the_trails_smoke_test_skips_a_stopped_road_bike_router(tmp_path: Path) -> None:
+    """Release review v0.26.0 (ops): the deploy agent leaves valhalla-paved stopped on a host
+    short of memory, and alert.sh's 10-minute watch runs --trails; checking Road Bike's graph
+    there failed every watch. A stopped paved router is skipped, and says so; a stopped
+    mountain-bike or gravel router is still a failure."""
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    curl = stubs / "curl"
+    curl.write_text(
+        "#!/usr/bin/env bash\n"
+        'body=""; while [ $# -gt 0 ]; do [ "$1" = -d ] && body=$2; shift; done\n'
+        'case "$body" in\n'
+        '  *mountain-bike*) echo \'{"variant": "mtb"}\' ;;\n'
+        '  *gravel*) echo \'{"variant": "offroad"}\' ;;\n'
+        '  *road-bike*) echo \'{"variant": "standard"}\' ;;\n'
+        "  *) echo ok ;;\n"
+        "esac\n"
+    )
+    curl.chmod(0o755)
+    compose = stubs / "compose"
+    compose.write_text("#!/bin/sh\nexit 0\n")
+    compose.chmod(0o755)
+    env = {
+        "PATH": f"{stubs}:{os.environ['PATH']}",
+        "RM_SMOKE_COMPOSE": str(compose),
+        "RM_BETA_HOST": "beta.test",
+    }
+    script = "scripts/beta/smoke-test.sh"
+    done = run("bash", script, "--local", "--port", "1", "--trails", env=env)
+    assert "SKIP  the Road Bike graph (valhalla-paved is not running" in done.stdout
+    assert "SKIP  the weekend Road Bike graph" in done.stdout
+    assert "PASS  a mountain-bike route is planned on the mtb graph" in done.stdout
+    assert "PASS  a gravel route is planned on the offroad graph" in done.stdout
+    assert "on the paved graph" not in done.stdout.replace("ride plans on the paved graph", "")
+    # Where compose cannot be asked, Road Bike's graph is checked (and here fails).
+    compose.write_text("#!/bin/sh\nexit 1\n")
+    asked = run("bash", script, "--local", "--port", "1", "--trails", env=env)
+    assert (
+        "FAIL" in asked.stdout and "road-bike route is planned on the paved graph" in asked.stdout
+    )
 
 
 def test_the_v0_7_0_server_steps_start_with_the_betas_name() -> None:
