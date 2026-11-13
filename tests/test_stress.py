@@ -2958,3 +2958,13 @@ def test_a_counted_two_lane_arterial_is_25_not_3() -> None:
     assert level_of(classify(aspen, jurisdiction="DC")) == 3
     # A four-lane arterial keeps its two-way floor.
     assert level_of(classify({**aspen, "lanes": "4"}, aadt=4_000, jurisdiction="DC")) == 3
+
+
+def test_a_painted_lane_on_a_20_mph_street_is_not_held_at_25_by_its_count() -> None:
+    """The owner, 2026-11-13, of K St NE (20 mph, about 13,000 a day, a lane each way):
+    "That portion wouldn't be above 2 anyway". The 9,000-a-day step holds from 25 mph."""
+    street = {"highway": "tertiary", "cycleway:both": "lane"}
+    calm = classify({**street, "maxspeed": "20 mph"}, aadt=13_000, jurisdiction="DC")
+    assert level_of(calm) == 2
+    busy = classify({**street, "maxspeed": "25 mph"}, aadt=13_000, jurisdiction="DC")
+    assert level_of(busy) == 2.5

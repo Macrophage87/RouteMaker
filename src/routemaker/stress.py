@@ -427,6 +427,11 @@ VOLUME_BUSY = 8_000
 # The owner's busy-street half step (`_classify`, after the floors).
 BUSY_STREET_MIN_AADT = 5_000
 BUSY_PAINTED_LANE_AADT = 9_000
+# At this speed and below the busy painted-lane step does not apply: a painted lane on a
+# 20 mph street is read by Furth's lane table, which gives no weight to the count below 28.5
+# mph (the owner, 2026-11-13, of K St NE's 600 block, 20 mph and about 13,000 a day with a
+# painted lane each way: "That portion wouldn't be above 2 anyway").
+CALM_PAINTED_LANE_MAX_MPH = 20.0
 # The speed at and below which a count between the two is a tier (v2.2).
 MID_VOLUME_MAX_MPH = 20.0
 # The road classes OWNER-DECISIONS 141 floors at LTS 3 without a facility.
@@ -2004,7 +2009,11 @@ def _classify(
     if aadt is not None and tier <= Stress.LTS2 and not separate_facility and not half:
         painted = bool(cycleways & PAINTED_CYCLEWAY) and not (cycleways & SEPARATED_CYCLEWAY)
         # A shoulder the lane table credited is read as the lane it stands for.
-        if (painted or shoulder_credited) and aadt >= BUSY_PAINTED_LANE_AADT:
+        if (
+            (painted or shoulder_credited)
+            and aadt >= BUSY_PAINTED_LANE_AADT
+            and speed_mph > CALM_PAINTED_LANE_MAX_MPH
+        ):
             tier, half, rule = Stress.LTS2, True, rule + ", painted lane on a busy street"
         elif (
             tier is Stress.LTS2
