@@ -676,14 +676,17 @@ def test_a_dials_loop_defaults_off() -> None:
     # Appended, so earlier positional uses are unchanged; a re-route's heading came after it,
     # then its keep-going-ahead flag (v0.10.1), then Mass Ride's ride size (v0.15.0), with
     # the re-route's fixed heading (#1061) and the graph a plan routes on after them.
-    assert [f.name for f in dataclasses.fields(routing.Dials)][-6:] == [
+    # Plan's out and back (2026-11-13) after those.
+    assert [f.name for f in dataclasses.fields(routing.Dials)][-7:] == [
         "loop",
         "heading",
         "fix_heading",
         "ahead_only",
         "ride_size",
         "graph",
+        "out_and_back",
     ]
+    assert routing.Dials().out_and_back is False
 
 
 def test_the_overlap_threshold_is_below_the_search_alternates_overlap() -> None:

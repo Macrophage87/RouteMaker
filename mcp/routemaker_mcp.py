@@ -98,6 +98,24 @@ COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
 # 50 s) after a wait for its one long slot.
 ROUTE_TIMEOUT_S = 120
+
+# How long one tools/call waits, in all its lookups, for the site's busy answers (429, or a 503
+# "busy") to clear before it gives up with `Busy`: an assistant that sends three calls at once
+# shares the rider's one place search slot (core.ratelimit GEOCODE_IN_FLIGHT) and its five a
+# second (GEOCODE_BURST), so the second and third wait their turn instead of being refused. Kept
+# short, since on the site a waiting call holds its web worker asleep (the site keeps workers
+# free within about a second; three calls at once wait about one search each). Our default,
+# unmeasured.
+LOOKUP_WAIT_S = 4.0
+# The longest single pause between tries, whatever the Retry-After says, the shortest, and the
+# most added at random so calls sent together do not knock together again. Our defaults,
+# unmeasured.
+LOOKUP_PAUSE_MAX_S = 1.0
+LOOKUP_PAUSE_MIN_S = 0.2
+LOOKUP_JITTER_MS = 200
+# The tools/call running in this thread (Server.call), so lookups share one wait and stop at its
+# deadline or cancellation.
+CURRENT_CALL: contextvars.ContextVar = contextvars.ContextVar("CURRENT_CALL", default=None)
 # How much longer a planned loop is than its ring in straight lines, for a first guess at the
 # ring's radius; the loop is then rescaled by what the router answered. Calmer settings wind
 # more: a 100 mi loop at stress 80 came out about 2.0 times its ring (tester, 2026-10-19).
@@ -161,6 +179,19 @@ MIN_GAP_MI = 2.0
 
 class ToolError(Exception):
     """A refusal to show the model as the tool's answer, not a protocol error."""
+
+
+class Busy(ToolError):
+    """The site was busy with the rider's other calls for longer than a lookup waits: nothing is
+    wrong with the request. `retry_after_s`: when to send it again."""
+
+    def __init__(self, what: str, retry_after_s: int):
+        self.retry_after_s = max(1, int(retry_after_s))
+        super().__init__(
+            f"{what} is busy with this rider's other calls (retry_after_s: {self.retry_after_s});"
+            f" send the same call again in {self.retry_after_s} s. Nothing is wrong with the"
+            " request."
+        )
 
 
 def finite(value) -> float:
@@ -441,6 +472,48 @@ def metro_check(line: list[list[float]], limit_mi: float, stations: list[Station
 # --- The site's API -------------------------------------------------------------------------
 
 
+def retry_after(headers, default: float = 1.0) -> float:
+    """A busy answer's Retry-After in seconds (urllib's headers, a dict or Django's response)."""
+    try:
+        return float((headers.get("Retry-After") if headers is not None else None) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def patient_request(
+    api, method: str, path: str, body=None, what: str = "the site", fresh_kw=None, **kw
+):
+    """`api._request`, trying again while the site answers busy (429, or 503 other than a long
+    ride out of time), each pause its Retry-After (clamped to LOOKUP_PAUSE_MIN_S..
+    LOOKUP_PAUSE_MAX_S, plus up to LOOKUP_JITTER_MS). The call's lookups share LOOKUP_WAIT_S in
+    all, and none waits past the call's deadline or after it is cancelled. Raises `Busy` when
+    the wait would run past that. `fresh_kw`: a function giving keyword arguments worked out
+    again for each try (the site's own budget, counted from when it is asked). A plain function,
+    not an `Api` method, so the site's in-process api (core.connector.InProcessApi) uses it too."""
+    call = CURRENT_CALL.get()
+    waited = [0.0] if call is None else call.lookup_waited
+    while True:
+        extra = fresh_kw() if fresh_kw else {}
+        status, payload, headers = api._request(method, path, body, **kw, **extra)
+        code = payload.get("code") if isinstance(payload, dict) else None
+        if not (status == 429 or (status == 503 and code != "long_ride_timed_out")):
+            return status, payload, headers
+        asked = retry_after(headers)
+        pause = min(LOOKUP_PAUSE_MAX_S, max(LOOKUP_PAUSE_MIN_S, asked))
+        pause += secrets.randbelow(LOOKUP_JITTER_MS) / 1000
+        late = call is not None and call.deadline is not None
+        if (
+            asked > LOOKUP_WAIT_S
+            or waited[0] + pause > LOOKUP_WAIT_S
+            or (late and time.monotonic() + pause > call.deadline)
+        ):
+            raise Busy(what, math.ceil(asked))
+        time.sleep(pause)
+        waited[0] += pause
+        if call is not None:
+            call.check()
+
+
 class Api:
     def __init__(self, base_url: str | None = None):
         base = (base_url or os.environ.get("ROUTEMAKER_BASE_URL") or "").strip().rstrip("/")
@@ -521,13 +594,15 @@ class Api:
                     " points, a lower stress setting, or plan it in two halves."
                 )
             raise ToolError(refusal(status, message or payload))
-        raise ToolError("the site stayed busy; try again shortly")
+        raise Busy("The route planner", math.ceil(retry_after(headers, 5.0)))
 
     def geocode(self, query: str, near: tuple[float, float] | None = None) -> list[dict]:
         params = {"q": query, "limit": 5}
         if near:
             params.update(lon=near[0], lat=near[1])
-        status, payload, _ = self._request("GET", "/api/geocode?" + urllib.parse.urlencode(params))
+        status, payload, _ = patient_request(
+            self, "GET", "/api/geocode?" + urllib.parse.urlencode(params), what="Place search"
+        )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise ToolError(f"place search failed ({status}): {message}")
@@ -540,8 +615,11 @@ class Api:
         params = {"lon": near[0], "lat": near[1], "miles": miles}
         if designation:
             params["designation"] = designation
-        status, payload, _ = self._request(
-            "GET", "/api/scenic-roads?" + urllib.parse.urlencode(params)
+        status, payload, _ = patient_request(
+            self,
+            "GET",
+            "/api/scenic-roads?" + urllib.parse.urlencode(params),
+            what="The scenic road search",
         )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
@@ -553,8 +631,11 @@ class Api:
         steepest first with `steepest`; `filters` as the endpoint takes them."""
         params = {"lon": near[0], "lat": near[1], "miles": miles}
         params.update({k: str(v).lower() if isinstance(v, bool) else v for k, v in filters.items()})
-        status, payload, _ = self._request(
-            "GET", "/api/climbs-near?" + urllib.parse.urlencode(params)
+        status, payload, _ = patient_request(
+            self,
+            "GET",
+            "/api/climbs-near?" + urllib.parse.urlencode(params),
+            what="The climb search",
         )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
@@ -563,7 +644,9 @@ class Api:
 
     def reach(self, body: dict) -> dict:
         """POST /api/reach: the reach rings (isochrones) for points, a ride type and its dials."""
-        status, payload, _ = self._request("POST", "/api/reach", body, timeout=ROUTE_TIMEOUT_S)
+        status, payload, _ = patient_request(
+            self, "POST", "/api/reach", body, what="Reach", timeout=ROUTE_TIMEOUT_S
+        )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise ToolError(f"the reach rings could not be drawn ({status}): {message}")
@@ -572,7 +655,9 @@ class Api:
     def nearest(self, body: dict) -> dict:
         """POST /api/nearest: riding time and distance from the first point to each other
         one, on the ride type's own graph and dials (one matrix row)."""
-        status, payload, _ = self._request("POST", "/api/nearest", body, timeout=ROUTE_TIMEOUT_S)
+        status, payload, _ = patient_request(
+            self, "POST", "/api/nearest", body, what="Riding times", timeout=ROUTE_TIMEOUT_S
+        )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise ToolError(f"the riding times could not be found ({status}): {message}")
@@ -581,8 +666,11 @@ class Api:
     def closures_map(self, box: tuple[float, float, float, float], permits: bool) -> list[dict]:
         """GET /api/closures/map: the closures in force now with any part in the box."""
         params = {"bbox": ",".join(f"{v:.5f}" for v in box), "permits": str(permits).lower()}
-        status, payload, _ = self._request(
-            "GET", "/api/closures/map?" + urllib.parse.urlencode(params)
+        status, payload, _ = patient_request(
+            self,
+            "GET",
+            "/api/closures/map?" + urllib.parse.urlencode(params),
+            what="The closure search",
         )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
@@ -1886,6 +1974,9 @@ def summary(answer: dict) -> dict:
         "distance": miles_text(distance),
         "distance_mi": round(distance / METRES_PER_MILE, 1),
         "moving_time": f"{(answer.get('duration_s') or 0) / 3600:.1f} h",
+        # The same to the minute, hills and junction waits counted (the mass ride prompt's
+        # riding time needs it on a ride with no stop, which has no `legs`).
+        "minutes": round((answer.get("duration_s") or 0) / 60),
         "climb": feet_text(answer.get("climb_m") or 0.0),
         "traffic_stress": shares(
             stress,
@@ -3751,6 +3842,130 @@ def figures(answer: dict) -> dict:
     }
 
 
+# "Why this way" (the backlog's connector item 5, the owner's "do 9" of 2026-11-13): each plan
+# set against the most direct route between the same points, the Fast ride type's, in numbers
+# from our own ratings, never prose. Planned only for the bike ride types below, where a direct
+# route means something (not Fast itself, a loop, a followed line, Mass Ride's fixed roadway or a
+# transit, bikeshare, walk or run trip), on rides up to WHY_MAX_MI in straight lines between the
+# points (our default, unmeasured: one more plan on a long ride can cost most of the site's 55 s),
+# and only while the call still has time for another plan.
+WHY_PRESETS = (
+    "default",
+    "trailmaxxing",
+    "novice",
+    "group-ride",
+    "mountain-goat",
+    "mountain-bike",
+    "gravel",
+    "road-bike",
+    "cargo",
+    "tandem",
+    "ebike",
+)
+WHY_MAX_MI = 25.0
+# A busy road on the direct route is said as one this route leaves when it carries at least this
+# many miles at LTS 3 and up there, the largest WHY_MAX_LEAVES of them (both our defaults,
+# unmeasured).
+WHY_MIN_BUSY_MI = 0.25
+WHY_MAX_LEAVES = 3
+KM_PER_MILE = METRES_PER_MILE / 1000
+
+
+def _busy_mi(row: dict) -> float:
+    """A road row's miles at LTS 3 and up. road_list gives them apart only on a road mostly
+    calmer; one mostly LTS 3 or up counts whole, which can overstate it a little."""
+    if (row.get("lts") or 0) >= 3:
+        return float(row.get("miles") or 0.0)
+    return float(row.get("miles_lts_3_up") or 0.0)
+
+
+def _row_at(rows: list[dict], mile: float) -> dict | None:
+    for row in rows:
+        if row["from_mi"] <= mile <= row["from_mi"] + row["miles"] + 0.05:
+            return row
+    return rows[-1] if rows else None
+
+
+def why_this_way(ours: dict, direct: dict) -> dict:
+    """This route against the direct one (both the site's answers): the difference in miles,
+    minutes (at this route's own average speed, so the direct ride type's faster pace does not
+    count) and busy miles, said in one line, and the busy roads of the direct route this one
+    leaves, each with what it rides instead near the middle of that road's stretch."""
+    mine, theirs = figures(ours), figures(direct)
+    extra_mi = round(mine["miles"] - theirs["miles"], 1)
+    speed = mine["miles"] / mine["minutes"] if mine["minutes"] else 0.0
+    extra_min = round(extra_mi / speed) if speed else None
+    fewer_busy = round(theirs["miles_lts_3_up"] - mine["miles_lts_3_up"], 1)
+    fewer_lts4 = round(theirs["miles_lts_4_up"] - mine["miles_lts_4_up"], 1)
+    out: dict = {
+        "against": "the most direct route between the same points (the Fast ride type's)",
+        "extra_miles": extra_mi,
+        "fewer_busy_miles": fewer_busy,
+    }
+    if extra_min is not None:
+        out["extra_minutes"] = extra_min
+    if fewer_lts4:
+        out["fewer_lts_4_miles"] = fewer_lts4
+    if abs(extra_mi) < 0.1 and abs(fewer_busy) < 0.1:
+        out["said"] = "this is the direct route, or rides as busy and as far"
+        return out
+    length = (
+        f"{abs(extra_mi)} mi ({abs(extra_mi) * KM_PER_MILE:.1f} km)"
+        f" {'longer' if extra_mi >= 0 else 'shorter'}"
+    )
+    if extra_min:
+        length += f", about {abs(extra_min)} min {'more' if extra_min > 0 else 'less'}"
+    if fewer_busy >= 0.1:
+        busy = f"{fewer_busy} fewer miles on busy roads (LTS 3 and up)"
+    elif fewer_busy <= -0.1:
+        busy = f"{-fewer_busy} more miles on busy roads (LTS 3 and up)"
+    else:
+        busy = "as many miles on busy roads"
+    out["said"] = f"{length}; {busy}"
+    our_rows = (road_list(ours) or {}).get("roads") or []
+    their_rows = (road_list(direct) or {}).get("roads") or []
+    ridden = {r["road"].casefold() for r in our_rows}
+    line = (ours.get("geometry") or {}).get("coordinates") or []
+    direct_line = (direct.get("geometry") or {}).get("coordinates") or []
+    ours_scale, direct_scale = _line_scale(ours), _line_scale(direct)
+    leaves = []
+    for row in sorted(their_rows, key=_busy_mi, reverse=True):
+        busy_mi = _busy_mi(row)
+        if len(leaves) >= WHY_MAX_LEAVES or busy_mi < WHY_MIN_BUSY_MI:
+            break
+        road = row["road"]
+        if road in NAMELESS or road.casefold() in ridden or " short links" in road:
+            continue
+        item = {
+            "road": row["road"],
+            "lts": max(row.get("lts") or 0, row.get("worst_lts") or 0),
+            "busy_miles": round(busy_mi, 1),
+        }
+        if line and direct_line:
+            middle = row["from_mi"] + row["miles"] / 2
+            lon, lat = point_at_mile(direct_line, middle * direct_scale)
+            along_m, _off, _ = line_nearest(line, lon, lat)
+            instead = _row_at(our_rows, along_m / METRES_PER_MILE / ours_scale)
+            unnamed = instead is not None and (
+                instead["road"] in NAMELESS or " short links" in instead["road"]
+            )
+            if instead is not None and unnamed and instead.get("facility") in ("path", "trail"):
+                item["for"] = f"a {instead['facility']}"
+            elif instead is not None and unnamed:
+                instead = None  # nothing to name
+            if instead is not None:
+                item.setdefault("for", instead["road"])
+                if instead.get("lts") is not None:
+                    item["for_lts"] = instead["lts"]
+                if instead.get("facility"):
+                    item["for_facility"] = instead["facility"]
+                item["at_mile"] = instead["from_mi"]
+        leaves.append(item)
+    if leaves:
+        out["leaves"] = leaves
+    return out
+
+
 def figures_change(before: dict, after: dict) -> dict:
     """Each figure before and after a revision, and by how much it moved (after less before)."""
     return {
@@ -4809,8 +5024,9 @@ RIDE_OPTIONS = {
     "depart_at": {
         "type": "string",
         "description": (
-            "Transit ride types only: ISO 8601 departure time; the bike legs are planned for its"
-            " traffic and closures too, unless `when` says otherwise. Absent: now."
+            "ISO 8601 departure time, any ride type but bikeshare and rebalance (planned from the"
+            " docks now): transit timetables for that day, and the ride's traffic and closures"
+            " at that moment, unless `when` says otherwise. Absent: now."
         ),
     },
     "transit_option": {
@@ -5318,7 +5534,10 @@ TOOLS = [
             " food, water and overnight stops), and `steep_grades` and `road_hazards` (cobbles,"
             " rails) say where. To optimize, read the route stretch by stretch with"
             " route_segments, ask for `alternatives`, set the rider's pace_mph, `avoid` a"
-            " stretch, and compare revisions by revise_route's `changed_from_previous`."
+            " stretch, and compare revisions by revise_route's `changed_from_previous`. `why`"
+            " (bike rides up to 25 mi in straight lines) sets the route against the most direct"
+            " one: miles and minutes more, busy miles fewer, and which busy roads it leaves for"
+            " which; use it when the rider asks why it goes this way, or when it is much longer."
         ),
         "inputSchema": {
             "type": "object",
@@ -6086,6 +6305,8 @@ class Call:
         # (the result's _meta, never the model's) and pictures (image content).
         self.meta: dict = {}
         self.images: list[dict] = []
+        # Seconds this call's lookups have waited for busy answers (patient_request).
+        self.lookup_waited: list[float] = [0.0]
 
     def timed_plan(self, seconds: float) -> None:
         """Note how long one plan took, for `time_for_another_plan`."""
@@ -6855,6 +7076,22 @@ class Server:
             out.append(row)
         first.answer["candidates"] = None
         return out
+
+    def _why(self, call: Call, plan: Plan, options: dict) -> dict | None:
+        """`why_this_way` for a plan, against the Fast ride type's route through the same points
+        at the same time of day; None where WHY_PRESETS and WHY_MAX_MI leave it out, where the
+        call has no time left for one more plan, or where the direct plan fails."""
+        if plan.preset not in WHY_PRESETS or options.get("loop") or options.get("follow"):
+            return None
+        straight = sum(haversine_mi(a, b) for a, b in itertools.pairwise(plan.points))
+        if straight > WHY_MAX_MI or not call.time_for_another_plan():
+            return None
+        direct_options = {"when": options.get("when"), "loop": False}
+        try:
+            direct = self._plan(call, plan.points, plan.vias, "fast", direct_options, None)
+        except ToolError:
+            return None
+        return why_this_way(plan.answer, direct.answer)
 
     def _plan(self, call: Call, points, vias, preset, options, limit) -> Plan:
         call.check()
@@ -7947,6 +8184,9 @@ class Server:
             out["checkpoint_order"] = ordered["order"]
         if alternatives is not None:
             out["alternatives"] = self._alternatives_said(alternatives, plan is not first)
+        why = self._why(call, plan, options)
+        if why is not None:
+            out["why"] = why
         return out
 
     @staticmethod
@@ -8398,6 +8638,7 @@ class Server:
         call = call or Call()
         # A test call's drafts are archived as they are made (TEST_CALL).
         testing = TEST_CALL.set(name in TEST_TOOLS and bool((args or {}).get("test")))
+        current = CURRENT_CALL.set(call)
         try:
             out = handler(args or {}, call)
         except KeyError as missing:
@@ -8405,6 +8646,7 @@ class Server:
         except (TypeError, ValueError, OverflowError) as wrong:
             raise ToolError(f"an argument is not in the expected form: {wrong}") from None
         finally:
+            CURRENT_CALL.reset(current)
             TEST_CALL.reset(testing)
         if isinstance(out, dict):
             view = out.pop(VIEW_PRIVATE, None)
@@ -8424,6 +8666,225 @@ def _better(plan: Plan, best: Plan, target: float) -> bool:
         return (p.check["miles_over_limit"], without_spurs(p) is not None, abs(miles - target))
 
     return key(plan) < key(best)
+
+
+# --- Prompts: ready-made asks a person can pick ------------------------------------------------
+
+# The backlog's connector item 3 (the owner's "do 9", 2026-11-13): a few starters an assistant app
+# lists for the person to pick, each turned into one ask that names the tools and settings that
+# fit, so the answer does not hang on the model finding them in the tool list. Kept few
+# (Stephen, 2026-11-12: "simplicity is often more useful"); each answer is asked to stay short.
+# Their numbers are our defaults, unmeasured: stress 80 for a commute and a loop (the tools'
+# own "low stress"), a loop within 10% of its length, its via points about a quarter of the
+# length out (a ring of radius r is about 2 pi r = 6.3 r round in straight lines, and roads add
+# about 30%, ROAD_FACTOR, so 4 r is close to the length asked).
+SAY_IT_SHORT = (
+    " Answer in a few short lines: miles first (km in brackets), minutes, the busy parts, any"
+    " closure or notice, then the link, whole."
+)
+PROMPTS = (
+    {
+        "name": "plan_commute",
+        "title": "Plan a commute",
+        "description": "A calm everyday ride between home and work, with light and rain for the"
+        " time you leave.",
+        "arguments": [
+            {"name": "start", "description": "Where the ride starts", "required": True},
+            {"name": "end", "description": "Where it ends", "required": True},
+            {"name": "leave_at", "description": "When you leave, e.g. 6 AM weekdays"},
+        ],
+        "text": (
+            "Plan my bike commute from {start} to {end}{leave_at_said} with RouteMaker: plan_route"
+            " with ride type default at stress 80 (low stress), `when` to match the time I leave"
+            " (weekday_rush if unsure), unless I said otherwise. Then ride_conditions for the time"
+            " I leave, to say whether it is dark or rain is on the way. Say in one line why it"
+            " goes this way, from the answer's `why`." + SAY_IT_SHORT
+        ),
+    },
+    {
+        "name": "family_trail_ride",
+        "title": "Family trail ride",
+        "description": "An easy ride on paths and quiet streets, for children or a new rider.",
+        "arguments": [
+            {"name": "start", "description": "Where the ride starts", "required": True},
+            {
+                "name": "end",
+                "description": "Where it goes (leave out for a ride back to the start)",
+            },
+            {"name": "miles", "description": "About how far, in miles"},
+        ],
+        "text": (
+            "Plan a family bike ride from {start}{end_said}{miles_said} with RouteMaker:"
+            " plan_route with ride type novice (Novice and Nervous){loop_said}. Aim for no miles"
+            " at LTS 3 and up: where busy_stretches is not empty, revise_route to avoid them or"
+            " tell me where they are. Say the steep grades too." + SAY_IT_SHORT
+        ),
+    },
+    {
+        "name": "loop_of_n_miles",
+        "title": "Loop of N miles",
+        "description": "A ride back to where it starts, about as long as you ask.",
+        "arguments": [
+            {"name": "start", "description": "Where the loop starts and ends", "required": True},
+            {"name": "miles", "description": "About how far, in miles", "required": True},
+            {"name": "near_metro", "description": "yes to stay near Metro for a ride home"},
+        ],
+        "text": (
+            "Plan a bike loop of about {miles} miles from {start} with RouteMaker, low stress"
+            " (stress 80) unless I said otherwise. {loop_how} Keep it within 10% of {miles}"
+            " miles: revise once if it is over or under by more." + SAY_IT_SHORT
+        ),
+    },
+    {
+        "name": "bike_plus_metro",
+        "title": "Bike plus Metro",
+        "description": "Ride to a train or bus, ride on at the other end.",
+        "arguments": [
+            {"name": "start", "description": "Where the trip starts", "required": True},
+            {"name": "end", "description": "Where it ends", "required": True},
+            {"name": "leave_at", "description": "When you leave"},
+        ],
+        "text": (
+            "Plan a trip from {start} to {end} by bike and Metro or bus with RouteMaker:"
+            " plan_route with ride type bike-transit{depart_said}. Say the station or stop where"
+            " I board and leave, the next departures, and each ride's miles and busy parts; offer"
+            " the other transit options only if I ask." + SAY_IT_SHORT
+        ),
+    },
+)
+# Plan a mass ride (Stephen, 2026-11-13): "free-flowing rides that don't require more corkers than
+# we'd have"; "typically don't go over 5% grade and definitely not above 8%, either direction";
+# "the goal is the distance, not the directness"; a midpoint "usually about 2/3" of the way, and
+# "A ride could omit a midpoint" ("in the prompt ask to omit or if suggestions are desired");
+# "the time length of ride typically about 75-90 minutes of riding. That way, hills are
+# considered", "And traffic signals". Mass Ride is planned at 6 mph on the flat
+# (core.presets MASS_RIDE_PLANNING_SPEED_KMH).
+# Within 10% of the length, and corking from LTS 4 as the first triage to offer: our defaults,
+# unmeasured.
+MASS_RIDE_PROMPT = {
+    "name": "plan_mass_ride",
+    "title": "Plan a mass ride",
+    "description": "A large group ride that flows freely with the corkers you have, at the length"
+    " you want.",
+    "arguments": [
+        {"name": "start", "description": "Where the ride starts", "required": True},
+        {"name": "end", "description": "Where it ends", "required": True},
+        {"name": "riders", "description": "About how many riders"},
+        {"name": "corkers", "description": "How many corkers you have"},
+        {"name": "minutes", "description": "How long the riding should take, in minutes"},
+        {"name": "miles", "description": "Or how long the ride should be, in miles"},
+        {"name": "speed_mph", "description": "The group's speed, mph"},
+        {"name": "midpoint", "description": "The midpoint stop, if you have one"},
+    ],
+    "text": (
+        "Plan a mass ride from {start} to {end} with RouteMaker.{known} Before planning, ask me"
+        " for whichever of these I have not given: the number of riders, the number of corkers,"
+        " the riding time in minutes (typically 75 to 90) or the length in miles, and the"
+        " group's speed in mph.{midpoint_how}"
+        " Plan with plan_route, ride type mass-ride, ride_size the riders (100 to 2000; 100 for a"
+        " smaller group), any midpoint as a stop and any shaping points as via points. The goal:"
+        " (1) The length I asked for, within 10%: the goal is the length, not the directness, so"
+        " add or move via points (revise_route) until it is that long. Given a riding time,"
+        " aim at it, with the hills and traffic signals counted: the plan's summary minutes"
+        " are Mass Ride's 6 mph on the flat slowed by the hills, plus waits at signals and stop"
+        " signs (summary junction_waits, absent under half a minute), so at my speed the time"
+        " is (minutes less the waits) x 6 / mph, plus the waits."
+        ' (2) Free-flowing: mass_capacity\'s corkers "about" no more than the corkers I have'
+        " (where corkers is null, say they are not known), and few narrow stretches; where it"
+        " needs more, move the route off the busiest junctions, or offer corking (from_lts 4)"
+        " to see which junctions to leave uncorked. Road room steers the route only without"
+        " stops or via points, so with them check mass_capacity's narrow stretches yourself."
+        " (3) No grade over 5% where it can be helped and never over 8%, up or down: read"
+        " steep_grades (both directions, with direction and grade_pct), and avoid or route"
+        " round any stretch past that."
+        " Give the miles, the riding time at my speed with hills and signals counted, the"
+        " corkers needed against the corkers I have, the steepest grade, then the link."
+    ),
+}
+PROMPTS = (*PROMPTS, MASS_RIDE_PROMPT)
+PROMPT_BY_NAME = {p["name"]: p for p in PROMPTS}
+
+
+def prompts_listed() -> list[dict]:
+    """prompts/list: each prompt without its text."""
+    return [{k: v for k, v in p.items() if k != "text"} for p in PROMPTS]
+
+
+def prompt_text(name: str, arguments: dict) -> dict:
+    """prompts/get: the prompt's one user message, with the person's words put in. Raises
+    ToolError for an unknown prompt or a missing required argument."""
+    prompt = PROMPT_BY_NAME.get(name)
+    if prompt is None:
+        raise ToolError(f"no prompt named {name}")
+    if not isinstance(arguments, dict):
+        raise ToolError("arguments: an object of the prompt's arguments")
+    given = {
+        str(k): " ".join(str(v).split())[:200]
+        for k, v in (arguments or {}).items()
+        if v is not None and str(v).strip()
+    }
+    for argument in prompt["arguments"]:
+        if argument.get("required") and argument["name"] not in given:
+            raise ToolError(f"{name} needs {argument['name']}")
+    leave_at = given.get("leave_at")
+    known = [
+        f"{given[k]} {what}"
+        for k, what in (
+            ("riders", "riders"),
+            ("corkers", "corkers"),
+            ("minutes", "minutes of riding"),
+            ("miles", "miles"),
+            ("speed_mph", "mph"),
+        )
+        if given.get(k)
+    ]
+    near_metro = given.get("near_metro", "").casefold() in ("yes", "y", "true", "1")
+    fields = {
+        **{a["name"]: given.get(a["name"], "") for a in prompt["arguments"]},
+        "leave_at_said": f", leaving {leave_at}" if leave_at else "",
+        "depart_said": f", depart_at for {leave_at}" if leave_at else "",
+        "end_said": f" to {given['end']}" if given.get("end") else " and back",
+        "miles_said": f", about {given['miles']} miles" if given.get("miles") else "",
+        "known": f" So far: {', '.join(known)}." if known else "",
+        "midpoint_how": (
+            f" The midpoint stop is {given['midpoint']}."
+            if given.get("midpoint")
+            else " Ask me about a midpoint stop (many rides have one, about two thirds of the"
+            " way): do I have a place for it, want it left out, or want suggestions? Left out,"
+            " plan without it. For suggestions, offer two or three near the point two thirds"
+            " along a first plan (find_place near it: a park, a plaza, a school yard)."
+        ),
+        "loop_said": ""
+        if given.get("end")
+        else " and loop true, through one or two quiet via points about a third of the way round",
+        "loop_how": (
+            "Use plan_metro_loop with start and centre at the start, so the loop keeps near Metro."
+            if near_metro
+            else "Use plan_route with loop true from the start through two or three via points"
+            " on calm roads or trails, set about a quarter of the length out (roads wind about"
+            " 30% longer than straight lines)."
+        ),
+    }
+    text = prompt["text"].format(**fields)
+    return {
+        "description": prompt["description"],
+        "messages": [{"role": "user", "content": {"type": "text", "text": text}}],
+    }
+
+
+# The playbook in the server's instructions: which ride type for which ask, and the order of
+# calls, kept short (the tool descriptions hold the detail).
+PLAYBOOK = (
+    "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1 calmest to"
+    " 4, plus Avoid). Pick the ride type that fits: stress 80 for 'low stress', trailmaxxing for"
+    " the calmest, novice for children or a new rider, bike-transit for bike plus Metro, else the"
+    " one named for the bike or ride. Pass place names as points. After a plan, say the busy"
+    " parts, any closure and notice, and `why` when the route is much longer or the rider asks."
+    " Give distances in miles first, km in brackets. Share the link whole, with its # part: after"
+    " a week only that part can plan the route again. Save to My routes only when asked. Planning"
+    " only to test RouteMaker: pass test: true, or archive_draft each draft when done. Calls may"
+    " be sent together; an answer with retry_after_s asks for the same call again after that."
+)
 
 
 # --- MCP over stdio -------------------------------------------------------------------------
@@ -8467,6 +8928,7 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
             "capabilities": {
                 "tools": {"listChanged": False},
                 "resources": {"listChanged": False},
+                "prompts": {"listChanged": False},
                 # The route view (VIEW_URI), for an assistant app that shows MCP Apps.
                 "extensions": {UI_EXTENSION: {"mimeTypes": [VIEW_MIME]}},
             },
@@ -8476,17 +8938,7 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                 "version": SERVER_VERSION,
                 **({"icons": server.icons} if server.icons else {}),
             },
-            "instructions": (
-                "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1"
-                " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."
-                " Give distances in miles first, km in brackets. Share the link so the rider can"
-                " open the route in the app, whole with its # part: after a week only that part"
-                " can plan the route again. Save to My routes only when asked. Planning only to"
-                " test or check RouteMaker, not for the rider: pass test: true, or archive_draft"
-                " each draft when done, so it stays out of the rider's Load route. Send calls that"
-                " look up places by name (find_place, compare_places, a named place anywhere) one"
-                " at a time: place search refuses a second one while the first is running."
-            ),
+            "instructions": PLAYBOOK,
         }
     elif method == "ping":
         result = {}
@@ -8494,6 +8946,13 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
         result = {"tools": server.tools()}
     elif method == "resources/list":
         result = {"resources": server.resources()}
+    elif method == "prompts/list":
+        result = {"prompts": prompts_listed()}
+    elif method == "prompts/get":
+        try:
+            result = prompt_text(str(params.get("name")), params.get("arguments") or {})
+        except ToolError as error:
+            return _error(msg_id, -32602, str(error))
     elif method == "resources/templates/list":
         result = {"resourceTemplates": []}
     elif method == "resources/read":

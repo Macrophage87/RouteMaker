@@ -303,7 +303,13 @@ rider's requests count against their own limits, as in the app.</p>
 </div></details>
 <h2 id="asking">Asking for a route</h2>
 <p>Ask in your own words, look at the draft in the app, ask for changes, and say save when it is right.
-The assistant chooses the ride type and settings that fit what you ask, and you can name them yourself.</p>
+The assistant chooses the ride type and settings that fit what you ask, and you can name them yourself.
+Assistants that offer ready-made prompts list five: <strong>Plan a commute</strong>, <strong>Family trail
+ride</strong>, <strong>Loop of N miles</strong>, <strong>Bike plus Metro</strong> and <strong>Plan a mass
+ride</strong>. A one-way bike route of up to 25 mi between its points (in straight lines) also says why it goes the way it
+does, when there is time for the extra plan: how much longer it is than Fast's route
+through the same points, how many fewer busy miles, and up to three busy roads it leaves, such as "leaves Georgia
+Avenue (LTS 4) for the Metropolitan Branch Trail". That plans the same points once more on the server.</p>
 <figure id="fig-mcp-drafts" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 134" role="img" aria-labelledby="fig-mcp-drafts-t fig-mcp-drafts-d" focusable="false" style="min-width:547px">
@@ -705,6 +711,9 @@ answers within about a minute, so a long loop may be planned in fewer rounds; th
 stopped early, and asking for a revision can still fix it. On your own computer, if the assistant gives
 up first, raise its tool timeout (Claude Code: <code>MCP_TOOL_TIMEOUT=600000</code>) or ask for fewer
 plans. A request the assistant gives up on keeps nothing.</li>
+<li><strong>Calls sent together.</strong> An assistant that sends several requests at once has their place
+searches wait their turn, about 4 seconds in all per request (our default), and a busy route planner is waited out
+once, up to 30 seconds; past that it is told to try again shortly.</li>
 <li><strong>Changes in between.</strong> If closures or the map change between planning and opening the
 route in the app, a route planned again may differ a little. A saved route keeps the line exactly as
 planned.</li>
@@ -722,7 +731,7 @@ planned.</li>
 <p class="next">Next: <a href="/about/architecture.html">Architecture</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.26.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.27.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

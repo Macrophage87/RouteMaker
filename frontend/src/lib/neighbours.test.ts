@@ -236,7 +236,7 @@ test("choosing one rides it and changes no setting: the plan's dials and the sav
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const choose = app.slice(app.indexOf("const choose = useCallback("), app.indexOf("}, []);", app.indexOf("const choose = useCallback(")));
   assert.doesNotMatch(choose, /setDials|saveSettings|setDefault/);
-  assert.match(app, /const rideDialsNow = rideDials\(\{ \.\.\.planDials, closuresNow: true \}, rest \? null : route\);/);
+  assert.match(app, /const rideDialsNow = rideDials\(\{ \.\.\.planDials, closuresNow: true, startAt: undefined \}, rest \? null : route\);/);
   assert.match(app, /setRideStart\(\(before\) => \(\{ route, \.\.\.leg, dials: rideDialsNow,/);
 });
 

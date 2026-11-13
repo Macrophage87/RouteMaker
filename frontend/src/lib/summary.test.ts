@@ -152,7 +152,7 @@ test("a calmer-route search that stopped short says so in plain words", () => {
   });
   assert.match(calmSearchNote(route("time")) ?? "", /^The calmer-route search ran out of time/);
   assert.match(calmSearchNote(route("untraceable")) ?? "", /could not read this route/);
-  assert.match(calmSearchNote(route("span")) ?? "", /over 19 mi \(30 km\) in a straight line/);
+  assert.match(calmSearchNote(route("span")) ?? "", /over 37 mi \(60 km\) in a straight line/);
   assert.match(calmSearchNote(route("long_ride")) ?? "", /long rides/);
   assert.match(calmSearchNote(route("ceiling")) ?? "", /stopped at the longest distance it allows, so a calmer, longer route may exist/);
   // Plain words, not the router's internals (the a11y review's N2).

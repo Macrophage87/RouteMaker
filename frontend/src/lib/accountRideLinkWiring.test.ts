@@ -54,7 +54,7 @@ test("Run release review S4: a run or walk's closure ask has no Reroute (its pla
 });
 
 test("a saved route reopens as saved: the scheduler answers its plan with the saved line until it changes", () => {
-  assert.match(app, /if \(saved && saved\.key === keptPlanKey\(plan\.points, plan\.preset, plan\.dials\)\)/);
+  assert.match(app, /if \(saved && !plan\.dials\.startAt && saved\.key === keptPlanKey\(plan\.points, plan\.preset, plan\.dials\)\)/);
   assert.match(app, /return \{ ok: true, route: saved\.answer \}/);
   // Update route only by the rider's press.
   assert.match(app, /onClick=\{updateSaved\}/);

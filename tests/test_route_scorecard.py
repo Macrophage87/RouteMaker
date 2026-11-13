@@ -552,3 +552,20 @@ def test_a_trip_that_stays_broken_is_posted_when_it_breaks_and_when_it_mends(tmp
     _night(tmp_path, "20261113T0800Z", 2.0)
     text = _findings(tmp_path)
     assert "plans again" in text and "miles" not in text
+
+
+def test_a_runs_rows_keep_how_long_each_plan_took_and_never_flag_it():
+    # The cost of a longer calm search is read off these (backlog 2026-11-12, "Long rides get
+    # the calm search"); one run's seconds depend on the host, so they are never compared.
+    entries = [e for e in _entries() if e["key"] == "t|default|base"]
+    old = scorecard.run_of(
+        entries, {"t|default|base": {"status": 200, "body": answer(), "seconds": 4.0}}
+    )
+    new = scorecard.run_of(
+        entries, {"t|default|base": {"status": 200, "body": answer(), "seconds": 19.5}}
+    )
+    assert old["rows"]["t|default|base"]["seconds"] == 4.0
+    assert new["rows"]["t|default|base"]["seconds"] == 19.5
+    assert not scorecard.findings_for(old["rows"]["t|default|base"], new["rows"]["t|default|base"])
+    untimed = scorecard.run_of(entries, {"t|default|base": {"status": 200, "body": answer()}})
+    assert "seconds" not in untimed["rows"]["t|default|base"]

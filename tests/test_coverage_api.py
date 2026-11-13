@@ -93,3 +93,32 @@ class TestCoverage:
         assert refused.status_code == 429
         assert refused["Retry-After"]
         assert refused.json()["error"]
+
+
+@db
+class TestMapDate:
+    """The live map's date rides on the coverage answer, for Settings' About line (backlog item
+    "Data that says how old it is", 2026-11-13)."""
+
+    def test_the_standard_graphs_build_day(self, client) -> None:
+        from core.models import ValhallaUpstream
+
+        ValhallaUpstream.objects.create(
+            variant="standard", url="u", build_id="20261110T170245Z", previous_build_id=""
+        )
+        ValhallaUpstream.objects.create(
+            variant="weekend", url="u", build_id="20261201T000000Z", previous_build_id=""
+        )
+        assert client.get(PATH).json()["properties"] == {"map_data": "2026-11-10"}
+
+    def test_nothing_before_a_first_build_or_for_an_id_that_is_not_a_date(self, client) -> None:
+        from core.models import ValhallaUpstream
+
+        assert client.get(PATH).json()["properties"] == {}
+        row = ValhallaUpstream.objects.create(
+            variant="standard", url="u", build_id="", previous_build_id=""
+        )
+        assert client.get(PATH).json()["properties"] == {}
+        row.build_id = "manual"
+        row.save()
+        assert client.get(PATH).json()["properties"] == {}

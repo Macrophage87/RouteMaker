@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactElement } from "react";
+// Parts loaded on first use, and in the background once idle (app/later.tsx): `later(...)` below, a dialog's kept mounted by <Once>.
+import { Once, later, usePreloadLater } from "./app/later.tsx";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { LiveMap, LiveRiderPoint, type LiveRider } from "./app/LiveMap.tsx";
@@ -83,6 +85,7 @@ import {
   routingStep,
   type DrawnPlan,
 } from "./lib/planFirst.ts";
+import { KEPT_SAID, STOPPED_SAID, USED_KEPT_SAID, compareRows, sameRoute } from "./lib/compareRoutes.ts";
 import { PlanPanel } from "./app/PlanPanel.tsx";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
@@ -282,6 +285,7 @@ import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
 import { leaveNowArriveMs } from "./lib/arrival.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
+import { fitStart, offersStartTime, startMs } from "./lib/startTime.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
@@ -297,7 +301,7 @@ import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from ".
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
-import { ReviewMode } from "./ReviewMode.tsx";
+const ReviewMode = later(() => import("./ReviewMode.tsx").then((m) => m.ReviewMode));
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
@@ -306,7 +310,8 @@ import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
 import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, legDials, restClosedSaid, restRequest, rideLegOf, rideNowDials, shareBikeOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
-import { RIDE_TOO_LONG } from "./lib/navigate.ts";
+import { rideTooLong } from "./lib/navigate.ts";
+import { installState } from "./lib/installOffer.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
@@ -314,7 +319,10 @@ import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type Hom
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import type { Planner, WorstStretch } from "./lib/worstStretches.ts";
+
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
+import { countUse } from "./lib/usage.ts";
 import { useWeather } from "./useWeather.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
@@ -325,7 +333,7 @@ import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { FullAccountDialog } from "./FullAccountDialog.tsx";
 import { SameRideDialog } from "./SameRideDialog.tsx";
-import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
+const BroadcastQrDialog = later(() => import("./BroadcastQrDialog.tsx").then((m) => m.BroadcastQrDialog));
 import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
 import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
@@ -338,12 +346,16 @@ import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
-import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
+import type { ShareCardSource } from "./ShareCardDialog.tsx";
+const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => m.ShareCardDialog));
+// Check a route (Plan, an opened file only): loaded on first use, its module with it.
+const CheckRoute = later(() => import("./CheckRoute.tsx").then((m) => m.CheckRoute));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
+import { BARRIER_PRESETS, NO_BARRIERS, barrierAvoidFor, barrierAvoidPoints, barrierAvoidSaid, toggleBarrierAvoid, type BarrierAvoid } from "./lib/barriers.ts";
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
-import { RideGroup } from "./RideGroup.tsx";
-import { RoamMode } from "./RoamMode.tsx";
+const RideGroup = later(() => import("./RideGroup.tsx").then((m) => m.RideGroup));
+const RoamMode = later(() => import("./RoamMode.tsx").then((m) => m.RoamMode));
 import { RideGuard } from "./RideGuard.tsx";
 import { watchOpenLinks } from "./lib/rideLinks.ts";
 import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
@@ -352,11 +364,15 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, language, planLanguageAttributes } from "./lib/i18n.ts";
 import { feedbackDetails } from "./lib/feedback.ts";
+import { mapDataDay } from "./lib/dataAge.ts";
 import { FeedbackBox } from "./FeedbackBox.tsx";
 import { findShell } from "./lib/nativeShell.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
+
+/** Check a route's calmer way round a stretch: the route alone, no routes to choose from (review speed-5). */
+const planCalmer: Planner = (ends, ridePreset, calmDials) => requestRoute(ends, ridePreset, { dials: calmDials, routeOnly: true });
 
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -492,6 +508,8 @@ const ignore = () => undefined;
 const OUTSIDE_NOTICE = t("That point is outside the area this map covers (the DC region to Baltimore).");
 
 export function App() {
+  // The parts loaded on first use start arriving once the first screen is up (app/later.tsx).
+  usePreloadLater();
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
   const [preset, setPreset] = useState<PresetId>(GO_START_RIDE ?? initialPlan.preset);
   const [dials, setDials] = useState<Dials>(() => (GO_START_RIDE ? startDials(GO_START_RIDE) : initialPlan.dials));
@@ -566,16 +584,24 @@ export function App() {
   const bypassPlan = bypassPlanKey(points);
   const bypassIds = bypassFor(closureBypass, bypassPlan);
   const bypassKey = bypassIds.join(",");
+  // "Go around" on a Cargo or Tandem barrier's mark (lib/barriers.ts): the barriers this plan (its start and end) goes
+  // around; request only, never the link. Undo takes one back out.
+  const [barrierAvoid, setBarrierAvoid] = useState<BarrierAvoid | null>(null);
+  const barrierAvoided = barrierAvoidFor(barrierAvoid, bypassPlan);
+  const barrierAvoidKey = barrierAvoided.map((item) => `${item.lon},${item.lat}`).join(";");
   // Go routes round only the closures known to be on, not DDOT's permits, which say a road may be closed (v0.9.1,
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
   const planDials = useMemo(() => {
     const base = withTransitOption(withStations(withSpeed(withWeight(dials, weight), ridingSpeed), stationChoice), preset, transitPick, trip);
     const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
-    const now = goNow ? { ...made, closuresNow: true } : made;
-    return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
+    // Go always plans from now (the owner, 2026-11-13: a start time is Plan's only), as do the docks' ride types.
+    const timed = made.startAt && (goNow || !offersStartTime(preset)) ? { ...made, startAt: undefined } : made;
+    const now = goNow ? { ...timed, closuresNow: true } : timed;
+    const bypassed = bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
+    return barrierAvoided.length && BARRIER_PRESETS.has(preset) ? { ...bypassed, barrierAvoid: barrierAvoidPoints(barrierAvoided) } : bypassed;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, ridingSpeed, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
+  }, [routeKey, weight, ridingSpeed, stationChoice, preset, transitPick, trip, bypassKey, barrierAvoidKey, goNow, noviceHopPick]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
@@ -614,6 +640,13 @@ export function App() {
     else if (mode === "go") setDials((now) => (now.loop ? withLoop(now, false) : now));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- on the change of view only
   }, [mode]);
+  // Go always plans from now (the owner, 2026-11-13): coming into Go drops Plan's start time, so its Ride settings
+  // line never says a time it is not planning for. In Plan, a start that has come and gone falls back to Now.
+  const startClock = useMinute(Boolean(dials.startAt));
+  useEffect(() => {
+    if (!dials.startAt) return;
+    if (mode === "go" || fitStart(dials.startAt, startClock) === undefined) setDials((now) => ({ ...now, startAt: undefined }));
+  }, [mode, dials.startAt, startClock]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
   // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
   // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
@@ -922,6 +955,8 @@ export function App() {
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
+  // The live map's build day, from the same coverage answer, for Settings' About line (lib/dataAge.ts).
+  const [mapDay, setMapDay] = useState<string | null>(null);
   // The map has loaded (onReady): what waits on the map, such as Reach's rings from a shared link, is drawn then.
   const [mapReady, setMapReady] = useState(false);
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
@@ -1295,7 +1330,9 @@ export function App() {
   const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
   // A saved route reopened (v0.7.0, saved routes): its line as saved answers its plan, unchanged, until the
   // plan changes or the rider presses Update route.
-  const savedShown = useRef<{ key: string; answer: RouteResponse } | null>(null);
+  // `once`: Plan's Use kept route (lib/compareRoutes.ts), which answers its own plan once, then goes, so a later change
+  // its key does not cover (a station, the riding speed) is planned afresh.
+  const savedShown = useRef<{ key: string; answer: RouteResponse; once?: boolean } | null>(null);
   const keptNotice = useRef<string | null>(null);
   // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
   // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
@@ -1346,8 +1383,11 @@ export function App() {
         if (sharedRevoked && (revokedPlan ??= sentPlanKey(plan.points, plan.preset, plan.dials)) === sentPlanKey(plan.points, plan.preset, plan.dials))
           return { ok: false, error: SHARED_REVOKED_ERROR };
         const saved = savedShown.current;
-        if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
+        // Not with Plan's start time set (lib/startTime.ts): the saved line was planned for another moment, and the key
+        // does not hold the start, so it would come back unchanged.
+        if (saved && !plan.dials.startAt && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
           keptShown.current = null;
+          if (saved.once) savedShown.current = null;
           return { ok: true, route: saved.answer };
         }
         savedShown.current = null;
@@ -1648,12 +1688,18 @@ export function App() {
   const [changeDetails, setChangeDetails] = useState<string[]>([]);
   const [ghost, setGhost] = useState<LonLat[] | null>(null);
   const [changeLine, setChangeLine] = useState<string | null>(null);
+  // Plan's "Keep to compare" (lib/compareRoutes.ts; the backlog's "choose between routes in Plan", 2026-11-13): the
+  // plan and the route the rider kept, its dials as sent (for the planner's stand-in answer when the rider goes back).
+  // Lasts until Stop comparing or Clear; a change of plan keeps it, which is the point.
+  const [compareKept, setCompareKept] = useState<{ drawn: Drawn; dials: Dials; route: RouteResponse } | null>(null);
   // Go's ends picked or pressed (goTo), and the racks moved to from them (Stephen, 2026-11-01: the rack offer only for
   // a destination just picked or pressed, not every route opened from a link, a save or Plan). Kept through undo;
   // another plan opened (forgetDrawn) starts the list again.
   const [pickedEnds, setPickedEnds] = useState<LonLat[]>([]);
   /** Another plan opened (a link, a file): no Reset back to the last one, and no summary against it. */
   const forgetDrawn = () => {
+    // A route kept to compare is for this plan: another plan opened is another trip.
+    setCompareKept(null);
     setPickedEnds([]);
     drawnRef.current = null;
     setDrawn(null);
@@ -3028,7 +3074,7 @@ export function App() {
     if (action.kind !== "route" || twoPointsOnly(ridePreset)) return;
     const ends: LonLat[] = [action.point, dest];
     if (spanKm(ends) > GO_EARLY_MAX_KM) return;
-    const { closureBypass: _bypass, ...kept } = planDialsNow.current;
+    const { closureBypass: _bypass, barrierAvoid: _avoid, ...kept } = planDialsNow.current;
     const asked = { dials: { ...kept, loop: false }, quick: true };
     earlyStart.current?.start(routeRequestBody(ends, ridePreset, asked), () => requestRoute(ends, ridePreset, asked));
   };
@@ -4046,6 +4092,8 @@ export function App() {
     const route = left ? firstTripOf(asked) : asked;
     const ridePoints = left ? askedPoints.slice(0, 2) : askedPoints;
     if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
+    // Anonymous daily totals (lib/usage.ts): a new ride counts once; Ride the rest is the same ride.
+    if (!rest) countUse(window.location.origin, route.preset === "run" ? "run" : walksLine(route) ? "walk" : "ride");
     const leg = rideLegOf(route, ridePoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).
@@ -4058,7 +4106,8 @@ export function App() {
     const onFixed = !rest && fixedLine.current !== null && route.geometry.coordinates === fixedLine.current;
     const fixed = fixedRide(leg, opened ?? (onFixed ? { ride: true } : null), !!rest);
     setResumeStats(null);
-    const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
+    // A ride is now: Plan's start time (lib/startTime.ts) never goes with it into its re-plans.
+    const rideDialsNow = rideDials({ ...planDials, closuresNow: true, startAt: undefined }, rest ? null : route);
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts): a Bikeshare or transit trip
     // whole, its leg worked out again at Resume (Stephen 2026-11-04: on the train, switching apps "terminated the route
     // without offering a resume"), and Ride the rest; a detour from Roam is not.
@@ -4316,7 +4365,8 @@ export function App() {
         ];
         // The detour's line alone is used: no routes to choose from (review speed-5).
         // The detours go round what the check found: on Start ride, only the closures known to be on.
-        const dials = pending.nowOnly ? { ...planDials, closuresNow: true } : planDials;
+        // A detour on Start ride is for now, never Plan's start time (lib/startTime.ts).
+        const dials = pending.nowOnly ? { ...planDials, closuresNow: true, startAt: undefined } : planDials;
         const result = await requestRoute(ends, rideRef.current.preset, { dials, routeOnly: true });
         return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
       }),
@@ -4344,6 +4394,36 @@ export function App() {
     const next: ImportedPlan = { ...unsnapped, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
     commit(kept, { ...rideRef.current, imported: next });
     pending.afterGpx?.(track);
+  };
+  // Check a route's Use this way (CheckRoute.tsx, the owner's pick 2026-11-13): the calmer way goes into the file's
+  // full line in place of the stretch, as a closure's detour does (closureReroute), and the plan follows that line. One
+  // edit, so Undo takes it out; the download is then the line with it (its text is gone, as after a detour).
+  const takeCalmerWay = async (stretch: WorstStretch, way: LonLat[]) => {
+    const file = rideRef.current.imported;
+    const route = shown;
+    if (!file?.verbatim || !route) return;
+    // Loaded already with the list (CheckRoute.tsx), so this waits on nothing.
+    const { CHECK_NOT_PUT, pointsKept, spliceAt, stretchEnds, usedSaid } = await import("./lib/worstStretches.ts");
+    const line = file.verbatim.track;
+    const ends = stretchEnds(route, stretch);
+    const cut = spliceAt(line, way, ends.share, ends.paddedM, ends.padded);
+    if (!cut) {
+      announce(CHECK_NOT_PUT);
+      return;
+    }
+    // The calmer way's own ends are kept too (they are not the file's vertices, as a closure's detour ends are).
+    const track = spliceDetours(line, [cut], [[[line[cut.before][0], line[cut.before][1]], ...way, [line[cut.after][0], line[cut.after][1]]]]).map((v) => [...v]) as NonNullable<ImportedPlan["verbatim"]>["track"];
+    // The plan's own points on the part replaced go; the rest stay where the file put them.
+    const kept = pointsKept(pointsRef.current, route, stretch);
+    // A snapped line (lib/gpxMatch.ts) was of the line before: it goes with it.
+    const { matched: _snapped, ...unsnapped } = file;
+    const next: ImportedPlan = { ...unsnapped, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
+    commit(kept, { ...rideRef.current, imported: next });
+    // Planned at once, as an opened file is (openImported): one press, no Update route after it.
+    setRouteAsk((n) => n + 1);
+    announce(usedSaid(stretch.street));
+    // The button goes with the list while the route is planned again: the focus waits on the Route heading.
+    routeHeadingRef.current?.focus();
   };
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
@@ -4584,7 +4664,7 @@ export function App() {
     const result = await requestRoute(asked.points, asked.preset, { dials: restDials, routeOnly: true });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
-    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    if (!rideableRoute(result.route)) return rideTooLong(installState().ios);
     const line = result.route.geometry.coordinates;
     const go = () => {
       if (stillOn()) beginRide(ridePrefs, false, { route: result.route, points: asked.points });
@@ -4615,7 +4695,7 @@ export function App() {
     const result = await requestRoute(points, left.preset, { dials: rideNowDials(legDials) });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
-    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    if (!rideableRoute(result.route)) return rideTooLong(installState().ios);
     // The last leg has no stops after it: none left once it starts (beginRide keeps them only for a trip with stops).
     tripStopsLeft.current = null;
     beginRide(ridePrefs, false, { route: result.route, points });
@@ -5275,7 +5355,7 @@ export function App() {
     const result = await requestRoute(asked, plain ? "default" : preset, { dials: detourDials, routeOnly: true });
     if (!roamingNow.current) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
-    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    if (!rideableRoute(result.route)) return rideTooLong(installState().ios);
     setRoaming(false);
     setRoamRider(null);
     beginRide(ridePrefs, false, { route: result.route, points: asked, roam: true });
@@ -5457,21 +5537,24 @@ export function App() {
       window.setTimeout(() => roamingNow.current && announce(keyless ? BROADCAST_NO_KEY : BROADCAST_FOLLOWING), START_NOTE_MS);
     }
   }, [sharedFollow, roamFollow]);
-  // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
+  // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now
+  // (or at Plan's start time).
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
   const minute = useMinute(shown !== null && !riding && (mode === "plan" || mode === "go"));
   const lightKept = useRef<LightMark[]>([]);
+  // Plan's start time (lib/startTime.ts): the marks and the arrival are for leaving then, not now.
+  const startsMs = mode === "plan" ? startMs(planDials.startAt) : null;
   const light = useMemo(() => {
-    const next = routeLightMarks(shown, minute, dials.when ?? null);
+    const next = routeLightMarks(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
-  }, [shown, minute, dials.when]);
-  // The route's arrival leaving now, after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
-  const arriveMs = leaveNowArriveMs(shown, minute, dials.when ?? null);
+  }, [shown, minute, dials.when, startsMs]);
+  // The route's arrival leaving now (or at Plan's start time), after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
+  const arriveMs = leaveNowArriveMs(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
   // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows. Not
   // for a plan set to another time (its When): the forecast is for leaving now.
-  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") && !dials.when ? lineKey(shown.geometry.coordinates) : null;
+  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") && !dials.when && !planDials.startAt ? lineKey(shown.geometry.coordinates) : null;
   const weather = useWeather(
     weatherKey,
     () => (shown && shown.duration_s > 0 ? weatherPoints(shown.geometry.coordinates, 0, shown.distance_m / shown.duration_s) : null),
@@ -6362,7 +6445,7 @@ export function App() {
   const federalPlanner = federalShown(preset, true) && federalData && points.length > 0 && federalAreas.every((area) => area === null) && (
     <p className="hint federal-points">{FEDERAL_POINTS_NONE}</p>
   );
-  const loop = loopView(preset, dials.loop, points);
+  const loop = loopView(preset, dials.loop, points, dials.outAndBack === true);
   const loopHintId = useId();
   const [tips, setTips] = useState(false);
   const tipsId = useId();
@@ -6413,10 +6496,41 @@ export function App() {
   };
   // Clear: every point, the drawn route, its ghost and the change summary; the ride type and sliders stay.
   const clearPlan = () => {
+    setCompareKept(null);
     setGhost(null);
     setChangeLine(null);
     setChangeDetails([]);
     clearAll();
+  };
+  // Keep to compare: the route shown, up to date, with the plan it answers.
+  const comparing = compareKept !== null && !!shown && !sameRoute(compareKept.route, shown);
+  // The kept route is the dashed line once the plan moves on from it: changed and not yet routed, or routed.
+  const keptDashed = compareKept !== null && (comparing || planEdited);
+  const keepToCompare = () => {
+    const at = drawnRef.current;
+    if (!at || !shown || planEdited) return;
+    setCompareKept({ drawn: at, dials: planDials, route: shown });
+    announce(KEPT_SAID);
+  };
+  // Use kept route: the kept plan back (one edit, so Undo takes it back), answered by the kept route itself, not
+  // planned again; the route there was becomes the one kept, so the rider can go back and forth.
+  const useKeptRoute = () => {
+    const back = compareKept;
+    const at = drawnRef.current;
+    if (!back || !shown) return;
+    setCompareKept(at && !planEdited ? { drawn: at, dials: planDials, route: shown } : null);
+    savedShown.current = { key: keptPlanKey(back.drawn.points, back.drawn.ride.preset, back.dials), answer: back.route, once: true };
+    commit(back.drawn.points as LonLat[], back.drawn.ride);
+    setStationPins(back.drawn.pins);
+    setTransitPick(back.drawn.transitPick);
+    setNotice(null);
+    sendNow.current = true;
+    setRouteAsk((n) => n + 1);
+    announce(USED_KEPT_SAID);
+  };
+  const stopComparing = () => {
+    setCompareKept(null);
+    announce(STOPPED_SAID);
   };
   const fromStart = plansFromStart(preset, points, planDials);
   const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias, fromStart });
@@ -6490,7 +6604,7 @@ export function App() {
       onRoute={pressRoute}
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
       onCancel={cancelRouting}
-      change={planEdited ? null : changeLine}
+      change={planEdited || compareKept ? null : changeLine}
       details={changeDetails}
       onCloseChange={() => {
         setChangeLine(null);
@@ -6505,6 +6619,18 @@ export function App() {
           : null
       }
       onSay={announce}
+      compare={
+        !shown || stale
+          ? null
+          : {
+              rows: comparing && compareKept && !planEdited ? compareRows(compareKept.route, shown) : null,
+              kept: compareKept !== null,
+              edited: planEdited,
+              onKeep: keepToCompare,
+              onUse: useKeptRoute,
+              onStop: stopComparing,
+            }
+      }
     />
   );
   // A bike loop from a start and a distance (lib/bikeLoop.ts; Plan only, Stephen 2026-11-12): the picked shape is one
@@ -6705,6 +6831,12 @@ export function App() {
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
+        barrierAvoid: planDials.barrierAvoid,
+        // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
+        check:
+          mode === "plan" && imported && fileShown()?.follows_file ? (
+            <CheckRoute route={shown as RouteResponse} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={imported.verbatim ? (stretch, way) => void takeCalmerWay(stretch, way) : undefined} />
+          ) : null,
       }}
     />
   );
@@ -6717,6 +6849,8 @@ export function App() {
           // One distance control (the v0.26.0 review): while Plan's Loop by distance box shows, the Target distance
           // dial does not.
           hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
+          // A day and start time, in Plan only (the owner, 2026-11-13: Go always plans from now).
+          startTime: mode === "plan" && offersStartTime(preset),
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,
@@ -6833,7 +6967,7 @@ export function App() {
         permitsOn={!riding && permitsShown(permitsOn, mode)}
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
-        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
+        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : ((planFirst && keptDashed && compareKept ? compareKept.route.geometry.coordinates : null) ?? ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
         wayBackTo={riding ? (rideView?.wayBackTo ?? null) : null}
         planLegs={riding || reviewing || mode !== "plan" ? null : loopVias ? NO_LEGS : planDrawn}
         lightMarks={riding || mode !== "plan" ? null : light}
@@ -6887,6 +7021,14 @@ export function App() {
         letteredShown={riding || (roaming && roamLettered) ? null : letteredShown}
         letteredRefit={letteredRefit}
         stopActionFor={stopActionFor}
+        // Not on a ride: its re-plans use the dials it started with, so a press there would change nothing.
+        barrierAvoided={riding ? NO_BARRIERS : barrierAvoided}
+        onBarrierAvoid={riding ? undefined : (item, on) => {
+          setBarrierAvoid((now) => toggleBarrierAvoid(now, bypassPlan, item, on));
+          // One press plans again, in Plan too: the card says "Planning again".
+          setRouteAsk((n) => n + 1);
+          announce(barrierAvoidSaid(on));
+        }}
         onClosureBypass={(item, on) => {
           setClosureBypass((now) => toggleBypass(now, bypassPlan, item.id, on));
           announce(bypassSaid(item, on));
@@ -6897,6 +7039,7 @@ export function App() {
           setStopCardFrame({ padding: framePadding, instant: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches });
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
+            if (coverage) setMapDay(mapDataDay(coverage.properties));
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
           watchForFacilities(map, setFacilitiesShown);
@@ -7093,18 +7236,22 @@ export function App() {
           else startRideChecked();
         }}
       />
-      <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
+      <Once when={qrAsk !== null}>
+        <BroadcastQrDialog ask={qrAsk} onClose={() => setQrAsk(null)} />
+      </Once>
       {/* With a ride's dots (RideGroup), the sheet is theirs: shown with the dot question, or alone. */}
       <BroadcastJoinDialog ask={riding && !rideGroupLine ? joinAsk : null} onAction={joinAction} onClose={closeJoin} />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
-      <ShareCardDialog
-        open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
-        source={shareCardSource}
-        settled={shareCardSettled}
-        keepKey={JSON.stringify(keepFields(shareKeep))}
-        makeLink={shareCardLink}
-        onClose={() => setShareCardOpen(false)}
-      />
+      <Once when={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}>
+        <ShareCardDialog
+          open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
+          source={shareCardSource}
+          settled={shareCardSettled}
+          keepKey={JSON.stringify(keepFields(shareKeep))}
+          makeLink={shareCardLink}
+          onClose={() => setShareCardOpen(false)}
+        />
+      </Once>
       <GoSpotDialog
         request={spotOpen ? goSpot : null}
         lookup={spotLookup}
@@ -7615,6 +7762,7 @@ export function App() {
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
                 feedbackDetails: detailsForFeedback,
+                mapDataDay: mapDay,
                 saveSettingsNow,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
