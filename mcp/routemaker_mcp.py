@@ -8751,9 +8751,10 @@ PROMPTS = (
 # Plan a mass ride (Stephen, 2026-11-13): "free-flowing rides that don't require more corkers than
 # we'd have"; "typically don't go over 5% grade and definitely not above 8%, either direction";
 # "the goal is the distance, not the directness"; a midpoint "usually about 2/3" of the way, and
-# "A ride could omit a midpoint" ("in the prompt ask to omit or if suggestions are desired"); "the time length of ride typically about 75-90 minutes of
-# riding. That way, hills are considered", "And traffic signals". Mass Ride is planned at 6 mph
-# on the flat (core.presets MASS_RIDE_PLANNING_SPEED_KMH).
+# "A ride could omit a midpoint" ("in the prompt ask to omit or if suggestions are desired");
+# "the time length of ride typically about 75-90 minutes of riding. That way, hills are
+# considered", "And traffic signals". Mass Ride is planned at 6 mph on the flat
+# (core.presets MASS_RIDE_PLANNING_SPEED_KMH).
 # Within 10% of the length, and corking from LTS 4 as the first triage to offer: our defaults,
 # unmeasured.
 MASS_RIDE_PROMPT = {
