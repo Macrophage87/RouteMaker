@@ -313,6 +313,9 @@ const GO_RIDE_ALSO = [
   "BatteryNote.tsx",
   "lib/serverStatus.ts",
   "TransitSummary.tsx",
+  // A trip's legs (the v0.26.0 release review): their words come through lib/transit.ts legWords.
+  "lib/transitMarks.ts",
+  "lib/transit.ts",
   // Stop by stop and turn by turn on foot (2026-11-02): the on-board card and its words.
   "OnBoardCard.tsx",
   "lib/onBoard.ts",

@@ -4,7 +4,7 @@ import { type Frame, type LineEdit, type StressAvailability } from "./MapView.ts
 import { LiveMap, LiveRiderPoint, type LiveRider } from "./app/LiveMap.tsx";
 import { liveValue } from "./lib/liveValue.ts";
 import { BikeLoopPicker } from "./BikeLoopPicker.tsx";
-import { FINISH_NAME, shapePoints } from "./lib/bikeLoop.ts";
+import { FINISH_NAME, shapePoints, showsBikeLoop } from "./lib/bikeLoop.ts";
 import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
@@ -6714,6 +6714,9 @@ export function App() {
       <RideSection key="presets"
         {...{
           preset, dials, choosePreset, commitDials, route, typeCard: mode !== "go",
+          // One distance control (the v0.26.0 review): while Plan's Loop by distance box shows, the Target distance
+          // dial does not.
+          hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,

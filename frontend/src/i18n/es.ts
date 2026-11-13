@@ -2342,6 +2342,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Front rack": "Portabicicletas delantero",
   "Arriving": "Llegando",
   "{min} min": "{min} min",
+  "{a} or {b}": "{a} o {b}",
   "Get off here: {name}.": "Bájese aquí: {name}.",
   "Next stop: {name}. Get off there.": "Próxima parada: {name}. Bájese allí.",
   "Next stop: {name}. Press the stop button to get off there.": "Próxima parada: {name}. Presione el botón de parada para bajarse allí.",

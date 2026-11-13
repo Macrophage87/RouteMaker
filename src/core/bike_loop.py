@@ -48,8 +48,9 @@ TARGET_MAX_M = round(100 * METRES_PER_MILE)
 
 BEARINGS = (0.0, 60.0, 120.0, 180.0, 240.0, 300.0)
 ROUTED_PER_STRAIGHT = 1.3
-# What one triangle's ride may be read as for its straight sides, and how far one resize may
-# scale it (as Run's: `run_plan.RATIO_RANGE`, `run_plan.RESIZE_RANGE`).
+# What one triangle's ride may be read as for its straight sides (Run's `run_plan.RATIO_RANGE` is
+# 1.0 to 3.5; a ride's roads wind less than a run's paths: our default), and how far one resize
+# may scale it (as Run's `run_plan.RESIZE_RANGE`).
 RATIO_RANGE = (1.0, 3.0)
 RESIZE_RANGE = (0.5, 2.0)
 TOLERANCE = 0.12
@@ -218,6 +219,7 @@ def ridden(router: Router, start, bearing: float, side_m: float, payload_of) -> 
         metres=metres,
         climb_m=routing._climb_of(trip),
         spur=run_plan.self_overlap(line),
+        graph=graph,
     )
 
 
