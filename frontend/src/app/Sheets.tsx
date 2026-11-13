@@ -79,6 +79,7 @@ import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
 import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
+import { dataAgeSaid } from "../lib/dataAge.ts";
 import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
@@ -498,6 +499,8 @@ export interface SettingsSheetProps {
   nav: SheetNav;
   /** Send feedback's place-free details (lib/feedback.ts), worked out when the rider presses Send. */
   feedbackDetails?: () => FeedbackDetails;
+  /** The live map's build day (GET /api/coverage, lib/dataAge.ts), or null before it answers. */
+  mapDataDay?: string | null;
   /** What Garmin's return said (lib/garminLink.ts garminReturnFrom), once, or null. */
   garminReturned?: string | null;
   /** What Wahoo's return said (lib/wahooLink.ts wahooReturnFrom), once, or null. */
@@ -654,6 +657,7 @@ function SettingsTabs({ tab, onTab, label }: { tab: SettingsTab; onTab: (tab: Se
 export function SettingsSheet(props: SettingsSheetProps) {
   const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, garminReturned, wahooReturned } = props;
   const go = mode === "go";
+  const dataAge = dataAgeSaid(props.mapDataDay ?? null);
   // Back from Garmin or Wahoo, Settings opens on Account, where its line says what happened; otherwise on Riding,
   // and then on the tab last shown.
   const [tab, setTab] = useState<SettingsTab>(() => (garminReturned || wahooReturned ? "account" : "riding"));
@@ -851,6 +855,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
         {props.feedbackDetails && <FeedbackBox details={props.feedbackDetails} onSay={announce} />}
         {/* The version (lib/appVersion.ts): here and in the map's Help, since Plan's phone sheet has no title row (P10). */}
         {APP_VERSION && <p className="hint settings-version">{versionSaid()}</p>}
+        {/* How old the data is (backlog item "Data that says how old it is", 2026-11-13): the map's day and the places'. */}
+        {dataAge && <p className="hint settings-data-age">{dataAge}</p>}
       </section>
       </div>
     </SheetFrame>
