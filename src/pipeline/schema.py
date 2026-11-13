@@ -692,6 +692,14 @@ CREATE TABLE {schema}.segment (
     -- area, which sets the night factor on its junctions (469d, 469e).
     road_default_speed_mph smallint,
     road_urban      boolean,
+    -- People, homes and jobs within half a mile of the way, and the square miles
+    -- they were counted over (`routemaker.setting`; 2020 Census blocks, LODES
+    -- jobs), for the road panel's Setting line only. Null where `setting.json`
+    -- was not installed.
+    setting_people  integer,
+    setting_homes   integer,
+    setting_jobs    integer,
+    setting_sq_mi   real,
     -- A curated stress adjustment (`routemaker.stress.StressAdjustment`; the
     -- owner, 2026-09-27, asking for a clickable "why", perhaps hidden).
     -- `stress_adjustment_id` is stable across rebuilds and shared by the ways
