@@ -2222,5 +2222,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northwest exurbs": "Vùng ngoại ô tây bắc",
   "Baltimore and suburbs": "Baltimore và vùng ngoại ô",
   "The rest of the map": "Phần còn lại của bản đồ",
+  "Everything": "Toàn bộ bản đồ",
   "It is on {street}.": "Tuyến nằm trên {street}.",
 };

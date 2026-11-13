@@ -35,6 +35,7 @@ const AREA_NAMES: Readonly<Record<string, string>> = {
   "nw-exurbs": t("Northwest exurbs"),
   baltimore: t("Baltimore and suburbs"),
   rest: t("The rest of the map"),
+  all: t("Everything"),
 };
 
 export function areaName(id: string, serverName: string): string {

@@ -10427,8 +10427,10 @@ the signal returns, the server plans it again.
 
 The optional whole-area download beside each ride's mile-wide network (the owner, 2026-11-12:
 "Potentially split it by subregion"; "Beltway, NoVA, NW exurbs, Baltimore and suburbs, etc.").
-Five packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
-exurbs, Baltimore and suburbs, and the rest of the map (the coverage box less the others). The
+Six packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
+exurbs, Baltimore and suburbs, the rest of the map (the coverage box less the others), and
+Everything, the whole coverage box in one pack (Stephen, 2026-11-13: "Offer everything too to
+download"; the largest, so the biggest memory use on the phone in a ride with no signal). The
 borders are our draft, approximate; each pack also takes the roads within a mile of its border.
 
 - **Built after every map swap**, first thing in the rebuild's last stage, from the live

@@ -2778,6 +2778,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Northwest exurbs": "Afueras del noroeste",
   "Baltimore and suburbs": "Baltimore y alrededores",
   "The rest of the map": "El resto del mapa",
+  "Everything": "Todo el mapa",
   "It is on {street}.": "Está en {street}.",
   "Keep to compare": "Guardar para comparar",
   "Use kept route": "Usar la ruta guardada",

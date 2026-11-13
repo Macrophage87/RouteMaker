@@ -2222,5 +2222,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northwest exurbs": "شمال لویدیځ ښارګوټي",
   "Baltimore and suburbs": "بالتیمور او شاوخوا",
   "The rest of the map": "د نقشې پاتې برخه",
+  "Everything": "ټوله نقشه",
   "It is on {street}.": "په {street} کې ده.",
 };

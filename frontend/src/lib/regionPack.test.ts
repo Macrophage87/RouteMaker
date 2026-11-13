@@ -121,7 +121,7 @@ test("bytes that are not a pack open to nothing, not an error", async () => {
 test("each area the server builds has its name in the page's words; any other keeps the server's", () => {
   const server = readFileSync(new URL("../../../src/core/offline_packs.py", import.meta.url), "utf8");
   const ids = [...server.matchAll(/^\s+id="([a-z-]+)",$/gm)].map((m) => m[1]);
-  assert.deepEqual(ids, ["beltway", "nova", "nw-exurbs", "baltimore", "rest"]);
+  assert.deepEqual(ids, ["beltway", "nova", "nw-exurbs", "baltimore", "rest", "all"]);
   for (const id of ids) assert.notEqual(areaName(id, "x"), "x", id);
   assert.equal(areaName("shenandoah", "Shenandoah Valley"), "Shenandoah Valley");
 });

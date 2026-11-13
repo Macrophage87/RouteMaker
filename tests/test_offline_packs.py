@@ -31,8 +31,12 @@ def test_the_regions_are_his_riding_areas_and_cover_the_map() -> None:
         "nw-exurbs",
         "baltimore",
         "rest",
+        "all",
     ]
-    assert sum(r.outline is None for r in offline_packs.REGIONS) == 1, "one region is the rest"
+    assert sum(r.outline is None and not r.whole for r in offline_packs.REGIONS) == 1, (
+        "one region is the rest"
+    )
+    assert [r.id for r in offline_packs.REGIONS if r.whole] == ["all"], "one pack is the whole map"
     for region in offline_packs.REGIONS:
         if region.outline is not None:
             assert region.outline[0] == region.outline[-1], region.id
@@ -104,6 +108,13 @@ def test_each_pack_holds_its_regions_ways_and_current_names_the_build(
     assert names("baltimore") == {"Charles Street"}
     assert names("rest") == {"La Plata Road"}, "La Plata is in the rest of the map"
     assert names("nw-exurbs") == {"River Road"}, "Potomac, Maryland is not left to the rest"
+    assert names("all") == {
+        "K Street",
+        "Wilson Boulevard",
+        "Charles Street",
+        "La Plata Road",
+        "River Road",
+    }, "everything is every street"
     assert all(p["bytes"] > 0 and len(p["sha256"]) == 64 for p in found["packs"])
     assert found["dir"] == "packs-20261113T030000Z"
     assert offline_packs.manifest()["build_id"] == "20261113T030000Z"
