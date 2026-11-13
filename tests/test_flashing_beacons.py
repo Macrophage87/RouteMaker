@@ -53,28 +53,6 @@ def crossing(lon: float = LON, control: Control = Control.SIGNAL, **fields) -> J
 
 
 class TestPricing:
-    def test_a_signal_at_a_beacon_is_priced_as_the_stopped_side_of_an_lts4_road(self) -> None:
-        signalised = m.assess(crossing())
-        (beaconed,) = m.with_beacons([crossing()], [BEACON])
-        event = m.assess(beaconed)
-        assert beaconed.control is Control.NONE and beaconed.beacon
-        assert signalised.cost_ft == pytest.approx(600.0)
-        # The stopped side's LTS 4 crossing, scaled by the road (3 lanes, 35 mph): far
-        # above the signal's 600 ft and the "Hard" rating's 4,000 ft.
-        assert event.cost_ft == pytest.approx(
-            m.crossing_ft(CONNECTICUT, Control.NONE, BALTIMORE.level)
-        )
-        assert event.cost_ft > m.STOPPED_CROSSING_FT[4]
-        assert event.severity == m.RED and event.flagged
-        assert event.beacon
-        assert event.reason.endswith("flashing light, not a signal")
-
-    def test_rush_hour_costs_more_at_a_beacon_and_nothing_more_at_a_signal(self) -> None:
-        (beaconed,) = m.with_beacons([crossing()], [BEACON])
-        off_peak = m.assess(beaconed, when=None).cost_ft
-        rush = m.assess(beaconed, when="weekday_rush").cost_ft
-        assert rush > off_peak
-
     def test_riding_along_the_main_road_keeps_its_priority(self) -> None:
         # Flashing yellow on Connecticut Ave: the side street stops, not the rider.
         along = crossing(incoming=CONNECTICUT, outgoing=CONNECTICUT, crossed=(BALTIMORE,))

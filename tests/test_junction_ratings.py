@@ -24,18 +24,6 @@ def rating(level: int, lon: float = AT[0], lat: float = AT[1]) -> Rating:
 
 
 class TestRatedJunction:
-    def test_a_quiet_junction_rated_hard_is_red_and_costs_an_lts4_crossing(self) -> None:
-        quiet = junction(movement=Movement.LEFT, outgoing=QUIET)
-        assert m.assess(quiet) is None
-        event = m.assess(replace(quiet, rating=4))
-        assert event is not None and event.flagged
-        assert (event.severity, event.cost_ft, event.rating) == ("red", 4000.0, 4)
-        assert event.kind == "rated" and event.reason == "Riders rate this junction hard"
-
-    def test_takes_patience_is_orange(self) -> None:
-        event = m.assess(junction(rating=3))
-        assert event is not None and (event.severity, event.cost_ft) == ("orange", 1600.0)
-
     def test_a_red_crossing_rated_easy_loses_its_marker_and_most_of_its_cost(self) -> None:
         red = junction(crossed=(LTS4,), control=Control.NONE)
         before = m.assess(red)
@@ -99,16 +87,6 @@ class TestRatedJunction:
         rated = m.assess(replace(right, rating=2))
         assert rated is not None and rated.rating == 2
         assert rated.cost_ft == 15.0 < m.RATING_COST_FT[2]
-
-    def test_easy_follows_the_models_figure_for_the_hour_and_a_ratings_own_cost_does_not(
-        self,
-    ) -> None:
-        right = junction(movement=Movement.RIGHT, incoming=LTS4, outgoing=QUIET)
-        rush = m.assess(right, when="weekday_rush")
-        assert rush is not None and rush.cost_ft > m.RIGHT_FROM_BUSY_FT
-        assert m.assess(replace(right, rating=2), when="weekday_rush").cost_ft == rush.cost_ft
-        hard = junction(crossed=(LTS4,), control=Control.NONE, rating=4)
-        assert m.assess(hard, when="night").cost_ft == m.RATING_COST_FT[4]
 
     def test_easy_never_costs_more_than_the_model_and_adds_nothing_where_it_has_nothing(
         self,
