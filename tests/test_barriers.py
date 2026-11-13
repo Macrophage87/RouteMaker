@@ -317,3 +317,44 @@ def test_reread_turns_at_stop_into_no_way_round_when_a_new_barrier_comes() -> No
     # A later pass brought in the narrow gap too.
     barriers.reread(_trip(TRAIL), info, INDEX)
     assert info["limited"] == "no_way_round" and info["impassable"] == 2
+
+
+def test_the_barrier_cap_binds_beside_a_few_closed_spots(monkeypatch) -> None:
+    n = barriers.EXCLUDE_CAP + 5
+    index = _stiles_index([10] * n)
+    line = [p for k in range(n) for p in _through(k)]
+    others = [{"lon": -76.5, "lat": 39.0 + i * 1e-4} for i in range(10)]
+    asked = []
+
+    def route(variant, request, deadline):
+        asked.append(request["exclude_locations"])
+        return {"trip": _trip(ROUND_THE_TRAIL)}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    barriers.settle(_trip(line), {"exclude_locations": others}, "standard", None, [], index=index)
+    assert asked[0][:10] == others
+    assert len(asked[0]) == 10 + barriers.EXCLUDE_CAP
+
+
+def test_closed_spots_filling_the_limit_leave_no_room(monkeypatch) -> None:
+    monkeypatch.setattr(routing, "_route", lambda *a: pytest.fail("asked the router"))
+    others = [{"lon": -76.5, "lat": 39.0 + i * 1e-4} for i in range(barriers.ROUTER_EXCLUDE_LIMIT)]
+    trip, info = barriers.settle(
+        _trip(TRAIL), {"exclude_locations": others}, "standard", None, [], index=INDEX
+    )
+    assert info["rounds"] == 0 and info["limited"] == "excludes_full"
+
+
+def test_a_point_already_closed_is_not_sent_twice(monkeypatch) -> None:
+    stile_point = INDEX.barriers[0].beside[0]
+    others = [{"lon": stile_point[0], "lat": stile_point[1]}]
+    asked = []
+
+    def route(variant, request, deadline):
+        asked.append(request["exclude_locations"])
+        return {"trip": _trip(ROUND_THE_TRAIL)}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    barriers.settle(_trip(TRAIL), {"exclude_locations": others}, "standard", None, [], index=INDEX)
+    # The stile's point is already there; only the narrow gap's is added.
+    assert len(asked[0]) == 2 and asked[0][0] == others[0]

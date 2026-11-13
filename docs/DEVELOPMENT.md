@@ -5157,7 +5157,9 @@ map". No map rebuild and no new control.
   points are excluded and the plan's request asked again, up to 4 rounds (our default,
   unmeasured), the route with the fewest kept. It is not held to the level rounds' guard
   (`refine.level_round_keeps`): a barrier that ends the trip outweighs a busier or longer way
-  round. The exclusions join `level_excludes`, so the
+  round. The request's own exclusions (closed spots) are always sent whole and first; the
+  barrier points get what is left of the router's 200, at most 150, and none that repeat one
+  already sent (`excludes_full` where nothing is left). The exclusions join `level_excludes`, so the
   later passes keep them out; a barrier within 25 m of one of the plan's points is not excluded
   (`at_stop`; our default). `barrier_round` (`BarrierRoundOut`) says what is still in the way
   and why (`no_way_round`, `at_stop`, `time`, `no_data`); the answer cache does not keep a

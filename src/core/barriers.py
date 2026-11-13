@@ -364,15 +364,20 @@ def settle(
     excludes: list[tuple[float, float]] = []
     best_excludes: list[tuple[float, float]] = []
     others = [e for e in (request.get("exclude_locations") or []) if isinstance(e, dict)]
+    sent = {(e.get("lon"), e.get("lat")) for e in others}
     base = {k: v for k, v in request.items() if k not in ("alternates", "exclude_locations")}
     at_stop: list[Barrier] = []
     while current and info["rounds"] < ROUNDS:
         more, kept = exclusion_points(current, points)
         at_stop.extend(b for b in kept if b not in at_stop)
-        more = [p for p in more if p not in excludes]
+        more = [p for p in more if p not in excludes and p not in sent]
         if not more:
             break
         room = min(EXCLUDE_CAP, ROUTER_EXCLUDE_LIMIT - len(others))
+        if room <= 0:
+            # The request's own exclusions fill the router's limit: no barrier can be added.
+            info["limited"] = "excludes_full"
+            break
         more = more[: max(0, room - len(excludes))]
         if not more:
             break
