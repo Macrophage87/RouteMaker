@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
-import { downloadPack, fetchPackList, keptPack, openPack, removePack, areaName, type PackList, type PackStore } from "./regionPack.ts";
+import { downloadPack, downloading, fetchPackList, keptPack, openPack, removePack, areaName, type PackList, type PackStore } from "./regionPack.ts";
 
 // localStorage, as a phone has it.
 const items = new Map<string, string>();
@@ -124,4 +124,22 @@ test("each area the server builds has its name in the page's words; any other ke
   assert.deepEqual(ids, ["beltway", "nova", "nw-exurbs", "baltimore", "rest"]);
   for (const id of ids) assert.notEqual(areaName(id, "x"), "x", id);
   assert.equal(areaName("shenandoah", "Shenandoah Valley"), "Shenandoah Valley");
+});
+
+test("one download at a time: a second ask for the same pack joins the first", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  let fetches = 0;
+  const slow = async () => {
+    fetches += 1;
+    await new Promise((done) => setTimeout(done, 5));
+    return new Response(GZ);
+  };
+  const first = downloadPack(list.packs[0], list, slow, store);
+  assert.equal(downloading()?.done, first);
+  const second = downloadPack(list.packs[0], list, slow, store);
+  assert.equal(second, first);
+  assert.equal(await second, "kept");
+  assert.equal(fetches, 1);
+  assert.equal(downloading(), null);
 });

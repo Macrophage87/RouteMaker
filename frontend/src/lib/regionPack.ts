@@ -167,12 +167,24 @@ export type DownloadOutcome = "kept" | "failed" | "no-room";
  * Download `pack`, check it against its checksum, and keep it in place of any kept before; the outcome. The pack kept
  * before stays until the new one is checked and stored.
  */
-export async function downloadPack(
-  pack: PackInfo,
-  list: PackList,
-  fetcher: typeof fetch = fetch,
-  store: PackStore = indexedDbStore,
-): Promise<DownloadOutcome> {
+export function downloadPack(pack: PackInfo, list: PackList, fetcher: typeof fetch = fetch, store: PackStore = indexedDbStore): Promise<DownloadOutcome> {
+  // One download at a time, for the whole app: Settings closed and opened again during one joins it.
+  if (inFlight?.sha256 === pack.sha256) return inFlight.done;
+  const done = fetchAndKeep(pack, list, fetcher, store).finally(() => {
+    if (inFlight?.done === done) inFlight = null;
+  });
+  inFlight = { sha256: pack.sha256, done };
+  return done;
+}
+
+/** The download under way, if one is. */
+export function downloading(): { sha256: string; done: Promise<DownloadOutcome> } | null {
+  return inFlight;
+}
+
+let inFlight: { sha256: string; done: Promise<DownloadOutcome> } | null = null;
+
+async function fetchAndKeep(pack: PackInfo, list: PackList, fetcher: typeof fetch, store: PackStore): Promise<DownloadOutcome> {
   let bytes: ArrayBuffer;
   try {
     const answer = await fetcher(pack.url);

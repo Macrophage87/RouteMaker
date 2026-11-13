@@ -13,6 +13,7 @@ import {
   PACK_NONE,
   areaName,
   downloadPack,
+  downloading,
   fetchPackList,
   keptPack,
   removePack,
@@ -37,28 +38,41 @@ export function RegionPackSetting({ idBase }: { idBase: string }) {
   const [said, setSaid] = useState("");
   const live = useRef(true);
 
-  const download = async (id: string, found: PackList) => {
+  // `refresh`: the kept area's newer map, fetched on its own; failing, the earlier one is still kept, so nothing is said.
+  const download = async (id: string, found: PackList, refresh = false) => {
     const pack = found.packs.find((p) => p.id === id);
     if (!pack) return;
     setBusy(true);
     setSaid(PACK_DOWNLOADING);
-    void askPersist();
+    if (!refresh) void askPersist();
     const outcome = await downloadPack(pack, found);
     if (!live.current) return;
     setBusy(false);
     setKept(keptPack());
-    setSaid(OUTCOME_SAID[outcome]);
+    setSaid(refresh && outcome !== "kept" ? "" : OUTCOME_SAID[outcome]);
   };
 
   useEffect(() => {
     live.current = true;
+    // A download still under way from an earlier opening of Settings: shown, and its end said.
+    const under = downloading();
+    if (under) {
+      setBusy(true);
+      setSaid(PACK_DOWNLOADING);
+      void under.done.then((outcome) => {
+        if (!live.current) return;
+        setBusy(false);
+        setKept(keptPack());
+        setSaid(OUTCOME_SAID[outcome]);
+      });
+    }
     void fetchPackList().then((found) => {
       if (!live.current) return;
       setList(found);
       const now = keptPack();
       const fresh = found?.packs.find((p) => p.id === now?.id);
       // The map was rebuilt since this area was kept: the new one, in its place.
-      if (found && now && fresh && fresh.sha256 !== now.sha256) void download(now.id, found);
+      if (found && now && fresh && fresh.sha256 !== now.sha256) void download(now.id, found, true);
     });
     return () => {
       live.current = false;
@@ -72,11 +86,14 @@ export function RegionPackSetting({ idBase }: { idBase: string }) {
   if (kept && !options.some(([id]) => id === kept.id)) options.push([kept.id, `${areaName(kept.id, kept.name)} (${sizeText(kept.bytes)})`]);
 
   const choose = (id: string) => {
-    if (busy) return;
+    // One at a time: said again, so a press while downloading is not met with silence.
+    if (busy) {
+      setSaid(PACK_DOWNLOADING === said ? `${PACK_DOWNLOADING}\u200b` : PACK_DOWNLOADING);
+      return;
+    }
     if (id === NONE) {
-      void removePack().then(() => {
-        if (live.current) setKept(null);
-      });
+      void removePack();
+      setKept(null);
       setSaid("");
     } else if (list) void download(id, list);
     else setSaid(PACK_NO_LIST);

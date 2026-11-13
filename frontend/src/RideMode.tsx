@@ -1761,6 +1761,8 @@ export function RideMode({
         if (!offline && keptPack() && !voided()) {
           regionPackRef.current ??= openPack();
           const pack = await regionPackRef.current;
+          // Not readable this time (storage busy, say): tried again at the next re-plan.
+          if (!pack) regionPackRef.current = null;
           if (pack && !voided()) {
             offline = offlineWayBackRoute(
               { graph: pack.graph, levelFactor: net?.network.levelFactor ?? pack.levelFactor },
@@ -2544,6 +2546,17 @@ export function RideMode({
   const offlineNet = useRef<{ route: RouteResponse; network: OfflineNetwork } | null>(null);
   // The kept region pack, opened for this ride when a way back first needs it (null: none, or unreadable).
   const regionPackRef = useRef<Promise<OfflineNetwork | null> | null>(null);
+  // Opened ahead of need, when the phone loses its signal (or starts without one), so a way back does not wait on
+  // unzipping it; not before, so a ride with a signal never holds it in memory.
+  useEffect(() => {
+    if (!keptPack()) return;
+    const open = () => {
+      if (!ended.current) regionPackRef.current ??= openPack();
+    };
+    if (typeof navigator !== "undefined" && navigator.onLine === false) open();
+    window.addEventListener("offline", open);
+    return () => window.removeEventListener("offline", open);
+  }, []);
   useEffect(() => {
     let current = true;
     if (offlineNet.current?.route !== route) {

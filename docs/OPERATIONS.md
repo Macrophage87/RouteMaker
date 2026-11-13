@@ -10464,8 +10464,9 @@ borders are our draft, approximate; each pack also takes the roads within a mile
   is checked and stored. None removes it. While Settings is open with a signal, a kept area
   whose checksum the list no longer gives (the map was rebuilt) is downloaded again.
 - **In a ride**: when a re-plan fails for no signal, the way back is looked for first on the
-  ride's own mile-wide network, then, only if that finds none, on the kept area: unzipped the
-  first time it is needed in the ride and held until the ride ends, priced with the ride's own
+  ride's own mile-wide network, then, only if that finds none, on the kept area: unzipped when
+  the phone loses its signal (or at the first re-plan that needs it) and held until the ride
+  ends, so a ride with a signal never holds it in memory; priced with the ride's own
   level prices where they were fetched, else the Default ride type's kept with the pack.
 - **Where neither finds a way**, Ride says the no-signal line with where the planned route is
   and, where it has a name, its street ("The planned route is 400 feet to the northeast. It
