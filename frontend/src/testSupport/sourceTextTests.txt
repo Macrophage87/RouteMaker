@@ -27,6 +27,7 @@ lib/broadcastQr.test.ts
 lib/climbCard.test.ts
 lib/climbs.test.ts
 lib/closureMap.test.ts
+lib/compareRoutes.test.ts
 lib/compassHeading.test.ts
 lib/corkerLoad.test.ts
 lib/corridorStore.test.ts
@@ -34,6 +35,7 @@ lib/course.test.ts
 lib/courseWiring.test.ts
 lib/crashReport.test.ts
 lib/credits.test.ts
+lib/dataAge.test.ts
 lib/departure.test.ts
 lib/detourSearch.test.ts
 lib/farmFood.test.ts
