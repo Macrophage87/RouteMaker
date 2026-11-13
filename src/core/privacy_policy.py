@@ -548,7 +548,10 @@ SECTIONS: list[tuple[str, str]] = [
         _p(
             "RouteMaker is not meant for children under 13, and does not knowingly collect their "
             "data. If you believe a child has given RouteMaker data, contact the owner and it will "
-            "be deleted."
+            "be deleted. Where the app mentions kids or children (such as how comfortable a "
+            "road is for children, or a cargo bike carrying them), it is meant for parents, "
+            "guardians and other caretakers planning rides for the children in their care, "
+            "not for the children themselves."
         ),
     ),
     (
