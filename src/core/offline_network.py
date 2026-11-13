@@ -10,6 +10,7 @@ logged.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 from django.conf import settings
@@ -26,14 +27,20 @@ VERSION = 1
 SCALE = 1_000_000
 # About a mile either side of the line (Stephen, 2026-11-12: "the one mile would be a default").
 CORRIDOR_M = 1609
-# At most this many ways in one answer, so a long ride through the city stays a download of a few MB
-# at most. Our default, unmeasured.
-MAX_WAYS = 40_000
+# At most this many ways in one answer, nearest the line first, so a long ride through the city
+# stays a download of a few MB and a bounded read. Our default, unmeasured.
+MAX_WAYS = 25_000
 # The line is simplified to about this (degrees, ~30 ft) before the search, so a long route's
 # thousands of points do not slow the corridor query; a mile's width hides the difference.
 SIMPLIFY_DEG = 0.0003
-# At most this many points of the route's line are read from a request.
-MAX_LINE_POINTS = 20_000
+# At most this many points of the route's line in a request (the phone sends at most 1,500,
+# frontend lib/offlineWayBack.ts OFFLINE_LINE_POINTS), so the body stays under MAX_BODY_BYTES.
+MAX_LINE_POINTS = 2_000
+MAX_BODY_BYTES = 64 * 1024
+# The longest line taken, about 250 miles: a double century with room to spare. A longer line
+# would only widen the read (a line doubling back on itself covers more ground for its length);
+# refused with a 400. Our default, unmeasured.
+MAX_LINE_M = 400_000
 # The corridor's buffer is cut into pieces of at most this many vertices, so the GiST index finds
 # the ways along a long or diagonal route rather than inside its whole bounding box.
 SUBDIVIDE_VERTICES = 64
@@ -144,6 +151,17 @@ def graph_of(ways: Sequence[OfflineWay]) -> dict:
             else 0
         )
     return {"v": VERSION, "nodes": nodes, "edges": flat, "shapes": shapes, "names": names}
+
+
+def line_length_m(line: Sequence[tuple[float, float]]) -> float:
+    """The line's length along the ground, in metres (haversine)."""
+    total = 0.0
+    for (lon1, lat1), (lon2, lat2) in zip(line, line[1:], strict=False):
+        p1, p2 = math.radians(lat1), math.radians(lat2)
+        dp, dl = p2 - p1, math.radians(lon2 - lon1)
+        a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        total += 2 * 6_371_008.8 * math.asin(min(1.0, math.sqrt(a)))
+    return total
 
 
 def corridor_graph(line: Sequence[tuple[float, float]], width_m: float = CORRIDOR_M) -> dict:

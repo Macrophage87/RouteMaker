@@ -3929,6 +3929,8 @@ class OfflineNetworkIn(Schema):
         for lon, lat in line:
             if not (west <= lon <= east and south <= lat <= north):
                 raise ValueError("the line must be inside the area this map covers")
+        if offline_network.line_length_m(line) > offline_network.MAX_LINE_M:
+            raise ValueError("the line is longer than the offline network is fetched for")
         return line
 
 
@@ -3944,7 +3946,12 @@ class OfflineNetworkIn(Schema):
         " map rebuild that writes it."
     ),
 )
-@decorate_view(ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK), json_body_only, errors_as_json)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK),
+    json_body_up_to(offline_network.MAX_BODY_BYTES),
+    errors_as_json,
+    ratelimit.in_flight_limited(ratelimit.OFFLINE_NETWORK_IN_FLIGHT),
+)
 def offline_network_view(request, body: OfflineNetworkIn):
     try:
         graph = offline_network.corridor_graph(body.line)

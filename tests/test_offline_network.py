@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import math
+
+import pytest
+
+from core import offline_network, ratelimit
 from pipeline.offline_network import (
     AVOID_LEVEL2,
     EDGE_ONEWAY,
@@ -127,3 +133,70 @@ def test_level_factors_rise_with_stress_and_follow_the_ride_type(settings):
     assert calm[6] > fast[6]
     # An unknown ride type is priced as Default.
     assert level_factors("no-such-type") == level_factors("default")
+
+
+# --- POST /api/offline/network: a real route's line, and load protection ------------------------
+
+api_db = pytest.mark.django_db(transaction=True)
+
+
+def _line(points: int, east_m: float = 30_000) -> list[list[float]]:
+    """`points` points running `east_m` east across DC, six decimals as the phone sends."""
+    k = 111_195 * math.cos(math.radians(38.9))
+    return [[round(-77.05 + (i * east_m / (points - 1)) / k, 6), 38.9] for i in range(points)]
+
+
+def _post(client, line, **headers):
+    return client.post(
+        "/api/offline/network",
+        data=json.dumps({"line": line, "preset": "default"}),
+        content_type="application/json",
+        **headers,
+    )
+
+
+@api_db
+def test_a_real_routes_line_is_taken(client) -> None:
+    """1,500 points, what the phone sends at most, is about 35 KB: over the 8 KB every other
+    JSON endpoint takes, so it was refused (400) before the endpoint took a body of its own
+    size and every rider went without a way back (the v0.26.0 release review)."""
+    line = _line(1500)
+    assert len(json.dumps({"line": line})) > 8 * 1024
+    answer = _post(client, line, HTTP_X_FORWARDED_FOR="198.51.100.70")
+    # No map built in the test database: not built, never refused for its size.
+    assert answer.status_code in (200, 503), answer.content
+    assert answer.status_code == 200 or answer.json()["error"] in ("not_built", "too_slow")
+
+
+@api_db
+def test_a_line_too_long_or_too_many_points_is_refused(client) -> None:
+    too_far = _line(50, east_m=offline_network.MAX_LINE_M + 10_000)
+    assert _post(client, too_far, HTTP_X_FORWARDED_FOR="198.51.100.71").status_code == 400
+    too_many = _line(offline_network.MAX_LINE_POINTS + 1)
+    assert _post(client, too_many, HTTP_X_FORWARDED_FOR="198.51.100.72").status_code == 400
+
+
+@api_db
+def test_one_fetch_at_a_time_per_client_from_the_tile_pool(client) -> None:
+    """Load protection: one fetch per client and no more at once than the tile pool's slots,
+    so a burst never holds more workers than the pools already allow. Before, a client's
+    burst inside the per-minute limit ran every fetch at once."""
+    from test_route_api import hold_slots
+
+    limit = ratelimit.OFFLINE_NETWORK_IN_FLIGHT
+    assert limit.total_class == ratelimit.TILES_IN_FLIGHT.total_class
+    key = ratelimit._client_lock_id(ratelimit.client_key("198.51.100.73"))
+    mine = hold_slots([(ratelimit._LOCK_CLASS_CLIENT + limit.scope_id * 64, key)])
+    try:
+        refused = _post(client, _line(10), HTTP_X_FORWARDED_FOR="198.51.100.73")
+        other = _post(client, _line(10), HTTP_X_FORWARDED_FOR="198.51.100.74")
+    finally:
+        mine.close()
+    assert refused.status_code == 429 and int(refused["Retry-After"]) >= 1
+    assert other.status_code != 429
+    pool = hold_slots([(limit.total_class, s) for s in range(limit.total)])
+    try:
+        full = _post(client, _line(10), HTTP_X_FORWARDED_FOR="198.51.100.75")
+    finally:
+        pool.close()
+    assert full.status_code == 503 and int(full["Retry-After"]) >= 1
