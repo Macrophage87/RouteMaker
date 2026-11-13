@@ -4082,3 +4082,47 @@ def test_receive_files_installs_the_packs_then_the_manifest(tmp_path: Path) -> N
     assert (packs / "packs-20261105T000000Z").is_dir()
     assert not (packs / "packs-20261101T000000Z").exists()
     assert "region packs installed: packs-20261113T030000Z" in done.stderr
+
+
+@needs_sh
+def test_receive_files_installs_the_first_packs_and_goes_on(tmp_path: Path) -> None:
+    """The first packs on a server: no other build to keep or remove, and the rest of the
+    install still runs (the front end after it)."""
+    if shutil.which("rsync") is None or shutil.which("sha256sum") is None:
+        pytest.skip("needs rsync and sha256sum")
+    data = tmp_path / "dr" / "routemaker"
+    data.mkdir(parents=True)
+    env = tmp_path / ".env"
+    env.write_text(f"DATA_ROOT={data}\n")
+    bundle = _bundle(tmp_path)
+    new = bundle / "tiles" / "offline-packs" / "packs-20261113T030000Z"
+    new.mkdir(parents=True)
+    (new / "beltway.json.gz").write_text("new")
+    (bundle / "tiles" / "offline-packs" / "manifest.json").write_text(
+        '{\n "v": 1,\n "dir": "packs-20261113T030000Z"\n}'
+    )
+    listed = [
+        "frontend/index.html",
+        "tiles/offline-packs/manifest.json",
+        "tiles/offline-packs/packs-20261113T030000Z/beltway.json.gz",
+    ]
+    sums = subprocess.run(
+        ["sha256sum", *listed], cwd=bundle, capture_output=True, text=True, check=True
+    ).stdout
+    (bundle / "SHA256SUMS").write_text(sums)
+    manifest = (bundle / "MANIFEST.txt").read_text()
+    (bundle / "MANIFEST.txt").write_text(
+        manifest.replace("parts=frontend ", "parts=packs frontend ")
+    )
+    done = run(
+        "bash",
+        "scripts/beta/receive-data.sh",
+        "--bundle",
+        str(bundle),
+        "--env-file",
+        str(env),
+        "files",
+    )
+    assert done.returncode == 0, done.stderr
+    assert "region packs installed: packs-20261113T030000Z" in done.stderr
+    assert "front end installed" in done.stderr
