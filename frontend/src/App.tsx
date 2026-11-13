@@ -353,6 +353,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, language, planLanguageAttributes } from "./lib/i18n.ts";
 import { feedbackDetails } from "./lib/feedback.ts";
+import { mapDataDay } from "./lib/dataAge.ts";
 import { FeedbackBox } from "./FeedbackBox.tsx";
 import { findShell } from "./lib/nativeShell.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
@@ -923,6 +924,8 @@ export function App() {
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
+  // The live map's build day, from the same coverage answer, for Settings' About line (lib/dataAge.ts).
+  const [mapDay, setMapDay] = useState<string | null>(null);
   // The map has loaded (onReady): what waits on the map, such as Reach's rings from a shared link, is drawn then.
   const [mapReady, setMapReady] = useState(false);
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
@@ -6950,6 +6953,7 @@ export function App() {
           setStopCardFrame({ padding: framePadding, instant: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches });
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
+            if (coverage) setMapDay(mapDataDay(coverage.properties));
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
           watchForFacilities(map, setFacilitiesShown);
@@ -7668,6 +7672,7 @@ export function App() {
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
                 feedbackDetails: detailsForFeedback,
+                mapDataDay: mapDay,
                 saveSettingsNow,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
