@@ -233,13 +233,14 @@ export function mergeOperators(known: readonly OperatorInfo[], told: readonly Op
 
 // --- Words ---------------------------------------------------------------------------------
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-/** "5 classic, 2 e-bikes, 3 open docks"; "Closed"; "Counts unknown". */
+/** "5 classic, 2 e-bikes, 3 open docks"; "Closed"; "Counts unknown". Each piece through t() (backlog 2026-11-12: was English only). */
 export function dockCounts(dock: Pick<DockInfo, "classic" | "ebikes" | "docks" | "closed">): string {
-  if (dock.closed) return "Closed";
-  if (dock.classic === null || dock.ebikes === null || dock.docks === null) return "Counts unknown";
-  return `${dock.classic} classic, ${plural(dock.ebikes, "e-bike", "e-bikes")}, ${plural(dock.docks, "open dock", "open docks")}`;
+  if (dock.closed) return t("Closed");
+  if (dock.classic === null || dock.ebikes === null || dock.docks === null) return t("Counts unknown");
+  const classic = t("{n} classic", { n: dock.classic });
+  const ebikes = dock.ebikes === 1 ? t("{n} e-bike", { n: 1 }) : t("{n} e-bikes", { n: dock.ebikes });
+  const docks = dock.docks === 1 ? t("{n} open dock", { n: 1 }) : t("{n} open docks", { n: dock.docks });
+  return `${classic}, ${ebikes}, ${docks}`;
 }
 
 /** "1:42 pm", the feed's time on this device's clock, written as the language in force writes a time. */

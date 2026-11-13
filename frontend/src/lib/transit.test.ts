@@ -221,7 +221,8 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   const summary = src("TransitSummary.tsx");
   assert.equal(STEPS_LABEL, "Steps, in order");
   assert.match(summary, /<ol className="transit-steps" aria-label=\{STEPS_LABEL\}>/);
-  assert.match(summary, /<h3 id=\{`\$\{id\}-heading`\}>\n\s*<PresetName id=\{preset\} suffix=\{`: \$\{plan\.summary\.replace/);
+  // Go keeps the heading for a screen reader only: its sheet shows the time above (Stephen 2026-11-12).
+  assert.match(summary, /<h3 id=\{`\$\{id\}-heading`\} className=\{go \? "visually-hidden" : undefined\}>\n\s*<PresetName id=\{preset\} suffix=\{`: \$\{plan\.summary\.replace/);
   assert.match(summary, /plan\.riding_quicker \? "transit-compare" : "transit-compare hint"/, "riding quicker is a plain line, not a warning box (P11)");
   // The panel's time is the door-to-door total, named for a screen reader, not the first ride's.
   const panel = src("app/RoutePanel.tsx");
@@ -245,8 +246,8 @@ test("a transit trip's row shows its legs as marks, and a screen reader hears th
       { mode: "metro", system: "Metro", lines: ["Red Line"], minutes: 18 },
     ],
   };
-  assert.equal(optionText(option, 1), "B. 🚶 4 min · 🚲 12 min · 🔴 18 min: about 34 min");
-  assert.equal(optionSaid(option, 1), "B. walk 4 minutes, bikeshare 12 minutes, Red Line 18 minutes: about 34 min");
+  assert.equal(optionText(option, 1), "B. 🚶 4 min · 🚲 12 min · 🔴 Red Line 18 min: about 34 min");
+  assert.equal(optionSaid(option, 1), "B. Walk 4 minutes, Bikeshare 12 minutes, Red Line 18 minutes: about 34 min");
   // Riding or walking the whole way keeps its words.
   const walk = { label: "Walk the whole way", minutes: 7, legs: [{ mode: "walk", minutes: 7 }] };
   assert.equal(optionText(walk, 0), "A. Walk the whole way: about 7 min");
@@ -259,10 +260,10 @@ test("a transit trip's row shows its legs as marks, and a screen reader hears th
 test("each option says its busy riding after its time, and an elevator out in words", () => {
   // Stephen, 2026-10-21: "You'd say arrive in X min with x mi of busy roads etc."
   const option = { label: "Ride, Metro, ride", minutes: 34, busy_m: 644, legs: [{ mode: "ride", minutes: 4 }, { mode: "metro", system: "Metro", lines: ["Red Line"], minutes: 18 }] };
-  assert.equal(optionText(option, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min, 0.4 mi (0.6 km) busy");
-  assert.equal(optionSaid(option, 0), "A. bike 4 minutes, Red Line 18 minutes: about 34 min, 0.4 mi (0.6 km) on busy roads");
-  assert.equal(optionText({ ...option, busy_m: 40 }, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min, no busy roads");
-  assert.equal(optionText({ ...option, busy_m: null }, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min");
+  assert.equal(optionText(option, 0), "A. 🚲 4 min · 🔴 Red Line 18 min: about 34 min, 0.4 mi (0.6 km) busy");
+  assert.equal(optionSaid(option, 0), "A. Bike 4 minutes, Red Line 18 minutes: about 34 min, 0.4 mi (0.6 km) on busy roads");
+  assert.equal(optionText({ ...option, busy_m: 40 }, 0), "A. 🚲 4 min · 🔴 Red Line 18 min: about 34 min, no busy roads");
+  assert.equal(optionText({ ...option, busy_m: null }, 0), "A. 🚲 4 min · 🔴 Red Line 18 min: about 34 min");
   assert.equal(busyText(undefined, "shown"), "");
   assert.match(optionSaid({ ...option, elevator_out: true }, 0), /; an elevator is out on the way, so it is ranked lower$/);
 });
@@ -310,4 +311,35 @@ test("the ride map's train or bus path is edged at 3:1 on the light map whatever
   assert.match(map, /"line-color": onBoardPaint\(openedFlavour === "dark"\)\.casing/);
   assert.match(map, /setPaintProperty\("onboard-casing", "line-color", onBoard\.casing\)/);
   assert.match(map, /setPaintProperty\("onboard-stops", "circle-stroke-color", onBoard\.stopRing as never\)/);
+});
+
+test("Go's transit trip fits one screen: legs as a strip, the steps and other trips folded shut, no second total (Stephen 2026-11-12)", () => {
+  const summary = src("TransitSummary.tsx");
+  const go = summary.slice(summary.indexOf("if (go) {"), summary.indexOf("<section className=\"transit\" aria-labelledby"));
+  assert.match(go, /<span aria-hidden="true">\{legsShown\(chosen\.legs\)\}<\/span>\s*<span className="visually-hidden">\{legsSpoken\(chosen\.legs\)\}<\/span>/);
+  assert.match(go, /<details className="transit-steps-fold">\s*<summary>\{STEPS_LABEL\}<\/summary>\s*\{steps\}/);
+  assert.match(go, /<details className="transit-options-fold">\s*<summary>\{OPTIONS_LABEL\}<\/summary>/);
+  assert.doesNotMatch(go, /<details[^>]* open/, "folded shut by default");
+  assert.doesNotMatch(go, /transit-total/);
+  // Plan keeps its fold open, the steps in it.
+  assert.match(src("app/RoutePanel.tsx"), /transit && !goMode \? \(\s*<Fold title=\{t\("\{ride\} trip"[^\n]* open className="transit-fold"/);
+});
+
+test("a trip's legs in the page's language: the strip names a Metro line beside its dot, and the words are said in it (v0.26.0 release review)", async () => {
+  const { loadLanguage, setLanguageForTest } = await import("./i18n.ts");
+  const { legsShown, legsSpoken } = await import("./transit.ts");
+  await loadLanguage("es");
+  const legs = [
+    { mode: "walk", minutes: 1 },
+    { mode: "metro", minutes: 18, system: "Metro", lines: ["Orange Line", "Silver Line"] },
+    { mode: "bus", minutes: 9, system: "Metrobus", lines: ["C53"] },
+    { mode: "ride", minutes: 4 },
+  ];
+  try {
+    setLanguageForTest("es");
+    assert.equal(legsShown(legs), "🚶 1 min · 🟠⚪ Orange Line/Silver Line 18 min · 🚌C53 9 min · 🚲 4 min");
+    assert.equal(legsSpoken(legs), "Caminar 1 minuto, Orange Line o Silver Line 18 minutos, Autobús C53 9 minutos, Bicicleta 4 minutos");
+  } finally {
+    setLanguageForTest("en");
+  }
 });

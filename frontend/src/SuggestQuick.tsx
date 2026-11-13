@@ -37,12 +37,14 @@ interface Props {
   point: [number, number];
   /** Whether the road data can hold a half step yet: whole steps only until it can. */
   halfSteps: boolean;
+  /** Opened from the ride summary (lib/rideFeedback.ts): the server keeps the day, never the time. */
+  fromRide?: boolean;
   onClose: () => void;
 }
 
 type Field = "step" | "reasons" | "other";
 
-export function SuggestQuick({ origin, wayId, title, current, point, halfSteps, onClose }: Props) {
+export function SuggestQuick({ origin, wayId, title, current, point, halfSteps, fromRide = false, onClose }: Props) {
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -92,7 +94,7 @@ export function SuggestQuick({ origin, wayId, title, current, point, halfSteps, 
     setSending(true);
     const outcome = await sendQuick(
       origin,
-      { osm_way_id: wayId, lat: point[1], lon: point[0], step, reasons, other: other.trim(), ticket: ticket.ticket, website },
+      { ...(fromRide ? { from_ride: true } : {}), osm_way_id: wayId, lat: point[1], lon: point[0], step, reasons, other: other.trim(), ticket: ticket.ticket, website },
       csrfFromCookie(document.cookie),
     );
     setSending(false);

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse, RouteResult, StressSpan } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { REPLAN_REJOIN, REPLAN_REJOIN_AHEAD, UTURN_START, replanKept, replanPoints, replanTold, rideModel, uturnStep } from "./navigate.ts";
-import { REJOIN_AHEAD_M, joinRoutes, rejoinTargets, rejoinsFirst, ridesChosenRoute, startsWayBack, triesWayBack, wayBackRoute } from "./rejoin.ts";
+import { REJOIN_AHEAD_M, WAY_BACK_STEP_M, joinRoutes, rejoinTargets, rejoinsFirst, ridesChosenRoute, startsWayBack, steadyPoint, triesWayBack, wayBackRoute, wayBackShown } from "./rejoin.ts";
 import { usableSpans } from "./routeColours.ts";
 
 const M_PER_DEG = 111_195;
@@ -312,4 +312,39 @@ test("joined: either part's dirt trail or dirt closed is the joined route's", ()
   assert.equal(joinRoutes(leg(700), planned(), 700, new Map()).dirt_trails, false);
   // Joined at the end: none of the planned route is ridden, so none of its dirt.
   assert.equal(joinRoutes(leg(700), { ...planned(), dirt_trails: true }, 2000, new Map()).dirt_trails, false);
+});
+
+// No signal off the route (backlog 2026-11-12, area 06 item 4a): the way back is said and drawn from the phone.
+test("the way back shows off the route with no signal, Keep the planned route or a fixed route, never on it", () => {
+  assert.equal(wayBackShown(true, false, false, true), true);
+  assert.equal(wayBackShown(true, true, false, false), true);
+  assert.equal(wayBackShown(true, false, true, false), true);
+  // Off the route with a re-plan under way or found: the new route is the way, no line back.
+  assert.equal(wayBackShown(true, false, false, false), false);
+  // Back on the route: nothing, whatever the note.
+  assert.equal(wayBackShown(false, true, true, true), false);
+});
+
+test("the way back's point moves on the map only once it has moved WAY_BACK_STEP_M", () => {
+  const a: LonLat = [-77.0, LAT];
+  const near: LonLat = [-77.0 + (WAY_BACK_STEP_M / 2) / (M_PER_DEG * Math.cos((LAT * Math.PI) / 180)), LAT];
+  const far: LonLat = [-77.0 + (WAY_BACK_STEP_M * 2) / (M_PER_DEG * Math.cos((LAT * Math.PI) / 180)), LAT];
+  assert.equal(steadyPoint(a, near), a);
+  assert.equal(steadyPoint(a, far), far);
+  assert.equal(steadyPoint(null, far), far);
+  assert.equal(steadyPoint(a, null), null);
+});
+
+test("Ride says the way back with No signal, and draws it on the map", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  // Both the timeout's and a failed answer's No signal carry the way back.
+  assert.equal(ride.match(/tell\(noSignalSaid\(wayBack\(modelRef\.current, rideRef\.current\)\)\)/g)?.length, 1);
+  assert.match(ride, /tell\(failed === "network" \? noSignalSaid\(wayBack\(modelRef\.current, rideRef\.current\)\) : said\)/);
+  assert.match(ride, /wayBackShown\(ride\.off, keepPlanned, fixedRef\.current, replanNote === REPLAN_NO_SIGNAL\)/);
+  assert.match(ride, /\{backShown && back && \(/);
+  assert.match(ride, /transitPath,\n\s+wayBackTo,\n\s+\}\);/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /wayBackTo=\{riding \? \(rideView\?\.wayBackTo \?\? null\) : null\}/);
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(map, /id: "ride-way-back",/);
 });

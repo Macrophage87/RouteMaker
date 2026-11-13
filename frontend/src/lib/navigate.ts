@@ -2712,7 +2712,7 @@ export function uturnStep(state: UTurnState, event: UTurnEvent): UTurnStep {
       let note = event.note;
       if (event.turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
       if (!event.turned && event.aheadOnly && note === REPLAN_FOUND) note = REPLAN_AHEAD;
-      const held = event.turned && event.aheadOnly && note !== REPLAN_REJOIN && note !== REPLAN_REJOIN_AHEAD;
+      const held = event.turned && event.aheadOnly && note !== REPLAN_REJOIN && note !== REPLAN_REJOIN_AHEAD && note !== REPLAN_OFFLINE;
       return { state: { inARow, held, checkedAt: event.now }, note: held ? REPLAN_NO_AHEAD : note };
     }
     case "along":
@@ -2766,6 +2766,11 @@ export const REPLAN_REJOIN = t("No new route found. Go back to the planned route
  * lib/rejoin.ts rejoinsFirst). Not REPLAN_REJOIN: here no new route was looked for, and none failed.
  */
 export const REPLAN_REJOIN_AHEAD = t("New route found. It rejoins your route ahead.");
+/**
+ * No signal, and a way back to the planned route found on the phone over the road network kept with it (off-grid
+ * riding, the owner, 2026-11-12; lib/offlineWayBack.ts): rougher than the server's, so said as such.
+ */
+export const REPLAN_OFFLINE = t("No signal: a rough way back to your route, found offline.");
 /** Said before a re-route's own note where it left out the next via point (VIA_SKIP_EXTRA_S): "Skipping via point. New route found." */
 export const VIA_SKIPPED_SAID = t("Skipping via point.");
 
@@ -2790,7 +2795,7 @@ export const REPLAN_STILL_WAITING = t("Still waiting for the last re-plan.");
 export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
   if (asked) return "answer";
   const base = replanBase(note);
-  const found = base === REPLAN_FOUND || base === REPLAN_AHEAD || base === REPLAN_NO_AHEAD || base === REPLAN_REJOIN || base === REPLAN_REJOIN_AHEAD;
+  const found = base === REPLAN_FOUND || base === REPLAN_AHEAD || base === REPLAN_NO_AHEAD || base === REPLAN_REJOIN || base === REPLAN_REJOIN_AHEAD || base === REPLAN_OFFLINE;
   if (level === "full" || (level === "stoker" && found)) return "say";
   return "quiet";
 }

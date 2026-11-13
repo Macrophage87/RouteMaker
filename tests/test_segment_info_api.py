@@ -165,7 +165,7 @@ class TestAnswer:
         # left out on a road, the capacity (the panel shows it on the Mass Ride map only).
         assert body["kind"] == "Main road"
         assert summary(body) == [
-            "Traffic stress: LTS 3 · For experienced cyclists",
+            "Traffic stress: LTS 3 · For experienced cyclists · measured",
             "Why: 30 mph (48 km/h), mixed traffic",
             "Speed: 30 mph (48 km/h), posted",
             "Lanes: 2 each way",
@@ -382,7 +382,7 @@ class TestAnswer:
         assert section(body, "road")["Kind"]["value"] == "Residential street"
         # Assumed figures say so; no count is left out, not printed as "none".
         assert summary(body) == [
-            "Traffic stress: LTS 2 · Fine for adults",
+            "Traffic stress: LTS 2 · Fine for adults · inferred from surroundings",
             "Why: 20 mph (32 km/h) or below, mixed traffic",
             "Speed: 20 mph (32 km/h), assumed",
             "Lanes: 1 each way, assumed",
@@ -1483,3 +1483,30 @@ class TestTappedTrail:
         assert client.get("/api/trails/505/profile", **fresh_client()).status_code == 404
         # The refusal was not kept: the next ask is answered.
         assert client.get("/api/trails/505/profile", **fresh_client()).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("row", "grade"),
+    [
+        ({"volume_aadt": 6400, "road_speed_mph": 50}, "measured"),
+        ({"volume_aadt": 6400, "road_speed_mph": None}, "part_assumed"),
+        ({"volume_aadt": None, "road_speed_mph": 30}, "part_assumed"),
+        ({}, "inferred"),
+        # An own-picks row rests on its facts like any other level...
+        ({"stress_adjustment_id": "md-own-g00007-1"}, "inferred"),
+        # ...but the owner's own edit in the road panel is checked by a rider.
+        ({"stress_adjustment_id": "edit-12"}, "rider_checked"),
+        ({"is_trail_class": True}, None),
+    ],
+)
+def test_how_sure_a_level_is(row, grade) -> None:
+    """The evidence grade (backlog 2026-11-12 item 6): what the level rests on."""
+    assert segment_info.evidence_grade(row) == grade
+
+
+def test_the_details_say_how_sure_the_level_is() -> None:
+    row = {"stress_tier": 2, "stress_rule": "mixed traffic", "volume_aadt": None}
+    rows = {r["label"]: r for r in segment_info.stress_rows(row)}
+    assert rows["How sure"]["value"] == (
+        "Inferred from surroundings: no traffic count and no known speed limit"
+    )

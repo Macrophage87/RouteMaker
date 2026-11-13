@@ -136,12 +136,18 @@ test("the manifest: the Android share target and the desktop geo: handler", () =
 test("the search box reads a pasted link before it is cut, and the app opens a share in Go", () => {
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
   assert.match(search, /onPaste=\{\(event\) => \{[\s\S]*?if \(!parseShared\(text, near\(\)\)\) return;\s*event\.preventDefault\(\);/);
-  assert.match(search, /const offered: Place\[\] = \[\.\.\.sharedItems, \.\.\.\(empty \? recent : \[\.\.\.saved, \.\.\.food, \.\.\.places\]\)\];/);
+  assert.match(search, /const offered: Place\[\] = \[\.\.\.sharedItems, \.\.\.\(empty \? \[\.\.\.saved, \.\.\.recent\.filter\(\(place\) => !savedSpots\.has\(spot\(place\)\)\)\] : \[\.\.\.saved, \.\.\.food, \.\.\.places\]\)\];/);
   // Review F10: the link's status region is always mounted (not mounted with its words), and filled after.
   assert.match(search, /<p className=\{sharedSaid \? "hint" : "visually-hidden"\} role="status" aria-live="polite">\s*\{sharedSaid\}\s*<\/p>/);
   assert.doesNotMatch(search, /\{shared && "said" in shared && \(/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /useSharedLaunch\(\(place\) => \{\s*if \(modeRef\.current !== "go"\) changeMode\("go"\);\s*goToPlace\(place\);\s*\}, setNotice\);/);
+  assert.match(app, /useSharedLaunch\(\(place\) => \{\s*if \(modeRef\.current !== "go"\) changeMode\("go"\);\s*goToPlace\(place\);\s*\}, setNotice, \(query\) => \{/);
+  // An address with no map point goes into Where to? and is searched (backlog 2026-11-12), not "type it".
+  assert.match(app, /setWhereToTyped\(\(last\) => \(\{ text: query, n: \(last\?\.n \?\? 0\) \+ 1 \}\)\)/);
+  assert.match(app, /whereToTyped=\{whereToTyped\}/);
+  assert.match(readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8"), /typed=\{whereToTyped\} onTyped=\{onWhereToTyped\}/);
+  // Put in once: dropped after, so Go opened again later does not search the old words again (review, 2026-11-12).
+  assert.match(app, /onWhereToTyped=\{\(\) => setWhereToTyped\(null\)\}/);
 });
 
 test("latitude and longitude in degrees, minutes and seconds, as GPS units and map apps write them (2026-10-31)", () => {

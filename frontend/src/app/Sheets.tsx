@@ -60,6 +60,8 @@ import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { SteepGradeKey, steepGradesFor } from "../lib/steepGrades.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
+import { FeedbackBox } from "../FeedbackBox.tsx";
+import type { FeedbackDetails } from "../lib/feedback.ts";
 import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
 import { Report311Log } from "../Report311Log.tsx";
@@ -328,18 +330,27 @@ export interface GpxSheetProps {
   match?: GpxPanelProps["match"];
   /** Save route (signed in) and Share, for the route shown or the file opened (RoutePanel.tsx ShareControls); null with neither. */
   shareControls: ReactNode;
-  /** Your routes: the saved ones and the ones kept for offline, with a search (YourRoutes.tsx); null with neither. */
-  routes: ReactNode;
+  /** Opens My routes (RoutesSheet), a step in: null where there are none to list (signed out, none kept). */
+  onMyRoutes: ((opener: HTMLElement) => void) | null;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, onFitting, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, onFitting, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, onMyRoutes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")} popup>
-      {/* Save and Share first, then My routes to load (in Go, the way to start a saved route), then the files. */}
+      {/* Save and Share first, then the one button to My routes, its own popup (Stephen, 2026-11-12: "Put the load rides
+          in a popout and have save load be mostly about saving and exporting"), then the files to export. The button is
+          one row, above the export so a saved route is reached with no scroll (the v0.26.0 simplicity review). */}
       {shareControls}
-      {routes}
+      {onMyRoutes && (
+        <div className="actions my-routes-open">
+          <button type="button" className="secondary" aria-haspopup="dialog" onClick={(event) => onMyRoutes(event.currentTarget)}>
+            <Icon name="routes" size={20} />
+            {SHEET_TITLES.routes}
+          </button>
+        </div>
+      )}
       <GpxPanel
         route={shown}
         routedPoints={routedPoints}
@@ -361,6 +372,15 @@ export function GpxSheet(props: GpxSheetProps) {
         onSendToWahoo={sendToWahoo}
         match={match}
       />
+    </SheetFrame>
+  );
+}
+
+/** My routes (YourRoutes.tsx): the saved routes and those kept for offline, with a search, opened from Save & load. */
+export function RoutesSheet({ nav, routes }: { nav: SheetNav; routes: ReactNode }) {
+  return (
+    <SheetFrame id="sheet-routes" title={SHEET_TITLES.routes} open={nav.view === "routes"} onBack={nav.back} backLabel={nav.backLabel("routes")} popup>
+      {routes}
     </SheetFrame>
   );
 }
@@ -475,6 +495,8 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
 
 export interface SettingsSheetProps {
   nav: SheetNav;
+  /** Send feedback's place-free details (lib/feedback.ts), worked out when the rider presses Send. */
+  feedbackDetails?: () => FeedbackDetails;
   /** What Garmin's return said (lib/garminLink.ts garminReturnFrom), once, or null. */
   garminReturned?: string | null;
   /** What Wahoo's return said (lib/wahooLink.ts wahooReturnFrom), once, or null. */
@@ -822,6 +844,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </a>
           </p>
         </div>
+        {/* Send feedback without Discord (the owner, 2026-11-12), only where the server takes it. */}
+        {props.feedbackDetails && <FeedbackBox details={props.feedbackDetails} onSay={announce} />}
         {/* The version (lib/appVersion.ts): here and in the map's Help, since Plan's phone sheet has no title row (P10). */}
         {APP_VERSION && <p className="hint settings-version">{versionSaid()}</p>}
       </section>

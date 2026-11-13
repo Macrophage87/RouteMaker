@@ -1,0 +1,20 @@
+[
+ {
+  "turn": "Start",
+  "road": "Path",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Cross",
+  "road": "Ohio Dr SW",
+  "then": "then right onto Path, then bear left onto Path",
+  "arrow": "turn across right,bear_left"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

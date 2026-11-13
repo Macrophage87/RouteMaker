@@ -306,7 +306,6 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
       live = false;
     };
     // The secret is the ride's identity; the type and the broadcast object (made anew upstream) are not.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, rideSecret, leading, keyless]);
 
   const answer = (yes: boolean) => {

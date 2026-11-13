@@ -339,3 +339,36 @@ def test_dark_images_are_light_type_on_black_with_their_own_links(stand_in, tmp_
     light = cue_cards.draw(answer, "Test", only=[1])[0]
     dark = cue_cards.draw(answer, "Test", only=[1], dark=True)[0]
     assert light != dark
+
+
+def test_flagged_junctions_ridden_straight_are_cautions_as_in_ride() -> None:
+    """navigate.ts cueKindOf: a flagged junction (or a stretch carried straight on over one) is a
+    caution; an unnamed crossing between turns is "Cross" with no road (fixtures/cues)."""
+    answer = _answer(
+        [
+            _stretch(0, "Elgin Road"),
+            {
+                "kind": "junction",
+                "from_m": 300,
+                "to_m": 300,
+                "street": "Fisher Avenue",
+                "severity": "orange",
+                "turn": {"movement": "straight", "onto": None, "severity": "orange"},
+            },
+            _stretch(600, "Wootton Avenue", "straight", severity="red") | {"severity": "red"},
+            _stretch(900, "unnamed road", "left", cross="the road"),
+            _stretch(908, "Bethesda Trolley Trail", "right"),
+            _stretch(1500, "path", "right"),
+        ]
+    )
+    rows = cue_cards.cue_rows(answer)
+    assert [(r["turn"], r["road"]) for r in rows] == [
+        ("Start", "Elgin Rd"),
+        ("Caution", "Fisher Ave"),
+        ("Caution", "Wootton Ave"),
+        ("Cross", ""),
+        ("Right", "Path"),
+        ("Finish", ""),
+    ]
+    assert rows[1]["reason"] == "Crossing"
+    assert rows[3]["then"] == "then right onto Bethesda Trolley Trl"

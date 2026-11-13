@@ -362,6 +362,38 @@ _lock = threading.Lock()
 _cached: tuple[float, Snapshot] | None = None
 
 
+# The snapshot itself, not its id(): an id can be reused once a snapshot is collected.
+_stamp: tuple[Snapshot, int, str] | None = None
+
+
+def closures_stamp(now: datetime | None = None) -> str:
+    """A short fingerprint of the closures in force now that routes go round (DDOT's permits
+    and blocked bike lanes left out): it changes when one starts, ends or is added. A ride asks
+    for it each minute and checks its line again only when it changes (Stephen 2026-11-12:
+    sudden closures, a crash or police activity, offered a reroute)."""
+    import hashlib
+
+    global _stamp
+    found = snapshot()
+    moment = now or _now()
+    minute = int(moment.timestamp() // 60)
+    with _lock:
+        if _stamp is not None and _stamp[0] is found and _stamp[1] == minute:
+            return _stamp[2]
+    # Each closure's id, end and line: an area that grows keeps its id (review of #1175).
+    rows = sorted(
+        json.dumps([z.zone_id, z.end.isoformat() if z.end else None, z.line, z.daily])
+        for z in found.zones
+        if z.kind in (rules.CLOSED, rules.UNKNOWN)
+        and not rules.possible(z)
+        and rules.active(z, moment)
+    )
+    stamp = hashlib.sha256("\n".join(rows).encode()).hexdigest()[:16]
+    with _lock:
+        _stamp = (found, minute, stamp)
+    return stamp
+
+
 def forget() -> None:
     global _cached
     with _lock:
@@ -369,7 +401,7 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
-    from routemaker import ddot_advisories, deer_closures, fcpa, purple_line
+    from routemaker import ddot_advisories, deer_closures, fcpa, park_alerts, purple_line
 
     from . import closure_sources, reviewed_closures
     from .models import BikeshareFeedCache
@@ -447,6 +479,13 @@ def _load(now: datetime) -> Snapshot:
         read = fcpa.updated()
         status[fcpa.SOURCE] = STALE if ddot_advisories.stale(read, today) else CURRENT
         read_at[fcpa.SOURCE] = read
+    # The park agencies' trail alerts (v0.26.0; routemaker.park_alerts), the same way.
+    trails = park_alerts.zones(now)
+    if trails:
+        zones.extend(trails)
+        read = park_alerts.updated()
+        status[park_alerts.SOURCE] = STALE if ddot_advisories.stale(read, today) else CURRENT
+        read_at[park_alerts.SOURCE] = read
     # The parks' deer-management closures (v0.12.3; routemaker.deer_closures): published
     # schedules, so notices made from the clock, with no feed to read.
     notices = [*notices, *deer_closures.notices(now)]
@@ -1106,11 +1145,11 @@ MAY_APPLY_NOTE = " No end time is given, so it may still apply on your ride day.
 def stale_note(source: str) -> str:
     """The stale label for a source: the work zones' twenty minutes, a DC source's own, or a
     hand-read file's days (`ddot_advisories.STALE_DAYS`)."""
-    from routemaker import ddot_advisories, fcpa, purple_line
+    from routemaker import ddot_advisories, fcpa, park_alerts, purple_line
 
     from . import closure_sources
 
-    if source in (ddot_advisories.SOURCE, purple_line.SOURCE, fcpa.SOURCE):
+    if source in (ddot_advisories.SOURCE, purple_line.SOURCE, fcpa.SOURCE, park_alerts.SOURCE):
         span = t("{n} days", n=ddot_advisories.STALE_DAYS)
         return t(" This source was last read more than {span} ago.", span=span)
     limit = closure_sources.STALE_AFTER_S.get(source)
@@ -1166,6 +1205,7 @@ NAMES = {
     "dcwater": "DC Water's work zones",
     "wssc": "WSSC Water's construction",
     "sha": "Maryland's Road Closure Reporter",
+    "moco": "Montgomery County's road closures",
     "mpd": "MPD's traffic advisories",
     "alertdc": "AlertDC",
     "nps": "the NPS alerts",
@@ -1173,6 +1213,7 @@ NAMES = {
     "ddot_advisory": "DDOT's project advisories",
     "purple_line": "the Purple Line's construction updates",
     "fcpa": "Fairfax County's park alerts",
+    "park_alert": "the park agencies' trail alerts",
 }
 
 # How near the route a closure in force is drawn on its map, metres (a closure further

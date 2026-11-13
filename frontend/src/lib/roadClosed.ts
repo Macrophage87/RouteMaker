@@ -11,7 +11,8 @@
  * that (included with the side buttons) that can be quickly pressed in that event and assist in navigation, without
  * trying to put people back onto the closed road." One press marks the road ahead closed for this ride
  * (`closedAhead`): every re-plan of the ride leaves it out (the API's `blocked_lines`), and the way back to the planned
- * route joins it past the closed stretch, never on it. Nothing is reported anywhere.
+ * route joins it past the closed stretch, never on it. Nothing is reported unless the rider chooses to at End
+ * ride: the summary offers to send the stretches for review, opt in each time (lib/rideFeedback.ts).
  *
  * Pure, so it is tested without a map or a DOM.
  */
@@ -26,7 +27,7 @@ import { t } from "./i18n.ts";
 export const ROAD_CLOSED_NAME = t("Go round: road closed ahead");
 /**
  * Its shown words in the ride's top row (the UI review, 2026-10-28): what the press does, not a status, since it marks
- * the road ahead closed and finds a way round, and reports nothing.
+ * the road ahead closed and finds a way round (it reports nothing on the press).
  */
 export const ROAD_CLOSED_TEXT = t("Go round");
 /** Said on the press, while the way round is looked for. */

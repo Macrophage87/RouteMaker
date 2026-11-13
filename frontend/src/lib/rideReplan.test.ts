@@ -258,8 +258,9 @@ test("on a loop, an automatic re-route rejoins the loop ahead first, and the pla
   // Marked as the ride's own, not the rider's (review of this branch: it was a plain via, so a later re-route said
   // "Skipping via point" for it, and End ride left it in Plan).
   assert.match(ride, /const left = shape \? \[keptLeft\[0\], VIA_MARKS\.shape\(\[shape\.point\[0\], shape\.point\[1\]\]\), \.\.\.keptLeft\.slice\(1\)\] : keptLeft;/);
-  // A way back rides the planned loop ahead, so its points are the kept ones, without the shape point.
-  assert.equal((ride.match(/points = keptLeft;/g) ?? []).length, 2);
+  // A way back rides the planned loop ahead, so its points are the kept ones, without the shape point: the server's
+  // two and the offline one found on the phone with no signal (lib/offlineWayBack.ts).
+  assert.equal((ride.match(/points = keptLeft;/g) ?? []).length, 3);
   // Left out unsaid, this re-route's or a later one's; a via point the rider placed is said.
   assert.match(ride, /skippedVia = !VIA_MARKS\.isShape\(dropped\);/);
   assert.match(ride, /withoutShapes\(planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\)/);

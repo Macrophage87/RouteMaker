@@ -4,7 +4,7 @@ the per-device daily limits kept as a salted daily hash, and the review list's g
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.test import Client
@@ -26,7 +26,16 @@ ADDRESS = "203.0.113.77"
 OTHER_ROAD = 6001  # Elm Street, LTS 2 (test_suggestions' cross street)
 
 
-def send(address=ADDRESS, way=WAY, step=2, reasons=("calmer",), other="", honeypot="", ticket=None):
+def send(
+    address=ADDRESS,
+    way=WAY,
+    step=2,
+    reasons=("calmer",),
+    other="",
+    honeypot="",
+    ticket=None,
+    from_ride=False,
+):
     return quick.create(
         address,
         way,
@@ -37,6 +46,7 @@ def send(address=ADDRESS, way=WAY, step=2, reasons=("calmer",), other="", honeyp
         other,
         quick.ticket(way) if ticket is None else ticket,
         honeypot,
+        from_ride=from_ride,
     )
 
 
@@ -204,3 +214,123 @@ class TestReview:
         found = send(step=2)
         approved, _result = suggestions.approve(make_user(), found.pk)
         assert approved.status == StressSuggestion.Status.APPROVED
+
+
+@db
+class TestFromRide:
+    """Sent from the ride summary (lib/rideFeedback.ts; backlog 2026-11-12 item 7): the day is
+    kept, never the time; no road beside the device; the audit row names no suggestion."""
+
+    def test_a_ride_send_keeps_the_day_never_the_time(self, live) -> None:
+        before = timezone.now()
+        row = send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        row.refresh_from_db()
+        kept = row.created_at.astimezone(quick.DAY_ZONE)
+        assert (kept.hour, kept.minute, kept.second, kept.microsecond) == (0, 0, 0, 0)
+        assert kept.date() == before.astimezone(quick.DAY_ZONE).date()
+        assert (
+            row.kind == StressSuggestion.Kind.CLOSURE and row.signed_out and row.suggester is None
+        )
+        # The device's count keeps no road id (a one-way code), and the audit row no suggestion.
+        kept = [s.osm_way_id for s in SignedOutSend.objects.all()]
+        assert len(kept) == 1 and kept[0] < 0 and kept[0] != -WAY
+        entry = AuditLogEntry.objects.get(action="stress_suggest_signed_out")
+        assert entry.object_id == ""
+
+    def test_a_road_panel_send_keeps_its_time_and_road_as_before(self, live) -> None:
+        row = send()
+        assert [s.osm_way_id for s in SignedOutSend.objects.all()] == [WAY]
+        assert AuditLogEntry.objects.get(action="stress_suggest_signed_out").object_id == str(
+            row.pk
+        )
+        assert abs((timezone.now() - row.created_at).total_seconds()) < 60
+
+    def test_a_ride_sends_count_and_audit_rows_keep_the_day_not_the_time(self, live) -> None:
+        # The release review: count rows, audit rows and suggestions are made one each per send,
+        # so the nth count or audit row's exact time would date the nth suggestion.
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        row = SignedOutSend.objects.get()
+        entry = AuditLogEntry.objects.get(action="stress_suggest_signed_out")
+        for at in (row.created_at, entry.at):
+            kept = at.astimezone(quick.DAY_ZONE)
+            assert (kept.hour, kept.minute, kept.second, kept.microsecond) == (0, 0, 0, 0)
+        # Dated by the day, it still counts toward today's limits, and is pruned within a day.
+        assert quick.prune() == 0
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+
+    def test_one_a_road_holds_through_a_washington_evening(self, live, monkeypatch) -> None:
+        # The release review: a ride's rows are dated by Washington's day, but the device's code
+        # changed at UTC midnight (7 or 8 PM here), so the same road went again that evening.
+        # timezone.now() is UTC, as Django's is.
+        early = datetime(2026, 11, 12, 18, 0, tzinfo=quick.DAY_ZONE).astimezone(UTC)
+        monkeypatch.setattr(timezone, "now", lambda: early)
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        monkeypatch.setattr(timezone, "now", lambda: early + timedelta(hours=5, minutes=30))
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        # A new Washington day: a new code, and a new day's count.
+        monkeypatch.setattr(timezone, "now", lambda: early + timedelta(hours=6, minutes=30))
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        assert StressSuggestion.objects.count() == 2
+
+    def test_one_a_road_holds_across_the_road_panel_and_a_ride(self, live) -> None:
+        send()
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        send(way=OTHER_ROAD, reasons=(quick.CLOSED,), from_ride=True)
+        with pytest.raises(quick.Again):
+            send(way=OTHER_ROAD, step=3, reasons=("fast_traffic",))
+        assert StressSuggestion.objects.count() == 2
+
+    def test_a_ride_send_is_still_one_a_road(self, live) -> None:
+        # A retry, or Keep riding then End ride again, or a forged from_ride: refused, not counted.
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        with pytest.raises(quick.Again):
+            send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        assert StressSuggestion.objects.count() == 1
+
+    def test_the_ride_road_code_is_one_way_and_per_device(self) -> None:
+        a = quick.ride_road_code("d1", WAY)
+        assert a == quick.ride_road_code("d1", WAY) and a < 0
+        assert a != quick.ride_road_code("d2", WAY) and a != quick.ride_road_code("d1", OTHER_ROAD)
+
+    def test_ride_sends_still_count_toward_ten_a_day(self, live, monkeypatch) -> None:
+        monkeypatch.setattr(quick, "DAILY_MAX", 2)
+        send(reasons=(quick.CLOSED,), step=3, from_ride=True)
+        send(way=OTHER_ROAD, reasons=(quick.CLOSED,), from_ride=True)
+        with pytest.raises(quick.Limited):
+            send(way=6002, reasons=(quick.CLOSED,), from_ride=True)
+
+    def test_the_api_takes_from_ride(self, live) -> None:
+        client, ticket, csrf, headers = anonymous()
+        body = {
+            "osm_way_id": WAY,
+            "lat": LAT,
+            "lon": LON + 0.001,
+            "step": 3.0,
+            "reasons": ["closed"],
+            "other": "",
+            "ticket": ticket["ticket"],
+            "website": "",
+            "from_ride": True,
+        }
+        answer = client.post(
+            SEND,
+            json.dumps(body),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf,
+            **headers,
+        )
+        assert answer.status_code == 200, answer.content
+        assert StressSuggestion.objects.get().created_at.astimezone(quick.DAY_ZONE).hour == 0
+        # Not a boolean: refused.
+        body["from_ride"] = "yes"
+        bad = client.post(
+            SEND,
+            json.dumps(body),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf,
+            **headers,
+        )
+        assert bad.status_code in (400, 422)

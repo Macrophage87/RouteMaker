@@ -195,6 +195,44 @@ HIGH_MANEUVER_PENALTY_S = 30
 # the calm search". 15 s is our default, not measured; a ride type that already charges more
 # (HIGH_MANEUVER_PENALTY_S) keeps its own.
 CALM_MANEUVER_PENALTY_S = 15
+# The same turn charge at every traffic setting, Default (where Go plans) included: owner decision
+# 254 (2026-10-03), "Turns should also carry a penalty as they do add some cognitive load ... on
+# every preset", whose every-preset half the above-80 change (#1139) left unbuilt; the backlog's
+# "fewer turns" item (2026-11-12). With it on, Valhalla's 5 s becomes CALM_MANEUVER_PENALTY_S at
+# every position, the ranking counts turns everywhere (`refine.turn_m`), and the side-street
+# dodge pass charges the turns a dodge adds (`dedodge.needed_m`). The owner turned it on
+# 2026-11-12 ("Every setting") after the route scorecard's before/after table (at 70: 4% fewer
+# turns, LTS 4 flat; at 25: 7% fewer turns, 1.7 mi more LTS 4 across 38 trips). False would put
+# every plan back on the above-80-only rule. 15 s stays our default, not measured.
+TURN_CHARGE_EVERY_SETTING = True
+
+# A rider's "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12; `Dials.fewer_turns`,
+# the API's `fewer_turns`, Go's and Plan's "Fewer turns" option): the router's turn charge of a
+# ride type that already plans for fewer turns (Group Ride, Road Bike), and the calm search's
+# ranking counts turns at that price at every position (`refine.turn_m`). Our default, not
+# measured.
+FEWER_TURNS_PENALTY_S = HIGH_MANEUVER_PENALTY_S
+# A rider's "All paved" (`Dials.paved`, the API's `paved`): Valhalla's `avoid_bad_surfaces`
+# raised to this on the rider's own ride type, so gravel and dirt are left wherever pavement
+# runs near (1 would close them outright, and a trip with no paved way would fail). Our
+# default, not measured.
+PAVED_SURFACE_AVOIDANCE = 0.9
+
+
+def with_rider_choices(costing_block: dict, fewer_turns: bool = False, paved: bool = False) -> dict:
+    """`costing_block` (a `costing` answer, `{"bicycle": {...}}`) with the rider's "Fewer
+    turns" and "All paved" applied, in place; each only ever raises its charge."""
+    options = costing_block["bicycle"]
+    if fewer_turns:
+        options["maneuver_penalty"] = max(
+            options.get("maneuver_penalty", VALHALLA_MANEUVER_PENALTY_S), FEWER_TURNS_PENALTY_S
+        )
+    if paved:
+        options["avoid_bad_surfaces"] = max(
+            options.get("avoid_bad_surfaces", 0.0), PAVED_SURFACE_AVOIDANCE
+        )
+    return costing_block
+
 
 # The mass ride speed band's default planning speed, 6 mph, in Valhalla's km/h.
 MASS_RIDE_PLANNING_SPEED_KMH = round(6 * 1.609344, 1)
@@ -316,7 +354,8 @@ HILLS_MIN, HILLS_MAX = -100, 100
 #
 # Turn costs and hill costs are not part of this: they are costing options sent
 # at every position, so a relaxed ride is not a zig-zag over a hill. Above the old top the
-# turn charge rises to CALM_MANEUVER_PENALTY_S (2026-11-10), never falls.
+# turn charge rises to CALM_MANEUVER_PENALTY_S (2026-11-10), never falls; with
+# TURN_CHARGE_EVERY_SETTING it is that charge at every position.
 STRESS_DEFAULT_AT = 70
 STRESS_TODAYS_TOP = 80
 # The old scale's positions at those two points, which `use_roads` is read at.
@@ -1440,8 +1479,12 @@ def costing(
     options = copy.deepcopy(dict(PRESETS[name].costing_options))
     if stress is not None:
         options["use_roads"] = use_roads_for(stress)
-    # Above the old top, asked for or the ride type's own start (Trailmaxxing's 100).
-    if (PRESETS[name].stress if stress is None else stress) > STRESS_TODAYS_TOP:
+    # Above the old top, asked for or the ride type's own start (Trailmaxxing's 100); at every
+    # position with TURN_CHARGE_EVERY_SETTING.
+    if (
+        TURN_CHARGE_EVERY_SETTING
+        or (PRESETS[name].stress if stress is None else stress) > STRESS_TODAYS_TOP
+    ):
         options["maneuver_penalty"] = max(
             options.get("maneuver_penalty", VALHALLA_MANEUVER_PENALTY_S), CALM_MANEUVER_PENALTY_S
         )

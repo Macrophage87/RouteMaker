@@ -1,0 +1,97 @@
+# downtown-grid: Downtown grid: turns at signals, a left across 9th St, a crossing then a right 8 m on
+
+## The cues Ride made
+   649 m  #0 busy New York Ave NW: Busy road on New York Avenue Northwest.
+   662 m  #1 right 10th St NW: Right onto 10th Street Northwest, then immediately left onto I Street Northwest.
+   720 m  #2 left I St NW (joined): Left onto I Street Northwest.
+   901 m  #3 left 9th St NW bike Ln: Cross 9th Street Northwest, then left onto 9th Street Northwest bike lane.
+  1038 m  #4 crossing K St NW: Cross K Street Northwest.
+  1133 m  #5 crossing Allen Y Lew Pl NW: Cross Allen Y Lew Place Northwest.
+  1269 m  #6 crossing L St NW: Cross L Street Northwest.
+  1445 m  #7 left unnamed Rd: Cross the road, then right onto 9th Street Northwest.
+  1453 m  #8 right 9th St NW (joined): Right onto 9th Street Northwest.
+  1481 m  #9 end: The end of the route.
+
+## downtown-grid at 8 mph, steady
+  140 s    501 m  #0 busy New York Ave NW advance: "In 500 feet, busy road on New York Avenue Northwest." -> said
+  144 s    515 m  #1 right 10th St NW advance: "In 500 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest." -> held 4.0 s, as "In 450 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest."
+  173 s    619 m  #1 right 10th St NW prepare: "In 140 feet, right, then immediately left." -> said
+  181 s    647 m  #1 right 10th St NW now (urgent): "Right now onto 10th Street Northwest." -> said
+  198 s    708 m  #2 left I St NW now (urgent): "Left now onto I Street Northwest." -> said
+  211 s    755 m  #3 left 9th St NW bike Ln advance: "In 500 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
+  240 s    858 m  #3 left 9th St NW bike Ln prepare: "In 140 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
+  248 s    887 m  #3 left 9th St NW bike Ln now (urgent): "Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said
+  278 s    994 m  #4 crossing K St NW prepare: "In 140 feet, cross K Street Northwest." -> said
+  305 s   1091 m  #5 crossing Allen Y Lew Pl NW prepare: "In 140 feet, cross Allen Y Lew Place Northwest." -> said
+  343 s   1227 m  #6 crossing L St NW prepare: "In 140 feet, cross L Street Northwest." -> said
+  363 s   1298 m  #7 left unnamed Rd advance: "In 500 feet, cross the road, then right onto 9th Street Northwest." -> said
+  392 s   1402 m  #7 left unnamed Rd prepare: "In 140 feet, cross the road, then right." -> said
+  400 s   1431 m  #7 left unnamed Rd now (urgent): "Cross the road now." -> said
+  405 s   1448 m  #8 right 9th St NW now (urgent): "Right now onto 9th Street Northwest." -> said
+  409 s   1463 m  #9 end arrive (urgent): "You have arrived at the end of the route." -> said
+
+## downtown-grid at 12 mph, steady
+   94 s    504 m  #0 busy New York Ave NW advance: "In 450 feet, busy road on New York Avenue Northwest." -> said
+   96 s    515 m  #1 right 10th St NW advance: "In 500 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest." -> held 6.0 s, as "In 400 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest."
+  114 s    612 m  #1 right 10th St NW prepare: "In 170 feet, right, then immediately left." -> said
+  121 s    649 m  #1 right 10th St NW now (urgent): "Right now onto 10th Street Northwest." -> said
+  132 s    708 m  #2 left I St NW now (urgent): "Left now onto I Street Northwest." -> said
+  141 s    756 m  #3 left 9th St NW bike Ln advance: "In 450 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
+  158 s    848 m  #3 left 9th St NW bike Ln prepare: "In 180 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
+  166 s    891 m  #3 left 9th St NW bike Ln now (urgent): "Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said
+  184 s    987 m  #4 crossing K St NW prepare: "In 170 feet, cross K Street Northwest." -> said
+  202 s   1084 m  #5 crossing Allen Y Lew Pl NW prepare: "In 160 feet, cross Allen Y Lew Place Northwest." -> said
+  227 s   1218 m  #6 crossing L St NW prepare: "In 170 feet, cross L Street Northwest." -> said
+  242 s   1298 m  #7 left unnamed Rd advance: "In 500 feet, cross the road, then right onto 9th Street Northwest." -> said
+  260 s   1395 m  #7 left unnamed Rd prepare: "In 170 feet, cross the road, then right." -> said
+  267 s   1432 m  #7 left unnamed Rd now (urgent): "Cross the road now." -> said
+  270 s   1448 m  #8 right 9th St NW now (urgent): "Right now onto 9th Street Northwest." -> said
+  273 s   1465 m  #9 end arrive (urgent): "You have arrived at the end of the route." -> said
+
+## downtown-grid at 18 mph, steady
+   54 s    435 m  #0 busy New York Ave NW advance: "In 700 feet, busy road on New York Avenue Northwest." -> said
+   56 s    451 m  #1 right 10th St NW advance: "In 700 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest." -> held 6.0 s, as "In 600 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest."
+   73 s    587 m  #1 right 10th St NW prepare: "In 250 feet, right, then immediately left." -> said
+   81 s    652 m  #1 right 10th St NW now (urgent): "Right now onto 10th Street Northwest." -> said
+   88 s    708 m  #2 left I St NW now (urgent): "Left now onto I Street Northwest." -> said
+   89 s    716 m  #3 left 9th St NW bike Ln advance: "In 600 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> held 1.7 s
+  102 s    821 m  #3 left 9th St NW bike Ln prepare: "In 250 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
+  110 s    885 m  #3 left 9th St NW bike Ln now (urgent): "Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said
+  120 s    966 m  #4 crossing K St NW prepare: "In 250 feet, cross K Street Northwest." -> said
+  131 s   1054 m  #5 crossing Allen Y Lew Pl NW prepare: "In 250 feet, cross Allen Y Lew Place Northwest." -> said
+  148 s   1191 m  #6 crossing L St NW prepare: "In 250 feet, cross L Street Northwest." -> said
+  153 s   1231 m  #7 left unnamed Rd advance: "In 700 feet, cross the road, then right onto 9th Street Northwest." -> held 3.0 s, as "In 600 feet, cross the road, then right onto 9th Street Northwest."
+  170 s   1368 m  #7 left unnamed Rd prepare: "In 250 feet, cross the road, then right." -> said
+  178 s   1432 m  #7 left unnamed Rd now (urgent): "Cross the road now." -> said
+  180 s   1448 m  #8 right 9th St NW now (urgent): "Right now onto 9th Street Northwest." -> said, cut 1.7 s in
+  182 s   1465 m  #9 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! cut at 1453 m (#8): "Right now onto 9th Street Northwest." cut off 1.7 s in by #9's arrive
+
+## downtown-grid at 12 mph, missed-turn
+   94 s    504 m  #0 busy New York Ave NW advance: "In 450 feet, busy road on New York Avenue Northwest." -> said
+   96 s    515 m  #1 right 10th St NW advance: "In 500 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest." -> held 6.0 s, as "In 400 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest."
+  114 s    612 m  #1 right 10th St NW prepare: "In 170 feet, right, then immediately left." -> said
+  121 s    649 m  #1 right 10th St NW now (urgent): "Right now onto 10th Street Northwest." -> said
+  132 s    708 m  #2 left I St NW now (urgent): "Left now onto I Street Northwest." -> said
+  141 s    756 m  #3 left 9th St NW bike Ln advance: "In 450 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
+  158 s    848 m  #3 left 9th St NW bike Ln prepare: "In 180 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
+  166 s    891 m  #3 left 9th St NW bike Ln now (urgent): "Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said
+  182 s    901 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 75 m past the missed turn
+
+## downtown-grid at 12 mph, weak-gps
+   94 s    504 m  #0 busy New York Ave NW advance: "In 450 feet, busy road on New York Avenue Northwest." -> said
+   96 s    515 m  #1 right 10th St NW advance: "In 500 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest." -> held 6.0 s, as "In 400 feet, right onto 10th Street Northwest, then immediately left onto I Street Northwest."
+  114 s    612 m  #1 right 10th St NW prepare: "In 170 feet, right, then immediately left." -> said
+  121 s    649 m  #1 right 10th St NW now (urgent): "Right now onto 10th Street Northwest." -> said
+  132 s    708 m  #2 left I St NW now (urgent): "Left now onto I Street Northwest." -> said
+  150 s           note: "GPS is weak: turn cues paused."
+  169 s    907 m  #3 left 9th St NW bike Ln now (urgent): "Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said
+  184 s    987 m  #4 crossing K St NW prepare: "In 170 feet, cross K Street Northwest." -> said
+  202 s   1084 m  #5 crossing Allen Y Lew Pl NW prepare: "In 160 feet, cross Allen Y Lew Place Northwest." -> said
+  227 s   1218 m  #6 crossing L St NW prepare: "In 170 feet, cross L Street Northwest." -> said
+  242 s   1298 m  #7 left unnamed Rd advance: "In 500 feet, cross the road, then right onto 9th Street Northwest." -> said
+  260 s   1395 m  #7 left unnamed Rd prepare: "In 170 feet, cross the road, then right." -> said
+  267 s   1432 m  #7 left unnamed Rd now (urgent): "Cross the road now." -> said
+  270 s   1448 m  #8 right 9th St NW now (urgent): "Right now onto 9th Street Northwest." -> said
+  273 s   1465 m  #9 end arrive (urgent): "You have arrived at the end of the route." -> said

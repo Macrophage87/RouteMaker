@@ -221,8 +221,6 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
     }
     if (next.queue !== (isQueue(list) ? list : null)) say(`${labelOf(next.queue)}.`);
     open(next);
-    // labelOf reads LISTS only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spot, list, drawnKey, origin, say, open]);
 
   useEffect(() => {

@@ -44,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from routemaker import ddot_advisories, deer_closures, fcpa, purple_line  # noqa: E402
+from routemaker import ddot_advisories, deer_closures, fcpa, park_alerts, purple_line  # noqa: E402
 
 ARCGIS = "https://www.arcgis.com/sharing/rest"
 OSM_API = "https://api.openstreetmap.org/api/0.6"
@@ -109,6 +109,7 @@ def reminders(today: date) -> list[str]:
         *ddot_advisories.check_due(today),
         *purple_line.check_due(today),
         *fcpa.check_due(today),
+        *park_alerts.check_due(today),
         *deer_closures.check_due(today),
     ]
 

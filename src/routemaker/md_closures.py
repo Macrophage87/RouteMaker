@@ -25,6 +25,14 @@ What a record's `ClosureType` and `closureSummary` mean for a bicycle:
 Only the closure's own fields are asked for: never its `Creator` (the reporting account); a
 phone number or email in an agency's comments is never kept.
 
+Montgomery County's own closures (v0.26.0, source "moco"): Montgomery County DOT keeps the
+same Road Closure Reporter on its own server ("MC DOT Road Closure",
+www7.montgomerycountymd.gov/arcgis/rest/services/DOT/Road_Closure_lines/MapServer/0), with the
+same fields, checked live 2026-11-12. Montgomery does not report to the state's layers (none of
+their records named it on 2026-11-12), so the two never hold the same closure. Its records are
+read as the state's are (`parse_sha(..., source=MOCO)`); the layer "may contain zero features"
+when nothing is closed, which is normal.
+
 Pure: no network, no database.
 """
 
@@ -38,6 +46,8 @@ from . import planned_work as pw
 from . import workzones as wz
 
 SHA = "sha"
+# Montgomery County DOT's copy of the Reporter (v0.26.0).
+MOCO = "moco"
 # The fields asked for: never `Creator`, `CreationDate` or `EditDate`.
 FIELDS = (
     "OBJECTID,RC_GUID,ClosureStart,ClosureEnd,ClosureType,Comments,RoadName,CrossStreet1,"
@@ -96,11 +106,11 @@ def _guid(value) -> str:
     return re.sub(r"[^0-9a-f-]", "", str(value or "").lower())
 
 
-def parse_sha(documents: Iterable[Mapping], now: datetime) -> list[wz.Zone]:
+def parse_sha(documents: Iterable[Mapping], now: datetime, source: str = SHA) -> list[wz.Zone]:
     """The Reporter's closures not yet over, from its layers (GeoJSON, in force and to come),
-    one zone a line: `sha-<closure>-<n>`, numbered along the ground, so a
-    closure's stretches group as one on the map (the Key Bridge is 69 of them). A stretch in
-    both layers is read once."""
+    one zone a line: `<source>-<closure>-<n>` (`sha`, or `moco` for Montgomery County's copy),
+    numbered along the ground, so a closure's stretches group as one on the map (the Key Bridge
+    is 69 of them). A stretch in both layers is read once."""
     seen: set[tuple] = set()
     found: dict[str, list[tuple[tuple, dict]]] = {}
     for document in documents:
@@ -129,11 +139,11 @@ def parse_sha(documents: Iterable[Mapping], now: datetime) -> list[wz.Zone]:
         # Numbered in the order of their lines on the ground, not of the records, so an id
         # names the same stretch when a closure is posted again.
         for index, (_, piece) in enumerate(sorted(pieces, key=lambda p: p[0])):
-            zones.append(_zone(f"sha-{guid}-{index}", piece["props"], piece["line"]))
+            zones.append(_zone(f"{source}-{guid}-{index}", piece["props"], piece["line"], source))
     return zones
 
 
-def _zone(zone_id: str, props: Mapping, line) -> wz.Zone:
+def _zone(zone_id: str, props: Mapping, line, source: str = SHA) -> wz.Zone:
     summary = _tidy(props.get("closureSummary"))
     kind, penalty, why = classify(props.get("ClosureType"), summary)
     road = _street(props.get("RoadName")) or None
@@ -148,7 +158,7 @@ def _zone(zone_id: str, props: Mapping, line) -> wz.Zone:
     description = "; ".join(t for t in (comments, summary) if t)[:MAX_DESCRIPTION]
     return wz.Zone(
         zone_id=zone_id,
-        source=SHA,
+        source=source,
         kind=kind,
         penalty_s=penalty,
         line=line,
@@ -158,11 +168,11 @@ def _zone(zone_id: str, props: Mapping, line) -> wz.Zone:
         end=pw._ms(props.get("ClosureEnd")),
         reason=why,
         title=f"{stretch}: {what.lower()}" + (f" ({place})" if place else ""),
-        url=wz.SOURCE_LINKS[SHA],
+        url=wz.SOURCE_LINKS[source],
         # The road as the Reporter names it, so a closure on an Interstate ("I 695", "WB I
         # 695") is known for one (`workzones.on_interstate`; hunt K5, 2026-11-08).
         roads=(_tidy(props.get("RoadName")),) if _tidy(props.get("RoadName")) else (),
     )
 
 
-__all__ = ["FIELDS", "SHA", "classify", "parse_sha"]
+__all__ = ["FIELDS", "MOCO", "SHA", "classify", "parse_sha"]

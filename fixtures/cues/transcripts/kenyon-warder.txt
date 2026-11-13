@@ -1,0 +1,66 @@
+# kenyon-warder: Kenyon St NW's two-way track left onto Warder St: a turn over the road alongside (#1162)
+
+## The cues Ride made
+   249 m  #0 crossing Georgia Ave NW: Cross Georgia Avenue Northwest.
+   561 m  #1 left Warder St NW: Left onto Warder Street Northwest.
+  1245 m  #2 left Quebec Pl NW: Left onto Quebec Place Northwest, then immediately right onto the service road, then immediately left to stay on the service road.
+  1277 m  #3 right Svc Rd (joined): Right onto the service road, then immediately left to stay on the service road.
+  1314 m  #4 left Svc Rd (joined): Left to stay on the service road.
+  1335 m  #5 end: The end of the route.
+
+## kenyon-warder at 8 mph, steady
+   58 s    207 m  #0 crossing Georgia Ave NW prepare: "In 140 feet, cross Georgia Avenue Northwest." -> said
+  115 s    411 m  #1 left Warder St NW advance: "In 500 feet, left onto Warder Street Northwest." -> said
+  145 s    519 m  #1 left Warder St NW prepare: "In 140 feet, left onto Warder Street Northwest." -> said
+  153 s    547 m  #1 left Warder St NW now (urgent): "Left now onto Warder Street Northwest." -> said
+  307 s   1098 m  #2 left Quebec Pl NW advance: "In 500 feet, left onto Quebec Place Northwest, then immediately right onto the service road, then immediately left to stay on the service road." -> said
+  336 s   1202 m  #2 left Quebec Pl NW prepare: "In 140 feet, left, then immediately right, then immediately left." -> said
+  345 s   1234 m  #2 left Quebec Pl NW now (urgent): "Left now onto Quebec Place Northwest." -> said
+  353 s   1262 m  #3 right Svc Rd now (urgent): "Right now onto the service road." -> said
+  364 s   1302 m  #4 left Svc Rd now (urgent): "Left now." -> said
+  368 s   1316 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said
+
+## kenyon-warder at 12 mph, steady
+   37 s    198 m  #0 crossing Georgia Ave NW prepare: "In 170 feet, cross Georgia Avenue Northwest." -> said
+   77 s    413 m  #1 left Warder St NW advance: "In 500 feet, left onto Warder Street Northwest." -> said
+   95 s    510 m  #1 left Warder St NW prepare: "In 170 feet, left onto Warder Street Northwest." -> said
+  102 s    547 m  #1 left Warder St NW now (urgent): "Left now onto Warder Street Northwest." -> said
+  205 s   1100 m  #2 left Quebec Pl NW advance: "In 500 feet, left onto Quebec Place Northwest, then immediately right onto the service road, then immediately left to stay on the service road." -> said
+  223 s   1196 m  #2 left Quebec Pl NW prepare: "In 160 feet, left, then immediately right, then immediately left." -> said
+  230 s   1234 m  #2 left Quebec Pl NW now (urgent): "Left now onto Quebec Place Northwest." -> said
+  236 s   1266 m  #3 right Svc Rd now (urgent): "Right now onto the service road." -> said
+  243 s   1304 m  #4 left Svc Rd now (urgent): "Left now." -> said
+  245 s   1314 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said
+
+## kenyon-warder at 18 mph, steady
+   21 s    169 m  #0 crossing Georgia Ave NW prepare: "In 250 feet, cross Georgia Avenue Northwest." -> said
+   43 s    346 m  #1 left Warder St NW advance: "In 700 feet, left onto Warder Street Northwest." -> said
+   60 s    483 m  #1 left Warder St NW prepare: "In 250 feet, left onto Warder Street Northwest." -> said
+   68 s    547 m  #1 left Warder St NW now (urgent): "Left now onto Warder Street Northwest." -> said
+  128 s   1030 m  #2 left Quebec Pl NW advance: "In 700 feet, left onto Quebec Place Northwest, then immediately right onto the service road, then immediately left to stay on the service road." -> said
+  145 s   1167 m  #2 left Quebec Pl NW prepare: "In 250 feet, left, then immediately right, then immediately left." -> said
+  153 s   1231 m  #2 left Quebec Pl NW now (urgent): "Left now onto Quebec Place Northwest." -> said
+  157 s   1263 m  #3 right Svc Rd now (urgent): "Right now onto the service road." -> said
+  162 s   1304 m  #4 left Svc Rd now (urgent): "Left now." -> said
+  164 s   1320 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said
+
+## kenyon-warder at 12 mph, missed-turn
+   37 s    198 m  #0 crossing Georgia Ave NW prepare: "In 170 feet, cross Georgia Avenue Northwest." -> said
+   77 s    413 m  #1 left Warder St NW advance: "In 500 feet, left onto Warder Street Northwest." -> said
+   95 s    510 m  #1 left Warder St NW prepare: "In 170 feet, left onto Warder Street Northwest." -> said
+  102 s    547 m  #1 left Warder St NW now (urgent): "Left now onto Warder Street Northwest." -> said
+  118 s    561 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 72 m past the missed turn
+
+## kenyon-warder at 12 mph, weak-gps
+   37 s    198 m  #0 crossing Georgia Ave NW prepare: "In 170 feet, cross Georgia Avenue Northwest." -> said
+   77 s    413 m  #1 left Warder St NW advance: "In 500 feet, left onto Warder Street Northwest." -> said
+   95 s    510 m  #1 left Warder St NW prepare: "In 170 feet, left onto Warder Street Northwest." -> said
+  102 s    547 m  #1 left Warder St NW now (urgent): "Left now onto Warder Street Northwest." -> said
+  136 s           note: "GPS is weak: turn cues paused."
+  205 s   1100 m  #2 left Quebec Pl NW advance: "In 500 feet, left onto Quebec Place Northwest, then immediately right onto the service road, then immediately left to stay on the service road." -> said
+  223 s   1196 m  #2 left Quebec Pl NW prepare: "In 160 feet, left, then immediately right, then immediately left." -> said
+  230 s   1234 m  #2 left Quebec Pl NW now (urgent): "Left now onto Quebec Place Northwest." -> said
+  236 s   1266 m  #3 right Svc Rd now (urgent): "Right now onto the service road." -> said
+  243 s   1304 m  #4 left Svc Rd now (urgent): "Left now." -> said
+  246 s   1320 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said

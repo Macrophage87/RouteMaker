@@ -1,0 +1,1185 @@
+{
+ "name": "near-northeast",
+ "about": "17th St NE, K St, Staples St, a left across Florida Ave NE from the left (across_from), Maryland Ave",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -76.979513,
+     38.905204
+    ],
+    [
+     -76.979474,
+     38.905275
+    ],
+    [
+     -76.979466,
+     38.905577
+    ],
+    [
+     -76.979465,
+     38.90563
+    ],
+    [
+     -76.979111,
+     38.90563
+    ],
+    [
+     -76.979044,
+     38.905629
+    ],
+    [
+     -76.979045,
+     38.905569
+    ],
+    [
+     -76.979045,
+     38.905536
+    ],
+    [
+     -76.97905,
+     38.905074
+    ],
+    [
+     -76.97905,
+     38.905046
+    ],
+    [
+     -76.979051,
+     38.90497
+    ],
+    [
+     -76.979051,
+     38.904918
+    ],
+    [
+     -76.979051,
+     38.904888
+    ],
+    [
+     -76.979052,
+     38.904678
+    ],
+    [
+     -76.979053,
+     38.904472
+    ],
+    [
+     -76.979053,
+     38.904445
+    ],
+    [
+     -76.979054,
+     38.904371
+    ],
+    [
+     -76.979054,
+     38.904306
+    ],
+    [
+     -76.979054,
+     38.904282
+    ],
+    [
+     -76.979054,
+     38.904082
+    ],
+    [
+     -76.979054,
+     38.903832
+    ],
+    [
+     -76.979054,
+     38.903794
+    ],
+    [
+     -76.979054,
+     38.903721
+    ],
+    [
+     -76.979054,
+     38.903655
+    ],
+    [
+     -76.979054,
+     38.903623
+    ],
+    [
+     -76.979054,
+     38.903333
+    ],
+    [
+     -76.979053,
+     38.9029
+    ],
+    [
+     -76.979053,
+     38.902628
+    ],
+    [
+     -76.979053,
+     38.902594
+    ],
+    [
+     -76.979053,
+     38.902506
+    ],
+    [
+     -76.979123,
+     38.902507
+    ],
+    [
+     -76.979488,
+     38.902508
+    ],
+    [
+     -76.979887,
+     38.90251
+    ],
+    [
+     -76.980061,
+     38.902511
+    ],
+    [
+     -76.980528,
+     38.902511
+    ],
+    [
+     -76.980698,
+     38.902511
+    ],
+    [
+     -76.980788,
+     38.902513
+    ],
+    [
+     -76.980871,
+     38.902517
+    ],
+    [
+     -76.980957,
+     38.902525
+    ],
+    [
+     -76.98104,
+     38.902537
+    ],
+    [
+     -76.981161,
+     38.90256
+    ],
+    [
+     -76.981181,
+     38.902563
+    ],
+    [
+     -76.981405,
+     38.902603
+    ],
+    [
+     -76.981533,
+     38.902627
+    ],
+    [
+     -76.981563,
+     38.902638
+    ],
+    [
+     -76.981646,
+     38.902669
+    ],
+    [
+     -76.981769,
+     38.902706
+    ],
+    [
+     -76.981851,
+     38.902731
+    ],
+    [
+     -76.982189,
+     38.902881
+    ],
+    [
+     -76.982262,
+     38.902913
+    ],
+    [
+     -76.982544,
+     38.903031
+    ],
+    [
+     -76.982649,
+     38.903076
+    ],
+    [
+     -76.982865,
+     38.90317
+    ],
+    [
+     -76.98305,
+     38.903249
+    ],
+    [
+     -76.983256,
+     38.903336
+    ],
+    [
+     -76.983327,
+     38.903366
+    ],
+    [
+     -76.983407,
+     38.9034
+    ],
+    [
+     -76.983697,
+     38.903526
+    ],
+    [
+     -76.983973,
+     38.903645
+    ],
+    [
+     -76.98405,
+     38.903678
+    ],
+    [
+     -76.98409,
+     38.903618
+    ],
+    [
+     -76.984387,
+     38.903162
+    ],
+    [
+     -76.984616,
+     38.902812
+    ],
+    [
+     -76.984628,
+     38.902793
+    ],
+    [
+     -76.984666,
+     38.902739
+    ],
+    [
+     -76.9847,
+     38.902691
+    ],
+    [
+     -76.985262,
+     38.901886
+    ],
+    [
+     -76.985306,
+     38.901824
+    ],
+    [
+     -76.985344,
+     38.901771
+    ],
+    [
+     -76.985503,
+     38.901545
+    ],
+    [
+     -76.985635,
+     38.901356
+    ],
+    [
+     -76.985816,
+     38.901097
+    ],
+    [
+     -76.985865,
+     38.901026
+    ],
+    [
+     -76.985891,
+     38.90099
+    ],
+    [
+     -76.985972,
+     38.901025
+    ],
+    [
+     -76.986007,
+     38.900976
+    ],
+    [
+     -76.986041,
+     38.900927
+    ],
+    [
+     -76.985885,
+     38.900861
+    ],
+    [
+     -76.985605,
+     38.900741
+    ],
+    [
+     -76.985582,
+     38.900719
+    ],
+    [
+     -76.985575,
+     38.900712
+    ],
+    [
+     -76.985557,
+     38.900667
+    ],
+    [
+     -76.985554,
+     38.900629
+    ],
+    [
+     -76.985551,
+     38.900362
+    ],
+    [
+     -76.985552,
+     38.900325
+    ],
+    [
+     -76.985553,
+     38.90025
+    ],
+    [
+     -76.985553,
+     38.900202
+    ],
+    [
+     -76.985554,
+     38.900156
+    ],
+    [
+     -76.985554,
+     38.90008
+    ],
+    [
+     -76.985555,
+     38.900056
+    ],
+    [
+     -76.985552,
+     38.89945
+    ],
+    [
+     -76.985552,
+     38.899396
+    ],
+    [
+     -76.985551,
+     38.899296
+    ],
+    [
+     -76.985572,
+     38.899299
+    ],
+    [
+     -76.985604,
+     38.899289
+    ],
+    [
+     -76.985652,
+     38.899272
+    ],
+    [
+     -76.986125,
+     38.89908
+    ],
+    [
+     -76.986187,
+     38.899008
+    ],
+    [
+     -76.986583,
+     38.898848
+    ],
+    [
+     -76.986714,
+     38.898919
+    ],
+    [
+     -76.98713,
+     38.898922
+    ],
+    [
+     -76.987503,
+     38.898921
+    ],
+    [
+     -76.987691,
+     38.89892
+    ],
+    [
+     -76.988213,
+     38.898916
+    ],
+    [
+     -76.988214,
+     38.89896
+    ],
+    [
+     -76.988216,
+     38.898986
+    ],
+    [
+     -76.988,
+     38.898986
+    ]
+   ]
+  },
+  "distance_m": 1737.0,
+  "duration_s": 511.9,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.02765,
+    9.6
+   ],
+   [
+    0.02765,
+    13.6
+   ],
+   [
+    0.02774,
+    13.6
+   ],
+   [
+    0.04876,
+    24.4
+   ],
+   [
+    0.09101,
+    42.8
+   ],
+   [
+    0.09101,
+    46.8
+   ],
+   [
+    0.12903,
+    63.4
+   ],
+   [
+    0.12903,
+    67.4
+   ],
+   [
+    0.17051,
+    85.5
+   ],
+   [
+    0.17051,
+    89.5
+   ],
+   [
+    0.24827,
+    123.4
+   ],
+   [
+    0.24827,
+    127.4
+   ],
+   [
+    0.24915,
+    127.8
+   ],
+   [
+    0.37903,
+    176.2
+   ],
+   [
+    0.37903,
+    190.2
+   ],
+   [
+    0.47465,
+    225.8
+   ],
+   [
+    0.47465,
+    229.8
+   ],
+   [
+    0.51613,
+    245.2
+   ],
+   [
+    0.51613,
+    249.2
+   ],
+   [
+    0.5165,
+    249.3
+   ],
+   [
+    0.5841,
+    273.2
+   ],
+   [
+    0.5841,
+    277.2
+   ],
+   [
+    0.65092,
+    300.7
+   ],
+   [
+    0.65092,
+    304.7
+   ],
+   [
+    0.71197,
+    326.3
+   ],
+   [
+    0.71659,
+    331.9
+   ],
+   [
+    0.72005,
+    335.2
+   ],
+   [
+    0.72005,
+    365.2
+   ],
+   [
+    0.72377,
+    368.8
+   ],
+   [
+    0.78341,
+    391.1
+   ],
+   [
+    0.78341,
+    405.1
+   ],
+   [
+    0.84199,
+    427.0
+   ],
+   [
+    0.84217,
+    427.1
+   ],
+   [
+    0.84217,
+    441.1
+   ],
+   [
+    0.90189,
+    468.8
+   ],
+   [
+    0.98472,
+    502.5
+   ],
+   [
+    0.98921,
+    508.1
+   ],
+   [
+    1.0,
+    511.9
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 48,
+    "from_mi": 0.0,
+    "to_mi": 0.03,
+    "street": "service road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 160 ft (48 m): Service road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 48,
+    "to_m": 85,
+    "from_mi": 0.03,
+    "to_mi": 0.05,
+    "street": "M Street Northeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "M Street Northeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 120 ft (37 m): Right onto M Street Northeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 85,
+    "to_m": 431,
+    "from_mi": 0.05,
+    "to_mi": 0.27,
+    "street": "17th Street Northeast bike lane",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "17th Street Northeast bike lane",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.1 to 0.3 mi (0.1 to 0.4 km): Right onto 17th Street Northeast bike lane, traffic-free.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 431,
+    "to_m": 658,
+    "from_mi": 0.27,
+    "to_mi": 0.41,
+    "street": "K Street Northeast",
+    "tier": 2,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "right",
+     "onto": "K Street Northeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.3 to 0.4 mi (0.4 to 0.7 km): Right onto K Street Northeast, fairly low stress (LTS 2).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 658,
+    "to_m": 897,
+    "from_mi": 0.41,
+    "to_mi": 0.56,
+    "street": "Oates Street Northeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "straight",
+     "onto": "Oates Street Northeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.4 to 0.6 mi (0.7 to 0.9 km): Continue onto Oates Street Northeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 897,
+    "to_m": 1237,
+    "from_mi": 0.56,
+    "to_mi": 0.77,
+    "street": "Staples Street Northeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Staples Street Northeast",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 to 0.8 mi (0.9 to 1.2 km): Left onto Staples Street Northeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1237,
+    "to_m": 1257,
+    "from_mi": 0.77,
+    "to_mi": 0.78,
+    "street": "unnamed road",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": "unnamed road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 mi (1.2 km), for 66 ft (20 m): Continue onto unnamed road, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1257,
+    "to_m": 1463,
+    "from_mi": 0.78,
+    "to_mi": 0.91,
+    "street": "14th Street Northeast bike lane",
+    "tier": 1,
+    "facility": "protected",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "14th Street Northeast bike lane",
+     "control": "none",
+     "severity": "orange",
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": "Florida Avenue Northeast",
+     "across_from": "left",
+     "over": null
+    },
+    "severity": "orange",
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 to 0.9 mi (1.3 to 1.5 km): Cross Florida Avenue Northeast, no signal mapped (Higher stress junction), then left onto 14th Street Northeast bike lane, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": [
+     {
+      "at_m": 1361,
+      "road": "H Street Northeast"
+     }
+    ]
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1463,
+    "to_m": 1528,
+    "from_mi": 0.91,
+    "to_mi": 0.95,
+    "street": "Maryland Avenue Northeast",
+    "tier": 2,
+    "facility": "lane",
+    "oneway": true,
+    "turn": {
+     "movement": "right",
+     "onto": "Maryland Avenue Northeast",
+     "control": "signal",
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.9 mi (1.5 km), for 210 ft (65 m): Right onto Maryland Avenue Northeast at a signal, fairly low stress (LTS 2), painted bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1528,
+    "to_m": 1567,
+    "from_mi": 0.95,
+    "to_mi": 0.97,
+    "street": "Maryland Avenue Northeast",
+    "tier": 3,
+    "facility": "lane",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.9 mi (1.5 km), for 130 ft (39 m): Continue on Maryland Avenue Northeast, busy road (LTS 3), painted bike lane.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1567,
+    "to_m": 1711,
+    "from_mi": 0.97,
+    "to_mi": 1.06,
+    "street": "G Street Northeast",
+    "tier": 1,
+    "facility": "none",
+    "oneway": true,
+    "turn": {
+     "movement": "right",
+     "onto": "G Street Northeast",
+     "control": "none",
+     "severity": null,
+     "stay": null,
+     "shape": {
+      "out": 62,
+      "others": [
+       -92,
+       1
+      ],
+      "main": null,
+      "ring": null
+     },
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.0 mi (1.6 km), for 470 ft (144 m): Right onto G Street Northeast, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1711,
+    "to_m": 1716,
+    "from_mi": 1.06,
+    "to_mi": 1.07,
+    "street": "unnamed road",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "straight",
+     "onto": "unnamed road",
+     "control": null,
+     "severity": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.1 mi (1.7 km), for 16 ft (5 m): Continue onto unnamed road, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1716,
+    "to_m": 1737,
+    "from_mi": 1.07,
+    "to_mi": 1.08,
+    "street": "path",
+    "tier": 4,
+    "facility": "none",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "path",
+     "control": null,
+     "severity": null,
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "1.1 mi (1.7 km), for 69 ft (21 m): Right to stay on the path, heavy traffic (LTS 4).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   106
+  ],
+  "arrival_side": null,
+  "leg_arrival_sides": [
+   null
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 48,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 48,
+    "to_m": 85,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 85,
+    "to_m": 431,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 431,
+    "to_m": 658,
+    "tier": 2,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 658,
+    "to_m": 1244,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1244,
+    "to_m": 1256,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1256,
+    "to_m": 1462,
+    "tier": 1,
+    "facility": "protected",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1462,
+    "to_m": 1527,
+    "tier": 2,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1527,
+    "to_m": 1566,
+    "tier": 3,
+    "facility": "lane",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1566,
+    "to_m": 1648,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": null,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1648,
+    "to_m": 1710,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1710,
+    "to_m": 1736,
+    "tier": 4,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}

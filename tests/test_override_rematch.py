@@ -558,6 +558,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
         + 175  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
         + 671  # Baltimore City rating review (the owner, 2026-11-04)
         + 9  # North Bethesda bike lanes, replacing the 9 rows it retires (the owner, 2026-11-10)
+        + 1  # Whip-poor-will Way, Patuxent Research Refuge (the owner, 2026-11-12)
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -575,8 +576,8 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # reopenings (437.6, 437a-c) and Pentagon Connector Road's 25 (438.2), and the
     # crosswalk links' 4 (442), and the Redland Road sidewalk link's 1 (the owner, 2026-10-21),
     # and the 3rd Avenue dirt path's 1 (the owner, 2026-10-27), and the Glenmont path's 1
-    # (the owner, 2026-10-28).
-    assert kinds.count("access") == 232 + 10 + 55 + 25 + 4 + 1 + 1 + 1
+    # (the owner, 2026-10-28), and Whip-poor-will Way's 1 (the owner, 2026-11-12).
+    assert kinds.count("access") == 232 + 10 + 55 + 25 + 4 + 1 + 1 + 1 + 1
     # 1,551 stress rows, decision 282a turned one into three, and Dupont's 10 (416).
     # Less the 5 South Capitol (432) and 23 Veirs Mill (433) rows retired; 433's two
     # access rows were replaced, not removed. Saint Elizabeths Rd SE's 2 Avoid rows
@@ -700,6 +701,8 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         # that already had a 2026-11-01 Maryland review row, which the file retires
         + 222842  # own picks (the owner, 2026-11-09): MD 135417, VA 81047 (2 ways not in the
         # 2026-11-02 extract stay by id), WV 6378
+        + 1  # Whip-poor-will Way, Patuxent Research Refuge (the owner, 2026-11-12)
+        + 72  # Patuxent Research Refuge closed area, one group (the owner, 2026-11-12)
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
@@ -953,3 +956,43 @@ def test_a_groups_fingerprints_are_read_by_way(tmp_path) -> None:
     }
     (tmp_path / "a.json").write_text(json.dumps({"version": 1, "groups": [group]}))
     assert rematch.load_fingerprints(tmp_path) == {("stress", 7): print_}
+
+
+def test_the_stage_lists_a_pinned_road_whose_facts_moved(tmp_path, monkeypatch) -> None:
+    """Facts changed since rated (`pipeline.rated_facts`; the owner, 2026-11-12): a re-matched
+    row's facts follow it to the new ways, the road keeps the row's level, and the report says
+    what moved and the formula's level beside ours."""
+    from pipeline import rated_facts
+    from pipeline.rebuild import Stage
+    from pipeline.run import build_handlers
+
+    tags = {"highway": "primary", "name": "Harford Road", "lanes": "4"}
+    ways = [StageWay(11, dict(tags), line(0, 0, 45)), StageWay(12, dict(tags), line(0, 45, 45))]
+    stress = {w.osm_id: StressResult(Stress.LTS3, "x") for w in ways}
+    context = context_with(tmp_path, ways, stress)
+    facts = {"highway": "primary", "lanes": 2, "speed_mph": None, "facility": "none"}
+    monkeypatch.setattr(
+        rated_facts,
+        "load",
+        lambda: {
+            1: rated_facts.Rated(facts, "x.json", "2026-11-09", adjustment_id="harford-lts1"),
+            # Re-rated since: the applied row is another, so its old facts are not compared.
+            20: rated_facts.Rated(facts, "x.json", "2026-11-09", adjustment_id="own-pick-20"),
+        },
+    )
+    ways.append(StageWay(20, dict(tags, name="Elsewhere Road"), line(3000, 0, 45)))
+    stress[20] = StressResult(Stress.LTS3, "x")
+    context.ways_by_id[20] = ways[-1]
+    rows = [
+        replace(stress_row(1, tier=1), fingerprint=fingerprint()),
+        stress_row(20, tier=2, adjustment="edit-7"),
+    ]
+    build_handlers(context, load_overrides=lambda: rows)[Stage.APPLY_OVERRIDES]()
+
+    assert context.stress_by_way[11].tier is Stress.LTS1, "our level stands"
+    reports = tmp_path / "work" / "reports"
+    text = (reports / "rated-facts-changed.md").read_text()
+    assert "Pinned roads with stored facts, in this extract: 2" in text
+    assert "Elsewhere Road" not in text
+    assert "| 11 | Harford Road | primary | 1.0 | 3.0 | 2026-11-09 | lanes 2 -> 4 |" in text
+    assert "12,Harford Road" in (reports / "rated-facts-changed.csv").read_text()

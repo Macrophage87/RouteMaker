@@ -109,6 +109,11 @@ class Decision:
 # planner is both, so it is the one figure.
 ROUTING = Limit(scope="route", requests=60, window_s=60)
 
+# The road network around a route, for the phone to search with no signal (POST
+# /api/offline/network; off-grid riding, 2026-11-12): fetched once at Start ride and once per new
+# route, so a few a minute is plenty. Our default, unmeasured.
+OFFLINE_NETWORK = Limit(scope="offline-network", requests=12, window_s=60)
+
 # Reach (POST /api/reach): counted apart from ROUTING, so a rider trying Reach's settings never
 # spends the budget Go's plans and a ride's re-routes need; the routing slots are shared all
 # the same (ROUTING_IN_FLIGHT). REACH counts the requests, REACH_ISOCHRONES the router calls
@@ -265,12 +270,21 @@ CUE_CARDS = Limit(scope="cue-cards", requests=30, window_s=60)
 # A kept line checked against the closures in force (POST /api/closures/check): asked when a
 # saved or shared route opens, on Start ride and before a download, so a few a minute at most.
 CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)
+# Whether the closures in force changed (GET /api/closures/stamp): asked once a minute by a ride
+# (Stephen 2026-11-12), so 20 a minute is a cap on a script.
+CLOSURES_STAMP = Limit(scope="closures-stamp", requests=20, window_s=60)
 # Weather along a route (POST /api/weather/check, core.weather): asked when a route shows, on Start
 # and every 5 minutes in a ride, so 20 a minute is a cap on a script.
 WEATHER_CHECK = Limit(scope="weather-check", requests=20, window_s=60)
 # A report sent to DC 311 from Ride mode (POST /api/report311, core.dc311; v0.7.0 "Go riding
 # fixes" item 3): a rider reports a pothole or two on a ride, so 10 an hour is a cap on a script.
 REPORT_311 = Limit(scope="report-311", requests=10, window_s=3600)
+
+# Riders' feedback (POST /api/feedback, core.feedback): a few a client an hour, and a ceiling for
+# the whole site so a flood cannot fill the owner's forum (our defaults, unmeasured).
+FEEDBACK = Limit(scope="feedback", requests=5, window_s=3600)
+FEEDBACK_ALL = Limit(scope="feedback-all", requests=60, window_s=3600)
+FEEDBACK_STATUS = Limit(scope="feedback-status", requests=60, window_s=60)
 # The same sends per signed-in account (core.dc311: sending is signed in only), so an account
 # moving between addresses still has the one budget.
 REPORT_311_ACCOUNT = Limit(scope="report-311-user", requests=10, window_s=3600)
@@ -610,6 +624,24 @@ TILES_IN_FLIGHT = InFlight(
     deployment_busy="The stress map is busy; try again in a moment.",
     client_retry_s=1,
     deployment_retry_s=1,
+)
+
+
+# The road network around a route for the phone's offline way back (POST /api/offline/network,
+# off-grid riding): a PostGIS read of up to 5 s and a few MB built in Python, so it takes a
+# slot as a tile draw does, from the tiles' own deployment slots (TILE_CONCURRENCY: no worker
+# beyond what the pools already hold), one per client, in a client class of its own. Refused
+# at once; the phone asks again after the Retry-After (frontend lib/offlineWayBack.ts). Load
+# protection: a burst of these never holds more workers than the tile pool's.
+OFFLINE_NETWORK_IN_FLIGHT = InFlight(
+    scope_id=6,
+    per_client=1,
+    total_setting="TILE_CONCURRENCY",
+    total_scope_id=TILES_IN_FLIGHT.scope_id,
+    client_busy="The road network for offline riding is already being fetched for this address.",
+    deployment_busy="The road network for offline riding is busy; try again in a moment.",
+    client_retry_s=2,
+    deployment_retry_s=2,
 )
 
 

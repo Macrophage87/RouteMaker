@@ -1,0 +1,79 @@
+# dupont-15th-s-st: 15th St cycle track, S St, 19th St, a service road beside Florida Ave: plain lefts and rights
+
+## The cues Ride made
+   164 m  #0 left 15th St NW Cycle Track: Left onto 15th Street Northwest Cycle Track.
+   612 m  #1 left S St NW: Left onto S Street Northwest.
+  1376 m  #2 right 19th St NW: Right onto 19th Street Northwest.
+  1557 m  #3 right Svc Rd: Right onto the service road beside Florida Avenue Northwest.
+  1617 m  #4 end: The end of the route. Destination on your left.
+
+## dupont-15th-s-st at 8 mph, steady
+    4 s     14 m  #0 left 15th St NW Cycle Track advance: "In 500 feet, left onto 15th Street Northwest Cycle Track." -> said
+   34 s    122 m  #0 left 15th St NW Cycle Track prepare: "In 140 feet, left onto 15th Street Northwest Cycle Track." -> said
+   42 s    150 m  #0 left 15th St NW Cycle Track now (urgent): "Left now onto 15th Street Northwest Cycle Track." -> said
+  130 s    465 m  #1 left S St NW advance: "In 500 feet, left onto S Street Northwest." -> said
+  159 s    569 m  #1 left S St NW prepare: "In 140 feet, left onto S Street Northwest." -> said
+  167 s    597 m  #1 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
+  343 s   1227 m  #2 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> said
+  373 s   1334 m  #2 right 19th St NW prepare: "In 140 feet, right onto 19th Street Northwest." -> said
+  381 s   1363 m  #2 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
+  394 s   1409 m  #3 right Svc Rd advance: "In 500 feet, right onto the service road beside Florida Avenue Northwest." -> said
+  423 s   1513 m  #3 right Svc Rd prepare: "In 150 feet, right onto the service road beside Florida Avenue Northwest." -> said
+  432 s   1545 m  #3 right Svc Rd now (urgent): "Right now onto the service road beside Florida Avenue Northwest." -> said
+  447 s   1599 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## dupont-15th-s-st at 12 mph, steady
+    3 s     16 m  #0 left 15th St NW Cycle Track advance: "In 500 feet, left onto 15th Street Northwest Cycle Track." -> said
+   21 s    113 m  #0 left 15th St NW Cycle Track prepare: "In 170 feet, left onto 15th Street Northwest Cycle Track." -> said
+   28 s    150 m  #0 left 15th St NW Cycle Track now (urgent): "Left now onto 15th Street Northwest Cycle Track." -> said
+   87 s    467 m  #1 left S St NW advance: "In 500 feet, left onto S Street Northwest." -> said
+  105 s    563 m  #1 left S St NW prepare: "In 160 feet, left onto S Street Northwest." -> said
+  112 s    601 m  #1 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
+  229 s   1228 m  #2 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> said
+  247 s   1325 m  #2 right 19th St NW prepare: "In 170 feet, right onto 19th Street Northwest." -> said
+  254 s   1363 m  #2 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
+  263 s   1411 m  #3 right Svc Rd advance: "In 500 feet, right onto the service road beside Florida Avenue Northwest." -> said
+  281 s   1507 m  #3 right Svc Rd prepare: "In 160 feet, right onto the service road beside Florida Avenue Northwest." -> said
+  288 s   1545 m  #3 right Svc Rd now (urgent): "Right now onto the service road beside Florida Avenue Northwest." -> said
+  298 s   1599 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## dupont-15th-s-st at 18 mph, steady
+    2 s     16 m  #0 left 15th St NW Cycle Track advance: "In 500 feet, left onto 15th Street Northwest Cycle Track." -> said
+   11 s     89 m  #0 left 15th St NW Cycle Track prepare: "In 250 feet, left onto 15th Street Northwest Cycle Track." -> said
+   19 s    153 m  #0 left 15th St NW Cycle Track now (urgent): "Left now onto 15th Street Northwest Cycle Track." -> said
+   50 s    402 m  #1 left S St NW advance: "In 700 feet, left onto S Street Northwest." -> said
+   67 s    539 m  #1 left S St NW prepare: "In 250 feet, left onto S Street Northwest." -> said
+   75 s    604 m  #1 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
+  144 s   1159 m  #2 right 19th St NW advance: "In 700 feet, right onto 19th Street Northwest." -> said
+  161 s   1296 m  #2 right 19th St NW prepare: "In 250 feet, right onto 19th Street Northwest." -> said
+  169 s   1360 m  #2 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
+  170 s   1368 m  #3 right Svc Rd advance: "In 600 feet, right onto the service road beside Florida Avenue Northwest." -> held 1.9 s
+  184 s   1481 m  #3 right Svc Rd prepare: "In 250 feet, right onto the service road beside Florida Avenue Northwest." -> said
+  192 s   1545 m  #3 right Svc Rd now (urgent): "Right now onto the service road beside Florida Avenue Northwest." -> said
+  199 s   1601 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
+
+## dupont-15th-s-st at 12 mph, missed-turn
+    3 s     16 m  #0 left 15th St NW Cycle Track advance: "In 500 feet, left onto 15th Street Northwest Cycle Track." -> said
+   21 s    113 m  #0 left 15th St NW Cycle Track prepare: "In 170 feet, left onto 15th Street Northwest Cycle Track." -> said
+   28 s    150 m  #0 left 15th St NW Cycle Track now (urgent): "Left now onto 15th Street Northwest Cycle Track." -> said
+   87 s    467 m  #1 left S St NW advance: "In 500 feet, left onto S Street Northwest." -> said
+  105 s    563 m  #1 left S St NW prepare: "In 160 feet, left onto S Street Northwest." -> said
+  112 s    601 m  #1 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
+  128 s    612 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 75 m past the missed turn
+
+## dupont-15th-s-st at 12 mph, weak-gps
+    3 s     16 m  #0 left 15th St NW Cycle Track advance: "In 500 feet, left onto 15th Street Northwest Cycle Track." -> said
+   21 s    113 m  #0 left 15th St NW Cycle Track prepare: "In 170 feet, left onto 15th Street Northwest Cycle Track." -> said
+   28 s    150 m  #0 left 15th St NW Cycle Track now (urgent): "Left now onto 15th Street Northwest Cycle Track." -> said
+   87 s    467 m  #1 left S St NW advance: "In 500 feet, left onto S Street Northwest." -> said
+  105 s    563 m  #1 left S St NW prepare: "In 160 feet, left onto S Street Northwest." -> said
+  112 s    601 m  #1 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
+  162 s           note: "GPS is weak: turn cues paused."
+  229 s   1228 m  #2 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> said
+  247 s   1325 m  #2 right 19th St NW prepare: "In 170 feet, right onto 19th Street Northwest." -> said
+  254 s   1363 m  #2 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
+  263 s   1411 m  #3 right Svc Rd advance: "In 500 feet, right onto the service road beside Florida Avenue Northwest." -> said
+  281 s   1507 m  #3 right Svc Rd prepare: "In 160 feet, right onto the service road beside Florida Avenue Northwest." -> said
+  288 s   1545 m  #3 right Svc Rd now (urgent): "Right now onto the service road beside Florida Avenue Northwest." -> said
+  298 s   1599 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
