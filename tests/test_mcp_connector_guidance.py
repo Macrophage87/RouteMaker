@@ -257,6 +257,7 @@ def test_four_prompts_are_listed_without_their_text():
         "Family trail ride",
         "Loop of N miles",
         "Bike plus Metro",
+        "Plan a mass ride",
     ]
     for p in prompts:
         assert "text" not in p
@@ -295,6 +296,34 @@ def test_a_family_ride_with_no_end_comes_back_and_one_with_an_end_does_not():
     assert "and back" in family(start="Takoma Park") and "loop true" in family(start="Takoma Park")
     one_way = family(start="Takoma Park", end="Sligo Creek")
     assert "to Sligo Creek" in one_way and "loop true" not in one_way
+
+
+def test_a_mass_ride_asks_for_what_is_missing_and_holds_to_length_corkers_and_grades():
+    def mass(**args):
+        got = rpc("prompts/get", {"name": "plan_mass_ride", "arguments": args})
+        return got["result"]["messages"][0]["content"]["text"]
+
+    bare = mass(start="Dupont Circle", end="Union Station")
+    assert "mass-ride" in bare and "ride_size" in bare
+    # Asks for riders, corkers, length and speed, and for the midpoint or offers some.
+    for word in ("riders", "corkers", "length in miles", "speed in mph", "two thirds"):
+        assert word in bare
+    assert "So far" not in bare
+    # The distance is the goal, the corkers are a limit, and the grades 5% and 8% either way.
+    assert "not the directness" in bare and "no more than the corkers I have" in bare
+    assert "5%" in bare and "8%, up or down" in bare
+    full = mass(
+        start="Dupont Circle",
+        end="Union Station",
+        riders="800",
+        corkers="40",
+        miles="15",
+        speed_mph="10",
+        midpoint="the Wharf",
+    )
+    assert "So far: 800 riders, 40 corkers, 15 miles, 10 mph." in full
+    assert "The midpoint stop is the Wharf." in full and "two thirds" not in full
+    assert "{" not in full
 
 
 def test_a_prompt_without_its_place_or_by_another_name_is_refused():

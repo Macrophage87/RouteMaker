@@ -8668,7 +8668,7 @@ def _better(plan: Plan, best: Plan, target: float) -> bool:
 
 # The backlog's connector item 3 (the owner's "do 9", 2026-11-13): a few starters an assistant app
 # lists for the person to pick, each turned into one ask that names the tools and settings that
-# fit, so the answer does not hang on the model finding them in the tool list. Kept to four
+# fit, so the answer does not hang on the model finding them in the tool list. Kept few
 # (Stephen, 2026-11-12: "simplicity is often more useful"); each answer is asked to stay short.
 # Their numbers are our defaults, unmeasured: stress 80 for a commute and a loop (the tools'
 # own "low stress"), a loop within 10% of its length, its via points about a quarter of the
@@ -8748,6 +8748,44 @@ PROMPTS = (
         ),
     },
 )
+# Plan a mass ride (Stephen, 2026-11-13): "free-flowing rides that don't require more corkers than
+# we'd have"; "typically don't go over 5% grade and definitely not above 8%, either direction";
+# "the goal is the distance, not the directness"; a midpoint "usually about 2/3" of the way.
+# Within 10% of the length, and corking from LTS 4 as the first triage to offer: our defaults,
+# unmeasured.
+MASS_RIDE_PROMPT = {
+    "name": "plan_mass_ride",
+    "title": "Plan a mass ride",
+    "description": "A large group ride that flows freely with the corkers you have, at the length"
+    " you want.",
+    "arguments": [
+        {"name": "start", "description": "Where the ride starts", "required": True},
+        {"name": "end", "description": "Where it ends", "required": True},
+        {"name": "riders", "description": "About how many riders"},
+        {"name": "corkers", "description": "How many corkers you have"},
+        {"name": "miles", "description": "How long the ride should be, in miles"},
+        {"name": "speed_mph", "description": "The group's speed, mph"},
+        {"name": "midpoint", "description": "The midpoint stop, if you have one"},
+    ],
+    "text": (
+        "Plan a mass ride from {start} to {end} with RouteMaker.{known} Before planning, ask me"
+        " for whichever of these I have not given: the number of riders, the number of corkers,"
+        " the length in miles and the group's speed in mph.{midpoint_how}"
+        " Plan with plan_route, ride type mass-ride, ride_size the riders, the midpoint as a stop"
+        " and any shaping points as via points. The goal:"
+        " (1) The length I asked for, within 10%: the goal is the distance, not the directness,"
+        " so add or move via points (revise_route) until it is that long."
+        ' (2) Free-flowing: mass_capacity\'s corkers "about" no more than the corkers I have,'
+        " and few narrow stretches; where it needs more, move the route off the busiest"
+        " junctions, or offer corking (from_lts 4) to see which junctions to leave uncorked."
+        " (3) No grade over 5% where it can be helped and never over 8%, up or down: read"
+        " steep_grades and route_segments' steepest grade, and avoid or route round any"
+        " stretch past that."
+        " Give the time at my speed (miles / mph), the corkers needed against the corkers I"
+        " have, the steepest grade, then the link."
+    ),
+}
+PROMPTS = (*PROMPTS, MASS_RIDE_PROMPT)
 PROMPT_BY_NAME = {p["name"]: p for p in PROMPTS}
 
 
@@ -8773,6 +8811,16 @@ def prompt_text(name: str, arguments: dict) -> dict:
         if argument.get("required") and argument["name"] not in given:
             raise ToolError(f"{name} needs {argument['name']}")
     leave_at = given.get("leave_at")
+    known = [
+        f"{given[k]} {what}"
+        for k, what in (
+            ("riders", "riders"),
+            ("corkers", "corkers"),
+            ("miles", "miles"),
+            ("speed_mph", "mph"),
+        )
+        if given.get(k)
+    ]
     near_metro = given.get("near_metro", "").casefold() in ("yes", "y", "true", "1")
     fields = {
         **{a["name"]: given.get(a["name"], "") for a in prompt["arguments"]},
@@ -8780,6 +8828,14 @@ def prompt_text(name: str, arguments: dict) -> dict:
         "depart_said": f", depart_at for {leave_at}" if leave_at else "",
         "end_said": f" to {given['end']}" if given.get("end") else " and back",
         "miles_said": f", about {given['miles']} miles" if given.get("miles") else "",
+        "known": f" So far: {', '.join(known)}." if known else "",
+        "midpoint_how": (
+            f" The midpoint stop is {given['midpoint']}."
+            if given.get("midpoint")
+            else " Ask me for the midpoint stop (most rides have one, about two thirds of the"
+            " way); if I have none, offer two or three places to stop near the point two thirds"
+            " along a first plan (find_place near it: a park, a plaza, a school yard)."
+        ),
         "loop_said": ""
         if given.get("end")
         else " and loop true, through one or two quiet via points about a third of the way round",

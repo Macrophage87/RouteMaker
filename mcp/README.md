@@ -54,10 +54,12 @@ has no time left for one more plan.
 
 ### Ready-made asks (prompts)
 
-An assistant app that lists MCP prompts offers four starters a person can pick: **Plan a
+An assistant app that lists MCP prompts offers five starters a person can pick: **Plan a
 commute** (start, end, when you leave), **Family trail ride** (start, an end or none for a ride
 back, about how far), **Loop of N miles** (start, miles, whether to stay near Metro) and **Bike
-plus Metro** (start, end, when you leave). Each becomes one ask that names the tools and settings
+plus Metro** (start, end, when you leave) and **Plan a mass ride** (start, end, riders, corkers,
+miles, speed and midpoint, asked for when not given; the length is the goal, the corkers needed
+stay within those you have, and grades stay under 5% where possible and never over 8%). Each becomes one ask that names the tools and settings
 that fit, and asks for a short answer. The server's instructions carry a short playbook beside
 them: which ride type for which ask, and what to say after a plan.
 
