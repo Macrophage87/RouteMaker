@@ -3064,8 +3064,8 @@ out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
 road). `calm_search` in the answer says what it did; `limited` is `time`,
-`no_route`, `untraceable` or, where it did not run, `span` (past 19 mi
-[30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
+`no_route`, `untraceable` or, where it did not run, `span` (past 37 mi
+[60 km] apart; 19 mi [30 km] until v0.27.0), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
 
 **The router's own alternatives** (OWNER-DECISIONS 435, 2026-10-05: "Yes, rank
@@ -3159,7 +3159,7 @@ The router's limits are not in the way: `max_exclude_locations` is 200,
 `max_alternates` 3 (the calm search asks for all three once, below) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
-- starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
+- starts and ends more than 37 mi (60 km) apart (19 mi (30 km) until v0.27.0), on a long ride, and rides
   with more than a start and an end where the hills slider is seeking (the
   search says so, `limited`);
 - a start or end whose only way out is a busy road (the first 500 m are never
@@ -6568,7 +6568,7 @@ stress page's cost table.
 | Living streets | 1.0 (fully preferred) | as Trailmaxxing |
 | Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
 | Turn penalty | Default's 15 s (`presets.CALM_MANEUVER_PENALTY_S`, every setting since 2026-11-12) | as Default; item 254's higher charge for groups stays Group Ride's 30 s |
-| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
+| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`; 37 mi (60 km) since v0.27.0) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
 
 At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
 least 1 mi (1.6 km) more, or 1.25 times the rider's target distance where one is set. It is
@@ -6955,12 +6955,12 @@ it was kept only where every asked way back shared at least as much, so one that
 different calm street (20%) lost to an asked one sharing 8% over a kilometre of LTS 4. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points
 excluded and the routes asked. The search that follows keeps the way back different: a candidate that
 shares more than the loop does (or 30%, if the loop shares less) is refused. A loop past 19 mi (30 km)
-of straight line in all is not searched (`limited: "span"`; `refine_long` would ask each leg of the
+of straight line in all (37 mi (60 km) since v0.27.0) is not searched (`limited: "span"`; `refine_long` would ask each leg of the
 way back without its exclusions); the way back is still made different. **A loop is never a long
 calm plan** (`routing.plan`: `long_calm` is false for a loop), so a long Trailmaxxing loop gets no
 calm search at all. The span is `straight_span_m` over the loop's points, the way back included, so
-a loop with a 9.5 mi out-leg is already past it, and its note ("over 19 mi in a straight line")
-counts both halves. Such a loop is not left with its red crossings (the 2026-11-08 hunt, R1, H4):
+a loop with a 9.5 mi out-leg was already past it (since v0.27.0, one with an 18.6 mi out-leg), and
+its note ("over 37 mi in a straight line") counts both halves. Such a loop is not left with its red crossings (the 2026-11-08 hunt, R1, H4):
 the red pass (`core.red_crossings`) runs on every loop, asking each red round by its own stretch
 of the route (a window of its leg either side of it), never the plan's own request, so the way
 back `make_loop` made is kept and a way round that puts more of it on the way out than the loop
@@ -7248,7 +7248,12 @@ What changed: the search in one piece now runs up to `refine.REFINE_MAX_SPAN_M` 
 of straight line, every ride type, inside the ordinary plan's 40 s budget. Its rounds stop at the
 deadline as on any plan (`_refine_limit`'s "time", `REFINE_ROUND_MIN_S`), so a trip that is slow
 to route gets fewer rounds, never a late answer, and the note then says the search ran out of
-time. No new slot, no new budget: it holds the ordinary routing slot it already held. A
+time. No new slot, no new budget: it holds the ordinary routing slot it already held. Past 30 km
+the search does not rank the router's own alternatives (`routing.alternates_span_ok`), as it did
+not before: they roughly double a long route's router call and, asked early, would hold a second
+pool slot (beta's pool is two). Go's other options (More direct, Fewer turns, All paved) on such a
+trip each get an equal share of what is left of their 25 s, so the first cannot leave the rest
+none (`api.route_neighbours`). Both from the PR's review. A
 Trailmaxxing plan at the top still goes leg by leg past 30 km (`refine.LONG_CALM_SPAN_M`, kept
 where OWNER-DECISIONS 256 put it). Past 60 km and up to the long-ride span (93 mi, 150 km) other
 ride types keep the router's route and the red-crossing pass, as before. The hills slider's avoid

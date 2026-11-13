@@ -810,3 +810,29 @@ class TestDetour:
         ]
         assert len(probes) == 1
         assert detour["basis"] == "direct_route"
+
+
+class TestTheRoutersAlternativesStayWithinTheOldSpan:
+    """The review of PR #1231: the search ranks the router's own alternatives only up to
+    `refine.LONG_CALM_SPAN_M`; past it they would double a long route's router call and,
+    asked early, hold a second pool slot."""
+
+    def test_the_edge(self, monkeypatch) -> None:
+        from core import refine
+        from routemaker.geo import Point, haversine
+
+        points = [[0, 0], [0.1, 0]]
+        monkeypatch.setattr(refine, "LONG_CALM_SPAN_M", haversine(Point(0, 0), Point(0.1, 0)))
+        assert routing.alternates_span_ok(points)
+        monkeypatch.setattr(refine, "LONG_CALM_SPAN_M", haversine(Point(0, 0), Point(0.1, 0)) - 1)
+        assert not routing.alternates_span_ok(points)
+
+
+def test_a_loop_of_44_km_in_all_is_searched_and_one_of_67_is_not() -> None:
+    # A loop's straight line counts the way back (PLAN.md 266): 22 km out is now searched,
+    # 33 km out is past the span (the review of PR #1231, 4).
+    deadline = routing.Deadline(routing.clock() + 40, 35)
+    near = [[0, 0], [0.2, 0], [0, 0]]
+    far = [[0, 0], [0.3, 0], [0, 0]]
+    assert routing._refine_limit("default", near, False, False, deadline) is None
+    assert routing._refine_limit("default", far, False, False, deadline) == "span"

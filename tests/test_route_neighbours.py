@@ -516,3 +516,36 @@ class TestNeverInTheWay:
         router(standard_router())
         assert post(client, body_for(stress=70)).status_code == 200
         assert our_advisory_locks() == 0
+
+
+@db
+class TestALongTripsOptionsShareTheBudget:
+    """The review of PR #1231: past the span where the calm search used to stop, each option
+    now searches, so each gets an equal share of what is left of the budget and the first
+    never leaves the rest none; shorter trips keep the budget shared as before."""
+
+    def seconds_given(self, client, monkeypatch) -> list[float]:
+        from core import routing
+
+        given: list[float] = []
+
+        def recording(body, dials, started, *args):
+            given.append(started + routing.PLAN_BUDGET_S - routing.clock())
+            return None
+
+        monkeypatch.setattr(api, "_planned", recording)
+        post(client, body_for(stress=70))
+        return given
+
+    def test_a_long_trip_shares_it_out(self, client, segments, monkeypatch) -> None:  # noqa: F811
+        from core import refine
+
+        monkeypatch.setattr(refine, "LONG_CALM_SPAN_M", 0.0)
+        first, second = self.seconds_given(client, monkeypatch)
+        assert first == pytest.approx(api.NEIGHBOURS_BUDGET_S / 2, abs=1.0)
+        assert second == pytest.approx(api.NEIGHBOURS_BUDGET_S, abs=1.0)
+
+    def test_a_short_trip_keeps_the_whole_budget(self, client, segments, monkeypatch) -> None:  # noqa: F811
+        first, second = self.seconds_given(client, monkeypatch)
+        assert first == pytest.approx(api.NEIGHBOURS_BUDGET_S, abs=1.0)
+        assert second == pytest.approx(api.NEIGHBOURS_BUDGET_S, abs=1.0)
