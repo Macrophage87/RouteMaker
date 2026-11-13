@@ -151,6 +151,18 @@ class WayCollector(osmium.SimpleHandler):
         self.ways.append(Way(osm_id=w.id, tags=tags, node_ids=node_ids, edited=_edited(w)))
 
 
+def node_control(highway: str | None, crossing: str | None) -> str | None:
+    """What a node's own tags say controls traffic there, for what a side path crosses
+    (`routemaker.facility.side_path_crossings`): "signal" for `highway=traffic_signals` or a
+    crossing node with `crossing=traffic_signals`, "stop" for `highway=stop` or `give_way`
+    (a sign facing the drivers of the way the node is on), else None."""
+    if highway == "traffic_signals" or (highway == "crossing" and crossing == "traffic_signals"):
+        return "signal"
+    if highway in {"stop", "give_way"}:
+        return "stop"
+    return None
+
+
 class NodeLocator(osmium.SimpleHandler):
     """Second pass: the coordinates of the nodes the first pass asked for, and which of
     them are tagged `button_operated=yes` (`pipeline.signals.button_ways`)."""
@@ -160,18 +172,24 @@ class NodeLocator(osmium.SimpleHandler):
         self._wanted = wanted
         self.locations: dict[int, tuple[float, float]] = {}
         self.buttons: set[int] = set()
+        # "signal" or "stop" by node (`node_control`).
+        self.controls: dict[int, str] = {}
 
     def node(self, n) -> None:  # noqa: N802 - osmium's callback name
         if n.id in self._wanted:
             self.locations[n.id] = (n.location.lon, n.location.lat)
             if n.tags.get("button_operated") == "yes":
                 self.buttons.add(n.id)
+            control = node_control(n.tags.get("highway"), n.tags.get("crossing"))
+            if control is not None:
+                self.controls[n.id] = control
 
 
 def read_ways(
     path: str | Path,
     keep: Callable[[dict[str, str]], bool] | None = None,
     button_nodes: set[int] | None = None,
+    control_nodes: dict[int, str] | None = None,
 ) -> list[Way]:
     """Every way the filter keeps, with its node coordinates attached. `button_nodes`, where
     given, gains the ways' nodes tagged `button_operated=yes`, read in the same node pass
@@ -183,6 +201,9 @@ def read_ways(
     locator.apply_file(str(path))
     if button_nodes is not None:
         button_nodes.update(locator.buttons)
+    if control_nodes is not None:
+        # The ways' nodes tagged as a signal or a stop or yield sign (`node_control`).
+        control_nodes.update(locator.controls)
 
     for way in collector.ways:
         located = [
