@@ -418,6 +418,17 @@ class RouteIn(Schema):
             " `possible`), never a description line, a spoken cue or the closure check."
         ),
     )
+    barrier_avoid: list[LonLat] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            'Cargo and Tandem, "Go around" on a barrier\'s mark: barriers on the route'
+            " (`barriers.items[]`, their `lon` and `lat`) the rider chose to go around, for this"
+            " plan. Each is planned round as a stile is (`barrier_round`); where no way round is"
+            " found it stays on the route and is named. Other ride types ignore it. Never"
+            " remembered by the server."
+        ),
+    )
     blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
         default_factory=list,
         max_length=10,
@@ -593,13 +604,15 @@ class RouteIn(Schema):
     depart_at: datetime | None = Field(
         default=None,
         description=(
-            "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
-            " local time in Washington), within a year of now. Absent: now. Each system's own"
-            " calendar for that day is used, holidays and published closures included; a run"
-            " that starts or is estimated to finish after civil dusk or before civil dawn"
-            " favours lit ways. Where `when` is absent,"
-            " the bike legs, junction waits and closures are planned at this moment's ride"
-            " time too (`routemaker.ridetime.when_at`)."
+            "When the ride or trip starts, ISO 8601 (with an offset, or local time in"
+            " Washington), within a year of now; not on Bikeshare or Rebalance Ride, which"
+            " plan from the docks as they are now. Absent: now. A transit trip uses each"
+            " system's own calendar for that day, holidays and published closures included; a"
+            " run that starts or is estimated to finish after civil dusk or before civil dawn"
+            " favours lit ways; a bike ride's closures are those in force then (Plan's start"
+            " time, the owner, 2026-11-13). Where `when` is absent, the rides, junction waits"
+            " and closures are planned at this moment's ride time too"
+            " (`routemaker.ridetime.when_at`)."
         ),
     )
     transit_option: str | None = Field(
@@ -836,8 +849,12 @@ class RouteIn(Schema):
                 )
             if self.loop:
                 raise ValueError("Transit ride types do not plan loops")
-        elif self.transit_option is not None or (self.depart_at is not None and not run):
-            raise ValueError("transit_option and depart_at apply to the transit ride types only")
+        elif self.transit_option is not None:
+            raise ValueError("transit_option applies to the transit ride types only")
+        if self.depart_at is not None and self.preset in presets.BIKESHARE_PRESETS:
+            # The docks are read as they are now; a later start would plan with bikes that
+            # may be gone by then.
+            raise ValueError("Bikeshare and Rebalance Ride plan from the docks as they are now")
         if self.preset in presets.BIKESHARE_PRESETS:
             # A start, stops and an end (Stephen, 2026-11-03: each stop starts a new trip; for
             # Bikeshare in v0.22.0): each leg is a trip of its own. Rebalance Ride: a start alone.
@@ -6061,14 +6078,23 @@ def _blocked(body: RouteIn) -> tuple[tuple[tuple[float, float], ...], ...]:
 
 
 def _bike_dials(body: RouteIn) -> routing.Dials:
-    """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked."""
+    """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked.
+
+    With a start time (`depart_at`, Plan's day and time; the owner, 2026-11-13: Plan only),
+    the ride time is that moment's where the rider chose none, and the closures are those in
+    force then, as a transit trip's are (`_ride_when`)."""
+    at = body.depart_at
+    if at is not None and at.tzinfo is None:
+        at = at.replace(tzinfo=ridetime.ZONE)
     return routing.Dials(
         stress=body.stress,
         hills=body.hills,
-        when=body.when,
+        when=body.when or (ridetime.when_at(at) if at is not None else None),
+        zones_at=at,
         closure_bypass=tuple(body.closure_bypass),
         closures_now=body.closures_now,
         blocked=_blocked(body),
+        barrier_avoid=tuple((p[0], p[1]) for p in body.barrier_avoid),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -6117,7 +6143,8 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
     answered within its life (`core.route_cache`, v0.7.0 "Faster routing" step 5), else
     planned and kept there where it may be."""
     timings = timing.current()
-    when = body.when or routing.default_when()
+    # The dials' ride time where they have one: a start time's (`_bike_dials`), not now's.
+    when = dials.when or body.when or routing.default_when()
     key = route_cache.key_for(
         body.model_dump(mode="json"),
         when,

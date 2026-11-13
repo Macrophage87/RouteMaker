@@ -774,7 +774,7 @@ Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 anywhere on it (near its ends too since routing hunt 4, J4-1) asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
 are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
-the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
+the crossing search did not cover (legs adding up past 37 mi [60 km], a long Trailmaxxing
 plan searched leg by leg, a search cut short, a climb seek, a loop, a route Mountain Bike's
 choice swapped in) asks round each red after it (`core.red_crossings`; an owner report of
 the GW Parkway at Tulane Dr on a long Mount Vernon ride): a plain one-leg plan first asks
@@ -5772,17 +5772,21 @@ without it NPS is simply not read. The host needs egress to the four hosts, and 
 Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.26.0) `www7.montgomerycountymd.gov` for
 Montgomery County's road closures.
 
-**A source that reads as nothing** (v0.26.0). Each good read's count of closures and notices is
-kept (the last 8). A read of none from a source whose usual count (the median of those, once there
-are 3) is 5 or more is not taken: its last copy is kept, and the run fails at once with "read as
-nothing: <source>", so the operations page shows it the same day. It almost always means the page
-or layer changed shape (AlertDC's RSS turning into an HTML list in 2026): fetch it by hand and
-compare with its sample in `tests/data/closures`. A source that is often empty (Montgomery
-County's closures) never trips it, and MPD and AlertDC are left out (their closures end in the
-reading, so none left is real news). Once the kept copy is past its "Dropped after" age the empty
-read is taken, and further empty reads are quiet. Counts are zones and notices, so a closure along
-several stretches counts each. 8, 3 and 5 are our default, unmeasured
-(`COUNTS_KEPT`, `ZERO_ALARM_READS`, `ZERO_ALARM_USUAL` in src/core/closure_sources.py).
+**A source that has stopped making sense** (v0.26.0, widened in v0.27.0; `core.feed_sense`).
+Each good read's count of closures and notices is kept (the last 8). A read that does not fit the
+source's usual count (the median of those, once there are 3) is not taken: none from a source that
+usually has 5 or more, or under a fifth of the usual from one that usually has 20 or more. Its last
+copy is kept, and the run fails at once with "read did not make sense: <source>" (the detail says
+"read as nothing (usually N items)" or "read only N items (usually M)"), so the operations page
+shows it the same day. It almost always means the page or layer changed shape (AlertDC's RSS
+turning into an HTML list in 2026), or a changed field made the parser drop most items: fetch it by
+hand and compare with its sample in `tests/data/closures`. A source that is often empty or small
+(Montgomery County's closures) never trips it, and MPD and AlertDC are left out (their closures end
+in the reading, so few or none left is real news). Once the kept copy is past its "Dropped after"
+age the read is taken and the counts start again from it, so the source is not judged again until
+it has 3 reads of its new size. Counts are zones and notices,
+so a closure along several stretches counts each. 8, 3, 5, 20 and a fifth are our default,
+unmeasured (`src/core/feed_sense.py`).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5815,7 +5819,9 @@ several stretches counts each. 8, 3 and 5 are our default, unmeasured
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.
 
-Closures follow the ride time (the When setting). Only closures known to be in effect
+Closures follow the ride time (the When setting); with Plan's Leave at (v0.27.0, #1239: `depart_at`
+on a bike plan, not Bikeshare or Rebalance Ride) they are those in force at that start. Go
+and rides always plan for now. Only closures known to be in effect
 reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
 away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
 around anywhere and give no warning or cue, not even when the TOPS source cannot be
@@ -7140,9 +7146,9 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   before.
 - **Loops (item 266)** ask for the way back up to 4 more times (every point, then every 2nd, 4th and 8th),
   each a /route, its reading and the whole loop's reading, inside 14 s (`refine.LOOP_BUDGET_S`); the
-  search then runs as for any plan up to 19 mi (30 km) of straight line in all, and not at all past it.
-  A loop is never a long calm plan, and its straight line counts the way back too, so a Trailmaxxing
-  loop with a 9.5 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
+  search then runs as for any plan up to 37 mi (60 km) of straight line in all (19 mi (30 km) until
+  v0.27.0), and not at all past it. A loop is never a long calm plan, and its straight line counts the
+  way back too, so a Trailmaxxing loop with an 18.6 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
   fault. Such a loop still has its red crossings asked round, each by its own stretch so the way
   back stays as made (`core.red_crossings`), and at the top of the slider its target distance and
   ceiling still hold (`_fit_target`; the 2026-11-08 hunt, R1: before, a loop past the span lost
@@ -9714,7 +9720,16 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    zones read before stay in use as the labels below say, and the failing runs are what turns
    `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
-   real reading here.
+   real reading here. Once a feed has 3 good reads (v0.27.0, `core.feed_sense`, as the closure
+   sources), a read of none from one that usually has 5 or more is not taken (the last copy is kept
+   until it is 2 hours old) and the run fails with `read did not make sense: md`. The "under a
+   fifth" rule of the closure sources is not used here: zones in force now can fall a long way
+   when a night's work ends. So does a feed whose own
+   `feed_info.update_date` is more than 3 days old (`md not updated by its publisher since ...`):
+   its zones are still used, since they are still what the state publishes, but the feed has
+   stopped being fed and is worth a look. There is no switch to silence it: every run fails until
+   the publisher updates the feed (or the feed is dropped, below). All these numbers are our
+   default, unmeasured.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.

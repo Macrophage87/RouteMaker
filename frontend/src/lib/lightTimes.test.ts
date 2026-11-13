@@ -164,7 +164,7 @@ test("how far along, miles first", async () => {
 test("wired: marks on Plan's map only, the line in the route summary, no new control", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const app = read("../App.tsx");
-  assert.match(app, /routeLightMarks\(shown, minute, dials\.when \?\? null\)/);
+  assert.match(app, /routeLightMarks\(shown, startsMs \?\? minute, startsMs !== null \? null : \(dials\.when \?\? null\)\)/);
   assert.match(app, /useMinute\(shown !== null && !riding && \(mode === "plan" \|\| mode === "go"\)\)/);
   assert.match(app, /if \(!sameLightMarks\(lightKept\.current, next\)\) lightKept\.current = next;/);
   assert.match(app, /lightMarks=\{riding \|\| mode !== "plan" \? null : light\}/);

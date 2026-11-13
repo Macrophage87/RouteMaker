@@ -116,6 +116,7 @@ import {
   type Verbosity,
 } from "./navigate.ts";
 import { stopsAhead as stopsAheadOf } from "./navigate.ts";
+import { IPHONE_RIDE_LINE, RIDE_TOO_LONG, RIDE_TOO_LONG_IPHONE, rideTooLong } from "./navigate.ts";
 import { ViaMarks, plannedStopNumbers, viaIndices } from "./pointKinds.ts";
 import { parseTrailMiles } from "./trailMiles.ts";
 import { loadLanguage, setLanguageForTest } from "./i18n.ts";
@@ -3232,4 +3233,15 @@ test("alongside: a stop on the line is still said beside it (#1165 review)", () 
   const r = rideThrough(model, [at(50, 0), at(100, 0), at(230, 60), at(900, 60)]);
   assert.equal(r.state.alongside, true);
   assert.ok(r.events.some((e) => e.spoken.startsWith("You have reached stop 1")), r.events.map((e) => e.spoken).join(" | "));
+});
+
+test("on an iPhone or iPad (no app yet) the ride lines never send the rider to a phone app (Stephen 2026-11-13)", () => {
+  assert.match(RIDE_TOO_LONG, /Use the phone app/);
+  assert.equal(rideTooLong(false), RIDE_TOO_LONG);
+  assert.equal(rideTooLong(true), RIDE_TOO_LONG_IPHONE);
+  for (const line of [RIDE_TOO_LONG_IPHONE, IPHONE_RIDE_LINE]) {
+    assert.doesNotMatch(line, /phone app/);
+    assert.match(line, /^On iPhone[,:] .*30 mi.*lock-screen cue images/);
+  }
+  assert.match(IPHONE_RIDE_LINE, /screen on/);
 });
