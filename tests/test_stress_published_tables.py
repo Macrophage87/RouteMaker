@@ -436,3 +436,32 @@ def test_the_smoothing_sees_every_published_break_and_nothing_else():
         assert not crosses_volume_gate(retired, retired - 1)
     assert crosses_volume_gate(1_001, 1_000) and crosses_volume_gate(8_001, 8_000)
     assert crosses_volume_gate(400, 399) and crosses_volume_gate(7_001, 7_000)
+
+
+class TestCapsStillHold:
+    ROAD = {"highway": "tertiary"}  # rural, unposted, uncounted: 4 by the rural table
+
+    def test_a_road_closed_to_cars_is_1_at_most(self):
+        closed = {**self.ROAD, "motor_vehicle": "no", "bicycle": "yes"}
+        assert level(self.ROAD, urban=False) == 4
+        assert level(closed, urban=False) == 1
+        assert stress.MOTOR_RESTRICTED_RULE in classify(closed, urban=False).rule
+
+    def test_a_road_for_residents_only_is_2_at_most(self):
+        private = {**self.ROAD, "motor_vehicle": "private"}
+        assert level(private, urban=False) == 2
+        assert "motor_vehicle=private" in classify(private, urban=False).rule
+
+    def test_a_posted_limit_over_30_raises_the_cap_one_level(self):
+        fast = {**self.ROAD, "motor_vehicle": "private", "maxspeed": "50 mph"}
+        assert level(fast, urban=False) == 3
+        assert "posted 50 mph" in classify(fast, urban=False).rule
+
+    def test_a_count_switches_the_cap_off(self):
+        private = {**self.ROAD, "motor_vehicle": "private"}
+        assert level(private, urban=False, aadt=2_000) == 4
+
+    def test_a_rough_surface_is_never_1(self):
+        street = {"highway": "residential", "surface": "dirt"}
+        assert level(street) == 2
+        assert "rough surface" in classify(street).rule

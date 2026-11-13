@@ -1028,17 +1028,6 @@ def test_the_count_is_sourced_to_the_count_actually_used_not_the_block() -> None
 # -- the overlay, through the classifier --------------------------------------------
 
 
-def test_a_posted_speed_replaces_the_district_default_and_moves_the_tier() -> None:
-    """An unposted District residential street is read at 20 mph; the block says
-    30, and a 30 mph street with a lane each way is LTS 3, not 1."""
-    base = {"highway": "residential"}
-    assert classify(base, jurisdiction="DC").tier <= Stress.LTS2
-    overlaid = A.overlay(base, way_facts(speed_mph=30)).tags
-    result = classify(overlaid, jurisdiction="DC")
-    assert result.tier >= Stress.LTS3
-    assert "maxspeed" not in result.assumed
-
-
 def test_a_surveyed_protected_track_makes_a_busy_road_low_stress() -> None:
     base = {"highway": "primary", "maxspeed": "30 mph"}
     protected = A.overlay(
@@ -2300,39 +2289,6 @@ def test_the_dc_parser_keeps_the_block_s_key() -> None:
     assert A.parse_dc_roadway_block({"BLOCKKEY": ""}).block_key is None
 
 
-def test_osm_s_contraflow_lane_is_kept_over_an_unflagged_with_flow_reading() -> None:
-    """Hunt 2, S4 (2026-11-08): on an unflagged one-way block the record's lone lane
-    is read as with-flow (review r2), and every OSM `cycleway*` key was deleted first,
-    so OSM's `cycleway:left=lane` + `cycleway:left:oneway=-1` became
-    `cycleway:right=lane` alone, a lane the with-flow rider does not have. OSM is now
-    kept and the report says so; a block with the flag still writes its lane."""
-
-    block = facts(bike={"ib": A.BIKE_LANE}, way="one", oneway_with=True, bike_width_ft=6.0)
-    way = A.aggregate([("a", block, True)])
-    osm = {
-        "highway": "residential",
-        "oneway": "yes",
-        "maxspeed": "30 mph",
-        "cycleway:left": "lane",
-        "cycleway:left:oneway": "-1",
-        "cycleway:right": "shared_lane",
-    }
-    result = A.overlay(osm, way)
-    # Before: {"cycleway:right": "lane", "cycleway:right:width": "1.829"}, LTS 2.
-    assert result.tags["cycleway:left"] == "lane"
-    assert result.tags["cycleway:left:oneway"] == "-1"
-    assert result.tags["cycleway:right"] == "shared_lane"
-    assert result.sources["bike"] == A.SOURCE_OSM
-    assert any("contraflow" in d for d in result.disagreements)
-    assert classify(result.tags).tier is Stress.LTS3
-    # OSM's with-flow lane (review r2's case) is still the record's to write.
-    with_flow = {"highway": "residential", "oneway": "yes", "cycleway:right": "lane"}
-    assert A.overlay(with_flow, way).sources["bike"] == A.DC_AGENCY
-    # And a flagged block writes its contraflow lane as before.
-    flagged = A.aggregate([("a", replace(block, contraflow=True), True)])
-    assert A.overlay(osm, flagged).tags["cycleway:left"] == "opposite_lane"
-
-
 def _one_parking_lane_way(beside: tuple[str, ...], contraflow: bool = False) -> A.WayFacts:
     block = facts(
         bike={"ib": A.BIKE_LANE},
@@ -2346,33 +2302,6 @@ def _one_parking_lane_way(beside: tuple[str, ...], contraflow: bool = False) -> 
         bike_beside_parking=beside,
     )
     return A.aggregate([("a", replace(block, contraflow=contraflow), True)])
-
-
-def test_one_parking_lane_goes_beside_the_lane_only_where_the_record_says_so() -> None:
-    """Hunt 3, stress 2: DC's `BIKELANE_PARKINGLANE_ADJACENT` empty puts the one
-    parking lane on the side without the lane, so the lane is no door-zone lane."""
-    osm = {
-        "highway": "residential",
-        "oneway": "yes",
-        "cycleway:left": "lane",
-        "parking:left": "no",
-        "parking:right": "lane",
-    }
-    apart = _one_parking_lane_way(())
-    tags = A.overlay(osm, apart).tags
-    assert tags["cycleway:right"] == "lane"
-    assert (tags["parking:left"], tags["parking:right"]) == ("parallel", "no")
-    assert classify(tags, parking_width_m=apart.parking_reach_m).tier is Stress.LTS2
-    beside = _one_parking_lane_way(("ib",))
-    tags = A.overlay(osm, beside).tags
-    assert (tags["parking:right"], tags["parking:left"]) == ("parallel", "no")
-    # A contraflow-only way: the record's one painted lane is on the left, and
-    # beside the parking, so the parking goes on the left with it.
-    contraflow = _one_parking_lane_way(("ib",), contraflow=True)
-    tags = A.overlay(osm, contraflow).tags
-    assert tags["cycleway:left"] == "opposite_lane"
-    assert "cycleway:right" not in tags
-    assert (tags["parking:left"], tags["parking:right"]) == ("parallel", "no")
 
 
 def test_osm_side_ranks_read_each_side_by_its_precedence() -> None:

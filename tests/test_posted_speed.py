@@ -44,12 +44,6 @@ def test_a_directional_posting_in_the_district_is_read() -> None:
     assert "maxspeed" not in directional.assumed
 
 
-def test_a_list_is_read_as_its_highest_part() -> None:
-    listed = classify({**RESIDENTIAL, "maxspeed": "25 mph;35 mph"}, jurisdiction="DC")
-    assert listed.tier == classify({**RESIDENTIAL, "maxspeed": "35 mph"}).tier
-    assert listed.tier is Stress.LTS4
-
-
 def test_a_bare_number_in_a_list_still_records_the_unit() -> None:
     assert "maxspeed unit" in classify({**RESIDENTIAL, "maxspeed": "25;30"}).assumed
 

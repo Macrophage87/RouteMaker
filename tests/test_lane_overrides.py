@@ -101,7 +101,9 @@ def test_the_classifier_reads_three_lanes_and_stays_lts4(overrides) -> None:
     one_lane = A.aggregate([("a", block(lanes={"ib": 1, "ob": 1}))])
     tags = A.overlay({"highway": "primary", "name": "Connecticut Avenue Northwest"}, one_lane).tags
     before = classify(tags, aadt=20831, aadt_source=DC_AGENCY, jurisdiction="DC")
-    assert before.tier >= Stress.LTS4  # 405's one lane was already LTS 4
+    # One lane each way at 30 mph is LTS 3 at any count in Furth v2.2: the lane record is
+    # what makes this block 4.
+    assert before.tier is Stress.LTS3
 
 
 def test_the_mass_ride_width_is_two_lanes_the_curb_lane_being_parking(overrides) -> None:
