@@ -90,8 +90,12 @@ test("the panel: with a route kept, the table with its better cells said, Use ke
 
 test("App: the kept route is the map's dashed line while comparing, and going back answers with the kept route itself", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /planFirst && comparing && compareKept \? compareKept\.route\.geometry\.coordinates : null/);
-  assert.match(app, /savedShown\.current = \{ key: keptPlanKey\(back\.drawn\.points, back\.drawn\.ride\.preset, back\.dials\), answer: back\.route \}/);
+  assert.match(app, /planFirst && keptDashed && compareKept \? compareKept\.route\.geometry\.coordinates : null/);
+  assert.match(app, /savedShown\.current = \{ key: keptPlanKey\(back\.drawn\.points, back\.drawn\.ride\.preset, back\.dials\), answer: back\.route, once: true \}/);
+  // Answered once, then gone: a later change its key does not cover is planned afresh (the review's 1).
+  assert.match(app, /if \(saved\.once\) savedShown\.current = null;/);
+  // Another plan opened drops it (the review's 4).
+  assert.match(app, /const forgetDrawn = \(\) => \{\s*\/\/[^\n]*\n\s*setCompareKept\(null\);/);
   // Clear drops it; a change of plan does not.
   assert.match(app, /const clearPlan = \(\) => \{\n\s+setCompareKept\(null\);/);
 });

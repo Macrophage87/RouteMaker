@@ -25,7 +25,7 @@ test("a changed plan greys the line and keeps a dashed ghost of the old one with
   assert.match(app, /stale=\{riding \? false : stale \|\| planEdited\}/);
   // v0.8.2: with no ghost, the standard way through a closure the route goes round takes its place.
   // A route kept to compare (lib/compareRoutes.ts, 2026-11-13) is the dashed line first while it is not the one shown.
-  assert.match(app, /ghost=\{riding \? \(rideView\?\.other \?\? null\) : reviewing \? null : \(\(planFirst && comparing && compareKept \? compareKept\.route\.geometry\.coordinates : null\) \?\? ghost \?\? shown\?\.closure_through\?\.geometry\.coordinates \?\? null\)\}/);
+  assert.match(app, /ghost=\{riding \? \(rideView\?\.other \?\? null\) : reviewing \? null : \(\(planFirst && keptDashed && compareKept \? compareKept\.route\.geometry\.coordinates : null\) \?\? ghost \?\? shown\?\.closure_through\?\.geometry\.coordinates \?\? null\)\}/);
   assert.match(app, /if \(plan\.pressed && before\) \{\s*setGhost\(before\.route\.geometry\.coordinates\);\s*setChangeLine\(changeSummary\(before\.route, result\.route\)\);/);
   // The per-leg details behind the summary.
   assert.match(app, /setChangeDetails\(legChanges\(before, drawnNow, VIA_MARKS\.isVia, \(p\) => namer\.name\(p\)\?\.name\)\);/);

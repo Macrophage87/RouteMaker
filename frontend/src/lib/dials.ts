@@ -10,7 +10,7 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { LonLat } from "./geo.ts";
-import { isTransit, onFoot, usesBikeshare, type PresetId } from "./presets.ts";
+import { isTransit, onFoot, runs, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 import { t } from "./i18n.ts";
 
@@ -441,7 +441,8 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(offersEasyMtb(preset) && dials.easyMtb === true ? { easyMtb: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
-    ...(dials.outAndBack === true ? { outAndBack: true } : {}),
+    // Not on Run (lib/loop.ts loopWays).
+    ...(dials.outAndBack === true && !runs(preset) ? { outAndBack: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).

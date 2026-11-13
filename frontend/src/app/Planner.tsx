@@ -15,7 +15,7 @@ import { YOUR_LOCATION } from "../lib/appMode.ts";
 import type { PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
 import { DialsPanel } from "../DialsPanel.tsx";
-import { LOOP_WAYS, loopWay, withLoopWay, type LoopView } from "../lib/loop.ts";
+import { loopWay, loopWays, withLoopWay, type LoopView } from "../lib/loop.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { editingTips, emptyPlanHint, loneStartHint } from "../lib/pointText.ts";
 import { RideTypePicker } from "../RideTypePicker.tsx";
@@ -150,7 +150,7 @@ export function PointsSection(props: PointsSectionProps) {
           {loop && (
             <fieldset className="loop-ways" aria-describedby={loopHintId}>
               <legend className="visually-hidden">{t("How the ride ends")}</legend>
-              {LOOP_WAYS.map(({ way, label }) => {
+              {loopWays(preset).map(({ way, label }) => {
                 const checked = loopWay(dials, loop.implied) === way;
                 // A ride ending where it starts is a loop already: One way stays in the Tab order with the hint as its
                 // reason (the a11y review's N6), and a press changes nothing.

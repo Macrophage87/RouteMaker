@@ -1296,7 +1296,9 @@ export function App() {
   const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
   // A saved route reopened (v0.7.0, saved routes): its line as saved answers its plan, unchanged, until the
   // plan changes or the rider presses Update route.
-  const savedShown = useRef<{ key: string; answer: RouteResponse } | null>(null);
+  // `once`: Plan's Use kept route (lib/compareRoutes.ts), which answers its own plan once, then goes, so a later change
+  // its key does not cover (a station, the riding speed) is planned afresh.
+  const savedShown = useRef<{ key: string; answer: RouteResponse; once?: boolean } | null>(null);
   const keptNotice = useRef<string | null>(null);
   // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
   // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
@@ -1349,6 +1351,7 @@ export function App() {
         const saved = savedShown.current;
         if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
           keptShown.current = null;
+          if (saved.once) savedShown.current = null;
           return { ok: true, route: saved.answer };
         }
         savedShown.current = null;
@@ -1659,6 +1662,8 @@ export function App() {
   const [pickedEnds, setPickedEnds] = useState<LonLat[]>([]);
   /** Another plan opened (a link, a file): no Reset back to the last one, and no summary against it. */
   const forgetDrawn = () => {
+    // A route kept to compare is for this plan: another plan opened is another trip.
+    setCompareKept(null);
     setPickedEnds([]);
     drawnRef.current = null;
     setDrawn(null);
@@ -6426,6 +6431,8 @@ export function App() {
   };
   // Keep to compare: the route shown, up to date, with the plan it answers.
   const comparing = compareKept !== null && !!shown && !sameRoute(compareKept.route, shown);
+  // The kept route is the dashed line once the plan moves on from it: changed and not yet routed, or routed.
+  const keptDashed = compareKept !== null && (comparing || planEdited);
   const keepToCompare = () => {
     const at = drawnRef.current;
     if (!at || !shown || planEdited) return;
@@ -6439,7 +6446,7 @@ export function App() {
     const at = drawnRef.current;
     if (!back || !shown) return;
     setCompareKept(at && !planEdited ? { drawn: at, dials: planDials, route: shown } : null);
-    savedShown.current = { key: keptPlanKey(back.drawn.points, back.drawn.ride.preset, back.dials), answer: back.route };
+    savedShown.current = { key: keptPlanKey(back.drawn.points, back.drawn.ride.preset, back.dials), answer: back.route, once: true };
     commit(back.drawn.points as LonLat[], back.drawn.ride);
     setStationPins(back.drawn.pins);
     setTransitPick(back.drawn.transitPick);
@@ -6879,7 +6886,7 @@ export function App() {
         permitsOn={!riding && permitsShown(permitsOn, mode)}
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
-        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : ((planFirst && comparing && compareKept ? compareKept.route.geometry.coordinates : null) ?? ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
+        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : ((planFirst && keptDashed && compareKept ? compareKept.route.geometry.coordinates : null) ?? ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
         wayBackTo={riding ? (rideView?.wayBackTo ?? null) : null}
         planLegs={riding || reviewing || mode !== "plan" ? null : loopVias ? NO_LEGS : planDrawn}
         lightMarks={riding || mode !== "plan" ? null : light}

@@ -63,6 +63,14 @@ export function PlanPanel(props: PlanPanelProps) {
     if (routing && panelHadFocus.current) cancelRef.current?.focus();
     else if (!routing && panelHadFocus.current && document.activeElement === document.body) panelRef.current?.focus();
   }, [routing !== null]);
+  // Keep to compare, Use kept route and Stop comparing each take their own button away (or the whole block while the
+  // kept route is put back): the focus, left on nothing, goes to the block's first button, else the panel.
+  const compareState = compare ? `${compare.kept}-${compare.rows !== null}-${compare.edited}` : "none";
+  useEffect(() => {
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const target = panelRef.current?.querySelector<HTMLElement>(".plan-compare button") ?? null;
+    if (target) target.focus();
+  }, [compareState]);
   const route = () => {
     if (routing) return;
     // Enter with nothing to route ("The route shown is up to date."): said on the status line, not met with silence.

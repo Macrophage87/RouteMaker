@@ -150,5 +150,10 @@ test("One way, Loop, Out and back (Stephen's pick, 2026-11-13): each sets the di
   assert.equal(decodePlan(encodePlan([A, B], "default", loop)).dials.outAndBack, undefined);
   // The hint says what it does; the route note says nothing of a way back it never looked for.
   assert.match(loopView("default", true, [A, B], true)!.hint, /comes back the same way/);
+  // Not on Run, whose loops its own planner makes.
+  const { loopWays } = await import("./loop.ts");
+  assert.deepEqual(loopWays("run").map((w) => w.way), ["one-way", "loop"]);
+  assert.equal(loopWays("default").length, 3);
+  assert.equal(fitDials("run", { loop: true, outAndBack: true }).outAndBack, undefined);
   assert.equal(loopNote({ loop: { overlap_pct: 100, shared_m: 5000, return_m: 5000, same_way: true } }), null);
 });

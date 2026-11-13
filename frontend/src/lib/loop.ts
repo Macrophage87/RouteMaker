@@ -76,7 +76,7 @@ export const LOOP_FIRST_HINT = t("Place the starting point, then a stop or two a
 function loopHint(loop: boolean | undefined, implied: boolean, count: number, outAndBack: boolean): string {
   // Out and back (2026-11-13): the same way back, on purpose.
   if (outAndBack && (implied || loop === true)) {
-    return count === 0 ? LOOP_FIRST_HINT : t("Starts and finishes at your first point, and comes back the same way it went out.");
+    return count === 0 ? LOOP_FIRST_HINT : t("Starts and finishes at your first point. The way back does not avoid the way out, so to one stop it comes back the same way.");
   }
   if (implied) {
     return t("This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.");
@@ -136,6 +136,11 @@ export const LOOP_WAYS: readonly { way: LoopWay; label: string }[] = [
   { way: "loop", label: t("Loop") },
   { way: "out-and-back", label: t("Out and back") },
 ];
+
+/** The ways a ride type offers: not Out and back on Run, whose loops are made by its own planner (core/run_plan.py). */
+export function loopWays(preset: PresetId): readonly { way: LoopWay; label: string }[] {
+  return runs(preset) ? LOOP_WAYS.filter((w) => w.way !== "out-and-back") : LOOP_WAYS;
+}
 
 /** The way the ride ends now: a loop chosen or implied by its points, and whether it comes back the same way. */
 export function loopWay(dials: Pick<Dials, "loop" | "outAndBack">, implied: boolean): LoopWay {

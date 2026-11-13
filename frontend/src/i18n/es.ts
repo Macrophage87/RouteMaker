@@ -2784,7 +2784,7 @@ export const ES: Readonly<Record<string, string>> = {
   "How the ride ends": "Cómo termina el recorrido",
   "One way": "Solo ida",
   "Out and back": "Ida y vuelta por el mismo camino",
-  "Starts and finishes at your first point, and comes back the same way it went out.": "Empieza y termina en tu primer punto, y vuelve por el mismo camino de ida.",
+  "Starts and finishes at your first point. The way back does not avoid the way out, so to one stop it comes back the same way.": "Empieza y termina en tu primer punto. La vuelta no evita el camino de ida, así que con una sola parada vuelve por el mismo camino.",
   "Loop or Out and back finishes back at the start. Each point you add is then a stop.": "Circuito o Ida y vuelta por el mismo camino termina de nuevo en el inicio. Cada punto que añadas será entonces una parada.",
   "Loop plans the way to your end point, then a different way back to the start. Out and back comes back the same way.": "Circuito traza el camino hasta tu punto final y luego vuelve al inicio por otro camino. Ida y vuelta por el mismo camino regresa por donde fue.",
 };
