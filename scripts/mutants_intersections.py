@@ -650,8 +650,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "assumed speed kept",
         "src/routemaker/stress.py",
-        '        speed_mph=None if "maxspeed" in assumed else speed_mph,',
-        "        speed_mph=speed_mph,",
+        "        speed_mph=limit_mph if speed_posted else None,",
+        "        speed_mph=limit_mph,",
         ["tests/test_road_traits.py"],
     ),
     (

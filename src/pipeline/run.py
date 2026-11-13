@@ -2950,13 +2950,9 @@ def build_handlers(
                 # the side-path rule (`rate_side_paths`; W4, docs/stress/side-paths.md).
                 context.bare_level_by_way[way.osm_id] = level_of(
                     service_road_step(
-                        rural_floor(
-                            classified(
-                                match.aadt if match else None,
-                                tags=facility.without_bike_facility(tags),
-                            ),
-                            tags,
-                            urban=not rural,
+                        classified(
+                            match.aadt if match else None,
+                            tags=facility.without_bike_facility(tags),
                         ),
                         tags,
                     )

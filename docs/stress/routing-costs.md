@@ -252,10 +252,10 @@ flowchart LR
   and the Avoid entry are set in feet and sent at the ride's own speed (`presets.turn_cost_s`,
   `presets.avoid_entry_cost_s`, `presets.set_speed`). Before, 15 cost seconds a turn was 81 ft
   on Bikeshare and 149 ft on E-bike.
-- **Still in seconds, so still speed-dependent:** junction waits (real time, rightly), and the
-  red surcharge `refine.RED_DETOUR_S` (600 s of riding: 1.35 mi on Bikeshare, 2.5 mi on
-  E-bike). The surcharge is a junction term; making it a fixed 9,840 ft is handed to the
-  junction package.
+- **Still in seconds, so still speed-dependent:** junction waits (real time, rightly). The
+  red surcharge (`refine.RED_DETOUR_S`, 600 s of riding for each red junction) is deleted
+  since 2026-11-13: a red junction costs its own price in feet, capped at two calm miles
+  ([intersections.md](intersections.md)).
 - **Our default, unmeasured:** every slider start but Default's; 8 / 16; the 0.25 for LTS 2;
   Mountain Bike's 6 mph on dirt trails (measurable from logged rides, not yet measured).
 
@@ -479,10 +479,10 @@ flowchart TD
 | `router` | router cost seconds | n/a (the router's own) |
 | `stress` (calm rate x weighted busy metres) | distance | yes |
 | `junctions` | feet | yes |
+| `junction_cap` (negative) | feet | yes: what one junction's stress and wait together would take past its dearer one, or past two calm miles ([intersections.md](intersections.md)) |
 | `hills`, `lts2`, `graph_gap` | distance | yes |
 | `turns` | feet (222) | yes, since 2026-11-13 |
 | `waits` | seconds of real waiting | no, and rightly: time |
-| `red_surcharge` | 600 s of riding | no (handed to the junction package) |
 | `avoid_junctions` | 1,800 cost seconds a pass | no (list empty as shipped) |
 
 <details>
@@ -580,7 +580,7 @@ flowchart TD
 
 ## Junctions
 
-Junction costs, waits, the red surcharge, the intersection weight and Avoid-rated junctions are
+Junction costs, waits, the intersection weight and Avoid-rated junctions are
 described in [intersections.md](intersections.md). On this page they appear only as terms of
 the ranking.
 
