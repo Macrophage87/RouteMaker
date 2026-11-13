@@ -123,6 +123,8 @@ export interface SegmentInfo {
   evidence?: RoadEvidence | null;
   /** The road in one plain sentence from its facts; null with none, absent from an older API. */
   plain?: string | null;
+  /** Why the road has its level, in plain words (the owner, 2026-11-13); absent from an older API. */
+  narrative?: string | null;
 }
 
 /** Where the panel was asked for: a spot the rider pointed at, or the map's centre by keyboard. */
@@ -400,6 +402,31 @@ export function infoHeading(state: InfoState): string {
   if (state.kind === "loading") return INFO_TITLE_LOADING;
   if (state.kind === "error") return t("Road info");
   return state.info.found ? state.info.title : NO_ROAD;
+}
+
+/**
+ * The level's words for the big level box: "For experienced cyclists" from the summary's stress line
+ * ("LTS 3 · For experienced cyclists"), or the whole line for Avoid.
+ */
+export function levelWords(info: SegmentInfo): string | null {
+  const line = info.summary?.find((r) => r.id === "stress")?.value;
+  if (!line) return null;
+  const parts = valueParts(line);
+  return parts.length > 1 ? parts.slice(1).join(" · ") : parts[0];
+}
+
+/** The big level's text: "LTS 3", "LTS 3.5", or "Avoid". */
+export function levelBadge(info: SegmentInfo): string | null {
+  if (info.tier == null) return null;
+  if (info.tier === 5) return t("Avoid");
+  const step = info.step ?? info.tier;
+  return `LTS ${step}`;
+}
+
+/** Whether the panel leads with the big level and its narrative (an answer with a narrative), in place of the
+ * summary's level and Why lines. */
+export function leadsWithLevel(info: SegmentInfo): boolean {
+  return typeof info.narrative === "string" && info.narrative.length > 0 && info.tier != null;
 }
 
 /** The facts shown (an older API has none). */

@@ -20,6 +20,40 @@ import {
   type RoadFact,
 } from "./lib/roadInfo.ts";
 import { t } from "./lib/i18n.ts";
+import { spanClass } from "./lib/routeColours.ts";
+
+/** The text colour that reads on a level's colour: near-black on the light ones, white on the dark. */
+export function inkOn(hex: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#16181d";
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  // The better of the two by contrast ratio: white (1.0) or the page's near-black (0.0093).
+  return (1.05 / (lum + 0.05) >= (lum + 0.05) / 0.0593 ? "#ffffff" : "#16181d");
+}
+
+/**
+ * The big level at the top of the road panel (the owner, 2026-11-13: "Add the big LTS with a color and narrative
+ * justification of the rating"): the level in the map's own colour for it, its words beside it, and why, in a
+ * sentence or two, under it. The colour is never the only cue: the level is written in it.
+ */
+export function LevelBox({ tier, half, badge, words, narrative }: { tier: number; half: boolean; badge: string; words: string | null; narrative: string }) {
+  const look = spanClass({ tier, facility: null, half });
+  return (
+    <div className="road-level">
+      <p className="road-level-head">
+        <span className="road-level-badge" style={{ background: look.color, borderColor: look.halo, color: inkOn(look.color) }}>
+          {badge}
+        </span>
+        {words && <span className="road-level-words">{words}</span>}
+      </p>
+      <p className="road-level-why">{narrative}</p>
+    </div>
+  );
+}
 
 export function RoadFacts({
   facts,

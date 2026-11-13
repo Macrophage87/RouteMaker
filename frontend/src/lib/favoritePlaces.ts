@@ -32,7 +32,7 @@ export const WORK_TEXT = t("Work");
 export const SET_HOME_TEXT = t("Set Home");
 export const SET_WORK_TEXT = t("Set Work");
 export const ADD_FAVORITE_TEXT = t("Add a place");
-/** The road panel's "Use this spot" row, beside Set as Home, and the ride summary's for the ride's destination. */
+/** The road panel's "Use this spot" row (Home is set from Favorites, the owner 2026-11-13), and the ride summary's for the ride's destination. */
 export const SAVE_SPOT_TEXT = t("Save to Favorites");
 /** The ride summary's line once its destination is a favorite. */
 export const SAVED_TO_FAVORITES = (name: string) => t("{name} is in your Favorites.", { name });

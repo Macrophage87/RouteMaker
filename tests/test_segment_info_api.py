@@ -245,6 +245,7 @@ class TestAnswer:
             "facts": [],
             "evidence": None,
             "plain": None,
+            "narrative": None,
             "attribution": ["© OpenStreetMap contributors (ODbL)"],
         }
         assert router.calls == []

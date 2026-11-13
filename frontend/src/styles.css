@@ -11572,3 +11572,37 @@ button.route-note:focus-visible {
   color: var(--accent);
   background-image: radial-gradient(circle, transparent 12px, var(--accent) 12.5px, var(--accent) 14px, transparent 14.5px);
 }
+
+/* The big level and why (RoadFacts.tsx LevelBox; the owner, 2026-11-13). */
+.road-level {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.road-level-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.road-level-badge {
+  font-size: 1.375rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 2px solid;
+  white-space: nowrap;
+  flex: none;
+}
+
+.road-level-words {
+  font-weight: 600;
+  font-size: 1.0625rem;
+}
+
+.road-level-why {
+  margin: 8px 0 0;
+}

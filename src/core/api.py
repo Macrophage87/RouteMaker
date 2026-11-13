@@ -7094,6 +7094,9 @@ class SegmentInfoOut(Schema):
     plain: str | None = Field(
         default=None, description="The road in one plain sentence from its facts."
     )
+    narrative: str | None = Field(
+        default=None, description="Why the road has its level, in one or two plain sentences."
+    )
     attribution: list[str]
 
 

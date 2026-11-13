@@ -1870,6 +1870,71 @@ def plain_sentence(facts: list[dict]) -> str | None:
     return (text[0].upper() + text[1:] + ".") if text else None
 
 
+# The level's narrative (the owner, 2026-11-13: "Add the big LTS with a color and narrative
+# justification of the rating"): one or two plain sentences saying why the road has its level,
+# built from the rule that set it and the facts it read, so it holds in any state and city.
+def _traffic_words(fact: dict | None) -> str | None:
+    if fact is None:
+        return None
+    # An uncounted road says nothing of its traffic here: the facts and the best-guess line do.
+    return f"about {fact['value']}" if fact["kind"] == RECORD else None
+
+
+def _lane_words(fact: dict | None, row: dict) -> str | None:
+    if fact is None:
+        return None
+    count, _, rest = fact["value"].partition(" ")
+    n = int(count) if count.isdigit() else None
+    if n is None:
+        return None
+    noun = "lane" if n == 1 else "lanes"
+    return f"{_COUNT_WORDS.get(n, count).lower()} {noun} of traffic {rest}"
+
+
+def _road_details(facts: list[dict], row: dict) -> str:
+    """'two lanes of traffic each way at 25 mph and about 24,100 vehicles a day'."""
+    by = {f["id"]: f for f in facts}
+    lanes = _lane_words(by.get("lanes"), row)
+    speed_fact = by.get("speed")
+    mph = _SPEED.search(speed_fact["value"]) if speed_fact else None
+    speed = f"at {mph.group(1)} mph" if mph else None
+    traffic = _traffic_words(by.get("traffic"))
+    head = " ".join(p for p in (lanes, speed) if p)
+    return " and ".join(p for p in (head, traffic) if p)
+
+
+def narrative(row: dict, facts: list[dict], evidence: dict | None) -> str | None:
+    """Why the road has its level, in plain words; None on a mountain-bike trail."""
+    if is_mtb_trail(row):
+        return None
+    tier = int(row["stress_tier"])
+    rule = str(row.get("stress_rule") or "")
+    note = override_note(row)
+    if tier == 5:
+        return f"Avoid: {rule_words(rule)[:1].lower()}{rule_words(rule)[1:]}."
+    if note:
+        reason = note.rstrip(".")
+    elif row.get("stress_adjustment_id") is not None:
+        reason = rule_words(rule)
+    elif row.get("is_trail_class"):
+        reason = "A path away from traffic: no cars to share it with"
+    elif rule.startswith("mixed traffic"):
+        details = _road_details(facts, row)
+        reason = "Bikes share the lane with " + (details or "traffic")
+    elif rule.startswith("bike lane"):
+        details = _road_details(facts, row)
+        reason = "A painted bike lane beside " + (details or "traffic")
+    else:
+        reason = rule_words(rule)
+    text = reason[:1].upper() + reason[1:] + "."
+    if evidence and evidence["strength"] == "thin":
+        text += (
+            " Most of this is estimated, so the level is a best guess until the road is"
+            " counted or mapped."
+        )
+    return text
+
+
 def describe(row: dict, router: dict) -> dict:
     """The panel's answer for one row and the router's facts about its way."""
     path = bool(row.get("is_trail_class"))
@@ -1896,6 +1961,7 @@ def describe(row: dict, router: dict) -> dict:
     )
     open_, access = access_rows(row, router.get("bicycle"))
     facts = road_facts(row)
+    evidence = evidence_of(facts, row)
     sections = [
         {
             "id": "road",
@@ -1935,8 +2001,9 @@ def describe(row: dict, router: dict) -> dict:
         "summary": with_facts(summary_rows(row, router, open_), row, facts),
         # The facts behind the level and how much rests on records (`road_facts`).
         "facts": facts,
-        "evidence": evidence_of(facts, row),
+        "evidence": evidence,
         "plain": plain_sentence(facts),
+        "narrative": narrative(row, facts, evidence),
         "sections": sections,
         "more": more_link(row, router),
         # A mountain-bike trail the layer draws: the panel asks for its elevation profile

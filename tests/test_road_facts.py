@@ -219,3 +219,43 @@ def test_pavement_columns_only_where_the_survey_speaks_for_the_street():
             "pavement_pci": 61.0,
             "pavement_surveyed": date(2026, 2, 27),
         }
+
+
+def test_the_narrative_says_why_from_the_rule_and_the_facts():
+    def said(row):
+        facts = si.road_facts(row)
+        return si.narrative(row, facts, si.evidence_of(facts, row))
+
+    assert said(CITY) == (
+        "Bikes share the lane with two lanes of traffic each way at 25 mph and about 24,100 "
+        "vehicles a day."
+    )
+    lane = road(
+        stress_tier=2,
+        stress_rule="bike lane, 30 mph",
+        facility="lane",
+        road_speed_mph=30,
+        road_lanes=1,
+        volume_source="vdot",
+        volume_aadt=6000,
+        volume_year=2024,
+    )
+    assert said(lane) == (
+        "A painted bike lane beside one lane of traffic each way at 30 mph and about 6,000 "
+        "vehicles a day."
+    )
+    # A thin road says its level is a best guess.
+    thin = road(
+        stress_rule="mixed traffic, 55 mph", stress_assumed=json.dumps(["maxspeed", "lanes"])
+    )
+    assert said(thin).startswith("Bikes share the lane with one lane of traffic each way at 55 mph")
+    assert said(thin).endswith("best guess until the road is counted or mapped.")
+    # A path, and an owner's row with its own note.
+    assert said(road(is_trail_class=True)).startswith("A path away from traffic")
+    noted = {
+        **CITY,
+        "stress_adjustment_id": "2026-11-12-owner:1",
+        "stress_adjustment_note": "Underpass with fast merging traffic",
+        "stress_adjustment_display": "map",
+    }
+    assert said(noted) == "Underpass with fast merging traffic."
