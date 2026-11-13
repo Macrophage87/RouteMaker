@@ -2386,3 +2386,30 @@ def test_osm_side_ranks_read_each_side_by_its_precedence() -> None:
         "left": A.BIKE_PROTECTED,
         "right": A.BIKE_BUFFERED,
     }
+
+
+# -- a turn bay counted as a through lane (the owner, 2026-11-13, of K Street NE: "It's one
+# lane each way with the occasional turning lane") ------------------------------------------
+
+
+def test_a_two_way_block_of_one_lane_one_way_and_two_the_other_is_one_each_way() -> None:
+    bay = facts(way="two", lanes={"ib": 1, "ob": 2})
+    assert A.turn_bay_block(bay)
+    assert A.lanes_per_direction(bay) == 1
+    way = A.aggregate(
+        [("600", facts(way="two", lanes={"ib": 1, "ob": 1}), True), ("700", bay, True)]
+    )
+    assert way.lanes_per_direction == way.lanes_forward == way.lanes_backward == 1
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"way": "two", "lanes": {"ib": 2, "ob": 2}},
+        {"way": "two", "lanes": {"ib": 2, "ob": 3}},
+        {"way": "one", "lanes": {"ob": 2}},
+        {"way": "two", "lanes": {"ib": 1, "ob": 2, "reversible": 1}},
+    ],
+)
+def test_other_blocks_are_read_as_they_stand(block) -> None:
+    assert not A.turn_bay_block(facts(**block))

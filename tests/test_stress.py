@@ -2968,3 +2968,44 @@ def test_a_painted_lane_on_a_20_mph_street_is_not_held_at_25_by_its_count() -> N
     assert level_of(calm) == 2
     busy = classify({**street, "maxspeed": "25 mph"}, aadt=13_000, jurisdiction="DC")
     assert level_of(busy) == 2.5
+
+
+# A turn bay is not a through lane (the owner, 2026-11-13, of K Street NE: "It's one lane each
+# way with the occasional turning lane").
+@pytest.mark.parametrize(
+    ("tags", "expected"),
+    [
+        (
+            {
+                "lanes:forward": "2",
+                "lanes:backward": "1",
+                "turn:lanes:forward": "left|through;right",
+            },
+            1,
+        ),
+        (
+            {
+                "lanes:forward": "2",
+                "lanes:backward": "1",
+                "turn:lanes:forward": "through|through;right",
+            },
+            2,
+        ),
+        ({"lanes:forward": "2", "lanes:backward": "1", "turn:lanes:forward": "|right"}, 1),
+        # A list of another length is about other lanes: the count stands.
+        (
+            {
+                "lanes:forward": "2",
+                "lanes:backward": "1",
+                "turn:lanes:forward": "left|through|right",
+            },
+            2,
+        ),
+        ({"lanes:forward": "2", "lanes:backward": "1"}, 2),
+        ({"lanes": "4", "lanes:forward": "2", "turn:lanes:forward": "left|through"}, 2),
+    ],
+)
+def test_a_turn_only_lane_osm_maps_is_not_a_through_lane(tags, expected):
+    from routemaker.tags import lanes_per_direction
+
+    assert lanes_per_direction({"highway": "tertiary", **tags}) == expected

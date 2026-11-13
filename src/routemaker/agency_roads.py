@@ -993,6 +993,22 @@ def classifier_reversible(facts: RoadFacts, ended: frozenset[str] | None = None)
     return count
 
 
+# A turn bay counted as a through lane (the owner, 2026-11-13, of K Street NE 6th-8th: "It's one
+# lane each way with the occasional turning lane"). DC's Roadway Block leaves its turn-lane fields
+# blank on every block, so a block approaching a junction with a turn bay records it as a second
+# lane that way: one lane one way and two the other on a two-way block (K Street NE's 700 block,
+# where OSM maps the second lane as `turn:lanes:forward=left|through;right`; 524 two-way ways in
+# DC carry the pattern). Such a block reads one lane each way. A two-way block of two lanes or
+# more each way, or one with reversible lanes, is read as it stands. Our reading of his words,
+# not measured.
+def turn_bay_block(facts: RoadFacts) -> bool:
+    """A two-way block whose lanes are one one way and two the other (`turn_bay_block`'s note)."""
+    lanes = facts.lanes
+    if facts.way == "one" or lanes.get("reversible"):
+        return False
+    return sorted((lanes.get("ib", 0), lanes.get("ob", 0))) == [1, 2]
+
+
 def lanes_per_direction(facts: RoadFacts) -> int | None:
     """The through lanes a rider meets in one direction on a block, at the
     busiest time: the more of its two directions' lanes, plus the lanes that
@@ -1004,6 +1020,8 @@ def lanes_per_direction(facts: RoadFacts) -> int | None:
     lanes = facts.lanes
     if not lanes:
         return None
+    if turn_bay_block(facts):
+        return 1
     directional = [count for label, count in lanes.items() if label in ("ib", "ob", "from", "to")]
     if directional and max(directional) > 0:
         return max(directional) + classifier_reversible(facts)
@@ -1031,6 +1049,8 @@ def _directional_lanes(facts: RoadFacts, label: str) -> int | None:
     count = facts.lanes.get(label)
     if not count:
         return None
+    if turn_bay_block(facts):
+        return 1
     return count + classifier_reversible(facts)
 
 
