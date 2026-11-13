@@ -98,16 +98,53 @@ export function weighFix(before: GpsWeakness, accuracyM: number, now: number, af
 export const ESTIMATE_MS = 30_000;
 /** No good fix for at least this long before anything is reckoned: the gap between two ordinary fixes is not weak GPS. */
 export const ESTIMATE_AFTER_MS = 5_000;
-/** Slower than this at the last good fix (stopped at a light): nothing is carried on. About 2 mph. */
-export const ESTIMATE_MIN_SPEED_MS = 1;
+/**
+ * Slower than this at the last fix (rolling up to a light): nothing is carried on. About 4.5 mph: a rider braking for a
+ * light sends a last fix well under it, so a stopped rider is never reckoned on toward a turn (the review of #1236).
+ */
+export const ESTIMATE_MIN_SPEED_MS = 2;
 
-/** The weak-GPS note's delay: after the estimates where the ride is being carried on, else GPS_WEAK_MS. */
-export function weakNoteAfterMs(state: Pick<RideState, "progressM" | "off" | "arrived" | "alongside" | "speedMs">): number {
-  return estimates(state) ? Math.max(GPS_WEAK_MS, ESTIMATE_MS) : GPS_WEAK_MS;
+/** What RideMode knows that the ride state does not: whether the GPS is sending poor fixes, and the last fix's speed. */
+export interface EstimateGround {
+  /** Poor fixes have come since the last good one (the GPS is weak, not just quiet: a stopped rider sends none). */
+  poorSeen: boolean;
+  /** The last fix's own speed, m/s, where the GPS gave one; else the ride's smoothed speed is used. */
+  lastSpeedMs: number | null;
+  /** Nothing else holds the ride (the walk to a dock, choosing a dock, the start question). */
+  free: boolean;
 }
 
-function estimates(state: Pick<RideState, "progressM" | "off" | "arrived" | "alongside" | "speedMs">): boolean {
-  return state.progressM !== null && !state.off && !state.arrived && !state.alongside && state.speedMs >= ESTIMATE_MIN_SPEED_MS;
+/** The speed reckoned with: the slower of the last fix's own and the smoothed one, so braking is never overshot. */
+function estimateSpeed(state: Pick<RideState, "speedMs">, ground: EstimateGround): number {
+  return ground.lastSpeedMs === null ? state.speedMs : Math.min(state.speedMs, ground.lastSpeedMs);
+}
+
+/** Whether a turn comes next on the line before a stop or the end: only then is anything reckoned. */
+function turnNext(model: RideModel, progressM: number): boolean {
+  for (const cue of model.cues) {
+    if (cue.atM <= progressM - PASSED_M) continue;
+    if (cue.kind === "stop" || cue.kind === "end") return false;
+    if (cue.kind === "turn" && !cue.joined) return true;
+  }
+  return false;
+}
+
+function estimates(model: RideModel, state: Pick<RideState, "progressM" | "off" | "arrived" | "alongside" | "speedMs">, ground: EstimateGround): boolean {
+  return (
+    ground.poorSeen &&
+    ground.free &&
+    state.progressM !== null &&
+    !state.off &&
+    !state.arrived &&
+    !state.alongside &&
+    estimateSpeed(state, ground) >= ESTIMATE_MIN_SPEED_MS &&
+    turnNext(model, state.progressM)
+  );
+}
+
+/** The weak-GPS note's delay: after the estimates where they can run, else GPS_WEAK_MS as before. */
+export function weakNoteAfterMs(model: RideModel, state: Pick<RideState, "progressM" | "off" | "arrived" | "alongside" | "speedMs">, ground: EstimateGround): number {
+  return estimates(model, state, ground) ? Math.max(GPS_WEAK_MS, ESTIMATE_MS) : GPS_WEAK_MS;
 }
 
 /** An estimated turn's words: the same sentence, said as "about". */
@@ -118,14 +155,17 @@ export function estimatedSpoken(cue: Cue, phase: Phase, distanceM: number, first
 }
 
 /**
- * Weak GPS, `gapMs` after the last good fix: the ride carried on along the line, and the next turn's cue said as an
- * estimate where its phase is reached. Turns only (a stop, the end and road notes wait for a real fix), one sentence a
- * call, never a phase already said. Progress, off route and the re-plan are left alone: a good fix decides those.
+ * Weak GPS (poor fixes coming), `gapMs` after the last good fix: the ride carried on along the line, and the next
+ * turn's cue said as an estimate where its phase is reached. Turns only (a stop, the end and road notes wait for a real
+ * fix), one sentence a call. What it says is kept apart (`estSaid`): a good fix counts its warnings as said, but never
+ * its "now", so a reckoning that ran ahead still gets the real "now" at the turn, and nothing is dropped as passed on a
+ * guess. Progress, off route and the re-plan are left alone: a good fix decides those.
  */
-export function estimateStep(model: RideModel, state: RideState, gapMs: number, level: Verbosity): { state: RideState; events: RideEvent[] } {
-  if (!estimates(state) || gapMs < ESTIMATE_AFTER_MS || gapMs > ESTIMATE_MS || state.progressM === null) return { state, events: [] };
-  const estM = Math.min(model.lengthM, state.progressM + (state.speedMs * gapMs) / 1000);
-  const said: Record<number, Phase[]> = { ...state.said };
+export function estimateStep(model: RideModel, state: RideState, gapMs: number, level: Verbosity, ground: EstimateGround): { state: RideState; events: RideEvent[] } {
+  if (gapMs < ESTIMATE_AFTER_MS || gapMs > ESTIMATE_MS || state.progressM === null || !estimates(model, state, ground)) return { state, events: [] };
+  const speed = estimateSpeed(state, ground);
+  const estM = Math.min(model.lengthM, state.progressM + (speed * gapMs) / 1000);
+  const estSaid: Record<number, Phase[]> = { ...state.estSaid };
   const events: RideEvent[] = [];
   for (const cue of model.cues) {
     if (cue.atM <= state.progressM - PASSED_M) continue;
@@ -135,14 +175,11 @@ export function estimateStep(model: RideModel, state: RideState, gapMs: number, 
       continue;
     }
     const phases = phasesFor(level, cue, state.speedMs, model.onFoot);
-    const done = said[cue.index] ?? [];
+    const done = [...(state.said[cue.index] ?? []), ...(estSaid[cue.index] ?? [])];
     if (phases.every((p) => done.includes(p.phase))) continue;
     const distance = cue.atM - estM;
-    if (distance < -PASSED_M) {
-      // Reckoned past it unsaid: dropped, as a real fix would.
-      said[cue.index] = phases.map((p) => p.phase);
-      continue;
-    }
+    // Reckoned past it: on to the next turn, with nothing marked (a real fix decides whether it was passed).
+    if (distance < -PASSED_M) continue;
     const reached = phases.filter((p) => distance <= p.withinM);
     if (!reached.length) break;
     const phase = reached[reached.length - 1];
@@ -150,10 +187,10 @@ export function estimateStep(model: RideModel, state: RideState, gapMs: number, 
       const first = done.length === 0;
       events.push({ kind: "cue", spoken: estimatedSpoken(cue, phase.phase, Math.max(0, distance), first), urgent: phase.phase === "now", cue, phase: phase.phase });
     }
-    said[cue.index] = phases.slice(0, phases.indexOf(phase) + 1).map((p) => p.phase);
+    estSaid[cue.index] = phases.slice(0, phases.indexOf(phase) + 1).map((p) => p.phase);
     break;
   }
-  return { state: { ...state, said, estM }, events };
+  return { state: { ...state, estSaid, estM }, events };
 }
 
 /**
@@ -1590,6 +1627,8 @@ export interface RideState {
    * progress itself: a good fix places the rider afresh and clears it.
    */
   estM?: number;
+  /** Weak GPS: the phases said as estimates (estimateStep), kept apart from `said` until a good fix. */
+  estSaid?: Record<number, Phase[]>;
 }
 
 export function startState(): RideState {
@@ -1903,6 +1942,17 @@ export function step(
 
   next.goodFix = fix;
   delete next.estM;
+  // What was said as an estimate counts as said, but a turn's "now": the real one comes at the turn (estimateStep).
+  if (state.estSaid) {
+    const merged: Record<number, Phase[]> = { ...state.said };
+    for (const [index, phases] of Object.entries(state.estSaid)) {
+      const kept = phases.filter((p) => p !== "now");
+      merged[Number(index)] = [...new Set([...(merged[Number(index)] ?? []), ...kept])];
+    }
+    state = { ...state, said: merged };
+    next.said = merged;
+    delete next.estSaid;
+  }
 
   // Where on the line: a window round the last progress, growing over a gap in the fixes; among two
   // passes of the same street, the one nearest where the rider is expected to be by now.

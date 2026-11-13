@@ -86,8 +86,9 @@
   132 s    708 m  #2 left I St NW now (urgent): "Left now onto I Street Northwest." -> said
   143 s    767 m  #3 left 9th St NW bike Ln advance: "In about 450 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
   158 s    848 m  #3 left 9th St NW bike Ln prepare: "In about 180 feet, cross 9th Street Northwest, then left onto 9th Street Northwest bike lane." -> said
-  166 s    891 m  #3 left 9th St NW bike Ln now (urgent): "About here: Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said
+  166 s    891 m  #3 left 9th St NW bike Ln now (urgent): "About here: Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said, cut 2.7 s in
   168 s           note: "GPS is weak: turn cues paused."
+  169 s    907 m  #3 left 9th St NW bike Ln now (urgent): "Cross 9th Street Northwest now, then left onto 9th Street Northwest bike lane." -> said
   184 s    987 m  #4 crossing K St NW prepare: "In 170 feet, cross K Street Northwest." -> said
   202 s   1084 m  #5 crossing Allen Y Lew Pl NW prepare: "In 160 feet, cross Allen Y Lew Place Northwest." -> said
   227 s   1218 m  #6 crossing L St NW prepare: "In 170 feet, cross L Street Northwest." -> said

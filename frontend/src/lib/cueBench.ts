@@ -12,6 +12,7 @@ import { cueRows } from "./cueSheetPdf.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
   GPS_WEAK_SAID,
+  POOR_FIX_M,
   PASSED_M,
   pointAt,
   rideModel,
@@ -340,10 +341,14 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
   announcer.onDrop = (text) => log.voice("dropped", text, clock.now);
   let state: RideState = startState();
   let weakness: GpsWeakness = { goodAt: 0, weak: false };
+  let lastSpeed: number | null = null;
   for (let i = 0; i < track.fixes.length; i++) {
     const fix = track.fixes[i];
     clock.runTo(fix.at);
-    const weighed = weighFix(weakness, fix.accuracyM, fix.at, weakNoteAfterMs(state));
+    // As RideMode: poor fixes since the last good one, and the last fix's own speed (estimateGround).
+    lastSpeed = fix.speedMs;
+    const ground = { poorSeen: fix.accuracyM > POOR_FIX_M, lastSpeedMs: lastSpeed, free: true };
+    const weighed = weighFix(weakness, fix.accuracyM, fix.at, weakNoteAfterMs(model, state, ground));
     weakness = { goodAt: weighed.goodAt, weak: weighed.weak };
     if (weighed.sayNow) {
       log.note("gps-weak", fix.at);
@@ -351,7 +356,7 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
       announcer.note(GPS_WEAK_SAID);
     }
     // Weak GPS: the turns reckoned along the line, as RideMode's checkCueSheet does before each fix is stepped.
-    const est = estimateStep(model, state, fix.at - weakness.goodAt, level);
+    const est = estimateStep(model, state, fix.at - weakness.goodAt, level, ground);
     const out = step(model, est.state, fix, level);
     state = out.state;
     for (const event of [...est.events, ...out.events]) {

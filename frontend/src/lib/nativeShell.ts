@@ -163,8 +163,16 @@ export class CueNotice {
     this.refused = !granted;
   }
 
+  /** `null` takes a card that is up down (arrived: the walk or train after the line is not on it), keeping the ride's watch. */
   show(card: TurnCard | null): void {
-    if (!this.live || this.refused || !card) return;
+    if (!this.live || this.refused) return;
+    if (!card) {
+      if (this.last) {
+        this.last = "";
+        this.run(() => this.clear(), false);
+      }
+      return;
+    }
     const key = this.liveCard ? `${card.arrow}|${card.title}|${card.body}` : card.still;
     if (!key || key === this.last) return;
     this.last = key;
@@ -204,14 +212,16 @@ export class CueNotice {
     if (!this.live) return;
     this.live = false;
     this.last = "";
-    this.run(async () => {
-      if (this.liveCard) {
-        await this.bridge.nativePromise(RIDE_CUE_PLUGIN, "clear", {});
-        return;
-      }
-      await this.bridge.nativePromise(NOTICE_PLUGIN, "removeDeliveredNotifications", { notifications: [{ id: CUE_NOTICE_ID, title: "", body: "" }] });
-      await this.bridge.nativePromise(NOTICE_PLUGIN, "cancel", { notifications: [{ id: CUE_NOTICE_ID }] });
-    }, false);
+    this.run(() => this.clear(), false);
+  }
+
+  private async clear(): Promise<void> {
+    if (this.liveCard) {
+      await this.bridge.nativePromise(RIDE_CUE_PLUGIN, "clear", {});
+      return;
+    }
+    await this.bridge.nativePromise(NOTICE_PLUGIN, "removeDeliveredNotifications", { notifications: [{ id: CUE_NOTICE_ID, title: "", body: "" }] });
+    await this.bridge.nativePromise(NOTICE_PLUGIN, "cancel", { notifications: [{ id: CUE_NOTICE_ID }] });
   }
 
   /** Settled when every call so far has (tests). */

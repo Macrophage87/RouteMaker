@@ -41,6 +41,9 @@ public class RideCuePluginTest {
 
     @Test
     public void offRouteHasItsOwnTone() {
-        assertNotEquals(RideCuePlugin.tone("turn"), RideCuePlugin.tone("off"));
+        assertEquals(1, RideCuePlugin.beeps("turn"));
+        assertEquals(2, RideCuePlugin.beeps("off"));
+        assertEquals(210, RideCuePlugin.chimeMs("turn"));
+        assertEquals(290, RideCuePlugin.chimeMs("off"));
     }
 }

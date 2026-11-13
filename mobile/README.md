@@ -19,12 +19,14 @@ opens the live site in a WebView and gives Ride mode three native things while a
 - **The next turn on the lock screen** (v0.27.0 site and app). `RideCuePlugin.java` ("RouteMakerRideCue")
   shows one silent turn card: the turn's arrow, the distance counting down in the rider's unit, the street and
   the turn after it, updated in place (`frontend/src/lib/turnCard.ts`), cleared at End ride and when the app
-  starts or closes. Its channel is low importance and lock-screen public; on Android 16 it asks to be a Live
+  starts or closes. Its channel is default importance with no sound or vibration (a "silent" low-importance
+  card is hidden from the lock screen on many phones) and lock-screen public; on Android 16 it asks to be a Live
   Update (`POST_PROMOTED_NOTIFICATIONS`, a normal permission), shown in the status bar and on the always-on
   display where the phone allows it. An older app keeps `@capacitor/local-notifications`' silent "Latest cue"
   notification, now with the turn and street only (no stale distance), replaced when the turn changes.
 - **A tone and a buzz** (v0.27.0 site and app; the owner, 2026-11-13: "All three, no new switches"). The same
-  plugin plays a short tone just before each spoken turn cue (two lower beeps before "off route"), inside the
+  plugin plays the phone's own short beep just before each spoken turn cue (two shorter beeps before
+  "off route"), inside the
   voice's audio turn, and buzzes at a turn's "now": one long for left, two short for right. The buzz follows
   the phone's own setting: a phone set to silent gets none. Lengths and patterns are our defaults, unmeasured
   (`frontend/src/lib/cueTone.ts`). In a browser the tone is Web Audio and the buzz `navigator.vibrate`.
@@ -221,9 +223,9 @@ tell whether TalkBack is on, so the choice is what keeps cues from being said tw
 - With the phone locked (or another app in front), TalkBack reads nothing of the page, so on a v0.8.0
   site the native voice speaks "My screen reader" cues then; back in front, TalkBack alone again.
   "Neither" stays silent.
-- The turn card (and an older app's "Latest cue" notification) is on a low-importance channel: no sound,
-  no vibration of its own, no heads-up, and Android sends TalkBack no announcement for it, so it never
-  repeats the voice. The turn's buzz is separate and comes with any cue output but "Neither".
+- The turn card has no sound, no vibration of its own and no heads-up; it alerts only once
+  (`setOnlyAlertOnce`), so TalkBack hears it when it first shows and not on each update. An older app's
+  "Latest cue" notification is on a low-importance channel, which TalkBack never announces. The turn's buzz is separate and comes with any cue output but "Neither".
 - On an older site (compatibility layer), "My screen reader" is silent with the phone locked: choose
   "App voice" for pocket riding until v0.8.0 is deployed.
 
