@@ -4,7 +4,7 @@
  * shows (the loader, App's chunk and every chunk either imports at once, and their stylesheets), gzipped as the
  * server sends them, and fails `npm run build` when that or the app chunk grows past its limit.
  *
- * The limits are our default, set from the build measured when they were added with a little headroom; lower them
+ * The limits are our default, set from the build measured when they were added (2026-11-13: 953 KB and 351 KB after Roam, the review tools, the share card and a ride's riders moved to first use) with a little headroom; lower them
  * when a change makes the first load smaller, raise them only on purpose, in the same PR as the change that needs it.
  */
 import { gzipSync } from "node:zlib";
@@ -13,9 +13,9 @@ import { appPreloads } from "./appPreloadPlugin.mjs";
 /** The limits, in KB (1,000 bytes) gzipped. Our default (2026-11-13), see the comment above. */
 export const BUDGET_KB = {
   // The loader, React, MapLibre, App and what App imports at once, with their stylesheets.
-  firstLoad: 1000,
+  firstLoad: 960,
   // App's own chunk.
-  app: 400,
+  app: 360,
 };
 
 /** The chunks and stylesheets a first open downloads: the entry, what it imports at once, and App's (appPreloads). */

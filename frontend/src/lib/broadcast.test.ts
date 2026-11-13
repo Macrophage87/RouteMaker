@@ -365,7 +365,7 @@ test("a shared dot goes from the ride's own position while riding, never from a 
   const live = read("../app/LiveMap.tsx");
   assert.match(live, /const live = riding\?\.point \?\? roaming\?\.point \?\? null;\s*return children\(live \?\? fallback, live\);/);
   const app = read("../App.tsx");
-  assert.equal((app.match(/\{\(riderHere, riderLive\) => \(\s*<RideGroup/g) ?? []).length, 2);
+  assert.equal((app.match(/\{\(riderHere, riderLive\) => \(\s*(?:<Later>\s*)?<RideGroup/g) ?? []).length, 2);
   assert.equal((app.match(/here=\{riderHere\}\s*livePoint=\{riderLive\}/g) ?? []).length, 2);
   // Hidden, turned off or gone: the dot is dropped at once.
   assert.match(group, /if \(!shareOn \|\| !front \|\| !ride \|\| !token\) return;\s*return \(\) => \{\s*\/\/[^\n]*\n\s*void leaveRide\(origin, ride, token\);\s*forgetSent\(\);\s*\};\s*\}, \[shareOn, front, ride, token, origin\]\);/);
