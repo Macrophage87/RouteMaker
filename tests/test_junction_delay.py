@@ -7,6 +7,7 @@ import math
 import pytest
 
 from core import presets
+from routemaker import intersections as m
 from routemaker import junction_delay as d
 from routemaker import trace_junctions as t
 from routemaker.intersections import Beacon, Control, Junction, Movement, Road, beacon_at
@@ -1026,6 +1027,11 @@ def road(level: float, aadt: int | None = None, **facts) -> Road:
     return Road(tier=int(level), half=level % 1 == 0.5, aadt=aadt, **facts)
 
 
+def gap(aadt: int, lanes: int, speed_mph: float | None = None, when: str | None = None) -> float:
+    """The capped wait for a gap in a two-way road of `lanes` in all."""
+    return d.gap_wait_s(Road(3, aadt=aadt, lanes=lanes // 2, speed_mph=speed_mph), when)
+
+
 class TestRealTimeAtAGiveWay:
     """The methodology audit (2026-11-13, section 3.5) and the owner's review of his own
     calls the same day. Before: 30 / 20 / 12 s by road class, 8 s at a quiet street's stop
@@ -1041,7 +1047,7 @@ class TestRealTimeAtAGiveWay:
         47.5 ft, 2.9 s at the Default ride's 16.4 ft/s. A full stop is far more, 9.5 s
         (Fajans and Curry 2001: 10.9 mph with a stop every 530 ft, 14.2 mph with one every
         2,800 ft), not the 7.6 s the code once derived from the same paper."""
-        assert round(0.009 * 5280.0 / d.CROSSING_SPEED_FTS) == d.STOP_SIGN_S
+        assert round(0.009 * 5280.0 / m.GAP_SPEED_FTS) == d.STOP_SIGN_S
         lost = 3600.0 / 10.9 - 3600.0 / 14.2
         extra_stops = 5280.0 / 530.0 - 5280.0 / 2800.0
         assert round(lost / extra_stops, 1) == 9.5
@@ -1051,7 +1057,7 @@ class TestRealTimeAtAGiveWay:
         crossed = {HERE: road(3, 8000, lanes=1, speed_mph=25.0)}
         (run,) = d.waits([junction(*BUSY)], given_way=crossed)
         assert run.seconds == run.ranked_s == 4.5
-        assert run.seconds == round(d.STOP_SIGN_S + d.gap_wait_s(8000, 2, 25.0), 1)
+        assert run.seconds == round(d.STOP_SIGN_S + gap(8000, 2, 25.0), 1)
 
     def test_without_a_count_the_road_is_a_typical_one(self) -> None:
         """Before: 30 / 20 / 12 s. After: 13.8 / 4.5 / 4.5 s off-peak."""
@@ -1061,8 +1067,8 @@ class TestRealTimeAtAGiveWay:
             assert run.seconds == run.ranked_s
             shown.append(run.seconds)
         assert shown == [PRIMARY_GIVE_WAY_S, PRIMARY_GIVE_WAY_S, 4.5, 4.5]
-        assert PRIMARY_GIVE_WAY_S == round(d.STOP_SIGN_S + d.gap_wait_s(*d.TYPICAL_BIG_ROAD), 1)
-        assert 4.5 == round(d.STOP_SIGN_S + d.gap_wait_s(*d.TYPICAL_BUSY_ROAD), 1)
+        assert PRIMARY_GIVE_WAY_S == round(d.STOP_SIGN_S + d.gap_wait_s(d.TYPICAL_BIG_ROAD), 1)
+        assert 4.5 == round(d.STOP_SIGN_S + d.gap_wait_s(d.TYPICAL_BUSY_ROAD), 1)
 
     def test_the_ranking_counts_the_same_time(self) -> None:
         """No separate dislike price: riders weigh a stop sign and a signal at about their
@@ -1105,23 +1111,25 @@ class TestRealTimeAtAGiveWay:
 
 
 class TestGapWait:
-    """`gap_wait_s`: NCHRP Report 562, Appendix A, worksheets 1 and 2, step 4 (the Highway
-    Capacity Manual 2000's equations 18-17 and 18-21)."""
+    """`gap_wait_s`, the junction model's `intersections.gap_delay_s` capped as a time (ONE
+    formula for the wait shown and the stress price): NCHRP Report 562, Appendix A,
+    worksheets 1 and 2, step 4 (the Highway Capacity Manual 2000's equations 18-17 and
+    18-21)."""
 
     def test_the_formula_as_printed(self) -> None:
         """tc = L / S + ts; d = (e^(v tc) - v tc - 1) / v. 8,000 a day at 5.5% an hour is
         440 an hour, v = 0.1222 a second; two 12 ft lanes at 16.4 ft/s plus 3 s is 4.46 s."""
         v, tc = 440 / 3600, 24 / 16.4 + 3.0
-        assert d.gap_wait_s(8000, 2) == pytest.approx((math.exp(v * tc) - v * tc - 1) / v)
-        assert d.gap_wait_s(8000, 2) == pytest.approx(1.48, abs=0.01)
+        assert gap(8000, 2) == pytest.approx((math.exp(v * tc) - v * tc - 1) / v)
+        assert gap(8000, 2) == pytest.approx(1.48, abs=0.01)
 
     def test_the_reports_own_values_give_its_own_critical_gaps(self, monkeypatch) -> None:
         """Its Table 11: 9 s for two lanes and 15 s for four, at a 4 ft/s walk."""
-        monkeypatch.setattr(d, "CROSSING_SPEED_FTS", 4.0)
+        monkeypatch.setattr(m, "GAP_SPEED_FTS", 4.0)
         monkeypatch.setattr(d, "GAP_WAIT_MAX_S", math.inf)
         for lanes, tc in ((2, 9.0), (4, 15.0)):
-            v = 1000 * d.HOUR_SHARE[None] / 3600
-            assert d.gap_wait_s(1000, lanes) == pytest.approx((math.exp(v * tc) - v * tc - 1) / v)
+            v = 1000 * m.hour_share(None) / 3600
+            assert gap(1000, lanes) == pytest.approx((math.exp(v * tc) - v * tc - 1) / v)
 
     def test_it_is_checked_against_the_owners_rides_not_fitted_to_them(self) -> None:
         """2,882 passes straight across a busier road with no signal (DC, mostly early), in
@@ -1133,38 +1141,38 @@ class TestGapWait:
         measured = {"primary": 7.4, "secondary": 1.7, "tertiary": 0.7}
         like_the_file = {}
         for cls, (aadt, lanes) in assumed.items():
-            flow = aadt * d.HOUR_SHARE["night"] / 3600
-            gap = lanes * d.CROSSING_LANE_FT / d.CROSSING_SPEED_FTS + d.CROSSING_STARTUP_S
-            stopped = 1 - math.exp(-flow * gap)
-            like_the_file[cls] = round(d.gap_wait_s(aadt, lanes, 25.0, "night") + 8 * stopped, 1)
+            flow = aadt * m.hour_share("night") / 3600
+            critical = lanes * m.GAP_LANE_FT / m.GAP_SPEED_FTS + m.GAP_STARTUP_S
+            stopped = 1 - math.exp(-flow * critical)
+            like_the_file[cls] = round(gap(aadt, lanes, 25.0, "night") + 8 * stopped, 1)
         assert like_the_file == {"primary": 4.9, "secondary": 1.8, "tertiary": 0.7}
         for cls, seconds in measured.items():
             assert abs(like_the_file[cls] - seconds) <= 2.5
             assert abs(like_the_file[cls] - seconds) < abs(d.delay_at(junction(*BUSY)) - seconds)
 
     def test_it_grows_with_volume_width_speed_and_the_hour(self) -> None:
-        base = d.gap_wait_s(12000, 2, 30.0)
-        assert d.gap_wait_s(20000, 2, 30.0) > base
-        assert d.gap_wait_s(12000, 4, 30.0) > base
+        base = gap(12000, 2, 30.0)
+        assert gap(20000, 2, 30.0) > base
+        assert gap(12000, 4, 30.0) > base
         # The report's worksheet 2: above 35 mph the flow is divided by 0.7.
-        assert d.gap_wait_s(12000, 2, 40.0) > base == d.gap_wait_s(12000, 2, 35.0)
-        rush, night = (d.gap_wait_s(12000, 2, 30.0, when) for when in ("weekday_rush", "night"))
-        assert rush > base > d.gap_wait_s(12000, 2, 30.0, "weekend") > night > 0
+        assert gap(12000, 2, 40.0) > base == gap(12000, 2, 35.0)
+        rush, night = (gap(12000, 2, 30.0, when) for when in ("weekday_rush", "night"))
+        assert rush > base > gap(12000, 2, 30.0, "weekend") > night > 0
 
     def test_an_empty_road_has_no_wait(self) -> None:
-        assert d.gap_wait_s(0, 2) == 0.0
+        assert gap(0, 2) == 0.0
 
     def test_the_wait_stops_at_the_cap(self) -> None:
         """Four lanes at 40 mph with 30,000 a day at rush hour is minutes by the formula;
         the wait stops at 30 s (NCHRP 562 Table 8: above 30 s risk-taking is likely)."""
-        assert d.gap_wait_s(30000, 4, 40.0, "weekday_rush") == d.GAP_WAIT_MAX_S
-        assert d.gap_wait_s(10**7, 8, 55.0, "weekday_rush") == d.GAP_WAIT_MAX_S
-        assert d.gap_wait_s(20000, 4, 25.0, "weekday_rush") < d.GAP_WAIT_MAX_S
+        assert gap(30000, 4, 40.0, "weekday_rush") == d.GAP_WAIT_MAX_S
+        assert gap(10**7, 8, 55.0, "weekday_rush") == d.GAP_WAIT_MAX_S
+        assert gap(20000, 4, 25.0, "weekday_rush") < d.GAP_WAIT_MAX_S
 
     def test_a_one_way_road_is_crossed_in_its_own_lanes(self) -> None:
-        assert d.crossing_lanes(Road(4, lanes=2)) == 4
-        assert d.crossing_lanes(Road(4, lanes=2, oneway=True)) == 2
-        assert d.crossing_lanes(Road(3)) == 2
+        assert m.lanes_crossed(Road(4, lanes=2)) == 4
+        assert m.lanes_crossed(Road(4, lanes=2, oneway=True)) == 2
+        assert m.lanes_crossed(Road(3)) == 2
 
 
 class TestOneBusyRoad:
@@ -1183,28 +1191,33 @@ class TestOneBusyRoad:
         assert run.seconds == d.STOP_SIGN_S
 
     def test_a_fast_wide_residential_road_is_a_big_road(self) -> None:
-        """Residential by class, 35 mph, two lanes each way, level 4, no count. Before: an
-        8 s stop, 4 s in the District. After: the typical big road's wait."""
-        wide = {HERE: road(4, lanes=2, speed_mph=35.0)}
+        """Residential by class, 40 mph, two lanes each way, the map's level 4, no count.
+        Before: an 8 s stop, 4 s in the District. After: the typical big road's wait, by
+        the junction model's crossing level (Furth's crossing table: 4 at 40 mph). At
+        35 mph that table says 3, a busy road and not a big one."""
+        wide = {HERE: road(4, lanes=2, speed_mph=40.0)}
         (run,) = d.waits([junction(*CROSS_STREET)], given_way=wide)
         assert run.seconds == PRIMARY_GIVE_WAY_S
+        slower = {HERE: road(4, lanes=2, speed_mph=35.0)}
+        (run,) = d.waits([junction(*CROSS_STREET)], given_way=slower)
+        assert run.seconds == 4.5
 
     @pytest.mark.parametrize(
         ("level", "typical"),
         [(5, "big"), (4.5, "big"), (4, "big"), (3.5, "busy"), (2.5, "busy"), (2, None), (1, None)],
     )
     def test_without_a_count_the_level_picks_the_typical_road(self, level, typical) -> None:
-        """The junction model's own two lines: LTS 4 and up (`intersections.severe`), and
-        busy from 2.5 (`Road.busy`)."""
+        """A road the model could not read by its traffic, by the map's level: the crossing
+        level's top, 4 (`intersections.crossing_level`), and busy from 2.5 (`Road.busy`)."""
         (run,) = d.waits([junction(*BUSY)], given_way={HERE: road(level)})
         roads = {"big": d.TYPICAL_BIG_ROAD, "busy": d.TYPICAL_BUSY_ROAD}
-        wait = d.gap_wait_s(*roads[typical]) if typical else 0.0
+        wait = d.gap_wait_s(roads[typical]) if typical else 0.0
         assert run.seconds == round(d.STOP_SIGN_S + wait, 1)
 
     def test_a_road_the_model_could_not_rate_falls_back_to_its_class(self) -> None:
         """Its count, where it has one, still times the wait."""
         (run,) = d.waits([junction(*BUSY)], given_way={HERE: Road(None, aadt=9000)})
-        assert run.seconds == round(d.STOP_SIGN_S + d.gap_wait_s(9000, 2), 1)
+        assert run.seconds == round(d.STOP_SIGN_S + gap(9000, 2), 1)
         (run,) = d.waits([junction(*BUSY)], given_way={HERE: Road(None)})
         assert run.seconds == PRIMARY_GIVE_WAY_S
 
@@ -1223,12 +1236,12 @@ class TestOneBusyRoad:
         assert d.road_given_way(unknown) is None
 
     def test_the_traffic_reading_is_the_junction_models(self) -> None:
-        """A road the map rates 2 for its bike lane, 35 mph and two lanes each way, is
+        """A road the map rates 2 for its bike lane, 40 mph and two lanes each way, is
         level 4 to cross (`intersections.by_traffic`)."""
         at = {"m": 0.0, "lon": -77.0, "lat": 38.9, "incoming": Road(1), "outgoing": Road(1)}
-        laned = Road(2, lanes=2, speed_mph=35.0)
+        laned = Road(2, lanes=2, speed_mph=40.0)
         found = d.road_given_way(Junction(movement=Movement.STRAIGHT, crossed=(laned,), **at))
-        assert found.level == 4.0
+        assert found.cross == 4.0
         (run,) = d.waits([junction(*CROSS_STREET)], given_way={HERE: found})
         assert run.seconds == PRIMARY_GIVE_WAY_S
 
@@ -1255,14 +1268,3 @@ class TestTimeOfDay:
         for when in ("night", "weekday_rush"):
             (run,) = d.waits([junction(*CROSS_STREET)], when=when)
             assert run.ranked_s == run.seconds == d.STOP_SIGN_S
-
-    def test_urban_is_the_census_flag_of_the_road_not_the_city_limits(self) -> None:
-        """`junction_urban`, the one rule for a ride-time factor's "urban" (for the signal
-        figures). Silver Spring: outside the four cities, inside a Census urban area."""
-        assert d.junction_urban(True, in_city=False) is True
-        assert d.junction_urban(False, in_city=True) is False
-        # Not known: the city limits stand in, and with neither it is not urban, as the
-        # junction model reads an unknown flag.
-        assert d.junction_urban(None, in_city=True) is True
-        assert d.junction_urban(None, in_city=False) is False
-        assert d.junction_urban(None) is False

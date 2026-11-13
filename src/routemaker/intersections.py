@@ -138,10 +138,10 @@ MAP_LEVEL_MAX = 4.0
 # v the conflicting flow in vehicles a second; with a median refuge v is one direction's
 # flow and each half is crossed on its own. 12 ft lanes and a 3 s start-up are the
 # report's; the crossing speed is the Default ride's 11.2 mph (16.4 ft/s) in place of a
-# walker's; above 35 mph the flow is divided by 0.7 (worksheet 2). The SAME formula and
-# figures as the wait shown to the rider (`routemaker.junction_delay.gap_wait_s`, which is
-# capped at 30 s as a time; this one is not, since "rarely openings" is the point). ONE
-# definition is wanted: that module can import this one's.
+# walker's; above 35 mph the flow is divided by 0.7 (worksheet 2). ONE definition: the
+# wait shown to the rider is this function too (`routemaker.junction_delay.gap_wait_s`,
+# which caps it at 30 s as a time; here it is not capped, since "rarely openings" is the
+# point).
 GAP_LANE_FT = 12.0
 GAP_STARTUP_S = 3.0
 GAP_SPEED_FTS = 16.4

@@ -177,10 +177,14 @@ Seconds at the junction (3 s plus the wait):
 <details>
 <summary>Full reasoning and citations (for review)</summary>
 
-Code: `src/routemaker/junction_delay.py`, functions `gap_wait_s` (the one function),
-`give_way_wait`, `road_given_way`, `crossing_lanes`; constants `CROSSING_LANE_FT`,
-`CROSSING_STARTUP_S`, `CROSSING_SPEED_FTS`, `GAP_HIGH_SPEED_MPH`, `GAP_HIGH_SPEED_FLOW`,
-`GAP_WAIT_MAX_S`, `HOUR_SHARE`, `TYPICAL_BIG_ROAD`, `TYPICAL_BUSY_ROAD`.
+Code: the one formula is `intersections.gap_delay_s` in
+`src/routemaker/intersections.py` (constants `GAP_LANE_FT`, `GAP_STARTUP_S`,
+`GAP_SPEED_FTS`, `GAP_HIGH_SPEED_MPH`, `GAP_HIGH_SPEED_FLOW`, `HOUR_SHARE`; lanes by
+`lanes_crossed`), which also prices the junction's stress. In
+`src/routemaker/junction_delay.py`: `gap_wait_s` (that wait capped at `GAP_WAIT_MAX_S`),
+`give_way_wait`, `road_given_way`; constants `BIG_ROAD_LEVEL`, `TYPICAL_BIG_ROAD`,
+`TYPICAL_BUSY_ROAD`. Across a divided road the wait is two waits, one for each
+direction's traffic.
 
 **The formula (literature).** Fitzpatrick et al. (2006), TCRP Report 112 / NCHRP Report
 562, Appendix A, worksheets 1 and 2, step 4, which reprints the Highway Capacity Manual
@@ -244,9 +248,9 @@ crossing there. Now:
    class and no level is needed: a quiet street's traffic gives a wait near zero.
 2. Where it has no count but the junction model has read it
    (`core.junctions.events_of` fills `given_way`), its traffic level as that model reads
-   it (`intersections.by_traffic`) picks a typical road, using that model's own two
-   lines: level 4 and up (`intersections.severe`) is the typical big road, 2.5 to 3.5
-   (`Road.busy`) the typical busy road, and anything calmer has no wait.
+   it (`intersections.by_traffic`, `crossing_level`) picks a typical road: crossing
+   level 4 (`BIG_ROAD_LEVEL`) is the typical big road, any other road with a price to
+   cross (`Road.busy`) the typical busy road, and anything calmer has no wait.
 3. Otherwise the map class picks it: trunk and primary big, secondary and tertiary busy.
    This is the case for junctions the model did not read, and for the transit ride types'
    candidate rides.
@@ -378,7 +382,7 @@ flowchart LR
 <details>
 <summary>Full reasoning and citations (for review)</summary>
 
-Code: `junction_delay.HOUR_SHARE`, read by `junction_delay.gap_wait_s`. The settings and
+Code: `intersections.HOUR_SHARE`, read by `intersections.gap_delay_s`. The settings and
 their hours are in `src/routemaker/ridetime.py` (night 9 PM to 7 AM; rush Monday to
 Friday 7 to 10 AM and 4 to 7 PM).
 
@@ -400,13 +404,10 @@ deleted when the two branches meet.
 where the crossed road lies in a Census urban area (`intersections.Road.urban`, the
 segment table's `road_urban`). #1240's wait factor used the limits of four cities
 instead, so a crossing in Silver Spring took x0.5 from one model and x0.85 from the
-other. `junction_delay.junction_urban(road_urban, in_city)` is the one rule for any
-ride-time factor in the wait model: the Census flag of the road where it is known; the
-city limits only where it is not; otherwise not urban, as the stress model reads an
-unknown flag. Nothing calls it today: junctions without a signal take the hour through
+other. `intersections.is_urban(road)` is the one definition: the Census flag of the
+road. Nothing calls it for a wait today: junctions without a signal take the hour through
 traffic, and #1240 settled on one measured factor for city signals and none for suburban
-ones. It stays as the single place to ask the question if a factor by place returns.
-`intersections.py` has no function of its own for this yet.
+ones.
 
 **Signals**: see "Signals" above for #1240's measured ride-time factor.
 

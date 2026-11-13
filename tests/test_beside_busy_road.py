@@ -233,15 +233,13 @@ def test_the_calibration_matches_the_old_twenty_points_a_mile():
 
 
 def test_a_quiet_crossing_point_is_priced_on_the_junction_models_scale():
-    from routemaker import intersections
-
     cost = facility.crossing_point_ft
-    # The model's unsignalled LTS 3 path crossing (800 ft), in proportion to the level.
-    at_3 = intersections.STOPPED_CROSSING_FT[3] * intersections.MARKED_CROSSING_FACTOR
-    assert cost(3.0) == at_3 == 800.0
+    # An unsignalled LTS 3 path crossing (800 ft: the junction model's figure until
+    # 2026-11-13, kept as the side path's own), in proportion to the level.
+    assert cost(3.0) == facility.MOUTH_AT_BUSY_FT == 800.0
     assert cost(1.5) == 400.0
     assert cost(2.0) == pytest.approx(533.3, abs=0.1)
-    # At a signal, its signalised LTS 3 figure (150 ft) in the same proportion.
+    # At a signal, `SIGNALISED_MOUTH_AT_BUSY_FT` (150 ft) in the same proportion.
     assert cost(2.0, signal=True) == 100.0
     assert cost(1.5, signal=True) == 75.0
 

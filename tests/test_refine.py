@@ -423,7 +423,7 @@ class TestTurns:
 
 
 class TestOneUnit:
-    """Report 3.6: junction stress was in feet, the red surcharge and the waits in seconds of
+    """Report 3.6: junction stress was in feet, the waits (and then a red surcharge) in seconds of
     riding, the Avoid charges and turns in the router's cost seconds. `quiet_ft` is the one
     conversion and `Analysis.terms_ft` says every term of the score in feet of quiet riding."""
 
@@ -431,7 +431,7 @@ class TestOneUnit:
         assert refine.REFERENCE_SPEED_KMH == 18.0
         assert refine.quiet_ft(100.0, refine.FEET) == 100.0
         assert refine.quiet_ft(100.0, refine.METRES) == pytest.approx(328.1, abs=0.1)
-        # The owner's "ride 10 minutes more" (the red surcharge): 9,843 ft, 1.86 mi.
+        # Ten minutes of riding (the red surcharge until 2026-11-13): 9,843 ft, 1.86 mi.
         assert refine.quiet_ft(600.0, refine.RIDE_S) == pytest.approx(9842.5, abs=1.0)
         # The Avoid entry's 1,800 cost seconds: 2.54 mi.
         assert refine.quiet_ft(1800.0, refine.COST_S) / 5280 == pytest.approx(2.54, abs=0.01)
@@ -449,15 +449,18 @@ class TestOneUnit:
         read = analysis("a", "1" * 30 + "3" * 10, events=[event(500.0, 3300.0)])
         read.unpriced_turns, read.graph_gap_m = 3, 250.0
         read.junction_delay_s = 40.0
+        read.junction_over_cap_m = 120.0
         terms = read.terms_ft(ctx)
         assert set(terms) == {
             "router", "stress", "junctions", "hills", "lts2", "avoid_junctions", "waits",
-            "red_surcharge", "turns", "graph_gap",
+            "junction_cap", "turns", "graph_gap",
         }  # fmt: skip
         total_m = sum(terms.values()) / refine.FEET_PER_METRE
         assert total_m * ctx.quiet_cost == pytest.approx(read.score(ctx))
         assert terms["turns"] == pytest.approx(3 * TURN_S / QUIET_COST * refine.FEET_PER_METRE)
         assert terms["graph_gap"] == pytest.approx(250.0 * refine.FEET_PER_METRE)
+        # What one junction was charged twice or past the cap comes off again.
+        assert terms["junction_cap"] == pytest.approx(-120.0 * refine.FEET_PER_METRE)
 
 
 class TestAfterARatingEdit:

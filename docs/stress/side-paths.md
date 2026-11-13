@@ -205,10 +205,11 @@ flowchart TD
 
 - Code: `facility.side_path_crossings` finds the points; `facility.junction_priced` says
   which are the junction model's; `facility.crossing_point_ft` prices the rest;
-  `stress.CROSSING_FT_PER_HALF_STEP` turns feet per mile into half steps. The junction
-  model's values are read, not copied: `intersections.STOPPED_CROSSING_FT`,
-  `intersections.MARKED_CROSSING_FACTOR`, `intersections.SIGNALISED_CROSSING_FT`,
-  `intersections.BUSY_TIER`. Their own sources are in [intersections.md](intersections.md).
+  `stress.CROSSING_FT_PER_HALF_STEP` turns feet per mile into half steps. The mouth
+  prices are `facility.MOUTH_AT_BUSY_FT` (800 ft) and `facility.SIGNALISED_MOUTH_AT_BUSY_FT`
+  (150 ft), our default, unmeasured: the junction model's figures until 2026-11-13, kept
+  when that model moved to Broach's prices so that side-path levels did not move. The
+  busy line is `intersections.BUSY_TIER` ([intersections.md](intersections.md)).
 - **The owner's choice, 2026-11-12:** "If there are lots of intersections, especially
   sliplanes it could get an even larger bump", and "it's not always number of crossings,
   but also how bad they are." The points in the level are weighted by the crossed way's

@@ -132,11 +132,18 @@ only that reading (and the signal figures' "stop sign across the same road").
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, replace
 
-from .intersections import MERGE_WITHIN_M, Junction, Movement, Road, by_traffic, severe
+from .intersections import (
+    MERGE_WITHIN_M,
+    Junction,
+    Movement,
+    Road,
+    by_traffic,
+    crossing_level,
+    gap_delay_s,
+)
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
 
 # What `delay_at` answers where the rider gives way to a quiet street: since 2026-11-13 a
@@ -362,47 +369,30 @@ def _stop(busiest_rank: int, rolls: bool) -> float:
 # District's stop-as-yield law (Safer Streets Amendment Act of 2022, D.C. bill B24-0673)
 # makes lawful what the figure already describes. It was 8 s, and 4 s in the District.
 STOP_SIGN_S = 3.0
-# The wait for a gap in a road's traffic (`gap_wait_s`): the Highway Capacity Manual 2000's
-# formula for a pedestrian at an unsignalised crossing (equations 18-17 and 18-21), as
-# printed in Fitzpatrick et al., "Improving Pedestrian Safety at Unsignalized Crossings",
-# TCRP Report 112 / NCHRP Report 562 (2006), Appendix A, worksheets 1 and 2, step 4:
-# critical gap tc = L / S + ts, average delay d = (e^(v tc) - v tc - 1) / v, with v the
-# road's flow in vehicles a second, both directions. Literature, and so are the lane width
-# (the report's Table 11 assumes 12 ft) and the start-up and clearance time (its
-# worksheets: "3 s is suggested in the Highway Capacity Manual"). The one figure that is a
-# rider's, not a walker's, is the crossing speed S: the Default ride's own 18 km/h
-# (11.2 mph, 16.4 ft/s; Valhalla's Hybrid, `core.refine`), in place of the report's
-# 3.5 ft/s walk. Nothing is fitted; the owner's rides check it (docs/stress/junction-waits.md).
-CROSSING_LANE_FT = 12.0
-CROSSING_STARTUP_S = 3.0
-CROSSING_SPEED_FTS = 16.4
-# Above this speed the flow is divided by GAP_HIGH_SPEED_FLOW: the report's worksheet 2
-# ("exceeds 35 mph"), step 4, v = (V / 0.7) / 3600. Literature.
-GAP_HIGH_SPEED_MPH = 35.0
-GAP_HIGH_SPEED_FLOW = 0.7
+# The wait for a gap in a road's traffic is the junction model's ONE function,
+# `intersections.gap_delay_s`: the Highway Capacity Manual 2000's formula for a pedestrian
+# at an unsignalised crossing as NCHRP Report 562 prints it (Appendix A, worksheets 1 and
+# 2, step 4), fed the road's count, lanes and speed and the hour's share of the day's
+# traffic (`intersections.HOUR_SHARE`); the figures and their sources are there. The
+# junction's stress price weighs that wait uncapped (`intersections.gap_ft`); as a TIME it
+# is capped here.
+#
 # The longest wait counted. The formula takes cars arriving at random and no driver
 # yielding, so on a wide busy road it runs to minutes; above 30 s of delay the manual's
 # own table rates the likelihood of taking a short gap "high" (NCHRP 562, Table 8, levels
 # of service E and F). The threshold is literature; using it as the cap is our default,
 # unmeasured.
 GAP_WAIT_MAX_S = 30.0
-# The share of a day's traffic that passes in one hour of each ride-time setting
-# (`routemaker.ridetime`; None: no setting, read as weekday off-peak). Our default,
-# unmeasured: a typical urban day, to be replaced by hourly counts where a region has
-# them. The hour reaches these junctions through this alone.
-HOUR_SHARE = {
-    None: 0.055,
-    "night": 0.015,
-    "weekday_rush": 0.08,
-    "weekday_offpeak": 0.055,
-    "weekend": 0.05,
-}
-# The road read where its count is not known, as (vehicles a day, lanes crossed): a big
-# road (LTS 4 or Avoid by its traffic, `intersections.severe`; else trunk or primary by
-# class) and any other busy road (`intersections.Road.busy`; else secondary or tertiary by
+# The crossing level (`intersections.crossing_level`) from which a road with no count is
+# read as the typical big road; any other road with a price to cross (`Road.busy`) is the
+# typical busy one. Level 4 is the junction model's top (Furth's crossing table, Broach's
+# 20,000 a day).
+BIG_ROAD_LEVEL = 4.0
+# The road read where its count is not known: a big road (crossing level 4 by its traffic;
+# else trunk or primary by class) and any other busy road (else secondary or tertiary by
 # class). Our default, unmeasured; a count replaces it wherever one reaches the road.
-TYPICAL_BIG_ROAD = (20_000, 4)
-TYPICAL_BUSY_ROAD = (8_000, 2)
+TYPICAL_BIG_ROAD = Road(tier=4, lanes=2, aadt=20_000)
+TYPICAL_BUSY_ROAD = Road(tier=3, lanes=1, aadt=8_000)
 
 
 def road_given_way(junction: Junction) -> Road | None:
@@ -419,54 +409,11 @@ def road_given_way(junction: Junction) -> Road | None:
     return max(known, key=lambda road: (road.level, road.aadt or 0))
 
 
-def crossing_lanes(road: Road) -> int:
-    """The lanes a rider crosses in one go: a one-way road's, or both directions' of a
-    two-way one (`Road.lanes` is per direction; one where the map has none)."""
-    return (road.lanes or 1) * (1 if road.oneway else 2)
-
-
-def gap_wait_s(
-    aadt: float, lanes: int, speed_mph: float | None = None, when: str | None = None
-) -> float:
-    """The seconds a rider is expected to wait for a gap in a road's traffic where no
-    signal stops it: the published formula (see CROSSING_LANE_FT), at most GAP_WAIT_MAX_S.
-    `aadt`: the road's vehicles a day, both directions; `lanes`: the lanes crossed in one
-    go (`crossing_lanes`); `speed_mph`: its speed, where known; `when`: the ride-time
-    setting (HOUR_SHARE). ONE function for every such junction: a stop sign against a busy
-    road, a give-way, a path coming out, nothing mapped."""
-    hourly = max(aadt, 0.0) * HOUR_SHARE.get(when, HOUR_SHARE[None])
-    if speed_mph is not None and speed_mph > GAP_HIGH_SPEED_MPH:
-        hourly /= GAP_HIGH_SPEED_FLOW
-    flow = hourly / 3600.0
-    if flow <= 0.0:
-        return 0.0
-    critical = max(lanes, 1) * CROSSING_LANE_FT / CROSSING_SPEED_FTS + CROSSING_STARTUP_S
-    exposure = flow * critical
-    if exposure > 20.0:
-        # Far past the cap, and before the exponential overflows.
-        return GAP_WAIT_MAX_S
-    return min((math.exp(exposure) - exposure - 1.0) / flow, GAP_WAIT_MAX_S)
-
-
-def junction_urban(road_urban: bool | None, in_city: bool | None = None) -> bool:
-    """Whether a junction is urban, for a ride-time factor (`intersections.time_factor`'s
-    `urban`): ONE rule for this module. Nothing here calls it, since junctions with no
-    signal take the hour through their traffic (`gap_wait_s`); it is for the signal
-    figures (draft PR #1240's hour factor), which had read "urban" as the city limits.
-
-    It is the junction model's own definition, the Census urban area flag of the road
-    crossed or given way to (`intersections.Road.urban`, the segment table's
-    `road_urban`), so one crossing takes one night factor in both models. Only where
-    that flag is not known (a junction the model did not read) does `in_city` stand in:
-    inside a major city's limits (`core.city_limits`) is urban, since those lie inside
-    Census urban areas. Not known either way: not urban, as the junction model reads an
-    unknown flag (the smaller reduction at night).
-
-    `intersections` has no function of its own for this yet: the definition there is the
-    `Road.urban` field as `intersections.assess` passes it to `time_factor`."""
-    if road_urban is not None:
-        return road_urban
-    return bool(in_city)
+def gap_wait_s(road: Road, when: str | None = None) -> float:
+    """The seconds a rider is expected to wait for a gap in `road`'s traffic where no
+    signal stops it, as a time: the junction model's wait (`intersections.gap_delay_s`),
+    at most GAP_WAIT_MAX_S. 0 where the road has no count."""
+    return min(gap_delay_s(road, when), GAP_WAIT_MAX_S)
 
 
 def give_way_wait(reading: float, road: Road | None = None, when: str | None = None) -> float:
@@ -480,18 +427,16 @@ def give_way_wait(reading: float, road: Road | None = None, when: str | None = N
     has none it is the typical big or busy road's (TYPICAL_BIG_ROAD, TYPICAL_BUSY_ROAD),
     by the road's traffic level where the model knows it and by its class where not; a
     quiet street has no wait for a gap."""
-    speed = None
-    if road is not None:
-        speed = road.speed_mph if road.speed_mph is not None else road.default_speed_mph
     if road is not None and road.aadt:
-        traffic = (road.aadt, crossing_lanes(road))
+        traffic = road
     elif road is not None and road.tier is not None:
-        traffic = TYPICAL_BIG_ROAD if severe(road) else TYPICAL_BUSY_ROAD if road.busy else None
+        big = crossing_level(road) >= BIG_ROAD_LEVEL
+        traffic = TYPICAL_BIG_ROAD if big else TYPICAL_BUSY_ROAD if road.busy else None
     else:
         traffic = _TYPICAL_BY_READING.get(reading)
     if traffic is None:
         return STOP_SIGN_S
-    return round(STOP_SIGN_S + gap_wait_s(*traffic, speed, when), 1)
+    return round(STOP_SIGN_S + gap_wait_s(traffic, when), 1)
 
 
 # `delay_at`'s answers that mean a busy road, by its class: trunk or primary, and
