@@ -217,7 +217,7 @@ finish() { # word message
 		# The last pass that did something about a release, kept past the idle passes after it.
 		case "$word" in deployed | rolled-back | failed | broken | held | interrupted) [ -z "$report" ] || cp "$report" "$cd_dir/last-release-report.txt" ;; esac
 		notify "$word" "$*"
-		rider_status done
+		rider_status "done"
 		# A held, waiting or failed newer tag leaves the deployed one live: its notes are still due.
 		# A release shipped by hand is nearly always followed by such a tag.
 		case "$word" in deployed | up-to-date | held | waiting | failed) release_notes "$cd_dir/bin/alert.sh" ;; esac
@@ -235,7 +235,7 @@ rider_status() { # updating | done
 	if [ -x "$cd_dir/bin/alert.sh" ]; then
 		"$cd_dir/bin/alert.sh" status "$1" >/dev/null 2>&1 </dev/null || return 0
 	fi
-	[ "$1" != done ] || rm -f "$cd_dir/rider-updating"
+	[ "$1" != "done" ] || rm -f "$cd_dir/rider-updating"
 }
 # The owner's alert channel (alert.sh, review OPS-1): a result that needs the owner is posted once
 # (again once a day while it lasts), a deploy always. alert.sh posts nothing without a webhook and
