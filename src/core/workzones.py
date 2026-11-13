@@ -48,6 +48,8 @@ from datetime import UTC, datetime
 from routemaker import workzones as rules
 from routemaker.lang import t
 
+from . import feed_sense
+
 logger = logging.getLogger(__name__)
 
 KEY = "workzones"  # its row in `bikeshare_feed_cache`: BikeshareFeedCache.WORKZONES
@@ -125,16 +127,22 @@ def http_get(url: str, timeout: float) -> bytes:
     return body
 
 
-def read_feed(source: str, url: str, fetch: Fetch = http_get, sleep=time.sleep) -> list[rules.Zone]:
-    """One feed's zones, with up to `TRIES` tries."""
+def read_feed(
+    source: str, url: str, fetch: Fetch = http_get, sleep=time.sleep, now: datetime | None = None
+) -> tuple[list[rules.Zone], str | None]:
+    """One feed's zones, with up to `TRIES` tries, and why the feed's own update date says it
+    has stopped being fed (`feed_sense.frozen`), or None."""
     last: Exception | None = None
     for attempt in range(TRIES):
         if attempt:
             sleep(RETRY_WAIT_S * attempt)
         try:
-            return rules.parse_feed(json.loads(fetch(url, TIMEOUT_S)), source)
+            document = json.loads(fetch(url, TIMEOUT_S))
+            zones = rules.parse_feed(document, source)
         except (FeedError, ValueError) as error:
             last = error
+            continue
+        return zones, feed_sense.frozen(document, now or _now())
     raise FeedError(f"{source}: {last}")
 
 
@@ -309,9 +317,10 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
     def out_of_time() -> bool:
         return time.monotonic() >= end
 
+    doubted = []
     for source, url in wanted.items():
         try:
-            zones = read_feed(source, url, fetch, sleep)
+            zones, frozen = read_feed(source, url, fetch, sleep, now())
         except FeedError as error:
             logger.warning("work zones: the %s feed could not be read (%s)", source, error)
             kept = feeds.get(source) or {}
@@ -323,13 +332,33 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
         zones = [zone for zone in zones if not rules.on_interstate(zone)]
         zones, placed = place(zones, (feeds.get(source) or {}).get("placed"), now(), out_of_time)
         zones = without_barred(zones)
+        # A feed that still answers but has stopped making sense (`core.feed_sense`): a read of
+        # none from a usually busy feed is not taken while its last copy is in use (not a small
+        # share: zones in force now can fall a long way when a night's work ends); a feed its
+        # publisher stopped updating is taken but flagged. Both fail the run.
+        kept = feeds.get(source) or {}
+        kept_at = rules._when(kept.get("read_at"))
+        why = None
+        if kept.get("zones") and kept_at and (now() - kept_at).total_seconds() <= DROP_AFTER_S:
+            why = feed_sense.doubt(kept.get("counts"), len(zones), shrink=False)
+        if why is not None:
+            logger.warning("work zones: the %s feed %s; its last copy kept", source, why)
+            feeds[source] = {**kept, "failed_at": now().isoformat()}
+            said.append(f"{source} {why}")
+            doubted.append(source)
+            continue
         feeds[source] = {
             "read_at": now().isoformat(),
             "failed_at": None,
             "zones": [zone.to_json() for zone in zones],
             "placed": placed,
+            "counts": feed_sense.remember(kept.get("counts"), len(zones), shrink=False),
         }
         said.append(f"{source} {len(zones)} zones")
+        if frozen is not None:
+            logger.warning("work zones: the %s feed is %s", source, frozen)
+            said.append(f"{source} {frozen}")
+            doubted.append(source)
     BikeshareFeedCache.objects.update_or_create(
         key=KEY,
         defaults={"payload": {"feeds": feeds}, "fetched_at": now(), "failed_at": None},
@@ -341,10 +370,13 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
         when = rules._when(feeds[source].get("read_at"))
         if when is None or (now() - when).total_seconds() > STALE_AFTER_S:
             stale.append(source)
+    problems = []
     if stale:
-        raise FeedError(
-            f"{line}; no good read in {STALE_AFTER_S / 60:.0f} minutes: {', '.join(stale)}"
-        )
+        problems.append(f"no good read in {STALE_AFTER_S / 60:.0f} minutes: {', '.join(stale)}")
+    if doubted:
+        problems.append(f"read did not make sense: {', '.join(doubted)}")
+    if problems:
+        raise FeedError(f"{line}; {'; '.join(problems)}")
     return line
 
 
