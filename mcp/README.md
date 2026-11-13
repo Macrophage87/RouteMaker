@@ -43,6 +43,30 @@ century".
 | `draft_route_post` | Site connector, instance admins only: writes a Featured routes post as a draft (title, about, who it's for, season, highlighted sections with their miles) around a draft route or a line to follow, for an admin to publish in the admin. Sending the same slug again with `replace` rewrites the draft. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
+`plan_route` also answers `why` on bike rides up to 25 mi in straight lines (our default,
+unmeasured): the route against the most direct one between the same points (the Fast ride
+type's, planned once more), in our own ratings: how many miles and minutes longer, how many
+fewer busy miles (LTS 3 and up), and up to three busy roads it leaves with what it rides instead
+("leaves Georgia Avenue (LTS 4) for the Metropolitan Branch Trail"). It is left out on a loop, a
+followed line, Fast, Mass Ride and the transit, bikeshare, walk and run trips, and when the call
+has no time left for one more plan.
+
+### Ready-made asks (prompts)
+
+An assistant app that lists MCP prompts offers four starters a person can pick: **Plan a
+commute** (start, end, when you leave), **Family trail ride** (start, an end or none for a ride
+back, about how far), **Loop of N miles** (start, miles, whether to stay near Metro) and **Bike
+plus Metro** (start, end, when you leave). Each becomes one ask that names the tools and settings
+that fit, and asks for a short answer. The server's instructions carry a short playbook beside
+them: which ride type for which ask, and what to say after a plan.
+
+### Calls sent together
+
+Assistants often send several calls at once. Each rider has one place search running at a time
+on the site, so a search that finds another running waits its turn (the Retry-After, up to 8 s in
+all, our default, unmeasured) instead of being refused. Past that, the answer says
+`retry_after_s` and that nothing is wrong with the request.
+
 ### The route view: a map and graphs in the chat
 
 In an assistant app that shows MCP Apps (the `io.modelcontextprotocol/ui` extension; Claude does),
@@ -242,5 +266,6 @@ argument is the path to `routemaker_mcp.py`, and the settings above are environm
 - A route planned for the first time in the app may differ a little from the one saved here if
   live closures or the map change in between: the saved route keeps the line exactly as planned.
 - Tests: `tests/test_mcp_server.py` (the protocol, the Metro check, the loop builder against a
-  stand-in planner), `tests/test_mcp_route_view.py` (the route view) and
+  stand-in planner), `tests/test_mcp_connector_guidance.py` (calls sent together, the prompts and
+  `why`), `tests/test_mcp_route_view.py` (the route view) and
   `tests/test_connector.py` (the site's connector, saving and posts).

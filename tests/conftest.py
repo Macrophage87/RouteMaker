@@ -23,8 +23,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.test_settings")
 
 
-def pytest_configure() -> None:
+def pytest_configure(config) -> None:
     import django
+
+    config.addinivalue_line(
+        "markers", "why_plans: plan_route plans its direct route for `why` (see _no_why_plans)"
+    )
 
     django.setup()
 
@@ -110,6 +114,20 @@ def segment_schemas():
     yield live, staging
     for name in names:
         drop_segment_schema(name)
+
+
+@pytest.fixture(autouse=True)
+def _no_why_plans(request, monkeypatch):
+    """The connector's plan_route plans one more route, the Fast ride type's, for its `why`
+    (mcp/routemaker_mcp.py WHY_PRESETS). Most connector tests count the plans sent and read the
+    last one, so it is left out unless a test is marked `why_plans`
+    (tests/test_mcp_connector_guidance.py tests it)."""
+    if request.node.get_closest_marker("why_plans") is None:
+        # A test file may load its own copy of the module (its global `mcp`).
+        for module in (sys.modules.get("routemaker_mcp"), getattr(request.module, "mcp", None)):
+            if module is not None and hasattr(module, "WHY_PRESETS"):
+                monkeypatch.setattr(module, "WHY_PRESETS", ())
+    yield
 
 
 @pytest.fixture(autouse=True)

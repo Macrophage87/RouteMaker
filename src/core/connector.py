@@ -39,6 +39,7 @@ import hashlib
 import importlib.util
 import json
 import logging
+import math
 import re
 import secrets
 import sys
@@ -186,10 +187,11 @@ class InProcessApi:
                 " points, a lower stress setting, or plan it in two halves."
             )
         if status in (429, 503):
-            raise self._module.ToolError(
-                f"the site is busy ({message}); wait {response.get('Retry-After', 'a few')}"
-                " seconds and try again"
-            )
+            try:
+                retry = float(response.get("Retry-After") or 5)
+            except (TypeError, ValueError):
+                retry = 5.0
+            raise self._module.Busy("The route planner", math.ceil(retry))
         raise self._module.ToolError(self._module.refusal(status, message))
 
     def geocode(self, query, near=None):
@@ -207,7 +209,9 @@ class InProcessApi:
         started = routing.clock()
         if self._started is not None:
             started = min(started, self._started + CALL_BUDGET_S - nearest.NEAREST_BUDGET_S)
-        status, payload, _ = self._request("POST", "/api/nearest", body, started=started)
+        status, payload, _ = self._module.patient_request(
+            self, "POST", "/api/nearest", body, what="Riding times", started=started
+        )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise self._module.ToolError(
