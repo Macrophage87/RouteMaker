@@ -3200,7 +3200,7 @@ def long_calm_for(
     """Whether a plan is a long calm plan (OWNER-DECISIONS 256): the top of the
     stress slider on a ride type that plans past the calm search's working span
     leg by leg (`Preset.long_calm`, Trailmaxxing), for a start and an end and
-    stops that are past `refine.REFINE_MAX_SPAN_M` of straight line and not a long
+    stops that are past `refine.LONG_CALM_SPAN_M` of straight line and not a long
     ride (past the confirm span, which has its own rules). The Hills slider seeking
     climbs does not change it: at the top of the stress slider seeking hills keeps
     the stress order and the target (OWNER-DECISIONS 298(3)). Not with trails off
@@ -3215,7 +3215,7 @@ def long_calm_for(
         and presets.maxcalm_for(stress)
         and len(points) >= 2
         and not long_ride
-        and straight_span_m(points) > refine.REFINE_MAX_SPAN_M
+        and straight_span_m(points) > refine.LONG_CALM_SPAN_M
     )
 
 

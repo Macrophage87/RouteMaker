@@ -7234,6 +7234,44 @@ count the harness's tile matching. Rides are weekday off-peak (the standard grap
 and the harness runs. "Live" is the deployed API (47c2f52, graph 20261003T142804Z); "old code" is
 47c2f52 in the same harness.
 
+## Long rides get the calm search (backlog 2026-11-12, v0.27.0)
+
+Until v0.27.0 the calm search (and, below the top of the slider, the search for a way round red
+crossings) ran only on plans up to 19 mi (30 km) of straight line, Trailmaxxing at the top
+excepted, which plans leg by leg past that (`refine_long`). Every other ride type past it got the
+router's first route plus the red-crossing pass, and the note "The calmer-route search does not
+run on trips over 19 mi". The limit came from September: on the live router a cold 42-48 km
+request took 33 s. The owner rides long (DC to Baltimore, Purcellville to Harpers Ferry), so the
+rides the app is named for were the ones it took least care over.
+
+What changed: the search in one piece now runs up to `refine.REFINE_MAX_SPAN_M` = 60 km (37 mi)
+of straight line, every ride type, inside the ordinary plan's 40 s budget. Its rounds stop at the
+deadline as on any plan (`_refine_limit`'s "time", `REFINE_ROUND_MIN_S`), so a trip that is slow
+to route gets fewer rounds, never a late answer, and the note then says the search ran out of
+time. No new slot, no new budget: it holds the ordinary routing slot it already held. A
+Trailmaxxing plan at the top still goes leg by leg past 30 km (`refine.LONG_CALM_SPAN_M`, kept
+where OWNER-DECISIONS 256 put it). Past 60 km and up to the long-ride span (93 mi, 150 km) other
+ride types keep the router's route and the red-crossing pass, as before. The hills slider's avoid
+half keeps its own 25 km (`routing.AVOID_MAX_SPAN_M`).
+
+Why 60 km: the PC's scorecard runs of 2026-11-12 (the v0.26.0 run and the four fewer-turns runs,
+five runs of each plan; seconds from the route-check service, whole /api/route answers):
+
+| Trip (straight line) | Ride type | Search | Seconds |
+|---|---|---|---|
+| Dupont Circle to Reston (27.8 km) | Default | in one piece | 3.9 to 5.0 |
+| Silver Spring to Columbia (28.7 km) | Default | in one piece | 4.0 to 9.2 |
+| Old Town to Bowie (31.0 km) | Default | none (span) | 5.0 to 6.0 |
+| Union Station to Inner Harbor (54.6 km) | Default | none (span) | 10.9 to 19.9 |
+| Union Station to Inner Harbor (54.6 km) | Trailmaxxing | leg by leg, 5 legs | 20.4 to 25.0, cut short by time, router's route kept every time |
+
+So DC to Baltimore leaves at least 20 s of the 40 s budget to search in, and the search on trips
+just under the old limit took under 10 s. 60 km is our default, unmeasured past the old limit:
+the before and after on the scorecard's long trips, with their seconds, is the measurement, and
+beta (about 5 GB free, a routing pool of two) has not been measured. In Go the rider sees the
+first route at once and the searched one is swapped in before Start ("Found a calmer route"), as
+on shorter trips (`lib/progressive.ts`); in Plan the wait is the plan's.
+
 ## No dodging through side streets (FOLLOWUP-DEDODGE, items 272, 273)
 
 The owner's words are in PLAN.md, Owner amendments, items 272 and 273. A route should not "dodge

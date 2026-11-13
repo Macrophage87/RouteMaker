@@ -549,7 +549,7 @@ class TestTheSearchInTheAnswer:
     ) -> None:
         router(world())
         response = post(
-            client, {**good_body(), "stress": 100, "points": [[-77.0, 38.9], [-76.4, 38.9]]}
+            client, {**good_body(), "stress": 100, "points": [[-77.0, 38.9], [-76.2, 38.9]]}
         )
         assert response.status_code == 200
         search = response.json()["calm_search"]
@@ -563,8 +563,18 @@ class TestTheSearchInTheAnswer:
         self, client, arterial, router
     ) -> None:
         router(world())
-        response = post(client, {**good_body(), "points": [[-77.0, 38.9], [-76.4, 38.9]]})
+        response = post(client, {**good_body(), "points": [[-77.0, 38.9], [-76.2, 38.9]]})
         assert response.json()["calm_search"] is None
+
+    def test_a_trip_as_long_as_dc_to_baltimore_is_searched(self, client, arterial, router) -> None:
+        # 52 km of straight line, past the 30 km the search stopped at until v0.27.0 and
+        # under REFINE_MAX_SPAN_M (backlog 2026-11-12, "Long rides get the calm search"):
+        # Default's search runs on it, and says nothing stopped it.
+        router(world())
+        response = post(client, {**good_body(), "points": [[-77.0, 38.9], [-76.4, 38.9]]})
+        assert response.status_code == 200
+        search = response.json()["calm_search"]
+        assert search is not None and search["limited"] is None and search["rounds"] >= 1
 
     def test_a_ride_with_a_via_is_searched_too(self, client, arterial, router) -> None:
         router(world())
@@ -598,7 +608,7 @@ class TestWhyTheSearchDoesNotRun:
             ({"points": [[0, 0]]}, "points"),
             ({"long_ride": True}, "long_ride"),
             ({"seeking": True}, "seeking"),
-            ({"points": [[0, 0], [0.5, 0]]}, "span"),
+            ({"points": [[0, 0], [0.6, 0]]}, "span"),
         ],
     )
     def test_the_reasons(self, kwargs, why) -> None:

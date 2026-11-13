@@ -1656,8 +1656,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "span edge (long calm)",
         G,
-        "        and straight_span_m(points) > refine.REFINE_MAX_SPAN_M\n    )",
-        "        and straight_span_m(points) >= refine.REFINE_MAX_SPAN_M\n    )",
+        "        and straight_span_m(points) > refine.LONG_CALM_SPAN_M\n    )",
+        "        and straight_span_m(points) >= refine.LONG_CALM_SPAN_M\n    )",
         [
             "tests/test_route_intersections.py",
             "tests/test_longcalm.py",

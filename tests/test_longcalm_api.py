@@ -304,8 +304,12 @@ class TestTheLongCalmPlan:
         # correctness review, 7).
         assert not long_calm_for("trailmaxxing", [US, PENN], 100, False, trails_off=True)
 
-    def test_the_span_that_makes_it_long_is_the_searchs_working_span(self) -> None:
+    def test_the_span_that_makes_it_long_is_still_30_km(self) -> None:
+        # Kept where it was when it was the search's working span (OWNER-DECISIONS 256);
+        # the search in one piece now runs further, on every other ride type (backlog
+        # 2026-11-12, "Long rides get the calm search").
         assert refine_span() == 30_000
+        assert refine.REFINE_MAX_SPAN_M == 60_000
 
     @pytest.mark.parametrize(
         ("points", "budget"),
@@ -458,7 +462,7 @@ class TestTheLongCalmPlan:
 
 
 def refine_span() -> int:
-    return refine.REFINE_MAX_SPAN_M
+    return refine.LONG_CALM_SPAN_M
 
 
 class TestRoutesToChooseFrom:
@@ -1130,9 +1134,9 @@ class TestTheSpanEdge:
     def test_at_the_span_itself_it_is_not_long_calm(self, monkeypatch) -> None:
         points = [US, [-76.9, 38.95]]
         span = routing.straight_span_m(points)
-        monkeypatch.setattr(refine, "REFINE_MAX_SPAN_M", span)
+        monkeypatch.setattr(refine, "LONG_CALM_SPAN_M", span)
         assert not routing.long_calm_for("trailmaxxing", points, 100, False)
-        monkeypatch.setattr(refine, "REFINE_MAX_SPAN_M", span - 1.0)
+        monkeypatch.setattr(refine, "LONG_CALM_SPAN_M", span - 1.0)
         assert routing.long_calm_for("trailmaxxing", points, 100, False)
 
     def test_at_the_span_itself_the_search_runs(self, monkeypatch) -> None:

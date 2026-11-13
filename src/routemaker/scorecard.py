@@ -318,6 +318,10 @@ def run_of(entries: Sequence[dict], answers: dict[str, dict], meta: dict | None 
             row["status"] = None
         else:
             row["status"] = got.get("status")
+            # How long the plan took, where the runner timed it (kept for a cost comparison,
+            # never compared or flagged: one run's seconds depend on what else the host did).
+            if got.get("seconds") is not None:
+                row["seconds"] = got["seconds"]
             body = got.get("body") or {}
             if row["status"] == 200 and isinstance(body, dict):
                 row.update(score(body, entry["body"]))
