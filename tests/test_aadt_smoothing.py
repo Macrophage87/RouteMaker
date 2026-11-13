@@ -260,3 +260,16 @@ def test_smoothing_only_lowers_a_count_never_raises_one() -> None:
     assert [r.way_id for r in report.replaced] == [2]
     assert all(r.smoothed < r.raw for r in report.replaced)
     assert all(out[w].aadt <= by_way[w].aadt for w in by_way)
+
+
+def test_the_gates_are_the_published_tables_count_breaks():
+    # Furth v2.2's mixed-traffic breaks (751, 1,001, 1,501, 3,001, 8,001), Oregon's rural
+    # ones (400, 1,501, 7,001) and the busy rural highway step (18,000), each the first
+    # count on its busier side. Written out here, not read from `stress.VOLUME_GATES`.
+    for gate in (400, 751, 1_001, 1_501, 3_001, 7_001, 8_001, 18_000):
+        assert aadt_smoothing.crosses_volume_gate(gate, gate - 1), gate
+        assert not aadt_smoothing.crosses_volume_gate(gate - 1, gate - 2), gate
+        assert not aadt_smoothing.crosses_volume_gate(gate + 1, gate), gate
+    # The local steps the classifier had until 2026-11-13 move nothing now.
+    for retired in (5_000, 9_000, 12_000, 20_000):
+        assert not aadt_smoothing.crosses_volume_gate(retired, retired - 1), retired
