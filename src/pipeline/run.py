@@ -108,6 +108,7 @@ from . import (
     trail_closures,
     trail_routes,
     variants,
+    way_observations,
     writers,
 )
 from . import station_links as station_ways
@@ -1941,7 +1942,17 @@ def assert_rating_rules(context: RebuildContext) -> None:
     for way_id in lts_sentinels.rural_lts1_ways(schema):
         way = by_id.get(way_id)
         tags = context.class_tags_by_way.get(way_id, way.tags if way is not None else {})
-        if rural_minimum_applies(tags):
+        # The classifier's own verdict where the rebuild still holds it: it read the way
+        # with its curated speed, its agency record and its state, which these tags alone
+        # do not carry (review r1, finding 13: a curated 25 mph on a rural residential
+        # street made the two disagree and the rebuild refuse a correct LTS 1).
+        rated = context.stress_by_way.get(way_id)
+        held = (
+            getattr(rated, "rural_minimum", False)
+            if rated is not None
+            else rural_minimum_applies(tags)
+        )
+        if held:
             rural.append(way_id)
     # A `moco-lts5-*` row keeps Avoid where our own rules already said Avoid
     # (`overrides.stress_adjustment`'s `own_avoid`), as `agency_lts.apply` does for the layer.
@@ -2845,6 +2856,11 @@ def build_handlers(
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
         used: set[int] = set()
+        # Measured speeds and estimated counts for single ways, where a source has been
+        # installed (`pipeline.way_observations`; none is today, and then this is empty).
+        observed = way_observations.load(context.reference_dir)
+        if observed:
+            logger.info("way observations: %d ways (%s)", len(observed), way_observations.FILE_NAME)
         # And the curated bike lanes (OWNER-DECISIONS 433, Veirs Mill Road): a painted
         # lane the map is missing, for the classifier and the facility class only.
         lanes = bike_lanes.load()
@@ -2925,8 +2941,11 @@ def build_handlers(
             # The owner's narrow-road rule reads the line only outside urban
             # areas (`stress.NARROW_RURAL_ROAD_MPH`).
             bends = rural and bends_slow_traffic(way.coordinates, tags)
+            noted = observed.get(way.osm_id, way_observations.NONE)
 
-            def classified(aadt, tags=tags, way=way, match=match, facts=facts, bends=bends):
+            def classified(
+                aadt, tags=tags, way=way, match=match, facts=facts, bends=bends, noted=noted
+            ):
                 return classify(
                     tags,
                     aadt=aadt,
@@ -2942,6 +2961,8 @@ def build_handlers(
                     parking_width_m=facts.parking_reach_m if facts is not None else None,
                     winding=bends,
                     side_path=way.osm_id in context.use_sidepath_paths,
+                    estimated_aadt=noted.estimated_aadt,
+                    observed_speed_mph=noted.observed_speed_mph,
                 )
 
             context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)

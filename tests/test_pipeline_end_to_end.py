@@ -1114,7 +1114,7 @@ def test_the_district_default_and_a_divided_road_reach_the_classifier(
     for way_id in (DIVIDED_NORTH_ID, DIVIDED_SOUTH_ID):
         stress = context.stress_by_way[way_id]
         assert stress.rule == (
-            "mixed traffic, 20 mph or below, 2 lanes each way, high volume, "
+            "mixed traffic, 20 mph or below, 2 lanes each way, low volume, "
             "no count: traffic read from the road's class"
         )
         assert int(stress.tier) == 3, way_id
@@ -1189,7 +1189,7 @@ def test_a_curated_speed_limit_reaches_the_classifier(
     assert context.speed_corrected == {ONE_WAY_ID}
     one_way = context.stress_by_way[ONE_WAY_ID]
     assert one_way.rule == (
-        "mixed traffic, 25 mph, 2 lanes each way, high volume, "
+        "mixed traffic, 25 mph, 2 lanes each way, low volume, "
         "no count: traffic read from the road's class"
     )
     assert int(one_way.tier) == 3
@@ -5078,8 +5078,11 @@ def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     bare, bare_next = rows[BARE_PATH_ID], rows[BARE_PATH_NEXT_ID]
     assert bare[2] is None and bare[3] == bare_next[3] == pytest.approx(860, rel=0.05)
     west, east, on = rows[NAMED_STREET_ID], rows[NAMED_STREET_EAST_ID], rows[NAMED_ROAD_ON_ID]
-    # LTS 2 at best outside an urban area (the owner's rural floor, 2026-10-13); still calm.
-    assert west[0] == 2 and on[0] <= 2, "the roads are calm"
+    # Unposted residential streets read at 25 mph (a state's residence-district speed, or
+    # the class default outside every state): at 25 mph and under a rural street is rated
+    # from the city table, so LTS 1 (the
+    # owner, 2026-11-13; before, the rural minimum of 2 held at every speed).
+    assert west[0] == 1 and on[0] == 1, "the roads are calm"
     assert west[2] == "Gamma Street" and on[2] == "Delta Road"
     assert west[3] == east[3] == on[3] == pytest.approx(3460, rel=0.03), "one run (402a)"
     assert rows[ROADSIDE_PATH_ID][4] is True, "a trail 10 m beside a road is roadside (403)"

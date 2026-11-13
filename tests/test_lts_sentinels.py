@@ -314,9 +314,9 @@ def test_validate_drops_exempt_rural_roads_and_listed_bans(monkeypatch) -> None:
     from pipeline import run
 
     ways = {
-        1: SimpleNamespace(osm_id=1, tags={"highway": "residential"}),
+        1: SimpleNamespace(osm_id=1, tags={"highway": "tertiary"}),
         # Closed to cars: exempt from the rural floor.
-        2: SimpleNamespace(osm_id=2, tags={"highway": "residential", "motor_vehicle": "no"}),
+        2: SimpleNamespace(osm_id=2, tags={"highway": "tertiary", "motor_vehicle": "no"}),
     }
     context = SimpleNamespace(
         staging_schema="x",
@@ -350,3 +350,41 @@ def test_validate_drops_exempt_rural_roads_and_listed_bans(monkeypatch) -> None:
     monkeypatch.setattr(lts_sentinels, "open_ban_ways", lambda schema: [11, 12])
     with pytest.raises(run.ValidationFailed, match="MDOT SHA"):
         run.assert_rating_rules(context)
+
+
+def test_the_rural_check_reads_the_classifiers_own_verdict(monkeypatch) -> None:
+    """Review r1, finding 13: a curated 25 mph (`fixtures/speed`) reaches the classifier and
+    not the stored tags, so the check, reading the tags, called a correct LTS 1 town street
+    a rural road at LTS 1 and refused the rebuild."""
+    from pipeline import run
+    from routemaker.stress import classify, rural_minimum_applies
+
+    stored = {"highway": "tertiary", "sidewalk": "both"}
+    read = {**stored, "maxspeed": "25 mph"}  # with the curated speed
+    verdict = classify(read, urban=False, aadt=800)
+    assert verdict.tier is Stress.LTS1 and not verdict.rural_minimum
+    assert rural_minimum_applies(stored), "the tags alone say the minimum holds"
+
+    def context(stress_by_way):
+        ways = {1: SimpleNamespace(osm_id=1, tags=stored)}
+        return SimpleNamespace(
+            staging_schema="x",
+            ways_by_id=ways,
+            ways=list(ways.values()),
+            class_tags_by_way={},
+            agency_prohibited_open=set(),
+            stress_by_way=stress_by_way,
+        )
+
+    monkeypatch.setattr(lts_sentinels, "rural_lts1_ways", lambda schema: [1])
+    monkeypatch.setattr(lts_sentinels, "county_five_ways", lambda schema: [])
+    monkeypatch.setattr(lts_sentinels, "open_ban_ways", lambda schema: [])
+    run.assert_rating_rules(context({1: verdict}))
+    # A way the classifier did hold at the minimum, found at LTS 1 in the table, is refused.
+    held = classify(stored, urban=False, aadt=800)
+    assert held.rural_minimum
+    with pytest.raises(run.ValidationFailed, match=r"^1 way \(1\) on a rural road"):
+        run.assert_rating_rules(context({1: held}))
+    # With no result kept (a resumed rebuild), the tags are read as before.
+    with pytest.raises(run.ValidationFailed, match=r"^1 way \(1\) on a rural road"):
+        run.assert_rating_rules(context({}))

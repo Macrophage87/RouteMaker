@@ -824,8 +824,8 @@ def share_with_carriageways(
     `conflate` lets one stretch of a count line be claimed once, so of a divided
     road's two one-way carriageways only one takes the count and the other is
     rejected (`_claim`). The count is the road's, both directions together, and
-    the classifier reads it as that (`routemaker.stress`, VOLUME_QUIET and
-    VOLUME_BUSY are bidirectional thresholds), so the carriageway left without
+    the classifier reads it as that (`routemaker.stress`: every count break is
+    bidirectional), so the carriageway left without
     one is graded as an uncounted road. FOLLOWUP-MDOT-AADT's first case is
     exactly that shape: MD 185 north of Chevy Chase Circle is two one-way
     carriageways (PLAN.md, the 2026-10-05 check), and with one of them counted
