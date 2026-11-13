@@ -70,7 +70,7 @@ export const RIDE_TOO_LONG_IPHONE = t("On iPhone, Start ride is for rides up to 
   distance: formatRoughDistance(RIDE_MAX_M),
 });
 /** Shown under Start ride on an iPhone or iPad: what a ride there needs, said before it goes quiet in a pocket. */
-export const IPHONE_RIDE_LINE = t("On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.", {
+export const IPHONE_RIDE_LINE = t("On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.", {
   distance: formatRoughDistance(RIDE_MAX_M),
 });
 /** The too-long line for this device: `ios` from lib/installOffer.ts installState(). */

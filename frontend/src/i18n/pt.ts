@@ -2209,5 +2209,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Some ride types are not working right now.": "Alguns tipos de pedal não estão funcionando agora.",
   "Place search is down right now.": "A busca de lugares está fora do ar agora.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "No iPhone, Iniciar pedal é para pedais de até {distance}. Para um pedal mais longo, salve as imagens de instruções para a tela de bloqueio ou Baixar GPX para um ciclocomputador.",
-  "On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.": "No iPhone, mantenha a tela ligada e esta página na frente, para pedais de até {distance}. Para pedais mais longos ou com o celular bloqueado, use as imagens de instruções para a tela de bloqueio ou o GPX.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "No iPhone, mantenha a tela ligada e esta página na frente, para pedais de até {distance}. Para pedais mais longos ou com o celular bloqueado, use as imagens de instruções para a tela de bloqueio ou o GPX.",
 };

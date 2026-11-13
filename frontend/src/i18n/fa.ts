@@ -2209,5 +2209,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Some ride types are not working right now.": "برخی از انواع سواری اکنون کار نمی‌کنند.",
   "Place search is down right now.": "جست‌وجوی مکان اکنون کار نمی‌کند.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "در iPhone، «شروع سواری» برای سواری‌های تا {distance} است. برای سواری طولانی‌تر، تصویرهای راهنمای صفحه قفل را ذخیره کنید یا برای کامپیوتر دوچرخه «دانلود GPX» را بزنید.",
-  "On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.": "در iPhone، برای سواری‌های تا {distance} صفحه را روشن و این صفحه را در جلو نگه دارید. برای سواری‌های طولانی‌تر یا گوشی قفل‌شده، از تصویرهای راهنمای صفحه قفل یا GPX استفاده کنید.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "در iPhone، برای سواری‌های تا {distance} صفحه را روشن و این صفحه را در جلو نگه دارید. برای سواری‌های طولانی‌تر یا گوشی قفل‌شده، از تصویرهای راهنمای صفحه قفل یا GPX استفاده کنید.",
 };

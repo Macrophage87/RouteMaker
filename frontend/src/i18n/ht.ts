@@ -2209,5 +2209,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Some ride types are not working right now.": "Kèk kalite woulib pa mache kounye a.",
   "Place search is down right now.": "Rechèch kote pa mache kounye a.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "Sou iPhone, Kòmanse woulib se pou woulib jiska {distance}. Pou yon woulib pi long, anrejistre imaj endikasyon pou ekran fèmen an oswa Telechaje GPX pou yon òdinatè bisiklèt.",
-  "On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.": "Sou iPhone, kenbe ekran an limen ak paj sa a devan, pou woulib jiska {distance}. Pou woulib pi long oswa yon telefòn ki fèmen, sèvi ak imaj endikasyon pou ekran fèmen an oswa GPX.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "Sou iPhone, kenbe ekran an limen ak paj sa a devan, pou woulib jiska {distance}. Pou woulib pi long oswa yon telefòn ki fèmen, sèvi ak imaj endikasyon pou ekran fèmen an oswa GPX.",
 };
