@@ -360,3 +360,25 @@ class TestLawRequiredParts:
             "removed or blurred",
         ):
             assert claim in text, claim
+
+
+@pytest.mark.django_db
+class TestOperator:
+    """Who runs the site comes from the deployment (PRIVACY_OPERATOR), so the repository names
+    nobody; GDPR Article 13(1)(a) asks the policy to say who the controller is."""
+
+    @override_settings(PRIVACY_OPERATOR="A. Rider")
+    def test_a_configured_operator_is_named_in_contact(self, client) -> None:
+        _, body, _ = get(client)
+        contact = body[body.index("<h2>Contact</h2>") :]
+        assert escape(privacy_policy.OPERATOR_LEAD + "A. Rider.") in contact
+
+    @override_settings(PRIVACY_OPERATOR="")
+    def test_unset_names_nobody(self, client) -> None:
+        _, body, _ = get(client)
+        assert escape(privacy_policy.OPERATOR_LEAD) not in body
+
+    @override_settings(PRIVACY_OPERATOR='<i onclick="x">Me</i>')
+    def test_a_configured_operator_is_escaped(self, client) -> None:
+        _, body, _ = get(client)
+        assert "<i onclick" not in body and "&lt;i onclick=" in body

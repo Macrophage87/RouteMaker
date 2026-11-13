@@ -65,6 +65,8 @@ LAST_UPDATED = ("2026-11-13", "November 13, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
+# Unless the deployment sets PRIVACY_OPERATOR (who runs the site), the page names nobody.
+OPERATOR_LEAD = "RouteMaker is run by "
 NO_ADS = "No ads, no analytics, no tracking, and nothing about you is sold or shared for marketing."
 # Every company that gets something about a rider, as the sections below say.
 OTHER_COMPANIES = (
@@ -549,9 +551,20 @@ SECTIONS: list[tuple[str, str]] = [
 ]
 
 
+def operator() -> str:
+    """Who runs the site: settings.PRIVACY_OPERATOR as a sentence, or, unset, nothing."""
+    value = (getattr(settings, "PRIVACY_OPERATOR", "") or "").strip()
+    return _p(f"{OPERATOR_LEAD}{value}.") if value else ""
+
+
 def contact() -> str:
-    """The Contact section: settings.PRIVACY_CONTACT as a link (an e-mail address or a web
-    address) or as text, or, unset, the Discord wording."""
+    """The Contact section: who runs the site (settings.PRIVACY_OPERATOR), then
+    settings.PRIVACY_CONTACT as a link (an e-mail address or a web address) or as text, or, unset,
+    the Discord wording."""
+    return operator() + _contact_line()
+
+
+def _contact_line() -> str:
     value = (getattr(settings, "PRIVACY_CONTACT", "") or "").strip()
     if not value:
         return _p(CONTACT)
