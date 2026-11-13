@@ -779,9 +779,9 @@ in the database still names it: delete that row in the admin when loading the fi
   street's own facts (two lanes, ends at the trail): LTS 1 beside the separated track, LTS 2 on
   the painted-lane piece (owner: "1 by the track, 2 by the lanes"). Public Why notes. Found by matching the owner's rides to the map.
 
-- `2026-11-13-owner-kennedy-street-nw.json` (DRAFT, not approved; do not load until the owner
-  confirms the level): Kennedy Street NW from Georgia Avenue to about 3rd Street, way 130908107
+- `2026-11-13-owner-kennedy-street-nw.json` (approved by the owner 2026-11-13, "2.5, like the
+  blocks beside it"; load only after his go): Kennedy Street NW from Georgia Avenue to about 3rd Street, way 130908107
   (0.64 mi), rated LTS 4 from DDOT's 2020 layer alone (our formula: 2; no count on the block).
   The owner, 2026-11-13: "Kennedy street has more signal priority and is probably overrated."
-  Proposed LTS 2.5, the level of the Kennedy St blocks either side on the same facts (two lanes,
+  LTS 2.5, the level of the Kennedy St blocks either side on the same facts (two lanes,
   25 mph, sharrows, about 6,300 cars a day). Public Why note.

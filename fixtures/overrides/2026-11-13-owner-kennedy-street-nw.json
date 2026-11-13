@@ -2,8 +2,8 @@
   "version": 1,
   "decided": "2026-11-13",
   "decided_by": "the deployment owner",
-  "status": "DRAFT, not approved: level proposed by Claude from the evidence, awaiting the owner's confirmation. Do not load until he confirms; then load with load_overrides (dry run first); takes effect on the next rebuild.",
-  "annotations": "Kennedy Street NW, Georgia Avenue NW to about 3rd Street NW, Washington DC: 1 way, 0.64 mi, rated LTS 4 from DDOT's 2020 layer alone (formula 2). Proposed LTS 2.5, the level of the Kennedy St blocks either side on the same facts.",
+  "status": "approved by the owner on 2026-11-13 (09:40 UTC, \"2.5, like the blocks beside it\" on the decision card). Load with load_overrides (dry run first) only after his go; takes effect on the next rebuild.",
+  "annotations": "Kennedy Street NW, Georgia Avenue NW to about 3rd Street NW, Washington DC: 1 way, 0.64 mi, rated LTS 4 from DDOT's 2020 layer alone (formula 2). LTS 2.5 (owner-confirmed), the level of the Kennedy St blocks either side on the same facts.",
   "rows": [
     {
       "kind": "stress",
@@ -18,7 +18,7 @@
         "display": "map",
         "public_note": "Kennedy St NW, Georgia Ave to 3rd St: 2 lanes, 25 mph, sharrows only, about 6,300 cars a day on the blocks either side, so 2.5, as they are. DDOT's 2020 layer says 4."
       },
-      "reason": "The owner, 2026-11-13: \"Kennedy street has more signal priority and is probably overrated.\" Our level from the street's own facts: a two-lane (one each way) tertiary collector, posted 25 mph, shared-lane markings only, no count on this block; DC's count on the Kennedy St blocks either side is about 6,272 a day, and those blocks are rated 2.5 on the same facts (2 lanes, 25 mph, sharrows, about 6,300 a day). Our formula alone gives 2; the 4 on the map came only from DDOT's 2020 layer, with no reviewed row of ours. So 2.5, the street's level either side, which DDOT's 4 differs from.",
+      "reason": "The owner, 2026-11-13: \"Kennedy street has more signal priority and is probably overrated.\" Our level from the street's own facts: a two-lane (one each way) tertiary collector, posted 25 mph, shared-lane markings only, no count on this block; DC's count on the Kennedy St blocks either side is about 6,272 a day, and those blocks are rated 2.5 on the same facts (2 lanes, 25 mph, sharrows, about 6,300 a day). Our formula alone gives 2; the 4 on the map came only from DDOT's 2020 layer, with no reviewed row of ours. So 2.5, the street's level either side, which DDOT's 4 differs from; confirmed by the owner 2026-11-13 (\"2.5, like the blocks beside it\").",
       "evidence": "OSM, 2026-11-07 extract: way 130908107 (Kennedy Street Northwest, highway=tertiary, HFCS Collector, lanes=2, maxspeed=25 mph, cycleway=shared_lane), 0.64 mi, Georgia Ave NW to about 3rd St NW. 2026-11-11 map: LTS 4, rated_by 'reviewed; agrees with DDOT', formula LTS 2, no count; neighbouring Kennedy St ways 132601123, 996627037, 581122737 carry 6,272 a day (DDOT) at LTS 2.5. Found by matching the owner's rides to the map (reports/ride-check, project files).",
       "fingerprint": {
         "name": "Kennedy Street Northwest",
