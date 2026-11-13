@@ -333,7 +333,7 @@ test("opening view: a busier bikeshare street with no path or protected lane wai
   assert.equal(path.filter({ zoom: 11 }, line(carFree)), true);
 });
 
-test("park names: the big parks and reserves are named, over the neighbourhoods and under the towns, once", async () => {
+test("park names: every named green place is named, over the neighbourhoods and under the towns, once", async () => {
   const { featureFilter } = await import("@maplibre/maplibre-gl-style-spec");
   // The owner, 2026-11-12: "Rock Creek Park isn't labeled, but the neighborhoods are."
   const layers = shipped(false);
