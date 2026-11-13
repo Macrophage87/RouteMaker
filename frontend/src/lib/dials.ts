@@ -122,6 +122,11 @@ export interface Dials {
    */
   closureBypass?: string[];
   /**
+   * Cargo and Tandem, "Go around" on a barrier's mark (lib/barriers.ts): the barriers, [lon, lat] as the answer gave
+   * them, this plan goes around. Session only, like closureBypass: in the route request (`barrier_avoid`), never a link.
+   */
+  barrierAvoid?: [number, number][];
+  /**
    * v0.9.1, Go and a ride: only the closures known to be on, leaving out DDOT's permits, which say a road may be
    * closed (Stephen, 2026-10-19: "They aren't as useful for on the go routing, but worth keeping for future ride
    * planning"). Plan leaves it off and keeps them. Session only, like closureBypass: in the request, never a link.

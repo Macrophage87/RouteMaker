@@ -1815,6 +1815,9 @@ class Dials:
     easy_mtb: bool = False
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
+    # Cargo and Tandem, "Go around" on a barrier's mark (`core.barriers.avoid_set`): the
+    # barriers, as [lon, lat] to six decimals, this plan is planned round as an impassable one.
+    barrier_avoid: tuple[tuple[float, float], ...] = ()
     # A dirt trail a point is on is ridden on a ride type that does not plan on them
     # (`core.trail_touch`); False plans on the ride type's own graph alone. Set by `plan`.
     trail_touch: bool = True
@@ -6399,6 +6402,7 @@ def _plan(
         trip, barrier_info = barriers.settle(
             trip, request, variant, deadline, points,
             level_excludes=refine_context.level_excludes,
+            avoid=barriers.avoid_set(dials.barrier_avoid),
             # Not held to the level rounds' guard (`refine.level_round_keeps`): a barrier a cargo
             # bike or tandem cannot pass ends the trip, so a busier or longer way round it is
             # still the way (the owner, 2026-11-12: "Exclude").
@@ -6507,7 +6511,7 @@ def _plan(
     if barrier_info is not None and trip is not barrier_trip:
         # A later pass changed the route the barrier round chose: what is in the way is read
         # again from the route answered.
-        barriers.reread(trip, barrier_info)
+        barriers.reread(trip, barrier_info, avoid=barriers.avoid_set(dials.barrier_avoid))
     if easy_held and easy_info is not None and trip is not easy_trip:
         again = easy_mtb.reread(trip, variant, trace_costing, deadline, traces)
         if again is not None:

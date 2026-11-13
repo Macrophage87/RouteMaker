@@ -264,6 +264,8 @@ export interface RouteSectionProps {
   slow: boolean;
   preset: PresetId;
   dials: Dials;
+  /** Cargo and Tandem: the barriers this plan goes around (planDials.barrierAvoid, lib/barriers.ts). */
+  barrierAvoid?: [number, number][];
   points: LonLat[];
   cancelLong: () => void;
   planButtonRef: RefObject<HTMLButtonElement | null>;
@@ -418,6 +420,7 @@ export function RouteSection(props: RouteSectionProps) {
           startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
           check={props.check ?? null}
+          barrierAvoid={props.barrierAvoid}
         />
       )}
     </section>
@@ -609,7 +612,7 @@ interface NoteLine {
   short?: string | null;
 }
 
-function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false): NoteLine[] {
+function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false, barrierAvoid: readonly [number, number][] = []): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
   // A stop or the end not open to the public is a warning, shown with the route's alerts under its totals (RouteAlerts).
@@ -640,7 +643,7 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   const easy = easyMtbNote(route);
   if (easy) lines.push({ key: "easy-mtb", className: "notice easy-mtb-warning", icon: "warn", text: easy.text, short: easy.short });
   // Cargo and Tandem: an impassable barrier no way round was found for, or the barriers on the route (lib/barriers.ts).
-  const barrier = barrierNote(route);
+  const barrier = barrierNote(route, barrierAvoid.map(([lon, lat]) => ({ lon, lat })));
   if (barrier) {
     lines.push(
       barrier.warn
@@ -832,7 +835,10 @@ export function RouteSummary({
   startsMs = null,
   weather = null,
   check = null,
+  barrierAvoid = [],
 }: {
+  /** Cargo and Tandem: the barriers this plan goes around (lib/barriers.ts), [lon, lat]. */
+  barrierAvoid?: readonly [number, number][];
   route: RouteResponse;
   answer: RouteResponse | null;
   choice: number;
@@ -891,7 +897,7 @@ export function RouteSummary({
   const segments = capacity || noBike ? [] : stressSegments(route.stress_m, route.stress_spans);
   // Group Ride: quiet roads and its turns, in place of the shares (the 2026-10-28 audit, P6).
   const groupLine = preset === "group-ride" ? groupRideLine(route) : null;
-  const notes = noteLines(route, points, light, mode === "go");
+  const notes = noteLines(route, points, light, mode === "go", barrierAvoid);
   const pace = paceText(route);
   // A transit trip's rides joined (lib/tripRides.ts): the distance ridden, the climb and the chart are every ride's.
   const trip = tripRoute(route);

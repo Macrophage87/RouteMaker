@@ -418,6 +418,17 @@ class RouteIn(Schema):
             " `possible`), never a description line, a spoken cue or the closure check."
         ),
     )
+    barrier_avoid: list[LonLat] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            'Cargo and Tandem, "Go around" on a barrier\'s mark: barriers on the route'
+            " (`barriers.items[]`, their `lon` and `lat`) the rider chose to go around, for this"
+            " plan. Each is planned round as a stile is (`barrier_round`); where no way round is"
+            " found it stays on the route and is named. Other ride types ignore it. Never"
+            " remembered by the server."
+        ),
+    )
     blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
         default_factory=list,
         max_length=10,
@@ -6083,6 +6094,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         closure_bypass=tuple(body.closure_bypass),
         closures_now=body.closures_now,
         blocked=_blocked(body),
+        barrier_avoid=tuple((p[0], p[1]) for p in body.barrier_avoid),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,

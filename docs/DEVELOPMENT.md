@@ -5175,6 +5175,19 @@ map". No map rebuild and no new control.
   amber with a dark "!" and rim otherwise, so shape tells them apart as well as colour, 22 px, named from
   zoom 13 red and 15 amber). The connector's summary has the same line as `barriers`. The 16
   phrases are drafted in every Go and Ride language and need a native check.
+- **Go around** (the owner, 2026-11-13: "Put the bollard on the map, and offer them a go
+  around."). Each mark is a clear button over the octagon (Tab reaches it, named "Barrier:
+  bollard (width not mapped)"); it opens a card with what is known of it and "Go around", which
+  plans again with that barrier in `barrier_avoid` (its `lon`, `lat` as the answer gave them; at
+  most 20). `barriers.settle` then treats it as impassable (`blocking(..., avoid)`), and
+  `reread` does the same. A gone-round barrier is drawn hollow (white, a heavy dark rim) with
+  "Undo: go through it"; one still on the route turns red, its card saying "No way round
+  found.". Impassable ones have no button: they are planned round already. Per plan (start and
+  end), request only, never in a link, as "Route through anyway" is for a closure. Ordinary
+  bollards are never left out unasked (the owner, 2026-11-13: most are fine). During a ride the
+  card has no button (a ride re-plans with the dials it started with). An open card stays open
+  across a new route while its barrier is still marked, and after Go around or Undo the focus
+  goes to that barrier's new button. Ten more phrases, drafted in every language.
 - **Coverage.** `scripts/barrier_census.py` (without `--json`) prints how much of this OSM
   records: barriers by kind with readable `maxwidth`, a width under another key only, what the
   remap does with each, kerbs, steps and their ramps, walk stretches and trail access points.

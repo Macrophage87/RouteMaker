@@ -8994,6 +8994,27 @@ details.fold > summary .icon {
   z-index: 3;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
+/* A barrier's mark as a button (lib/barriers.ts): clear, over the layer's octagon, ringed when focused. */
+.barrier-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  z-index: 3;
+}
+.barrier-button:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .barrier-button:focus-visible {
+    outline: 3px solid CanvasText;
+  }
+}
 .closure-marker.closure-bypassed {
   width: 18px;
   height: 18px;
