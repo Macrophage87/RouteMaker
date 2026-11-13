@@ -60,7 +60,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
-from . import cue_cards, ratelimit, route_picture, route_view_map
+from . import cue_cards, ratelimit, route_picture, route_view_map, usage
 from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
@@ -650,6 +650,7 @@ def mcp_endpoint(request):
     calls = {}
     if msg_id is not None:
         calls[msg_id] = module.Call(deadline=time.monotonic() + CALL_BUDGET_S)
+    _count_tool_call(module, message)
     try:
         answer = module.handle(server, message, send=lambda _note: None, calls=calls)
     except Exception as error:  # noqa: BLE001 - a bug is an answer, not the site's error page
@@ -661,6 +662,17 @@ def mcp_endpoint(request):
 
 
 mcp_endpoint.limits = ratelimit.CONNECTOR_CALLS
+
+
+def _count_tool_call(module, message) -> None:
+    """Adds one to today's total for the tool a tools/call names (core.usage), when it is one of
+    the connector's own tools: the name only, never its arguments."""
+    if not isinstance(message, dict) or message.get("method") != "tools/call":
+        return
+    params = message.get("params")
+    name = params.get("name") if isinstance(params, dict) else None
+    if isinstance(name, str) and name in {t["name"] for t in module.TOOLS}:
+        usage.tally(usage.CONNECTOR_PREFIX + name)
 
 
 def server_icons(request) -> list[dict]:

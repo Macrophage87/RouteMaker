@@ -9620,6 +9620,23 @@ def feedback_send(request):
     return out
 
 
+@api.post("/usage", summary="Count one use of a tool only the browser sees (a ride started)")
+@decorate_view(same_site_only, ratelimit.rate_limited(ratelimit.USAGE), errors_as_json)
+def usage_count(request):
+    """Adds one to today's total for `tool` (core.usage): a name from `usage.CLIENT_TOOLS` and
+    nothing else, so nothing about the rider or the ride is sent or kept."""
+    from . import usage
+
+    body, refusal = _json_body(request, 256)
+    if refusal is not None:
+        return refusal
+    tool = body.get("tool") if isinstance(body, dict) else None
+    if tool not in usage.CLIENT_TOOLS:
+        return _error(400, "tool is one of: " + ", ".join(sorted(usage.CLIENT_TOOLS)) + ".")
+    usage.tally(tool)
+    return HttpResponse(status=204)
+
+
 @api.post("/report311/where", summary="Which 311 website takes a problem at a point")
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),

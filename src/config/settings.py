@@ -81,6 +81,8 @@ MIDDLEWARE = [
     "core.middleware.SessionEpochMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Anonymous daily totals per tool (core.usage): counts a successful answer, nothing else.
+    "core.middleware.UsageMiddleware",
 ]
 
 TEMPLATES = [

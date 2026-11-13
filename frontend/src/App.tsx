@@ -315,6 +315,7 @@ import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, 
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
+import { countUse } from "./lib/usage.ts";
 import { useWeather } from "./useWeather.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
@@ -4046,6 +4047,8 @@ export function App() {
     const route = left ? firstTripOf(asked) : asked;
     const ridePoints = left ? askedPoints.slice(0, 2) : askedPoints;
     if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
+    // Anonymous daily totals (lib/usage.ts): a new ride counts once; Ride the rest is the same ride.
+    if (!rest) countUse(window.location.origin, route.preset === "run" ? "run" : walksLine(route) ? "walk" : "ride");
     const leg = rideLegOf(route, ridePoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).

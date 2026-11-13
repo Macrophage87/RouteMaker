@@ -31,6 +31,7 @@ comes from:
 - What the browser and the server contact: the Content-Security-Policy (Caddyfile, `connect-src
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources,
   core.weather (points rounded to 0.01 degree, answers 2 minutes in memory).
+- Daily usage totals: core.usage (a day, a tool's name and a count; nothing else).
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
   config.procrastinate (BACKUP_KEEP, BACKUP_MAX_AGE, BACKUP_EXCLUDED_TABLES, perform_backup's
   encryption); sessions: core.revocation and core.auth_views (Sign out, Sign out everywhere).
@@ -61,11 +62,17 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-11-09", "November 9, 2026")
+LAST_UPDATED = ("2026-11-13", "November 13, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
-NO_ADS = "No ads, no analytics, no tracking, and nothing about you is sold or shared for marketing."
+NO_ADS = "No ads, no tracking, and nothing about you is sold or shared for marketing."
+# core.usage (the owner, 2026-11-13: "Yes to anonymous data totals").
+USAGE_TOTALS = (
+    "The server counts how many times each tool is used each day, such as routes planned, "
+    "searches and rides started. Only the day, the tool and the number are kept: no route, place, "
+    "account, internet address or time of day."
+)
 # Unless the deployment sets PRIVACY_HOSTING (the hosting provider's name).
 HOSTING = (
     "The site's owner runs the server and its database, at home or with a hosting company, which "
@@ -452,6 +459,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "address, for a short time.",
                 "Request limits count a one-way code made from your internet address (or, for "
                 "some, your account), deleted within about 30 hours.",
+                USAGE_TOTALS,
             ]
         ),
     ),
@@ -465,6 +473,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
                 "about a ride is kept longer.",
                 "Shared links: as above.",
+                "Daily totals of how often each tool is used: kept, as they say nothing about "
+                "anyone.",
                 "Database backups: one a night, encrypted, the last seven kept, so deleted data "
                 "leaves them within a week, or, if backups fail for longer, with the next one "
                 "that succeeds. Copies taken just before RouteMaker is updated are not encrypted, "
