@@ -1294,7 +1294,9 @@ class JunctionDebugOut(Schema):
     text: str = Field(description='"0.55 calm mi (0.88 calm km)".')
     severity: Literal["orange", "red"] | None
     flagged: bool
-    time_factor: float = Field(description="The ride-time factor applied (468a, 469c-469e).")
+    time_factor: float = Field(
+        description="What the ride time did to the cost: the cost over its cost with no ride time."
+    )
     assumed_speed: bool = Field(
         description=(
             "The cost read a speed the map does not give: the jurisdiction's statutory"

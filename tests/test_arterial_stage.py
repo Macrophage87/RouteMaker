@@ -20,8 +20,6 @@ from pipeline.extract import Way
 from pipeline.overrides import Override
 from pipeline.rebuild import Stage
 from pipeline.run import RebuildContext, build_handlers
-from routemaker import intersections
-from routemaker.intersections import Road
 from routemaker.stress import Stress
 
 DATA = Path(__file__).parent / "data"
@@ -96,32 +94,6 @@ def test_the_published_count_is_the_agencys_not_the_median(tmp_path, monkeypatch
     kept = context.stress_by_way[unchanged]
     assert kept.volume_aadt == context.aadt_by_way[unchanged].aadt
     assert kept.unsmoothed_tier is None
-
-
-def test_the_q_street_junction_is_still_rated_on_the_raw_count(tmp_path, monkeypatch) -> None:
-    """The owner's reason for lower-only smoothing (303): "In most cases, the smoothing
-    is probably bunching by the intersection. Given that our routing is a sum of
-    intersection stress and route stress, we don't want to double count." So the link
-    stops paying for the bunched count, and the junction keeps paying for it: 1st St
-    NW's block at Q St is LTS 2 as a link, and the crossing is rated on DDOT's 10,665
-    and the LTS 3 that count gives."""
-    context = make_context(tmp_path, monkeypatch)
-    classify(context)
-    result = context.stress_by_way[FIRST_ST_WAY]
-    assert result.tier is Stress.LTS2
-    assert result.unsmoothed_tier is Stress.LTS3
-    # What the junction model reads off the segment table (`core.junctions`: the
-    # greater of the two tiers, and `volume_aadt`).
-    road = Road(tier=max(int(result.tier), int(result.unsmoothed_tier)), aadt=result.volume_aadt)
-    assert road.busy, "a busy crossing (BUSY_TIER 3), as before smoothing"
-    smoothed = Road(tier=int(result.tier), aadt=7520)
-    assert not smoothed.busy
-    assert intersections.scale(road, stopped_side=True) > intersections.scale(
-        smoothed, stopped_side=True
-    ), "the raw count's volume factor"
-    assert intersections.scale(road, stopped_side=True) == intersections.scale(
-        Road(tier=3, aadt=10665), stopped_side=True
-    )
 
 
 def test_the_owner_can_veto_smoothing(tmp_path, monkeypatch) -> None:

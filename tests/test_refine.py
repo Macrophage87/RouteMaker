@@ -339,7 +339,7 @@ class TestCappedTrailCrossings:
         assert read.events[0].severity == model.ORANGE
 
     def test_an_orange_that_costs_an_orange_stays_orange(self) -> None:
-        cheap = self.capped(cost_ft=1500.0)
+        cheap = self.capped(cost_ft=1400.0)
         plain_orange = dataclasses.replace(event(1500.0, 3300.0), severity=model.ORANGE)
         assert refine.avoidance_severity(cheap) == model.ORANGE
         # Orange for another reason than the cap (a rider's rating): not the cap's to undo.
@@ -394,7 +394,7 @@ class TestCrossingAvoidance:
             assert kept["legs"][0]["shape"] == taken, weight
 
     def test_nothing_to_avoid_asks_the_router_nothing(self, monkeypatch) -> None:
-        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 3000.0)])}, [])
+        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 1400.0)])}, [])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept == trip_of("o", 4.0) and world.requests == []
         assert info["rounds"] == 0 and info["limited"] is None
@@ -435,12 +435,12 @@ class TestCrossingAvoidance:
         """The first round's route is the answer, as it was with one round, and is cached:
         a second round the router does not answer leaves `limited` unset (review of PR
         #421). With no red left on it: the first round's route here has an orange crossing
-        (2,000 ft) where it had a red. A red still on it is said whatever stopped the round
+        (1,400 ft) where it had a red. A red still on it is said whatever stopped the round
         (hunt S, low note, 2026-11-08), as the time branch already said it (the PC's check,
         2026-10-23): `TestRedJunctions`, and the red case below."""
         shapes = {
             "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
-            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 2000.0)]),
+            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 1400.0)]),
         }
         World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
         kept, info = refine.refine(trip_of("o", 4.0), context())
@@ -2130,11 +2130,11 @@ class TestTrailSeek:
         assert info["seek"]["taken"] is False
 
     def test_a_corridor_round_a_red_crossing_may_ride_more_lts3(self, monkeypatch) -> None:
-        """Hunt 2, P2-5: the router's route crosses an arterial unsignalised (a 4,500 ft red);
+        """Hunt 2, P2-5: the router's route crosses an arterial unsignalised (a 2 mi red);
         the trail corridor goes round it to a signal with 300 m more LTS 3 on the way in. The
         search's guard (`_busier`) counts the red on both sides and would take it; the seek's
         guard counted the exposure alone and called it "busier"."""
-        red = [event(1500.0, 4500.0)]
+        red = [event(1500.0, 10560.0)]
         round_it = analysis("t", "1" * 10 + "3" * 13 + "1" * 22, cost_s=3500.0, shift=100)
         assert round_it.rated_exposure_m > refine._allowance(self.orig().rated_exposure_m)
         world = SeekWorld(monkeypatch, {"o": self.orig(events=red), "t": round_it}, [])
@@ -4093,41 +4093,63 @@ for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg, TestTheWorthLegByLeg):
 
 
 class TestRedJunctions:
-    """Below the top of the slider each red junction counts for `RED_DETOUR_S` of quiet
-    riding in the score, on top of its junction cost (the owner, 2026-10-23, of the
-    unsignalised Kensington crossings: "essentially impassable"; a rider would rather ride
-    10 minutes more)."""
+    """One junction, one charge. Until 2026-11-13 each red junction also counted for
+    `RED_DETOUR_S`, 600 s of quiet riding (9,840 ft), on top of its junction cost and its
+    wait, so one crossing came to 3 or 4 calm miles against the owner's "2 miles ...
+    though rare" (OWNER-DECISIONS 467) and "we don't want to double count" (303)."""
 
     def two_reds(self) -> refine.Analysis:
         return analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)])
 
-    def test_each_red_is_ten_minutes_of_quiet_riding_at_the_weight(self) -> None:
+    def wait(self, m: float, seconds: float):
+        from routemaker import junction_delay
+
+        return junction_delay.Wait(m, BASE[0], BASE[1], seconds, seconds)
+
+    def test_a_red_adds_its_own_cost_and_no_surcharge(self) -> None:
+        assert not hasattr(refine, "RED_DETOUR_S")
         none = analysis("n", events=[])
         for weight in (1.0, 0.25):
             ctx = context(weight=weight)
             red_cost = ctx.quiet_cost * weight * model.penalty_m([event(1500.0, 3300.0)])
             one = analysis("c", events=[event(1500.0, 3300.0)])
-            extra = refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S * weight
-            assert one.score(ctx) - none.score(ctx) == pytest.approx(red_cost + extra)
+            assert one.score(ctx) - none.score(ctx) == pytest.approx(red_cost)
 
-    def test_one_red_fewer_wins_though_it_has_more_delay_and_oranges(self) -> None:
-        # The PC's check, 8 AM: one red in place of two, 606 s worse on everything else.
-        one = analysis("c", events=[event(1500.0, 3300.0)])
-        one.cost_s += 606.0
+    def test_with_no_signal_the_larger_of_stress_and_wait_counts(self) -> None:
         ctx = context()
-        assert refine.better(one, self.two_reds(), ctx)
-        assert not refine.better(self.two_reds(), one, ctx)
+        stress_m = 3300.0 / model.FEET_PER_METRE
+        per_s = refine.QUIET_COST_FACTOR / ctx.quiet_cost
+        here = [event(1500.0, 3300.0)]
+        # A 20 s wait at the same crossing is inside its stress price: all of it comes off.
+        over = refine.junction_over_cap_m(here, [self.wait(1510.0, 20.0)], ctx)
+        assert over == pytest.approx(per_s * 20.0)
+        # A wait dearer than the stress price counts in its place.
+        long = stress_m / per_s + 50.0
+        over = refine.junction_over_cap_m(here, [self.wait(1510.0, long)], ctx)
+        assert over == pytest.approx(stress_m)
+        # A wait somewhere else is another junction's.
+        assert refine.junction_over_cap_m(here, [self.wait(1700.0, 20.0)], ctx) == 0.0
 
-    def test_a_red_is_not_worth_more_than_ten_minutes(self) -> None:
-        # 1,400 cost seconds more than the 1,320 a red adds, besides its own cost.
+    def test_at_a_signal_the_stress_price_and_the_wait_add(self) -> None:
         ctx = context()
-        own = ctx.quiet_cost * model.penalty_m([event(1500.0, 3300.0)])
-        one = analysis("c", events=[event(1500.0, 3300.0)])
-        one.cost_s += own + refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S + 80.0
-        assert not refine.better(one, self.two_reds(), ctx)
+        box = dataclasses.replace(event(1500.0, 750.0), control=Control.SIGNAL, kind="left_from")
+        assert refine.junction_over_cap_m([box], [self.wait(1500.0, 30.0)], ctx) == 0.0
+
+    def test_no_junction_counts_for_more_than_two_calm_miles_in_all(self) -> None:
+        assert refine.JUNCTION_CAP_FT == model.MAX_CROSSING_FT == 10560
+        ctx = context()
+        per_s = refine.QUIET_COST_FACTOR / ctx.quiet_cost
+        top = dataclasses.replace(event(1500.0, 10560.0), control=Control.SIGNAL)
+        over = refine.junction_over_cap_m([top], [self.wait(1500.0, 40.0)], ctx)
+        assert over == pytest.approx(per_s * 40.0)
+        # And the score takes it off.
+        read = analysis("c", events=[top])
+        read.junction_over_cap_m = over
+        plain = analysis("c", events=[top])
+        assert plain.score(ctx) - read.score(ctx) == pytest.approx(ctx.quiet_cost * over)
 
     def test_orange_junctions_are_not_counted_even_with_a_shift(self) -> None:
-        orange = analysis("c", events=[event(1500.0, 2000.0)], shift=0)
+        orange = analysis("c", events=[event(1500.0, 1400.0)], shift=0)
         orange.shift = 1
         assert refine.red_count(orange) == 0 and refine.red_count(self.two_reds()) == 2
 

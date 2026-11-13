@@ -53,14 +53,6 @@ def test_a_three_and_a_half_crossing_costs_halfway_between_three_and_four(when) 
     assert cost(Road(3, half=True, **ARTERIAL), when) == pytest.approx((low + high) / 2)
 
 
-def test_at_rush_hour_a_three_and_a_half_crossing_takes_half_the_gap_wait() -> None:
-    # Before: LTS 3's x1.25 only, a third of the way to LTS 4's 9,840 ft floor.
-    three = cost(Road(3, **ARTERIAL), ridetime.WEEKDAY_RUSH)
-    assert cost(Road(4, **ARTERIAL), ridetime.WEEKDAY_RUSH) == m.UNSIGNALISED_RUSH_MIN_FT
-    half = cost(Road(3, half=True, **ARTERIAL), ridetime.WEEKDAY_RUSH)
-    assert half == pytest.approx((three + m.UNSIGNALISED_RUSH_MIN_FT) / 2)
-
-
 def test_a_two_and_a_half_crossing_costs_half_of_lts_three() -> None:
     three = cost(Road(3, **ARTERIAL), ridetime.WEEKDAY_RUSH)
     assert cost(Road(2, half=True, **ARTERIAL), ridetime.WEEKDAY_RUSH) == pytest.approx(three / 2)
@@ -79,22 +71,6 @@ def test_a_left_off_a_three_and_a_half_road_counts_lts_four_merge_halfway() -> N
         replace(road, tier=4, half=False), incoming=replace(road, tier=4, half=False), **left
     )
     assert cost(road, incoming=road, **left) == pytest.approx((low + high) / 2)
-
-
-def test_the_riders_own_half_step_still_gives_them_the_right_of_way() -> None:
-    # Riding a 3.5 road across an LTS 3 one with nothing mapped: the rider's road is the
-    # busier, so it is the priority side's small cost, not the midpoint of a stop.
-    rider = Road(3, half=True, **ARTERIAL)
-    event = m.assess(
-        crossing(Road(3, **ARTERIAL), incoming=rider, outgoing=rider, control=Control.NONE)
-    )
-    assert event is not None and event.cost_ft == m.PRIORITY_SIDE_FT
-
-
-def test_a_signalised_three_and_a_half_crossing_stays_cheap() -> None:
-    half = cost(Road(3, half=True, **ARTERIAL), ridetime.WEEKDAY_RUSH, control=Control.SIGNAL)
-    four = cost(Road(4, **ARTERIAL), ridetime.WEEKDAY_RUSH, control=Control.SIGNAL)
-    assert half < four
 
 
 def test_a_half_step_crossing_says_its_half_step() -> None:

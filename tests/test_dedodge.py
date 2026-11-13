@@ -643,7 +643,7 @@ class TestTheVerdict:
         """Avoided at the second figure, not the top: kept by its cost, not by the guard."""
         small = verdict(read(turns=2), read(orange=[500.0]))
         assert small.remove
-        big = verdict(read(turns=2), read(orange=[1500.0]))
+        big = verdict(read(turns=2), read(orange=[1400.0]))
         assert not big.remove and big.reason == "stress"
 
     def test_it_is_never_removed_for_a_longer_route(self) -> None:
@@ -1433,10 +1433,10 @@ class TestTheTieStepOnEveryPreset:
         assert not got.remove and got.needed_m == 50.0
 
     def test_an_orange_junction_counts_at_the_second_level(self) -> None:
-        # 900 ft of junction cost (an orange junction is 800 ft or more since 468; 700 ft
-        # was one at 600) is 274 m.
-        got = verdict(read(turns=2), read(orange=[900.0]), CTX)
-        assert not got.remove and got.avoided_m == pytest.approx(900.0 * FT)
+        # 1,000 ft of junction cost (an orange junction is 984 ft or more since 2026-11-13;
+        # it was 800 ft) is 305 m.
+        got = verdict(read(turns=2), read(orange=[1000.0]), CTX)
+        assert not got.remove and got.avoided_m == pytest.approx(1000.0 * FT)
 
     def test_the_guards_still_hold(self) -> None:
         for ctx in (TOP, CTX):

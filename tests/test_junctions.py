@@ -1745,50 +1745,6 @@ class TestEvents:
         assert event.crossed_tier == 4 and "40 mph" in event.reason
 
     @db
-    def test_a_signalled_crossing_is_cheap_and_not_flagged(self, grid) -> None:
-        signalled = answer(crossroads()["edges"], [node(N, signal=True)])
-        (event,) = junctions.events_of([raw()], "weekend", False, self.locate_with(signalled))
-        assert event.control is Control.SIGNAL
-        # "weekend": 468a's x0.85 on the 600 ft signalised crossing.
-        assert not event.flagged
-        assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * model.time_factor("weekend")
-
-    @db
-    def test_the_ride_time_prices_the_junction_when_closures_are_read_without_it(
-        self, grid
-    ) -> None:
-        """Hunt 3 follow-up: a plan off the weekend graphs reads closures in no ride time
-        (`routing.car_free_reading`), and that one value also timed the junction costs, so
-        rush hour (x1.25) and night (x0.5) were lost on every such plan."""
-        signalled = answer(crossroads()["edges"], [node(N, signal=True)])
-        (event,) = junctions.events_of(
-            [raw()], "weekday_rush", False, self.locate_with(signalled), closure_when=""
-        )
-        assert event.time_factor == model.time_factor("weekday_rush") == 1.25
-        assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * 1.25
-
-    @db
-    def test_closures_are_read_in_the_closure_time_not_the_ride_time(
-        self, grid, monkeypatch
-    ) -> None:
-        """Hunt X1 kept: a weekend ride on the standard graph reads no closure (its router
-        prices the closed road with cars), while the ride time still prices the junction."""
-        read = []
-        real = junctions.roads_by_way
-
-        def spy(wanted, when, with_facility):
-            read.append(when)
-            return real(wanted, when, with_facility)
-
-        monkeypatch.setattr(junctions, "roads_by_way", spy)
-        signalled = answer(crossroads()["edges"], [node(N, signal=True)])
-        (event,) = junctions.events_of(
-            [raw()], "weekend", False, self.locate_with(signalled), closure_when=""
-        )
-        assert read == [""]
-        assert event.time_factor == model.time_factor("weekend")
-
-    @db
     def test_riding_along_the_arterial_past_a_merge_is_not_a_crossing(self, grid) -> None:
         """Review r1, B1: 16th St NW past an inbound-only merge (measured)."""
         merge = answer(
@@ -1976,3 +1932,52 @@ class TestAReadingTheClockCutsShort:
         )  # fmt: skip
         assert refine.events_of_raws([], ctx, ctx.deadline) == []
         assert seen["cut_short"] == (routing.DeadlineExceeded,)
+
+
+@db
+class TestTheRoadASidePathRunsBeside:
+    """A rider on a path beside a main road has that road's right of way at a side street
+    (`junctions.beside_roads`, `intersections.has_priority`; the audit of 2026-11-13)."""
+
+    @pytest.fixture
+    def beside(self, grid):
+        east = LON + 0.01
+        rows = [
+            # The main road, east-west, 10 m north of the path's crossing.
+            (70, 4, line((east - 0.002, LAT + 0.00009), (east + 0.002, LAT + 0.00009))),
+            # The side street the path crosses, north-south.
+            (71, 2, line((east, LAT - 0.002), (east, LAT + 0.002))),
+        ]
+        with connection.cursor() as cursor:
+            for way, tier, wkt in rows:
+                cursor.execute(
+                    f"INSERT INTO {grid}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule) VALUES (%s, 0, ST_GeomFromText(%s, 4326), %s, 'test')",
+                    [way, wkt, tier],
+                )
+        return east
+
+    def path(self, east: float, **fields) -> RawJunction:
+        use = sorted(junctions.PATH_USES)[0]
+        base = {"lon": east, "in_way": 99, "out_way": 99, "in_use": use, "out_use": use}
+        return raw(**(base | fields))
+
+    def test_the_parallel_road_within_20_m_is_found(self, beside) -> None:
+        assert junctions.beside_roads([self.path(beside)], {}) == {0: 70}
+
+    def test_a_road_the_path_crosses_is_not_beside_it(self, beside) -> None:
+        # Heading north the main road is the one crossed; the side street is parallel.
+        north = self.path(beside, in_heading=0.0, out_heading=0.0)
+        assert junctions.beside_roads([north], {}) == {0: 71}
+
+    def test_only_a_path_ridden_straight_through_asks(self, beside) -> None:
+        on_a_road = raw(lon=beside)
+        turning = self.path(beside, movement=Movement.LEFT)
+        assert junctions.beside_roads([on_a_road, turning], {}) == {}
+
+
+def test_the_riders_class_against_the_other_roads() -> None:
+    assert model.class_edge("primary", ["residential", "tertiary"]) == 2
+    assert model.class_edge("residential", ["primary"]) == -4
+    assert model.class_edge(None, ["primary"]) is None
+    assert model.class_edge("primary", [None]) is None

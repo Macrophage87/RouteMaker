@@ -12,8 +12,8 @@ maps a signalised crossing two other ways the router never read:
   where it meets the road.
 
 So a signalised trail crossing away from a signalised road junction read "no
-signal mapped" in the junction model, was counted at half
-(`routemaker.intersections.MARKED_CROSSING_FACTOR`) and never drawn red. The
+signal mapped" in the junction model and was priced as a marked crosswalk
+(`routemaker.intersections.MARKED_YIELD_SHARE`), not as a signal. The
 first form is read in the tag transform (`remap_node`, lua/routemaker_remap.lua),
 which sees the node's own tags. The second needs the way and the road together,
 which the transform never sees at once, so this module finds the nodes at the
