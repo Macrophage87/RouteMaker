@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { RouteResponse } from "./lib/api.ts";
 import type { Dials } from "./lib/dials.ts";
@@ -64,7 +64,8 @@ function clearOfPanels(): { top: number; bottom: number; left: number; right: nu
  * its own but each stretch's Use this way (the owner's pick, 2026-11-13).
  */
 export function CheckRoute({ route, preset, dials, getMap, plan, onUse }: CheckRouteProps) {
-  const [stretches, setStretches] = useState<WorstStretch[]>([]);
+  // Worked out with the route, not after it, so a busy route never first says it has nothing busy (review a11y).
+  const stretches = useMemo(() => worstStretches(route), [route]);
   const [ways, setWays] = useState<(CalmerWay | null)[]>([]);
   const [about, setAbout] = useState(false);
   const aboutId = useId();
@@ -73,8 +74,7 @@ export function CheckRoute({ route, preset, dials, getMap, plan, onUse }: CheckR
   asked.current = { preset, dials, plan };
 
   useEffect(() => {
-    const found = worstStretches(route);
-    setStretches(found);
+    const found = stretches;
     setWays(found.map(() => null));
     let live = true;
     void (async () => {
@@ -89,7 +89,7 @@ export function CheckRoute({ route, preset, dials, getMap, plan, onUse }: CheckR
     return () => {
       live = false;
     };
-  }, [route]);
+  }, [route, stretches]);
 
   // The calmer ways found, drawn on the map while the list shows.
   useEffect(() => {
@@ -130,7 +130,7 @@ export function CheckRoute({ route, preset, dials, getMap, plan, onUse }: CheckR
       </p>
       {/* One line for a screen reader once every calmer way is looked for, not one per row (the review's a11y finding). */}
       <p className="visually-hidden" role="status">
-        {ways.every((w) => w !== null) ? checkedSaid(stretches.length, ways.filter((w) => w?.kind === "found").length) : ""}
+        {ways.length === stretches.length && ways.every((w) => w !== null) ? checkedSaid(stretches.length, ways.filter((w) => w?.kind === "found").length) : ""}
       </p>
       {stretches.length === 0 ? (
         <p className="hint check-none">{CHECK_NONE}</p>

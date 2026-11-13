@@ -172,3 +172,26 @@ test("the plan's points the route reaches inside the stretch go; the ends, those
   // Legs that do not fit the points: every point kept.
   assert.equal(pointsKept(points, { ...r, leg_ends: [1, 2] }, worst).length, 5);
 });
+
+test("a GPS out-and-back whose ends snap a hair nearer the other pass is still cut on its own pass, never across the turn", () => {
+  // The return pass 6 m north; the way's ends 3.5 m north of the way out, so a hair nearer the way back.
+  const back: LonLat[] = LINE.slice().reverse().map(([lon, lat]) => [lon, lat + 0.000054]);
+  const track = [...LINE, ...back];
+  const hair = (p: LonLat): LonLat => [p[0], p[1] + 0.0000315];
+  // On the way out, ending about 200 m before the turn.
+  assert.deepEqual(spliceAt(track, [hair(LINE[300]), [LINE[340][0], 38.899], hair(LINE[380])], 300 / 800, 900), { before: 300, after: 380 });
+  // On the way back, starting about 220 m after the turn (vertex 420 is LINE[379]).
+  const out = spliceAt(track, [hair(LINE[379]), [LINE[340][0], 38.899], hair(LINE[299])], 420 / 800, 900);
+  assert.deepEqual(out, { before: 420, after: 500 });
+});
+
+test("with the route's own stretch, a length that is off still never cuts across the turn", () => {
+  // The return pass 6.7 m north; the ends a hair nearer it; the length given 1100 m for an 890 m part.
+  const back: LonLat[] = LINE.slice().reverse().map(([lon, lat]) => [lon, lat + 0.00006]);
+  const track = [...LINE, ...back];
+  const hair = (p: LonLat): LonLat => [p[0], 38.9 + 0.000031];
+  const padded = LINE.slice(300, 381);
+  assert.deepEqual(spliceAt(track, [hair(LINE[300]), [LINE[340][0], 38.899], hair(LINE[380])], 300 / 800, 1100, padded), { before: 300, after: 380 });
+  // A file part far from the route's stretch is refused.
+  assert.equal(spliceAt(track, [LINE[300], [LINE[340][0], 38.899], LINE[380]], 300 / 800, 900, LINE.slice(0, 50)), null);
+});

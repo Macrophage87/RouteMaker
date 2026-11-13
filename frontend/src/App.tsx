@@ -4360,12 +4360,13 @@ export function App() {
     if (!file?.verbatim || !route) return;
     const line = file.verbatim.track;
     const ends = stretchEnds(route, stretch);
-    const cut = spliceAt(line, way, ends.share, ends.paddedM);
+    const cut = spliceAt(line, way, ends.share, ends.paddedM, ends.padded);
     if (!cut) {
       announce(CHECK_NOT_PUT);
       return;
     }
-    const track = spliceDetours(line, [cut], [way]).map((v) => [...v]) as NonNullable<ImportedPlan["verbatim"]>["track"];
+    // The calmer way's own ends are kept too (they are not the file's vertices, as a closure's detour ends are).
+    const track = spliceDetours(line, [cut], [[[line[cut.before][0], line[cut.before][1]], ...way, [line[cut.after][0], line[cut.after][1]]]]).map((v) => [...v]) as NonNullable<ImportedPlan["verbatim"]>["track"];
     // The plan's own points on the part replaced go; the rest stay where the file put them.
     const kept = pointsKept(pointsRef.current, route, stretch);
     // A snapped line (lib/gpxMatch.ts) was of the line before: it goes with it.

@@ -115,7 +115,7 @@ function streetOf(route: Pick<RouteResponse, "description">, fromM: number, toM:
 export function stretchEnds(
   route: Pick<RouteResponse, "geometry" | "distance_m" | "leg_ends" | "description">,
   stretch: Pick<WorstStretch, "fromM" | "toM">,
-): { line: LonLat[]; from: LonLat; to: LonLat; paddedM: number; share: number } {
+): { line: LonLat[]; padded: LonLat[]; from: LonLat; to: LonLat; paddedM: number; share: number } {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
   const toLine = measureMap(route, along);
@@ -123,7 +123,7 @@ export function stretchEnds(
   const a = Math.max(0, toLine(stretch.fromM) - PAD_M);
   const b = Math.min(end, toLine(stretch.toM) + PAD_M);
   const padded = sliceLine(coordinates, along, a, b);
-  return { line: sliceLine(coordinates, along, toLine(stretch.fromM), toLine(stretch.toM)), from: padded[0], to: padded[padded.length - 1], paddedM: b - a, share: end > 0 ? a / end : 0 };
+  return { line: sliceLine(coordinates, along, toLine(stretch.fromM), toLine(stretch.toM)), padded, from: padded[0], to: padded[padded.length - 1], paddedM: b - a, share: end > 0 ? a / end : 0 };
 }
 
 /** A calmer way round one stretch, or why there is none. */
@@ -197,19 +197,61 @@ export function nearestIndex(line: readonly (readonly number[])[], p: LonLat, lo
 /** The start is looked for this share of the file's length either side of where it should be, at least SPLICE_WINDOW_M (our defaults, unmeasured). */
 export const SPLICE_WINDOW_SHARE = 0.1;
 export const SPLICE_WINDOW_M = 1000;
-/** The file's part replaced is at most this many times the stretch padded, plus SPLICE_SLACK_M, and at least SPLICE_LEAST_RATIO of it (our defaults, unmeasured). */
-export const SPLICE_MOST_RATIO = 2;
+/** Vertices this much farther than the nearest from an end still count as at it: the two passes of a GPS out-and-back (our default, unmeasured). */
+export const SPLICE_SAME_SPOT_M = 25;
+/** The file's part replaced is between these shares of the stretch padded, plus SPLICE_SLACK_M (our defaults, unmeasured). */
 export const SPLICE_LEAST_RATIO = 0.5;
-export const SPLICE_SLACK_M = 500;
+export const SPLICE_MOST_RATIO = 1.5;
+export const SPLICE_SLACK_M = 150;
+/** A cut whose file part strays farther than this from the route's own padded stretch is refused (our default, unmeasured). */
+export const SPLICE_OFF_M = 100;
+
+/** How far `p` is from the polyline `line`, in metres (flat, near enough over a mile or two). */
+function offLineM(p: readonly number[], line: readonly LonLat[]): number {
+  const kx = Math.cos((p[1] * Math.PI) / 180);
+  let best = Infinity;
+  for (let i = 0; i < line.length; i += 1) {
+    const a = line[i];
+    const b = line[Math.min(i + 1, line.length - 1)];
+    const [ax, ay, bx, by, px, py] = [a[0] * kx, a[1], b[0] * kx, b[1], p[0] * kx, p[1]];
+    const len2 = (bx - ax) ** 2 + (by - ay) ** 2;
+    const t = len2 > 0 ? Math.min(Math.max(((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / len2, 0), 1) : 0;
+    best = Math.min(best, Math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay))));
+  }
+  return best * 111_195;
+}
+
+/** The vertices from `lo` to `hi` at about the nearest spot to `p` (within SPLICE_SAME_SPOT_M of the nearest), one a pass. */
+function atSpot(line: readonly (readonly number[])[], p: LonLat, lo: number, hi: number): number[] {
+  const best = nearestIndex(line, p, lo, hi);
+  const limit = Math.sqrt(apart2(line[best], p)) + SPLICE_SAME_SPOT_M / 111_195;
+  const [from, to] = [Math.max(0, lo), Math.min(line.length - 1, hi)];
+  const d = (i: number) => Math.sqrt(apart2(line[i], p));
+  // One vertex a pass: the nearest of its run (a local minimum), not its neighbours a few metres along.
+  const out: number[] = [];
+  for (let i = from; i <= to; i += 1) {
+    if (d(i) <= limit && (i === from || d(i) <= d(i - 1)) && (i === to || d(i) < d(i + 1))) out.push(i);
+  }
+  return out.length ? out : [best];
+}
 
 /**
  * Where the calmer way goes into the file's full line (closureCheck.ts spliceDetours takes it from here). `share` is how
- * far along the route (0 to 1) the padded stretch starts (stretchEnds); the start is the nearest vertex within a window
- * round that share of the file, and the end the nearest one ahead of it within about the padded stretch's length, so a
- * line that passes the same spot twice (an out-and-back, a loop) is cut on the pass the stretch is on, never across the
- * turn. Null where the ends cannot be placed so: Use this way then says it could not.
+ * far along the route (0 to 1) the padded stretch starts (stretchEnds). Where a spot is passed twice (an out-and-back,
+ * a loop), the nearest vertex is a matter of a few metres, so the pass is chosen by distance along the line instead: the
+ * start is the vertex at the way's first end nearest that share of the file, and the end the vertex at its last end
+ * that keeps nearest the route's own padded stretch (`padded`; without it, whose distance along from the start is nearest
+ * the padded stretch's length). A cut straying over SPLICE_OFF_M from it, or outside SPLICE_LEAST_RATIO to
+ * SPLICE_MOST_RATIO of that length is refused (null: Use this way then says it could not), so the cut never runs across
+ * the turn of an out-and-back.
  */
-export function spliceAt(line: readonly (readonly number[])[], way: readonly LonLat[], share: number, paddedM: number): Stretch | null {
+export function spliceAt(
+  line: readonly (readonly number[])[],
+  way: readonly LonLat[],
+  share: number,
+  paddedM: number,
+  padded: readonly LonLat[] = [],
+): Stretch | null {
   if (line.length < 2 || way.length < 2) return null;
   const along = cumulative(line.map((v) => [v[0], v[1]] as LonLat));
   const total = along[along.length - 1];
@@ -219,14 +261,24 @@ export function spliceAt(line: readonly (readonly number[])[], way: readonly Lon
   while (lo < line.length - 1 && along[lo] < centre - window) lo += 1;
   let hi = lo;
   while (hi < line.length - 1 && along[hi + 1] <= centre + window) hi += 1;
-  const before = nearestIndex(line, way[0], lo, hi);
-  let reach = before;
+  const closest = (indices: number[], to: (i: number) => number) => indices.reduce((a, b) => (Math.abs(to(b)) < Math.abs(to(a)) ? b : a));
+  const before = closest(atSpot(line, way[0], lo, hi), (i) => along[i] - centre);
   const most = paddedM * SPLICE_MOST_RATIO + SPLICE_SLACK_M;
+  let reach = before;
   while (reach < line.length - 1 && along[reach + 1] - along[before] <= most) reach += 1;
   if (reach === before) return null;
-  const after = nearestIndex(line, way[way.length - 1], before + 1, reach);
+  const ends = atSpot(line, way[way.length - 1], before + 1, reach);
+  // With the route's own padded stretch: the end whose file part keeps nearest it (a cut across an out-and-back's turn
+  // runs on to the turn, far past the stretch), and none that strays from it. Without: the length alone.
+  const stray = (i: number) => {
+    let most = 0;
+    for (let k = before; k <= i; k += 1) most = Math.max(most, offLineM(line[k], padded));
+    return most;
+  };
+  const after = padded.length >= 2 ? ends.reduce((a, b) => (stray(b) < stray(a) ? b : a)) : closest(ends, (i) => along[i] - along[before] - paddedM);
+  if (padded.length >= 2 && stray(after) > SPLICE_OFF_M) return null;
   const cut = along[after] - along[before];
-  return cut >= paddedM * SPLICE_LEAST_RATIO ? { before, after } : null;
+  return cut >= paddedM * SPLICE_LEAST_RATIO && cut <= most ? { before, after } : null;
 }
 
 /**
