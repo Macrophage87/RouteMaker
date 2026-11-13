@@ -15,7 +15,7 @@ import { YOUR_LOCATION } from "../lib/appMode.ts";
 import type { PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
 import { DialsPanel } from "../DialsPanel.tsx";
-import { withLoop, type LoopView } from "../lib/loop.ts";
+import { LOOP_WAYS, loopWay, withLoopWay, type LoopView } from "../lib/loop.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { editingTips, emptyPlanHint, loneStartHint } from "../lib/pointText.ts";
 import { RideTypePicker } from "../RideTypePicker.tsx";
@@ -144,25 +144,34 @@ export function PointsSection(props: PointsSectionProps) {
               <span>{t("Swap")}</span>
             </button>
           )}
-          {/* Make it a loop (OWNER-DECISIONS 388, 389): by the search, not behind the Ride line's Edit; there
-              with no point placed too, and not on Mass Ride. A box styled as the mockup's Loop button. */}
+          {/* How the ride ends (OWNER-DECISIONS 388, 389: by the search, with no point placed too, not on Mass Ride),
+              a three-way choice since Stephen's pick of 2026-11-13: One way, Loop (back by a different way), or Out and
+              back (the same way back). It was the "Make it a loop" box. */}
           {loop && (
-            <label className="toggle loop-toggle icon-toggle">
-              {/* aria-disabled, not disabled, when the ride is a loop already: it stays in the Tab order
-                  with its reason as its description (the a11y review's N6), and a press changes nothing. */}
-              <input
-                type="checkbox"
-                checked={loop.checked}
-                aria-disabled={loop.implied || undefined}
-                aria-describedby={loopHintId}
-                onChange={(event) => {
-                  if (loop.implied) return;
-                  commitDials(withLoop(dials, event.target.checked));
-                }}
-              />
-              <span className="visually-hidden">{t(loop.label)}</span>
-              <span aria-hidden="true">{t("Loop")}</span>
-            </label>
+            <fieldset className="loop-ways" aria-describedby={loopHintId}>
+              <legend className="visually-hidden">{t("How the ride ends")}</legend>
+              {LOOP_WAYS.map(({ way, label }) => {
+                const checked = loopWay(dials, loop.implied) === way;
+                // A ride ending where it starts is a loop already: One way stays in the Tab order with the hint as its
+                // reason (the a11y review's N6), and a press changes nothing.
+                const stuck = loop.implied && way === "one-way";
+                return (
+                  <label key={way} className={checked ? "loop-way chosen" : "loop-way"}>
+                    <input
+                      type="radio"
+                      name={`${loopHintId}-way`}
+                      checked={checked}
+                      aria-disabled={stuck || undefined}
+                      onChange={() => {
+                        if (stuck) return;
+                        commitDials(withLoopWay(dials, way, loop.implied));
+                      }}
+                    />
+                    <span>{label}</span>
+                  </label>
+                );
+              })}
+            </fieldset>
           )}
           {/* No "Edit points" any more (v0.7.0): with a route the search and the point tools stay in view, and the
               plan panel holds Reset, and says the plan in words to a screen reader. */}

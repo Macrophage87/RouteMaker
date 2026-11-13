@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "Placez le point de départ, puis un ou deux arrêts en chemin.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "Cette sortie finit où elle commence, elle est donc calculée en boucle : le retour évite les routes de l'aller, quand il existe une autre voie.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "Part et finit à votre premier point. Chaque point ajouté ensuite est un arrêt sur la boucle, et le retour évite les routes de l'aller quand il existe une autre voie.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "Activez pour revenir au départ. Chaque point ajouté est alors un arrêt.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "Calcule le chemin jusqu'à votre point d'arrivée, puis un autre chemin pour revenir au départ. Le retour évite les routes de l'aller quand il existe une autre voie.",
   "Loop returns the same way: no other fit.": "La boucle revient par le même chemin : aucune autre ne convient.",
   "({credit}, live)": "({credit}, en direct)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "Sur la carte, une ligne tiretée marquée de son réseau (Metro, MARC, bus) est le trajet en transport, par ses arrêts.",

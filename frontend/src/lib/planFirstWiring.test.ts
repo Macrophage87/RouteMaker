@@ -24,7 +24,8 @@ test("a changed plan greys the line and keeps a dashed ghost of the old one with
   assert.match(app, /const planEdited = planFirst && planChanged\(drawn, points, preset, planKey\);/);
   assert.match(app, /stale=\{riding \? false : stale \|\| planEdited\}/);
   // v0.8.2: with no ghost, the standard way through a closure the route goes round takes its place.
-  assert.match(app, /ghost=\{riding \? \(rideView\?\.other \?\? null\) : reviewing \? null : \(ghost \?\? shown\?\.closure_through\?\.geometry\.coordinates \?\? null\)\}/);
+  // A route kept to compare (lib/compareRoutes.ts, 2026-11-13) is the dashed line first while it is not the one shown.
+  assert.match(app, /ghost=\{riding \? \(rideView\?\.other \?\? null\) : reviewing \? null : \(\(planFirst && comparing && compareKept \? compareKept\.route\.geometry\.coordinates : null\) \?\? ghost \?\? shown\?\.closure_through\?\.geometry\.coordinates \?\? null\)\}/);
   assert.match(app, /if \(plan\.pressed && before\) \{\s*setGhost\(before\.route\.geometry\.coordinates\);\s*setChangeLine\(changeSummary\(before\.route, result\.route\)\);/);
   // The per-leg details behind the summary.
   assert.match(app, /setChangeDetails\(legChanges\(before, drawnNow, VIA_MARKS\.isVia, \(p\) => namer\.name\(p\)\?\.name\)\);/);
@@ -35,7 +36,7 @@ test("a changed plan greys the line and keeps a dashed ghost of the old one with
 test("Reset goes back to the drawn plan without routing, Clear keeps the ride, and both are undoable edits", () => {
   assert.match(app, /commit\(back\.points as LonLat\[\], back\.ride\);/);
   assert.match(app, /resetUnavailable=\{planEdited \? null : RESET_NOTHING\}/);
-  assert.match(app, /const clearPlan = \(\) => \{\s*setGhost\(null\);\s*setChangeLine\(null\);\s*setChangeDetails\(\[\]\);\s*clearAll\(\);/);
+  assert.match(app, /const clearPlan = \(\) => \{\s*setCompareKept\(null\);\s*setGhost\(null\);\s*setChangeLine\(null\);\s*setChangeDetails\(\[\]\);\s*clearAll\(\);/);
   // Reset puts back the stations and the transit option the drawn plan was routed with.
   assert.match(app, /setStationPins\(back\.pins\);\s*setTransitPick\(back\.transitPick\);/);
   // Reset is aria-disabled with its reason, never removed or disabled outright.

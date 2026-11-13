@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "วางจุดเริ่ม แล้วเพิ่มจุดแวะระหว่างทางหนึ่งสองจุด",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "การปั่นนี้จบที่จุดเริ่ม จึงคำนวณเป็นวงรอบ: ขากลับเลี่ยงถนนที่ใช้ขาไปถ้ามีทางอื่น",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "เริ่มและจบที่จุดแรก จุดที่เพิ่มหลังจากนั้นเป็นจุดแวะบนวงรอบ และขากลับเลี่ยงถนนที่ใช้ขาไปถ้ามีทางอื่น",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "เปิดเพื่อจบโดยกลับมาที่จุดเริ่ม ทุกจุดที่เพิ่มจะเป็นจุดแวะ",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "คำนวณทางไปจุดหมาย แล้วคำนวณทางกลับอีกเส้นไปจุดเริ่ม ขากลับเลี่ยงถนนที่ใช้ขาไปถ้ามีทางอื่น",
   "Loop returns the same way: no other fit.": "วงรอบกลับทางเดิม: ไม่มีทางอื่นที่เหมาะ",
   "({credit}, live)": "({credit} สด)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "บนแผนที่ เส้นประผ่านป้ายที่ระบุระบบ (Metro, MARC, รถเมล์) คือช่วงขนส่งสาธารณะ",

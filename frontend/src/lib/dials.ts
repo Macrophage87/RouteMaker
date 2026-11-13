@@ -73,6 +73,11 @@ export interface Dials {
   /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
   loop?: boolean;
   /**
+   * Plan's "Out and back" (Stephen 2026-11-13, his pick of the Loop control as One way / Loop / Out and back): on a
+   * loop, come back the same way rather than by a different way (lib/loop.ts loopWay). In the link; absent is off.
+   */
+  outAndBack?: boolean;
+  /**
    * Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level, 1 (green) to 4 (red).
    * Absent is the default, level 2 (lib/mtbMode.ts DEFAULT_MTB_LEVEL).
    */
@@ -436,6 +441,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(offersEasyMtb(preset) && dials.easyMtb === true ? { easyMtb: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
+    ...(dials.outAndBack === true ? { outAndBack: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
@@ -470,6 +476,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (weight !== undefined) fields.system_weight_kg = Math.round(weight);
   if (typeof dials.ridingSpeedKmh === "number" && Number.isFinite(dials.ridingSpeedKmh)) fields.cycling_speed_kmh = dials.ridingSpeedKmh;
   if (dials.loop) fields.loop = true;
+  if (dials.outAndBack) fields.out_and_back = true;
   // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
   const level = fitMtbLevel(dials.mtbLevel);
   if (level !== undefined) fields.mtb_level = level;

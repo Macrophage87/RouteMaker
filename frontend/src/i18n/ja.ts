@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "出発地を置いてから、途中の立ち寄り先を 1〜2 か所。",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "このライドは出発地で終わるので、周回として計算します：ほかに道があれば、帰りは行きの道を避けます。",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "最初の地点から出て最初の地点に戻ります。あとから足した地点は周回の立ち寄り先になり、ほかに道があれば帰りは行きの道を避けます。",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "オンにすると出発地に戻って終わります。追加した地点はすべて立ち寄り先になります。",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "到着地までの道を計算し、出発地へは別の帰り道を計算します。ほかに道があれば、帰りは行きの道を避けます。",
   "Loop returns the same way: no other fit.": "周回は同じ道を戻ります：ほかに適した道がありません。",
   "({credit}, live)": "（{credit}、リアルタイム）",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "地図上で、路線名（Metro、MARC、バス）の付いた停留所を通る破線は公共交通の区間です。",

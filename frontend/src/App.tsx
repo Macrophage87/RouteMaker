@@ -6367,7 +6367,7 @@ export function App() {
   const federalPlanner = federalShown(preset, true) && federalData && points.length > 0 && federalAreas.every((area) => area === null) && (
     <p className="hint federal-points">{FEDERAL_POINTS_NONE}</p>
   );
-  const loop = loopView(preset, dials.loop, points);
+  const loop = loopView(preset, dials.loop, points, dials.outAndBack === true);
   const loopHintId = useId();
   const [tips, setTips] = useState(false);
   const tipsId = useId();

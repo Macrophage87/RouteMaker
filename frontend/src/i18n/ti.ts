@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "መበገሲ ኣቐምጥ፣ ድሕሪኡ ኣብ መንገዲ ሓደ ወይ ክልተ መዕረፊ።",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "እዚ ጉዕዞ ኣብቲ ዝጀመረሉ ይውዳእ፣ ስለዚ ከም ዙርያ ይሕሰብ፦ መንገዲ ምምላስ ካልእ መንገዲ እንተሃልዩ ነቶም ብምኻድ ዝተጠቐምካሎም መንገድታት የወግድ።",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "ኣብ ቀዳማይ ነጥብኻ ይጅምርን ይውዳእን። ድሕሪኡ እትውስኾ ነፍሲ ወከፍ ነጥቢ ኣብ ዙርያ መዕረፊ እዩ፣ መንገዲ ምምላስ ድማ ካልእ መንገዲ እንተሃልዩ ነቶም ብምኻድ ዝተጠቐምካሎም መንገድታት የወግድ።",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "ናብ መበገሲ ብምምላስ ንምውዳእ ኣብርሆ። እትውስኾ ነፍሲ ወከፍ ነጥቢ መዕረፊ ይኸውን።",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "ክሳብ መወዳእታኻ መንገዲ ይሕሰብ፣ ድሕሪኡ ናብ መበገሲ ዝተፈልየ መንገዲ ምምላስ። መንገዲ ምምላስ ካልእ መንገዲ እንተሃልዩ ነቶም ብምኻድ ዝተጠቐምካሎም መንገድታት የወግድ።",
   "Loop returns the same way: no other fit.": "ዙርያ ብተመሳሳሊ መንገዲ ይምለስ፦ ካልእ ዝሰማማዕ መንገዲ የለን።",
   "({credit}, live)": "({credit}፣ ቀጥታ)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "ኣብ ካርታ፣ ብስርዓቶም (Metro፣ MARC፣ ኣውቶቡስ) ብዝተመልከቱ መዕረፍታት ዝሓልፍ ዝተሰብረ መስመር ጉዕዞ ህዝባዊ መጓዓዝያ እዩ።",

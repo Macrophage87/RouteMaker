@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "شروع را بگذارید، سپس یکی دو توقف در راه.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "این سواری همان‌جا که شروع شده تمام می‌شود، پس به‌صورت حلقه محاسبه می‌شود: راه برگشت، اگر راه دیگری باشد، از جاده‌های رفت دوری می‌کند.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "در نقطه اول شروع و تمام می‌شود. هر نقطه‌ای که بعد اضافه کنید توقفی روی حلقه است، و راه برگشت، اگر راه دیگری باشد، از جاده‌های رفت دوری می‌کند.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "روشن کنید تا با بازگشت به شروع تمام شود. هر نقطه‌ای که اضافه کنید توقف می‌شود.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "راه تا پایان را محاسبه می‌کند، سپس راه برگشت دیگری تا شروع. راه برگشت، اگر راه دیگری باشد، از جاده‌های رفت دوری می‌کند.",
   "Loop returns the same way: no other fit.": "حلقه از همان راه برمی‌گردد: راه مناسب دیگری نیست.",
   "({credit}, live)": "({credit}، زنده)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "روی نقشه، خط‌چین از میان ایستگاه‌هایی که با سامانه‌شان (Metro، MARC، اتوبوس) علامت خورده‌اند سفر با حمل‌ونقل عمومی است.",

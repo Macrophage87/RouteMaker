@@ -512,6 +512,15 @@ class RouteIn(Schema):
             " answer's `loop` says how much it shares. Not on Mass Ride."
         ),
     )
+    out_and_back: StrictBool = Field(
+        default=False,
+        description=(
+            "On a loop (`loop`, or a ride ending where it starts): come back the same way (Plan's"
+            " Out and back; Stephen 2026-11-13). The way back is planned as any leg is, with no"
+            " push off the way out and no price on riding a way twice, so on one destination it"
+            " is the way out ridden back. Ignored on a ride that is not a loop."
+        ),
+    )
     mtb_level: StrictInt | None = Field(
         default=None,
         ge=1,
@@ -1073,6 +1082,9 @@ class DialsOut(Schema):
         description="The rider total system weight the effort was weighed with, if set.",
     )
     loop: bool = Field(default=False, description="Whether the route was planned as a loop.")
+    out_and_back: bool = Field(
+        default=False, description="Whether the loop was planned to come back the same way."
+    )
 
 
 class HillClimbOut(Schema):
@@ -3023,6 +3035,10 @@ class LoopOut(Schema):
     return_m: float | None = None
     excluded: int = Field(default=0, description="Points along the way out the way back avoided.")
     tried: int = Field(default=0, description="Routes asked for the way back.")
+    same_way: bool = Field(
+        default=False,
+        description="The rider asked to come back the same way (`out_and_back`): nothing was avoided.",
+    )
     fallback: str | None = Field(
         default=None,
         description=(
@@ -6010,6 +6026,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         system_weight_kg=body.system_weight_kg,
         cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         loop=body.loop,
+        out_and_back=body.out_and_back,
         debug_junctions=body.debug_junctions,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
@@ -6257,6 +6274,7 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
         loop=body.loop,
+        out_and_back=body.out_and_back,
     )
     started = getattr(request, "routing_started", None)
     try:

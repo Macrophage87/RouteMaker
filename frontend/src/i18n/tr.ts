@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "Başlangıç noktasını koyun, sonra yol üzerinde bir iki durak.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "Bu sürüş başladığı yerde bitiyor, bu yüzden döngü olarak hesaplanır: dönüş yolu, başka yol varsa gidişte kullanılan yollardan kaçınır.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "İlk noktanızda başlar ve biter. Sonra eklediğiniz her nokta döngü üzerinde bir duraktır ve dönüş yolu, başka yol varsa gidişte kullanılan yollardan kaçınır.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "Başlangıca dönerek bitirmek için açın. Eklediğiniz her nokta bir durak olur.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "Bitiş noktanıza giden yolu, sonra başlangıca farklı bir dönüş yolunu hesaplar. Dönüş yolu, başka yol varsa gidişte kullanılan yollardan kaçınır.",
   "Loop returns the same way: no other fit.": "Döngü aynı yoldan döner: başka uygun yol yok.",
   "({credit}, live)": "({credit}, canlı)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "Haritada, sistemiyle (Metro, MARC, Otobüs) işaretli kesikli çizgi duraklarından geçen toplu taşıma yolculuğudur.",

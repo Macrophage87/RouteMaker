@@ -73,7 +73,11 @@ export function loopStops(preset: PresetId, loop: boolean | undefined): boolean 
 export const LOOP_FIRST_HINT = t("Place the starting point, then a stop or two along the way.");
 
 /** The toggle's hint: what it does now, in the state the points are in. */
-function loopHint(loop: boolean | undefined, implied: boolean, count: number): string {
+function loopHint(loop: boolean | undefined, implied: boolean, count: number, outAndBack: boolean): string {
+  // Out and back (2026-11-13): the same way back, on purpose.
+  if (outAndBack && (implied || loop === true)) {
+    return count === 0 ? LOOP_FIRST_HINT : t("Starts and finishes at your first point, and comes back the same way it went out.");
+  }
   if (implied) {
     return t("This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.");
   }
@@ -82,8 +86,8 @@ function loopHint(loop: boolean | undefined, implied: boolean, count: number): s
       ? LOOP_FIRST_HINT
       : t("Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.");
   }
-  if (count < 2) return t("Turn on to finish back at the start. Each point you add is then a stop.");
-  return t("Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.");
+  if (count < 2) return t("Loop or Out and back finishes back at the start. Each point you add is then a stop.");
+  return t("Loop plans the way to your end point, then a different way back to the start. Out and back comes back the same way.");
 }
 
 /**
@@ -91,10 +95,10 @@ function loopHint(loop: boolean | undefined, implied: boolean, count: number): s
  * (OWNER-DECISIONS 389); with a start alone it can be chosen, and the next click is then a stop
  * (OWNER-DECISIONS 374).
  */
-export function loopView(preset: PresetId, loop: boolean | undefined, points: readonly LonLat[]): LoopView | null {
+export function loopView(preset: PresetId, loop: boolean | undefined, points: readonly LonLat[], outAndBack = false): LoopView | null {
   if (preset === "mass-ride" || twoPointsOnly(preset)) return null;
   const implied = isRoundTrip(points);
-  return { label: LOOP_LABEL, checked: implied || loop === true, implied, hint: loopHint(loop, implied, points.length) };
+  return { label: LOOP_LABEL, checked: implied || loop === true, implied, hint: loopHint(loop, implied, points.length, outAndBack) };
 }
 
 /**
@@ -110,11 +114,44 @@ export function planStartDials(preset: PresetId, dials: Dials): Dials {
 /** Said when a destination picked from search ends a loop (the owner, 2026-10-22, App pickPlace). */
 export const LOOP_ENDED_BY_SEARCH = t("Destination set. Loop off: the ride ends there.");
 
-/** The dials with the loop on, or off (taken off the object). */
+/** The dials with the loop on, or off (taken off the object, and Out and back with it). */
 export function withLoop(dials: Dials, on: boolean): Dials {
   const next: Dials = { ...dials };
   if (on) next.loop = true;
-  else delete next.loop;
+  else {
+    delete next.loop;
+    delete next.outAndBack;
+  }
+  return next;
+}
+
+/**
+ * How the ride ends (Stephen 2026-11-13, his pick: the Loop control as a three-way choice): One way to the end
+ * point, a Loop back to the start by a different way, or Out and back, the same way back.
+ */
+export type LoopWay = "one-way" | "loop" | "out-and-back";
+
+export const LOOP_WAYS: readonly { way: LoopWay; label: string }[] = [
+  { way: "one-way", label: t("One way") },
+  { way: "loop", label: t("Loop") },
+  { way: "out-and-back", label: t("Out and back") },
+];
+
+/** The way the ride ends now: a loop chosen or implied by its points, and whether it comes back the same way. */
+export function loopWay(dials: Pick<Dials, "loop" | "outAndBack">, implied: boolean): LoopWay {
+  if (!implied && dials.loop !== true) return "one-way";
+  return dials.outAndBack === true ? "out-and-back" : "loop";
+}
+
+/**
+ * The dials for a way chosen. A ride already ending where it starts (`implied`) keeps its points' names: only Out and
+ * back is set or taken off, and One way is no choice for it (it changes nothing).
+ */
+export function withLoopWay(dials: Dials, way: LoopWay, implied: boolean): Dials {
+  if (way === "one-way") return implied ? dials : withLoop(dials, false);
+  const next: Dials = implied ? { ...dials } : withLoop(dials, true);
+  if (way === "out-and-back") next.outAndBack = true;
+  else delete next.outAndBack;
   return next;
 }
 
@@ -131,6 +168,8 @@ export function loopNoteShort(route: Pick<RouteResponse, "loop">): string | null
 export function loopNote(route: Pick<RouteResponse, "loop">): string | null {
   const loop = route.loop;
   if (!loop) return null;
+  // Out and back on purpose (2026-11-13): no way back was looked for, so nothing is said of one.
+  if (loop.same_way) return null;
   if (loop.fallback === "out_and_back") {
     return "There is no other way back that fits, so this loop returns the way it went out.";
   }

@@ -11647,3 +11647,36 @@ button.route-note:focus-visible {
 .plan-compare-actions button {
   min-height: 44px;
 }
+
+/* How the ride ends (2026-11-13): One way, Loop, Out and back, a row of three by the search. */
+.loop-ways {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.loop-way {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.loop-way + .loop-way {
+  border-left: 1px solid var(--swatch-border);
+}
+
+.loop-way.chosen {
+  background: var(--bg-soft);
+  font-weight: 700;
+}
+
+.loop-way input[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

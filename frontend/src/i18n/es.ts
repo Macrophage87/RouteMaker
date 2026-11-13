@@ -2131,8 +2131,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "Coloque el punto de inicio y luego una o dos paradas en el camino.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "Este recorrido termina donde empieza, así que se planea como circuito: la vuelta evita las calles de la ida, donde hay otro camino.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "Empieza y termina en su primer punto. Cada punto que agregue después es una parada en el circuito, y la vuelta evita las calles de la ida donde hay otro camino.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "Actívelo para terminar de vuelta en el inicio. Cada punto que agregue será entonces una parada.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "Planea el camino hasta su punto final y luego otro camino de vuelta al inicio. La vuelta evita las calles de la ida donde hay otro camino.",
   // ---- Go's Ride sheet (lib/sidebar.ts SHEET_TITLES) ----
   "Ride": "Recorrido",
   // P8: Help, Plan's Info and Reports in short lines, a phone's words on a phone.
@@ -2783,4 +2781,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Unpaved": "Sin pavimentar",
   "Paths and protected lanes": "Senderos y carriles protegidos",
   "better": "mejor",
+  "How the ride ends": "Cómo termina el recorrido",
+  "One way": "Solo ida",
+  "Out and back": "Ida y vuelta por el mismo camino",
+  "Starts and finishes at your first point, and comes back the same way it went out.": "Empieza y termina en tu primer punto, y vuelve por el mismo camino de ida.",
+  "Loop or Out and back finishes back at the start. Each point you add is then a stop.": "Circuito o Ida y vuelta por el mismo camino termina de nuevo en el inicio. Cada punto que añadas será entonces una parada.",
+  "Loop plans the way to your end point, then a different way back to the start. Out and back comes back the same way.": "Circuito traza el camino hasta tu punto final y luego vuelve al inicio por otro camino. Ida y vuelta por el mismo camino regresa por donde fue.",
 };

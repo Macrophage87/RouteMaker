@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "Đặt điểm bắt đầu, rồi một hai điểm dừng dọc đường.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "Chuyến này kết thúc tại nơi bắt đầu, nên được tính như một vòng: đường về tránh những con đường đã đi lượt đi nếu có lối khác.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "Bắt đầu và kết thúc tại điểm đầu tiên. Mỗi điểm thêm sau là một điểm dừng trên vòng, và đường về tránh những con đường đã đi lượt đi nếu có lối khác.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "Bật để kết thúc bằng cách quay về điểm bắt đầu. Mỗi điểm bạn thêm là một điểm dừng.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "Tính đường đến điểm cuối, rồi một đường về khác đến điểm bắt đầu. Đường về tránh những con đường đã đi lượt đi nếu có lối khác.",
   "Loop returns the same way: no other fit.": "Vòng quay về theo cùng đường: không có lối phù hợp nào khác.",
   "({credit}, live)": "({credit}, trực tiếp)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "Trên bản đồ, đường gạch qua các điểm dừng có ghi hệ thống (Metro, MARC, Xe buýt) là chặng đi phương tiện công cộng.",
