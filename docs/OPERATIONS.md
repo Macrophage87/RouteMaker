@@ -8059,14 +8059,15 @@ before the tag.
   `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload` (as in "A new release
   sha", step 9); and, when the owner has the bug-reports forum's webhook, `FEEDBACK_WEBHOOK_URL=` in
   `.env` and `beta-compose.sh up -d api`. Then `smoke-test.sh --local`, then `smoke-test.sh --public
-  <url> --passwords-file <file>`, then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
+  <url> --open` (no site password since 2026-10-22), then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
   (the new script's, not the installed v0.25.x copy's: only the new one records v0.25.1 as the
   release `rollback` puts back), then
   `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not reinstall the agent, and
   v0.26.0 changes it: #1195's quick deploys, `rollback`, `rollback-map`, `ship-held` and the
-  workflow image pull start with the next release), then `~/routemaker-beta-state/cd/bin/alert.sh
-  install` (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship
-  refreshes the script, not its timers), then `auto-release.sh resume`.
+  workflow image pull start with the next release), then `"$RM_SRC/scripts/beta/alert.sh" install`
+  (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship refreshes the
+  script, not its timers; the checkout's copy, because `install` copies itself into `cd/bin` and the
+  `cd/bin` copy stops with "are the same file"), then `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
   with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
   means the host is not answering (the run itself only fails after 45 minutes), and the next
