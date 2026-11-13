@@ -5728,7 +5728,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept. A peaceful protest's closure (a protest word and no violence word, `is_peaceful_protest`, 2026-11-13) is kept as ordinary closures instead, under AlertDC's title, with the same 3 h age and reopening |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
@@ -8059,14 +8059,15 @@ before the tag.
   `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload` (as in "A new release
   sha", step 9); and, when the owner has the bug-reports forum's webhook, `FEEDBACK_WEBHOOK_URL=` in
   `.env` and `beta-compose.sh up -d api`. Then `smoke-test.sh --local`, then `smoke-test.sh --public
-  <url> --passwords-file <file>`, then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
+  <url> --open` (no site password since 2026-10-22), then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
   (the new script's, not the installed v0.25.x copy's: only the new one records v0.25.1 as the
   release `rollback` puts back), then
   `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not reinstall the agent, and
   v0.26.0 changes it: #1195's quick deploys, `rollback`, `rollback-map`, `ship-held` and the
-  workflow image pull start with the next release), then `~/routemaker-beta-state/cd/bin/alert.sh
-  install` (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship
-  refreshes the script, not its timers), then `auto-release.sh resume`.
+  workflow image pull start with the next release), then `"$RM_SRC/scripts/beta/alert.sh" install`
+  (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship refreshes the
+  script, not its timers; the checkout's copy, because `install` copies itself into `cd/bin` and the
+  `cd/bin` copy stops with "are the same file"), then `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
   with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
   means the host is not answering (the run itself only fails after 45 minutes), and the next
