@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BARRIER_LEVELS, BARRIER_SOURCE, barrierFeatures, barrierIcon, barrierIconName, barrierLayer } from "./lib/barriers.ts";
+import {
+  BARRIER_LEVELS,
+  BARRIER_SOURCE,
+  barrierCard,
+  barrierFeatures,
+  barrierIcon,
+  barrierIconName,
+  barrierLayer,
+  barrierMarkName,
+  barrierMarks,
+  type BarrierCard,
+} from "./lib/barriers.ts";
+import type { BarrierItem } from "./lib/api.ts";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { onBoardFeatures, type OnBoardPath } from "./lib/onBoard.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
@@ -421,6 +433,10 @@ interface Props {
   letteredRefit?: number;
   /** A closure card's "Route through anyway" (true) or Undo (false), for this plan (lib/closureMap.ts). */
   onClosureBypass?: (item: ClosureItem, on: boolean) => void;
+  /** Cargo and Tandem: the barriers this plan goes around (lib/barriers.ts), drawn hollow where off the route. */
+  barrierAvoided?: readonly BarrierItem[];
+  /** A barrier card's "Go around" (true) or Undo (false), for this plan (lib/barriers.ts). */
+  onBarrierAvoid?: (item: BarrierItem, on: boolean) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -1588,7 +1604,7 @@ export function MapView(props: Props) {
         const { pixelRatio: ratio, ...icon } = barrierIcon(level, iconPixelRatio());
         map.addImage(name, icon, { pixelRatio: ratio });
       }
-      map.addSource(BARRIER_SOURCE, { type: "geojson", data: barrierFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
+      map.addSource(BARRIER_SOURCE, { type: "geojson", data: barrierFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null), callbacks.current.barrierAvoided ?? []) as never });
       map.addLayer(barrierLayer() as never);
       // The other routes' names, over the route so a name where they part is not hidden under it.
       map.addLayer({
@@ -2535,6 +2551,48 @@ export function MapView(props: Props) {
     });
   }, [props.route, props.stale]);
 
+  // The barriers on a Cargo or Tandem route as buttons (lib/barriers.ts; the owner, 2026-11-13: "Put the bollard on the
+  // map, and offer them a go around."). The layer draws each mark and its name; over each sits a clear button that Tab
+  // reaches and a screen reader names, which opens its card: what it is, what is known of it, and "Go around" or Undo.
+  const barrierButtons = useRef<Marker[]>([]);
+  const barrierPopup = useRef<Popup | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    barrierPopup.current?.remove();
+    barrierPopup.current = null;
+    barrierButtons.current.forEach((marker) => marker.remove());
+    barrierButtons.current = [];
+    if (!map) return;
+    const route = props.stale ? null : (props.route ?? null);
+    const avoided = props.barrierAvoided ?? [];
+    (map.getSource(BARRIER_SOURCE) as GeoJSONSource | undefined)?.setData(barrierFeatures(route, avoided) as never);
+    for (const mark of barrierMarks(route, avoided)) {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "barrier-button";
+      element.setAttribute("aria-label", barrierMarkName(mark.item));
+      element.setAttribute("aria-haspopup", "dialog");
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      element.addEventListener("click", (event) => {
+        // A press on a mark is not a press on the map: it must not add a point.
+        event.stopPropagation();
+        barrierPopup.current?.remove();
+        const popup = showBarrierCard(map, [mark.item.lon, mark.item.lat], barrierCard(mark.item, mark.avoided, mark.onRoute), (avoid) => {
+          popup.remove();
+          callbacks.current.onBarrierAvoid?.(mark.item, avoid);
+        });
+        barrierPopup.current = popup;
+        const card = popup.getElement();
+        popup.on("close", () => {
+          if (barrierPopup.current === popup) barrierPopup.current = null;
+          const active = document.activeElement;
+          if (element.isConnected && (!active || active === document.body || card.contains(active))) element.focus();
+        });
+      });
+      barrierButtons.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat([mark.item.lon, mark.item.lat]).addTo(map));
+    }
+  }, [props.route, props.stale, props.barrierAvoided]);
+
   // Closures on the map (v0.7.0, lib/closureMap.ts): in Go and Plan, every ride type, no layer switch. Each closure a
   // button marker (a barrier for a closed stretch, amber for a blocked bike lane, a small mark on the line for one the
   // rider routes through), each NPS alert a park marker; Tab reaches them, and their names say what each is. A press,
@@ -3389,6 +3447,49 @@ function closureCardParts(card: ClosureCard, withHeading: boolean, onAction: (by
   return parts;
 }
 
+/**
+ * A barrier's card (lib/barriers.ts barrierCard): its name, what is known of it, and "Go around" or Undo where it has
+ * one. A dialog named for the barrier; its close button takes the focus, and Escape closes it.
+ */
+function showBarrierCard(map: MapLibreMap, at: LonLat, card: BarrierCard, onAction: (avoid: boolean) => void): Popup {
+  const body = document.createElement("div");
+  body.className = "closure-card barrier-card";
+  const heading = document.createElement("strong");
+  heading.textContent = card.heading;
+  const text = document.createElement("p");
+  text.textContent = card.text;
+  body.append(heading, text);
+  if (card.action) {
+    const action = card.action;
+    const press = document.createElement("button");
+    press.type = "button";
+    press.className = "secondary closure-card-action";
+    press.textContent = action.label;
+    press.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onAction(action.avoid);
+    });
+    body.append(press);
+  }
+  const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, focusAfterOpen: false, offset: 16, className: "closure-popup" })
+    .setLngLat(at)
+    .setDOMContent(body)
+    .addTo(map);
+  const element = popup.getElement();
+  element.setAttribute("role", "dialog");
+  element.setAttribute("aria-label", `${card.heading}: ${card.text}`);
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      popup.remove();
+    }
+  });
+  const close = element.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
+  close?.setAttribute("aria-label", t("Close"));
+  close?.focus();
+  return popup;
+}
+
 /** A road barrier: a striped board on two legs, red for a closure, amber for a blocked bike lane. */
 function barrierSvg(severity: "red" | "amber"): string {
   const colour = severity === "amber" ? LANE_AMBER : CLOSED_RED;
@@ -3503,7 +3604,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_TRAIL_SOURCE) as GeoJSONSource | undefined)?.setData(routeTrailFeatures(stale ? null : route) as never);
   (map.getSource(STEEP_GRADE_SOURCE) as GeoJSONSource | undefined)?.setData(steepGradeFeatures(stale ? null : route) as never);
-  (map.getSource(BARRIER_SOURCE) as GeoJSONSource | undefined)?.setData(barrierFeatures(stale ? null : route) as never);
+  (map.getSource(BARRIER_SOURCE) as GeoJSONSource | undefined)?.setData(barrierFeatures(stale ? null : route, props.barrierAvoided ?? []) as never);
   (map.getSource(ROUTE_NAME_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeNameFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_MILES_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeMileFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.

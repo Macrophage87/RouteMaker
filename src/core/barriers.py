@@ -312,8 +312,30 @@ def trip_line(trip: dict) -> list[tuple[float, float]]:
     return line
 
 
-def blocking(line: Sequence[Sequence[float]], index: Index | None = None) -> list[Barrier]:
-    return [c.barrier for c in crossings(line, index) if impassable(c.barrier)]
+def spot(barrier: Barrier) -> tuple[float, float]:
+    """A barrier's place as the answer gives it (`items[].lon`, `lat`, to six decimals): what the
+    rider's "Go around" sends back (`barrier_avoid`)."""
+    return (round(barrier.lon, 6), round(barrier.lat, 6))
+
+
+def avoid_set(avoid: Iterable[Sequence[float]] = ()) -> frozenset[tuple[float, float]]:
+    """The barriers the rider asked to go around (`barrier_avoid`), keyed as `spot` keys them."""
+    return frozenset((round(float(p[0]), 6), round(float(p[1]), 6)) for p in avoid)
+
+
+def blocking(
+    line: Sequence[Sequence[float]],
+    index: Index | None = None,
+    avoid: frozenset[tuple[float, float]] = frozenset(),
+) -> list[Barrier]:
+    """The barriers on the line a cargo bike or tandem is planned round: the impassable ones, and
+    any the rider chose to go around (`avoid`, from a mark's "Go around": a bollard whose gap is
+    not mapped may still be too narrow for their bike)."""
+    return [
+        c.barrier
+        for c in crossings(line, index)
+        if impassable(c.barrier) or (avoid and spot(c.barrier) in avoid)
+    ]
 
 
 def exclusion_points(
@@ -341,6 +363,7 @@ def settle(
     level_excludes: list | None = None,
     keeps: Callable[[dict], bool] | None = None,
     index: Index | None = None,
+    avoid: frozenset[tuple[float, float]] = frozenset(),
 ) -> tuple[dict, dict]:
     """The route a Cargo or Tandem plan answers, and what the answer says of the rounds
     (`barrier_round`). As `easy_mtb.settle`: `level_excludes` takes the exclusions the answered
@@ -350,7 +373,10 @@ def settle(
 
     The request's own exclusions (the rider's and the planner's closed spots) are always sent
     whole and first; the barrier points get what is left of the router's 200, at most
-    EXCLUDE_CAP, so a closed spot is never dropped to make room for a barrier."""
+    EXCLUDE_CAP, so a closed spot is never dropped to make room for a barrier.
+
+    `avoid`: the barriers the rider chose to go around (`avoid_set`), planned round as an
+    impassable one is."""
     from . import routing
 
     index = snapshot() if index is None else index
@@ -359,7 +385,7 @@ def settle(
         info["limited"] = "no_data"
         return trip, info
     best_trip = trip
-    best = blocking(trip_line(trip), index)
+    best = blocking(trip_line(trip), index, avoid)
     current = best
     excludes: list[tuple[float, float]] = []
     best_excludes: list[tuple[float, float]] = []
@@ -395,7 +421,7 @@ def settle(
             info["limited"] = "time"
             break
         again = answer.get("trip") or {}
-        current = blocking(trip_line(again), index)
+        current = blocking(trip_line(again), index, avoid)
         if len(current) < len(best) and (keeps is None or keeps(again)):
             best_trip, best = again, current
             best_excludes = list(excludes)
@@ -412,13 +438,19 @@ def settle(
     return best_trip, info
 
 
-def reread(trip: dict, info: dict, index: Index | None = None) -> None:
+def reread(
+    trip: dict,
+    info: dict,
+    index: Index | None = None,
+    avoid: frozenset[tuple[float, float]] = frozenset(),
+) -> None:
     """`info` brought up to date with the route answered, where a pass after `settle` changed
-    it: the impassable barriers on it now, the reason kept where some remain."""
+    it: the impassable (or gone-around, `avoid`) barriers on it now, the reason kept where some
+    remain."""
     index = snapshot() if index is None else index
     if not index.loaded:
         return
-    best = blocking(trip_line(trip), index)
+    best = blocking(trip_line(trip), index, avoid)
     before = info.get("in_the_way") or []
     info["impassable"] = len(best)
     info["in_the_way"] = [

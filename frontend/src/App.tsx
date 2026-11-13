@@ -352,6 +352,7 @@ const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => 
 const CheckRoute = later(() => import("./CheckRoute.tsx").then((m) => m.CheckRoute));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
+import { BARRIER_PRESETS, barrierAvoidFor, barrierAvoidPoints, barrierAvoidSaid, toggleBarrierAvoid, type BarrierAvoid } from "./lib/barriers.ts";
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 const RideGroup = later(() => import("./RideGroup.tsx").then((m) => m.RideGroup));
 const RoamMode = later(() => import("./RoamMode.tsx").then((m) => m.RoamMode));
@@ -583,6 +584,11 @@ export function App() {
   const bypassPlan = bypassPlanKey(points);
   const bypassIds = bypassFor(closureBypass, bypassPlan);
   const bypassKey = bypassIds.join(",");
+  // "Go around" on a Cargo or Tandem barrier's mark (lib/barriers.ts): the barriers this plan (its start and end) goes
+  // around; request only, never the link. Undo takes one back out.
+  const [barrierAvoid, setBarrierAvoid] = useState<BarrierAvoid | null>(null);
+  const barrierAvoided = barrierAvoidFor(barrierAvoid, bypassPlan);
+  const barrierAvoidKey = barrierAvoided.map((item) => `${item.lon},${item.lat}`).join(";");
   // Go routes round only the closures known to be on, not DDOT's permits, which say a road may be closed (v0.9.1,
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
@@ -592,9 +598,10 @@ export function App() {
     // Go always plans from now (the owner, 2026-11-13: a start time is Plan's only), as do the docks' ride types.
     const timed = made.startAt && (goNow || !offersStartTime(preset)) ? { ...made, startAt: undefined } : made;
     const now = goNow ? { ...timed, closuresNow: true } : timed;
-    return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
+    const bypassed = bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
+    return barrierAvoided.length && BARRIER_PRESETS.has(preset) ? { ...bypassed, barrierAvoid: barrierAvoidPoints(barrierAvoided) } : bypassed;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, ridingSpeed, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
+  }, [routeKey, weight, ridingSpeed, stationChoice, preset, transitPick, trip, bypassKey, barrierAvoidKey, goNow, noviceHopPick]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
@@ -6824,6 +6831,7 @@ export function App() {
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
+        barrierAvoid: planDials.barrierAvoid,
         // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
         check:
           mode === "plan" && imported && fileShown()?.follows_file ? (
@@ -7013,6 +7021,13 @@ export function App() {
         letteredShown={riding || (roaming && roamLettered) ? null : letteredShown}
         letteredRefit={letteredRefit}
         stopActionFor={stopActionFor}
+        barrierAvoided={barrierAvoided}
+        onBarrierAvoid={(item, on) => {
+          setBarrierAvoid((now) => toggleBarrierAvoid(now, bypassPlan, item, on));
+          // One press plans again, in Plan too: the card says "Planning again".
+          setRouteAsk((n) => n + 1);
+          announce(barrierAvoidSaid(on));
+        }}
         onClosureBypass={(item, on) => {
           setClosureBypass((now) => toggleBypass(now, bypassPlan, item.id, on));
           announce(bypassSaid(item, on));

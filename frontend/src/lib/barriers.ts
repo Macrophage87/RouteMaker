@@ -14,6 +14,13 @@
  * each a little larger than the other route marks, and named beside it ("stile") from zoom 13 for the red ones and 15
  * for the rest. Never the mark alone: the line says the same.
  *
+ * Each mark is a button (the owner, 2026-11-13: "Put the bollard on the map, and offer them a go around."): it opens a
+ * card naming the barrier, what is known of it, and "Go around", which plans this route again with that barrier left
+ * out as a stile is (`barrier_avoid`, core/barriers.py). Most bollards are fine, so nothing is left out unasked; a
+ * gone-round barrier stays drawn, hollow, with "Undo". The choice is this plan's only (its start and end), as "Route
+ * through anyway" is for a closure: in the request, never in a link. A barrier a cargo bike or tandem cannot pass is
+ * already planned round, so its card has no button.
+ *
  * Nothing is said where the answer has no barrier list (`data` false): silence must never read as "none mapped".
  * Plurals are written "×2" after the word, so no language needs a plural form of it.
  */
@@ -94,6 +101,80 @@ export function barrierList(
     .join(", ");
 }
 
+// ---- "Go around" (the rider's own choice, per plan) ----
+
+/** The barriers the rider chose to go around, for one plan (lib/closureMap.ts bypassPlanKey: its start and end). */
+export interface BarrierAvoid {
+  plan: string;
+  items: BarrierItem[];
+}
+
+/** Most barriers a plan goes around (the API's `barrier_avoid` limit). */
+export const BARRIER_AVOID_MAX = 20;
+
+/** The same barrier: the answer gives each place to six decimals, and "Go around" sends it back as given. */
+export function sameBarrier(a: Pick<BarrierItem, "lon" | "lat">, b: Pick<BarrierItem, "lon" | "lat">): boolean {
+  return Math.abs(a.lon - b.lon) < 5e-7 && Math.abs(a.lat - b.lat) < 5e-7;
+}
+
+const NONE: readonly BarrierItem[] = Object.freeze([]);
+
+/** The barriers gone round on this plan: none where they were chosen on another (the same empty list each time, so a
+ * map effect keyed on it does not run again on every render). */
+export function barrierAvoidFor(avoid: BarrierAvoid | null, plan: string): readonly BarrierItem[] {
+  return avoid && plan && avoid.plan === plan ? avoid.items : NONE;
+}
+
+/** "Go around" (on) or Undo (off) for one barrier; the oldest dropped past BARRIER_AVOID_MAX. */
+export function toggleBarrierAvoid(avoid: BarrierAvoid | null, plan: string, item: BarrierItem, on: boolean): BarrierAvoid {
+  const items = barrierAvoidFor(avoid, plan).filter((x) => !sameBarrier(x, item));
+  return { plan, items: on ? [...items, item].slice(-BARRIER_AVOID_MAX) : items };
+}
+
+/** What the request sends: each place as the answer gave it. */
+export function barrierAvoidPoints(items: readonly Pick<BarrierItem, "lon" | "lat">[]): [number, number][] {
+  return items.map((item) => [item.lon, item.lat]);
+}
+
+/** What is said when the choice is made, before the route is planned again. */
+export function barrierAvoidSaid(on: boolean): string {
+  return on ? t("Going around it. Planning again.") : t("Going through it again. Planning again.");
+}
+
+/** One barrier's card: its name, what is known of it, and its button (null: none). */
+export interface BarrierCard {
+  heading: string;
+  text: string;
+  action: { label: string; avoid: boolean } | null;
+}
+
+/**
+ * A mark's card. `avoided`: the rider chose to go around it; `onRoute`: the route still passes it. An impassable one is
+ * planned round already, so it has no "Go around"; one the rider chose has Undo, on the route (no way round was found)
+ * or off it.
+ */
+export function barrierCard(item: BarrierItem, avoided: boolean, onRoute: boolean): BarrierCard {
+  const heading = barrierList([item]);
+  if (avoided) {
+    return {
+      heading,
+      text: onRoute ? t("No way round found.") : t("Your route goes around it."),
+      action: { label: t("Undo: go through it"), avoid: false },
+    };
+  }
+  if (item.impassable) return { heading, text: t("A cargo bike or tandem may not get through."), action: null };
+  return {
+    heading,
+    text: item.width_mapped ? t("Check it fits your bike.") : t("Width not mapped: it may be too narrow for your bike."),
+    action: { label: t("Go around"), avoid: true },
+  };
+}
+
+/** A mark's accessible name: "Barrier: bollard (width not mapped)". */
+export function barrierMarkName(item: BarrierItem): string {
+  return t("Barrier: {name}", { name: barrierList([item]) });
+}
+
 export interface BarrierNote {
   /** A warning (impassable barrier still on the route) or a hint (the list). */
   warn: boolean;
@@ -109,11 +190,13 @@ export function barrierNote(
     | Pick<RouteResponse, "preset" | "barriers" | "barrier_round">
     | null
     | undefined,
+  avoided: readonly Pick<BarrierItem, "lon" | "lat">[] = [],
 ): BarrierNote | null {
   if (!route || !BARRIER_PRESETS.has(route.preset)) return null;
   const reading = route.barriers;
   if (!reading?.data || reading.items.length === 0) return null;
-  const blocking = reading.items.filter((item) => item.impassable);
+  // One the rider chose to go around and still on the route had no way round: it is in the way for their bike.
+  const blocking = reading.items.filter((item) => item.impassable || avoided.some((a) => sameBarrier(a, item)));
   if (blocking.length > 0) {
     const list = barrierList(blocking);
     const limited = route.barrier_round?.limited;
@@ -155,6 +238,8 @@ export const BARRIER_LABEL_ZOOM_OTHERS = 15;
 export const BARRIER_COLOURS = {
   blocked: { fill: "#b91c1c", mark: "#ffffff", edge: "#ffffff" },
   noted: { fill: "#f59e0b", mark: "#111827", edge: "#111827" },
+  // Gone round at the rider's choice: hollow, a dark rim on white, so it reads as "not in the way now".
+  avoided: { fill: "#ffffff", mark: "#374151", edge: "#374151" },
 } as const;
 
 export type BarrierLevel = keyof typeof BARRIER_COLOURS;
@@ -163,7 +248,7 @@ export function barrierIconName(level: BarrierLevel): string {
   return `barrier-${level}`;
 }
 
-export const BARRIER_LEVELS: readonly BarrierLevel[] = ["blocked", "noted"];
+export const BARRIER_LEVELS: readonly BarrierLevel[] = ["blocked", "noted", "avoided"];
 
 /** Inside a regular octagon of circumradius r, flat sides up and down, centred at (c, c). */
 function inOctagon(x: number, y: number, c: number, r: number): boolean {
@@ -189,6 +274,8 @@ export function barrierIcon(
   const edge: Rgb = hexToRgb(BARRIER_COLOURS[level].edge);
   return rasterise(size, pixelRatio, (x, y): Rgb | null => {
     if (!inOctagon(x, y, c, r)) return null;
+    // Gone round: hollow, a rim twice as heavy on white and nothing across it.
+    if (level === "avoided") return inOctagon(x, y, c, r - 2 * rim) ? fill : edge;
     if (!inOctagon(x, y, c, r - rim)) return edge;
     if (level === "blocked") {
       const inBar =
@@ -245,23 +332,44 @@ type BarrierFeature = {
   geometry: { type: "Point"; coordinates: [number, number] };
 };
 
-/** Each barrier on a Cargo or Tandem route as a point; empty on every other ride type, with none, or with no list. */
+/** One mark: the barrier, its level, and whether the rider chose to go around it and whether the route still passes it. */
+export interface BarrierMark {
+  item: BarrierItem;
+  level: BarrierLevel;
+  avoided: boolean;
+  onRoute: boolean;
+}
+
+/**
+ * The marks on a Cargo or Tandem route: each barrier on it (red where a cargo bike or tandem cannot pass, or the rider
+ * chose to go around it and no way round was found; amber for the rest), then each one gone round and off the route
+ * (hollow). Empty on every other ride type, and with no list.
+ */
+export function barrierMarks(
+  route: Pick<RouteResponse, "preset" | "barriers"> | null,
+  avoided: readonly BarrierItem[] = [],
+): BarrierMark[] {
+  const reading = route?.barriers;
+  if (!route || !BARRIER_PRESETS.has(route.preset) || !reading?.data) return [];
+  const marks: BarrierMark[] = reading.items.map((item) => {
+    const chosen = avoided.some((a) => sameBarrier(a, item));
+    return { item, level: item.impassable || chosen ? "blocked" : "noted", avoided: chosen, onRoute: true };
+  });
+  for (const item of avoided) {
+    if (!reading.items.some((on) => sameBarrier(on, item))) marks.push({ item, level: "avoided", avoided: true, onRoute: false });
+  }
+  return marks;
+}
+
+/** Each mark as a point for the map's layer. */
 export function barrierFeatures(
   route: Pick<RouteResponse, "preset" | "barriers"> | null,
+  avoided: readonly BarrierItem[] = [],
 ) {
-  const features: BarrierFeature[] = [];
-  const reading = route?.barriers;
-  if (!route || !BARRIER_PRESETS.has(route.preset) || !reading?.data)
-    return { type: "FeatureCollection" as const, features };
-  for (const item of reading.items) {
-    features.push({
-      type: "Feature",
-      properties: {
-        level: item.impassable ? "blocked" : "noted",
-        label: barrierList([item]),
-      },
-      geometry: { type: "Point", coordinates: [item.lon, item.lat] },
-    });
-  }
+  const features: BarrierFeature[] = barrierMarks(route, avoided).map((mark) => ({
+    type: "Feature",
+    properties: { level: mark.level, label: barrierList([mark.item]) },
+    geometry: { type: "Point", coordinates: [mark.item.lon, mark.item.lat] },
+  }));
   return { type: "FeatureCollection" as const, features };
 }
