@@ -2716,6 +2716,15 @@ with the road it passes, so there is no junction for the model to price.
 
 ### The model, and the proposals for the owner
 
+**Superseded 2026-11-13.** The tables in this section and every later entry in this file
+that names `SIGNALISED_CROSSING_FT`, `MEDIAN_REFUGE_FACTOR`, `MARKED_CROSSING_FACTOR`,
+`TIME_FACTORS`, `UNSIGNALISED_RUSH_FACTOR`, `intersections.time_factor` or
+`refine.RED_DETOUR_S` describe the model as it was. After the methodology audit the
+junction model is ONE crossing function (Broach's prices by count, Furth's crossing
+tables by lanes and speed, twice the wait for a gap, up to 2 calm miles), with none of
+those constants; `docs/stress/intersections.md` is the current account. The entries are
+kept as the record of how it got here.
+
 Feet of equivalent quiet-street riding, in `routemaker/intersections.py`, every
 number a named constant. They are PROPOSALS taken from the literature review's
 table, within its ranges, for the owner to move:

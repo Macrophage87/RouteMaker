@@ -120,10 +120,11 @@ Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs
 `refine.refine` is called: at a calm rate of 0 it makes up to five crossing-only rounds, each
 excluding the red crossings the last round's route took as well, and all of them run even
 when a round finds only the next red crossing along (`CROSSING_ONLY_ROUNDS`); above 0 up to 5 exclusion
-rounds (`REFINE_MAX_ROUNDS`, `:88`), each taking the last route's red crossings too. Below the
-top of the slider each red junction also counts in the score as 10 minutes of quiet riding
-(`RED_DETOUR_S`, scaled by the intersection weight) on top of its junction cost, so a way round
-one is taken where it costs less than that in everything else. The search does not run for Mass Ride, fewer than
+rounds (`REFINE_MAX_ROUNDS`, `:88`), each taking the last route's red crossings too. A red junction
+counts in the score for its own cost only: the 10 minutes of quiet riding each red also
+counted for until 2026-11-13 (`RED_DETOUR_S`) charged the same crossing twice and is gone
+(`refine.junction_over_cap_m`; [intersections.md](intersections.md), "How a junction's cost
+enters the score"). The search does not run for Mass Ride, fewer than
 2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
 Trailmaxxing), or too little time (`routing.py:1193-1220`). The exposure weights
 come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo Bike
@@ -221,49 +222,37 @@ again without it, and it is not asked again. Mass Ride is skipped (`ctx.group`).
 
 ## 5. The junction model (`src/routemaker/intersections.py`)
 
-Costs are in feet of equivalent quiet-street riding (from the literature review: Broach,
-Dill & Gliebe; Eugene; the Oregon and Mineta tables). Only a road at LTS 3 or above is
-busy (`BUSY_TIER = 3`, `:46-49`, `:226-227`). Tier 5 reads as 4 (`_tier`, `:333-335`).
-The crossed road's tier is the greater of its tier and its unsmoothed tier
-(`src/core/junctions.py:765-773`).
+Costs are in feet of equivalent quiet-street riding. The model was rebuilt on 2026-11-13
+as ONE crossing function; [intersections.md](intersections.md) is the full account and
+this is only a summary. A road met at a junction is read at its **crossing level**, 1 to
+4, from its lanes and speed (Furth's crossing tables) and its count (Broach's bins), not
+at the level of riding along it. A level above 1 has a price.
 
-| Situation | LTS 3 | LTS 4 / Avoid | Lines |
-|---|---|---|---|
-| Straight across, from the stopped side | 1,600 ft [488 m] | 4,000 ft [1,219 m] | `STOPPED_CROSSING_FT` |
-| Straight across at a signal | 150 ft | 600 ft | `SIGNALISED_CROSSING_FT` |
-| Left off a busy road, across oncoming traffic (none on a one-way; x0.4 at a signal) | 800 ft | 4,000 ft | `LEFT_ACROSS_ONCOMING_FT` |
-| All-way stop | 75 ft | 75 ft | `:64` |
-| Rider on the priority road | 25 ft | 25 ft | `:69` |
-| Quiet street meets quiet street at a stop | 10 ft | - | `:75` |
-| Right turn off a busy road | 15 ft | 15 ft | `:144` |
+| Situation | Level 2 | Level 3 | Level 4 | Symbol |
+|---|---|---|---|---|
+| Straight across or left onto, from the stopped side | 380 ft | 550 ft | 3,260 ft | `STOPPED_CROSSING_FT` |
+| The same, where the wait for a gap is long | twice the wait, up to 10,560 ft | | | `gap_ft`, `WAIT_PAIN`, `MAX_CROSSING_FT` |
+| Straight across at a signal | 0 (the wait is the cost) | | | `crossing_ft` |
+| Left off a busy road (none on a one-way; whole left at most 2,276 ft; 750 ft at a signal) | 0 | 855 ft | 2,276 ft | `LEFT_ACROSS_ONCOMING_FT` |
+| Right onto a busy road | at most 354 ft | | | `RIGHT_ONTO_MAX_FT` |
+| All-way stop | 75 ft | 75 ft | 75 ft | `ALL_WAY_STOP_FT` |
+| Rider on the priority road | 25 ft | 25 ft | 25 ft | `PRIORITY_SIDE_FT` |
+| Quiet street meets quiet street at a stop | 10 ft | | | `NEIGHBOURHOOD_STOP_FT` |
 
-The factors, caps and line numbers below predate OWNER-DECISIONS 468; [intersections.md](intersections.md) has the built values.
+There are no speed, lane, volume, rural or time-of-day factors any more. Crossing a slip
+lane costs 1,000 ft, half that at a signal (`SLIP_LANE_FT`); riding straight on along a
+painted lane past a busy road costs a quarter of a slip lane (`RIGHT_HOOK_FT`). A trail
+crossing with no signal mapped costs the share of drivers who do not yield
+(`MARKED_YIELD_SHARE`). A divided road counts once, by Furth's table for a crossing with
+a refuge (`REFUGE_LTS`, `merge_nearby`). Several events within 148 ft [45 m] add, each
+after the costliest at half its cost. The cost of each junction is the worst of its
+movements, plus the right hook (`cost_of`).
 
-Factors applied to the stopped-side and left costs (`scale`, `:318-330`):
-
-- speed: up to 25 mph x0.8, 30 x0.9, 35 x1.0, 40 x1.1, 45 x1.2, faster x1.3 (`:113-114`);
-- lanes per direction: 1 x1.0, 2 x1.1, more x1.25 (`:117-118`);
-- volume: up to 5,000 a day x0.85, 10,000 x0.95, 20,000 x1.05, more x1.2 (`:120-121`);
-- rural, stopped side at 45 mph or more: x1.25 (`:124-125`).
-
-The cost is capped at 4,500 ft (`:126`). Turning onto a busy road scales the
-stopped-side cost by left x1.5, straight x1, right x0.1 (`:133`). Merging across
-lanes to turn left costs 250 ft a lane, capped at 500 ft, the box turn; at a signal
-the whole left is capped at 500 ft (`:153-157`, `merge_ft` `:358-362`, `left_from_ft`
-`:365-377`). Crossing a slip lane costs 800 ft, half that at a signal (`:168-169`). A
-trail crossing with no signal mapped costs x0.5 and is never red (`:88-94`,
-`marked_unsignalised` `:445-451`). A divided road counts once, with the median refuge
-at x0.75 (`:107`, `merge_nearby` `:660-`). Several events within 148 ft [45 m] add, each
-after the costliest at half its cost (`:608-624`). The cost of each junction is the
-worst of its movements (`cost_of`, `:384-442`).
-
-**Severity** (`severity_of`, `:604-609`): orange (higher stress) from 0.15 calm mi [0.24
-km; 800 ft], red (very high stress) from 0.59 calm mi [0.94 km; 3,100 ft] (`ORANGE_MIN_FT`,
-`RED_MIN_FT`, `:267-268`; red was 2,900 ft until 2026-10-10, see
-[intersections.md](intersections.md) section 7). **Mass Ride** reads it differently
-(`assess(group=True)`, `:560-584`): orange for any flagged crossing or left of an LTS 3
-road, red for LTS 4 or Avoid, no marker for a left across a one-way, and the cost
-unchanged.
+**Severity** (`severity_of`): orange from 984 ft [0.19 calm mi; 0.30 km], red from
+1,476 ft [0.28 calm mi; 0.45 km] (`ORANGE_MIN_FT`, `RED_MIN_FT`: a wait of 30 s and of
+45 s at the weight of a wait). **Mass Ride** reads it differently (`assess(group=True)`):
+orange for any flagged crossing or left of an LTS 3 road, red for LTS 4 or Avoid, no
+marker for a left across a one-way, and the cost unchanged.
 
 How the cost is used: in the score at the intersection weight (section 4), as targets
 for exclusion from 0.59 calm mi [0.94 km; 3,100 ft] (`REFINE_MIN_EVENT_FT`,

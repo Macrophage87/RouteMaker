@@ -22,11 +22,19 @@ main sources listed, under "Why our ratings differ from the studies" and "Source
 [Low-Stress Bicycling and Network Connectivity](https://transweb.sjsu.edu/sites/default/files/1005-low-stress-bicycling-network-connectivity.pdf).
 This report defines Level of Traffic Stress, LTS 1 to 4, from lookup tables on speed,
 lanes, traffic volume and bike facility, with the worst factor deciding the level. It
-also scores crossings by the crossed road's speed and lanes, and a median refuge lowers
-a crossing's score by about one level.
+also scores crossings with no signal by the crossed road's lanes and speed (read
+2026-11-13). Table 7, with no median refuge: up to 3 lanes LTS 1 / 1 / 2 / 3 at up to
+25 / 30 / 35 / 40 mph or more; 4 to 5 lanes 2 / 2 / 3 / 4; 6 lanes or more 4 at any
+speed. Table 8, with a median refuge at least six feet wide: up to 3 lanes the same;
+4 to 5 lanes 1 / 2 / 3 / 4; 6 or more 2 / 3 / 4 / 4. So a refuge is worth nothing on up
+to 3 lanes or at 35 mph and above on 4 to 5 lanes, one level on 4 to 5 lanes at 25 mph,
+and two levels on 6 lanes at 25 mph. Signalized crossings "do not usually present a
+barrier".
 - **Taken:** the four levels, the rule that the worst factor decides, the tables
-  ([classification.md](classification.md)), and the crossing logic behind the junction
-  costs.
+  ([classification.md](classification.md)), and, cell for cell, the two crossing tables
+  (`routemaker.intersections.CROSSING_LTS`, `REFUGE_LTS`), which give a junction's
+  crossing level from the road's lanes and speed; and no stress price at a signal
+  ([intersections.md](intersections.md)).
 - **Differs:** RouteMaker adds a fifth tier, **Avoid**, for a road a bicycle may legally
   use but nobody should be sent onto; the tables never produce it. It also plans **half
   steps** (**planned**), each costed at the midpoint of its two levels, which the
@@ -61,12 +69,13 @@ rate a stop-controlled crossing of a road at 45 mph [72 km/h] or more above the 
 level even at low volume, because rural drivers do not expect bicycles.
 - **Taken:** the shape of the crossing costs; the values for a left across oncoming
   traffic (LTS 3 for one lane, LTS 4 for more); the idea of a credit for a median refuge;
-  the slip lane rule; charging for the lane changes before a left; and the rural idea,
-  which became our rural crossing factor of 1.25.
-- **Differs:** Oregon lowers a crossing with a refuge by a whole level, which by our base
-  costs would be about x0.4. RouteMaker multiplies the cost by 0.75 instead, a milder
-  credit chosen by the owner (decision 196) so that an unsignalized crossing of a divided
-  LTS 4 road stays red. Oregon scores a two-stage left as two crossings; RouteMaker caps a
+  the slip lane rule; and charging for the lane changes before a left. (The rural
+  crossing factor of 1.25 that came from Oregon's rural idea was removed on 2026-11-13:
+  the crossed road's own speed now sets its level, in town or out of it.)
+- **Differs:** Oregon lowers a crossing with a refuge by a whole level. RouteMaker now
+  follows Furth's Table 8 (above), where the credit depends on the lanes and the speed;
+  until 2026-11-13 it multiplied the cost by 0.75 (decision 196, a card pick). Oregon
+  scores a two-stage left as two crossings; RouteMaker caps a
   left at a signal at the price of a two-stage box turn. Oregon's roundabout guidance is not
   followed: RouteMaker prices a ride round a busy ring as a crossing of the ring's traffic
   scaled by the arms passed, a proposal of its own (`ROUNDABOUT_FACTOR_ONTO`, 2026-11-08).
@@ -146,21 +155,39 @@ at a junction: a signal 0, an all-way stop -1, a two-way stop -2, and no control
 
 ### Broach, Dill and Gliebe (2012), Portland
 ["Where do cyclists ride? A route choice model developed with revealed preference GPS data"](https://ppms.trec.pdx.edu/media/1307553839HIVYEAW.pdf),
-Transportation Research Part A. A GPS study of how riders trade distance against
-traffic. Turns, signals, stops and unsignalized movements across busy roads each made a
-route feel longer, by a share of a mile for each one. Each unsignalized movement straight
-across, or left across, a road carrying 20,000 or more vehicles a day was worth 32-62% of
-a mile, about 0.32 to 0.62 mi [0.51 to 1.00 km] of extra riding each time. Bike lanes
-made up for traffic but added little on their own, and paths made a route feel 16-26%
-shorter. Half of the trips were less than 10% longer than the shortest route.
-- **Taken:** the order of size of the crossing costs, the signal and stop costs, and the
-  idea that a stretch of path counts for less than the same length of quiet street.
-- **Differs:** our stopped crossing of an LTS 4 road is 0.76 calm mi [1.22 km; 4,000 ft]
-  before the road's speed, width and traffic count are applied. That is above Broach's
-  0.32 to 0.62 mi range. Under option C (decision 468) the owner chose costs at the top
-  of the published ranges, with the LTS 4 crossing a little above the top, and a severe
-  tier for the worst junctions, following the owner's direction that the worst junctions
-  be worth about a 2 mi [3.2 km] detour (decision 467).
+Transportation Research Part A 46(10), 1730-1740 (the preprint at the link was read on
+2026-11-13). A GPS study of how riders trade distance against traffic. Its Table 3 gives
+what each thing is worth as a share of a mile of riding. The junction rows, in full
+(non-commute trips, then commute trips):
+
+| Table 3 row | Non-commute | Commute |
+|---|---|---|
+| A turn | 7.4% (391 ft) | 4.2% (222 ft) |
+| A traffic signal, except on a right turn | 3.6% (190 ft) | 2.1% (111 ft) |
+| A stop sign | 0.9% (48 ft) | 0.5% (26 ft) |
+| Left turn with no signal off a road of 10,000-20,000 a day | 16.2% (855 ft) | 9.1% (480 ft) |
+| Left turn with no signal off a road of 20,000 or more a day | 43.1% (2,276 ft) | 23.1% (1,220 ft) |
+| Right turn with no signal onto a road of 10,000 or more a day | 6.7% (354 ft) | 3.8% (201 ft) |
+| Crossing or left onto, no signal, a road of 5,000-10,000 a day | 7.2% (380 ft) | 4.1% (216 ft) |
+| The same, 10,000-20,000 a day | 10.4% (549 ft) | 5.9% (312 ft) |
+| The same, 20,000 or more a day | 61.7% (3,258 ft) | 32.2% (1,700 ft) |
+
+Nothing was measurable below 5,000 vehicles a day. Bike lanes made up for traffic but
+added little on their own, and paths made a route feel 16-26% shorter. Half of the trips
+were less than 10% longer than the shortest route.
+- **Taken:** the junction model's prices for a crossing, a left onto, a left off and a
+  right onto a busy road with no signal are the non-commute column above (380, 550, 3,260,
+  855, 2,276 and 354 ft; `routemaker.intersections.STOPPED_CROSSING_FT`,
+  `LEFT_ACROSS_ONCOMING_FT`, `RIGHT_ONTO_MAX_FT`), with straight lines between the count
+  bins so no count is a cliff (`COUNT_LEVELS`). Also the idea that a stretch of path counts
+  for less than the same length of quiet street.
+- **Differs:** the top. The most one junction can cost is 2 calm miles [3.2 km; 10,560 ft]
+  (the owner's choice, decision 467: "There's definitely intersections that I'd detour
+  2 miles to avoid, though rare."), above Broach's 0.62 mi. Only a crossing where the wait
+  for a gap runs to minutes reaches it (Fitzpatrick et al. 2006, below).
+- **Differs:** until 2026-11-13 the model priced a crossing of a road of 5,000-20,000 a
+  day at 1,088 to 3,900 ft, 3 to 11 times the table (decision 468, "option C"). The audit
+  of that day found no published source for those figures.
 - **Differs:** Broach's figures describe the average choices of the Portland riders
   studied. **RouteMaker is stress-averse by default** (owner decision 14: most people
   should be sent on trails rather than faster LTS 3 and LTS 4 roads, and traffic-free
@@ -170,19 +197,45 @@ shorter. Half of the trips were less than 10% longer than the shortest route.
   meter of path counted as about 0.74 to 0.84 of a meter of quiet street. In RouteMaker a
   meter of path counts as about 0.55. The 0.55 is RouteMaker's own figure, not Broach's.
 
+### Fitzpatrick and colleagues (2006), NCHRP Report 562
+Fitzpatrick, Turner, Brewer, Carlson, Ullman, Trout, Park, Whitacre, Lalani and Lord,
+["Improving Pedestrian Safety at Unsignalized Crossings"](https://nacto.org/wp-content/uploads/2010/08/NCHRP-562-Improving-Pedestrian-Safety-at-Unsignalized-Crossings.pdf),
+TCRP Report 112 / NCHRP Report 562, Transportation Research Board. (Opened by the audit of
+2026-11-13, areas/14; the formula as printed in its Appendix A worksheets.) The wait for
+a gap at a crossing with no signal, from the Highway Capacity Manual 2000: critical gap
+tc = L / S + ts (crossing length over speed, plus a start-up time), average delay
+d = (e^(v tc) - v tc - 1) / v with v the conflicting flow in vehicles a second; with a
+median refuge each half is crossed against one direction's flow. Its table of delay
+against risk-taking: over 30 s the likelihood is "high", over 45 s "very high". Drivers
+yielding to someone waiting: over 94% at red-signal or beacon devices, 61% at 25 mph and
+17% at 35 mph at high-visibility signs and markings, 34% at median refuge islands.
+- **Taken:** the formula, with the report's 12 ft lanes and 3 s start-up, is the junction
+  model's wait for a gap (`routemaker.intersections.gap_delay_s`), which prices a crossing
+  at twice the wait where that is more than Broach's price. The 30 s and 45 s lines are
+  the orange and red marks (`ORANGE_MIN_FT`, `RED_MIN_FT`). The yielding shares at 25 and
+  35 mph price a marked trail crossing (`MARKED_YIELD_SHARE`).
+- **Differs:** the crossing speed is a rider's 11.2 mph [18 km/h], not a walker's
+  3.5 ft/s. The formula takes random arrivals and no yielding, so it overstates on roads
+  where signals upstream make gaps. The share of a day's traffic in an hour (8% at rush
+  hour, 5.5% off-peak, 5% at the weekend, 1.5% at night) is our default, unmeasured.
+
 ### Zimmermann, Mai and Frejinger (2017), Eugene
 ["Bike route choice modeling using GPS data without choice sets of paths"](https://doi.org/10.1016/j.trc.2016.12.009),
-Transportation Research Part C (working paper
+Transportation Research Part C 75, 183-196 (working paper
 [CIRRELT-2016-49](https://www.cirrelt.ca/DocumentsTravail/CIRRELT-2016-49.pdf)). A route
-choice model for Eugene, Oregon. Each intersection was worth about 716 ft [218 m] of
-riding, and an unsignalized left across a busy road about 818 ft [249 m]. Lefts and
-rights were otherwise much alike.
-- **Taken:** the published range for crossing an LTS 3 road from a stop, about 0.15 to
-  0.30 calm mi [0.24 to 0.48 km], starts at Eugene's 818 ft. Under option C (decision
-  468) our base cost is the top of that range, 0.30 calm mi [0.49 km; 1,600 ft].
-- **Differs:** we charge more for a left than a right (onto a busy road, a left is the
-  crossing cost times 1.5 and a right times 0.1), following Copenhagen rather than
-  treating them alike.
+choice model for Eugene, Oregon. A left with no signal through HEAVY traffic (over 20,000
+vehicles a day) was worth about 818 ft [249 m] of riding; through medium traffic
+(8,000-20,000 a day) about 124 ft [38 m]. Its 716 ft [218 m] is a constant for every
+link of the network, quiet ones included, not a cost per intersection. Lefts and rights
+were otherwise much alike.
+- **Taken:** nothing as a number. It agrees with Broach in direction: heavy cross traffic
+  is where a junction with no signal costs, and a left is not otherwise dearer than a
+  right.
+- **Corrected 2026-11-13:** this page used to say the range for crossing an LTS 3 road
+  "starts at Eugene's 818 ft" and that each intersection was worth 716 ft. The 818 ft is
+  the over-20,000-a-day case; the matching medium-traffic figure is 124 ft; and the 716 ft
+  is the per-link constant. The model's old 1,600 ft for an LTS 3 crossing rested on that
+  misreading and is gone.
 
 ### Skov-Petersen, Barkow, Lundhede and Jacobsen (2018), Copenhagen
 ["How do cyclists make their way? A GPS-based revealed preference study in Copenhagen"](https://repository.up.ac.za/bitstream/handle/2263/65159/SkovPetersen_How_2018.pdf?sequence=1),
@@ -191,9 +244,9 @@ International Journal of Geographical Information Science. A left turn cost ride
 against 40% in a survey.
 - **Taken:** that a left costs more than a right (about 2.5 times as much in
   Copenhagen).
-- **Differs:** Copenhagen's costs are small because its network is already calm. Ours
-  price mixing with fast traffic, so they are much larger, and the gap between a left and
-  a right onto a busy road is wider.
+- **Differs:** Copenhagen's costs are small because its network is already calm. Since
+  2026-11-13 a left onto a busy road costs what the crossing costs (Broach has one
+  variable for both), no longer 1.5 times it; a right costs at most Broach's 354 ft.
 
 ### Ton and colleagues (2017), Amsterdam
 [Ton and colleagues](https://swov.nl/en/publicatie/how-do-people-cycle-amsterdam-netherlands)
@@ -208,13 +261,12 @@ about crossing fewer intersections than about having separate paths.
 Transportation Research Part F. A small study that measured riders' stress with sensors.
 Stress at peak hours was reported at about 1.75 times off-peak, in a sample said to be
 five riders (we have not confirmed the sample size from the full text).
-- **Taken:** the direction of the time-of-day factor (decision 468a).
-- **Differs:** the size. The owner set the bands (decisions 469c-469e), and they are
-  built: x1.25 in the weekday rush windows (7-10 AM and 4-7 PM), x1.0 at other weekday
-  hours to 9 PM, x0.85 in weekend daytime, and at night (9 PM to 7 AM, every day) x0.5 in
-  urban areas and x0.85 outside them. The rush-hour factor is much milder than 1.75 because the sample is
-  so small, and the factors apply only to junctions with a busy road. The night
-  bands are the owner's own judgment, not from this study.
+- **Taken:** the direction only: junctions are harder at peak hours.
+- **Differs:** the model no longer has time-of-day factors (they were x1.25 at rush hour,
+  x0.85 at the weekend, x0.5 or x0.85 at night; decisions 468a, 469c-469e). Since
+  2026-11-13 the hour reaches a junction through its traffic: the wait for a gap at that
+  hour (Fitzpatrick et al. 2006, above), and at the weekend and at night the count read
+  in proportion to the hour's traffic.
 
 ## Other design guides and studies
 
@@ -302,9 +354,11 @@ Moving it would change tiers on many roads, so it is left for the owner to confi
 We found no test, on whole routes, of rating a route by its worst stretch against rating
 it by its average. Comfort studies give no measured effect for trucks, for driveways per
 mile, or for one-way against two-way streets at the same volume, and there are no
-figures for leisure loops. The rural crossing factor at 45 mph [72 km/h] is a judgment
-within the published ranges. The severe junction tier goes beyond the published ranges,
-and its cap of 2 calm mi [3.22 km] follows the owner's direction in decision 467, not a
-published value.
+figures for leisure loops. At junctions: no source we opened prices a slip lane, a right
+hook in feet, a lane change before a left, or a roundabout by the data the map has; those
+are marked "our default, unmeasured" in [intersections.md](intersections.md). The top of
+2 calm mi [3.22 km] for one junction follows the owner's direction in decision 467, not a
+published value. The share of a day's traffic in each hour is a typical figure, not a
+count.
 The project's reviews read these figures from the sources. Some came from search
 summaries, and the reviews say which.
