@@ -13,6 +13,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { t } from "../lib/i18n.ts";
 import { FINDING_LOCATION } from "../lib/geolocation.ts";
 import { RESET_LABEL, planRowShown, type Phrase } from "../lib/planFirst.ts";
+import { compareBlock, type PlanCompare } from "../lib/compareBlock.ts";
 
 export interface PlanPanelProps {
   sentences: Phrase[][];
@@ -38,6 +39,8 @@ export interface PlanPanelProps {
   locate?: { onLocate: () => void; busy: boolean; unavailable: string | null } | null;
   /** The page's status line (App's announce): Enter while Route is unavailable says why there. */
   onSay?: (text: string) => void;
+  /** Keep to compare, with a route shown and not routing; null otherwise. */
+  compare?: PlanCompare | null;
 }
 
 /** The button on an empty plan. */
@@ -45,6 +48,7 @@ export const START_HERE_LABEL = t("Start at current location");
 
 export function PlanPanel(props: PlanPanelProps) {
   const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, locate, onSay } = props;
+  const compare = routing ? null : (props.compare ?? null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const planId = useId();
   const detailsId = useId();
@@ -79,7 +83,7 @@ export function PlanPanel(props: PlanPanelProps) {
   return (
     <section
       ref={panelRef}
-      className={routing || rowShown || change ? "plan-panel" : "plan-panel plan-panel-quiet"}
+      className={routing || rowShown || change || compare ? "plan-panel" : "plan-panel plan-panel-quiet"}
       aria-labelledby="plan-panel-heading"
       aria-describedby={whySaid ? `${planId} ${routeWhy}` : planId}
       aria-keyshortcuts="Control+Enter Meta+Enter"
@@ -181,6 +185,8 @@ export function PlanPanel(props: PlanPanelProps) {
           ))}
         </ul>
       )}
+      {compare && compareBlock(compare)}
     </section>
   );
 }
+

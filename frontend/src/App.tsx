@@ -83,6 +83,7 @@ import {
   routingStep,
   type DrawnPlan,
 } from "./lib/planFirst.ts";
+import { KEPT_SAID, STOPPED_SAID, USED_KEPT_SAID, compareRows, sameRoute } from "./lib/compareRoutes.ts";
 import { PlanPanel } from "./app/PlanPanel.tsx";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
@@ -1648,6 +1649,10 @@ export function App() {
   const [changeDetails, setChangeDetails] = useState<string[]>([]);
   const [ghost, setGhost] = useState<LonLat[] | null>(null);
   const [changeLine, setChangeLine] = useState<string | null>(null);
+  // Plan's "Keep to compare" (lib/compareRoutes.ts; the backlog's "choose between routes in Plan", 2026-11-13): the
+  // plan and the route the rider kept, its dials as sent (for the planner's stand-in answer when the rider goes back).
+  // Lasts until Stop comparing or Clear; a change of plan keeps it, which is the point.
+  const [compareKept, setCompareKept] = useState<{ drawn: Drawn; dials: Dials; route: RouteResponse } | null>(null);
   // Go's ends picked or pressed (goTo), and the racks moved to from them (Stephen, 2026-11-01: the rack offer only for
   // a destination just picked or pressed, not every route opened from a link, a save or Plan). Kept through undo;
   // another plan opened (forgetDrawn) starts the list again.
@@ -6413,10 +6418,39 @@ export function App() {
   };
   // Clear: every point, the drawn route, its ghost and the change summary; the ride type and sliders stay.
   const clearPlan = () => {
+    setCompareKept(null);
     setGhost(null);
     setChangeLine(null);
     setChangeDetails([]);
     clearAll();
+  };
+  // Keep to compare: the route shown, up to date, with the plan it answers.
+  const comparing = compareKept !== null && !!shown && !sameRoute(compareKept.route, shown);
+  const keepToCompare = () => {
+    const at = drawnRef.current;
+    if (!at || !shown || planEdited) return;
+    setCompareKept({ drawn: at, dials: planDials, route: shown });
+    announce(KEPT_SAID);
+  };
+  // Use kept route: the kept plan back (one edit, so Undo takes it back), answered by the kept route itself, not
+  // planned again; the route there was becomes the one kept, so the rider can go back and forth.
+  const useKeptRoute = () => {
+    const back = compareKept;
+    const at = drawnRef.current;
+    if (!back || !shown) return;
+    setCompareKept(at && !planEdited ? { drawn: at, dials: planDials, route: shown } : null);
+    savedShown.current = { key: keptPlanKey(back.drawn.points, back.drawn.ride.preset, back.dials), answer: back.route };
+    commit(back.drawn.points as LonLat[], back.drawn.ride);
+    setStationPins(back.drawn.pins);
+    setTransitPick(back.drawn.transitPick);
+    setNotice(null);
+    sendNow.current = true;
+    setRouteAsk((n) => n + 1);
+    announce(USED_KEPT_SAID);
+  };
+  const stopComparing = () => {
+    setCompareKept(null);
+    announce(STOPPED_SAID);
   };
   const fromStart = plansFromStart(preset, points, planDials);
   const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias, fromStart });
@@ -6490,7 +6524,7 @@ export function App() {
       onRoute={pressRoute}
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
       onCancel={cancelRouting}
-      change={planEdited ? null : changeLine}
+      change={planEdited || compareKept ? null : changeLine}
       details={changeDetails}
       onCloseChange={() => {
         setChangeLine(null);
@@ -6505,6 +6539,18 @@ export function App() {
           : null
       }
       onSay={announce}
+      compare={
+        !shown || stale
+          ? null
+          : {
+              rows: comparing && compareKept && !planEdited ? compareRows(compareKept.route, shown) : null,
+              kept: compareKept !== null,
+              edited: planEdited,
+              onKeep: keepToCompare,
+              onUse: useKeptRoute,
+              onStop: stopComparing,
+            }
+      }
     />
   );
   // A bike loop from a start and a distance (lib/bikeLoop.ts; Plan only, Stephen 2026-11-12): the picked shape is one
@@ -6833,7 +6879,7 @@ export function App() {
         permitsOn={!riding && permitsShown(permitsOn, mode)}
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
-        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
+        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : ((planFirst && comparing && compareKept ? compareKept.route.geometry.coordinates : null) ?? ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
         wayBackTo={riding ? (rideView?.wayBackTo ?? null) : null}
         planLegs={riding || reviewing || mode !== "plan" ? null : loopVias ? NO_LEGS : planDrawn}
         lightMarks={riding || mode !== "plan" ? null : light}

@@ -11605,4 +11605,45 @@ button.route-note:focus-visible {
 
 .road-level-why {
   margin: 8px 0 0;
+
+/* Plan's Keep to compare (lib/compareRoutes.ts): the kept route and the route now, side by side. */
+.plan-compare {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-keep {
+  justify-self: start;
+  min-height: 44px;
+}
+
+.plan-compare-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-compare-table th,
+.plan-compare-table td {
+  padding: 4px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border, #d1d5db);
+}
+
+.plan-compare-table th[scope="row"] {
+  text-align: left;
+  font-weight: 400;
+}
+
+.plan-compare-better {
+  font-weight: 700;
+}
+
+.plan-compare-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-compare-actions button {
+  min-height: 44px;
 }
