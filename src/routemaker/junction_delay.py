@@ -5,8 +5,8 @@ Valhalla's bicycle costing (3.9.1, `BicycleCost::TransitionCost`) times a juncti
 going straight: about a second at most for a straight crossing, whatever controls it. A
 real stop costs a rider far more. Fajans and Curry measured riders at a steady effort on
 two parallel San Francisco streets: one stop every 530 ft (California St) against one every
-2,800 ft (Sacramento St) cut the average speed from 14.2 to 10.9 mph, about 7.6 s for each
-extra stop ("Why Bicyclists Hate Stop Signs", ACCESS 18, 2001,
+2,800 ft (Sacramento St) cut the average speed from 14.2 to 10.9 mph, about 9.5 s for each
+extra stop ( "Why Bicyclists Hate Stop Signs", ACCESS 18, 2001,
 https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs). So a line through
 twenty stop signs was timed as if it had none, and a route on a grid of all-way stops was
 both timed too quick and preferred over a trail of the same length (the owner's ride of
@@ -106,18 +106,44 @@ navigate to a button on a tandem."): the ride types are named
 whatever its wait weight, ranks a button by the usual stacked rule (at 2x, held at 5x the wait
 at a red). Above a wait weight of 1 (Road Bike, Tandem) any signal ranks below the stop sign
 across the same road (Claude's default, `ranked_s`).
+
+A junction with no signal, since 2026-11-13 (the methodology audit, 3.5; `give_way_wait`).
+Until then one figure per road class (GIVE_WAY_DELAY_S: 30, 20 or 12 s; STOP_DELAY_S at a
+quiet street, YIELD_DELAY_S in the District) was both the time shown and what the ranking
+counted, held high as a dislike (the owner, 2026-11-13: "people very much don't like
+them"), so it also lengthened the ride time: 30 / 20 / 12 s against 7.4 / 1.7 / 0.7 s a
+pass on his own rides. He then asked for every such call to be reviewed against the
+evidence ("If there's a better call go with that") and for rules that would work in any
+city. Riders choosing routes weigh a signal and a stop sign at about their clock time
+(Broach, Dill and Gliebe 2012, Table 3), and what they dislike about crossing a busy road
+with no signal is already charged, in feet, by `routemaker.intersections`. So the wait at
+such a junction is now its expected real time and nothing else, for the time shown and for
+the ranking: a stop sign's STOP_SIGN_S, plus the wait for a gap in the traffic of the road
+given way to (`gap_wait_s`: the Highway Capacity Manual's formula as NCHRP Report 562
+prints it, fed the road's count, lanes and speed and the ride's hour). There is no
+separate dislike price, no hour factor and no District rule in it.
+
+How busy that road is comes from its count where it has one; else from its traffic level
+where the junction model has read it (`road_given_way`), the same reading
+`routemaker.intersections` prices the junction's stress by; else from its Valhalla class.
+`delay_at` still decides, by class, WHETHER the rider gives way, and its seconds are now
+only that reading (and the signal figures' "stop sign across the same road").
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, replace
 
-from .intersections import MERGE_WITHIN_M, Movement
+from .intersections import MERGE_WITHIN_M, Junction, Movement, Road, by_traffic, severe
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
 
-# One full stop and the speed built up again: Fajans and Curry's 14.2 to 10.9 mph at one
-# stop every 530 ft against one every 2,800 ft (see the docstring) is 7.6 s a stop, rounded.
+# What `delay_at` answers where the rider gives way to a quiet street: since 2026-11-13 a
+# reading ("a stop sign"), no longer the time shown or ranked there (`give_way_wait`,
+# STOP_SIGN_S). It still stands for a stop's seconds in the signal figures below. It was
+# derived as "7.6 s a stop, rounded" from Fajans and Curry, which divided the lost time by
+# every stop on the slower street; per extra stop the paper gives 9.5 s.
 STOP_DELAY_S = 8.0
 # A signal: the average wait for a rider arriving at random, red squared over twice the
 # cycle (Webster's uniform delay with no queue), at a 100 s cycle with 50 s of red, is
@@ -201,15 +227,19 @@ BUTTON_MIN_OWN_RANK = 5
 # approach (HCM 6th ed., Exhibit 20-2: A up to 10 s of control delay, B 10-15, C 15-25,
 # D 25-35) put a minor street meeting light traffic near 10 s and one meeting an arterial
 # at its busier hours at 25 s or more; these are one value per class, through the day.
-# Inferred from those bands, not measured on riders.
+# Our default, unmeasured. Since 2026-11-13 these are `delay_at`'s reading of which class
+# of road the rider gives way to, no longer a time shown or ranked (`give_way_wait`); a
+# signal's hold below "the stop sign across the same road" (`signal_wait`) still reads them.
 GIVE_WAY_DELAY_S = {0: 30.0, 1: 30.0, 2: 30.0, 3: 20.0, 4: 12.0}
 # How far off the rider's own heading another road may leave the node and still be their
 # own road going on ahead (degrees).
 AHEAD_DEG = 30.0
-# A stop taken as a yield: slowing from about 12 to 5 mph and back loses about 1.7 s by the
-# kinematics alone (1.5 m/s/s braking, 0.8 m/s/s pick-up), and Fajans and Curry's energy
-# count (rolling through at 5 mph saves about a quarter of a full stop's energy) puts it
-# near 6 s at a steady effort; between the two. Inferred, not measured.
+# A stop taken as a yield, which is the law in the District (Safer Streets Amendment Act of
+# 2022, D.C. bill B24-0673). The seconds are our default, unmeasured: slowing from about
+# 12 to 5 mph and back loses about 1.7 s by the kinematics alone (1.5 m/s/s braking,
+# 0.8 m/s/s pick-up), and Fajans and Curry's energy count (rolling through at 5 mph saves
+# about a quarter of a full stop's energy) puts it near 6 s at a steady effort; between
+# the two.
 YIELD_DELAY_S = 4.0
 # The quietest road a District stop is still a full stop for: busier than this is cross
 # traffic (Valhalla's tertiary and up).
@@ -315,6 +345,161 @@ def _stop(busiest_rank: int, rolls: bool) -> float:
     if busiest_rank in GIVE_WAY_DELAY_S:
         return GIVE_WAY_DELAY_S[busiest_rank]
     return YIELD_DELAY_S if rolls and busiest_rank >= ROLL_MAX_BUSY_RANK else STOP_DELAY_S
+
+
+# --- Junctions with no signal: the expected real delay --------------------------------
+#
+# One published delay function and the map's data about the road (its count, lanes and
+# speed). Every figure is a TIME, shown and ranked alike; nothing here is a region's.
+
+# A stop sign with nothing coming: what riders choosing routes weigh one at, 0.9% of a
+# mile, 48 ft, about 3 s of riding (Broach, Dill and Gliebe 2012, Table 3; Portland, where
+# the law then asked for a full stop). Literature. A full stop and back to speed takes
+# 9.5 s (Fajans and Curry 2001: 10.9 mph with a stop every 530 ft against 14.2 mph with one
+# every 2,800 ft is 76.8 s a mile more for 8.07 more stops), but riders mostly do not make
+# one: full stops were 2% and 3% of passes with nothing coming, 9% and 57% with cross
+# traffic (Jackson et al., NHTSA DOT HS 813 641, 2024, Table 2). The same everywhere: the
+# District's stop-as-yield law (Safer Streets Amendment Act of 2022, D.C. bill B24-0673)
+# makes lawful what the figure already describes. It was 8 s, and 4 s in the District.
+STOP_SIGN_S = 3.0
+# The wait for a gap in a road's traffic (`gap_wait_s`): the Highway Capacity Manual 2000's
+# formula for a pedestrian at an unsignalised crossing (equations 18-17 and 18-21), as
+# printed in Fitzpatrick et al., "Improving Pedestrian Safety at Unsignalized Crossings",
+# TCRP Report 112 / NCHRP Report 562 (2006), Appendix A, worksheets 1 and 2, step 4:
+# critical gap tc = L / S + ts, average delay d = (e^(v tc) - v tc - 1) / v, with v the
+# road's flow in vehicles a second, both directions. Literature, and so are the lane width
+# (the report's Table 11 assumes 12 ft) and the start-up and clearance time (its
+# worksheets: "3 s is suggested in the Highway Capacity Manual"). The one figure that is a
+# rider's, not a walker's, is the crossing speed S: the Default ride's own 18 km/h
+# (11.2 mph, 16.4 ft/s; Valhalla's Hybrid, `core.refine`), in place of the report's
+# 3.5 ft/s walk. Nothing is fitted; the owner's rides check it (docs/stress/junction-waits.md).
+CROSSING_LANE_FT = 12.0
+CROSSING_STARTUP_S = 3.0
+CROSSING_SPEED_FTS = 16.4
+# Above this speed the flow is divided by GAP_HIGH_SPEED_FLOW: the report's worksheet 2
+# ("exceeds 35 mph"), step 4, v = (V / 0.7) / 3600. Literature.
+GAP_HIGH_SPEED_MPH = 35.0
+GAP_HIGH_SPEED_FLOW = 0.7
+# The longest wait counted. The formula takes cars arriving at random and no driver
+# yielding, so on a wide busy road it runs to minutes; above 30 s of delay the manual's
+# own table rates the likelihood of taking a short gap "high" (NCHRP 562, Table 8, levels
+# of service E and F). The threshold is literature; using it as the cap is our default,
+# unmeasured.
+GAP_WAIT_MAX_S = 30.0
+# The share of a day's traffic that passes in one hour of each ride-time setting
+# (`routemaker.ridetime`; None: no setting, read as weekday off-peak). Our default,
+# unmeasured: a typical urban day, to be replaced by hourly counts where a region has
+# them. The hour reaches these junctions through this alone.
+HOUR_SHARE = {
+    None: 0.055,
+    "night": 0.015,
+    "weekday_rush": 0.08,
+    "weekday_offpeak": 0.055,
+    "weekend": 0.05,
+}
+# The road read where its count is not known, as (vehicles a day, lanes crossed): a big
+# road (LTS 4 or Avoid by its traffic, `intersections.severe`; else trunk or primary by
+# class) and any other busy road (`intersections.Road.busy`; else secondary or tertiary by
+# class). Our default, unmeasured; a count replaces it wherever one reaches the road.
+TYPICAL_BIG_ROAD = (20_000, 4)
+TYPICAL_BUSY_ROAD = (8_000, 2)
+
+
+def road_given_way(junction: Junction) -> Road | None:
+    """The road a rider gives way to at one of the junction model's junctions, read by its
+    traffic as that model reads it (`intersections.by_traffic`): the busiest of the road
+    crossed and, where the rider does not stay on their own road, the road joined. None
+    where the model knows neither road's level. Whether the rider gives way at all is still
+    `delay_at`'s reading; this says only how busy the road is."""
+    read = by_traffic(junction)
+    roads = [*read.crossed, *(() if read.continues else (read.outgoing,))]
+    known = [road for road in roads if road.tier is not None]
+    if not known:
+        return None
+    return max(known, key=lambda road: (road.level, road.aadt or 0))
+
+
+def crossing_lanes(road: Road) -> int:
+    """The lanes a rider crosses in one go: a one-way road's, or both directions' of a
+    two-way one (`Road.lanes` is per direction; one where the map has none)."""
+    return (road.lanes or 1) * (1 if road.oneway else 2)
+
+
+def gap_wait_s(
+    aadt: float, lanes: int, speed_mph: float | None = None, when: str | None = None
+) -> float:
+    """The seconds a rider is expected to wait for a gap in a road's traffic where no
+    signal stops it: the published formula (see CROSSING_LANE_FT), at most GAP_WAIT_MAX_S.
+    `aadt`: the road's vehicles a day, both directions; `lanes`: the lanes crossed in one
+    go (`crossing_lanes`); `speed_mph`: its speed, where known; `when`: the ride-time
+    setting (HOUR_SHARE). ONE function for every such junction: a stop sign against a busy
+    road, a give-way, a path coming out, nothing mapped."""
+    hourly = max(aadt, 0.0) * HOUR_SHARE.get(when, HOUR_SHARE[None])
+    if speed_mph is not None and speed_mph > GAP_HIGH_SPEED_MPH:
+        hourly /= GAP_HIGH_SPEED_FLOW
+    flow = hourly / 3600.0
+    if flow <= 0.0:
+        return 0.0
+    critical = max(lanes, 1) * CROSSING_LANE_FT / CROSSING_SPEED_FTS + CROSSING_STARTUP_S
+    exposure = flow * critical
+    if exposure > 20.0:
+        # Far past the cap, and before the exponential overflows.
+        return GAP_WAIT_MAX_S
+    return min((math.exp(exposure) - exposure - 1.0) / flow, GAP_WAIT_MAX_S)
+
+
+def junction_urban(road_urban: bool | None, in_city: bool | None = None) -> bool:
+    """Whether a junction is urban, for a ride-time factor (`intersections.time_factor`'s
+    `urban`): ONE rule for this module. Nothing here calls it, since junctions with no
+    signal take the hour through their traffic (`gap_wait_s`); it is for the signal
+    figures (draft PR #1240's hour factor), which had read "urban" as the city limits.
+
+    It is the junction model's own definition, the Census urban area flag of the road
+    crossed or given way to (`intersections.Road.urban`, the segment table's
+    `road_urban`), so one crossing takes one night factor in both models. Only where
+    that flag is not known (a junction the model did not read) does `in_city` stand in:
+    inside a major city's limits (`core.city_limits`) is urban, since those lie inside
+    Census urban areas. Not known either way: not urban, as the junction model reads an
+    unknown flag (the smaller reduction at night).
+
+    `intersections` has no function of its own for this yet: the definition there is the
+    `Road.urban` field as `intersections.assess` passes it to `time_factor`."""
+    if road_urban is not None:
+        return road_urban
+    return bool(in_city)
+
+
+def give_way_wait(reading: float, road: Road | None = None, when: str | None = None) -> float:
+    """The seconds a rider is expected to lose at one junction with no signal where they
+    give way: the stop sign (STOP_SIGN_S) plus the wait for a gap in the road's traffic
+    (`gap_wait_s`). Shown and ranked alike. `reading`: `delay_at`'s answer, which says by
+    the roads' classes how busy a road the rider gives way to; `road`: that road as the
+    junction model reads it (`road_given_way`); `when`: the ride-time setting.
+
+    The traffic is the road's own count, lanes and speed where it has a count. Where it
+    has none it is the typical big or busy road's (TYPICAL_BIG_ROAD, TYPICAL_BUSY_ROAD),
+    by the road's traffic level where the model knows it and by its class where not; a
+    quiet street has no wait for a gap."""
+    speed = None
+    if road is not None:
+        speed = road.speed_mph if road.speed_mph is not None else road.default_speed_mph
+    if road is not None and road.aadt:
+        traffic = (road.aadt, crossing_lanes(road))
+    elif road is not None and road.tier is not None:
+        traffic = TYPICAL_BIG_ROAD if severe(road) else TYPICAL_BUSY_ROAD if road.busy else None
+    else:
+        traffic = _TYPICAL_BY_READING.get(reading)
+    if traffic is None:
+        return STOP_SIGN_S
+    return round(STOP_SIGN_S + gap_wait_s(*traffic, speed, when), 1)
+
+
+# `delay_at`'s answers that mean a busy road, by its class: trunk or primary, and
+# secondary or tertiary.
+_TYPICAL_BY_READING = {
+    seconds: TYPICAL_BIG_ROAD if seconds == GIVE_WAY_DELAY_S[2] else TYPICAL_BUSY_ROAD
+    for seconds in GIVE_WAY_DELAY_S.values()
+}
 
 
 @dataclass(frozen=True)
@@ -489,6 +674,7 @@ def waits(
     stop_extra_s: Mapping[tuple[float, float], float] | None = None,
     when: str | None = None,
     own_big: Collection[tuple[float, float]] = (),
+    given_way: Mapping[tuple[float, float, int, int], Road] | None = None,
 ) -> list[Wait]:
     """Each run's wait: each junction's `delay_at`, the costing junctions within MERGE_M of
     the first of a run counted once, at the dearest or, where one of them is a signal, at
@@ -506,7 +692,13 @@ def waits(
     `own_big`: the signal points where it reads the rider's own road as a big one
     (`intersections.own_big_signal_points`). A signal within SIGNAL_MERGE_M of a run with a
     signal joins it: the junction model's one junction (`intersections.MERGE_WITHIN_M`).
-    The ride's arrival times place each wait where it is (`routemaker.time_marks`)."""
+    The ride's arrival times place each wait where it is (`routemaker.time_marks`).
+
+    A junction with no signal is timed by `give_way_wait`, the same for the time shown and
+    the ranking. `given_way`: by (lon, lat, way in, way out), the road given way to there
+    as the junction model reads it (`road_given_way`); without it the roads' classes alone
+    are read, and a busy road is timed as the typical road of its class. `rolls` no longer
+    changes a wait (STOP_SIGN_S is the same everywhere) and is not asked."""
     out: list[Wait] = []
     run: Wait | None = None
     run_signal: SignalWait | None = None
@@ -533,8 +725,6 @@ def waits(
             junction = replace(junction, signal=True)
         is_beacon = junction.signal and beacon is not None and beacon(*here)
         cost = delay_at(junction, False, is_beacon)
-        if cost == STOP_DELAY_S and rolls is not None and rolls(*here):
-            cost = delay_at(junction, True, is_beacon)
         if cost <= 0:
             continue
         signal = None
@@ -550,6 +740,9 @@ def waits(
                 own_big=here in own_big,
             )
         button_at = (junction.m, *here) if signal is not None and signal.button else None
+        if signal is None:
+            crossed = (given_way or {}).get((*here, junction.in_way, junction.out_way))
+            cost = give_way_wait(cost, crossed, when)
         if run is not None and (
             junction.m - run.m <= MERGE_M
             # A divided road's two carriageways, both signalised, whose nodes lie 35-45 m
@@ -573,7 +766,7 @@ def waits(
                 run = replace(run, button=True, button_at=button_at)
             if run_signal is not None:
                 run = signal_run(run, run_signal)
-            elif cost > run.seconds:
+            elif signal is None and cost > run.seconds:
                 run = replace(run, seconds=cost, ranked_s=cost)
             continue
         if run is not None:

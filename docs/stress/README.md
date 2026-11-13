@@ -45,6 +45,7 @@ route, under the elevation.
 | [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints (built), and the rolling stress chart as built |
 | [drawing.md](drawing.md) | Map colors, dashes and widths by level in each palette, zoom rules, half-step drawing (built), the Mass Ride map |
 | [intersections.md](intersections.md) | The junction cost model as built (which roads count, crossing, left, merge and slip costs, caps, orange and red), and the planned revision (467, 468, 468a) |
+| [junction-waits.md](junction-waits.md) | The time a ride loses at junctions and what the ranking counts for it: signals, stop signs, give-way and uncontrolled crossings (one gap-delay formula from the road's count, lanes and speed), time shown against ranking price, time of day |
 | [literature.md](literature.md) | The research consulted, what RouteMaker took from each source, and where and why it differs |
 | [layers.md](layers.md) | The z12-13 ride layer (calm roads, long paths), Mass Ride capacity, and how stress feeds them |
 

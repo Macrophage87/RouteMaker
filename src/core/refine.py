@@ -371,6 +371,10 @@ class Context:
     # The map's beg-button answers already had in this plan, by OSM way (tagged or not;
     # `routing.button_ways`): the candidates share most of their crossings.
     button_ways: dict = field(default_factory=dict)
+    # The road given way to at each junction the junction model has read in this plan, by
+    # (lon, lat, way in, way out) (`junctions.events_of`'s `given_way`): the junction waits
+    # read its traffic level and count there (`junction_delay.give_way_wait`).
+    given_way: dict = field(default_factory=dict)
     # The ways the exclusion search kept excluding for its best route, which the
     # seek keeps excluding (set by the search).
     kept_excludes: list = field(default_factory=list)
@@ -1151,6 +1155,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             # that routes it as a path, as `routing.classify` reads it (hunt X1). The ride
             # time itself still prices the junctions (rush hour, night).
             closure_when=routing.car_free_reading(ctx.when, ctx.variant),
+            given_way=ctx.given_way,
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error
@@ -1228,7 +1233,13 @@ def analyse(
     # The junctions' waits, the junction model's signals, big roads and stop-sign prices
     # included (hunt J5; the owner, 2026-11-08), each read once for the time and the rank.
     found_waits = routing.junction_waits(
-        raws, ctx.beacons, events, stop_wait_s_per_ft(ctx), ctx.button_ways, ctx.when
+        raws,
+        ctx.beacons,
+        events,
+        stop_wait_s_per_ft(ctx),
+        ctx.button_ways,
+        ctx.when,
+        given_way=ctx.given_way if events is not None else None,
     )
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from core import presets
 from routemaker import junction_delay as d
 from routemaker import trace_junctions as t
-from routemaker.intersections import Beacon, Movement, beacon_at
+from routemaker.intersections import Beacon, Control, Junction, Movement, Road, beacon_at
 
 SHAPE = [(-77.0 + i * 0.001, 38.9) for i in range(12)]
 
@@ -48,6 +50,9 @@ def junction(
 
 
 CROSS_STREET = (("road", "residential"), ("road", "residential"))
+# Giving way to a primary road the junction model has not read: the typical primary's wait
+# (`junction_delay.TYPICAL_BIG_ROAD`), off-peak.
+PRIMARY_GIVE_WAY_S = 13.8
 
 
 @pytest.fixture(autouse=True)
@@ -154,7 +159,7 @@ class TestOneJunction:
 class TestWholeRoute:
     def test_junctions_add_up(self) -> None:
         stops = [junction(*CROSS_STREET, m=100.0 * i) for i in range(1, 6)]
-        assert d.delay_s(stops) == pytest.approx(5 * d.STOP_DELAY_S)
+        assert d.delay_s(stops) == pytest.approx(5 * d.STOP_SIGN_S)
 
     def test_a_divided_road_is_crossed_as_one_stop_at_its_dearest(self) -> None:
         busy = (("road", "primary"), ("road", "primary"))
@@ -162,15 +167,18 @@ class TestWholeRoute:
         # The signal's time shown, a city's big road with the ride-time setting not known.
         assert d.delay_s(near) == d.CITY_PASS_S[None][0]
 
-    def test_the_district_test_is_asked_at_each_junction(self) -> None:
+    def test_a_stop_sign_is_the_same_in_the_district_and_the_test_is_not_asked(self) -> None:
+        """Before 2026-11-13: 8 s, and 4 s where a stop may be rolled (the District). Now
+        one figure everywhere, what riders weigh a stop sign at (Broach et al. 2012)."""
         stops = [junction(*CROSS_STREET, m=100.0), junction(*CROSS_STREET, m=300.0)]
         asked = []
 
         def rolls(lon: float, lat: float) -> bool:
             asked.append((lon, lat))
-            return len(asked) == 1
+            return True
 
-        assert d.delay_s(stops, rolls) == d.YIELD_DELAY_S + d.STOP_DELAY_S
+        assert d.delay_s(stops, rolls) == 2 * d.STOP_SIGN_S == 6.0
+        assert asked == []
 
     def test_the_beacon_test_is_asked_only_at_signals(self) -> None:
         busy = (("road", "primary"), ("road", "primary"))
@@ -181,7 +189,7 @@ class TestWholeRoute:
             asked.append((lon, lat))
             return True
 
-        assert d.delay_s(stops, beacon=beacon) == d.GIVE_WAY_DELAY_S[2] + d.STOP_DELAY_S
+        assert d.delay_s(stops, beacon=beacon) == PRIMARY_GIVE_WAY_S + d.STOP_SIGN_S
         assert len(asked) == 1
 
     def test_a_known_beacon_on_the_list_prices_the_signal_as_a_stop(self) -> None:
@@ -193,7 +201,7 @@ class TestWholeRoute:
         )
         far = (Beacon(id=2, lon=-77.01, lat=38.9),)
         away = d.delay_s(at_beacon, beacon=lambda lon, lat: beacon_at(lon, lat, far) is not None)
-        assert (near, away) == (d.GIVE_WAY_DELAY_S[2], d.CITY_PASS_S[None][0])
+        assert (near, away) == (PRIMARY_GIVE_WAY_S, d.CITY_PASS_S[None][0])
 
     def test_driveways_between_stops_do_not_merge_them(self) -> None:
         driveway = (("driveway", "service_other"),)
@@ -201,7 +209,7 @@ class TestWholeRoute:
         for block in range(4):
             route.append(junction(*CROSS_STREET, m=100.0 * block))
             route += [junction(*driveway, m=100.0 * block + k) for k in range(20, 100, 20)]
-        assert d.delay_s(route) == pytest.approx(4 * d.STOP_DELAY_S)
+        assert d.delay_s(route) == pytest.approx(4 * d.STOP_SIGN_S)
 
     def test_the_district_test_is_not_asked_where_nothing_stops(self) -> None:
         asked = []
@@ -225,19 +233,19 @@ class TestWholeRoute:
         trail = junction(
             *busy, in_use="cycleway", out_use="cycleway", in_class=None, out_class=None
         )
-        assert d.delay_s([trail]) == d.GIVE_WAY_DELAY_S[2]
+        assert d.delay_s([trail]) == PRIMARY_GIVE_WAY_S
         shown = d.CITY_PASS_S[None][0]
         assert d.delay_s([trail], signals={(-77.0, 38.9)}) == shown
         assert d.delay_runs([trail], signals={(-77.0, 38.9)}) == [(100.0, shown)]
         # Another junction's signal is not this one's.
-        assert d.delay_s([trail], signals={(-77.001, 38.9)}) == d.GIVE_WAY_DELAY_S[2]
+        assert d.delay_s([trail], signals={(-77.001, 38.9)}) == PRIMARY_GIVE_WAY_S
 
     def test_a_known_beacon_is_still_a_stop_where_the_model_reads_a_signal(self) -> None:
         busy = (("road", "primary"), ("road", "primary"))
         here = [junction(*busy)]
         assert (
             d.delay_s(here, beacon=lambda lon, lat: True, signals={(-77.0, 38.9)})
-            == (d.GIVE_WAY_DELAY_S[2])
+            == PRIMARY_GIVE_WAY_S
         )
 
 
@@ -1007,3 +1015,254 @@ class TestButtonsOff:
             max(weight * run.stop_s - d.BUTTON_BELOW_STOP_S, 0.0),
         )
         assert ride_ranked_s([run], presets.ROAD_BIKE) == pytest.approx(expected)
+
+
+HERE = (-77.0, 38.9, 1, 1)
+BUSY = (("road", "primary"), ("road", "primary"))
+
+
+def road(level: float, aadt: int | None = None, **facts) -> Road:
+    """A road as the junction model reads it, at a traffic level."""
+    return Road(tier=int(level), half=level % 1 == 0.5, aadt=aadt, **facts)
+
+
+class TestRealTimeAtAGiveWay:
+    """The methodology audit (2026-11-13, section 3.5) and the owner's review of his own
+    calls the same day. Before: 30 / 20 / 12 s by road class, 8 s at a quiet street's stop
+    sign (4 s in the District), shown and ranked, the give-ways held high as a dislike.
+    After: the expected real time, shown and ranked alike."""
+
+    def test_a_quiet_streets_stop_sign(self) -> None:
+        (run,) = d.waits([junction(*CROSS_STREET)])
+        assert (run.seconds, run.ranked_s) == (d.STOP_SIGN_S, d.STOP_SIGN_S) == (3.0, 3.0)
+
+    def test_the_stop_figure_follows_from_its_sources(self) -> None:
+        """Broach, Dill and Gliebe 2012, Table 3: a stop sign is weighed at 0.9% of a mile,
+        47.5 ft, 2.9 s at the Default ride's 16.4 ft/s. A full stop is far more, 9.5 s
+        (Fajans and Curry 2001: 10.9 mph with a stop every 530 ft, 14.2 mph with one every
+        2,800 ft), not the 7.6 s the code once derived from the same paper."""
+        assert round(0.009 * 5280.0 / d.CROSSING_SPEED_FTS) == d.STOP_SIGN_S
+        lost = 3600.0 / 10.9 - 3600.0 / 14.2
+        extra_stops = 5280.0 / 530.0 - 5280.0 / 2800.0
+        assert round(lost / extra_stops, 1) == 9.5
+
+    def test_with_a_count_the_wait_is_the_roads_own(self) -> None:
+        """A two-lane 25 mph road with 8,000 a day, off-peak: 4.5 s where it was 20 s."""
+        crossed = {HERE: road(3, 8000, lanes=1, speed_mph=25.0)}
+        (run,) = d.waits([junction(*BUSY)], given_way=crossed)
+        assert run.seconds == run.ranked_s == 4.5
+        assert run.seconds == round(d.STOP_SIGN_S + d.gap_wait_s(8000, 2, 25.0), 1)
+
+    def test_without_a_count_the_road_is_a_typical_one(self) -> None:
+        """Before: 30 / 20 / 12 s. After: 13.8 / 4.5 / 4.5 s off-peak."""
+        shown = []
+        for cls in ("trunk", "primary", "secondary", "tertiary"):
+            (run,) = d.waits([junction(("road", cls), ("road", cls))])
+            assert run.seconds == run.ranked_s
+            shown.append(run.seconds)
+        assert shown == [PRIMARY_GIVE_WAY_S, PRIMARY_GIVE_WAY_S, 4.5, 4.5]
+        assert PRIMARY_GIVE_WAY_S == round(d.STOP_SIGN_S + d.gap_wait_s(*d.TYPICAL_BIG_ROAD), 1)
+        assert 4.5 == round(d.STOP_SIGN_S + d.gap_wait_s(*d.TYPICAL_BUSY_ROAD), 1)
+
+    def test_the_ranking_counts_the_same_time(self) -> None:
+        """No separate dislike price: riders weigh a stop sign and a signal at about their
+        clock time (Broach et al. 2012), and the dislike of an unsignalled busy crossing is
+        the junction model's cost in feet."""
+        route = [junction(*CROSS_STREET, m=100.0), junction(*BUSY, m=300.0)]
+        found = d.waits(route, when="weekday_rush")
+        assert [w.ranked_s for w in found] == [w.seconds for w in found]
+        assert d.ranked_s(found) == d.delay_s(route, when="weekday_rush")
+
+    def test_ten_secondary_crossings_do_not_add_minutes(self) -> None:
+        """The owner-calls review's ETA test (2026-11-13): ten unsignalled crossings of
+        secondary roads added 200 s; his rides show about 17 s of waiting and stopping.
+        Now 45 s: 15 s of waiting for gaps, and the stop sign's 3 s at each."""
+        cls = (("road", "secondary"), ("road", "secondary"))
+        route = [junction(*cls, m=200.0 * i) for i in range(1, 11)]
+        assert sum(d.delay_at(j) for j in route) == 200.0
+        assert d.delay_s(route) == pytest.approx(45.0)
+        assert d.delay_s(route) - 10 * d.STOP_SIGN_S == pytest.approx(15.0)
+
+    def test_a_wide_commuter_road_at_a_stop_sign(self) -> None:
+        """The review's case: a six-lane divided road, one-way three-lane carriageways,
+        30,000 a day, no signal. At rush hour the wait is at the cap; midday about half;
+        at night a few seconds. (Its stress is the junction model's, charged there.)"""
+        wide = {HERE: road(4, 30000, lanes=3, oneway=True, speed_mph=35.0)}
+        seconds = {
+            when: d.waits([junction(*BUSY)], given_way=wide, when=when)[0].seconds
+            for when in ("weekday_rush", "weekday_offpeak", "night")
+        }
+        assert seconds == {"weekday_rush": 33.0, "weekday_offpeak": 19.2, "night": 5.1}
+
+    def test_road_bikes_weight_still_counts_a_give_way_three_times(self) -> None:
+        found = d.waits([junction(*BUSY)])
+        assert d.ranked_s(found, 3.0) * 3.0 == pytest.approx(3 * PRIMARY_GIVE_WAY_S)
+
+    def test_a_run_keeps_its_dearest_junction(self) -> None:
+        near = [junction(*CROSS_STREET, m=100.0), junction(*BUSY, m=118.0)]
+        (run,) = d.waits(near)
+        assert (run.seconds, run.ranked_s) == (PRIMARY_GIVE_WAY_S, PRIMARY_GIVE_WAY_S)
+
+
+class TestGapWait:
+    """`gap_wait_s`: NCHRP Report 562, Appendix A, worksheets 1 and 2, step 4 (the Highway
+    Capacity Manual 2000's equations 18-17 and 18-21)."""
+
+    def test_the_formula_as_printed(self) -> None:
+        """tc = L / S + ts; d = (e^(v tc) - v tc - 1) / v. 8,000 a day at 5.5% an hour is
+        440 an hour, v = 0.1222 a second; two 12 ft lanes at 16.4 ft/s plus 3 s is 4.46 s."""
+        v, tc = 440 / 3600, 24 / 16.4 + 3.0
+        assert d.gap_wait_s(8000, 2) == pytest.approx((math.exp(v * tc) - v * tc - 1) / v)
+        assert d.gap_wait_s(8000, 2) == pytest.approx(1.48, abs=0.01)
+
+    def test_the_reports_own_values_give_its_own_critical_gaps(self, monkeypatch) -> None:
+        """Its Table 11: 9 s for two lanes and 15 s for four, at a 4 ft/s walk."""
+        monkeypatch.setattr(d, "CROSSING_SPEED_FTS", 4.0)
+        monkeypatch.setattr(d, "GAP_WAIT_MAX_S", math.inf)
+        for lanes, tc in ((2, 9.0), (4, 15.0)):
+            v = 1000 * d.HOUR_SHARE[None] / 3600
+            assert d.gap_wait_s(1000, lanes) == pytest.approx((math.exp(v * tc) - v * tc - 1) / v)
+
+    def test_it_is_checked_against_the_owners_rides_not_fitted_to_them(self) -> None:
+        """2,882 passes straight across a busier road with no signal (DC, mostly early), in
+        the file's own per-pass measure, the mean wait plus 8 s for the share that stopped:
+        7.4 / 1.7 / 0.7 s at trunk-or-primary / secondary / smaller roads. The old model
+        gave 30 / 20 / 12 s. The formula, with nothing fitted, on a road assumed for each
+        class at the night hour: 4.9 / 1.8 / 0.7 s."""
+        assumed = {"primary": (20_000, 4), "secondary": (10_000, 2), "tertiary": (4_000, 2)}
+        measured = {"primary": 7.4, "secondary": 1.7, "tertiary": 0.7}
+        like_the_file = {}
+        for cls, (aadt, lanes) in assumed.items():
+            flow = aadt * d.HOUR_SHARE["night"] / 3600
+            gap = lanes * d.CROSSING_LANE_FT / d.CROSSING_SPEED_FTS + d.CROSSING_STARTUP_S
+            stopped = 1 - math.exp(-flow * gap)
+            like_the_file[cls] = round(d.gap_wait_s(aadt, lanes, 25.0, "night") + 8 * stopped, 1)
+        assert like_the_file == {"primary": 4.9, "secondary": 1.8, "tertiary": 0.7}
+        for cls, seconds in measured.items():
+            assert abs(like_the_file[cls] - seconds) <= 2.5
+            assert abs(like_the_file[cls] - seconds) < abs(d.delay_at(junction(*BUSY)) - seconds)
+
+    def test_it_grows_with_volume_width_speed_and_the_hour(self) -> None:
+        base = d.gap_wait_s(12000, 2, 30.0)
+        assert d.gap_wait_s(20000, 2, 30.0) > base
+        assert d.gap_wait_s(12000, 4, 30.0) > base
+        # The report's worksheet 2: above 35 mph the flow is divided by 0.7.
+        assert d.gap_wait_s(12000, 2, 40.0) > base == d.gap_wait_s(12000, 2, 35.0)
+        rush, night = (d.gap_wait_s(12000, 2, 30.0, when) for when in ("weekday_rush", "night"))
+        assert rush > base > d.gap_wait_s(12000, 2, 30.0, "weekend") > night > 0
+
+    def test_an_empty_road_has_no_wait(self) -> None:
+        assert d.gap_wait_s(0, 2) == 0.0
+
+    def test_the_wait_stops_at_the_cap(self) -> None:
+        """Four lanes at 40 mph with 30,000 a day at rush hour is minutes by the formula;
+        the wait stops at 30 s (NCHRP 562 Table 8: above 30 s risk-taking is likely)."""
+        assert d.gap_wait_s(30000, 4, 40.0, "weekday_rush") == d.GAP_WAIT_MAX_S
+        assert d.gap_wait_s(10**7, 8, 55.0, "weekday_rush") == d.GAP_WAIT_MAX_S
+        assert d.gap_wait_s(20000, 4, 25.0, "weekday_rush") < d.GAP_WAIT_MAX_S
+
+    def test_a_one_way_road_is_crossed_in_its_own_lanes(self) -> None:
+        assert d.crossing_lanes(Road(4, lanes=2)) == 4
+        assert d.crossing_lanes(Road(4, lanes=2, oneway=True)) == 2
+        assert d.crossing_lanes(Road(3)) == 2
+
+
+class TestOneBusyRoad:
+    """How busy a road is comes from its count; without one, from its traffic level where
+    the junction model has read it, the same reading `routemaker.intersections` prices
+    by; by Valhalla class only where not. The audit's two cases (areas/07, 2.10)."""
+
+    def test_a_calm_two_lane_primary_is_timed_by_its_own_traffic(self) -> None:
+        """Primary by class, 25 mph, one lane each way, 5,000 a day. Before: 30 s by its
+        class. After: 3.9 s. With no count and level 2: a stop sign's 3 s."""
+        assert d.delay_at(junction(*BUSY)) == 30.0
+        calm = {HERE: road(2, 5000, lanes=1, speed_mph=25.0)}
+        (run,) = d.waits([junction(*BUSY)], given_way=calm)
+        assert run.seconds == 3.9
+        (run,) = d.waits([junction(*BUSY)], given_way={HERE: road(2, lanes=1, speed_mph=25.0)})
+        assert run.seconds == d.STOP_SIGN_S
+
+    def test_a_fast_wide_residential_road_is_a_big_road(self) -> None:
+        """Residential by class, 35 mph, two lanes each way, level 4, no count. Before: an
+        8 s stop, 4 s in the District. After: the typical big road's wait."""
+        wide = {HERE: road(4, lanes=2, speed_mph=35.0)}
+        (run,) = d.waits([junction(*CROSS_STREET)], given_way=wide)
+        assert run.seconds == PRIMARY_GIVE_WAY_S
+
+    @pytest.mark.parametrize(
+        ("level", "typical"),
+        [(5, "big"), (4.5, "big"), (4, "big"), (3.5, "busy"), (2.5, "busy"), (2, None), (1, None)],
+    )
+    def test_without_a_count_the_level_picks_the_typical_road(self, level, typical) -> None:
+        """The junction model's own two lines: LTS 4 and up (`intersections.severe`), and
+        busy from 2.5 (`Road.busy`)."""
+        (run,) = d.waits([junction(*BUSY)], given_way={HERE: road(level)})
+        roads = {"big": d.TYPICAL_BIG_ROAD, "busy": d.TYPICAL_BUSY_ROAD}
+        wait = d.gap_wait_s(*roads[typical]) if typical else 0.0
+        assert run.seconds == round(d.STOP_SIGN_S + wait, 1)
+
+    def test_a_road_the_model_could_not_rate_falls_back_to_its_class(self) -> None:
+        """Its count, where it has one, still times the wait."""
+        (run,) = d.waits([junction(*BUSY)], given_way={HERE: Road(None, aadt=9000)})
+        assert run.seconds == round(d.STOP_SIGN_S + d.gap_wait_s(9000, 2), 1)
+        (run,) = d.waits([junction(*BUSY)], given_way={HERE: Road(None)})
+        assert run.seconds == PRIMARY_GIVE_WAY_S
+
+    def test_the_road_given_way_to_is_the_busiest_crossed_or_joined(self) -> None:
+        at = {"m": 0.0, "lon": -77.0, "lat": 38.9, "incoming": Road(1), "control": Control.STOP}
+        crossing = Junction(
+            movement=Movement.STRAIGHT, outgoing=Road(1), crossed=(road(3, 9000),), **at
+        )
+        assert d.road_given_way(crossing).aadt == 9000
+        joining = Junction(movement=Movement.LEFT, outgoing=road(4, 20000), **at)
+        assert d.road_given_way(joining).aadt == 20000
+        # Staying on their own road, the rider does not give way to it.
+        along = Junction(movement=Movement.STRAIGHT, outgoing=road(4), continues=True, **at)
+        assert d.road_given_way(along) is None
+        unknown = Junction(movement=Movement.STRAIGHT, outgoing=Road(None), **at)
+        assert d.road_given_way(unknown) is None
+
+    def test_the_traffic_reading_is_the_junction_models(self) -> None:
+        """A road the map rates 2 for its bike lane, 35 mph and two lanes each way, is
+        level 4 to cross (`intersections.by_traffic`)."""
+        at = {"m": 0.0, "lon": -77.0, "lat": 38.9, "incoming": Road(1), "outgoing": Road(1)}
+        laned = Road(2, lanes=2, speed_mph=35.0)
+        found = d.road_given_way(Junction(movement=Movement.STRAIGHT, crossed=(laned,), **at))
+        assert found.level == 4.0
+        (run,) = d.waits([junction(*CROSS_STREET)], given_way={HERE: found})
+        assert run.seconds == PRIMARY_GIVE_WAY_S
+
+
+class TestTimeOfDay:
+    """The hour reaches a junction with no signal through the traffic alone: no separate
+    factor on the time shown or the ranking."""
+
+    def test_the_wait_takes_the_hour_through_the_traffic(self) -> None:
+        crossed = {HERE: road(4, 20000, lanes=2, speed_mph=25.0)}
+        found = {
+            when: d.waits([junction(*BUSY)], given_way=crossed, when=when)[0]
+            for when in ("night", "weekend", "weekday_offpeak", "weekday_rush")
+        }
+        assert {when: w.seconds for when, w in found.items()} == {
+            "night": 4.7,
+            "weekend": 12.1,
+            "weekday_offpeak": 13.8,
+            "weekday_rush": 26.2,
+        }
+        assert all(w.ranked_s == w.seconds for w in found.values())
+
+    def test_a_quiet_streets_stop_does_not_change_with_the_hour(self) -> None:
+        for when in ("night", "weekday_rush"):
+            (run,) = d.waits([junction(*CROSS_STREET)], when=when)
+            assert run.ranked_s == run.seconds == d.STOP_SIGN_S
+
+    def test_urban_is_the_census_flag_of_the_road_not_the_city_limits(self) -> None:
+        """`junction_urban`, the one rule for a ride-time factor's "urban" (for the signal
+        figures). Silver Spring: outside the four cities, inside a Census urban area."""
+        assert d.junction_urban(True, in_city=False) is True
+        assert d.junction_urban(False, in_city=True) is False
+        # Not known: the city limits stand in, and with neither it is not urban, as the
+        # junction model reads an unknown flag.
+        assert d.junction_urban(None, in_city=True) is True
+        assert d.junction_urban(None, in_city=False) is False
+        assert d.junction_urban(None) is False

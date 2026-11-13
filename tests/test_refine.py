@@ -3369,6 +3369,7 @@ class TestSeekWiring:
             ratings=None,
             beacons=(),
             closure_when=None,
+            given_way=None,
         ):
             junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
             return []

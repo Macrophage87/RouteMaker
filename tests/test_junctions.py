@@ -1728,6 +1728,22 @@ class TestEvents:
         assert event.reason == "Crossing a 4-lane 40 mph (64 km/h) road, stop sign on your side"
 
     @db
+    def test_the_road_given_way_to_is_handed_to_the_junction_waits(self, grid) -> None:
+        """`given_way` (the methodology audit, 2026-11-13): the junction waits read the
+        crossed road by its traffic, as this model does, not by its class alone."""
+        found: dict = {}
+        junctions.events_of(
+            [raw()],
+            "weekend",
+            False,
+            self.locate_with(crossroads(**{"in": {"stop": True}})),
+            given_way=found,
+        )
+        ((key, road),) = found.items()
+        assert key == (raw().lon, raw().lat, raw().in_way, raw().out_way)
+        assert (road.level, road.speed_mph) == (4.0, 40.0)
+
+    @db
     def test_the_event_carries_the_crossed_roads_mapped_name(self, grid) -> None:
         renamed = crossroads(**{"in": {"stop": True}})
         for e in renamed["edges"]:
