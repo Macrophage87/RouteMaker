@@ -842,7 +842,7 @@ class RebuildContext:
     # The ways' nodes tagged `button_operated=yes` (`extract.read_ways`), for
     # `segment.button_operated`; empty where none were read.
     button_nodes: set[int] = field(default_factory=set)
-    # The ways' nodes tagged as a signal or a stop or yield sign (`extract.read_ways`), for
+    # The ways' nodes tagged as a signal (`extract.read_ways`), for
     # what a side path crosses (`rate_side_paths`); empty where none were read.
     control_nodes: dict[int, str] = field(default_factory=dict)
     # The level of a road that carries a protected lane on its own way, classified without
@@ -2041,7 +2041,6 @@ def apply_beside_busy_road(
             asked,
             road_level,
             crossing_ft_per_mile=crossed.ft_per_mile if crossed else None,
-            slip_lane=crossed.slip_lane if crossed else False,
             contraflow=found.contraflow,
             ceiling=ceiling,
         )
@@ -2062,7 +2061,7 @@ def rate_side_paths(
     the owner, 2026-11-12): each bike way's named street alongside, by geometry
     (`facility.side_streets`), and each protected lane tagged on its road
     (`facility.on_road_tracks`); what a rider following each crosses
-    (`facility.side_path_crossings`; `control_nodes` are the signals and stop signs,
+    (`facility.side_path_crossings`; `control_nodes` are the signals,
     `extract.read_ways`); and the level each takes (`apply_beside_busy_road`). Returns the
     streets found beside the ways mapped on their own, kept for the side-path names
     (`write_segments`) and PR #1242's weekend rule, and how many ways the step moved.

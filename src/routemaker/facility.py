@@ -60,7 +60,6 @@ from .tags import (
     is_oneway,
     narrow_access_lists,
     open_to_buses,
-    parse_maxspeed_mph,
 )
 
 
@@ -1195,10 +1194,17 @@ def without_bike_facility(tags: dict[str, str]) -> dict[str, str]:
 #   on its far side;
 # - the end of the run, where the path stops at a street and goes no further.
 #
-# Each point costs feet of quiet riding on the junction model's scale
-# (`crossing_point_ft`), summed over the run of side path along one street (its ways joined
-# end to end, so a path split at every driveway is read as one) and read as feet a mile. A
-# run under CROSSING_RUN_MIN_M is too short to read a rate from.
+# Each crossing is priced ONCE (the owner, 2026-10-03, decision 303: "our routing is a sum of
+# intersection stress and route stress, we don't want to double count"):
+# - a street at LTS 2.5 or more and a slip lane are junctions the junction model prices when
+#   a route rides through them (`routemaker.intersections`: signals, right of way, the
+#   crossed road's speed and width). They are NOT in the path's level.
+# - a driveway or a quiet street's mouth (below LTS 2.5) is nothing to the junction model
+#   (`intersections.Road.busy`). Those are in the path's level, here: feet of quiet riding on
+#   the junction model's scale (`crossing_point_ft`), summed over the run of side path along
+#   one street (its ways joined end to end, so a path split at every driveway is read as
+#   one) and read as feet a mile. A run under CROSSING_RUN_MIN_M is too short to read a rate
+#   from.
 
 # The ways cars use that a side path can cross: streets, service roads and driveways, links.
 CROSSING_HIGHWAY = frozenset(
@@ -1214,7 +1220,8 @@ UNRATED_CROSSING_LEVEL = 2.0
 SLIP_LANE_HIGHWAY = frozenset({"trunk_link", "primary_link", "secondary_link", "tertiary_link"})
 CROSSING_RUN_MIN_M = 160.0
 _MILE_M = 1609.344
-# Riding against the traffic in the lane beside the path, at an unsignalled point. Wachtel
+# Riding against the traffic in the lane beside the path, at an unsignalled driveway or
+# quiet-street mouth. Wachtel
 # and Lewiston (1994, ITE Journal 64(9):30-35, Table 4) measured 4.5 times the collision
 # risk for sidewalk riders going against the adjacent traffic over those going with it (2.0
 # on the roadway, not significant); Schepers et al. (2011, Accident Analysis and Prevention
@@ -1226,11 +1233,9 @@ _MILE_M = 1609.344
 CONTRAFLOW_FACTOR = 2.0
 # What a node says of the control there (`pipeline.extract.read_ways`' `control_nodes`).
 SIGNAL_NODE = "signal"
-STOP_NODE = "stop"
-# How far along the crossed way, in its nodes either side of the point, a signal or the
-# crossed way's own stop or yield sign is looked for (the junction model reads a signal up
-# to 30 m along the crossed road, `core.junctions`; the rebuild has node order, not
-# distance, here). Our default.
+# How far along the crossed way, in its nodes either side of the point, a signal is looked
+# for (the junction model reads a signal up to 30 m along the crossed road,
+# `core.junctions`; the rebuild has node order, not distance, here). Our default.
 CONTROL_REACH_NODES = 2
 # How many crossing ways and islands in a row are read as one crossing (a street crossed in
 # two halves over a median island).
@@ -1238,12 +1243,12 @@ CROSSING_CHAIN_PIECES = 4
 
 
 class SidePathCrossings(NamedTuple):
-    """What a side path crosses (`side_path_crossings`): its run's crossing cost in feet of
-    quiet riding a mile, the contraflow factor included (None where the run is too short to
-    read a rate from), and whether the way itself crosses a slip lane."""
+    """What a side path crosses that the junction model does not price
+    (`side_path_crossings`): its run's driveways and quiet-street mouths in feet of quiet
+    riding a mile, the contraflow factor included (None where the run is too short to read
+    a rate from)."""
 
     ft_per_mile: float | None
-    slip_lane: bool
 
 
 def _length_m(coordinates: Sequence[tuple[float, float]]) -> float:
@@ -1281,81 +1286,48 @@ def _signalised(tags: dict[str, str]) -> bool:
     }  # fmt: skip
 
 
-def crossing_point_ft(
-    level: float, highway: str = "", control: str | None = None, speed_mph: float | None = None
-) -> float:
-    """What one crossing point costs a rider on a side path, in feet of quiet riding: the
-    junction model's own figure for crossing that way (`routemaker.intersections`, read
-    only), so a signal, the crossed way's stop sign and the crossed way's level count as
-    they do there.
+def crossing_point_ft(level: float, signal: bool = False) -> float:
+    """What the mouth of a driveway or quiet street (below LTS 2.5) costs a rider on a side
+    path, in feet of quiet riding. The junction model prices nothing there
+    (`intersections.Road.busy`), so its own figure for the nearest thing it does price, an
+    unsignalled LTS 3 street crossed from a path (1,600 ft at `MARKED_CROSSING_FACTOR`, 800
+    ft), is carried down in proportion to the crossed way's level: 267 ft a level, so a
+    driveway (1.5) is 400 ft and an LTS 2 street 533 ft. At a signal, the model's signalised
+    LTS 3 figure in the same proportion (50 ft a level). No number of ours; the straight
+    line is our default, unmeasured.
 
-    `level` is the crossed way's level, `highway` its class, `control` what is known of the
-    control (SIGNAL_NODE, STOP_NODE for a stop or yield sign facing the crossed way's
-    drivers, None for nothing mapped), `speed_mph` its posted speed where known.
-
-    - A slip lane: `intersections.slip_ft` (1,000 ft; 500 ft at a signal). Charged once,
-      here: the old extra half level for a slip lane is gone.
-    - At a signal: `intersections.crossing_ft` at a signal (150 ft across LTS 3 or less,
-      600 ft across LTS 4).
-    - No signal, the crossed way at LTS 2.5 or more: `intersections.crossing_ft` from the
-      stopped side, at `MARKED_CROSSING_FACTOR` as the model reads a path's crossing (800 ft
-      across LTS 3, 2,000 ft and up across LTS 4), or the priority side where the crossed
-      way faces a stop sign; never less than a quiet street's mouth.
-    - No signal, a driveway or quiet street (below LTS 2.5), which the junction model does
-      not price at all (`intersections.Road.busy`) and which are the points the owner asked
-      to count: the model's own LTS 3 figure carried down in proportion to the level, a
-      third of it a level (267 ft: a driveway at 1.5 is 400 ft, an LTS 2 street 533 ft). No
-      number of ours; the straight line is our default, unmeasured. It is also the least
-      any unsignalled point costs: a stop sign on the side street takes away the wait for
-      a gap, not the driver who pulls across the path looking the other way.
-
-    No right-hook term of its own: that charge is the junction model's
-    (`intersections`, PR #1241), in its one table."""
+    No right-hook term of its own: that charge is the junction model's (`intersections`,
+    PR #1241), in its one table."""
     # Imported here: `intersections` reads `stress`, which reads this module.
     from . import intersections
 
-    control_of = {
-        SIGNAL_NODE: intersections.Control.SIGNAL,
-        STOP_NODE: intersections.Control.CROSS_STOP,
-    }.get(control, intersections.Control.NONE)
-    if highway in SLIP_LANE_HIGHWAY:
-        return intersections.slip_ft(control_of)
-    tier = min(int(level), 5)
-    road = intersections.Road(
-        tier=tier,
-        half=level % 1 == 0.5 and tier < 5,
-        speed_mph=speed_mph,
-        # A speed the model has to assume is not read as a rural road's (`intersections.scale`).
-        urban=True,
+    busy = intersections.BUSY_TIER
+    at_busy = (
+        intersections.SIGNALISED_CROSSING_FT[busy]
+        if signal
+        else intersections.STOPPED_CROSSING_FT[busy] * intersections.MARKED_CROSSING_FACTOR
     )
-    if control_of is intersections.Control.SIGNAL:
-        return intersections.crossing_ft(road, control_of, None)
-    # A third of the model's unsignalled LTS 3 path crossing for each level, up to the last
-    # level the model calls quiet.
-    per_level = (
-        intersections.STOPPED_CROSSING_FT[intersections.BUSY_TIER]
-        * intersections.MARKED_CROSSING_FACTOR
-        / intersections.BUSY_TIER
-    )
-    quiet = per_level * min(level, intersections.BUSY_TIER - 1.0)
-    if not road.busy:
-        return quiet
-    gap = intersections.crossing_ft(road, control_of, None)
-    if control_of is intersections.Control.NONE:
-        gap *= intersections.MARKED_CROSSING_FACTOR
-    return max(quiet, gap)
+    return at_busy * level / busy
+
+
+def junction_priced(level: float, highway: str) -> bool:
+    """Whether crossing a way is a junction the junction model prices at route time: a slip
+    lane, or a way at LTS 2.5 or more (`intersections.Road.busy`). Such a crossing is not in
+    a side path's level."""
+    from . import intersections
+
+    return highway in SLIP_LANE_HIGHWAY or level >= intersections.BUSY_TIER - 0.5
 
 
 class _Crossed(NamedTuple):
-    """One road at a node: its way, its name's key, what crossing it costs with no signal
-    and at one, whether it is a slip lane, whether a signal is mapped within reach, whether
+    """One road at a node: its way, its name's key, its level, whether the junction model
+    prices crossing it (`junction_priced`), whether a signal is mapped within reach, whether
     the way ends at the node, and the next point along it from there."""
 
     way: int
     key: str
-    ft: float
-    signal_ft: float
-    slip: bool
+    level: float
+    junction: bool
     signal: bool
     ends: bool
     toward: tuple[float, float] | None
@@ -1377,9 +1349,10 @@ def side_path_crossings(
 
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]) for every way; `level_of` gives a
     crossed way's level by osm id (None where it has none); `control_at` gives the nodes
-    tagged as a signal or a stop or yield sign (SIGNAL_NODE, STOP_NODE). What counts as a
-    crossing point, and what does not, is in the note above; what each costs is
-    `crossing_point_ft`. The two carriageways of one named street are one point. A run is
+    tagged as a signal (SIGNAL_NODE). What counts as a crossing point, and what does not, is
+    in the note above (a street at LTS 2.5 or more and a slip lane are the junction model's,
+    not counted here); what each costs is `crossing_point_ft`. The two carriageways of one
+    named street are one point. A run is
     the side paths along one street joined at shared end nodes or through a crossing the
     rider rides. Only the road nodes near a side path are held, so the region's road
     network is read, not kept. `points`, where given, is filled with each path's run's
@@ -1430,14 +1403,11 @@ def side_path_crossings(
         level = level_of(osm_id) if level_of is not None else None
         if level is None:
             level = UNRATED_CROSSING_LEVEL
-        speed = parse_maxspeed_mph(tags.get("maxspeed"))
         key = _name_key(tags.get("name")) or f"way {osm_id}"
         located = coords if len(coords) == len(nodes) else None
         last = len(nodes) - 1
         for index in hits:
             reach = nodes[max(0, index - CONTROL_REACH_NODES) : index + CONTROL_REACH_NODES + 1]
-            controls = {control_at.get(node) for node in reach}
-            stop = STOP_NODE if STOP_NODE in controls else None
             ends = index in (0, last) and nodes[0] != nodes[last]
             toward = None
             if ends and located is not None and last >= 1:
@@ -1446,10 +1416,9 @@ def side_path_crossings(
                 _Crossed(
                     osm_id,
                     key,
-                    crossing_point_ft(level, highway, stop, speed),
-                    crossing_point_ft(level, highway, SIGNAL_NODE, speed),
-                    highway in SLIP_LANE_HIGHWAY,
-                    SIGNAL_NODE in controls,
+                    level,
+                    junction_priced(level, highway),
+                    any(control_at.get(node) == SIGNAL_NODE for node in reach),
                     ends,
                     toward,
                 )
@@ -1475,10 +1444,16 @@ def side_path_crossings(
             else:
                 ends_at[key, node] = osm_id
 
-    # Each point as (its key, feet, signalised, slip lane), by the path that meets it:
-    # where the path itself shares a node with the crossed way (`passes` counts the path's
-    # way through the node: 2 through the middle, 1 at an end) ...
-    direct: dict[int, list[tuple[int, tuple[str, object], float, bool, bool, int]]] = {}
+    def priced(crossed: list[_Crossed], signal: bool) -> float | None:
+        """The level's price for a point, or None where the junction model prices it."""
+        if any(road.junction for road in crossed):
+            return None
+        return crossing_point_ft(max(road.level for road in crossed), signal)
+
+    # Each point as (its key, feet, signalised), by the path that meets it: where the path
+    # itself shares a node with the crossed way (the last figure counts the path's way
+    # through the node: 2 through the middle, 1 at an end) ...
+    direct: dict[int, list[tuple[int, tuple[str, object], float, bool, int]]] = {}
     for path_id, (nodes, _length, key, coords) in paths.items():
         sides = side[path_id].road_sides
         last = len(nodes) - 1
@@ -1493,23 +1468,25 @@ def side_path_crossings(
             ]
             if not crossed:
                 continue
-            worst = max(crossed, key=lambda road: road.ft)
             signal = any(road.signal for road in crossed) or control_at.get(node) == SIGNAL_NODE
+            feet = priced(crossed, signal)
+            if feet is None:
+                continue
+            worst = max(crossed, key=lambda road: road.level)
             named = not worst.key.startswith("way ")
             direct.setdefault(path_id, []).append(
                 (
                     node,
                     ("road", worst.key) if named else ("node", node),
-                    max(road.signal_ft for road in crossed) if signal else worst.ft,
+                    feet,
                     signal,
-                    any(road.slip for road in crossed),
                     2 if closed or 0 < index < last else 1,
                 )
             )
     # ... and where a crossing way (or a chain of them over an island) carries the rider
     # from one side path of the street to another. A piece over the path's own road is
     # never ridden by following the path, and is left out before the chain is read.
-    chained: dict[int, list[tuple[tuple[str, object], float, bool, bool]]] = {}
+    chained: dict[int, list[tuple[tuple[str, object], float, bool]]] = {}
     by_key: dict[str, list[int]] = {}
     for path_id, (_nodes, _length, key, _coords) in paths.items():
         by_key.setdefault(key, []).append(path_id)
@@ -1551,19 +1528,17 @@ def side_path_crossings(
             crossed = [road for node in chain_nodes - own_nodes for road in roads_at.get(node, ())]
             if not crossed:
                 continue
-            worst = max(crossed, key=lambda road: road.ft)
             signal = (
                 any(pieces[piece][1] for piece in chain)
                 or any(road.signal for road in crossed)
                 or any(control_at.get(node) == SIGNAL_NODE for node in chain_nodes)
             )
+            feet = priced(crossed, signal)
+            if feet is None:
+                continue
+            worst = max(crossed, key=lambda road: road.level)
             named = not worst.key.startswith("way ")
-            point = (
-                ("road", worst.key) if named else ("way", min(chain)),
-                max(road.signal_ft for road in crossed) if signal else worst.ft,
-                signal,
-                any(road.slip for road in crossed),
-            )
+            point = (("road", worst.key) if named else ("way", min(chain)), feet, signal)
             for path_id in joined:
                 chained.setdefault(path_id, []).append(point)
 
@@ -1575,25 +1550,22 @@ def side_path_crossings(
         r = root(path_id)
         run_length[r] = run_length.get(r, 0.0) + length
         passes = run_passes.setdefault(r, {})
-        for node, _point, _ft, _signal, _slip, count in direct.get(path_id, ()):
+        for node, _point, _ft, _signal, count in direct.get(path_id, ()):
             passes[node] = passes.get(node, 0) + count
     run_points: dict[int, dict[tuple[str, object], tuple[float, bool]]] = {}
-    slips: set[int] = set()
 
-    def take(path_id: int, point: tuple[str, object], ft: float, signal: bool, slip: bool):
+    def take(path_id: int, point: tuple[str, object], ft: float, signal: bool) -> None:
         held = run_points.setdefault(root(path_id), {})
         if point not in held or ft > held[point][0]:
             held[point] = (ft, signal)
-        if slip:
-            slips.add(path_id)
 
     for path_id in paths:
-        passes = run_passes[root(path_id)]
-        for node, point, ft, signal, slip, _count in direct.get(path_id, ()):
+        passes = run_passes.setdefault(root(path_id), {})
+        for node, point, ft, signal, _count in direct.get(path_id, ()):
             if passes[node] >= 2:
-                take(path_id, point, ft, signal, slip)
-        for point, ft, signal, slip in chained.get(path_id, ()):
-            take(path_id, point, ft, signal, slip)
+                take(path_id, point, ft, signal)
+        for point, ft, signal in chained.get(path_id, ()):
+            take(path_id, point, ft, signal)
     found: dict[int, SidePathCrossings] = {}
     for path_id in paths:
         r = root(path_id)
@@ -1601,7 +1573,7 @@ def side_path_crossings(
         feet = sum(ft if signal else ft * factor for ft, signal in run_points.get(r, {}).values())
         length = run_length[r]
         rate = feet / (length / _MILE_M) if length >= CROSSING_RUN_MIN_M else None
-        found[path_id] = SidePathCrossings(rate, path_id in slips)
+        found[path_id] = SidePathCrossings(rate)
         if points is not None:
             points[path_id] = run_points.get(r, {})
     return found

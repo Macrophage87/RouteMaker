@@ -1125,15 +1125,18 @@ BESIDE_BUSY_ROAD_SHARE = 0.5
 # The share of a path's length beside one of the street's ways for that way's level to count,
 # so a few metres along a busier carriageway's end do not set the whole path. Our default.
 BESIDE_BUSY_ROAD_MIN_SHARE = 0.3
-# Half a level more for every CROSSING_FT_PER_HALF_STEP of crossing cost a mile along the
-# path's run (`facility.side_path_crossings`: each crossing point in feet of quiet riding on
-# the junction model's scale, `facility.crossing_point_ft`). 5,280 ft a mile, "a calm mile of
+# Half a level more for every CROSSING_FT_PER_HALF_STEP a mile of driveways and quiet-street
+# mouths along the path's run (`facility.side_path_crossings`: each in feet of quiet riding
+# on the junction model's scale, `facility.crossing_point_ft`; a busy street or a slip lane
+# is a junction the junction model prices at route time, and is not counted twice: the
+# owner, decision 303, "we don't want to double count"). 5,280 ft a mile, "a calm mile of
 # crossings for every mile of path", is OUR DEFAULT, calibrated to the rule it replaces (20
 # points a mile, a point for each level of the crossed way): an unsignalled LTS 3 side
 # street was 3 points, so a half step came at 6.7 of them a mile; the junction model prices
 # that crossing from a path at 800 ft (1,600 ft at `intersections.MARKED_CROSSING_FACTOR`),
 # and 6.7 x 800 = 5,333 ft, rounded to the mile. Driveways and quiet streets take the same
 # 267 ft a level, so ten LTS 2 side streets a mile are half a level as before. Not measured.
+# One knob: it is the only number of ours in the crossing step.
 CROSSING_FT_PER_HALF_STEP = 5280.0
 # Nothing is Avoid (the owner, 2026-11-12): the top of the scale below it.
 BESIDE_BUSY_ROAD_MAX = 4.5
@@ -1159,22 +1162,23 @@ def beside_busy_road_step(
     road_level: float | None,
     *,
     crossing_ft_per_mile: float | None = None,
-    slip_lane: bool = False,
     contraflow: bool = False,
     ceiling: float | None = None,
 ) -> StressResult:
     """The side-path step (`BESIDE_BUSY_ROAD_RULE`) over a bike way at a flat LTS 1, from the
     level of the street it runs beside (None where it runs beside none), and half a level
-    more for every `CROSSING_FT_PER_HALF_STEP` of crossing cost a mile along its run (the
-    owner, 2026-11-12: "If there are lots of intersections, especially sliplanes it could
-    get an even larger bump"). A way an owner row set (`result.adjustment`) and a way already
+    more for every `CROSSING_FT_PER_HALF_STEP` a mile of driveways and quiet-street mouths
+    along its run (the owner, 2026-11-12: "If there are lots of intersections, especially
+    sliplanes it could get an even larger bump"; busy streets and slip lanes are priced as
+    junctions by the junction model, once, not here). A way an owner row set
+    (`result.adjustment`) and a way already
     above LTS 1 are left alone.
 
     Never above 4.5 (the owner: "no upper limit", "nothing is avoid"), and never above the
     street's own level, the level of a rider in the roadway there: OUR CLAMP (2026-11-13), for
     the owner to confirm. `ceiling` is a second limit where the caller has one (a sidewalk's
-    last-resort level; the painted-lane level of a lane behind posts). `slip_lane` and
-    `contraflow` only say why in the rule's words: both are already in the crossing cost."""
+    last-resort level; the painted-lane level of a lane behind posts). `contraflow` only says
+    why in the rule's words: it is already in the crossing cost."""
     if road_level is None or getattr(result, "adjustment", None) is not None:
         return result
     if result.tier is not Stress.LTS1 or result.half:
@@ -1193,8 +1197,6 @@ def beside_busy_road_step(
         why.append(f"crossings cost {round(cost):d} ft a mile")
         if contraflow:
             why.append("ridden against the traffic beside it")
-        if slip_lane:
-            why.append("crosses a slip lane")
     level = min(BESIDE_BUSY_ROAD_MAX, base + steps * 0.5)
     limit = min(road_level, ceiling) if ceiling is not None else road_level
     if level > limit:

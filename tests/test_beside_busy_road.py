@@ -174,7 +174,7 @@ def test_the_names_other_code_reads_are_pinned():
     with `BESIDE_BUSY_ROAD_RULE` and reads `side_streets[way].metres_by_way` in
     `run.weekend_car_free_beside`. Neither may change without that PR."""
     assert BESIDE_BUSY_ROAD_RULE == "path beside a busy road"
-    for kwargs in ({}, {"crossing_ft_per_mile": 30000.0, "contraflow": True, "slip_lane": True}):
+    for kwargs in ({}, {"crossing_ft_per_mile": 30000.0, "contraflow": True}):
         assert beside_busy_road_step(PATH, 4.0, **kwargs).rule.startswith(BESIDE_BUSY_ROAD_RULE)
     assert facility.SideStreet._fields[:2] == ("name", "metres_by_way")
     found = facility.SideStreet("Beach Drive bike lane", {1: 900.0})
@@ -218,55 +218,51 @@ def test_a_calm_mile_of_crossings_a_mile_adds_half_a_level():
     assert "crossings cost 6336 ft a mile" in busy.rule
     few = beside_busy_road_step(PATH, 4.0, crossing_ft_per_mile=0.4 * MILE)
     assert (few.tier, few.half) == (Stress.LTS2, False)
-    # A slip lane is in the cost (1,000 ft), not a half level of its own any more.
-    slip = beside_busy_road_step(PATH, 3.0, slip_lane=True)
-    assert (slip.tier, slip.half) == (Stress.LTS1, True)
     # Beside a calm street, crossings alone do not step a path.
     assert beside_busy_road_step(PATH, 2.0, crossing_ft_per_mile=9 * MILE) is PATH
 
 
 def test_the_calibration_matches_the_old_twenty_points_a_mile():
-    """Ten LTS 2 side streets a mile were 20 points, half a level; they still are. And 6.7
-    unsignalled LTS 3 side streets a mile (also 20 points) come to within 1% of the step."""
+    """Ten LTS 2 side streets a mile were 20 points, half a level; they still are, and nine
+    are not."""
     from routemaker.stress import CROSSING_FT_PER_HALF_STEP
 
-    for count, level, highway in ((10, 2.0, "residential"), (20 / 3, 3.0, "secondary")):
-        feet = count * facility.crossing_point_ft(level, highway)
-        assert CROSSING_FT_PER_HALF_STEP <= feet == pytest.approx(5333.3, abs=0.1)
-    # Nine LTS 2 side streets a mile are not yet a step, as before.
-    assert 9 * facility.crossing_point_ft(2.0, "residential") < CROSSING_FT_PER_HALF_STEP
+    ten = 10 * facility.crossing_point_ft(2.0)
+    assert CROSSING_FT_PER_HALF_STEP <= ten == pytest.approx(5333.3, abs=0.1)
+    assert 9 * facility.crossing_point_ft(2.0) < CROSSING_FT_PER_HALF_STEP
 
 
-def test_a_crossing_point_costs_what_the_junction_model_says():
+def test_a_quiet_crossing_point_is_priced_on_the_junction_models_scale():
     from routemaker import intersections
 
     cost = facility.crossing_point_ft
-    # Driveways and quiet streets, which the junction model does not price: its LTS 3
-    # figure carried down in proportion, 267 ft a level.
-    assert cost(1.5, "service") == 400.0
-    assert cost(2.0, "residential") == pytest.approx(533.3, abs=0.1)
-    assert cost(2.5, "tertiary") == pytest.approx(533.3, abs=0.1)
-    # No signal: the stopped side's crossing, at the path-crossing half.
-    assert cost(3.0, "secondary") == intersections.STOPPED_CROSSING_FT[3] / 2 == 800.0
-    assert cost(4.0, "primary", speed_mph=35.0) == 2000.0
-    # A signal counts: 150 ft across LTS 3, 600 ft across LTS 4.
-    assert cost(3.0, "secondary", facility.SIGNAL_NODE) == 150.0
-    assert cost(4.0, "primary", facility.SIGNAL_NODE) == 600.0
-    # The side street's own stop sign counts: no wait for a gap, the turning conflict stays.
-    assert cost(3.0, "secondary", facility.STOP_NODE) == pytest.approx(533.3, abs=0.1)
-    assert cost(4.0, "primary", facility.STOP_NODE, 35.0) == pytest.approx(533.3, abs=0.1)
-    # A slip lane: the junction model's 1,000 ft, 500 ft at a signal, whatever its level.
-    assert cost(4.0, "primary_link") == intersections.SLIP_LANE_FT == 1000.0
-    assert cost(4.0, "primary_link", facility.SIGNAL_NODE) == 500.0
-    # Never falling as the crossed way gets busier.
-    levels = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-    costs = [cost(level, "residential") for level in levels]
-    assert costs == sorted(costs)
+    # The model's unsignalled LTS 3 path crossing (800 ft), in proportion to the level.
+    at_3 = intersections.STOPPED_CROSSING_FT[3] * intersections.MARKED_CROSSING_FACTOR
+    assert cost(3.0) == at_3 == 800.0
+    assert cost(1.5) == 400.0
+    assert cost(2.0) == pytest.approx(533.3, abs=0.1)
+    # At a signal, its signalised LTS 3 figure (150 ft) in the same proportion.
+    assert cost(2.0, signal=True) == 100.0
+    assert cost(1.5, signal=True) == 75.0
+
+
+def test_a_busy_street_or_a_slip_lane_is_the_junction_models_not_the_levels():
+    """Each crossing is priced once (the owner, decision 303: "we don't want to double
+    count"): the junction model prices a crossing of a road at LTS 2.5 or more and a slip
+    lane when a route rides it, so neither is in the path's level."""
+    from routemaker import intersections
+
+    assert not facility.junction_priced(2.0, "residential")
+    assert not facility.junction_priced(1.5, "service")
+    assert facility.junction_priced(2.5, "tertiary")
+    assert facility.junction_priced(1.5, "primary_link")
+    for level in (1.0, 1.5, 2.0, 2.5, 3.0, 4.0):
+        road = intersections.Road(tier=int(level), half=level % 1 == 0.5)
+        assert facility.junction_priced(level, "residential") is road.busy
 
 
 def test_a_path_is_never_rated_above_the_road_beside_it():
-    """Our clamp (2026-11-13), for the owner to confirm: the audit's 17th St NW lane was 4.5
-    beside a roadway at 3."""
+    """The clamp (2026-11-13): the audit's 17th St NW lane was 4.5 beside a roadway at 3."""
     worst = beside_busy_road_step(PATH, 3.0, crossing_ft_per_mile=50 * MILE)
     assert (worst.tier, worst.half) == (Stress.LTS3, False)
     assert "held at the level of the road beside it" in worst.rule
@@ -291,25 +287,28 @@ def _side(*ids, name=OGR, **kwargs):
     return {i: facility.SideStreet(name, {1: 100.0}, **kwargs) for i in ids}
 
 
-def test_crossings_are_summed_in_feet_over_the_run():
+def _feet(found, way, miles):
+    return round(found[way].ft_per_mile * miles)
+
+
+def test_driveways_and_quiet_streets_are_summed_in_feet_over_the_run():
     ways = [
         # Two side-path ways joined at node 103.
         (10, {"highway": "cycleway"}, [100, 101, 102, 103], _line(39.0, 4)),
         (11, {"highway": "cycleway"}, [103, 104, 105, 106], _line(39.0015, 4)),
-        # A driveway at 101 (400 ft), a street at 102 rated 3 by the rebuild (800 ft).
+        # A driveway at 101 (400 ft), a quiet street at 102 (533 ft).
         (20, {"highway": "service", "service": "driveway"}, [101, 900], []),
         (21, {"highway": "residential"}, [102, 901], []),
-        # A slip lane at 104 (1,000 ft), a tertiary at 105 the rebuild rates 2.5 (533 ft).
+        # A slip lane at 104 and a street the rebuild rates 3 at 105: the junction model's.
         (23, {"highway": "primary_link"}, [104, 903], []),
         (22, {"highway": "tertiary"}, [105, 902], []),
         # A footway at 106 is no crossing.
         (24, {"highway": "footway"}, [106, 904], []),
     ]
-    found = facility.side_path_crossings(ways, _side(10, 11), {20: 1.5, 21: 3.0, 22: 2.5}.get)
+    found = facility.side_path_crossings(ways, _side(10, 11), {20: 1.5, 21: 2.0, 22: 3.0}.get)
     miles = facility._length_m(_line(39.0, 7)) / 1609.344
-    assert found[10].ft_per_mile == pytest.approx((400 + 800 + 1000 + 533) / miles, rel=0.02)
+    assert _feet(found, 10, miles) == 400 + 533
     assert found[10].ft_per_mile == found[11].ft_per_mile
-    assert (found[10].slip_lane, found[11].slip_lane) == (False, True)
 
 
 def test_a_short_run_reads_no_rate():
@@ -324,20 +323,20 @@ def test_a_crossing_way_the_rider_rides_is_scored_and_joins_the_run():
     ways = [
         (10, {"highway": "cycleway"}, [100, 101, 102], _line(39.0, 3)),
         (11, {"highway": "cycleway"}, [200, 201, 202], _line(39.0015, 3)),
-        # The crosswalk over a slip lane, its own way, from the end of one to the start of
-        # the other.
+        # The crosswalk over a quiet street, its own way, from the end of one to the start
+        # of the other.
         (30, {"highway": "footway", "footway": "crossing"}, [102, 300, 200], []),
-        (23, {"highway": "primary_link"}, [300, 903], []),
+        (23, {"highway": "residential"}, [300, 903], []),
     ]
     found = facility.side_path_crossings(ways, _side(10, 11))
     assert found[10].ft_per_mile == found[11].ft_per_mile > 0
-    assert found[10].slip_lane and found[11].slip_lane
 
 
 def test_the_crosswalk_over_the_paths_own_road_is_not_a_crossing():
     """The audit, 2026-11-13 (I5): a corner crosswalk over the main road starts at the
     path's corner node and was scored as the path crossing its own road; one over an LTS 4
-    road added a whole half level to a 0.2 mi path with no real crossing."""
+    road added a whole half level to a 0.2 mi path with no real crossing. Old Georgetown
+    Road is read as a quiet street here so that only the own-road test can leave it out."""
     ways = [
         (1, {"highway": "primary", "name": "Old Georgetown Road"}, [500, 300, 501], []),
         (10, {"highway": "cycleway"}, [100, 101, 102], _line(39.0, 5)),
@@ -346,11 +345,14 @@ def test_the_crosswalk_over_the_paths_own_road_is_not_a_crossing():
         (30, {"highway": "footway", "footway": "crossing"}, [102, 300, 400], []),
         (12, {"highway": "cycleway"}, [400, 401, 402], _line(39.0, 5)),
     ]
-    found = facility.side_path_crossings(ways, _side(10, 12), {1: 4.0}.get)
+    found = facility.side_path_crossings(ways, _side(10, 12), {1: 2.0}.get)
     assert found[10].ft_per_mile == 0.0 and found[12].ft_per_mile == 0.0
+    # The same crosswalk over any other quiet street is one.
+    other = [(1, {"highway": "primary", "name": "Cedar Lane"}, [500, 300, 501], []), *ways[1:]]
+    assert facility.side_path_crossings(other, _side(10, 12), {1: 2.0}.get)[10].ft_per_mile > 0
     # And the two sides of the road stay two runs.
     ways.append((20, {"highway": "service"}, [101, 900], []))
-    found = facility.side_path_crossings(ways, _side(10, 12), {1: 4.0}.get)
+    found = facility.side_path_crossings(ways, _side(10, 12), {1: 2.0}.get)
     assert found[10].ft_per_mile > 0 and found[12].ft_per_mile == 0.0
 
 
@@ -358,8 +360,10 @@ def test_a_path_that_ends_by_joining_its_own_road_does_not_cross_it():
     ways = [
         (1, {"highway": "primary", "name": "Old Georgetown Rd"}, [500, 102, 501], []),
         (10, {"highway": "cycleway"}, [100, 101, 102], _line(39.0, 5)),
+        (11, {"highway": "cycleway"}, [102, 103, 104], _line(39.002, 5)),
     ]
-    assert facility.side_path_crossings(ways, _side(10), {1: 4.0}.get)[10].ft_per_mile == 0.0
+    found = facility.side_path_crossings(ways, _side(10, 11), {1: 2.0}.get)
+    assert found[10].ft_per_mile == 0.0
 
 
 def test_a_crossing_the_rider_does_not_ride_through_is_not_counted():
@@ -368,9 +372,9 @@ def test_a_crossing_the_rider_does_not_ride_through_is_not_counted():
         # A crosswalk off the side of the path over a side street, with no side path of
         # this street beyond it.
         (30, {"highway": "footway", "footway": "crossing"}, [101, 300, 301], []),
-        (21, {"highway": "secondary", "name": "Cedar Lane"}, [300, 901], []),
+        (21, {"highway": "residential", "name": "Cedar Lane"}, [300, 901], []),
         # The street the path stops at: the end of the run, not ridden through.
-        (22, {"highway": "secondary", "name": "Beech Avenue"}, [102, 902], []),
+        (22, {"highway": "residential", "name": "Beech Avenue"}, [102, 902], []),
     ]
     assert facility.side_path_crossings(ways, _side(10))[10].ft_per_mile == 0.0
     # Carried on beyond the same node, it is ridden through.
@@ -386,47 +390,37 @@ def test_a_street_crossed_in_two_halves_over_an_island_is_one_point():
         (30, crossing, [102, 300, 301], []),
         (31, {"highway": "footway", "footway": "traffic_island"}, [301, 302], []),
         (32, crossing, [302, 303, 200], []),
-        (21, {"highway": "secondary", "name": "Cedar Lane", "oneway": "yes"}, [300, 901], []),
-        (22, {"highway": "secondary", "name": "Cedar Lane", "oneway": "yes"}, [303, 902], []),
+        (21, {"highway": "residential", "name": "Cedar Lane", "oneway": "yes"}, [300, 901], []),
+        (22, {"highway": "residential", "name": "Cedar Lane", "oneway": "yes"}, [303, 902], []),
     ]
-    found = facility.side_path_crossings(ways, _side(10, 11), {21: 3.0, 22: 3.0}.get)
+    found = facility.side_path_crossings(ways, _side(10, 11))
     miles = 2 * facility._length_m(_line(39.0, 5)) / 1609.344
-    assert found[10].ft_per_mile == pytest.approx(800 / miles, rel=0.01)
+    assert _feet(found, 10, miles) == 533
 
 
-def test_a_signal_or_the_side_streets_stop_sign_lowers_the_point():
+def test_a_signal_lowers_the_point():
     ways = [
         (10, {"highway": "cycleway"}, [100, 101, 102], _line(39.0, 5)),
-        (21, {"highway": "secondary", "name": "Cedar Lane"}, [900, 101, 901], []),
+        (21, {"highway": "residential", "name": "Cedar Lane"}, [900, 101, 901], []),
     ]
     miles = facility._length_m(_line(39.0, 5)) / 1609.344
 
     def feet(control_at):
-        found = facility.side_path_crossings(ways, _side(10), {21: 3.0}.get, control_at)
-        return round(found[10].ft_per_mile * miles)
+        return _feet(facility.side_path_crossings(ways, _side(10), None, control_at), 10, miles)
 
-    assert feet(None) == 800
-    assert feet({101: facility.SIGNAL_NODE}) == 150
+    assert feet(None) == 533
+    assert feet({101: facility.SIGNAL_NODE}) == 100
     # The signal on the junction node next along the crossed street.
-    assert feet({901: facility.SIGNAL_NODE}) == 150
-    assert feet({900: facility.STOP_NODE}) == 533
+    assert feet({901: facility.SIGNAL_NODE}) == 100
     # A crossing way that says it has a signal.
+    signalised = {"highway": "cycleway", "cycleway": "crossing", "crossing": "traffic_signals"}
     ways = [
         (10, {"highway": "cycleway"}, [100, 101, 102], _line(39.0, 3)),
         (11, {"highway": "cycleway"}, [200, 201, 202], _line(39.001, 3)),
-        (
-            30,
-            {"highway": "cycleway", "cycleway": "crossing", "crossing": "traffic_signals"},
-            [102, 300, 200],
-            [],
-        ),
-        (21, {"highway": "primary", "name": "Cedar Lane"}, [300, 901], []),
+        (30, signalised, [102, 300, 200], []),
+        (21, {"highway": "residential", "name": "Cedar Lane"}, [300, 901], []),
     ]
-    found = facility.side_path_crossings(ways, _side(10, 11), {21: 4.0}.get)
-    assert round(found[10].ft_per_mile * miles) == 600
-    # A way the rebuild has no level for is read as a quiet street.
-    found = facility.side_path_crossings(ways, _side(10, 11))
-    assert round(found[10].ft_per_mile * miles) == 150
+    assert _feet(facility.side_path_crossings(ways, _side(10, 11)), 10, miles) == 100
 
 
 def test_riding_against_the_traffic_beside_doubles_the_unsignalled_points():
@@ -435,15 +429,15 @@ def test_riding_against_the_traffic_beside_doubles_the_unsignalled_points():
     ways = [
         (10, {"highway": "cycleway"}, [100, 101, 102, 103], _line(39.0, 6)),
         (20, {"highway": "service"}, [101, 900], []),
-        (21, {"highway": "secondary", "name": "Cedar Lane"}, [902, 102, 901], []),
+        (21, {"highway": "residential", "name": "Cedar Lane"}, [902, 102, 901], []),
     ]
     level, lit = {20: 1.5}.get, {102: "signal"}
-    with_flow = facility.side_path_crossings(ways, _side(10), level, lit)[10]
-    against = facility.side_path_crossings(ways, _side(10, contraflow=True), level, lit)[10]
+    with_flow = facility.side_path_crossings(ways, _side(10), level, lit)
+    against = facility.side_path_crossings(ways, _side(10, contraflow=True), level, lit)
     miles = facility._length_m(_line(39.0, 6)) / 1609.344
-    assert round(with_flow.ft_per_mile * miles) == 400 + 150
+    assert _feet(with_flow, 10, miles) == 400 + 100
     # The driveway doubles; the signalised crossing does not.
-    assert round(against.ft_per_mile * miles) == 2 * 400 + 150
+    assert _feet(against, 10, miles) == 2 * 400 + 100
     assert facility.CONTRAFLOW_FACTOR == 2.0
 
 
@@ -488,19 +482,22 @@ def test_paths_beside_different_streets_are_never_one_run():
 
 def test_a_way_with_no_nodes_is_read_as_no_crossings():
     found = facility.side_path_crossings([(10, {"highway": "cycleway"}, (), [])], _side(10))
-    assert found[10] == facility.SidePathCrossings(None, False)
+    assert found[10] == facility.SidePathCrossings(None)
 
 
 def test_the_road_panel_names_bad_crossings_slip_lanes_and_avoid_roads():
-    rule = beside_busy_road_step(PATH, 4.0, crossing_ft_per_mile=2.2 * MILE, slip_lane=True).rule
+    rule = beside_busy_road_step(PATH, 4.0, crossing_ft_per_mile=2.2 * MILE).rule
     words = segment_info.rule_words(rule)
     assert "many or busy street and driveway crossings" in words
-    assert "crosses a slip lane" in words
     avoid = segment_info.rule_words(beside_busy_road_step(PATH, 5.0).rule)
     assert avoid.startswith("Path beside a busy road (Avoid)")
     # A rule written by the build before this one still reads.
-    old = f"{BESIDE_BUSY_ROAD_RULE} (road at LTS 4; crossings score 45 a mile), trail-class way"
+    old = (
+        f"{BESIDE_BUSY_ROAD_RULE} (road at LTS 4; crossings score 45 a mile; "
+        "crosses a slip lane), trail-class way"
+    )
     assert "many or busy street and driveway crossings" in segment_info.rule_words(old)
+    assert "crosses a slip lane" in segment_info.rule_words(old)
 
 
 # --- One level for one facility however it is mapped (the audit, 2026-11-13, I7) -----------
@@ -547,7 +544,7 @@ def test_an_on_road_lane_is_left_alone_without_its_roads_level_or_under_a_row():
     # A lane behind posts is never rated above its painted-lane level.
     posts = {1: tracks[1]._replace(posts=True)}
     stress = {1: _rated(Stress.LTS2, "bike lane, 30 mph")}
-    crossings = {1: facility.SidePathCrossings(50 * MILE, False)}
+    crossings = {1: facility.SidePathCrossings(50 * MILE)}
     apply_beside_busy_road(stress, posts, crossings, {1: 4.0})
     assert level_of(stress[1]) == 2.0
 
@@ -599,7 +596,7 @@ def test_sidewalk_levels_never_run_backwards_with_the_bicycle_tag():
         assert untagged == (sidewalks.TIER if road >= 4.5 else sidewalks.LAST_RESORT_TIER)
         for cost in (0.0, 2 * MILE, 50 * MILE):
             stress = {1: _rated(Stress(int(road)), "road", half=road % 1 == 0.5), 2: PATH, 3: PATH}
-            crossings = {way: facility.SidePathCrossings(cost, False) for way in (2, 3)}
+            crossings = {way: facility.SidePathCrossings(cost) for way in (2, 3)}
             apply_beside_busy_road(stress, beside, crossings)
             yes, designated = level_of(stress[2]), level_of(stress[3])
             assert 1.0 <= designated == yes <= untagged, (road, cost)
