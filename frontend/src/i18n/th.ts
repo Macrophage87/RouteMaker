@@ -2214,4 +2214,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place search is down right now.": "การค้นหาสถานที่ใช้ไม่ได้ในขณะนี้",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "บน iPhone «เริ่มปั่น» ใช้กับการปั่นไม่เกิน {distance} หากปั่นไกลกว่านั้น ให้บันทึกภาพคำแนะนำสำหรับหน้าจอล็อก หรือ «ดาวน์โหลด GPX» สำหรับไมล์จักรยาน",
   "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "บน iPhone เปิดหน้าจอไว้และให้หน้านี้อยู่ด้านหน้า สำหรับการปั่นไม่เกิน {distance} หากปั่นไกลกว่านั้นหรือล็อกโทรศัพท์ ให้ใช้ภาพคำแนะนำสำหรับหน้าจอล็อก หรือ GPX",
+  "Sign in": "ลงชื่อเข้าใช้",
+  "Signed in.": "ลงชื่อเข้าใช้แล้ว",
+  "Sign-in methods": "วิธีลงชื่อเข้าใช้",
 };

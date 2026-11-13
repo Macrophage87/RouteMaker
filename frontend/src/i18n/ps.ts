@@ -2214,4 +2214,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place search is down right now.": "د ځای لټون اوس کار نه کوي.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "په iPhone کې «سفر پیلول» تر {distance} پورې سفرونو لپاره دی. د اوږد سفر لپاره د قلف پردې لارښود انځورونه خوندي کړئ، یا د بایسکل کمپیوټر لپاره «GPX ښکته کول».",
   "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "په iPhone کې تر {distance} پورې سفرونو لپاره پرده روښانه او دا پاڼه مخې ته وساتئ. د اوږدو سفرونو یا قلف شوي ټلیفون لپاره د قلف پردې لارښود انځورونه یا GPX وکاروئ.",
+  "Sign in": "ننوتل",
+  "Signed in.": "ننوتي یاست.",
+  "Sign-in methods": "د ننوتلو لارې",
 };
