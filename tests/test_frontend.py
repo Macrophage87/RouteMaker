@@ -24,8 +24,10 @@ FRONTEND = REPO / "frontend"
 NODE = shutil.which("node")
 
 # The planner's pure logic is TypeScript run by Node's own type stripping,
-# which is on by default from Node 22.18. The globs are package.json's.
-TEST_GLOBS = ["src/**/*.test.mjs", "src/**/*.test.ts"]
+# which is on by default from Node 22.18; a .test.tsx renders components, through
+# the hooks src/testSupport/register.mjs loads. The globs are package.json's.
+NODE_ARGS = ["--import", "./src/testSupport/register.mjs"]
+TEST_GLOBS = ["src/**/*.test.mjs", "src/**/*.test.ts", "src/**/*.test.tsx"]
 
 
 def node_strips_types() -> bool:
@@ -46,7 +48,7 @@ def test_frontend_suite_passes() -> None:
     if not node_strips_types():
         pytest.skip("this Node predates default type stripping (22.18)")
     result = subprocess.run(
-        [NODE, "--test", *TEST_GLOBS],
+        [NODE, *NODE_ARGS, "--test", *TEST_GLOBS],
         cwd=FRONTEND,
         capture_output=True,
         text=True,
@@ -64,7 +66,7 @@ def test_the_node_command_here_is_the_one_package_json_runs() -> None:
     import json
 
     script = json.loads((FRONTEND / "package.json").read_text())["scripts"]["test"]
-    assert script == "node --test " + " ".join(f'"{glob}"' for glob in TEST_GLOBS)
+    assert script == " ".join(["node", *NODE_ARGS, "--test"]) + " " + " ".join(f'"{glob}"' for glob in TEST_GLOBS)
 
 
 def test_the_planners_coverage_box_is_the_settings_one() -> None:
