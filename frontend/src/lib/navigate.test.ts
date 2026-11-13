@@ -3239,7 +3239,7 @@ test("on an iPhone or iPad (no app yet) the ride lines never send the rider to a
   assert.equal(rideTooLong(true), RIDE_TOO_LONG_IPHONE);
   for (const line of [RIDE_TOO_LONG_IPHONE, IPHONE_RIDE_LINE]) {
     assert.doesNotMatch(line, /phone app/);
-    assert.match(line, /^On iPhone, .*30 mi.*lock-screen cue images/);
+    assert.match(line, /^On iPhone[,:] .*30 mi.*lock-screen cue images/);
   }
   assert.match(IPHONE_RIDE_LINE, /screen on/);
 });
