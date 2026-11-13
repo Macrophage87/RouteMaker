@@ -10,7 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { hillsWords, startDials, type Dials } from "./dials.ts";
 import { hillsShort, rideSummary, rideSummarySpoken, settingsSummary, settingsSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
-import { NOT_AVAILABLE, busyMetres, calmPercent, calmWayShares, calmWaysLabel, calmWaysText, calmWords, groupRideLine, heavyMetres, turnTotal, junctionFigure, quickFigures, unpavedMetres, waitFigure, stressBarKey, stressBarLabel, stressPlainParts } from "./quickFigures.ts";
+import { NOT_AVAILABLE, busyMetres, calmPercent, calmWayShares, calmWaysLabel, calmWaysText, calmWords, groupRideLine, heavyMetres, turnTotal, junctionFigure, quickFigures, surfaceFigure, surfaceGlanceParts, surfaceMetres, unpavedMetres, waitFigure, stressBarKey, stressBarLabel, stressPlainParts } from "./quickFigures.ts";
 import {
   BACK_LABEL,
   BAR_ITEMS,
@@ -414,7 +414,7 @@ test("the four quick figures: share on paths and quiet streets, heavy traffic, j
   assert.deepEqual([path.label, path.value], ["Off-road path", "2.4 mi (3.9 km)"]);
 });
 
-test("after the four, the turn burden: turns, the wait at lights and stops, and unpaved only where there is some", () => {
+test("after the four, the turn burden: turns, the wait at lights and stops; then the surface by kind (Plan item 10)", () => {
   const stretch = (movement: string) => ({ kind: "stretch", turn: { movement } });
   const fiddly = {
     ...(route as object),
@@ -432,15 +432,46 @@ test("after the four, the turn burden: turns, the wait at lights and stops, and 
     [
       ["Turns", "3"],
       ["Waiting at lights and stops", "4 min"],
-      ["Unpaved", "1.0 mi (1.6 km)"],
+      ["Surface", "2.5 mi (4.0 km) paved, 0.4 mi (0.6 km) gravel, 0.6 mi (1.0 km) unpaved"],
     ],
   );
   assert.equal(unpavedMetres(undefined), null, "no sections: not guessed");
   assert.equal(waitFigure(12), "Under 1 min");
   assert.equal(waitFigure(null), NOT_AVAILABLE);
-  // 50 m of gravel is a lot crossed, not a figure.
-  const tiny = quickFigures({ ...(fiddly as object), stress_spans: [{ from_m: 0, to_m: 50, tier: 1, facility: "path", unpaved: true }] } as never);
-  assert.equal(tiny.find((f) => f.key === "unpaved"), undefined);
+  // 50 m of gravel is a lot crossed, not a figure: the route reads all paved.
+  const tiny = quickFigures({ ...(fiddly as object), stress_spans: [{ from_m: 0, to_m: 50, tier: 1, facility: "path", unpaved: true }, { from_m: 50, to_m: 3000, tier: 1, facility: "none", unpaved: false }] } as never);
+  assert.equal(tiny.find((f) => f.key === "surface")?.value, "All paved");
+  // No sections (an older API, or none sent): no Surface figure at all.
+  assert.equal(quickFigures({ ...(fiddly as object), stress_spans: undefined } as never).find((f) => f.key === "surface"), undefined);
+});
+
+test("surface by kind: gravel, dirt and unpaved of a kind not said; untagged as paved under a tenth, said above it", () => {
+  const spans = [
+    { from_m: 0, to_m: 3000, tier: 1, facility: "none", unpaved: false },
+    { from_m: 3000, to_m: 4000, tier: 1, facility: "path", unpaved: true, rough: false },
+    { from_m: 4000, to_m: 4500, tier: 1, facility: "path", unpaved: true, rough: true },
+    { from_m: 4500, to_m: 4700, tier: 2, facility: "none", unpaved: null },
+  ] as never;
+  assert.deepEqual(surfaceMetres(spans), { paved: 3000, gravel: 1000, dirt: 500, unpaved: 0, unknown: 200 });
+  assert.equal(surfaceMetres(undefined), null);
+  assert.deepEqual(surfaceGlanceParts(spans), ["0.6 mi (1.0 km) gravel", "0.3 mi (0.5 km) dirt"]);
+  // 200 m untagged of 4.7 km is under a tenth: counted with the paved, as the map draws it.
+  assert.equal(surfaceFigure(spans), "2.0 mi (3.2 km) paved, 0.6 mi (1.0 km) gravel, 0.3 mi (0.5 km) dirt");
+  const untagged = [
+    { from_m: 0, to_m: 3000, tier: 1, facility: "none", unpaved: false },
+    { from_m: 3000, to_m: 4000, tier: 1, facility: "none", unpaved: null },
+  ] as never;
+  assert.equal(surfaceFigure(untagged), "1.9 mi (3.0 km) paved; 0.6 mi (1.0 km) not known");
+  assert.deepEqual(surfaceGlanceParts(untagged), [], "a paved route's line stays as it was");
+  assert.equal(surfaceFigure([] as never), NOT_AVAILABLE);
+  // Nothing tagged: no "0 ft paved".
+  assert.equal(surfaceFigure([{ from_m: 0, to_m: 5000, tier: 1, facility: "none", unpaved: null }] as never), "3.1 mi (5.0 km) not known");
+  // Go's plain line ends with the unpaved riding.
+  assert.deepEqual(stressPlainParts({ stress_m: { "1": 4700 }, facility_m: { none: 4700 }, stress_spans: spans }), [
+    "All calm",
+    "0.6 mi (1.0 km) gravel",
+    "0.3 mi (0.5 km) dirt",
+  ]);
 });
 
 test("the paths-and-quiet-streets figure is always the bar key's LTS 1 plus LTS 2 (the correctness review's N3)", () => {

@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "Patikalarda {distance}",
   "{distance} on protected lanes": "Korumalı şeritlerde {distance}",
   "busy road for {distance}": "{distance} boyunca yoğun yol",
+  "{distance} gravel": "{distance} çakıl",
+  "{distance} dirt": "{distance} toprak",
+  "{distance} unpaved": "{distance} asfaltsız",
   "Traffic-free paths: {distance}, {percent} percent": "Trafiksiz patikalar: {distance}, yüzde {percent}",
   "Protected bike lanes: {distance}, {percent} percent": "Korumalı bisiklet şeritleri: {distance}, yüzde {percent}",
   "Bikeshare plus walk, train or bus": "Paylaşımlı bisiklet artı yürüyüş, tren veya otobüs",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Rota planlama şu anda çalışmıyor.",
   "Some ride types are not working right now.": "Bazı sürüş türleri şu anda çalışmıyor.",
   "Place search is down right now.": "Yer arama şu anda çalışmıyor.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "iPhone'da Sürüşü başlat, en fazla {distance} sürüşler içindir. Daha uzun bir sürüş için kilit ekranı yol tarifi resimlerini kaydedin ya da bisiklet bilgisayarı için GPX indir'i seçin.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "iPhone'da, en fazla {distance} sürüşlerde ekranı açık ve bu sayfayı önde tutun. Daha uzun sürüşler veya kilitli telefon için kilit ekranı yol tarifi resimlerini ya da GPX'i kullanın.",
 };

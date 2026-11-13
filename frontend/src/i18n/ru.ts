@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} по дорожкам",
   "{distance} on protected lanes": "{distance} по защищённым полосам",
   "busy road for {distance}": "оживлённая дорога на {distance}",
+  "{distance} gravel": "{distance} гравия",
+  "{distance} dirt": "{distance} грунта",
+  "{distance} unpaved": "{distance} без покрытия",
   "Traffic-free paths: {distance}, {percent} percent": "Дорожки без машин: {distance}, {percent} процентов",
   "Protected bike lanes: {distance}, {percent} percent": "Защищённые велополосы: {distance}, {percent} процентов",
   "Bikeshare plus walk, train or bus": "Велопрокат плюс пешком, поезд или автобус",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Построение маршрутов сейчас не работает.",
   "Some ride types are not working right now.": "Некоторые типы поездок сейчас не работают.",
   "Place search is down right now.": "Поиск мест сейчас не работает.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "На iPhone «Начать поездку» — для поездок до {distance}. Для более длинной поездки сохраните картинки подсказок для экрана блокировки или «Скачать GPX» для велокомпьютера.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "На iPhone держите экран включённым и эту страницу открытой, для поездок до {distance}. Для более длинных поездок или заблокированного телефона используйте картинки подсказок для экрана блокировки или GPX.",
 };

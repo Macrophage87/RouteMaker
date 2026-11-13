@@ -36,7 +36,8 @@ import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
-import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { IPHONE_RIDE_LINE, rideTooLong } from "../lib/navigate.ts";
+import { installState } from "../lib/installOffer.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
 import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine, walksLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
@@ -67,7 +68,7 @@ import {
   type ShareKeep,
   type ShareKeepChoice,
 } from "../lib/sharedRoutes.ts";
-import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "../lib/quickFigures.ts";
+import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts, surfaceGlanceParts } from "../lib/quickFigures.ts";
 import { facilityRows } from "../lib/facilityBar.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
@@ -699,7 +700,7 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
  * hears every share: the bar's name, and the strip's. `line` takes the key's place, or the plain words', where the ride
  * type says it its own way (Group Ride, lib/quickFigures.ts groupRideLine; the audit's P6).
  */
-function StressFigure({ segments, go, line = null }: { segments: StressSegment[]; line?: string | null; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
+function StressFigure({ segments, go, line = null, surface = [] }: { segments: StressSegment[]; line?: string | null; surface?: readonly string[]; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
   const keyHintId = useId();
   // One image to a screen reader, named with each share; the line under it says the same in text.
   const bar = (
@@ -731,6 +732,13 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
             {stressBarKey(segments)}
           </p>
         )}
+        {/* Surface at a glance (Plan item 10): the unpaved riding by kind, where the route has some. */}
+        {surface.length > 0 && (
+          <p className="stress-key surface-line">
+            <span aria-hidden="true">{surface.join(" · ")}</span>
+            <span className="visually-hidden">{`${surface.join(", ")}.`}</span>
+          </p>
+        )}
       </figure>
     );
   }
@@ -745,7 +753,7 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
         ))}
       </div>
     ) : null;
-  const parts = line ? [line] : stressPlainParts(go.route);
+  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route);
   return (
     <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
       <figcaption id="stress-figure-caption" className="visually-hidden">
@@ -935,16 +943,27 @@ export function RouteSummary({
       )}
     </>
   ) : null;
+  // An iPhone or iPad has no RouteMaker app yet (Stephen 2026-11-13: after Android), so a ride there stops when the screen
+  // locks: said in one shown line under Start, with the long-ride answer (backlog 2026-11-12, ride item 14).
+  const iphone = !ridesHidden() && installState().ios;
   const startHint = rideable ? (
-    // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
-    // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
-    <p id="start-ride-hint" className="visually-hidden start-ride-hint">
-      {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
-    </p>
+    iphone ? (
+      // Shown on iPhone, and said with Start as the hint is elsewhere.
+      <p id="start-ride-hint" className="hint start-ride-hint iphone-ride-line">
+        <span className="visually-hidden">{t("Turn-by-turn directions on this phone, said as you chose.")} </span>
+        {IPHONE_RIDE_LINE}
+      </p>
+    ) : (
+      // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
+      // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
+      <p id="start-ride-hint" className="visually-hidden start-ride-hint">
+        {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
+      </p>
+    )
   ) : noBike ? (
     <p className="hint no-bike-line">{noBike}</p>
   ) : !ridesLine(route) ? null : (
-    <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
+    <p className="hint start-ride-long">{rideTooLong(iphone)}</p>
   );
   const alerts = (
     <>
@@ -1238,14 +1257,14 @@ export function RouteSummary({
       {infoBody}
       {transitFold}
       <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
-      {segments.length > 0 && <StressFigure segments={segments} />}
+      {segments.length > 0 && <StressFigure segments={segments} surface={surfaceGlanceParts(route.stress_spans)} />}
       {alerts}
       {noteList}
       {actions.savedNote}
       <div className="actions start-ride">
         <RouteActions {...actions} start={start} />
         {/* Plan streamline (Stephen 2026-10-17): the how-to is Start's description, out of sight; the too-long line shows. */}
-        {rideable ? <div className="visually-hidden">{startHint}</div> : startHint}
+        {rideable && !iphone ? <div className="visually-hidden">{startHint}</div> : startHint}
       </div>
       {(profile || climbs) && (
         <Fold

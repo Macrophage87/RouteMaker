@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} रास्तों पर",
   "{distance} on protected lanes": "{distance} सुरक्षित लेन पर",
   "busy road for {distance}": "{distance} तक व्यस्त सड़क",
+  "{distance} gravel": "{distance} बजरी",
+  "{distance} dirt": "{distance} कच्ची मिट्टी",
+  "{distance} unpaved": "{distance} कच्चा रास्ता",
   "Traffic-free paths: {distance}, {percent} percent": "बिना गाड़ी वाले रास्ते: {distance}, {percent} प्रतिशत",
   "Protected bike lanes: {distance}, {percent} percent": "सुरक्षित साइकिल लेन: {distance}, {percent} प्रतिशत",
   "Bikeshare plus walk, train or bus": "बाइकशेयर के साथ पैदल, ट्रेन या बस",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "रूट प्लानिंग अभी काम नहीं कर रही है।",
   "Some ride types are not working right now.": "कुछ सवारी प्रकार अभी काम नहीं कर रहे हैं।",
   "Place search is down right now.": "जगह की खोज अभी काम नहीं कर रही है।",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "iPhone पर «सवारी शुरू करें» {distance} तक की सवारी के लिए है। लंबी सवारी के लिए लॉक-स्क्रीन निर्देश चित्र सहेजें, या बाइक कंप्यूटर के लिए «GPX डाउनलोड करें»।",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "iPhone पर {distance} तक की सवारी में स्क्रीन चालू और यह पेज सामने रखें। लंबी सवारी या लॉक फ़ोन के लिए लॉक-स्क्रीन निर्देश चित्र या GPX इस्तेमाल करें।",
 };

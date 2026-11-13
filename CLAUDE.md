@@ -21,3 +21,9 @@
   was only a test is archived with `archive_draft` as soon as the agent is done with it. The
   owner, 2026-11-12: "When a test route is made from an agent, it somehow keeps loading on my
   account in beta. Archive them when done."
+
+## Front-end tests
+
+- New front-end tests render the component and check what the rider sees (`frontend/TESTING.md`,
+  `src/testSupport/render.ts`); never read App.tsx, RideMode.tsx, styles.css or other source as text.
+  `src/sourceTextTests.test.ts` fails on a new one; the old ones are converted as their files are touched.

@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} በመንገዶች",
   "{distance} on protected lanes": "{distance} በተጠበቁ መስመሮች",
   "busy road for {distance}": "ለ{distance} የተጨናነቀ መንገድ",
+  "{distance} gravel": "{distance} ጠጠር",
+  "{distance} dirt": "{distance} አፈር",
+  "{distance} unpaved": "{distance} ያልተነጠፈ",
   "Traffic-free paths: {distance}, {percent} percent": "ከመኪና ነፃ መንገዶች፦ {distance}፣ {percent} በመቶ",
   "Protected bike lanes: {distance}, {percent} percent": "የተጠበቁ የብስክሌት መስመሮች፦ {distance}፣ {percent} በመቶ",
   "Bikeshare plus walk, train or bus": "የጋራ ብስክሌት እና የእግር ጉዞ፣ ባቡር ወይም አውቶቡስ",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "የመንገድ ዕቅድ አሁን አይሰራም።",
   "Some ride types are not working right now.": "አንዳንድ የጉዞ ዓይነቶች አሁን አይሰሩም።",
   "Place search is down right now.": "የቦታ ፍለጋ አሁን አይሰራም።",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "በiPhone ላይ «ጉዞ ጀምር» እስከ {distance} ላሉ ጉዞዎች ነው። ለረጅም ጉዞ፣ የመቆለፊያ ማያ ገጽ መመሪያ ምስሎችን ያስቀምጡ ወይም ለብስክሌት ኮምፒውተር «GPX አውርድ»።",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "በiPhone ላይ እስከ {distance} ላሉ ጉዞዎች ማያውን ብሩህ እና ይህን ገጽ ከፊት ያቆዩ። ለረጅም ጉዞ ወይም ለተቆለፈ ስልክ፣ የመቆለፊያ ማያ ገጽ መመሪያ ምስሎችን ወይም GPX ይጠቀሙ።",
 };

@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "자전거길 {distance}",
   "{distance} on protected lanes": "보호 차로 {distance}",
   "busy road for {distance}": "붐비는 도로 {distance}",
+  "{distance} gravel": "자갈길 {distance}",
+  "{distance} dirt": "흙길 {distance}",
+  "{distance} unpaved": "비포장 {distance}",
   "Traffic-free paths: {distance}, {percent} percent": "차 없는 길: {distance}, {percent}퍼센트",
   "Protected bike lanes: {distance}, {percent} percent": "보호 자전거 도로: {distance}, {percent}퍼센트",
   "Bikeshare plus walk, train or bus": "공유자전거와 도보, 기차 또는 버스",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "지금은 경로 계획을 쓸 수 없습니다.",
   "Some ride types are not working right now.": "지금은 일부 라이드 유형이 작동하지 않습니다.",
   "Place search is down right now.": "지금은 장소 검색을 쓸 수 없습니다.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "iPhone에서 '라이드 시작'은 {distance}까지의 라이드용입니다. 더 긴 라이드는 잠금 화면용 안내 이미지를 저장하거나, 자전거 컴퓨터용으로 'GPX 다운로드'를 하세요.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "iPhone에서는 {distance}까지의 라이드에서 화면을 켜 두고 이 페이지를 앞에 두세요. 더 긴 라이드나 휴대폰이 잠길 때는 잠금 화면용 안내 이미지나 GPX를 쓰세요.",
 };

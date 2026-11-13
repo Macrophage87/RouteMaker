@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} trên đường mòn",
   "{distance} on protected lanes": "{distance} trên làn được bảo vệ",
   "busy road for {distance}": "đường đông xe trong {distance}",
+  "{distance} gravel": "{distance} đường sỏi",
+  "{distance} dirt": "{distance} đường đất",
+  "{distance} unpaved": "{distance} đường chưa lát",
   "Traffic-free paths: {distance}, {percent} percent": "Đường mòn không có xe: {distance}, {percent} phần trăm",
   "Protected bike lanes: {distance}, {percent} percent": "Làn xe đạp được bảo vệ: {distance}, {percent} phần trăm",
   "Bikeshare plus walk, train or bus": "Xe đạp chia sẻ cùng đi bộ, tàu hoặc xe buýt",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Lập lộ trình hiện đang không hoạt động.",
   "Some ride types are not working right now.": "Một số kiểu chuyến đi hiện không hoạt động.",
   "Place search is down right now.": "Tìm địa điểm hiện đang không hoạt động.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "Trên iPhone, Bắt đầu chuyến đi dành cho chuyến tối đa {distance}. Với chuyến dài hơn, hãy lưu ảnh chỉ dẫn cho màn hình khóa hoặc Tải GPX cho máy tính xe đạp.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "Trên iPhone, giữ màn hình sáng và trang này ở phía trước, cho chuyến tối đa {distance}. Với chuyến dài hơn hoặc khi khóa điện thoại, hãy dùng ảnh chỉ dẫn cho màn hình khóa hoặc GPX.",
 };

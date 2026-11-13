@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} ኣብ መገድታት",
   "{distance} on protected lanes": "{distance} ኣብ ዝተሓለዉ መስመራት",
   "busy road for {distance}": "ን{distance} ዝተጨናነቐ መገዲ",
+  "{distance} gravel": "{distance} ጸጸር",
+  "{distance} dirt": "{distance} ሓመድ",
+  "{distance} unpaved": "{distance} ዘይተነጽፈ",
   "Traffic-free paths: {distance}, {percent} percent": "ካብ መካይን ነጻ መገድታት፦ {distance}፣ {percent} ሚእታዊት",
   "Protected bike lanes: {distance}, {percent} percent": "ዝተሓለዉ መስመራት ብሽክለታ፦ {distance}፣ {percent} ሚእታዊት",
   "Bikeshare plus walk, train or bus": "ናይ ሓባር ብሽክለታን ብእግሪ፣ ባቡር ወይ ኣውቶቡስን",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "ምድላው መገዲ ሕጂ ኣይሰርሕን።",
   "Some ride types are not working right now.": "ገለ ዓይነታት ጉዕዞ ሕጂ ኣይሰርሑን።",
   "Place search is down right now.": "ምድላይ ቦታ ሕጂ ኣይሰርሕን።",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "ኣብ iPhone «ጉዕዞ ጀምር» ክሳብ {distance} ንዝኾኑ ጉዕዞታት እዩ። ንነዊሕ ጉዕዞ፣ ስእልታት መምርሒ ናይ ዝተዓጽወ ስክሪን ዓቅቡ፣ ወይ ንኮምፒተር ብሽክለታ «GPX ኣውርድ»።",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "ኣብ iPhone ክሳብ {distance} ንዝኾኑ ጉዕዞታት ስክሪን ብሩህ እዚ ገጽ ድማ ኣብ ቅድሚት ሓዝ። ንነዊሕ ጉዕዞ ወይ ዝተዓጽወ ስልኪ፣ ስእልታት መምርሒ ናይ ዝተዓጽወ ስክሪን ወይ GPX ተጠቐሙ።",
 };
