@@ -43,7 +43,7 @@ test("the toggle is off on a point-to-point ride, on and fixed on a round trip, 
   assert.equal(empty.hint, LOOP_FIRST_HINT);
   const emptyOff = loopView("default", undefined, [])!;
   assert.deepEqual([emptyOff.checked, emptyOff.implied], [false, false]);
-  assert.match(emptyOff.hint, /^Turn on to finish back at the start/);
+  assert.match(emptyOff.hint, /^Loop or Out and back finishes back at the start/);
   assert.equal(loopView("mass-ride", true, []), null, "never on Mass Ride");
   assert.equal(loopView("mass-ride", undefined, []), null);
 });
@@ -121,4 +121,39 @@ test("Plan starts as a loop (Stephen 2026-10-20: \"For plan we should do loop as
     /useEffect\(\(\) => \{\s+if \(points\.length > 0\) return;\s+if \(mode === "plan"\) setDials\(\(now\) => planStartDials\(preset, now\)\);\s+else if \(mode === "go"\) setDials\(\(now\) => \(now\.loop \? withLoop\(now, false\) : now\)\);[\s\S]{0,120}\}, \[mode\]\);/,
   );
   assert.match(app, /const startDials = modeRef\.current === "plan" \? planStartDials\(ride\.preset, ride\.dials\) : ride\.dials;/);
+});
+
+test("One way, Loop, Out and back (Stephen's pick, 2026-11-13): each sets the dials, and the request and link carry it", async () => {
+  const { loopWay, withLoopWay } = await import("./loop.ts");
+  const start = startDials("default");
+  assert.equal(loopWay(start, false), "one-way");
+  const loop = withLoopWay(start, "loop", false);
+  assert.deepEqual([loop.loop, loop.outAndBack], [true, undefined]);
+  assert.equal(loopWay(loop, false), "loop");
+  const back = withLoopWay(start, "out-and-back", false);
+  assert.deepEqual([back.loop, back.outAndBack], [true, true]);
+  assert.equal(loopWay(back, false), "out-and-back");
+  assert.equal(dialFields(back).out_and_back, true);
+  assert.equal("out_and_back" in dialFields(loop), false);
+  const one = withLoopWay(back, "one-way", false);
+  assert.deepEqual([one.loop, one.outAndBack], [undefined, undefined], "One way takes both off");
+  // A ride already ending where it starts keeps its points' names: no loop flag set, only Out and back.
+  const implied = withLoopWay(start, "out-and-back", true);
+  assert.deepEqual([implied.loop, implied.outAndBack], [undefined, true]);
+  assert.equal(loopWay(implied, true), "out-and-back");
+  assert.equal(loopWay(start, true), "loop");
+  assert.equal(withLoopWay(start, "one-way", true), start, "One way changes nothing on a round trip");
+  // The link keeps it.
+  const hash = encodePlan([A, B], "default", back);
+  assert.match(hash, /outback=1/);
+  assert.equal(decodePlan(hash).dials.outAndBack, true);
+  assert.equal(decodePlan(encodePlan([A, B], "default", loop)).dials.outAndBack, undefined);
+  // The hint says what it does; the route note says nothing of a way back it never looked for.
+  assert.match(loopView("default", true, [A, B], true)!.hint, /comes back the same way/);
+  // Not on Run, whose loops its own planner makes.
+  const { loopWays } = await import("./loop.ts");
+  assert.deepEqual(loopWays("run").map((w) => w.way), ["one-way", "loop"]);
+  assert.equal(loopWays("default").length, 3);
+  assert.equal(fitDials("run", { loop: true, outAndBack: true }).outAndBack, undefined);
+  assert.equal(loopNote({ loop: { overlap_pct: 100, shared_m: 5000, return_m: 5000, same_way: true } }), null);
 });

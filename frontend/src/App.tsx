@@ -85,6 +85,7 @@ import {
   routingStep,
   type DrawnPlan,
 } from "./lib/planFirst.ts";
+import { KEPT_SAID, STOPPED_SAID, USED_KEPT_SAID, compareRows, sameRoute } from "./lib/compareRoutes.ts";
 import { PlanPanel } from "./app/PlanPanel.tsx";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
@@ -355,6 +356,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, language, planLanguageAttributes } from "./lib/i18n.ts";
 import { feedbackDetails } from "./lib/feedback.ts";
+import { mapDataDay } from "./lib/dataAge.ts";
 import { FeedbackBox } from "./FeedbackBox.tsx";
 import { findShell } from "./lib/nativeShell.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
@@ -927,6 +929,8 @@ export function App() {
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
+  // The live map's build day, from the same coverage answer, for Settings' About line (lib/dataAge.ts).
+  const [mapDay, setMapDay] = useState<string | null>(null);
   // The map has loaded (onReady): what waits on the map, such as Reach's rings from a shared link, is drawn then.
   const [mapReady, setMapReady] = useState(false);
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
@@ -1300,7 +1304,9 @@ export function App() {
   const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
   // A saved route reopened (v0.7.0, saved routes): its line as saved answers its plan, unchanged, until the
   // plan changes or the rider presses Update route.
-  const savedShown = useRef<{ key: string; answer: RouteResponse } | null>(null);
+  // `once`: Plan's Use kept route (lib/compareRoutes.ts), which answers its own plan once, then goes, so a later change
+  // its key does not cover (a station, the riding speed) is planned afresh.
+  const savedShown = useRef<{ key: string; answer: RouteResponse; once?: boolean } | null>(null);
   const keptNotice = useRef<string | null>(null);
   // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
   // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
@@ -1353,6 +1359,7 @@ export function App() {
         const saved = savedShown.current;
         if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
           keptShown.current = null;
+          if (saved.once) savedShown.current = null;
           return { ok: true, route: saved.answer };
         }
         savedShown.current = null;
@@ -1653,12 +1660,18 @@ export function App() {
   const [changeDetails, setChangeDetails] = useState<string[]>([]);
   const [ghost, setGhost] = useState<LonLat[] | null>(null);
   const [changeLine, setChangeLine] = useState<string | null>(null);
+  // Plan's "Keep to compare" (lib/compareRoutes.ts; the backlog's "choose between routes in Plan", 2026-11-13): the
+  // plan and the route the rider kept, its dials as sent (for the planner's stand-in answer when the rider goes back).
+  // Lasts until Stop comparing or Clear; a change of plan keeps it, which is the point.
+  const [compareKept, setCompareKept] = useState<{ drawn: Drawn; dials: Dials; route: RouteResponse } | null>(null);
   // Go's ends picked or pressed (goTo), and the racks moved to from them (Stephen, 2026-11-01: the rack offer only for
   // a destination just picked or pressed, not every route opened from a link, a save or Plan). Kept through undo;
   // another plan opened (forgetDrawn) starts the list again.
   const [pickedEnds, setPickedEnds] = useState<LonLat[]>([]);
   /** Another plan opened (a link, a file): no Reset back to the last one, and no summary against it. */
   const forgetDrawn = () => {
+    // A route kept to compare is for this plan: another plan opened is another trip.
+    setCompareKept(null);
     setPickedEnds([]);
     drawnRef.current = null;
     setDrawn(null);
@@ -6367,7 +6380,7 @@ export function App() {
   const federalPlanner = federalShown(preset, true) && federalData && points.length > 0 && federalAreas.every((area) => area === null) && (
     <p className="hint federal-points">{FEDERAL_POINTS_NONE}</p>
   );
-  const loop = loopView(preset, dials.loop, points);
+  const loop = loopView(preset, dials.loop, points, dials.outAndBack === true);
   const loopHintId = useId();
   const [tips, setTips] = useState(false);
   const tipsId = useId();
@@ -6418,10 +6431,41 @@ export function App() {
   };
   // Clear: every point, the drawn route, its ghost and the change summary; the ride type and sliders stay.
   const clearPlan = () => {
+    setCompareKept(null);
     setGhost(null);
     setChangeLine(null);
     setChangeDetails([]);
     clearAll();
+  };
+  // Keep to compare: the route shown, up to date, with the plan it answers.
+  const comparing = compareKept !== null && !!shown && !sameRoute(compareKept.route, shown);
+  // The kept route is the dashed line once the plan moves on from it: changed and not yet routed, or routed.
+  const keptDashed = compareKept !== null && (comparing || planEdited);
+  const keepToCompare = () => {
+    const at = drawnRef.current;
+    if (!at || !shown || planEdited) return;
+    setCompareKept({ drawn: at, dials: planDials, route: shown });
+    announce(KEPT_SAID);
+  };
+  // Use kept route: the kept plan back (one edit, so Undo takes it back), answered by the kept route itself, not
+  // planned again; the route there was becomes the one kept, so the rider can go back and forth.
+  const useKeptRoute = () => {
+    const back = compareKept;
+    const at = drawnRef.current;
+    if (!back || !shown) return;
+    setCompareKept(at && !planEdited ? { drawn: at, dials: planDials, route: shown } : null);
+    savedShown.current = { key: keptPlanKey(back.drawn.points, back.drawn.ride.preset, back.dials), answer: back.route, once: true };
+    commit(back.drawn.points as LonLat[], back.drawn.ride);
+    setStationPins(back.drawn.pins);
+    setTransitPick(back.drawn.transitPick);
+    setNotice(null);
+    sendNow.current = true;
+    setRouteAsk((n) => n + 1);
+    announce(USED_KEPT_SAID);
+  };
+  const stopComparing = () => {
+    setCompareKept(null);
+    announce(STOPPED_SAID);
   };
   const fromStart = plansFromStart(preset, points, planDials);
   const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias, fromStart });
@@ -6495,7 +6539,7 @@ export function App() {
       onRoute={pressRoute}
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
       onCancel={cancelRouting}
-      change={planEdited ? null : changeLine}
+      change={planEdited || compareKept ? null : changeLine}
       details={changeDetails}
       onCloseChange={() => {
         setChangeLine(null);
@@ -6510,6 +6554,18 @@ export function App() {
           : null
       }
       onSay={announce}
+      compare={
+        !shown || stale
+          ? null
+          : {
+              rows: comparing && compareKept && !planEdited ? compareRows(compareKept.route, shown) : null,
+              kept: compareKept !== null,
+              edited: planEdited,
+              onKeep: keepToCompare,
+              onUse: useKeptRoute,
+              onStop: stopComparing,
+            }
+      }
     />
   );
   // A bike loop from a start and a distance (lib/bikeLoop.ts; Plan only, Stephen 2026-11-12): the picked shape is one
@@ -6838,7 +6894,7 @@ export function App() {
         permitsOn={!riding && permitsShown(permitsOn, mode)}
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
-        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
+        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : ((planFirst && keptDashed && compareKept ? compareKept.route.geometry.coordinates : null) ?? ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
         wayBackTo={riding ? (rideView?.wayBackTo ?? null) : null}
         planLegs={riding || reviewing || mode !== "plan" ? null : loopVias ? NO_LEGS : planDrawn}
         lightMarks={riding || mode !== "plan" ? null : light}
@@ -6902,6 +6958,7 @@ export function App() {
           setStopCardFrame({ padding: framePadding, instant: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches });
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
+            if (coverage) setMapDay(mapDataDay(coverage.properties));
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
           watchForFacilities(map, setFacilitiesShown);
@@ -7624,6 +7681,7 @@ export function App() {
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
                 feedbackDetails: detailsForFeedback,
+                mapDataDay: mapDay,
                 saveSettingsNow,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).

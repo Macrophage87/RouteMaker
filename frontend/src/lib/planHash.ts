@@ -129,6 +129,8 @@ export function encodePlan(
     // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
     // "Make it a loop" (OWNER-DECISIONS 266); absent is off.
     if (dials.loop) params.set("loop", "1");
+    // Out and back (2026-11-13): on a loop, the same way back; absent is a different way back.
+    if (dials.outAndBack) params.set("outback", "1");
     // Bikeshare (OWNER-DECISIONS 243, 244): the bike, and an e-bike's ending outside a dock. New
     // fields an older link does not have, so the link's version stays 2.
     if (dials.bike) params.set("bike", dials.bike);
@@ -194,6 +196,7 @@ export function decodePlan(hash: string): Plan {
     targetDistanceM: targetMiles === undefined ? undefined : Math.round(targetMiles * METRES_PER_MILE),
     // An older link's "sysweight" is ignored (OWNER-DECISIONS 313).
     loop: params.get("loop") === "1",
+    outAndBack: params.get("outback") === "1",
     hills: renamed ? undefined : numberOrUndefined(params.get("hills")),
     when: isWhen(when) ? when : null,
     carrying: isCarrying(carrying) ? carrying : null,
