@@ -170,55 +170,61 @@ range in the box below.
 
 ## Crossing points and what each costs
 
-What makes one side path worse than another is how often cars cross it and how hard each
-crossing is. RouteMaker counts every place where a rider following the path rides across
-the line of turning or crossing cars: driveways, side-street mouths, slip lanes. Each is
-priced in feet of quiet riding, on the same scale the junction model uses, so a crossing
-with a signal costs less than one without, and a busy cross street costs more than a
-driveway. Added up along the path and divided by its length, every full "calm mile of
-crossings per mile of path" raises the path by half a level.
+What makes one side path worse than another is how often cars cross it. RouteMaker counts
+every driveway and quiet side street a rider following the path rides across, prices each
+in feet of quiet riding on the junction model's scale, adds them up along the path and
+divides by its length. Every full "calm mile of crossings per mile of path" raises the
+path by half a level. Busy cross streets and slip lanes are not in the level: the junction
+model already charges for each one when a route rides across it, and each crossing is
+priced once.
 
 ```mermaid
 flowchart TD
-    P["A node where the path meets a way cars use"] --> O{"The path's own road?<br/>(the street it runs beside)"}
+    P["A node where the path meets a way cars use"] --> O{"The path's own road?"}
     O -- yes --> X["Not counted"]
-    O -- no --> T{"Does a rider following the path<br/>ride through it?"}
-    T -- "no: end of the run, or a crosswalk<br/>with no side path beyond it" --> X
-    T -- yes --> S{"Slip lane?"}
-    S -- yes --> SL["1,000 ft; 500 ft at a signal"]
-    S -- no --> G{"Signal there?"}
-    G -- yes --> SG["150 ft across LTS 3 or less<br/>600 ft across LTS 4"]
-    G -- no --> Q{"Crossed way at LTS 2.5 or more?"}
-    Q -- "no: driveway, quiet street" --> QF["267 ft per level:<br/>driveway 400 ft, LTS 2 street 533 ft"]
-    Q -- yes --> ST{"Stop or yield sign on the crossed way?"}
-    ST -- yes --> QS["533 ft"]
-    ST -- no --> U["Junction model, path crossing:<br/>800 ft across LTS 3,<br/>2,000 ft and up across LTS 4"]
+    O -- no --> T{"Does a rider following<br/>the path ride through it?"}
+    T -- no --> X
+    T -- yes --> B{"Slip lane, or a street<br/>at LTS 2.5 or more?"}
+    B -- yes --> J["Not in the level:<br/>the junction model prices it<br/>when a route crosses it"]
+    B -- "no: driveway or quiet street" --> G{"Signal there?"}
+    G -- no --> QF["267 ft per level:<br/>driveway 400 ft, LTS 2 street 533 ft"]
+    G -- yes --> SG["50 ft per level:<br/>driveway 75 ft, LTS 2 street 100 ft"]
 ```
 
-| Crossing point | Feet of quiet riding | Source |
+| Crossing point | Feet of quiet riding in the level | Source |
 |---|---|---|
-| Driveway or service road (LTS 1.5) | 400 | junction model's LTS 3 figure in proportion to the level; the proportion is our default, unmeasured |
+| Driveway or service road (LTS 1.5), no signal | 400 | junction model's unsignalled LTS 3 path crossing (800 ft) in proportion to the level; the proportion is our default, unmeasured |
 | Quiet street (LTS 2), no signal | 533 | the same |
-| LTS 2.5 street, no signal | 533 | the larger of the quiet value and the junction model's 400 |
-| LTS 3 street, no signal | 800 | junction model: 1,600 ft halved for a path crossing |
-| LTS 4 road, no signal, 35 mph | 2,000 | junction model: 4,000 ft halved, then its speed scale |
-| Busy street whose drivers face a stop or yield sign | 533 | our default: the turning conflict stays |
-| Any street at a signal | 150 (LTS 3 or less), 375 (3.5), 600 (4 and up) | junction model |
-| Slip lane | 1,000; 500 at a signal | junction model |
+| Driveway or quiet street at a signal | 75, 100 | junction model's signalised LTS 3 figure (150 ft) in the same proportion |
+| Street at LTS 2.5 or more | 0 | priced by the junction model at route time |
+| Slip lane | 0 | priced by the junction model at route time |
 | Half a level for every | 5,280 ft of crossings per mile of path | our default, calibrated below |
 
 <details>
 <summary>Full reasoning and citations (for review)</summary>
 
-- Code: `facility.side_path_crossings` finds the points; `facility.crossing_point_ft`
-  prices one; `stress.CROSSING_FT_PER_HALF_STEP` turns feet per mile into half steps. The
-  junction model's values are read, not copied: `intersections.crossing_ft`,
-  `intersections.slip_ft`, `intersections.MARKED_CROSSING_FACTOR`,
-  `intersections.STOPPED_CROSSING_FT`, `intersections.SIGNALISED_CROSSING_FT`. Their own
-  sources are in [intersections.md](intersections.md).
+- Code: `facility.side_path_crossings` finds the points; `facility.junction_priced` says
+  which are the junction model's; `facility.crossing_point_ft` prices the rest;
+  `stress.CROSSING_FT_PER_HALF_STEP` turns feet per mile into half steps. The junction
+  model's values are read, not copied: `intersections.STOPPED_CROSSING_FT`,
+  `intersections.MARKED_CROSSING_FACTOR`, `intersections.SIGNALISED_CROSSING_FT`,
+  `intersections.BUSY_TIER`. Their own sources are in [intersections.md](intersections.md).
 - **The owner's choice, 2026-11-12:** "If there are lots of intersections, especially
   sliplanes it could get an even larger bump", and "it's not always number of crossings,
-  but also how bad they are." Kept: points are weighted, not counted.
+  but also how bad they are." The points in the level are weighted by the crossed way's
+  level, and the bad ones (busy streets, slip lanes) are priced where they are ridden.
+- **Each crossing is priced once (changed 2026-11-13).** The owner, decision 303: "we
+  don't want to double count". Before, a busy cross street was in the path's level (a
+  point per level of the street) and was charged again by the junction model as an event
+  on every route across it, and a slip lane was charged three times: 2 extra points in
+  the run's score, a separate half level on the one way that touched it, and 1,000 ft in
+  the junction model. Now the split follows the junction model's own line: it prices a
+  crossing of a road at LTS 2.5 or more (`intersections.Road.busy`) and any slip lane
+  (`intersections.SLIP_LANE_FT`), so those are left out of the level; it prices nothing
+  below LTS 2.5, so driveways and quiet side streets, the points the owner asked to count,
+  are in the level and nowhere else. The level has no right-hook term. If the junction
+  model's right-hook charge (PR #1241) is extended to side paths, it and this rule must
+  not both carry the quiet-street mouth: the value here should then come out of the level.
 - **Which points count (changed 2026-11-13).**
   - Never the path's own road. The earlier rule scored any crossing way that touched a
     path node by the worst road that crossing way touched. At a corner, the crosswalk over
@@ -235,35 +241,31 @@ flowchart TD
     are one crossing (`CROSSING_CHAIN_PIECES`). The two carriageways of one named street
     are one point.
   - A run is the side paths along one street joined end to end or through a crossing they
-    ride, so a path split at every driveway is read as one. A run under 525 ft [160 m]
+    ride (a busy street or slip lane still joins the run; it only adds no feet), so a path
+    split at every driveway is read as one. A run under 525 ft [160 m]
     (`CROSSING_RUN_MIN_M`, our default) is too short to read a rate from and gets no
     crossing steps.
-- **What each costs.** Where the junction model has a price, it is used: the stopped-side
-  crossing by the crossed way's level, halved as the model halves a path's crossing with no
-  signal mapped; its signal values; its slip-lane value. The model prices nothing below
-  LTS 2.5 (`intersections.Road.busy`), and those points, driveways and quiet side streets,
-  are the ones the owner asked to count. They cost the model's own unsignalled LTS 3 path
-  crossing in proportion to the crossed way's level: 800 ft / 3 = 267 ft a level (a driveway
-  is 1.5 by the service-road step, so 400 ft; a quiet street is 2, so 533 ft). No constant
-  of ours is added; the straight line down from LTS 3 is our default, unmeasured. The
-  quiet street's value is also the floor for any point without a signal: a stop sign facing the
-  side street's drivers removes the rider's wait for a gap, not the driver who pulls across
-  the path looking the other way.
+- **What each costs.** The junction model's unsignalled path crossing of an LTS 3 street
+  is 800 ft (its 1,600 ft halved, as it halves a path's crossing with no signal mapped). A
+  quiet point costs that in proportion to the crossed way's level: 800 / 3 = 267 ft a level
+  (a driveway is 1.5 by the service-road step, so 400 ft; a quiet street is 2, so 533 ft).
+  At a signal it is the model's signalised LTS 3 figure, 150 ft, in the same proportion. No
+  constant of ours is added; the straight line down from LTS 3 is our default, unmeasured.
+  A way the rebuild gave no level is read as 2 (`UNRATED_CROSSING_LEVEL`, our default).
 - **Calibration of 5,280 ft a mile (our default, unmeasured).** The rule this replaces
   gave half a level for every 20 points a mile, a point for each level of the crossed way.
   An unsignalled LTS 3 side street was 3 points, so the half step came at 6.7 of them a
   mile. The junction model prices that crossing from a path at 800 ft; 6.7 x 800 = 5,333 ft,
   rounded to one mile. Quiet ways take the same 267 ft a level, so ten LTS 2 side streets a
-  mile (5,333 ft) are half a level as before and nine are not. What changed is the shape
-  above LTS 3 (2,000 ft against the old 4 points, about 1,070 ft) and that signals and stop
-  signs now count.
+  mile (5,333 ft) are half a level as before and nine are not; thirteen driveways a mile
+  (5,200 ft) are not and fourteen are.
 - **Control data.** A signal is read from the crossing way's own tags
   (`crossing=traffic_signals`), from the node (`highway=traffic_signals`, or a crossing
   node tagged as signalised) and from the crossed way's nodes up to two either side of the
   point (`CONTROL_REACH_NODES`, our default; the junction model reads 98 ft [30 m] along the
-  crossed road at request time). A stop or yield sign is `highway=stop` or `give_way` on
-  the crossed way within the same reach. `pipeline.extract.read_ways` collects them
-  (`node_control`).
+  crossed road at request time). `pipeline.extract.read_ways` collects them
+  (`node_control`). Stop and yield signs are not used: on a quiet street they do not
+  remove the driver who pulls across the path looking the other way.
 - **Literature.** Wachtel and Lewiston (1994), "Risk Factors for Bicycle-Motor Vehicle
   Collisions at Intersections", ITE Journal 64(9), 30-35 (reprint read at
   https://bicyclinglife.com/Library/riskfactors.htm): 2,976 riders observed and 89
@@ -273,49 +275,46 @@ flowchart TD
   by its conflict points and not by a flat step alone. It gives no price per point; ours
   are the junction model's and our default. Montgomery County's Appendix D (cited above)
   raises a side path one level for "many driveways" without defining many.
-- **Double counting, stated plainly.** The level carries the crossings per mile; at route
-  time the junction model also charges each crossing of an LTS 2.5 or busier street as an
-  event. Driveways and quiet streets are in the level only. So a busy cross street is
-  counted twice, once in each. It was before as well. The level has no right-hook term: if
-  the junction model's right-hook charge (`intersections`, PR #1241) is extended to side
-  paths, the quiet-crossing value here should be taken from that one table and the two
-  must not both carry it.
 - **Known limits.** One rate for a whole run, so a long path with one bad half mile is
   averaged. A short run can read a very high rate (seven driveways in 0.12 mi on River
   Road, Bethesda). Driveways that are not mapped are not counted. The reach for signals is
-  in nodes, not feet.
+  in nodes, not feet. A map that shows the level alone, with no route, does not show the
+  busy cross streets; the route's junction list does.
 - **What would change it.** A published or measured cost per driveway crossing; the
-  junction model pricing quiet-street mouths itself; a windowed rate along long runs.
+  junction model pricing quiet-street mouths itself, which would empty this term; a
+  windowed rate along long runs.
 
 </details>
 
-## Slip lanes
+## Slip lanes and busy cross streets
 
 A slip lane is a turn lane that lets drivers leave or join the main road without stopping.
 Where a side path crosses one, drivers are looking for a gap in traffic, not for a rider.
-It is priced as one of the worst ordinary crossing points: about a fifth of a calm mile,
-half that where a signal controls it.
+RouteMaker charges for it, and for every crossing of a busy street, when a route rides
+across it, as a junction. It is not also added to the path's level, so a path is not
+marked down twice for the same crossing.
 
-| | Feet | Source |
+| | Feet, charged by the junction model on the route | Source |
 |---|---|---|
-| Slip lane, no signal | 1,000 | junction model (`intersections.SLIP_LANE_FT`; owner decisions 169, 195, 468) |
-| Slip lane at a signal | 500 | junction model (`intersections.SIGNALISED_SLIP_FACTOR`) |
+| Slip lane, no signal | 1,000 | `intersections.SLIP_LANE_FT` (owner decisions 169, 195, 468) |
+| Path crossing of an LTS 3 street, no signal | 800 | `intersections.STOPPED_CROSSING_FT`, halved |
+| Path crossing of an LTS 4 road, no signal | 2,000 and up | the same, with its speed scale |
 
 <details>
 <summary>Full reasoning and citations (for review)</summary>
 
-- Code: `facility.SLIP_LANE_HIGHWAY` (any `*_link` way), priced in
-  `facility.crossing_point_ft` by `intersections.slip_ft`. No diagram: it is one branch of
-  the diagram above.
-- **The owner's choice, 2026-11-12:** "especially sliplanes". Kept as a heavier point:
-  1,000 ft is about two quiet side streets or two and a half driveways.
-- **What changed (2026-11-13).** A slip lane used to be charged three times: 2 extra
-  points in the run's score, a separate half level on the one way that touched it, and
-  1,000 ft in the junction model at route time. The extra half level is gone. It applied
-  to one OSM way, not the run, so a lane split into short ways showed alternating levels.
-  The slip lane is now in the run's cost once, at the junction model's own figure. The
-  rule's words still say "crosses a slip lane" for the road panel.
-- **Known limit.** A raised or signed crossing of a slip lane is not read.
+- Code: `facility.junction_priced` (a `*_link` way in `facility.SLIP_LANE_HIGHWAY`, or a
+  crossed way at `intersections.BUSY_TIER` less half a level or more). No diagram: it is
+  one branch of the diagram above. The figures in the table are the junction model's,
+  documented in [intersections.md](intersections.md); nothing here sets them.
+- **The owner's choice, 2026-11-12:** "especially sliplanes"; decision 303: "we don't want
+  to double count". Both are met by the junction model's 1,000 ft, which is two and a half
+  driveways.
+- **What changed (2026-11-13).** The extra half level for a way that touched a slip lane
+  is gone, with the 2 extra points. The half level applied to one OSM way, not the run,
+  so a lane split into short ways showed alternating levels. The road panel still reads
+  "crosses a slip lane" in rule text written by earlier builds.
+- **Known limit.** A raised or signed crossing of a slip lane is not read by either model.
 
 </details>
 
