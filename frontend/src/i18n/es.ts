@@ -2772,12 +2772,14 @@ export const ES: Readonly<Record<string, string>> = {
   "No calmer way round nearby.": "No hay un camino más tranquilo cerca.",
   "Could not look for a calmer way round just now.": "No se pudo buscar un camino más tranquilo ahora mismo.",
   "Use this way": "Usar este camino",
+  "{count} busiest stretches listed, with no calmer way round.": "{count} tramos con más tráfico, sin un camino más tranquilo.",
+  "{count} busiest stretches listed, {found} with a calmer way round.": "{count} tramos con más tráfico, {found} con un camino más tranquilo.",
   "Could not put the calmer way into the route.": "No se pudo poner el camino más tranquilo en la ruta.",
   "The route now takes the calmer way round {street}.": "La ruta ahora toma el camino más tranquilo para evitar {street}.",
   "an unnamed way": "un camino sin nombre",
   "{street}: {distance}, {level} at worst": "{street}: {distance}, {level} en lo peor",
   "Calmer way: about as long, {level} at worst.": "Camino más tranquilo: casi igual de largo, {level} en lo peor.",
   "Calmer way: {extra} longer, {level} at worst.": "Camino más tranquilo: {extra} más largo, {level} en lo peor.",
-  "The file's busiest stretches by our ratings, worst first: busier and longer counts more. Each calmer way is planned on your ride type at the calmest traffic setting, between points just outside the stretch. Use this way puts it into the route, and a download is then the route with it; Undo takes it out.":
-    "Los tramos del archivo con más tráfico según nuestras calificaciones, el peor primero: cuenta más el que tiene más tráfico y es más largo. Cada camino más tranquilo se planifica con su tipo de recorrido en el ajuste de tráfico más tranquilo, entre puntos justo fuera del tramo. Usar este camino lo pone en la ruta, y al descargar se obtiene la ruta con él; Deshacer lo quita.",
+  "The file's busiest stretches by our ratings, worst first: busier and longer counts more. Each calmer way is planned on your ride type at the calmest traffic setting, between points just outside the stretch. Use this way puts it into the route, and a download is then the route with it. Undo takes it out; press Update route after.":
+    "Los tramos del archivo con más tráfico según nuestras calificaciones, el peor primero: cuenta más el que tiene más tráfico y es más largo. Cada camino más tranquilo se planifica con su tipo de recorrido en el ajuste de tráfico más tranquilo, entre puntos justo fuera del tramo. Usar este camino lo pone en la ruta, y al descargar se obtiene la ruta con él. Deshacer lo quita; después pulse Actualizar ruta.",
 };

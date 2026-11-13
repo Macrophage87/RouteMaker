@@ -314,7 +314,7 @@ import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type Hom
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
-import { CHECK_NOT_PUT, spliceAt, usedSaid, type Planner, type WorstStretch } from "./lib/worstStretches.ts";
+import { CHECK_NOT_PUT, pointsKept, spliceAt, stretchEnds, usedSaid, type Planner, type WorstStretch } from "./lib/worstStretches.ts";
 
 import { CheckRoute } from "./CheckRoute.tsx";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
@@ -4359,26 +4359,15 @@ export function App() {
     const route = shown;
     if (!file?.verbatim || !route) return;
     const line = file.verbatim.track;
-    const cut = spliceAt(line, way, route.distance_m > 0 ? stretch.fromM / route.distance_m : 0);
+    const ends = stretchEnds(route, stretch);
+    const cut = spliceAt(line, way, ends.share, ends.paddedM);
     if (!cut) {
       announce(CHECK_NOT_PUT);
       return;
     }
     const track = spliceDetours(line, [cut], [way]).map((v) => [...v]) as NonNullable<ImportedPlan["verbatim"]>["track"];
-    // The plan's own points inside the stretch go; the rest stay where the file put them.
-    const inside = (p: LonLat) => {
-      let best = 0;
-      let bestD = Infinity;
-      line.forEach((v, i) => {
-        const d = (v[0] - p[0]) ** 2 + (v[1] - p[1]) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          best = i;
-        }
-      });
-      return best > cut.before && best < cut.after;
-    };
-    const kept = pointsRef.current.filter((p, i, all) => i === 0 || i === all.length - 1 || !inside(p));
+    // The plan's own points on the part replaced go; the rest stay where the file put them.
+    const kept = pointsKept(pointsRef.current, route, stretch);
     // A snapped line (lib/gpxMatch.ts) was of the line before: it goes with it.
     const { matched: _snapped, ...unsnapped } = file;
     const next: ImportedPlan = { ...unsnapped, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
@@ -4386,6 +4375,8 @@ export function App() {
     // Planned at once, as an opened file is (openImported): one press, no Update route after it.
     setRouteAsk((n) => n + 1);
     announce(usedSaid(stretch.street));
+    // The button goes with the list while the route is planned again: the focus waits on the Route heading.
+    routeHeadingRef.current?.focus();
   };
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.

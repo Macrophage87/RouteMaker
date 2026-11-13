@@ -9,6 +9,7 @@ import { RAIL_BOTTOM_LAYER, ROUTE_CASING_LAYER, type ReferenceMap } from "./refe
 export const CALMER_SOURCE = "check-calmer-ways";
 export const CALMER_LAYER = "check-calmer-ways-line";
 
+/** Width 5, 85% opaque, short dashes: our defaults, unmeasured, to read apart from the file's purple dashes. */
 export function calmerLayer(): object {
   return {
     id: CALMER_LAYER,

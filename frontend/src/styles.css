@@ -11605,6 +11605,7 @@ button.route-note:focus-visible {
 
 .road-level-why {
   margin: 8px 0 0;
+}
 
 /* Check a route (CheckRoute.tsx): an opened file's busiest stretches, each with its calmer way and Use this way. */
 .check-route {

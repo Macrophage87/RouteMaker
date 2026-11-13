@@ -15,6 +15,7 @@ import {
   judgeCalmerWay,
   levelWeight,
   planCalmerWay,
+  pointsKept,
   spliceAt,
   stretchEnds,
   stretchLine,
@@ -129,7 +130,7 @@ test("calmerDials keeps the plan's other dials", () => {
 test("Use this way: the calmer way replaces the file's line between its ends, every other vertex kept", () => {
   const track = LINE.map(([lon, lat], i) => [lon, lat, 10 + i] as [number, number, number]);
   const way: LonLat[] = [LINE[100], [LINE[150][0], 38.902], LINE[200]];
-  const cut = spliceAt(track, way, 100 / 400);
+  const cut = spliceAt(track, way, 100 / 400, 1100);
   assert.deepEqual(cut, { before: 100, after: 200 });
   const out = spliceDetours(track, [cut!], [way]);
   assert.equal(out.length, 400 - 99 + 1);
@@ -138,15 +139,36 @@ test("Use this way: the calmer way replaces the file's line between its ends, ev
   assert.deepEqual(out[102], track[200]);
 });
 
-test("an out-and-back is cut on the pass the stretch is on", () => {
-  // Out along LINE and back: vertex k and vertex 799 - k are the same spot.
-  const there = LINE.slice();
-  const back = LINE.slice().reverse();
-  const track = [...there, ...back];
-  const way: LonLat[] = [LINE[250], [LINE[200][0], 38.899], LINE[150]];
-  // On the way back, about 650 of 800 vertices along.
-  const cut = spliceAt(track, way, 649 / 800);
-  assert.ok(cut);
-  assert.ok(cut!.before >= 400, JSON.stringify(cut));
-  assert.ok(cut!.after > cut!.before);
+// Out along LINE and back a few metres north (a GPS track's return pass): vertex k and 799 - k are nearly one spot.
+const BACK: LonLat[] = LINE.slice().reverse().map(([lon, lat]) => [lon, lat + 0.00003]);
+const OUT_AND_BACK = [...LINE, ...BACK];
+
+test("an out-and-back is cut on the pass the stretch is on, on the way out and on the way back", () => {
+  const out = spliceAt(OUT_AND_BACK, [LINE[150], [LINE[200][0], 38.899], LINE[250]], 150 / 800, 1100);
+  assert.deepEqual(out, { before: 150, after: 250 });
+  const back = spliceAt(OUT_AND_BACK, [BACK[150], [BACK[200][0], 38.899], BACK[250]], 550 / 800, 1100);
+  assert.deepEqual(back, { before: 550, after: 650 });
+});
+
+test("near the turn, the cut keeps to the way out, even where the route's share is a little off", () => {
+  for (const share of [300 / 800, 0.33, 0.42]) {
+    assert.deepEqual(spliceAt(OUT_AND_BACK, [LINE[300], [LINE[340][0], 38.899], LINE[380]], share, 900), { before: 300, after: 380 }, String(share));
+  }
+});
+
+test("a loop's stretch near the start and finish is cut at the start", () => {
+  const loop: LonLat[] = [...LINE.slice(0, 200), ...LINE.slice(0, 200).reverse().map(([lon, lat]) => [lon, lat + 0.002] as LonLat), LINE[0]];
+  const cut = spliceAt(loop, [LINE[5], [LINE[30][0], 38.898], LINE[60]], 5 / 401, 600);
+  assert.deepEqual(cut, { before: 5, after: 60 });
+});
+
+test("the plan's points the route reaches inside the stretch go; the ends, those elsewhere and those on the other pass stay", () => {
+  // The route is the out-and-back itself, 800 vertices; points at vertices 0, 120, 200, 600 (the same spot as 200, on
+  // the way back) and 799.
+  const r = route([span(1650, 2750, 4)], { geometry: { type: "LineString", coordinates: OUT_AND_BACK }, distance_m: 0, leg_ends: [120, 200, 600, 799] });
+  const points: LonLat[] = [OUT_AND_BACK[0], OUT_AND_BACK[120], OUT_AND_BACK[200], OUT_AND_BACK[600], OUT_AND_BACK[799]];
+  const [worst] = worstStretches(r);
+  assert.deepEqual(pointsKept(points, r, worst), [OUT_AND_BACK[0], OUT_AND_BACK[120], OUT_AND_BACK[600], OUT_AND_BACK[799]]);
+  // Legs that do not fit the points: every point kept.
+  assert.equal(pointsKept(points, { ...r, leg_ends: [1, 2] }, worst).length, 5);
 });

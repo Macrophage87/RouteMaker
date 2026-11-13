@@ -115,7 +115,7 @@ function streetOf(route: Pick<RouteResponse, "description">, fromM: number, toM:
 export function stretchEnds(
   route: Pick<RouteResponse, "geometry" | "distance_m" | "leg_ends" | "description">,
   stretch: Pick<WorstStretch, "fromM" | "toM">,
-): { line: LonLat[]; from: LonLat; to: LonLat; paddedM: number } {
+): { line: LonLat[]; from: LonLat; to: LonLat; paddedM: number; share: number } {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
   const toLine = measureMap(route, along);
@@ -123,7 +123,7 @@ export function stretchEnds(
   const a = Math.max(0, toLine(stretch.fromM) - PAD_M);
   const b = Math.min(end, toLine(stretch.toM) + PAD_M);
   const padded = sliceLine(coordinates, along, a, b);
-  return { line: sliceLine(coordinates, along, toLine(stretch.fromM), toLine(stretch.toM)), from: padded[0], to: padded[padded.length - 1], paddedM: b - a };
+  return { line: sliceLine(coordinates, along, toLine(stretch.fromM), toLine(stretch.toM)), from: padded[0], to: padded[padded.length - 1], paddedM: b - a, share: end > 0 ? a / end : 0 };
 }
 
 /** A calmer way round one stretch, or why there is none. */
@@ -177,38 +177,76 @@ export async function planCalmerWay(
 
 // ---- Use this way -------------------------------------------------------------------------------------------------
 
-/** The index of the vertex of `line` nearest `p`, searched between `lo` and `hi`. */
-function nearestIndex(line: readonly LonLat[], p: LonLat, lo: number, hi: number): number {
+/** Squared distance in degrees of latitude, longitude scaled to it at `p`'s latitude: enough to compare. */
+function apart2(a: readonly number[], p: LonLat): number {
   const kx = Math.cos((p[1] * Math.PI) / 180);
-  let best = lo;
+  return ((a[0] - p[0]) * kx) ** 2 + (a[1] - p[1]) ** 2;
+}
+
+/** The index of the vertex of `line` nearest `p`, searched from `lo` to `hi`. */
+export function nearestIndex(line: readonly (readonly number[])[], p: LonLat, lo: number, hi: number): number {
+  let best = Math.max(0, lo);
   let bestD = Infinity;
   for (let i = Math.max(0, lo); i <= Math.min(line.length - 1, hi); i += 1) {
-    const d = ((line[i][0] - p[0]) * kx) ** 2 + (line[i][1] - p[1]) ** 2;
+    const d = apart2(line[i], p);
     if (d < bestD) [best, bestD] = [i, d];
   }
   return best;
 }
 
+/** The start is looked for this share of the file's length either side of where it should be, at least SPLICE_WINDOW_M (our defaults, unmeasured). */
+export const SPLICE_WINDOW_SHARE = 0.1;
+export const SPLICE_WINDOW_M = 1000;
+/** The file's part replaced is at most this many times the stretch padded, plus SPLICE_SLACK_M, and at least SPLICE_LEAST_RATIO of it (our defaults, unmeasured). */
+export const SPLICE_MOST_RATIO = 2;
+export const SPLICE_LEAST_RATIO = 0.5;
+export const SPLICE_SLACK_M = 500;
+
 /**
- * Where the calmer way goes into the file's full line (closureCheck.ts spliceDetours takes it from here): the vertex
- * nearest its start, and the first after that nearest its end. `share` is how far along the route (0 to 1) the stretch
- * starts, so a line that passes the same spot twice (an out-and-back) is cut at the right pass: the search keeps to a
- * window round that share of the line. Null where the ends cannot be placed in order.
+ * Where the calmer way goes into the file's full line (closureCheck.ts spliceDetours takes it from here). `share` is how
+ * far along the route (0 to 1) the padded stretch starts (stretchEnds); the start is the nearest vertex within a window
+ * round that share of the file, and the end the nearest one ahead of it within about the padded stretch's length, so a
+ * line that passes the same spot twice (an out-and-back, a loop) is cut on the pass the stretch is on, never across the
+ * turn. Null where the ends cannot be placed so: Use this way then says it could not.
  */
-export function spliceAt(line: readonly (readonly number[])[], way: readonly LonLat[], share: number): Stretch | null {
+export function spliceAt(line: readonly (readonly number[])[], way: readonly LonLat[], share: number, paddedM: number): Stretch | null {
   if (line.length < 2 || way.length < 2) return null;
-  const flat = line.map((v) => [v[0], v[1]] as LonLat);
-  const along = cumulative(flat);
+  const along = cumulative(line.map((v) => [v[0], v[1]] as LonLat));
   const total = along[along.length - 1];
-  const window = Math.max(total * 0.2, 2000);
+  const window = Math.max(total * SPLICE_WINDOW_SHARE, SPLICE_WINDOW_M);
   const centre = Math.min(Math.max(share, 0), 1) * total;
   let lo = 0;
-  while (lo < flat.length - 1 && along[lo] < centre - window) lo += 1;
-  let hi = flat.length - 1;
-  while (hi > 0 && along[hi] > centre + window * 2) hi -= 1;
-  const before = nearestIndex(flat, way[0], lo, hi);
-  const after = nearestIndex(flat, way[way.length - 1], before + 1, hi);
-  return after > before ? { before, after } : null;
+  while (lo < line.length - 1 && along[lo] < centre - window) lo += 1;
+  let hi = lo;
+  while (hi < line.length - 1 && along[hi + 1] <= centre + window) hi += 1;
+  const before = nearestIndex(line, way[0], lo, hi);
+  let reach = before;
+  const most = paddedM * SPLICE_MOST_RATIO + SPLICE_SLACK_M;
+  while (reach < line.length - 1 && along[reach + 1] - along[before] <= most) reach += 1;
+  if (reach === before) return null;
+  const after = nearestIndex(line, way[way.length - 1], before + 1, reach);
+  const cut = along[after] - along[before];
+  return cut >= paddedM * SPLICE_LEAST_RATIO ? { before, after } : null;
+}
+
+/**
+ * The plan's points to keep once Use this way is pressed: every point but those the route reaches inside the padded
+ * stretch, read from where the route's legs end (`leg_ends`, one per point after the first), so a point on the other pass
+ * of an out-and-back, at the same spot, is told apart. Where the legs cannot be read, every point is kept.
+ */
+export function pointsKept(
+  points: readonly LonLat[],
+  route: Pick<RouteResponse, "geometry" | "distance_m" | "leg_ends" | "description">,
+  stretch: Pick<WorstStretch, "fromM" | "toM">,
+): LonLat[] {
+  const ends = route.leg_ends ?? [];
+  const coordinates = route.geometry.coordinates;
+  if (ends.length !== points.length - 1 || ends.some((e) => !(e >= 0 && e < coordinates.length))) return [...points];
+  const along = lineAlong(coordinates);
+  const toLine = measureMap(route, along);
+  const from = toLine(stretch.fromM) - PAD_M;
+  const to = toLine(stretch.toM) + PAD_M;
+  return points.filter((_, i) => i === 0 || i === points.length - 1 || !(along[ends[i - 1]] > from && along[ends[i - 1]] < to));
 }
 
 // ---- Words --------------------------------------------------------------------------------------------------------
@@ -219,13 +257,20 @@ export const CHECK_PLANNING = t("Looking for a calmer way round…");
 export const CHECK_NO_WAY = t("No calmer way round nearby.");
 export const CHECK_FAILED = t("Could not look for a calmer way round just now.");
 export const CHECK_USE = t("Use this way");
+/** Said once every calmer way has been looked for, in place of a line per row. */
+export function checkedSaid(stretches: number, found: number): string {
+  if (stretches === 0) return CHECK_NONE;
+  return found === 0
+    ? t("{count} busiest stretches listed, with no calmer way round.", { count: stretches })
+    : t("{count} busiest stretches listed, {found} with a calmer way round.", { count: stretches, found });
+}
 export const CHECK_NOT_PUT = t("Could not put the calmer way into the route.");
 /** Said once Use this way is pressed: "The route now takes the calmer way round Big Road." */
 export function usedSaid(street: string | null): string {
   return t("The route now takes the calmer way round {street}.", { street: street ?? t("an unnamed way") });
 }
 export const CHECK_ABOUT = t(
-  "The file's busiest stretches by our ratings, worst first: busier and longer counts more. Each calmer way is planned on your ride type at the calmest traffic setting, between points just outside the stretch. Use this way puts it into the route, and a download is then the route with it; Undo takes it out.",
+  "The file's busiest stretches by our ratings, worst first: busier and longer counts more. Each calmer way is planned on your ride type at the calmest traffic setting, between points just outside the stretch. Use this way puts it into the route, and a download is then the route with it. Undo takes it out; press Update route after.",
 );
 
 /** "Georgia Avenue Northwest: 0.6 mi, LTS 4 at worst". */
@@ -239,6 +284,7 @@ export function stretchLine(stretch: WorstStretch): string {
 
 /** "Calmer way: 0.3 mi longer, LTS 2 at worst." */
 export function calmerLine(way: Extract<CalmerWay, { kind: "found" }>): string {
+  // Under 50 m (our default) is said as about as long.
   return way.extraM < 50
     ? t("Calmer way: about as long, {level} at worst.", { level: levelText(way.level) })
     : t("Calmer way: {extra} longer, {level} at worst.", { extra: formatDistance(way.extraM), level: levelText(way.level) });

@@ -13,6 +13,7 @@ import {
   CHECK_PLANNING,
   CHECK_USE,
   calmerLine,
+  checkedSaid,
   planCalmerWay,
   stretchEnds,
   stretchLine,
@@ -41,6 +42,8 @@ export interface CheckRouteProps {
  * The map's padding clear of the page's panels (each open `aside`, and the route section where it stands apart on a computer), so the stretch shown is not under one: on a phone the
  * sheet at the bottom, on a computer the planner on one side and the route on the other, as GpxPanel's fit does.
  */
+// The margins (60 px top and bottom, 40 px at the sides, 30 px over a panel's edge), the zoom held to 17 and the
+// 0.4 s move are our defaults, unmeasured, near GpxPanel's own fit.
 function clearOfPanels(): { top: number; bottom: number; left: number; right: number } {
   const padding = { top: 60, bottom: 60, left: 40, right: 40 };
   const width = window.innerWidth;
@@ -125,6 +128,10 @@ export function CheckRoute({ route, preset, dials, getMap, plan, onUse }: CheckR
       <p className="hint setting-info" id={aboutId} hidden={!about}>
         {CHECK_ABOUT}
       </p>
+      {/* One line for a screen reader once every calmer way is looked for, not one per row (the review's a11y finding). */}
+      <p className="visually-hidden" role="status">
+        {ways.every((w) => w !== null) ? checkedSaid(stretches.length, ways.filter((w) => w?.kind === "found").length) : ""}
+      </p>
       {stretches.length === 0 ? (
         <p className="hint check-none">{CHECK_NONE}</p>
       ) : (
@@ -137,7 +144,7 @@ export function CheckRoute({ route, preset, dials, getMap, plan, onUse }: CheckR
                 <button type="button" className="link check-stretch" onClick={() => show(stretch, way)}>
                   {stretchLine(stretch)}
                 </button>
-                <p className={way === null ? "loading check-way" : "hint check-way"} role="status">
+                <p className={way === null ? "loading check-way" : "hint check-way"}>
                   {way === null ? CHECK_PLANNING : way.kind === "found" ? calmerLine(way) : way.kind === "none" ? CHECK_NO_WAY : CHECK_FAILED}
                 </p>
                 {way?.kind === "found" && onUse && (
