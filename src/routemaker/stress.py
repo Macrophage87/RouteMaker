@@ -1104,27 +1104,46 @@ def service_road_step(result: StressResult, tags: dict[str, str]) -> StressResul
 
 # A side path or protected lane beside a busy road (the owner, 2026-11-12, of the marked
 # protected lanes along Old Georgetown Road: "While they are fine for experienced cyclists,
-# they might not be LTS 1."). An unnamed trail-class way the rebuild finds running along a
-# named street (`facility.side_streets`) takes a level from that street: 1.5 beside a road at
-# LTS 3 or 3.5, 2 beside one at LTS 4 or above. Between junctions a rider there still meets
-# driveways, turning cars and the traffic beside them; the junctions themselves are priced by
-# the road's own traffic (`intersections.traffic_level`). Our default, not measured. A named
-# trail is never asked (it is its own route, the Custis Trail beside I-66), and an owner row
-# on the way itself is the more specific call. THIS TEXT IS READ BACK by
-# `core.segment_info.rule_words`.
+# they might not be LTS 1."). A bike way the rebuild finds running along a named street by
+# its geometry (`facility.side_streets`; named or not), or a protected lane tagged on the
+# road itself (`facility.on_road_tracks`), takes a level from that street: 1.5 beside a road
+# at LTS 3 or 3.5, 2 beside one at LTS 4 or 4.5, 2.5 beside Avoid. Between junctions a rider
+# there still meets driveways, turning cars and the traffic beside them. Not measured. An
+# owner row on the way itself is the more specific call. The whole rule is written up in
+# docs/stress/side-paths.md. THIS TEXT IS READ BACK by `core.segment_info.rule_words` and
+# by the rebuild's `rm:beside_busy_road` tag (PR #1242): keep the prefix.
 BESIDE_BUSY_ROAD_RULE = "path beside a busy road"
-# (the road's level at least, the path's level), busiest first. Our defaults, not measured.
-BESIDE_BUSY_ROAD_STEPS = ((4.0, 2.0), (3.0, 1.5))
+# Where the path starts before its crossings: half of what the road is above
+# BESIDE_CALM_ROAD_LEVEL, down to a half step. So 1 beside a road at 2.5 (its crossings still
+# count: 2.5 is where the junction model starts to call a road busy,
+# `intersections.Road.busy`), 1.5 beside 3 or 3.5, 2 beside 4 or 4.5, 2.5 beside Avoid. One
+# line in place of a table; it sits inside the published levels for protected lanes and side
+# paths (Maryland DOT 2022: 1 to 3; Montgomery County 2017, Appendix D: 1 to 2.5;
+# docs/stress/side-paths.md). Our defaults, not measured.
+BESIDE_CALM_ROAD_LEVEL = 2.0
+BESIDE_BUSY_ROAD_SHARE = 0.5
 # The share of a path's length beside one of the street's ways for that way's level to count,
 # so a few metres along a busier carriageway's end do not set the whole path. Our default.
 BESIDE_BUSY_ROAD_MIN_SHARE = 0.3
-# Half a level more for every CROSSING_SCORE_STEP of crossing score a mile along the path's run
-# (`facility.side_path_crossings`: each crossing weighted by how bad it is) and for a slip lane
-# the way crosses, up to 4.5: nothing is Avoid (the owner, 2026-11-12). 20 a mile is about ten
-# street crossings at LTS 2, or five across roads at LTS 4. Our defaults, not measured.
-BESIDE_BUSY_ROAD_CROSSINGS_STEP = 0.5
-CROSSING_SCORE_STEP = 20.0
+# Half a level more for every CROSSING_FT_PER_HALF_STEP of crossing cost a mile along the
+# path's run (`facility.side_path_crossings`: each crossing point in feet of quiet riding on
+# the junction model's scale, `facility.crossing_point_ft`). 5,280 ft a mile, "a calm mile of
+# crossings for every mile of path", is OUR DEFAULT, calibrated to the rule it replaces (20
+# points a mile, a point for each level of the crossed way): an unsignalled LTS 3 side
+# street was 3 points, so a half step came at 6.7 of them a mile; the junction model prices
+# that crossing from a path at 800 ft (1,600 ft at `intersections.MARKED_CROSSING_FACTOR`),
+# and 6.7 x 800 = 5,333 ft, rounded to the mile. Driveways and quiet streets take the same
+# 267 ft a level, so ten LTS 2 side streets a mile are half a level as before. Not measured.
+CROSSING_FT_PER_HALF_STEP = 5280.0
+# Nothing is Avoid (the owner, 2026-11-12): the top of the scale below it.
 BESIDE_BUSY_ROAD_MAX = 4.5
+
+
+def beside_busy_road_base(road_level: float) -> float:
+    """Where a path beside a road at `road_level` starts, before its crossings
+    (`BESIDE_CALM_ROAD_LEVEL`, `BESIDE_BUSY_ROAD_SHARE`), to the half step below."""
+    above = max(road_level - BESIDE_CALM_ROAD_LEVEL, 0.0) * BESIDE_BUSY_ROAD_SHARE
+    return 1.0 + math.floor(above * 2) / 2
 
 
 def level_of(result) -> float:
@@ -1139,41 +1158,57 @@ def beside_busy_road_step(
     result: StressResult,
     road_level: float | None,
     *,
-    crossing_score: float | None = None,
+    crossing_ft_per_mile: float | None = None,
     slip_lane: bool = False,
+    contraflow: bool = False,
+    ceiling: float | None = None,
 ) -> StressResult:
-    """The side-path step (`BESIDE_BUSY_ROAD_RULE`) over a trail-class way at a flat LTS 1,
-    from the level of the street it runs beside (None where it runs beside none), half a level
-    more for every `CROSSING_SCORE_STEP` of crossing score a mile along its run (each crossing
-    weighted by how bad it is) and for a slip lane the way crosses (the owner, 2026-11-12:
-    "If there are lots of intersections, especially sliplanes it could get an even larger
-    bump"). A way an owner row set (`result.adjustment`) and a way already above LTS 1 are
-    left alone."""
+    """The side-path step (`BESIDE_BUSY_ROAD_RULE`) over a bike way at a flat LTS 1, from the
+    level of the street it runs beside (None where it runs beside none), and half a level
+    more for every `CROSSING_FT_PER_HALF_STEP` of crossing cost a mile along its run (the
+    owner, 2026-11-12: "If there are lots of intersections, especially sliplanes it could
+    get an even larger bump"). A way an owner row set (`result.adjustment`) and a way already
+    above LTS 1 are left alone.
+
+    Never above 4.5 (the owner: "no upper limit", "nothing is avoid"), and never above the
+    street's own level, the level of a rider in the roadway there: OUR CLAMP (2026-11-13), for
+    the owner to confirm. `ceiling` is a second limit where the caller has one (a sidewalk's
+    last-resort level; the painted-lane level of a lane behind posts). `slip_lane` and
+    `contraflow` only say why in the rule's words: both are already in the crossing cost."""
     if road_level is None or getattr(result, "adjustment", None) is not None:
         return result
     if result.tier is not Stress.LTS1 or result.half:
         return result
-    for at_least, level in BESIDE_BUSY_ROAD_STEPS:
-        if road_level >= at_least:
-            why = ["road rated Avoid" if road_level >= 5 else f"road at LTS {road_level:g}"]
-            # Half a level for every CROSSING_SCORE_STEP, with no cap of its own (the owner,
-            # 2026-11-12: "no upper limit. There could be some really terrible bike paths"),
-            # and half a level for a slip lane; never past 4.5 ("nothing is avoid").
-            score = crossing_score or 0.0
-            steps = int(score // CROSSING_SCORE_STEP)
-            if steps:
-                why.append(f"crossings score {round(score):d} a mile")
-            if slip_lane:
-                why.append("crosses a slip lane")
-                steps += 1
-            level = min(BESIDE_BUSY_ROAD_MAX, level + steps * BESIDE_BUSY_ROAD_CROSSINGS_STEP)
-            return replace(
-                result,
-                tier=Stress(int(level)),
-                half=level % 1 == 0.5,
-                rule=f"{BESIDE_BUSY_ROAD_RULE} ({'; '.join(why)}), {result.rule}",
-            )
-    return result
+    # 2.5 is the first level the junction model calls busy; below it nothing is asked.
+    if road_level < BESIDE_CALM_ROAD_LEVEL + 0.5:
+        return result
+    base = beside_busy_road_base(road_level)
+    why = ["road rated Avoid" if road_level >= 5 else f"road at LTS {road_level:g}"]
+    # Half a level for every CROSSING_FT_PER_HALF_STEP, with no cap of its own (the owner,
+    # 2026-11-12: "no upper limit. There could be some really terrible bike paths"); never
+    # past 4.5 ("nothing is avoid").
+    cost = crossing_ft_per_mile or 0.0
+    steps = int(cost // CROSSING_FT_PER_HALF_STEP)
+    if steps:
+        why.append(f"crossings cost {round(cost):d} ft a mile")
+        if contraflow:
+            why.append("ridden against the traffic beside it")
+        if slip_lane:
+            why.append("crosses a slip lane")
+    level = min(BESIDE_BUSY_ROAD_MAX, base + steps * 0.5)
+    limit = min(road_level, ceiling) if ceiling is not None else road_level
+    if level > limit:
+        # Down to a half step, and never below the start for the road alone.
+        level = max(math.floor(limit * 2) / 2, min(base, BESIDE_BUSY_ROAD_MAX))
+        why.append("held at the level of the road beside it")
+    if level <= 1.0:
+        return result
+    return replace(
+        result,
+        tier=Stress(int(level)),
+        half=level % 1 == 0.5,
+        rule=f"{BESIDE_BUSY_ROAD_RULE} ({'; '.join(why)}), {result.rule}",
+    )
 
 
 # The rule on a `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).

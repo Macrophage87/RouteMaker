@@ -842,6 +842,13 @@ class RebuildContext:
     # The ways' nodes tagged `button_operated=yes` (`extract.read_ways`), for
     # `segment.button_operated`; empty where none were read.
     button_nodes: set[int] = field(default_factory=set)
+    # The ways' nodes tagged as a signal or a stop or yield sign (`extract.read_ways`), for
+    # what a side path crosses (`rate_side_paths`); empty where none were read.
+    control_nodes: dict[int, str] = field(default_factory=dict)
+    # The level of a road that carries a protected lane on its own way, classified without
+    # that lane (`facility.without_bike_facility`): the level a rider in the roadway has,
+    # which the lane is rated from and never above (`apply_beside_busy_road`).
+    bare_level_by_way: dict[int, float] = field(default_factory=dict)
     ways_by_id: dict[int, extract.Way] = field(default_factory=dict)
     # The whole `Match`, not `(aadt, tier)`. The stage that reads this is the
     # last one that could record where a count came from, and the pair dropped
@@ -1979,12 +1986,26 @@ def assert_mass_capacity(
 
 
 def apply_beside_busy_road(
-    stress_by_way: dict, side_streets: dict, crossings: dict | None = None
+    stress_by_way: dict,
+    side_streets: dict,
+    crossings: dict | None = None,
+    bare_level: dict | None = None,
 ) -> int:
     """Rate each side path or protected lane from the street it runs beside
     (`stress.beside_busy_road_step`): the busiest level among the street's ways that carry at
     least `BESIDE_BUSY_ROAD_MIN_SHARE` of the path's length found beside it, and what it
-    crosses (`facility.side_path_crossings`). Returns how many ways the step moved."""
+    crosses (`facility.side_path_crossings`). Returns how many ways the step moved.
+
+    A sidewalk open to bicycles is never rated above the level the same sidewalk has with no
+    bicycle tag (`sidewalks.TIER` beside a 4.5 or Avoid road, `sidewalks.LAST_RESORT_TIER`
+    beside any other), so a tag that opens it never makes it worse (the audit, 2026-11-13,
+    I8).
+
+    A protected lane tagged on the road itself (`facility.on_road_tracks`,
+    `SideStreet.road_sides`) reads the road's level without the lane from `bare_level`
+    (`RebuildContext.bare_level_by_way`) and is left alone where that is not known. A track
+    is at a flat LTS 1 by the classifier and steps as a path does; a painted lane behind
+    posts takes the same level, never above the painted-lane level it has now."""
     from routemaker.stress import BESIDE_BUSY_ROAD_MIN_SHARE, beside_busy_road_step
 
     moved = 0
@@ -1992,51 +2013,86 @@ def apply_beside_busy_road(
         current = stress_by_way.get(path_id)
         if current is None:
             continue
-        total = sum(found.metres_by_way.values())
-        levels = [
-            level_of(stress_by_way[street_id])
-            for street_id, metres in found.metres_by_way.items()
-            if street_id in stress_by_way
-            and stress_by_way[street_id].tier is not None
-            and total > 0
-            and metres >= BESIDE_BUSY_ROAD_MIN_SHARE * total
-        ]
         crossed = (crossings or {}).get(path_id)
+        ceiling = None
+        asked = current
+        if found.road_sides:
+            road_level = (bare_level or {}).get(path_id)
+            if road_level is None or getattr(current, "adjustment", None) is not None:
+                continue
+            if found.posts and current.tier is not None and level_of(current) > 1.0:
+                # A lane behind posts, at its painted-lane level: asked as the track it is.
+                ceiling = level_of(current)
+                asked = replace(current, tier=Stress.LTS1, half=False)
+        else:
+            total = sum(found.metres_by_way.values())
+            levels = [
+                level_of(stress_by_way[street_id])
+                for street_id, metres in found.metres_by_way.items()
+                if street_id in stress_by_way
+                and stress_by_way[street_id].tier is not None
+                and total > 0
+                and metres >= BESIDE_BUSY_ROAD_MIN_SHARE * total
+            ]
+            road_level = max(levels, default=None)
+            if found.sidewalk and road_level is not None:
+                ceiling = float(sidewalks.TIER if road_level >= 4.5 else sidewalks.LAST_RESORT_TIER)
         stepped = beside_busy_road_step(
-            current,
-            max(levels, default=None),
-            crossing_score=crossed.score_per_mile if crossed else None,
+            asked,
+            road_level,
+            crossing_ft_per_mile=crossed.ft_per_mile if crossed else None,
             slip_lane=crossed.slip_lane if crossed else False,
+            contraflow=found.contraflow,
+            ceiling=ceiling,
         )
-        if stepped is not current:
+        if stepped is not asked:
             stress_by_way[path_id] = stepped
             moved += 1
     return moved
 
 
-def rate_side_paths(ways, stress_by_way: dict) -> tuple[dict, int]:
+def rate_side_paths(
+    ways,
+    stress_by_way: dict,
+    *,
+    control_nodes: dict | None = None,
+    bare_level: dict | None = None,
+) -> tuple[dict, int]:
     """The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
-    the owner, 2026-11-12): each unnamed bike way's named street alongside
-    (`facility.side_streets`), what the path crosses (`facility.side_path_crossings`), and the
-    level it takes from them (`apply_beside_busy_road`). Returns the streets found, kept for
-    the side-path names (`write_segments`), and how many ways the step moved.
+    the owner, 2026-11-12): each bike way's named street alongside, by geometry
+    (`facility.side_streets`), and each protected lane tagged on its road
+    (`facility.on_road_tracks`); what a rider following each crosses
+    (`facility.side_path_crossings`; `control_nodes` are the signals and stop signs,
+    `extract.read_ways`); and the level each takes (`apply_beside_busy_road`). Returns the
+    streets found beside the ways mapped on their own, kept for the side-path names
+    (`write_segments`) and PR #1242's weekend rule, and how many ways the step moved.
 
     Run once every street's level is final: after the rows (a row on the street sets the
     level the path reads, a row on the path stands), after the circle parks', Capitol
     grounds' and Mall's walks are opened, and after `car_free_tier_1` and
     `raise_ridden_sidewalks` (`classify_facilities`), so a road closed to cars for good,
     lowered to LTS 1 there, never lifts the path beside it."""
-    side_streets = facility.side_streets([(way.osm_id, way.tags, way.coordinates) for way in ways])
+    placed = [(way.osm_id, way.tags, way.coordinates) for way in ways]
+    side_streets = facility.side_streets(placed)
+    # Only the tracks whose road's own level is known and busy enough to step them.
+    tracks = {
+        osm_id: found
+        for osm_id, found in facility.on_road_tracks(placed).items()
+        if (bare_level or {}).get(osm_id) is not None
+    }
     crossings = facility.side_path_crossings(
         [(way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates) for way in ways],
-        side_streets,
+        {**side_streets, **tracks},
         lambda osm_id: (
             level_of(stress_by_way[osm_id])
             if osm_id in stress_by_way and stress_by_way[osm_id].tier is not None
             else None
         ),
+        control_nodes,
     )
-    return side_streets, apply_beside_busy_road(stress_by_way, side_streets, crossings)
+    moved = apply_beside_busy_road(stress_by_way, side_streets, crossings)
+    moved += apply_beside_busy_road(stress_by_way, tracks, crossings, bare_level)
+    return side_streets, moved
 
 
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
@@ -2467,7 +2523,12 @@ def build_handlers(
         # The ways' nodes tagged `button_operated=yes` are read in the same pass (the beg
         # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
         context.button_nodes = set()
-        context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
+        context.control_nodes = {}
+        context.ways = extract.read_ways(
+            context.source_pbf,
+            button_nodes=context.button_nodes,
+            control_nodes=context.control_nodes,
+        )
         # The OSM route relations the ways are in, for the zoomed-out long trails
         # (OWNER-DECISIONS 375).
         routes = trail_routes.read_routes(context.source_pbf)
@@ -2890,6 +2951,22 @@ def build_handlers(
                 )
 
             context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
+            if facility.on_road_tracks([(way.osm_id, tags, way.coordinates)]):
+                # A protected lane tagged on the road: the road's own level, without it, for
+                # the side-path rule (`rate_side_paths`; W4, docs/stress/side-paths.md).
+                context.bare_level_by_way[way.osm_id] = level_of(
+                    service_road_step(
+                        rural_floor(
+                            classified(
+                                match.aadt if match else None,
+                                tags=facility.without_bike_facility(tags),
+                            ),
+                            tags,
+                            urban=not rural,
+                        ),
+                        tags,
+                    )
+                )
             if match is not None and match.raw_aadt is not None:
                 # Smoothed (OWNER-DECISIONS 285, 303): the link is classified on
                 # the street's median, but the segment publishes what the agency
@@ -3735,7 +3812,12 @@ def build_handlers(
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
         # Last, once every street's level is final (`rate_side_paths`).
-        context.side_streets, stepped = rate_side_paths(context.ways, context.stress_by_way)
+        context.side_streets, stepped = rate_side_paths(
+            context.ways,
+            context.stress_by_way,
+            control_nodes=context.control_nodes,
+            bare_level=context.bare_level_by_way,
+        )
         logger.info("side paths and protected lanes beside a busy road, rated from it: %d", stepped)
         logger.info(
             "contraflow-only facilities shown on the map where the rider with the traffic "
@@ -4396,7 +4478,7 @@ def build_handlers(
         # people on foot share it (`facility.sidepath_name`), for the route description
         # and the road panel.
         sidepath_names = (
-            {osm_id: found.name for osm_id, found in context.side_streets.items()}
+            {osm_id: found.name for osm_id, found in context.side_streets.items() if found.name}
             if context.side_streets is not None
             else facility.side_street_names(
                 [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
