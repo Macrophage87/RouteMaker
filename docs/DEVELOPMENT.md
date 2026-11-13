@@ -6707,7 +6707,8 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
 - **A long calm plan takes the long ride's in-flight slot** as well as an ordinary one
   (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment), and needs no
   confirmation (it is under the confirm span). Its timed-out 503 carries `long_ride_timed_out`.
-- Other ride types keep today's limits: past 19 mi the calm search does not run (`limited: "span"`).
+- Other ride types keep today's limits: past 19 mi the calm search does not run (`limited: "span"`;
+  37 mi (60 km) since v0.27.0).
   Cargo with passengers, the only other stress-averse ride, tops out at 80, where there is no calm
   search at all.
 
@@ -7252,9 +7253,12 @@ to route gets fewer rounds, never a late answer, and the note then says the sear
 time. No new slot, no new budget: it holds the ordinary routing slot it already held. Past 30 km
 the search does not rank the router's own alternatives (`routing.alternates_span_ok`), as it did
 not before: they roughly double a long route's router call and, asked early, would hold a second
-pool slot (beta's pool is two). Go's other options (More direct, Fewer turns, All paved) on such a
-trip each get an equal share of what is left of their 25 s, so the first cannot leave the rest
-none (`api.route_neighbours`). Both from the PR's review. A
+pool slot (beta's pool is two); from the PR's review. Go's other options (More direct, Fewer
+turns, All paved) keep their shared 25 s, one after another: each option's search is held to its
+own 14 s (`refine.REFINE_BUDGET_S`) after its router call, and on a 54.6 km trip the router call
+alone took 11 to 20 s, so the later options were already often left out there before this change.
+Splitting the 25 s evenly was tried and dropped in review: on DC to Baltimore it left each option
+too little for even its router call. A
 Trailmaxxing plan at the top still goes leg by leg past 30 km (`refine.LONG_CALM_SPAN_M`, kept
 where OWNER-DECISIONS 256 put it). Past 60 km and up to the long-ride span (93 mi, 150 km) other
 ride types keep the router's route and the red-crossing pass, as before. The hills slider's avoid

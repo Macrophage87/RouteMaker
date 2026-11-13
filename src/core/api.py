@@ -4131,22 +4131,8 @@ def route_neighbours(request, body: RouteIn):
         )
         for kind, notch in wanted
     }
-    # Past the span where the calm search used to stop (`refine.LONG_CALM_SPAN_M`), each plan
-    # now searches and can take seconds the plans after it need: each gets an equal share of
-    # what is left of the budget, so the first never leaves the rest none (the review of PR
-    # #1231). Shorter trips keep the shared budget as before.
-    from . import refine
-
-    shared = span_m(routing.loop_points(body.points, loop)) <= refine.LONG_CALM_SPAN_M
-    answered: dict = {}
     with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
-        for number, (kind, _notch) in enumerate(wanted):
-            begun = started
-            if not shared:
-                left = started + routing.PLAN_BUDGET_S - routing.clock()
-                share = max(left, 0.0) / (len(wanted) - number)
-                begun = routing.clock() - (routing.PLAN_BUDGET_S - share)
-            answered[kind] = _neighbour(bodies[kind], begun)
+        answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
     options = [
         {"kind": kind, "stress": notch, "route": answered[kind]}
         for kind, notch in wanted
