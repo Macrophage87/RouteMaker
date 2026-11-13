@@ -4,6 +4,36 @@
   "decided_by": "the deployment owner",
   "status": "DRAFT, not approved: levels proposed by Claude from the owner's Kennedy St NW and Water St NW calls applied as guides (the owner, 2026-11-13: \"Don't use my calls as one-offs but guides to inference\"). Do not load until he confirms this file; then load with load_overrides (dry run first); takes effect on the next rebuild.",
   "annotations": "129 ways. (1) Same street, same facts: 126 ways, mostly DC, whose level came from an agency layer alone (DDOT's 2020 layer for most) and differs from our own reviewed level on the same street's adjoining blocks with the same class, speed, lanes, bike facility and a count within a third. (2) A freeway's count: 3 ways (Arlington Blvd Service Road x2, St Mary's Pl NW) carrying the exact count of a bikes-barred road beside or above them. Ways with an existing owner row were left out.",
+  "retire": [
+    {
+      "kind": "stress",
+      "osm_way_id": 624705229,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "va-own-g01645-2",
+        "category": "other",
+        "annotation_status": "approved",
+        "public_note": "Urban main road, posted 25 mph, 2 lanes one way, about 42,000 cars a day, no bike lane: our level 4.",
+        "visibility": "public",
+        "display": "map"
+      },
+      "reason": "Replaced 2026-11-13: the level came from a count that belongs to a freeway or highway beside the street, or differs from the same street's reviewed adjoining blocks; the owner's Water St NW and Kennedy St NW calls applied as guides (2026-11-13)."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468774885,
+      "value": {
+        "tier": 4,
+        "adjustment_id": "va-own-g01645-2",
+        "category": "other",
+        "annotation_status": "approved",
+        "public_note": "Urban main road, posted 25 mph, 2 lanes one way, about 42,000 cars a day, no bike lane: our level 4.",
+        "visibility": "public",
+        "display": "map"
+      },
+      "reason": "Replaced 2026-11-13: the level came from a count that belongs to a freeway or highway beside the street, or differs from the same street's reviewed adjoining blocks; the owner's Water St NW and Kennedy St NW calls applied as guides (2026-11-13)."
+    }
+  ],
   "rows": [
     {
       "kind": "stress",
