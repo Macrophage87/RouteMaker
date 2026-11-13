@@ -219,39 +219,9 @@ class TestIntersectionsInTheAnswer:
         assert junction["calm_mi"] == pytest.approx(junction["cost_ft"] / 5280, abs=0.006)
         assert junction["calm_km"] == pytest.approx(junction["calm_mi"] * 1.609344, abs=0.01)
 
-    def test_the_ride_time_is_named_where_it_moved_the_cost(self, client, arterial, router) -> None:
-        """468a: the hour's effect is said in words ("rush hour"), so each row names the
-        ride time only where it changed that junction's cost."""
-        router(world())
-        (plain,) = post(client, good_body()).json()["intersections"]
-        assert plain["time_band"] is None
-        router(world())
-        (rush,) = post(client, {**good_body(), "when": "weekday_rush"}).json()["intersections"]
-        assert rush["time_band"] == "weekday_rush"
-        assert rush["cost_ft"] > plain["cost_ft"]
-
     def test_the_debug_list_is_off_unless_asked(self, client, arterial, router) -> None:
         router(world())
         assert post(client, good_body()).json().get("junctions_debug") is None
-
-    def test_the_debug_list_has_every_junction_even_unflagged(
-        self, client, arterial, router
-    ) -> None:
-        """468: "an API debug field listing every junction". A signalised crossing of
-        the arterial (600 ft, below orange) is not in `intersections` but is in the list."""
-        fake = world()
-        fake.locate = locate_answer(signal=True)
-        router(fake)
-        body = post(client, {**good_body(), "debug_junctions": True, "when": "weekday_rush"}).json()
-        assert body["intersections"] == []
-        (row,) = body["junctions_debug"]
-        assert row["control"] == "signal" and row["flagged"] is False and row["severity"] is None
-        assert row["time_factor"] == 1.25
-        assert row["cost_ft"] == 750
-        assert row["calm_mi"] == pytest.approx(row["cost_ft"] / 5280, abs=0.001)
-        assert row["calm_km"] == pytest.approx(row["calm_mi"] * 1.609344, abs=0.002)
-        assert row["text"].endswith(" calm km)") and " calm mi (" in row["text"]
-        assert row["assumed_speed"] is False
 
     def test_a_signal_that_is_a_known_flashing_beacon_is_priced_with_no_signal(
         self, client, arterial, router

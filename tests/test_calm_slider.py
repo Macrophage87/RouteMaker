@@ -117,21 +117,14 @@ class TestCalmRate:
 class TestTurnAndHillCostsStayActive:
     """The literature review: "keep turn and intersection costs active at every
     slider position" and "keep hill aversion strong at the relaxed end". The turn charge is
-    `presets.CALM_MANEUVER_PENALTY_S` at every position with `presets.TURN_CHARGE_EVERY_SETTING`
-    (the owner's yes, 2026-11-12), and above the old top without it: it never falls."""
+    one distance (`presets.TURN_FT`) at every position."""
 
     @pytest.mark.parametrize("stress", [0, 40, 70, 80, 90, 100])
     def test_maneuver_and_hill_options_do_not_depend_on_the_stress(self, stress) -> None:
         base = presets.costing("default", stress=70)["bicycle"]
         moved = presets.costing("default", stress=stress)["bicycle"]
-        for key in ("use_hills", "gate_cost", "gate_penalty", "bicycle_type"):
+        for key in ("use_hills", "gate_cost", "gate_penalty", "bicycle_type", "maneuver_penalty"):
             assert moved[key] == base[key], key
-        expected = (
-            presets.CALM_MANEUVER_PENALTY_S
-            if stress > presets.STRESS_TODAYS_TOP or presets.TURN_CHARGE_EVERY_SETTING
-            else base["maneuver_penalty"]
-        )
-        assert moved["maneuver_penalty"] == expected
 
 
 class TestFrontEndAgrees:

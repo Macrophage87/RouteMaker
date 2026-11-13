@@ -204,7 +204,7 @@ def judged_takes(trip: dict, around: dict, ctx, deadline) -> bool | None:
     answer (`refine.red_count`, which counts a capped trail crossing at its cost), never
     busier by the Traffic-wins guard (its LTS 3, 4 and Avoid exposure and its red and Avoid
     junction cost), and only where its score (`Analysis.score`: the router's cost plus the
-    junctions' stress, `RED_DETOUR_S` a red and the 30 minutes a pass) is the lower. The
+    junctions' stress and the 30 minutes a pass) is the lower. The
     router's cost alone, as before, prices no junction stress, and the red pass's route is
     dearer by it by construction, so a way round back through the red it avoided won almost
     every time (the 2026-11-08 hunt, S3 and P2). None where either cannot be read."""

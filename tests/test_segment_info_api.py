@@ -835,7 +835,8 @@ class TestWords:
             ("mixed traffic, 35 mph or above", "35 mph (56 km/h) or above, mixed traffic"),
             (
                 "mixed traffic, 25 mph, single lane, low volume",
-                "25 mph (40 km/h), mixed traffic, one lane each way, light traffic",
+                "25 mph (40 km/h), mixed traffic, one lane each way, "
+                "lighter traffic for a road this size",
             ),
             (
                 "legal but avoid: expressway posted 55 mph (Furth: mixed traffic, 35 mph or above)",

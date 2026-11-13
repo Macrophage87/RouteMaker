@@ -288,17 +288,9 @@ def test_mountain_bikes_level_exclusions_go_with_every_ask(monkeypatch):
     assert router.asked and all(level in asked["exclude_locations"] for asked in router.asked)
 
 
-def test_a_capped_trail_crossing_that_costs_a_red_is_asked_round(monkeypatch):
-    # Before (J1): an unsignalised trail crossing of a fast arterial is drawn orange (item
-    # 185) and the pass read only the colour. After: its red-level cost counts.
-    capped = dataclasses.replace(
-        RED, cost_ft=5280.0, severity=model.ORANGE, max_severity=model.ORANGE
-    )
-    through = analysis("through", tiers="1" * 400, events=[capped])
-    router = Router(monkeypatch, readings(through_read=through), window_answer())
-    trip, info = red_crossings.settle(plain_through(), context(), searched=False)
-    assert info["reds"] == 1 and detoured(trip) and router.asked
-    # An orange crossing that costs an orange is still not a red.
+def test_an_orange_crossing_is_not_asked_round():
+    # No event is drawn below its cost now (the orange cap on a trail crossing with no
+    # signal mapped, item 185, went on 2026-11-13), so a red is what the map draws red.
     plain_orange = dataclasses.replace(RED, cost_ft=1500.0, severity=model.ORANGE)
     assert red_crossings.reds_of(analysis("o", events=[plain_orange])) == []
 

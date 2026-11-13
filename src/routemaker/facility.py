@@ -45,7 +45,7 @@ to prefer it.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -935,46 +935,97 @@ def side_street_names(
     | Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
 ) -> dict[int, str]:
     """Each unnamed bike way's name from the named street it runs alongside
-    (`sidepath_name`), by osm id; ways with none are left out (`side_streets`)."""
-    return {osm_id: found.name for osm_id, found in side_streets(ways).items()}
+    (`sidepath_name`), by osm id; ways with none are left out (`side_streets`). A way with a
+    name of its own, and a sidewalk a bicycle may merely use, are rated from the street but
+    never named after it (`SideStreet.name` is empty)."""
+    return {osm_id: found.name for osm_id, found in side_streets(ways).items() if found.name}
 
 
 class SideStreet(NamedTuple):
-    """The named street an unnamed bike way runs alongside (`side_streets`): the way's
-    name from it (`sidepath_name`), and the metres of the bike way found beside each of
-    the street's ways, by osm id (the share of the street's level a way carries, for
-    `stress.beside_busy_road_step`)."""
+    """The street a bike way runs alongside (`side_streets`, `on_road_tracks`).
 
+    `name` and `metres_by_way` are read outside this module (the side-path names; PR #1242's
+    `pipeline.run.weekend_car_free_beside`): keep both, in this order
+    (tests/test_beside_busy_road.py pins them)."""
+
+    # The way's name from the street (`sidepath_name`), or "" where the way is not named
+    # after it: it has a name of its own, or is a sidewalk a bicycle may merely use.
     name: str
+    # The metres of the bike way found beside each of the street's ways, by osm id (the share
+    # of the street's level a way carries, for `stress.beside_busy_road_step`).
     metres_by_way: dict[int, float]
+    # The street's own name ("Old Georgetown Road"): the path's OWN road, which it never
+    # crosses by running beside it (`side_path_crossings`).
+    street: str = ""
+    # A rider may ride it against the traffic in the lane beside it: a two-way path or track
+    # (one of its two directions always is), or a one-way one that points against that lane
+    # (`CONTRAFLOW_FACTOR`).
+    contraflow: bool = False
+    # A sidewalk (`footway=sidewalk` and the like) open to bicycles.
+    sidewalk: bool = False
+    # A track or post-protected lane tagged on the road itself (`on_road_tracks`): the sides
+    # of the road it is on. Empty for a way mapped on its own.
+    road_sides: tuple[str, ...] = ()
+    # And whether that is a painted lane behind posts or a kerb, not a track: the classifier
+    # rates it as a painted lane, the side-path rule as the protected lane it is.
+    posts: bool = False
+
+
+_ONEWAY_FORWARD = frozenset({"yes", "true", "1"})
+_ONEWAY_BACKWARD = frozenset({"-1", "reverse"})
+
+
+def _ride_directions(tags: dict[str, str]) -> tuple[bool, bool]:
+    """(forward, backward): the directions a bicycle may ride a trail-class way, along and
+    against its nodes. `oneway:bicycle` first, then `oneway`; a way with neither is two-way,
+    which is OSM's meaning for it and how the router rides it."""
+    value = tags.get("oneway:bicycle") or tags.get("oneway")
+    if value in _ONEWAY_FORWARD:
+        return True, False
+    if value in _ONEWAY_BACKWARD:
+        return False, True
+    return True, True
+
+
+def asked_beside(tags: dict[str, str]) -> bool:
+    """Whether a way is asked for the street it runs beside (`side_streets`): a trail-class
+    way a bicycle may ride as a path or a protected lane (`facility`), or a sidewalk open to
+    bicycles (`bicycle=yes`; its facility class is none, but it is ridden like the signed
+    sidewalk beside it, and is rated like it). Its name is not part of the test."""
+    highway = tags.get("highway")
+    if highway not in TRAIL_CLASS_HIGHWAY or highway == "steps":
+        return False
+    if facility(tags) in (Facility.PATH, Facility.PROTECTED):
+        return True
+    return _is_sidewalk(tags) and trail_open_to_bicycle(tags)
 
 
 def side_streets(
     ways: Sequence[tuple[int, dict[str, str], Sequence[tuple[float, float]]]]
     | Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
 ) -> dict[int, SideStreet]:
-    """Each unnamed bike way's named street alongside, by osm id; ways with none are left
-    out.
+    """Each bike way's named street alongside, by osm id; ways with none are left out.
 
-    `ways` is (osm id, tags, [(lon, lat), ...]). A way is asked when it is trail
-    class, has no `name`, and a bicycle may ride it as a path or a protected lane
-    (`facility`). It takes a street's name when at least SIDE_STREET_FRACTION of its
-    length lies within SIDE_STREET_M of that street's centreline and within
-    SIDE_STREET_ANGLE of parallel to it there. A street is a SIDE_STREET_HIGHWAY way
-    with a `name`; two ways of one name count as one street."""
+    `ways` is (osm id, tags, [(lon, lat), ...]). A way is asked when a bicycle may ride it as
+    a path, a protected lane or an open sidewalk (`asked_beside`), named or not. It is beside
+    a street when at least SIDE_STREET_FRACTION of its length lies within SIDE_STREET_M of
+    that street's centreline and within SIDE_STREET_ANGLE of parallel to it there: geometry,
+    never the lack of a name (the audit, 2026-11-13: the lanes named "Old Georgetown Road
+    (MDBR 187)" were never asked). A street is a SIDE_STREET_HIGHWAY way with a `name`; two
+    ways of one name count as one street.
+
+    A trail with a name of its own (`named_for_itself`: "Capital Crescent Trail", not "15th
+    Street Cycle Track") is judged as a whole: every way of that name in `ways`, taken
+    together, must meet the same test against the one street. So a long trail is not a side
+    path where a piece of it passes along a road, and a path that is a side path from end to
+    end is one whatever it is called."""
     lat0 = 38.9
     cell = SIDE_STREET_M
-    # The candidates first, so only the streets near one are held (the region's named
-    # roads are millions of segments; the unnamed bike ways a few thousand).
+    # The candidates first, so only the streets near one are held.
     ways = ways if isinstance(ways, Sequence) else list(ways)
     candidates: list[tuple[int, dict[str, str], list[tuple[float, float]]]] = []
     for osm_id, tags, coords in ways:
-        if (
-            len(coords) >= 2
-            and tags.get("highway") in TRAIL_CLASS_HIGHWAY
-            and not (tags.get("name") or "").strip()
-            and facility(tags) in (Facility.PATH, Facility.PROTECTED)
-        ):
+        if len(coords) >= 2 and asked_beside(tags):
             candidates.append((osm_id, tags, [_xy(lon, lat, lat0) for lon, lat in coords]))
     if not candidates:
         return {}
@@ -982,13 +1033,16 @@ def side_streets(
     for _osm_id, _tags, points in candidates:
         for p, _bearing_at, _metres in _samples(points, SIDE_STREET_STEP_M):
             wanted.add((int(p[0] // cell), int(p[1] // cell)))
+    # (a, b, the street's name, its way, the way its traffic runs: 1 along a to b only, -1
+    # against only, 0 both ways).
     grid: dict[
-        tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], str, int]]
+        tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], str, int, int]]
     ] = {}
     for street_id, tags, coords in ways:
         name = (tags.get("name") or "").strip()
         if not name or tags.get("highway") not in SIDE_STREET_HIGHWAY or len(coords) < 2:
             continue
+        flow = (-1 if tags.get("oneway") == "-1" else 1) if is_oneway(tags) else 0
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
         for a, b in zip(points, points[1:], strict=False):
             x0, x1 = sorted((a[0], b[0]))
@@ -996,63 +1050,211 @@ def side_streets(
             for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
                 for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
                     if (gx, gy) in wanted:
-                        grid.setdefault((gx, gy), []).append((a, b, name, street_id))
-    found: dict[int, SideStreet] = {}
+                        grid.setdefault((gx, gy), []).append((a, b, name, street_id, flow))
+    # Each candidate's best street: (tags, total metres, the street, metres beside it, by
+    # way, metres ridden forward with the lane beside less those against it).
+    read: dict[int, tuple[dict[str, str], float, str | None, float, dict[int, float], float]] = {}
     for osm_id, tags, points in candidates:
         total = 0.0
         beside: dict[str, float] = {}
         by_way: dict[str, dict[int, float]] = {}
-        for p, bearing, metres in _samples(points, SIDE_STREET_STEP_M):
-            total += metres
-            near: tuple[str, int] | None = None
-            nearest = SIDE_STREET_M
-            for a, b, name, street_id in grid.get((int(p[0] // cell), int(p[1] // cell)), ()):
-                d = _point_segment_m(p, a, b)
-                if d <= nearest and _angle_between(bearing, _bearing(a, b)) <= SIDE_STREET_ANGLE:
-                    near, nearest = (name, street_id), d
-            if near is not None:
-                beside[near[0]] = beside.get(near[0], 0.0) + metres
-                along = by_way.setdefault(near[0], {})
-                along[near[1]] = along.get(near[1], 0.0) + metres
-        if total <= 0 or not beside:
+        with_flow: dict[str, float] = {}
+        for start, end in zip(points, points[1:], strict=False):
+            along = (end[0] - start[0], end[1] - start[1])
+            for p, bearing, metres in _samples((start, end), SIDE_STREET_STEP_M):
+                total += metres
+                near = None
+                nearest = SIDE_STREET_M
+                for a, b, name, street_id, flow in grid.get(
+                    (int(p[0] // cell), int(p[1] // cell)), ()
+                ):
+                    d = _point_segment_m(p, a, b)
+                    if (
+                        d <= nearest
+                        and _angle_between(bearing, _bearing(a, b)) <= SIDE_STREET_ANGLE
+                    ):
+                        near, nearest = (a, b, name, street_id, flow), d
+                if near is None:
+                    continue
+                a, b, name, street_id, flow = near
+                beside[name] = beside.get(name, 0.0) + metres
+                held = by_way.setdefault(name, {})
+                held[street_id] = held.get(street_id, 0.0) + metres
+                # The traffic in the lane nearest the path: the street's one way, or on a
+                # two-way street the side the path is on (traffic keeps right).
+                road = (b[0] - a[0], b[1] - a[1])
+                if not flow:
+                    left = road[0] * (p[1] - a[1]) - road[1] * (p[0] - a[0]) > 0
+                    flow = -1 if left else 1
+                same = (along[0] * road[0] + along[1] * road[1]) * flow > 0
+                with_flow[name] = with_flow.get(name, 0.0) + (metres if same else -metres)
+        if total <= 0:
+            continue
+        if not beside:
+            read[osm_id] = (tags, total, None, 0.0, {}, 0.0)
             continue
         street, metres = max(beside.items(), key=lambda item: (item[1], item[0]))
-        if metres >= SIDE_STREET_FRACTION * total:
-            found[osm_id] = SideStreet(sidepath_name(street, tags), by_way[street])
+        read[osm_id] = (tags, total, street, metres, by_way[street], with_flow[street])
+    # A trail named for itself is judged over every way of its name.
+    trail_total: dict[str, float] = {}
+    trail_beside: dict[tuple[str, str], float] = {}
+    own: dict[int, str] = {}
+    for osm_id, (tags, total, street, metres, _by_way, _flow) in read.items():
+        name = (tags.get("name") or "").strip()
+        if not name:
+            continue
+        if street is not None and not named_for_itself(name, (street,)):
+            continue
+        key = _name_key(name)
+        if not key or generic_facility_name(name):
+            continue
+        own[osm_id] = key
+        trail_total[key] = trail_total.get(key, 0.0) + total
+        if street is not None:
+            trail_beside[key, street] = trail_beside.get((key, street), 0.0) + metres
+    found: dict[int, SideStreet] = {}
+    for osm_id, (tags, total, street, metres, by_way, flow) in read.items():
+        if street is None or metres < SIDE_STREET_FRACTION * total:
+            continue
+        trail = own.get(osm_id)
+        if trail is not None and (
+            trail_beside.get((trail, street), 0.0) < SIDE_STREET_FRACTION * trail_total[trail]
+        ):
+            continue
+        forward, backward = _ride_directions(tags)
+        named = bool((tags.get("name") or "").strip())
+        rated_only = named or facility(tags) is Facility.NONE
+        found[osm_id] = SideStreet(
+            "" if rated_only else sidepath_name(street, tags),
+            by_way,
+            street,
+            contraflow=(forward and flow < 0) or (backward and flow >= 0),
+            sidewalk=_is_sidewalk(tags),
+        )
     return found
+
+
+# --- A protected lane tagged on the road itself (the audit, 2026-11-13, I7) -----------------
+
+# One level for one facility however it is mapped: a track tagged on the road
+# (`cycleway*=track`), and a painted lane behind posts or a kerb (`cycleway*:separation`
+# physical), are the same thing on the ground as a protected lane mapped as its own way, and
+# go through the same rule (`stress.beside_busy_road_step`).
+
+
+def on_road_tracks(
+    ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+) -> dict[int, SideStreet]:
+    """The roads that carry a protected lane on their own way (`facility` is protected),
+    by osm id, each as a side path beside itself: its street is its own name, and it is on
+    the sides the tags say. Contraflow where a side says it is two-way
+    (`cycleway:<side>:oneway=no`) or runs against a one-way's traffic."""
+    found: dict[int, SideStreet] = {}
+    for osm_id, tags, coords in ways:
+        highway = tags.get("highway")
+        if highway is None or highway in TRAIL_CLASS_HIGHWAY or highway in MOTOR_ONLY_HIGHWAY:
+            continue
+        if len(coords) < 2 or closed_to_motor_traffic(tags):
+            continue
+        if facility(tags) is not Facility.PROTECTED:
+            continue
+        sides = cycleway_sides(tags)
+        rank = max(side.rank for side in sides.values())
+        on = tuple(name for name, side in sides.items() if side.rank == rank)
+        found[osm_id] = SideStreet(
+            "",
+            {osm_id: _length_m(coords)},
+            (tags.get("name") or "").strip() or f"way {osm_id}",
+            contraflow=any(sides[name].two_way or sides[name].contraflow for name in on),
+            road_sides=on,
+            posts=rank < 2,
+        )
+    return found
+
+
+def without_bike_facility(tags: dict[str, str]) -> dict[str, str]:
+    """A road's tags with every `cycleway*` key taken off: the road a rider in the roadway
+    has, for the level a protected lane on it is never rated above
+    (`stress.beside_busy_road_step`)."""
+    return {key: value for key, value in tags.items() if not key.startswith("cycleway")}
 
 
 # --- What a side path beside a busy road crosses (the owner, 2026-11-12) --------------------
 
 # The owner, 2026-11-12: "Bike paths besides busy roads should get a bump. If there are lots of
 # intersections, especially sliplanes it could get an even larger bump", and "it's not always
-# number of crossings, but also how bad they are." A crossing is a node a side path shares
-# with a way cars use: a street, a driveway, a service road, a slip lane (a `*_link`). Each
-# counts by how bad it is: the crossed way's own level (`level_of`, the rebuild's tier for it;
-# a class default where it has none), and SLIP_LANE_WEIGHT more for a slip lane. The weights
-# are summed over the run of side path along one street (its ways joined end to end), so a
-# path split at every driveway is read as one, and read as a score a mile. A run under
-# CROSSING_RUN_MIN_M is too short to read a rate from. Our defaults, not measured.
-CROSSING_WEIGHT_BY_CLASS = {
-    "service": 1.5,
-    "residential": 2.0, "unclassified": 2.0, "living_street": 2.0,
-    "tertiary": 2.5, "tertiary_link": 2.5,
-    "secondary": 3.0, "secondary_link": 3.0,
-    "primary": 4.0, "primary_link": 4.0, "trunk": 4.0, "trunk_link": 4.0,
-}  # fmt: skip
+# number of crossings, but also how bad they are."
+#
+# A crossing point is a place where a rider FOLLOWING the path rides across the line of
+# turning or crossing cars: a side-street mouth, a driveway, a service road, a slip lane (a
+# `*_link`). Not one (the audit, 2026-11-13, I5):
+# - the path's own road: the crosswalk over the street it runs beside, or the node where the
+#   path ends by joining that street;
+# - a crossing way the rider does not ride through: one with no side path of the same street
+#   on its far side;
+# - the end of the run, where the path stops at a street and goes no further.
+#
+# Each crossing is priced ONCE (the owner, 2026-10-03, decision 303: "our routing is a sum of
+# intersection stress and route stress, we don't want to double count"), and one test says
+# where: the junction model's own (`junction_priced`, `intersections.Road.busy` of the
+# crossed way read by its traffic as that model reads it at route time).
+# - A way with a price to cross (a crossing level above 1 by its lanes, speed and count;
+#   where those cannot be read, a map level of 2.5 or more) and a slip lane are junctions
+#   the junction model prices when a route rides through them. They are NOT in the path's
+#   level.
+# - Every other mouth is in the path's level, here, at the junction model's own price for
+#   passing it at its crossing level (`crossing_point_ft`): nothing at crossing level 1,
+#   which is what that model charges for it too. The feet are summed over the run of side
+#   path along one street (its ways joined end to end, so a path split at every driveway
+#   is read as one) and read as feet a mile. A run under CROSSING_RUN_MIN_M is too short
+#   to read a rate from.
+# Until 2026-11-13 the split was by the MAP level (2.5) on this side and by the crossing
+# level on the other, so a two-lane 35 mph street the map rates 2 was charged in both and
+# a two-lane 30 mph street the map rates 3 in neither (the independent review, finding 3).
+
+# The ways cars use that a side path can cross: streets, service roads and driveways, links.
+CROSSING_HIGHWAY = frozenset(
+    {
+        "service", "residential", "unclassified", "living_street",
+        "tertiary", "tertiary_link", "secondary", "secondary_link",
+        "primary", "primary_link", "trunk", "trunk_link",
+    }
+)  # fmt: skip
+# The level a crossed way is read at where the rebuild has none for it: a quiet street's.
+# Our default; in a rebuild every road has a level.
+UNRATED_CROSSING_LEVEL = 2.0
 SLIP_LANE_HIGHWAY = frozenset({"trunk_link", "primary_link", "secondary_link", "tertiary_link"})
-SLIP_LANE_WEIGHT = 2.0
 CROSSING_RUN_MIN_M = 160.0
 _MILE_M = 1609.344
+# Riding against the traffic in the lane beside the path, at an unsignalled driveway or
+# quiet-street mouth. Wachtel
+# and Lewiston (1994, ITE Journal 64(9):30-35, Table 4) measured 4.5 times the collision
+# risk for sidewalk riders going against the adjacent traffic over those going with it (2.0
+# on the roadway, not significant); Schepers et al. (2011, Accident Analysis and Prevention
+# 43(3):853-861, doi:10.1016/j.aap.2010.11.005) found more failure-to-yield crashes with
+# through cyclists at unsignalised priority intersections with two-way tracks (abstract; no
+# ratio taken from it). 2.0 is the low end of that range: OUR DEFAULT, not a measured value,
+# and the level is one for both directions of a way, so a two-way path carries it for the
+# rider going with the traffic as well (docs/stress/side-paths.md, known limits).
+CONTRAFLOW_FACTOR = 2.0
+# What a node says of the control there (`pipeline.extract.read_ways`' `control_nodes`).
+SIGNAL_NODE = "signal"
+# How far along the crossed way, in its nodes either side of the point, a signal is looked
+# for (the junction model reads a signal up to 30 m along the crossed road,
+# `core.junctions`; the rebuild has node order, not distance, here). Our default.
+CONTROL_REACH_NODES = 2
+# How many crossing ways and islands in a row are read as one crossing (a street crossed in
+# two halves over a median island).
+CROSSING_CHAIN_PIECES = 4
 
 
 class SidePathCrossings(NamedTuple):
-    """What a side path crosses (`side_path_crossings`): its run's crossing score a mile (None
-    where the run is too short to read a rate from) and whether the way itself crosses a slip
-    lane."""
+    """What a side path crosses that the junction model does not price
+    (`side_path_crossings`): its run's driveways and quiet-street mouths in feet of quiet
+    riding a mile, the contraflow factor included (None where the run is too short to read
+    a rate from)."""
 
-    score_per_mile: float | None
-    slip_lane: bool
+    ft_per_mile: float | None
 
 
 def _length_m(coordinates: Sequence[tuple[float, float]]) -> float:
@@ -1072,68 +1274,191 @@ def _crossing_way(tags: dict[str, str]) -> bool:
     )
 
 
+def _crossing_piece(tags: dict[str, str]) -> bool:
+    """A crossing way, or the island between two of them."""
+    return _crossing_way(tags) or (
+        tags.get("highway") in TRAIL_CLASS_HIGHWAY
+        and TRAFFIC_ISLAND in {tags.get(key) for key in CROSSING_KEYS}
+    )
+
+
+def _signalised(tags: dict[str, str]) -> bool:
+    """A crossing way's own tags say it has a signal (as `pipeline.signals.is_signalised`)."""
+    crossing = tags.get("crossing")
+    if crossing == "traffic_signals":
+        return tags.get("crossing:signals") != "no"
+    return tags.get("crossing:signals") == "yes" and crossing not in {
+        "uncontrolled", "unmarked", "no", "informal",
+    }  # fmt: skip
+
+
+def crossing_point_ft(level: float, signal: bool = False) -> float:
+    """What a mouth the junction model does not price at route time (`junction_priced`)
+    costs a rider on a side path, in feet of quiet riding, at the crossed way's CROSSING
+    level (`intersections.crossing_level`): the junction model's own price for that
+    movement (`intersections.cost_of`), asked of it here, so there is one source and no
+    figure of this module's. The movement is straight on along a path beside a road, past
+    the mouth, the rider holding the road's right of way (`intersections.has_priority`,
+    `Junction.beside`): the priority side's pass, times the share of drivers who do not
+    yield at a marked crossing, plus the right hook, both fading in from nothing at level
+    1 to whole at level 2. Today 271 ft at level 2, 135 ft at 1.5 (a driveway), nothing
+    at level 1; at a signal the pass costs nothing and the hook stays (250 and 125 ft)."""
+    # Imported here: `intersections` reads `stress`, which reads this module.
+    from . import intersections as ix
+
+    tier = int(level)
+    mouth = ix.Road(tier, half=level > tier, cross=float(level))
+    path = ix.Road(1)
+    road = ix.Road(ix.BUSY_TIER + 1, cross=ix.MAP_LEVEL_MAX)
+    passing = ix.Junction(
+        0.0, 0.0, 0.0, ix.Movement.STRAIGHT, path, path, (mouth,),
+        ix.Control.SIGNAL if signal else ix.Control.NONE,
+        path_crossing=True, beside=road,
+    )  # fmt: skip
+    return ix.cost_of(passing)[0]
+
+
+def road_at_level(level: float):
+    """A crossed way of which only its map level is known, as the junction model's road
+    (`intersections.Road`): it cannot be read by its traffic, so that level stands."""
+    from . import intersections as ix
+
+    tier = int(level)
+    return ix.Road(tier, half=level > tier)
+
+
+def crossed_road(road, highway: str) -> tuple[bool, float]:
+    """A crossed way as the junction model reads it at route time (`road`: its
+    `intersections.Road`, from the same facts the segment table keeps): whether crossing
+    it is a junction that model prices when a route rides through (a slip lane, or a way
+    with a price to cross, `Road.busy` read by its traffic), and its crossing level. THE
+    one test both sides share: a mouth it prices is not in a side path's level, and every
+    other mouth is, at that level."""
+    from . import intersections as ix
+
+    read = ix._by_traffic(road)
+    return highway in SLIP_LANE_HIGHWAY or read.busy, ix.crossing_level(read)
+
+
+def junction_priced(road, highway: str) -> bool:
+    """Whether crossing a way is a junction the junction model prices at route time
+    (`crossed_road`). Such a crossing is not in a side path's level."""
+    return crossed_road(road, highway)[0]
+
+
+class _Crossed(NamedTuple):
+    """One road at a node: its way, its name's key, its crossing level, whether the
+    junction model prices crossing it (`crossed_road`), whether a signal is mapped within
+    reach, whether the way ends at the node, and the next point along it from there."""
+
+    way: int
+    key: str
+    level: float
+    junction: bool
+    signal: bool
+    ends: bool
+    toward: tuple[float, float] | None
+
+
+def _street_key(osm_id: int, found: SideStreet) -> str:
+    return _name_key(found.street or sidepath_street(found.name) or found.name) or f"way {osm_id}"
+
+
 def side_path_crossings(
     ways: Sequence[tuple[int, dict[str, str], Sequence[int], Sequence[tuple[float, float]]]],
     side: dict[int, SideStreet],
     level_of: Callable[[int], float | None] | None = None,
+    control_at: Mapping[int, str] | None = None,
+    points: dict[int, dict] | None = None,
+    road_of: Callable[[int], object | None] | None = None,
 ) -> dict[int, SidePathCrossings]:
-    """For each side path in `side` (`side_streets`), what it crosses, by osm id.
+    """For each side path in `side` (`side_streets`, `on_road_tracks`), what a rider
+    following it crosses, by osm id.
 
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]) for every way; `level_of` gives a
-    crossed way's level by osm id (None where it has none). A road the path shares a node with
-    is a crossing; so is a crossing mapped as its own way (`_crossing_way`) that touches the
-    path, scored by the worst road it touches. A run is the side paths along one street name
-    joined at shared end nodes or through such a crossing. Only the road nodes near a side
-    path are held, so the region's road network is read, not kept."""
-    paths: dict[int, tuple[Sequence[int], float]] = {}
+    crossed way's level by osm id (None where it has none); `control_at` gives the nodes
+    tagged as a signal (SIGNAL_NODE); `road_of` gives a crossed way as the junction model
+    has it at route time (an `intersections.Road` with the speed, lanes, direction and
+    count the segment table keeps), without which only its map level is known
+    (`road_at_level`). What counts as a crossing point, and what does not, is in the note
+    above (a way the junction model prices and a slip lane are that model's, not counted
+    here); what each costs is `crossing_point_ft`. The two carriageways of one
+    named street are one point. A run is
+    the side paths along one street joined at shared end nodes or through a crossing the
+    rider rides. Only the road nodes near a side path are held, so the region's road
+    network is read, not kept. `points`, where given, is filled with each path's run's
+    points, {point: (feet, signalised)}, for a report."""
+    control_at = control_at or {}
+    paths: dict[int, tuple[Sequence[int], float, str, Sequence[tuple[float, float]] | None]] = {}
     for osm_id, _tags, nodes, coords in ways:
         if osm_id in side:
-            paths[osm_id] = (nodes, _length_m(coords))
-    path_nodes = {node for nodes, _length in paths.values() for node in nodes}
-    crossers: dict[int, Sequence[int]] = {}
-    for osm_id, tags, nodes, _coords in ways:
-        if osm_id not in side and _crossing_way(tags) and path_nodes.intersection(nodes):
-            crossers[osm_id] = nodes
-    wanted = path_nodes.union(*crossers.values()) if crossers else path_nodes
-    road_nodes: dict[int, tuple[float, bool]] = {}
-    for osm_id, tags, nodes, _coords in ways:
-        highway = tags.get("highway", "")
-        if osm_id in side or highway not in CROSSING_WEIGHT_BY_CLASS:
-            continue
-        near = [node for node in nodes if node in wanted]
-        if not near:
-            continue
-        level = level_of(osm_id) if level_of is not None else None
-        slip = highway in SLIP_LANE_HIGHWAY
-        weight = (level if level is not None else CROSSING_WEIGHT_BY_CLASS[highway]) + (
-            SLIP_LANE_WEIGHT if slip else 0.0
-        )
-        for node in near:
-            held = road_nodes.get(node)
-            road_nodes[node] = (
-                (weight, slip) if held is None else (max(held[0], weight), held[1] or slip)
+            paths[osm_id] = (
+                nodes,
+                _length_m(coords),
+                _street_key(osm_id, side[osm_id]),
+                coords if len(coords) == len(nodes) else None,
             )
-    # Each crossing as (key, weight, slip), by the path nodes it touches.
-    at_node: dict[int, list[tuple[tuple[str, int], float, bool]]] = {}
-    for node in path_nodes:
-        if node in road_nodes:
-            weight, slip = road_nodes[node]
-            at_node.setdefault(node, []).append((("node", node), weight, slip))
-    crosser_paths: dict[int, set[int]] = {}
-    for osm_id, nodes in crossers.items():
-        hits = [road_nodes[n] for n in nodes if n in road_nodes and n not in path_nodes]
+    path_nodes: dict[int, set[int]] = {}
+    for path_id, (nodes, _length, _key, _coords) in paths.items():
+        for node in nodes:
+            path_nodes.setdefault(node, set()).add(path_id)
+    # The crossing ways and islands within reach of a side path, each with its nodes and
+    # whether its own tags say it has a signal.
+    pieces: dict[int, tuple[Sequence[int], bool]] = {}
+    for osm_id, tags, nodes, _coords in ways:
+        if osm_id not in side and _crossing_piece(tags):
+            pieces[osm_id] = (nodes, _signalised(tags))
+    pieces_at: dict[int, list[int]] = {}
+    for piece_id, (nodes, _signal) in pieces.items():
+        for node in nodes:
+            pieces_at.setdefault(node, []).append(piece_id)
+    near: set[int] = set()
+    frontier = {piece for node in path_nodes for piece in pieces_at.get(node, ())}
+    for _hop in range(CROSSING_CHAIN_PIECES):
+        frontier -= near
+        if not frontier:
+            break
+        near |= frontier
+        frontier = {
+            other for piece in frontier for node in pieces[piece][0] for other in pieces_at[node]
+        }
+    wanted = set(path_nodes).union(*(pieces[piece][0] for piece in near))
+    roads_at: dict[int, list[_Crossed]] = {}
+    for osm_id, tags, nodes, coords in ways:
+        highway = tags.get("highway", "")
+        if highway not in CROSSING_HIGHWAY:
+            continue
+        hits = [index for index, node in enumerate(nodes) if node in wanted]
         if not hits:
             continue
-        weight, slip = max(h[0] for h in hits), any(h[1] for h in hits)
-        for node in nodes:
-            if node in path_nodes:
-                at_node.setdefault(node, []).append((("way", osm_id), weight, slip))
-    for path_id, (nodes, _length) in paths.items():
-        for node in nodes:
-            for key, _weight, _slip in at_node.get(node, ()):
-                if key[0] == "way":
-                    crosser_paths.setdefault(key[1], set()).add(path_id)
-    # Runs: union the paths of one street name that share an end node or a crossing way.
+        road = road_of(osm_id) if road_of is not None else None
+        if road is None:
+            level = level_of(osm_id) if level_of is not None else None
+            road = road_at_level(UNRATED_CROSSING_LEVEL if level is None else level)
+        priced_at_route_time, level = crossed_road(road, highway)
+        key = _name_key(tags.get("name")) or f"way {osm_id}"
+        located = coords if len(coords) == len(nodes) else None
+        last = len(nodes) - 1
+        for index in hits:
+            reach = nodes[max(0, index - CONTROL_REACH_NODES) : index + CONTROL_REACH_NODES + 1]
+            ends = index in (0, last) and nodes[0] != nodes[last]
+            toward = None
+            if ends and located is not None and last >= 1:
+                toward = located[1] if index == 0 else located[last - 1]
+            roads_at.setdefault(nodes[index], []).append(
+                _Crossed(
+                    osm_id,
+                    key,
+                    level,
+                    priced_at_route_time,
+                    any(control_at.get(node) == SIGNAL_NODE for node in reach),
+                    ends,
+                    toward,
+                )
+            )
+
+    # Runs: the side paths of one street joined at shared end nodes or through a crossing
+    # the rider rides.
     parent = {osm_id: osm_id for osm_id in paths}
 
     def root(x: int) -> int:
@@ -1142,39 +1467,172 @@ def side_path_crossings(
             x = parent[x]
         return x
 
-    ends: dict[tuple[str, int], int] = {}
-    for osm_id, (nodes, _length) in paths.items():
+    ends_at: dict[tuple[str, int], int] = {}
+    for osm_id, (nodes, _length, key, _coords) in paths.items():
         if not nodes:
             continue
         for node in (nodes[0], nodes[-1]):
-            key = (side[osm_id].name, node)
-            if key in ends:
-                parent[root(osm_id)] = root(ends[key])
+            if (key, node) in ends_at:
+                parent[root(osm_id)] = root(ends_at[key, node])
             else:
-                ends[key] = osm_id
-    for members in crosser_paths.values():
-        by_name: dict[str, int] = {}
-        for osm_id in sorted(members):
-            first = by_name.setdefault(side[osm_id].name, osm_id)
-            parent[root(osm_id)] = root(first)
-    run_crossings: dict[int, dict[tuple[str, int], float]] = {}
+                ends_at[key, node] = osm_id
+
+    def priced(crossed: list[_Crossed], signal: bool) -> float | None:
+        """The level's price for a point, or None where the junction model prices it."""
+        if any(road.junction for road in crossed):
+            return None
+        return crossing_point_ft(max(road.level for road in crossed), signal)
+
+    # Each point as (its key, feet, signalised), by the path that meets it: where the path
+    # itself shares a node with the crossed way (the last figure counts the path's way
+    # through the node: 2 through the middle, 1 at an end) ...
+    direct: dict[int, list[tuple[int, tuple[str, object], float, bool, int]]] = {}
+    for path_id, (nodes, _length, key, coords) in paths.items():
+        sides = side[path_id].road_sides
+        last = len(nodes) - 1
+        closed = last > 0 and nodes[0] == nodes[last]
+        for index, node in enumerate(nodes):
+            crossed = [
+                road
+                for road in roads_at.get(node, ())
+                if road.key != key
+                and road.way != path_id
+                and not _other_side(sides, coords, index, road)
+            ]
+            if not crossed:
+                continue
+            signal = any(road.signal for road in crossed) or control_at.get(node) == SIGNAL_NODE
+            feet = priced(crossed, signal)
+            if feet is None:
+                continue
+            worst = max(crossed, key=lambda road: road.level)
+            named = not worst.key.startswith("way ")
+            direct.setdefault(path_id, []).append(
+                (
+                    node,
+                    ("road", worst.key) if named else ("node", node),
+                    feet,
+                    signal,
+                    2 if closed or 0 < index < last else 1,
+                )
+            )
+    # ... and where a crossing way (or a chain of them over an island) carries the rider
+    # from one side path of the street to another. A piece over the path's own road is
+    # never ridden by following the path, and is left out before the chain is read.
+    chained: dict[int, list[tuple[tuple[str, object], float, bool]]] = {}
+    by_key: dict[str, list[int]] = {}
+    for path_id, (_nodes, _length, key, _coords) in paths.items():
+        by_key.setdefault(key, []).append(path_id)
+    for key, members in by_key.items():
+        own_nodes = {node for path_id in members for node in paths[path_id][0]}
+
+        def rideable(piece: int, key: str = key, own_nodes: set[int] = own_nodes) -> bool:
+            return not any(
+                road.key == key
+                for node in pieces[piece][0]
+                if node not in own_nodes
+                for road in roads_at.get(node, ())
+            )
+
+        seen: set[int] = set()
+        for start in sorted({p for node in own_nodes for p in pieces_at.get(node, ())}):
+            if start in seen or not rideable(start):
+                continue
+            chain = {start}
+            edge = {start}
+            while edge and len(chain) < CROSSING_CHAIN_PIECES:
+                edge = {
+                    other
+                    for piece in edge
+                    for node in pieces[piece][0]
+                    if node not in own_nodes
+                    for other in pieces_at[node]
+                    if other not in chain and rideable(other)
+                }
+                chain |= edge
+            seen |= chain
+            chain_nodes = {node for piece in chain for node in pieces[piece][0]}
+            touched = chain_nodes & own_nodes
+            if len(touched) < 2:
+                continue
+            joined = sorted({p for node in touched for p in path_nodes[node] if p in members})
+            for path_id in joined[1:]:
+                parent[root(path_id)] = root(joined[0])
+            crossed = [road for node in chain_nodes - own_nodes for road in roads_at.get(node, ())]
+            if not crossed:
+                continue
+            signal = (
+                any(pieces[piece][1] for piece in chain)
+                or any(road.signal for road in crossed)
+                or any(control_at.get(node) == SIGNAL_NODE for node in chain_nodes)
+            )
+            feet = priced(crossed, signal)
+            if feet is None:
+                continue
+            worst = max(crossed, key=lambda road: road.level)
+            named = not worst.key.startswith("way ")
+            point = (("road", worst.key) if named else ("way", min(chain)), feet, signal)
+            for path_id in joined:
+                chained.setdefault(path_id, []).append(point)
+
+    # A run's points: a shared node counts where the run goes through it (twice past it in
+    # all), not where the run ends on it.
     run_length: dict[int, float] = {}
-    for osm_id, (nodes, length) in paths.items():
-        r = root(osm_id)
-        held = run_crossings.setdefault(r, {})
-        for node in nodes:
-            for key, weight, _slip in at_node.get(node, ()):
-                held[key] = max(held.get(key, 0.0), weight)
+    run_passes: dict[int, dict[int, int]] = {}
+    for path_id, (_nodes, length, _key, _coords) in paths.items():
+        r = root(path_id)
         run_length[r] = run_length.get(r, 0.0) + length
+        passes = run_passes.setdefault(r, {})
+        for node, _point, _ft, _signal, count in direct.get(path_id, ()):
+            passes[node] = passes.get(node, 0) + count
+    run_points: dict[int, dict[tuple[str, object], tuple[float, bool]]] = {}
+
+    def take(path_id: int, point: tuple[str, object], ft: float, signal: bool) -> None:
+        held = run_points.setdefault(root(path_id), {})
+        if point not in held or ft > held[point][0]:
+            held[point] = (ft, signal)
+
+    for path_id in paths:
+        passes = run_passes.setdefault(root(path_id), {})
+        for node, point, ft, signal, _count in direct.get(path_id, ()):
+            if passes[node] >= 2:
+                take(path_id, point, ft, signal)
+        for point, ft, signal in chained.get(path_id, ()):
+            take(path_id, point, ft, signal)
     found: dict[int, SidePathCrossings] = {}
-    for osm_id, (nodes, _length) in paths.items():
-        r = root(osm_id)
+    for path_id in paths:
+        r = root(path_id)
+        factor = CONTRAFLOW_FACTOR if side[path_id].contraflow else 1.0
+        feet = sum(ft if signal else ft * factor for ft, signal in run_points.get(r, {}).values())
         length = run_length[r]
-        score = sum(run_crossings[r].values())
-        rate = score / (length / _MILE_M) if length >= CROSSING_RUN_MIN_M else None
-        slip = any(s for node in nodes for _key, _weight, s in at_node.get(node, ()))
-        found[osm_id] = SidePathCrossings(rate, slip)
+        rate = feet / (length / _MILE_M) if length >= CROSSING_RUN_MIN_M else None
+        found[path_id] = SidePathCrossings(rate)
+        if points is not None:
+            points[path_id] = run_points.get(r, {})
     return found
+
+
+def _other_side(
+    sides: tuple[str, ...],
+    coords: Sequence[tuple[float, float]] | None,
+    index: int,
+    road: _Crossed,
+) -> bool:
+    """Whether a way that ends at a road's node comes in from the side the road's track is
+    not on (a track on one side only, `SideStreet.road_sides`): a rider in the track does
+    not cross its mouth. A way that goes through the node is on both sides, and where the
+    geometry is not known the point is kept."""
+    if len(sides) != 1 or coords is None or not road.ends or road.toward is None:
+        return False
+    here = coords[index]
+    before = coords[max(index - 1, 0)]
+    after = coords[min(index + 1, len(coords) - 1)]
+    lat0 = here[1]
+    a, b, h, t = (_xy(lon, lat, lat0) for lon, lat in (before, after, here, road.toward))
+    cross = (b[0] - a[0]) * (t[1] - h[1]) - (b[1] - a[1]) * (t[0] - h[0])
+    if cross == 0:
+        return False
+    return ("left" if cross > 0 else "right") != sides[0]
 
 
 # --- The side path a `bicycle=use_sidepath` road asks riders to use (review RL-1) -----------

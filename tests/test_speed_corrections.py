@@ -8,7 +8,6 @@ import json
 import pytest
 
 from routemaker import speed_corrections as sc
-from routemaker.stress import Stress, classify
 
 OWNER_FILE = sc.SPEED_DIR / "2026-09-30-owner-md-parkways.json"
 PARKWAYS = {"Sligo Creek Parkway", "Little Falls Parkway", "Beach Drive"}
@@ -42,21 +41,6 @@ class TestTheOwnersFile:
             assert '"Set them to 25 mph (Recommended)"' in r["reason"]
             assert any(name in r["evidence"] for name in PARKWAYS), r["osm_way_id"]
             assert "no maxspeed" in r["evidence"]
-
-    def test_wickham_road_signed_25_comes_down_from_the_rural_default(self) -> None:
-        # The owner, 2026-10-17: signed 25 mph, unposted in OSM.
-        way = {"highway": "tertiary", "name": "Wickham Road"}
-        assert classify(way, urban=False, jurisdiction="MD").tier is Stress.LTS4
-        tags, applied = sc.corrected(way, sc.load()[62828504])
-        assert applied
-        assert classify(tags, urban=False, jurisdiction="MD").tier is Stress.LTS2
-
-    def test_sligo_creek_parkway_comes_down_from_lts3_to_lts2(self) -> None:
-        way = {"highway": "tertiary", "lanes": "2", "name": "Sligo Creek Parkway"}
-        assert classify(way, urban=True, jurisdiction="MD").tier is Stress.LTS3
-        tags, applied = sc.corrected(way, sc.load()[SLIGO])
-        assert applied
-        assert classify(tags, urban=True, jurisdiction="MD").tier is Stress.LTS2
 
 
 class TestCorrected:

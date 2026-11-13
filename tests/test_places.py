@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 from places import INSIDE, OUTSIDE, params
 
-from core import accounts, report_log, routing, street_photo, weather
+from core import accounts, report_log, street_photo, weather
 from core.api import RouteIn
 
 
@@ -40,10 +40,9 @@ def test_a_place_outside_the_map_is_refused_everywhere_it_is_asked(place) -> Non
 
 @pytest.mark.parametrize("place", params(INSIDE))
 def test_the_district_s_own_rules_apply_in_the_district_only(place) -> None:
-    """DC's boundary (the 311 log's and the stop-as-yield rule's) is right in and out of town."""
+    """DC's boundary (the 311 log's) is right in and out of town."""
     lon, lat = place["lon"], place["lat"]
     assert report_log.in_dc(lon, lat) is place["dc"]
-    assert routing.stop_as_yield(lon, lat) is place["dc"]
 
 
 @pytest.mark.parametrize("place", params(INSIDE))

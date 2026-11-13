@@ -23,6 +23,10 @@ The reading, the owner's defaults as proposed for this item:
   `smoothness=bad` and the roughest a penalty may make a way
   (lua/routemaker_remap.lua, `M.PCI_SURFACE`).
 
+Since 2026-11-13 the bands are what the map and the report say; the ROUTING graph is given
+good for every band (`graph_band`), because fair and poor made a busy street cheaper, not
+dearer.
+
 "In most cases" leaves two exceptions, both defaults for the owner to confirm:
 
 - an approved RouteMaker correction wins: a row in `fixtures/pavement/overrides.json`
@@ -102,6 +106,25 @@ UNPAVED_SURFACES = frozenset(
 
 OVERRIDES = Path(__file__).resolve().parents[2] / "fixtures" / "pavement" / "overrides.json"
 KEEP_OSM = "osm"
+
+
+def graph_band(applied: str) -> str:
+    """The band the ROUTING graph is given for a street whose reading is `applied`: always
+    good, so a rough street is never cheaper than a smooth one. The map and the report keep
+    the true band.
+
+    Why (audit 2026-11-13, areas/09 section 3.3): the Lua writes fair as the paved-but-rough
+    surface class and poor as compacted. Valhalla's bicycle costing charges a surface only
+    through a speed factor, which is 1.0 for paved-rough on every bicycle type but Road and
+    0.8 for compacted on Hybrid and Cross; but its graph builder also cuts the ROAD's speed
+    on such a surface (halved where no speed is tagged), and the bicycle costing reads a
+    slower road as a calmer one. On a busy street that second effect is the larger, so a
+    "fair" street cost LESS than the same street in good repair. A penalty that never turns
+    into a discount needs the Lua to price the surface apart from the road's speed
+    (docs/stress/routing-costs.md, "Surface"); until then the band is kept out of the
+    router. Good is still sent, so OSM's `smoothness` no longer speaks for a surveyed street
+    (the owner, 2026-10-11: "DC score in most cases takes priority over OSM data")."""
+    return GOOD if applied in BANDS else applied
 
 
 def band(pci: float | None) -> str | None:

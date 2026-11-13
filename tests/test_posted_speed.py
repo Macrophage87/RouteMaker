@@ -44,12 +44,6 @@ def test_a_directional_posting_in_the_district_is_read() -> None:
     assert "maxspeed" not in directional.assumed
 
 
-def test_a_list_is_read_as_its_highest_part() -> None:
-    listed = classify({**RESIDENTIAL, "maxspeed": "25 mph;35 mph"}, jurisdiction="DC")
-    assert listed.tier == classify({**RESIDENTIAL, "maxspeed": "35 mph"}).tier
-    assert listed.tier is Stress.LTS4
-
-
 def test_a_bare_number_in_a_list_still_records_the_unit() -> None:
     assert "maxspeed unit" in classify({**RESIDENTIAL, "maxspeed": "25;30"}).assumed
 
@@ -59,7 +53,9 @@ def test_a_rural_road_posted_by_list_is_not_the_narrow_road() -> None:
     road = {"highway": "tertiary", "maxspeed": "45;55", "lane_markings": "no"}
     result = classify(road, urban=False)
     assert "narrow rural road" not in result.rule
-    assert result.tier >= Stress.LTS4
+    # The rural table at an uncounted tertiary's usual 1,300 a day: 3.
+    assert result.rule.startswith("rural road") and result.tier >= Stress.LTS3
+    assert classify(road, urban=False, aadt=2_000).tier >= Stress.LTS4
 
 
 def test_the_expressway_rule_reads_the_directional_speed() -> None:

@@ -254,103 +254,363 @@ class TestJunctionDelay:
         )
 
 
-class TestTurns:
-    """The owner, 2026-11-10: "Trailmaxxing seems to cause a lot of fiddly turns when there's
-    an easy road nearby". The top of the slider ranks a turn at `TURN_RANK_S` of quiet riding."""
+def _turn_piece(way, heading, names=("A",), choice=None):
+    return routing.Piece(
+        way, BASE[0], BASE[1], 100.0, names=names, heading_in=heading, heading_out=heading,
+        choice=choice,
+    )  # fmt: skip
 
-    def test_the_turns_in_a_trips_directions_are_counted_every_leg(self) -> None:
-        trip = {
-            "legs": [
-                {"maneuvers": [{"type": 1}, {"type": 10}, {"type": 8}, {"type": 16}]},
-                {"maneuvers": [{"type": 15}, {"type": 9}, {"type": 4}]},
-            ]
-        }
-        assert refine.turns_of(trip) == 4
-        assert refine.turns_of({"legs": [{}]}) == 0
+
+# The turn price at the reference speed, in the router's cost seconds: 222 ft is 29.8.
+TURN_S = presets.cost_s_of_quiet_ft(presets.TURN_FT, 18.0)
+FEWER_S = presets.cost_s_of_quiet_ft(presets.FEWER_TURNS_FT, 18.0)
+
+
+class TestTurns:
+    """One definition of a turn and one price in the ranking, at every setting (audit
+    2026-11-13, report 3.6; decision 254; the owner, 2026-11-13: "remove a large amount of
+    cognitive load on a cyclist for meaningless differences in time and comfort"). Before:
+    three definitions (the router's name change, the directions' maneuver types here, a 40
+    degree change of street in the dodge pass), two prices (15 cost seconds in the router,
+    112 ft; 15 seconds of riding in the ranking, 246 ft), and no turn term in the score at
+    all. After: the ranking charges 222 ft of quiet riding (Broach, Dill and Gliebe 2012) for
+    each turn of one definition and takes out what the router charged; the router is told
+    what it was told before (15 cost seconds), because its search cannot be guarded."""
+
+    def test_a_turn_is_a_change_of_heading_onto_another_street(self) -> None:
+        straight = [_turn_piece(1, 0.0), _turn_piece(2, 10.0, ("B",))]
+        turned = [_turn_piece(1, 0.0), _turn_piece(2, 90.0, ("B",))]
+        assert refine.turns_in(straight) == 0
+        assert refine.turns_in(turned) == 1
+        assert refine.TURN_DEGREES == 40.0
+        at = [_turn_piece(1, 0.0), _turn_piece(2, refine.TURN_DEGREES, ("B",))]
+        under = [_turn_piece(1, 0.0), _turn_piece(2, refine.TURN_DEGREES - 1, ("B",))]
+        assert refine.turns_in(at) == 1 and refine.turns_in(under) == 0
+
+    def test_a_turn_that_keeps_the_name_counts_where_there_is_a_choice(self) -> None:
+        # The owner's complaint of a trail that zig-zags: its name does not change, and
+        # Valhalla's `maneuver_penalty` (charged on a change of name) misses it. Before: 0
+        # turns in the dodge pass's count and nothing in the score.
+        zigzag = [_turn_piece(1, 0.0, ("Trail",)), _turn_piece(2, 90.0, ("trail",), choice=True)]
+        assert refine.turns_in(zigzag) == 1 and refine.router_turns_in(zigzag) == 0
+        # One way that turns a corner where another way leaves is the same.
+        corner = [_turn_piece(1, 0.0), _turn_piece(1, 90.0, choice=True)]
+        assert refine.turns_in(corner) == 1 and refine.router_turns_in(corner) == 0
+        # A bare bend, with nowhere else to go, is not a turn.
+        bend = [_turn_piece(1, 0.0, ("Trail",)), _turn_piece(2, 90.0, ("Trail",), choice=False)]
+        assert refine.turns_in(bend) == 0
+        # Two pieces of one edge share its headings and carry no `choice`: never a turn.
+        one_edge = [_turn_piece(1, 0.0), _turn_piece(1, 90.0)]
+        assert refine.turns_in(one_edge) == 0
+
+    def test_without_headings_each_change_of_street_is_a_turn(self) -> None:
+        a = routing.Piece(1, BASE[0], BASE[1], 100.0, names=("A",))
+        b = routing.Piece(2, BASE[0], BASE[1], 100.0, names=("B",))
+        c = routing.Piece(3, BASE[0], BASE[1], 100.0, names=("B",))
+        assert refine.turns_in([a, b, c]) == 1
+
+    def test_what_the_router_charged_is_counted_by_its_own_rule(self) -> None:
+        # Valhalla 3.9.1 (`base_transition_cost`, `ConsistentNames`): `maneuver_penalty` on
+        # every edge entered that is not a link and shares no name with the edge before, at
+        # any angle; two unnamed edges count as sharing.
+        # A straight-through change of name: charged, and no turn of ours.
+        renamed = [_turn_piece(1, 0.0), _turn_piece(2, 0.0, ("B",), choice=True)]
+        assert refine.router_turns_in(renamed) == 1 and refine.turns_in(renamed) == 0
+        # A turn between two unnamed paths: a turn of ours, and not charged (the review's
+        # F3: before, the score took it as charged, so nobody charged it).
+        unnamed = [_turn_piece(1, 0.0, ()), _turn_piece(2, 90.0, (), choice=True)]
+        assert refine.router_turns_in(unnamed) == 0 and refine.turns_in(unnamed) == 1
+        # Named onto unnamed, and back: charged each time.
+        onto = [_turn_piece(1, 0.0), _turn_piece(2, 90.0, (), choice=True), _turn_piece(3, 0.0)]
+        assert refine.router_turns_in(onto) == 2
+        # A shared name in any case: not charged.
+        same = [_turn_piece(1, 0.0, ("Main St",)), _turn_piece(2, 90.0, ("main  st", "US 1"))]
+        assert refine.router_turns_in(same) == 0
+        # A link edge (a ramp, a turn channel) pays none, whatever its name.
+        for use in ("ramp", "turn_channel"):
+            link = dataclasses.replace(_turn_piece(2, 90.0, ("B",), choice=True), use=use)
+            assert refine.router_turns_in([_turn_piece(1, 0.0), link]) == 0
+        # Two pieces of one edge (no `choice`, one way): one edge, no charge.
+        cut = [_turn_piece(1, 0.0, ("A",)), _turn_piece(1, 0.0, ("B",))]
+        assert refine.router_turns_in(cut) == 0
+
+    def test_the_ranking_price_and_what_the_router_is_told(self) -> None:
+        assert presets.TURN_FT == 222.0 and presets.FEWER_TURNS_FT == 391.0
+        assert presets.ROUTER_TURN_S == 15 and presets.ROUTER_FEWER_TURNS_S == 30
+        assert TURN_S == 29.8 and FEWER_S == 52.4
+        assert refine.turn_price_s(context()) == TURN_S
+        assert refine.turn_price_s(context(maxcalm=True)) == TURN_S
+        assert refine.router_turn_s(context()) == 15
+        asked = context()
+        asked.fewer_turns = True
+        assert refine.turn_price_s(asked) == FEWER_S
+
+    def test_the_ranking_price_is_the_same_distance_on_every_ride_type(self) -> None:
+        # The router's own charge (15 or 30 cost seconds) is 81 ft on Bikeshare and 155 ft on
+        # Road Bike, as it was; the ranking's price is 222 ft (391 ft) on all of them.
+        for name, preset in presets.PRESETS.items():
+            block = presets.costing(name)
+            ctx = context()
+            ctx.costing = block
+            sent = block["bicycle"]["maneuver_penalty"]
+            assert sent == (30 if preset.fewer_turns else 15), name
+            assert refine.router_turn_s(ctx) == sent
+            feet = refine.quiet_ft(
+                refine.turn_price_s(ctx), refine.COST_S, presets.speed_kmh_of(block["bicycle"])
+            )
+            want = presets.FEWER_TURNS_FT if preset.fewer_turns else presets.TURN_FT
+            assert feet == pytest.approx(want, abs=0.5), name
+
+    def test_the_price_in_feet_and_in_seconds(self) -> None:
+        # 222 ft of quiet riding = 29.8 cost seconds = 13.5 s of riding at the 11.2 mph
+        # reference.
+        assert refine.quiet_ft(TURN_S, refine.COST_S) == pytest.approx(222.0, abs=0.3)
+        assert TURN_S / refine.QUIET_COST_FACTOR == pytest.approx(13.5, abs=0.05)
+        # The router's 15 cost seconds, 112 ft; the ranking's 15 s of riding before, 246 ft.
+        assert refine.quiet_ft(15, refine.COST_S) == pytest.approx(111.9, abs=0.1)
+        assert refine.quiet_ft(15, refine.RIDE_S) == pytest.approx(246.1, abs=0.1)
+
+    @pytest.mark.parametrize("rate", [0.0, presets.calm_rate_for(90)], ids=["default", "90"])
+    def test_the_score_charges_each_turn_once_whoever_saw_it(self, rate) -> None:
+        # Before 2026-11-13: no turn term in the score at any setting. The router's cost
+        # holds 15 cost seconds for each change of name; the score takes those out and puts
+        # in the price for each turn of ours.
+        ctx = context(rate=rate)
+        plain, named, zigzag, renamed = (analysis(n) for n in "abcd")
+        # 12 turns onto other streets, which the router charged: its cost holds 12 x 15.
+        named.turns = named.router_turns = 12
+        named.cost_s += 12 * 15
+        # 12 turns the router did not see (a zig-zag, unnamed paths).
+        zigzag.turns = 12
+        # 12 straight-through changes of name: charged by the router, no turn of ours.
+        renamed.router_turns = 12
+        renamed.cost_s += 12 * 15
+        assert named.score(ctx) - plain.score(ctx) == pytest.approx(12 * TURN_S)
+        assert zigzag.score(ctx) - plain.score(ctx) == pytest.approx(12 * TURN_S)
+        assert renamed.score(ctx) == pytest.approx(plain.score(ctx))
+
+    def test_a_turn_saved_never_buys_a_meaningfully_busier_road(self) -> None:
+        # The scorecard's side effect (2026-11-12: a higher turn charge at slider 25 added
+        # 1.7 mi of LTS 4 over 38 trips). Two routes the router prices alike; the weave is
+        # all LTS 1 with 12 turns, the main road has 300 m of LTS 3 and none. At every
+        # setting below the top (the guard does not depend on the calm rate).
+        for rate in (0.0, presets.calm_rate_for(90)):
+            ctx = context(rate=rate)
+            weave, main = analysis("a"), analysis("b", tiers="1" * 37 + "3" * 3)
+            weave.turns = 12
+            # The busier road is 100 cost seconds ahead on the whole score, turns included.
+            main.cost_s += weave.score(ctx) - main.score(ctx) - 100.0
+            assert main.score(ctx) < weave.score(ctx) - refine.IMPROVEMENT_EPS_S
+            assert refine.turn_saving_buys_traffic(weave, main)
+            # Before: the main road replaced the weave on its turns. After: it does not, and
+            # the weave replaces the main road.
+            assert not refine.better(main, weave, ctx)
+            assert refine.better(dataclasses.replace(weave, cost_s=weave.cost_s - 20), main, ctx)
+
+    def test_a_calmer_route_with_fewer_turns_keeps_its_turn_saving(self) -> None:
+        # The review's F2 (its probe): the guard is one-sided. Best is a busier weave (300 m
+        # of LTS 3, 12 turns the router charged); the candidate is all LTS 1 with no turns
+        # and 150 m longer in quiet riding. Before: both were scored with turns left out, and
+        # the calm, simple route lost.
+        ctx = context()
+        weave = analysis("a", tiers="1" * 37 + "3" * 3, cost_s=4000.0 + 12 * 15)
+        weave.turns = weave.router_turns = 12
+        calm_route = analysis("b", cost_s=4000.0 + 150 * ctx.quiet_cost)
+        assert not refine.turn_saving_buys_traffic(calm_route, weave)
+        assert calm_route.score(ctx) < weave.score(ctx)
+        assert refine.better(calm_route, weave, ctx)
+        assert not refine.better(weave, calm_route, ctx)
+
+    def test_a_busier_route_gets_no_credit_for_turns_nobody_charged(self) -> None:
+        # The review's F3 (its probe): equal router cost; one route has 300 m of LTS 3 and
+        # 10 turns between unnamed paths, which the router did not charge. Before: with turns
+        # "left out" it was credited 10 turn prices it had never paid, and won.
+        ctx = context()
+        link, plain = analysis("a", tiers="1" * 37 + "3" * 3), analysis("b")
+        link.turns = 10
+        assert link.score(ctx) > plain.score(ctx)
+        assert not refine.better(link, plain, ctx)
+        # With turns left out, what comes off is what the score put on, never more.
+        assert refine.turn_free_score(link, ctx) == pytest.approx(link.score(ctx) - 10 * TURN_S)
+        assert refine.turn_free_score(link, ctx) >= link.cost_s
+
+    def test_busier_is_the_traffic_wins_guards_own_measure(self) -> None:
+        # The review's F9: one helper, one margin (2% and 50 m of exposure; junction cost
+        # outside the 2%).
+        first, other = analysis("a"), analysis("b", tiers="1" * 39 + "3")
+        assert refine.busier_than(other, first) and not refine.busier_than(first, other)
+        ctx = context()
+        assert refine._busier(other, first.rated_exposure_m, ctx)
+        within = dataclasses.replace(first, exposure_m=first.exposure_m + 40.0)
+        assert not refine.busier_than(within, first)
+        assert not refine._busier(within, first.rated_exposure_m, ctx)
+
+    def test_between_about_equally_calm_routes_turns_decide(self) -> None:
+        # Within the Traffic-wins margin (2% and 50 m of exposure) the turn price counts.
+        ctx = context()
+        weave, main = analysis("a"), analysis("b")
+        weave.turns = 12
+        assert not refine.turn_saving_buys_traffic(weave, main)
+        assert refine.better(main, weave, ctx) and not refine.better(weave, main, ctx)
+
+    def test_the_alternatives_are_asked_at_the_requests_own_turn_charge(self) -> None:
+        # The turn-free ask of the first cut is gone: with the router's charge back at 15
+        # cost seconds there is nothing for it to undo.
+        request = {"costing_options": {"bicycle": {"maneuver_penalty": 15, "use_roads": 0.1}}}
+        asked = refine._alternates_request(request)
+        assert asked["costing_options"]["bicycle"] == {"maneuver_penalty": 15, "use_roads": 0.1}
 
     def test_between_equally_calm_routes_the_one_with_fewer_turns_ranks_first(self) -> None:
-        # Before: two routes the same length and calm tie on every figure of the key. After:
-        # the one with 12 more turns ranks 12 x TURN_RANK_S of quiet riding behind.
+        # The top of the slider does not read the router's cost: every turn at the price.
         top = context(maxcalm=True)
         plain, fiddly = analysis("a"), analysis("b")
         assert plain.key(top) == fiddly.key(top)
         fiddly.turns = 12
         extra_m = fiddly.key(top)[2] - plain.key(top)[2]
-        assert extra_m == pytest.approx(
-            refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 12 / QUIET_COST
-        )
+        assert extra_m == pytest.approx(TURN_S * 12 / QUIET_COST)
         assert plain.key(top) < fiddly.key(top)
 
     def test_turns_never_outrank_the_stress_figures(self) -> None:
         # A calmer route with many turns still ranks before a busier one with none.
         top = context(maxcalm=True)
-        calm, busy = analysis("a"), analysis("b", tiers="1" * 39 + "3")
-        calm.turns = 40
-        assert calm.key(top) < busy.key(top)
+        calm_route, busy = analysis("a"), analysis("b", tiers="1" * 39 + "3")
+        calm_route.turns = 40
+        assert calm_route.key(top) < busy.key(top)
 
-    def test_at_or_below_the_old_top_turns_change_nothing(self, monkeypatch) -> None:
-        # Review of #1139: level3 also prices repeats, dodges and loop way-backs below the
-        # top, so turns count only where the calm search runs (rate > 0 or the top). That
-        # rule, with the every-setting charge off.
-        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", False)
-        below, calm = context(), context(rate=presets.calm_rate_for(90))
-        plain, fiddly = analysis("a"), analysis("b")
-        fiddly.turns = 12
-        assert refine.level3(fiddly, below) == refine.level3(plain, below)
-        assert refine.level3(fiddly, calm) > refine.level3(plain, calm)
+    def test_a_turn_is_worth_under_a_block(self) -> None:
+        # 68 m of quiet riding: a detour to save a turn is taken only where it is shorter.
+        one = refine.turn_m(dataclasses.replace(analysis("a"), turns=1), context())
+        assert one == pytest.approx(TURN_S / QUIET_COST)
+        assert presets.TURN_FT / refine.FEET_PER_METRE == pytest.approx(67.7, abs=0.1)
 
-    def test_with_the_every_setting_charge_turns_count_below_the_top_too(self, monkeypatch) -> None:
-        # Owner decision 254, "every preset" (2026-11-12). Before: at Default a route with 12
-        # more turns ranked level with one without them; after: 12 turns' worth behind.
-        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
+    def test_turns_count_at_every_setting_in_the_dodge_and_repeat_ranking(self) -> None:
         below = context()
         plain, fiddly = analysis("a"), analysis("b")
         fiddly.turns = 12
         assert refine.level3(fiddly, below) - refine.level3(plain, below) == pytest.approx(
-            refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 12 / QUIET_COST
+            TURN_S * 12 / QUIET_COST
         )
 
-    def test_legs_add_their_turns(self) -> None:
+    def test_legs_add_their_turns_and_what_the_junction_cap_took_off(self) -> None:
         one, two = analysis("a"), analysis("b")
         one.turns, two.turns = 3, 5
-        assert refine.combine([one, two]).turns == 8
+        one.router_turns, two.router_turns = 1, 2
+        # The review's F4: before, a trip of several legs lost the cap's deduction.
+        one.junction_over_cap_m, two.junction_over_cap_m = 120.0, 30.0
+        whole = refine.combine([one, two])
+        assert whole.turns == 8 and whole.router_turns == 3
+        assert whole.junction_over_cap_m == 150.0
 
 
-class TestCappedTrailCrossings:
-    """The 2026-11-08 hunt, J1: an unsignalised trail crossing of an arterial is drawn orange
-    (item 185, "cap at orange ... 'signal not mapped'"), but "The cost still counts in full
-    where a route is chosen": every pass that keys on red reads it at its cost."""
+class TestOneUnit:
+    """Report 3.6: junction stress was in feet, the waits (and then a red surcharge) in seconds of
+    riding, the Avoid charges and turns in the router's cost seconds. `quiet_ft` is the one
+    conversion and `Analysis.terms_ft` says every term of the score in feet of quiet riding."""
 
-    @staticmethod
-    def capped(m: float = 1500.0, cost_ft: float = 5280.0) -> Event:
-        return dataclasses.replace(
-            event(m, cost_ft), severity=model.ORANGE, max_severity=model.ORANGE
+    def test_the_conversions_at_the_reference_speed(self) -> None:
+        assert refine.REFERENCE_SPEED_KMH == 18.0
+        assert refine.quiet_ft(100.0, refine.FEET) == 100.0
+        assert refine.quiet_ft(100.0, refine.METRES) == pytest.approx(328.1, abs=0.1)
+        # Ten minutes of riding (the red surcharge until 2026-11-13): 9,843 ft, 1.86 mi.
+        assert refine.quiet_ft(600.0, refine.RIDE_S) == pytest.approx(9842.5, abs=1.0)
+        # The Avoid entry's 1,800 cost seconds: 2.54 mi.
+        assert refine.quiet_ft(1800.0, refine.COST_S) / 5280 == pytest.approx(2.54, abs=0.01)
+        with pytest.raises(ValueError):
+            refine.quiet_ft(1.0, "furlongs")
+
+    def test_a_seconds_price_is_a_different_distance_on_each_ride_type(self) -> None:
+        # What the audit found: 600 s of riding is 1.35 mi on Bikeshare and 2.5 mi on E-bike.
+        mi = lambda mph: refine.quiet_ft(600.0, refine.RIDE_S, mph * 1.609344) / 5280  # noqa: E731
+        assert mi(8.1) == pytest.approx(1.35, abs=0.01)
+        assert mi(14.9) == pytest.approx(2.48, abs=0.01)
+
+    def test_the_terms_in_feet_add_up_to_the_score(self) -> None:
+        # Every term non-zero (the review's F10: three were zero here, so the sum proved
+        # less than it said). Rate 0, where the LTS 2 term is live.
+        ctx = context(rate=0.0)
+        ctx.costing = presets.costing("default")
+        read = analysis("a", "1" * 20 + "2" * 10 + "3" * 5 + "4" * 5, events=[event(500.0)])
+        read.lts2_m, read.lts2_weight = 1000.0, 0.25
+        read.flat_exposure_m = read.exposure_m - 300.0
+        read.hill_m, read.router_climb_m = 400.0, 150.0
+        read.avoid_passages = [(1, 2)]
+        read.turns, read.router_turns, read.graph_gap_m = 5, 2, 250.0
+        read.junction_delay_s = read.junction_ranked_s = 40.0
+        read.junction_over_cap_m = 120.0
+        terms = read.terms_ft(ctx)
+        assert set(terms) == {
+            "router", "stress", "junctions", "hills", "lts2", "avoid_junctions", "waits",
+            "junction_cap", "turns", "graph_gap",
+        }  # fmt: skip
+        assert all(terms.values()), terms
+        total_m = sum(terms.values()) / refine.FEET_PER_METRE
+        assert total_m * ctx.quiet_cost == pytest.approx(read.score(ctx))
+        # Five turns at the price, less the router's 15 cost seconds for the two it charged.
+        assert terms["turns"] == pytest.approx(
+            (5 * TURN_S - 2 * 15) / QUIET_COST * refine.FEET_PER_METRE
         )
+        assert terms["graph_gap"] == pytest.approx(250.0 * refine.FEET_PER_METRE)
+        # What one junction was charged twice or past the cap comes off again.
+        assert terms["junction_cap"] == pytest.approx(-120.0 * refine.FEET_PER_METRE)
 
-    def test_a_capped_crossing_that_costs_a_red_counts_as_one(self) -> None:
-        # Before: red_count 0, red_m 0, its cost in the second figure with LTS 3.
-        read = analysis("t", events=[self.capped()])
-        assert refine.red_count(read) == 1
-        assert read.red_m == pytest.approx(5280.0 / model.FEET_PER_METRE)
-        assert read.orange_m == 0.0
-        assert read.top_m == pytest.approx(read.lts4_m + 5280.0 / model.FEET_PER_METRE)
-        assert refine.top_by_leg(read) == pytest.approx([5280.0 / model.FEET_PER_METRE])
-        # The colour the rider is shown is the map's.
-        assert read.events[0].severity == model.ORANGE
 
-    def test_an_orange_that_costs_an_orange_stays_orange(self) -> None:
-        cheap = self.capped(cost_ft=1500.0)
-        plain_orange = dataclasses.replace(event(1500.0, 3300.0), severity=model.ORANGE)
-        assert refine.avoidance_severity(cheap) == model.ORANGE
-        # Orange for another reason than the cap (a rider's rating): not the cap's to undo.
-        assert refine.avoidance_severity(plain_orange) == model.ORANGE
-        assert refine.red_count(analysis("t", events=[cheap, plain_orange])) == 0
+class TestAfterARatingEdit:
+    """Report gap 8: after an admin's edit the ranking read the live level for a road
+    CROSSED but the graph's old price for a road RIDDEN, for up to a week. Now the ranking
+    prices the difference on the ways a route rides and asks the router round a road raised."""
 
-    def test_the_score_prices_it_as_a_red(self) -> None:
-        ctx = context()
-        capped = analysis("t", events=[self.capped()])
-        red = analysis("t", events=[event(1500.0, 5280.0)])
-        assert capped.score(ctx) == pytest.approx(red.score(ctx))
+    def pending_context(self, pending, rate=0.0, use_roads=0.1):
+        ctx = context(rate=rate)
+        ctx.costing = {"bicycle": {"use_roads": use_roads}}
+        ctx.pending = pending
+        return ctx
+
+    def test_no_edit_no_change(self) -> None:
+        read = analysis("a", "1" * 40)
+        assert refine.graph_gap_m(read.pieces, context()) == 0.0
+        assert refine.pending_targets(read, context()) == []
+
+    def test_a_road_just_raised_is_charged_its_live_level_when_ridden(self) -> None:
+        read = analysis("a", "1" * 40)
+        way = read.pieces[10].way_id
+        ridden = sum(p.metres for p in read.pieces if p.way_id == way)
+        ctx = self.pending_context({way: (2.0, 4.0)})
+        gap = refine.graph_gap_m(read.pieces, ctx)
+        assert ridden > 0
+        # Default (use_roads 0.1): LTS 4 adds about 13 quiet metres a metre over LTS 2.
+        per_m = calm.level_gap(2.0, 4.0, 0.1)
+        assert per_m == pytest.approx(calm.added_cost(0.1)[1] / calm.QUIET_FACTOR)
+        assert gap == pytest.approx(ridden * per_m)
+        # Before: the two candidates scored alike. After: the one on the raised road is behind.
+        on, off = analysis("a", "1" * 40), analysis("b", "1" * 40)
+        on.graph_gap_m = gap
+        assert on.score(ctx) - off.score(ctx) == pytest.approx(ctx.quiet_cost * gap)
+
+    def test_a_road_just_lowered_is_credited(self) -> None:
+        read = analysis("a", "1" * 40)
+        way = read.pieces[10].way_id
+        gap = refine.graph_gap_m(read.pieces, self.pending_context({way: (4.0, 2.0)}))
+        assert gap < 0
+
+    def test_half_steps_and_equal_levels(self) -> None:
+        assert calm.level_gap(3.0, 3.0, 0.1) == 0.0
+        assert 0 < calm.level_gap(2.0, 2.5, 0.1) < calm.level_gap(2.0, 3.0, 0.1)
+        assert calm.level_gap(3.0, 3.5, 0.1) < calm.level_gap(3.0, 4.0, 0.1)
+        # Nothing at the direct end for LTS 3, where the graph charges it nothing.
+        assert calm.level_gap(2.0, 3.0, 1.0) == 0.0
+
+    def test_the_router_is_asked_round_a_raised_road_at_every_setting(self) -> None:
+        read = analysis("a", "1" * 40)
+        way = read.pieces[20].way_id
+        raised = self.pending_context({way: (2.0, 4.0)})
+        targets = refine.pending_targets(read, raised)
+        assert targets and all(t.tier == 4 for t in targets)
+        # Not one lowered, nor one raised only within the calm levels.
+        assert refine.pending_targets(read, self.pending_context({way: (4.0, 2.0)})) == []
+        assert refine.pending_targets(read, self.pending_context({way: (1.0, 2.5)})) == []
+        # Nor on the no-trail graph, which grades no road.
+        raised.roadway_only = True
+        assert refine.pending_targets(read, raised) == []
 
 
 class TestCrossingAvoidance:
@@ -394,7 +654,7 @@ class TestCrossingAvoidance:
             assert kept["legs"][0]["shape"] == taken, weight
 
     def test_nothing_to_avoid_asks_the_router_nothing(self, monkeypatch) -> None:
-        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 3000.0)])}, [])
+        world = World(monkeypatch, {"o": analysis("o", events=[event(1500.0, 1400.0)])}, [])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept == trip_of("o", 4.0) and world.requests == []
         assert info["rounds"] == 0 and info["limited"] is None
@@ -435,12 +695,12 @@ class TestCrossingAvoidance:
         """The first round's route is the answer, as it was with one round, and is cached:
         a second round the router does not answer leaves `limited` unset (review of PR
         #421). With no red left on it: the first round's route here has an orange crossing
-        (2,000 ft) where it had a red. A red still on it is said whatever stopped the round
+        (1,400 ft) where it had a red. A red still on it is said whatever stopped the round
         (hunt S, low note, 2026-11-08), as the time branch already said it (the PC's check,
         2026-10-23): `TestRedJunctions`, and the red case below."""
         shapes = {
             "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
-            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 2000.0)]),
+            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 1400.0)]),
         }
         World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
         kept, info = refine.refine(trip_of("o", 4.0), context())
@@ -1006,124 +1266,6 @@ class TestTargets:
         a = analysis("a", "1")
         a.pieces, a.classes = [], []
         assert refine.calm_targets(a, context(rate=10.0)) == []
-
-
-class TestWideSearch:
-    """OWNER-DECISIONS 187, an exploration: candidates through points off the
-    straight line, which the nested exclusion rounds cannot reach."""
-
-    def wide_context(self, rate=10.0) -> refine.Context:
-        ctx = context(rate=rate)
-        ctx.request["locations"] = [
-            {"lon": BASE[0], "lat": BASE[1]},
-            {"lon": BASE[0] + 0.1, "lat": BASE[1]},
-        ]
-        ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.1, BASE[1]]]
-        ctx.wide = True
-        return ctx
-
-    def test_off_unless_the_owner_turns_it_on(self, monkeypatch) -> None:
-        assert refine.WIDE_SEARCH_FROM_RATE is None
-        assert not refine.wide_search_for(1e9)
-        monkeypatch.setattr(refine, "WIDE_SEARCH_FROM_RATE", 10.0)
-        assert refine.wide_search_for(10.0) and not refine.wide_search_for(9.9)
-
-    def test_the_points_are_either_side_of_the_middle(self) -> None:
-        span_lon = 0.1
-        points = refine.wide_points([[BASE[0], BASE[1]], [BASE[0] + span_lon, BASE[1]]])
-        assert len(points) == len(refine.WIDE_OFFSETS)
-        for (lon, lat), offset in zip(points, refine.WIDE_OFFSETS, strict=True):
-            assert lon == pytest.approx(BASE[0] + span_lon / 2, abs=1e-9)
-            # Going east, left is north.
-            assert (lat > BASE[1]) == (offset > 0)
-        north = sorted(lat for _lon, lat in points)
-        assert north[0] < north[1] < BASE[1] < north[2] < north[3]
-
-    def test_a_short_span_has_no_room(self) -> None:
-        assert refine.wide_points([[BASE[0], BASE[1]], [BASE[0] + 0.01, BASE[1]]]) == []
-
-    def test_each_point_is_asked_as_a_through_location_and_the_best_kept(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0)
-        # The exclusion rounds find nothing better ...
-        worse = analysis("w", "1" * 10 + "3" * 10 + "1" * 20, cost_s=9000.0, shift=100)
-        # ... and the second wide point is calm.
-        wide_calm = analysis("c", "1" * 50, cost_s=4800.0, shift=300)
-        wide_busy = analysis("b", "1" * 10 + "4" * 10 + "1" * 30, cost_s=4100.0, shift=600)
-        routes = [trip_of("w", 4.0), trip_of("w", 4.0)] + [
-            trip_of(n, 5.0) for n in ("b", "c", "b", "b")
-        ]
-        world = World(monkeypatch, {"o": orig, "w": worse, "c": wide_calm, "b": wide_busy}, routes)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context())
-        assert kept["legs"][0]["shape"] == "c"
-        assert info["wide"] == {"asked": 4, "taken": True}
-        wide_asks = [r for r in world.requests if len(r["locations"]) == 3]
-        assert len(wide_asks) == 4
-        assert all(r["locations"][1]["type"] == "through" for r in wide_asks)
-        assert all("exclude_locations" not in r and "alternates" not in r for r in wide_asks)
-
-    def test_a_busier_wide_route_is_never_taken(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0)
-        busy = analysis("b", "1" * 10 + "4" * 10 + "1" * 20, cost_s=100.0, shift=100)
-        routes = [refine_none for refine_none in [routing.RouterRefused(400, 442, "no path")] * 2]
-        routes += [trip_of("b", 4.0)] * 4
-        World(monkeypatch, {"o": orig, "b": busy}, routes)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "o"
-        assert info["wide"] == {"asked": 4, "taken": False}
-
-    def wide_world(self, monkeypatch, wide_cost: float, events=NO_EVENTS):
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        wide = analysis("w", "1" * 40, cost_s=wide_cost, shift=100, events=events)
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 4)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        return kept["legs"][0]["shape"], info
-
-    def test_a_wide_route_must_beat_the_best_by_the_margin(self, monkeypatch) -> None:
-        shape, _info = self.wide_world(monkeypatch, 4000.0 - refine.IMPROVEMENT_EPS_S / 2)
-        assert shape == "o"
-        shape, info = self.wide_world(monkeypatch, 4000.0 - refine.IMPROVEMENT_EPS_S - 1)
-        assert shape == "w" and info["wide"]["taken"]
-
-    def test_a_wide_route_that_rides_out_and_back_is_not_taken(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        spur = doubling_back("w", spur=8, cost_s=1000.0)
-        World(monkeypatch, {"o": orig, "w": spur}, [trip_of("w", 4.8)] * 4)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "o" and not info["wide"]["taken"]
-
-    def test_each_wide_route_is_held_to_the_route_it_started_from(self, monkeypatch) -> None:
-        # The first point is taken with 40 m of retrace; the second, with 80 m, is past
-        # the starting route by more than the slack, though not past the first's.
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        first = analysis("a", "1" * 40, cost_s=3000.0, shift=100)
-        second = analysis("b", "1" * 40, cost_s=2000.0, shift=200)
-        retraced = {id(first): 40.0, id(second): 80.0}
-        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
-        routes = [trip_of("a", 4.0)] + [trip_of("b", 4.0)] * 3
-        World(monkeypatch, {"o": orig, "a": first, "b": second}, routes)
-        kept, _info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "a"
-
-    def test_a_wide_route_that_retraces_no_more_than_its_start_is_taken(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        wide = analysis("w", "1" * 40, cost_s=3000.0, shift=100)
-        retraced = {id(orig): 300.0, id(wide): 300.0}
-        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 4)
-        kept, _info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "w"
-
-    def test_a_wide_route_whose_junctions_were_not_read_is_not_taken(self, monkeypatch) -> None:
-        shape, info = self.wide_world(monkeypatch, 1000.0, events=None)
-        assert shape == "o" and not info["wide"]["taken"]
-
-    def test_not_asked_without_the_time(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 40)
-        world = World(monkeypatch, {"o": orig}, [])
-        ctx = self.wide_context(rate=0.0)
-        ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1, 35)
-        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        assert world.requests == [] and info["wide"] == {"asked": 0, "taken": False}
 
 
 class AlternatesWorld(World):
@@ -2130,11 +2272,11 @@ class TestTrailSeek:
         assert info["seek"]["taken"] is False
 
     def test_a_corridor_round_a_red_crossing_may_ride_more_lts3(self, monkeypatch) -> None:
-        """Hunt 2, P2-5: the router's route crosses an arterial unsignalised (a 4,500 ft red);
+        """Hunt 2, P2-5: the router's route crosses an arterial unsignalised (a 2 mi red);
         the trail corridor goes round it to a signal with 300 m more LTS 3 on the way in. The
         search's guard (`_busier`) counts the red on both sides and would take it; the seek's
         guard counted the exposure alone and called it "busier"."""
-        red = [event(1500.0, 4500.0)]
+        red = [event(1500.0, 10560.0)]
         round_it = analysis("t", "1" * 10 + "3" * 13 + "1" * 22, cost_s=3500.0, shift=100)
         assert round_it.rated_exposure_m > refine._allowance(self.orig().rated_exposure_m)
         world = SeekWorld(monkeypatch, {"o": self.orig(events=red), "t": round_it}, [])
@@ -3293,28 +3435,6 @@ class TestSeekWiring:
     """Mutation review F11, F12, F2: the order of the wide search and the seek,
     an unread junction reading, and the seek's own count of routes."""
 
-    def test_the_wide_search_runs_before_the_seek_and_hands_it_its_best(self, monkeypatch) -> None:
-        order = []
-        wide_best = analysis("w", "1" * 40, cost_s=100.0)
-
-        def wide(best, best_trip, first_exposure, stop_at, ctx, info):
-            order.append("wide")
-            return wide_best, trip_of("w", 4.0)
-
-        def seek(best, best_trip, first_exposure, ctx, info, original=None):
-            order.append(("seek", best is wide_best, best_trip["legs"][0]["shape"]))
-            return best, best_trip
-
-        monkeypatch.setattr(refine, "_wide", wide)
-        monkeypatch.setattr(refine, "_seek", seek)
-        World(monkeypatch, {"o": analysis("o", "1" * 40)}, [NO_ROUTE])
-        ctx = context(rate=10.0)
-        ctx.wide = True
-        ctx.seek = True
-        kept, _info = refine.refine(trip_of("o", 4.0), ctx)
-        assert order == ["wide", ("seek", True, "w")]
-        assert kept["legs"][0]["shape"] == "w"
-
     def test_a_junction_already_located_in_the_plan_is_not_asked_again(self, monkeypatch) -> None:
         # Review speed-1: the candidates share most of their junctions.
         asked = []
@@ -3369,6 +3489,7 @@ class TestSeekWiring:
             ratings=None,
             beacons=(),
             closure_when=None,
+            given_way=None,
         ):
             junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
             return []
@@ -3894,26 +4015,6 @@ class TestTheHoldInTheSearch:
         assert kept["legs"][0]["shape"] == "c"
         assert (info["lts4_before_m"], info["lts4_after_m"]) == (300.0, 100.0)
 
-    def test_the_wide_search_holds_it_too(self, monkeypatch) -> None:
-        ctx = averse_context(rate=0.0)
-        ctx.request["locations"] = [
-            {"lon": BASE[0], "lat": BASE[1]},
-            {"lon": BASE[0] + 0.1, "lat": BASE[1]},
-        ]
-        ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.1, BASE[1]]]
-        ctx.wide = True
-        orig = weighed(analysis("o", ORIG, cost_s=4000.0))
-        wide = weighed(analysis("w", TRADE, cost_s=1000.0, shift=100))
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 5)
-        kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        assert kept["legs"][0]["shape"] == "o" and info["wide"]["taken"] is False
-        # And takes it where the ride does not hold LTS 4.
-        ctx.exposure = presets.EXPOSURE_STANDARD
-        ctx.analyses.clear()
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 5)
-        kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        assert kept["legs"][0]["shape"] == "w"
-
 
 class TestTheHoldInTheSeek(TestTrailSeek):
     """The seek's candidates, one leg and whole trip (TestTrailSeek's world)."""
@@ -4093,41 +4194,63 @@ for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg, TestTheWorthLegByLeg):
 
 
 class TestRedJunctions:
-    """Below the top of the slider each red junction counts for `RED_DETOUR_S` of quiet
-    riding in the score, on top of its junction cost (the owner, 2026-10-23, of the
-    unsignalised Kensington crossings: "essentially impassable"; a rider would rather ride
-    10 minutes more)."""
+    """One junction, one charge. Until 2026-11-13 each red junction also counted for
+    `RED_DETOUR_S`, 600 s of quiet riding (9,840 ft), on top of its junction cost and its
+    wait, so one crossing came to 3 or 4 calm miles against the owner's "2 miles ...
+    though rare" (OWNER-DECISIONS 467) and "we don't want to double count" (303)."""
 
     def two_reds(self) -> refine.Analysis:
         return analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)])
 
-    def test_each_red_is_ten_minutes_of_quiet_riding_at_the_weight(self) -> None:
+    def wait(self, m: float, seconds: float):
+        from routemaker import junction_delay
+
+        return junction_delay.Wait(m, BASE[0], BASE[1], seconds, seconds)
+
+    def test_a_red_adds_its_own_cost_and_no_surcharge(self) -> None:
+        assert not hasattr(refine, "RED_DETOUR_S")
         none = analysis("n", events=[])
         for weight in (1.0, 0.25):
             ctx = context(weight=weight)
             red_cost = ctx.quiet_cost * weight * model.penalty_m([event(1500.0, 3300.0)])
             one = analysis("c", events=[event(1500.0, 3300.0)])
-            extra = refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S * weight
-            assert one.score(ctx) - none.score(ctx) == pytest.approx(red_cost + extra)
+            assert one.score(ctx) - none.score(ctx) == pytest.approx(red_cost)
 
-    def test_one_red_fewer_wins_though_it_has_more_delay_and_oranges(self) -> None:
-        # The PC's check, 8 AM: one red in place of two, 606 s worse on everything else.
-        one = analysis("c", events=[event(1500.0, 3300.0)])
-        one.cost_s += 606.0
+    def test_with_no_signal_the_larger_of_stress_and_wait_counts(self) -> None:
         ctx = context()
-        assert refine.better(one, self.two_reds(), ctx)
-        assert not refine.better(self.two_reds(), one, ctx)
+        stress_m = 3300.0 / model.FEET_PER_METRE
+        per_s = refine.QUIET_COST_FACTOR / ctx.quiet_cost
+        here = [event(1500.0, 3300.0)]
+        # A 20 s wait at the same crossing is inside its stress price: all of it comes off.
+        over = refine.junction_over_cap_m(here, [self.wait(1510.0, 20.0)], ctx)
+        assert over == pytest.approx(per_s * 20.0)
+        # A wait dearer than the stress price counts in its place.
+        long = stress_m / per_s + 50.0
+        over = refine.junction_over_cap_m(here, [self.wait(1510.0, long)], ctx)
+        assert over == pytest.approx(stress_m)
+        # A wait somewhere else is another junction's.
+        assert refine.junction_over_cap_m(here, [self.wait(1700.0, 20.0)], ctx) == 0.0
 
-    def test_a_red_is_not_worth_more_than_ten_minutes(self) -> None:
-        # 1,400 cost seconds more than the 1,320 a red adds, besides its own cost.
+    def test_at_a_signal_the_stress_price_and_the_wait_add(self) -> None:
         ctx = context()
-        own = ctx.quiet_cost * model.penalty_m([event(1500.0, 3300.0)])
-        one = analysis("c", events=[event(1500.0, 3300.0)])
-        one.cost_s += own + refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S + 80.0
-        assert not refine.better(one, self.two_reds(), ctx)
+        box = dataclasses.replace(event(1500.0, 750.0), control=Control.SIGNAL, kind="left_from")
+        assert refine.junction_over_cap_m([box], [self.wait(1500.0, 30.0)], ctx) == 0.0
+
+    def test_no_junction_counts_for_more_than_two_calm_miles_in_all(self) -> None:
+        assert refine.JUNCTION_CAP_FT == model.MAX_CROSSING_FT == 10560
+        ctx = context()
+        per_s = refine.QUIET_COST_FACTOR / ctx.quiet_cost
+        top = dataclasses.replace(event(1500.0, 10560.0), control=Control.SIGNAL)
+        over = refine.junction_over_cap_m([top], [self.wait(1500.0, 40.0)], ctx)
+        assert over == pytest.approx(per_s * 40.0)
+        # And the score takes it off.
+        read = analysis("c", events=[top])
+        read.junction_over_cap_m = over
+        plain = analysis("c", events=[top])
+        assert plain.score(ctx) - read.score(ctx) == pytest.approx(ctx.quiet_cost * over)
 
     def test_orange_junctions_are_not_counted_even_with_a_shift(self) -> None:
-        orange = analysis("c", events=[event(1500.0, 2000.0)], shift=0)
+        orange = analysis("c", events=[event(1500.0, 1400.0)], shift=0)
         orange.shift = 1
         assert refine.red_count(orange) == 0 and refine.red_count(self.two_reds()) == 2
 
@@ -4235,3 +4358,44 @@ def test_the_junctions_read_a_closure_only_where_the_graph_opens_it(
     # The ride time still prices the junctions (hunt 3 follow-up: it was the closure
     # reading's "" off the weekend graphs, so rush hour and night were lost).
     assert seen == [(when, read)]
+
+
+class TestACalmerSettingIsNeverBusierOnTheSameCandidates:
+    """The scorecard, 2026-11-12: Trailmaxxing had more LTS 3 than Default on 7 of 20 trips
+    (audit 2026-11-13, report 3.6). The ranking's own part of the promise, on one set of
+    candidates read the same way: where Default's rule takes the calmer, longer route, the top
+    of the slider takes it too. It holds for a trade of LTS 3 against distance; it does NOT
+    hold for LTS 4 against distance (the strict xfail below), which is one of the candidate
+    causes written up in docs/stress/routing-costs.md ("Why Trailmaxxing can be busier")."""
+
+    # What a metre of each level adds to the router's cost at Default's 70, in quiet metres
+    # (`calm.added_cost` over the quiet factor; printed 2026-11-13: 3.33 and 13.34).
+    DEFAULT_ADDED = {"3": 3.33, "4": 13.34}
+
+    def pair(self, tier: str, busy_pieces: int, extra_pieces: int):
+        """A short route with `busy_pieces` x 100 m of `tier` and a calm one `extra_pieces`
+        longer, each with the router cost Default's request would give it."""
+        short = analysis("a", tiers="1" * (40 - busy_pieces) + tier * busy_pieces)
+        calm_one = analysis("b", tiers="1" * (40 + extra_pieces))
+        short.cost_s = QUIET_COST * (4000.0 + self.DEFAULT_ADDED[tier] * 100.0 * busy_pieces)
+        calm_one.cost_s = QUIET_COST * (4000.0 + 100.0 * extra_pieces)
+        return short, calm_one
+
+    @pytest.mark.parametrize("busy", [1, 2, 5, 10, 20])
+    @pytest.mark.parametrize("extra", [1, 3, 6, 12, 30, 60])
+    def test_lts_3_against_distance(self, busy, extra) -> None:
+        short, calm_one = self.pair("3", busy, extra)
+        if refine.better(calm_one, short, context()):
+            assert refine.better(calm_one, short, context(maxcalm=True))
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="the worth rule pays 10 m a metre of LTS 4, the "
+        "router 13.3 at Default: written up, not changed (needs the scorecard)",
+    )
+    def test_lts_4_against_distance(self) -> None:
+        # 500 m of LTS 4 against 6 km more: Default's price takes it (6,000 < 6,670), the
+        # worth rule at the top does not (5 x 2 x 500 = 5,000 < 6,000).
+        short, calm_one = self.pair("4", 5, 60)
+        assert refine.better(calm_one, short, context())
+        assert refine.better(calm_one, short, context(maxcalm=True))

@@ -60,10 +60,11 @@ from types import MappingProxyType
 from typing import Any
 
 from pipeline.variants import Variant
+from routemaker import calm
+from routemaker.geo import METRES_PER_FOOT
 from routemaker.ridetime import WEEKEND
 
 # Valhalla's bicycle defaults, stated so that "high" below reads against them.
-VALHALLA_MANEUVER_PENALTY_S = 5
 VALHALLA_GATE_COST_S = 30
 VALHALLA_GATE_PENALTY_S = 300
 VALHALLA_PRIVATE_ACCESS_PENALTY_S = 450
@@ -184,34 +185,95 @@ EBIKE_HILLS = 50
 # Where Fast's hills slider starts: a strong rider's LT1 grade, about 11% (the owner,
 # 2026-10-23: "More for fast, less for cargo").
 FAST_HILLS = 40
-HIGH_MANEUVER_PENALTY_S = 30
+# --- Fixed charges, in feet of quiet riding -----------------------------------------------
+#
+# Valhalla takes a turn charge and the Avoid entry charge in "cost seconds". A quiet street
+# costs the router `QUIET_COST_FACTOR` cost seconds for each second ridden, so one number of
+# cost seconds is a different distance on each ride type (1,800 was 1.4 mi on Mass Ride and
+# 3.5 mi on Road Bike). A price that is meant as a distance is therefore set ONCE, in feet of
+# quiet riding, and turned into cost seconds at the ride's own speed (`cost_s_of_quiet_ft`).
+#
+# The numbers live in `routemaker.calm` (which this module may import and which may not
+# import this one): the measured 2.2 and the reference speed.
+QUIET_COST_FACTOR = calm.QUIET_FACTOR
+REFERENCE_SPEED_KMH = calm.REFERENCE_SPEED_KMH
+# Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
+# Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
+# names none.
+VALHALLA_DEFAULT_SPEED_KMH = {
+    "Road": 25.0,
+    "Cross": 20.0,
+    "Hybrid": REFERENCE_SPEED_KMH,
+    "Mountain": 16.0,
+}
 
-# The turn charge above the old top of the slider (STRESS_TODAYS_TOP), where the calm detour
-# search runs. Valhalla's own 5 s (VALHALLA_MANEUVER_PENALTY_S) is next to nothing against the
-# price of a road at `use_roads` 0, so a calm route could take a dozen turns along trail links
-# and side paths where a calm road ran beside them. The owner, 2026-11-10, after a commute on
-# the Bethesda Trolley Trail: "Trailmaxxing seems to cause a lot of fiddly turns when there's
-# an easy road nearby"; he picked "raise the turn charge above stress 80 ... and count turns in
-# the calm search". 15 s is our default, not measured; a ride type that already charges more
-# (HIGH_MANEUVER_PENALTY_S) keeps its own.
-CALM_MANEUVER_PENALTY_S = 15
-# The same turn charge at every traffic setting, Default (where Go plans) included: owner decision
-# 254 (2026-10-03), "Turns should also carry a penalty as they do add some cognitive load ... on
-# every preset", whose every-preset half the above-80 change (#1139) left unbuilt; the backlog's
-# "fewer turns" item (2026-11-12). With it on, Valhalla's 5 s becomes CALM_MANEUVER_PENALTY_S at
-# every position, the ranking counts turns everywhere (`refine.turn_m`), and the side-street
-# dodge pass charges the turns a dodge adds (`dedodge.needed_m`). The owner turned it on
-# 2026-11-12 ("Every setting") after the route scorecard's before/after table (at 70: 4% fewer
-# turns, LTS 4 flat; at 25: 7% fewer turns, 1.7 mi more LTS 4 across 38 trips). False would put
-# every plan back on the above-80-only rule. 15 s stays our default, not measured.
-TURN_CHARGE_EVERY_SETTING = True
 
-# A rider's "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12; `Dials.fewer_turns`,
-# the API's `fewer_turns`, Go's and Plan's "Fewer turns" option): the router's turn charge of a
-# ride type that already plans for fewer turns (Group Ride, Road Bike), and the calm search's
-# ranking counts turns at that price at every position (`refine.turn_m`). Our default, not
-# measured.
-FEWER_TURNS_PENALTY_S = HIGH_MANEUVER_PENALTY_S
+def speed_kmh_of(options: dict) -> float:
+    """The flat speed a bicycle costing block is routed at: its `cycling_speed`, else
+    Valhalla's default for its bicycle type."""
+    by_type = VALHALLA_DEFAULT_SPEED_KMH.get(options.get("bicycle_type", "Hybrid"))
+    return float(options.get("cycling_speed") or by_type or REFERENCE_SPEED_KMH)
+
+
+def cost_s_of_quiet_ft(feet: float, kmh: float) -> float:
+    """The router's cost seconds that `feet` of quiet-street riding are worth at `kmh`."""
+    return round(feet * METRES_PER_FOOT * QUIET_COST_FACTOR * 3.6 / kmh, 1)
+
+
+# THE TURN PRICE, and why the router is told less than all of it.
+#
+# The purpose, in the owner's words (2026-11-13): "to remove a large amount of cognitive load
+# on a cyclist for meaningless differences in time and comfort". So a turn costs something
+# everywhere, and a turn saved must never put the rider on a busier road.
+#
+# THE PRICE: `TURN_FT`, 222 ft (68 m) of quiet riding for each turn, on every ride type and
+# at every slider setting. Literature: Broach, Dill and Gliebe (2012), "Where do cyclists
+# ride? A route choice model developed with revealed preference GPS data", Transportation
+# Research Part A 46(10), 1730-1740, doi:10.1016/j.tra.2012.07.005, Table 3: a turn is worth
+# 4.2% of a mile (222 ft) on a commute and 7.4% (391 ft) on other trips. Other opened studies
+# are higher (Hood, Sall and Charlton 2011: 558 ft; Zimmermann, Mai and Frejinger 2017: 484 to
+# 609 ft). The RANKING charges it for every turn it counts (`refine.turn_price_s`,
+# `Analysis.score`), under a guard: a turn saving is left out wherever it would buy a
+# meaningfully busier road (`refine.better`).
+#
+# WHAT THE ROUTER IS SENT: `ROUTER_TURN_S`, 15 cost seconds a change of street name (112 ft
+# at the 11.2 mph reference), as before 2026-11-13. Not the whole price, on purpose. The
+# router prices a road by its class, not its level, so its turn charge can buy a stretch of
+# LTS 4 it cannot see, and nothing can guard the router's own search: below 81 on the slider
+# the calm search asks for no alternatives, and plans with stops, loops, long plans, transit
+# and bikeshare legs are not ranked at all. Measured on our data (scorecard, 2026-11-12, 38
+# Default trips): raising this charge from 5 to 15 at slider 25 cut turns 7% and added 1.7 mi
+# of LTS 4, on two trips. A first version of the 2026-11-13 change sent the router the whole
+# 222 ft (29.8 cost seconds); the review found that doubling unguarded exactly there, so the
+# router's share is back where it was until a scorecard run at 25 and 70 says more is safe.
+# The ranking takes the router's share out of the router's cost and charges its own count at
+# the whole price (`Analysis.router_turns`), so where a route is ranked a turn costs 222 ft
+# once, not 112 + 222. The 15 is our default, unmeasured (the owner's card pick "Every
+# setting", 2026-11-12, was for it at every position); decision 254, 2026-10-03: "Turns should
+# also carry a penalty as they do add some cognitive load ... on every preset".
+TURN_FT = 222.0
+ROUTER_TURN_S = 15
+# The ride types that plan for fewer turns (Group Ride, Road Bike, Fast, Mass Ride, Tandem:
+# a group or a fast bike loses more at each turn) and a rider's "Fewer turns" (`Dials.
+# fewer_turns`, the API's `fewer_turns`, Go's and Plan's option): Broach's value for trips
+# that are not commutes, 391 ft (119 m), in the ranking (literature, same table; which ride
+# types take it is our default), and 30 cost seconds in the router as before (our default,
+# unmeasured).
+FEWER_TURNS_FT = 391.0
+ROUTER_FEWER_TURNS_S = 30
+
+
+def turn_cost_s(options: dict, fewer_turns: bool = False) -> float:
+    """The turn price (`TURN_FT`, or `FEWER_TURNS_FT`) in router cost seconds at a bicycle
+    costing block's own speed: what the ranking charges a turn."""
+    return cost_s_of_quiet_ft(FEWER_TURNS_FT if fewer_turns else TURN_FT, speed_kmh_of(options))
+
+
+def router_turn_s(fewer_turns: bool = False) -> float:
+    """The `maneuver_penalty` a request is sent: the router's share of the turn price."""
+    return float(ROUTER_FEWER_TURNS_S if fewer_turns else ROUTER_TURN_S)
+
+
 # A rider's "All paved" (`Dials.paved`, the API's `paved`): Valhalla's `avoid_bad_surfaces`
 # raised to this on the rider's own ride type, so gravel and dirt are left wherever pavement
 # runs near (1 would close them outright, and a trip with no paved way would fail). Our
@@ -225,7 +287,7 @@ def with_rider_choices(costing_block: dict, fewer_turns: bool = False, paved: bo
     options = costing_block["bicycle"]
     if fewer_turns:
         options["maneuver_penalty"] = max(
-            options.get("maneuver_penalty", VALHALLA_MANEUVER_PENALTY_S), FEWER_TURNS_PENALTY_S
+            options.get("maneuver_penalty", 0.0), router_turn_s(fewer_turns=True)
         )
     if paved:
         options["avoid_bad_surfaces"] = max(
@@ -257,7 +319,37 @@ _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_pena
 # alleys are service roads in the graph, and `destination_only_penalty` is not
 # sent, so OSM's destination-only and private-for-cars ways pay Valhalla's
 # own 600 s exactly as before.
-AVOID_ENTRY_PENALTY_S = 1800
+AVOID_ENTRY_PENALTY_S = calm.AVOID_ENTRY_S
+# The same charge as a distance, so it is the same on every ride type: what 1,800 cost seconds
+# buys at the 11.2 mph reference, 13,422 ft (2.54 mi) of quiet riding (`calm.AVOID_ENTRY_M`,
+# which the route's stress number counts too). Each preset sends the
+# cost seconds that distance is worth at its own speed (`avoid_entry_cost_s`): 1,800 on
+# Default as before; before 2026-11-13 every ride type sent 1,800, which was 1.8 mi on
+# Bikeshare, 1.4 mi on Mass Ride and 3.5 mi on Road Bike. The 30 minutes is the owner's
+# (2026-09-27, and decision 308's "Probably a 30 minute penalty"); reading it as one distance
+# rather than one cost figure is the 2026-11-13 unit fix. No published value exists for an
+# "avoid" road: our default, unmeasured.
+AVOID_ENTRY_FT = round(calm.AVOID_ENTRY_M / METRES_PER_FOOT)
+
+
+def avoid_entry_cost_s(options: dict) -> float:
+    """The `alley_penalty` a bicycle costing block is sent: AVOID_ENTRY_FT in cost seconds at
+    the block's own speed."""
+    return cost_s_of_quiet_ft(AVOID_ENTRY_FT, speed_kmh_of(options))
+
+
+def set_speed(costing_block: dict, kmh: float) -> dict:
+    """`costing_block` (`{"bicycle": {...}}`) at another flat speed, in place: `cycling_speed`
+    set, and the charge that is a distance (the Avoid entry) re-said in cost seconds at the
+    new speed, so it stays the same feet. Every place that changes a request's speed after
+    `costing` built it goes through here."""
+    options = costing_block["bicycle"]
+    options["cycling_speed"] = kmh
+    if "alley_penalty" in options and kmh > 0:
+        options["alley_penalty"] = avoid_entry_cost_s(options)
+    return costing_block
+
+
 # An Avoid-rated junction's penalty (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 308: "Probably a
 # 30 minute penalty like Avoid."): the same 1,800 cost seconds as an Avoid road's entry
 # charge, once for each pass, applied on whole routes at plan time rather than in the
@@ -353,9 +445,8 @@ HILLS_MIN, HILLS_MAX = -100, 100
 #   the detour: a warning (`routemaker.detour`) says how much longer it is.
 #
 # Turn costs and hill costs are not part of this: they are costing options sent
-# at every position, so a relaxed ride is not a zig-zag over a hill. Above the old top the
-# turn charge rises to CALM_MANEUVER_PENALTY_S (2026-11-10), never falls; with
-# TURN_CHARGE_EVERY_SETTING it is that charge at every position.
+# at every position, so a relaxed ride is not a zig-zag over a hill. The turn charge is one
+# distance (TURN_FT) at every position.
 STRESS_DEFAULT_AT = 70
 STRESS_TODAYS_TOP = 80
 # The old scale's positions at those two points, which `use_roads` is read at.
@@ -616,6 +707,8 @@ class Preset:
     # The longest a plan may go where the rider set no target, as a multiple of the
     # router's own route (`default_ceiling_m`).
     ceiling_ratio: float = DEFAULT_CEILING_RATIO
+    # Whether the ride type plans for fewer turns (`FEWER_TURNS_FT` a turn, not `TURN_FT`).
+    fewer_turns: bool = False
 
 
 # Where a sustained descent starts to cost, per ride type, on the avoid half
@@ -815,7 +908,7 @@ MTB_HILLS = 50
 #   (about three times a paved road): there is no road-bike twin of that graph.
 # - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
 #   11.2 mph; the rider's own speed (`rider_speed`) still wins.
-# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`). It had
+# - Fewer turns: Group Ride's and Fast's turn price (`FEWER_TURNS_FT`). It had
 #   Group Ride's higher gate cost too ("a road bike slows hard for a gate or bollard") until the
 #   owner's 2026-11-08 ruling that only Tandem and Cargo pay a large one (`GATE_COST_S`).
 # - Traffic and hills: stress 40, "Balanced" (Group Ride's and Gravel's start), and Default's
@@ -840,7 +933,7 @@ ROAD_BIKE_SURFACES = 0.9
 #   Tandems regularly use that trail.", and on the card "Can plain wide trail gates cost
 #   nothing for every ride type?", "Free for everyone"), so no ride type pays there. Steps are
 #   priced out for every bicycle already.
-# - Turns: Group Ride's and Road Bike's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`): a long
+# - Turns: Group Ride's and Road Bike's turn price (`FEWER_TURNS_FT`): a long
 #   bike swings wide at every corner, so fewer of them.
 # - Hills toward avoid (`TANDEM_HILLS`, -40): a tandem is quick on the flat and slow up a climb.
 #   Its system weight (`routemaker.effort.TANDEM_MASS_KG`, two riders and the bike) makes every
@@ -935,6 +1028,7 @@ def _preset(
     exposure: Exposure = EXPOSURE_STANDARD,
     carrying_exposure: dict[str, Exposure] | None = None,
     ceiling_ratio: float = DEFAULT_CEILING_RATIO,
+    fewer_turns: bool = False,
     **options: Any,
 ) -> Preset:
     return Preset(
@@ -945,7 +1039,9 @@ def _preset(
                 **options,
                 "use_roads": use_roads_for(stress),
                 "use_hills": use_hills_for(hills),
-                "alley_penalty": AVOID_ENTRY_PENALTY_S,
+                # The two fixed charges that are distances, at this ride type's speed.
+                "maneuver_penalty": router_turn_s(fewer_turns),
+                "alley_penalty": avoid_entry_cost_s(options),
                 # Valhalla's own 450 s at a gate or bollard flagged private, stated so no
                 # preset leaves it to the release's default. The transform clears the flag
                 # where a bicycle passes the barrier (`remap_node`), so what pays it is a
@@ -956,6 +1052,7 @@ def _preset(
         ),
         stress=stress,
         hills=hills,
+        fewer_turns=fewer_turns,
         hills_seek=hills_seek,
         hills_tolerate=hills_tolerate,
         carrying=MappingProxyType(carrying) if carrying else None,
@@ -981,7 +1078,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1009,7 +1105,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # "Living streets on": its use_roads of 0 already prices one lowest; above
                 # 0.5 this dial adds nothing in bicycle costing (`_LIVING_STREETS`).
                 use_living_streets=1.0,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1023,7 +1118,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Cross",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                fewer_turns=True,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1040,7 +1135,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                fewer_turns=True,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=MASS_RIDE_PLANNING_SPEED_KMH,
@@ -1059,7 +1154,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1073,7 +1167,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Cross",
                 avoid_bad_surfaces=0.0,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1094,7 +1187,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
                 use_living_streets=FAST_LIVING_STREETS,
-                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                fewer_turns=True,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1111,7 +1204,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=CARGO_GATE_COST_S,
                 gate_penalty=CARGO_GATE_PENALTY_S,
                 cycling_speed=CARGO_PLANNING_SPEED_KMH,
@@ -1129,7 +1221,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=EBIKE_PLANNING_SPEED_KMH,
@@ -1145,7 +1236,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
@@ -1161,7 +1251,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
@@ -1175,7 +1264,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1189,7 +1277,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
@@ -1204,7 +1291,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
@@ -1219,7 +1305,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
@@ -1235,7 +1320,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
@@ -1249,7 +1333,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Mountain",
                 avoid_bad_surfaces=0.0,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1262,7 +1345,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Road",
                 avoid_bad_surfaces=ROAD_BIKE_SURFACES,
                 use_living_streets=FAST_LIVING_STREETS,
-                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                fewer_turns=True,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1277,7 +1360,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=1.0,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=NOVICE_PLANNING_SPEED_KMH,
@@ -1292,7 +1374,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                fewer_turns=True,
                 gate_cost=CARGO_GATE_COST_S,
                 gate_penalty=CARGO_GATE_PENALTY_S,
                 cycling_speed=TANDEM_PLANNING_SPEED_KMH,
@@ -1432,12 +1514,6 @@ def weekend_too(
     return graph in WEEKEND_TOO_VARIANTS
 
 
-# Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
-# Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
-# names none.
-VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
-
-
 # The rider's own riding speed (the owner, 2026-10-27: "Some people who ride much faster than
 # the defaults would like to be able to override the speed as an advanced feature"), set once in
 # Settings: Valhalla's `cycling_speed`, the flat-ground pace its grade model, and so every time
@@ -1479,21 +1555,14 @@ def costing(
     options = copy.deepcopy(dict(PRESETS[name].costing_options))
     if stress is not None:
         options["use_roads"] = use_roads_for(stress)
-    # Above the old top, asked for or the ride type's own start (Trailmaxxing's 100); at every
-    # position with TURN_CHARGE_EVERY_SETTING.
-    if (
-        TURN_CHARGE_EVERY_SETTING
-        or (PRESETS[name].stress if stress is None else stress) > STRESS_TODAYS_TOP
-    ):
-        options["maneuver_penalty"] = max(
-            options.get("maneuver_penalty", VALHALLA_MANEUVER_PENALTY_S), CALM_MANEUVER_PENALTY_S
-        )
     if hills is not None:
         options["use_hills"] = use_hills_for(hills)
+    block = {"bicycle": options}
     speed = PRESETS[name].assist_speed_kmh
     if assist and speed is not None:
-        options["cycling_speed"] = speed
-    return {"bicycle": options}
+        # The turn price and the Avoid entry stay the same feet at the assisted speed.
+        set_speed(block, speed)
+    return block
 
 
 # Go's "More direct" and "Calmer" (the owner, 2026-10-16: "in go mode see if it's possible to

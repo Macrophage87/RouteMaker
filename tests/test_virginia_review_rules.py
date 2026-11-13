@@ -10,12 +10,8 @@ from __future__ import annotations
 from pipeline.conflation import AgencyFeature, conflate, share_with_carriageways
 from routemaker.stress import (
     BUSY_RURAL_HIGHWAY_RULE,
-    BUSY_STREET_RULE,
     NARROW_ROAD_RULE,
-    VERY_BUSY_STREET_RULE,
-    Stress,
     classify,
-    rural_floor,
 )
 
 RESIDENTIAL = {"highway": "residential", "maxspeed": "25 mph"}
@@ -23,31 +19,6 @@ RESIDENTIAL = {"highway": "residential", "maxspeed": "25 mph"}
 
 def level(result) -> float:
     return int(result.tier) + (0.5 if result.half else 0.0)
-
-
-class TestBusyCityStreet:
-    def test_a_city_street_held_at_three_goes_up_half_a_level_from_twelve_thousand(self) -> None:
-        result = classify(RESIDENTIAL, aadt=12_000, jurisdiction="VA")
-        assert level(result) == 3.5 and BUSY_STREET_RULE in result.rule
-
-    def test_and_a_whole_level_from_twenty_thousand(self) -> None:
-        result = classify(RESIDENTIAL, aadt=20_000, jurisdiction="MD")
-        assert level(result) == 4 and VERY_BUSY_STREET_RULE in result.rule
-
-    def test_a_multilane_street_at_the_two_way_floor_is_taken_too(self) -> None:
-        four_lanes = {"highway": "secondary", "maxspeed": "25 mph", "lanes": "4"}
-        assert level(classify(four_lanes, aadt=15_000)) == 3.5
-
-    def test_under_twelve_thousand_it_stays_three(self) -> None:
-        assert level(classify(RESIDENTIAL, aadt=11_999)) == 3
-
-    def test_not_where_a_side_path_is_mapped_beside_it(self) -> None:
-        result = classify(RESIDENTIAL, aadt=15_000, separate_facility=True)
-        assert level(result) == 3
-
-    def test_not_outside_an_urban_area(self) -> None:
-        result = classify(RESIDENTIAL, aadt=15_000, urban=False)
-        assert BUSY_STREET_RULE not in result.rule
 
 
 class TestBusyRuralHighway:
@@ -83,15 +54,6 @@ class TestBusyRuralHighway:
 
 class TestNarrowRoadWithAQuietCount:
     NARROW = {"highway": "unclassified", "lane_markings": "no"}
-
-    def test_a_quiet_count_no_longer_switches_the_narrow_road_rule_off(self) -> None:
-        """With the rural floor the rebuild applies after it, the counted road is its
-        uncounted twin's LTS 2, not the 50 mph default's 4 eased to 3."""
-        counted = classify(self.NARROW, aadt=400, aadt_source="vdot", urban=False)
-        uncounted = classify(self.NARROW, urban=False)
-        assert NARROW_ROAD_RULE in counted.rule
-        floored = rural_floor(counted, self.NARROW, urban=False)
-        assert floored.tier is uncounted.tier is Stress.LTS2
 
     def test_a_count_above_quiet_still_outranks_it(self) -> None:
         busy = classify(self.NARROW, aadt=1_501, aadt_source="vdot", urban=False)
@@ -165,22 +127,3 @@ class TestCountsAlongAStreet:
         cross = [(-77.0100, 38.8990), (-77.0100, 38.9010)]
         line = feature("f1", [(-77.0200, 38.9000), (-77.0000, 38.9000)], 5_000)
         assert conflate([(1, cross)], [line]).matched == {}
-
-
-def test_the_road_panel_shows_the_formulas_half_step_where_an_agency_is_used() -> None:
-    """Where Arlington's or Fairfax's twin streets are rated by an agency, the panel's formula
-    line still reads 2.5, not 2 beside "half a level higher"."""
-    import json
-
-    from core import segment_info
-    from pipeline import writers
-    from routemaker import agency_lts
-    from routemaker.agency_lts import AgencyRating
-
-    formula = classify(RESIDENTIAL, aadt=6_000, aadt_source="vdot", jurisdiction="VA")
-    result = agency_lts.apply(formula, [AgencyRating("ddot", 3)])
-    assert result.formula_half is True
-    held = json.loads(writers._ratings_json(result))
-    rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
-    line = next(row["value"] for row in rows if row["label"] == "RouteMaker's formula")
-    assert line.startswith("LTS 2.5")

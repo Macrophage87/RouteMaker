@@ -17,7 +17,7 @@ nothing finer. Three things read it:
   closure to cars is a comfort fact for a bicycle, not an access one, so no
   `date_time` could express it; it is evaluated here, at the rebuild, against
   each setting's instants;
-- the junction model's ride-time factor (`routemaker.intersections.time_factor`).
+- the junction model's hour of traffic (`routemaker.intersections.HOUR_SHARE`).
 
 Night is 21:00 to 07:00 on any day, weekend nights included; it routes on the
 standard graph, as a weekday does, and a road counts as car-free at night only

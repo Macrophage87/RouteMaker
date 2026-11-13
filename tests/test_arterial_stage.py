@@ -20,8 +20,6 @@ from pipeline.extract import Way
 from pipeline.overrides import Override
 from pipeline.rebuild import Stage
 from pipeline.run import RebuildContext, build_handlers
-from routemaker import intersections
-from routemaker.intersections import Road
 from routemaker.stress import Stress
 
 DATA = Path(__file__).parent / "data"
@@ -69,15 +67,34 @@ def classify(context, rows=()):
     return handlers
 
 
-def test_1st_street_nw_drops_from_lts_3_to_lts_2(tmp_path, monkeypatch) -> None:
+def four_lanes(context) -> None:
+    """The block as a 30 mph street of two lanes each way: the one place in Furth v2.2's
+    mixed-traffic table where 10,665 and 7,520 vehicles a day read differently (the 8,001
+    break of the two-lanes-a-direction row). As mapped, one lane each way at 25 mph, the
+    block is LTS 3 on either count."""
+    context.ways_by_id[FIRST_ST_WAY].tags.update({"lanes": "4", "maxspeed": "30 mph"})
+
+
+def test_1st_street_nw_is_classified_on_the_street_median(tmp_path, monkeypatch) -> None:
     context = make_context(tmp_path, monkeypatch)
     assert context.aadt_by_way[FIRST_ST_WAY].aadt == 10665
     classify(context)
     result = context.stress_by_way[FIRST_ST_WAY]
-    assert result.tier is Stress.LTS2
-    assert "high volume" not in result.rule
+    # One lane each way at 25 mph is LTS 3 from 1,501 a day up (Furth v2.2), so the
+    # median no longer moves this block; it is still what the block was classified on.
+    assert result.tier is Stress.LTS3
+    assert result.rule.endswith("street volume (median)")
     assert context.aadt_raw_by_way[FIRST_ST_WAY].aadt == 10665, "the agency's count is kept"
     assert FIRST_ST_WAY in {s.way_id for s in context.smoothing_report.replaced}
+
+
+def test_a_median_under_the_multilane_break_lowers_the_link(tmp_path, monkeypatch) -> None:
+    context = make_context(tmp_path, monkeypatch)
+    four_lanes(context)
+    classify(context)
+    result = context.stress_by_way[FIRST_ST_WAY]
+    assert result.tier is Stress.LTS3
+    assert "low volume" in result.rule
 
 
 def test_the_published_count_is_the_agencys_not_the_median(tmp_path, monkeypatch) -> None:
@@ -98,30 +115,27 @@ def test_the_published_count_is_the_agencys_not_the_median(tmp_path, monkeypatch
     assert kept.unsmoothed_tier is None
 
 
-def test_the_q_street_junction_is_still_rated_on_the_raw_count(tmp_path, monkeypatch) -> None:
+def test_the_junction_is_still_read_on_the_raw_count(tmp_path, monkeypatch) -> None:
     """The owner's reason for lower-only smoothing (303): "In most cases, the smoothing
     is probably bunching by the intersection. Given that our routing is a sum of
     intersection stress and route stress, we don't want to double count." So the link
-    stops paying for the bunched count, and the junction keeps paying for it: 1st St
-    NW's block at Q St is LTS 2 as a link, and the crossing is rated on DDOT's 10,665
-    and the LTS 3 that count gives."""
+    stops paying for the bunched count and the junction keeps reading it: the block (read
+    here with two lanes each way at 30 mph, `four_lanes`) is LTS 3 as a link, the tier on
+    the agency's own count is kept beside it, and the crossing is read on that count."""
+    from routemaker.intersections import Road, traffic_level
+
     context = make_context(tmp_path, monkeypatch)
+    four_lanes(context)
     classify(context)
     result = context.stress_by_way[FIRST_ST_WAY]
-    assert result.tier is Stress.LTS2
-    assert result.unsmoothed_tier is Stress.LTS3
-    # What the junction model reads off the segment table (`core.junctions`: the
-    # greater of the two tiers, and `volume_aadt`).
-    road = Road(tier=max(int(result.tier), int(result.unsmoothed_tier)), aadt=result.volume_aadt)
-    assert road.busy, "a busy crossing (BUSY_TIER 3), as before smoothing"
-    smoothed = Road(tier=int(result.tier), aadt=7520)
-    assert not smoothed.busy
-    assert intersections.scale(road, stopped_side=True) > intersections.scale(
-        smoothed, stopped_side=True
-    ), "the raw count's volume factor"
-    assert intersections.scale(road, stopped_side=True) == intersections.scale(
-        Road(tier=3, aadt=10665), stopped_side=True
-    )
+    assert result.tier is Stress.LTS3
+    assert result.unsmoothed_tier is Stress.LTS4
+    # What the junction model reads off the segment table (`core.junctions`: the greater
+    # of the two tiers, and `volume_aadt`, the agency's count).
+    facts = {"speed_mph": 25.0, "lanes": 1, "oneway": False}
+    counted = Road(max(int(result.tier), int(result.unsmoothed_tier)), aadt=10665, **facts)
+    assert counted.aadt == result.volume_aadt
+    assert traffic_level(counted) > traffic_level(Road(3, aadt=7520, **facts))
 
 
 def test_the_owner_can_veto_smoothing(tmp_path, monkeypatch) -> None:
@@ -164,9 +178,12 @@ def test_a_state_boundary_keeps_a_count_out_of_another_states_street(tmp_path, m
         "way_states",
         lambda ways, polygons: {w.osm_id: "VA" if w.osm_id == FIRST_ST_WAY else "DC" for w in ways},
     )
+    four_lanes(context)
     classify(context)
-    assert context.stress_by_way[FIRST_ST_WAY].tier is Stress.LTS3
+    # Alone in its state the block keeps its own 10,665: over the 8,001 break, LTS 4.
+    assert context.stress_by_way[FIRST_ST_WAY].tier is Stress.LTS4
     assert context.stress_by_way[FIRST_ST_WAY].unsmoothed_tier is None
+    assert FIRST_ST_WAY not in {s.way_id for s in context.smoothing_report.replaced}
 
 
 def test_north_capitol_underpasses_are_set_through_the_stage(tmp_path, monkeypatch, caplog) -> None:
@@ -245,7 +262,7 @@ def test_the_stage_writes_the_smoothing_and_corridor_reports(tmp_path, monkeypat
     rows = list(csv.DictReader((reports / "aadt-smoothing.csv").open()))
     first = next(r for r in rows if r["way_id"] == str(FIRST_ST_WAY))
     assert (first["raw_aadt"], first["smoothed_aadt"]) == ("10665", "7520")
-    assert (first["link_tier"], first["tier_on_raw_count"]) == ("2", "3")
+    assert (first["link_tier"], first["tier_on_raw_count"]) == ("3", "3")
     assert first["crosses_volume_gate"] == "yes"
     assert len(rows) == len(context.smoothing_report.replaced)
     corridor = (reports / "named-corridors.md").read_text()

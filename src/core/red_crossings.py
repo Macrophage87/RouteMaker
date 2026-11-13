@@ -18,8 +18,7 @@ So after the search, on every plan where it did not run over the whole route wit
 least one round (`searched` false), the answer is read (`refine.analyse`, which the answer
 then reuses), and each red crossing is asked round, the worst first (`reds_of`), those
 near its ends and stops too (routing hunt 4, J4-1). A red is
-what the map draws red, and a trail crossing drawn orange only because no signal is mapped
-whose cost is red-level (`refine.avoidance_severity`, the 2026-11-08 hunt, J1).
+what the map draws red (`refine.avoidance_severity`).
 
 How each is asked round (the 2026-11-08 hunt, S1, P1 and R1/H4). The first version asked
 once, from the plan's own request with every red excluded together. One red with no way
@@ -47,8 +46,8 @@ all. Now:
 Every ask excludes, besides the red, the request's own exclusions, Mountain Bike's level
 exclusions (`refine.Context.level_excludes`) and the reds already ridden round. A way
 round replaces the route where it has fewer red crossings, the search's own rule prefers
-it (`refine.better`: the score, which prices each red at `RED_DETOUR_S` of quiet riding on
-top of its cost, or the stress order at the top of the slider, with the worth-its-miles
+it (`refine.better`: the score, which prices each red at its junction cost, up to 2
+calm miles, or the stress order at the top of the slider, with the worth-its-miles
 rule), it is no busier by the Traffic-wins guard (each red counted at its cost,
 `refine._busier`'s rule), at the top of the slider not past the ceiling where the route
 was not, on a loop no more of the way back on the way out than the loop has
@@ -96,8 +95,8 @@ CLIMB_KEPT = 0.9
 
 
 def reds_of(read: refine.Analysis) -> list:
-    """The route's red crossings, the worst first: as the map draws them, and the capped
-    trail crossings that cost as much (`refine.avoidance_severity`). One near the start, the
+    """The route's red crossings, the worst first, as the map draws them
+    (`refine.avoidance_severity`). One near the start, the
     end or a stop is asked round as any other (routing hunt 4, J4-1: within
     `refine.ENDPOINT_CLEARANCE_M` of them it was left, often the arterial crossing nearest
     the rider's home, even where the way round cost nothing); its exclusion takes out only

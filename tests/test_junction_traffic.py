@@ -1,31 +1,16 @@
-"""A junction reads a road by its traffic (the owner, 2026-10-31: "a protected bike lane on
-a busy road is just as hard to cross", "Traffic only, everywhere"). For one through lane a
-direction that reading is the classifier's own mixed-traffic reading, from the facts the
-segment table keeps (`stress.single_lane_traffic_level`): pinned here against `classify`,
-so a change to the classifier's single-lane rules shows up at the junctions too."""
+"""A junction reads a crossed road by its traffic (the owner, 2026-10-31: "a protected bike
+lane on a busy road is just as hard to cross", "Traffic only, everywhere"): the lanes
+crossed and the speed on Furth's crossing tables and the count on Broach's bins
+(`intersections.traffic_level`). That is one reading, kept in one place. The table for
+riding ALONG a road (`stress.mixed_traffic_level`) is a different question and is not read
+at a junction, and a crossed road with no count is read by its lanes and speed alone, with
+no count assumed for it."""
 
 from __future__ import annotations
-
-import itertools
 
 import pytest
 
 from routemaker.intersections import Control, Junction, Movement, Road, assess, traffic_level
-from routemaker.stress import classify, single_lane_traffic_level
-
-SPEEDS = (20, 25, 30, 35, 40, 45, 50)
-COUNTS = (None, 1_000, 1_501, 3_000, 5_000, 7_999, 8_000, 11_999, 12_000, 19_999, 20_000)
-
-
-@pytest.mark.parametrize(
-    ("speed", "aadt", "oneway", "urban"),
-    list(itertools.product(SPEEDS, COUNTS, (False, True), (True, False))),
-)
-def test_the_single_lane_reading_is_the_classifiers(speed, aadt, oneway, urban) -> None:
-    tags = {"highway": "residential", "maxspeed": f"{speed} mph", "surface": "asphalt"}
-    tags |= {"oneway": "yes", "lanes": "1"} if oneway else {"lanes": "2"}
-    result = classify(tags, aadt=aadt, urban=urban)
-    assert single_lane_traffic_level(speed, oneway, aadt, urban) == (result.tier, result.half)
 
 
 @pytest.mark.parametrize("urban", [True, False])

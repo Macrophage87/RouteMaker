@@ -70,8 +70,7 @@ from routemaker.stress import (
     is_rough,
     level_of,
     painted_lane_multilane,
-    rural_floor,
-    rural_floor_applies,
+    rural_minimum_applies,
     service_road_step,
 )
 
@@ -109,6 +108,7 @@ from . import (
     trail_closures,
     trail_routes,
     variants,
+    way_observations,
     writers,
 )
 from . import station_links as station_ways
@@ -842,6 +842,13 @@ class RebuildContext:
     # The ways' nodes tagged `button_operated=yes` (`extract.read_ways`), for
     # `segment.button_operated`; empty where none were read.
     button_nodes: set[int] = field(default_factory=set)
+    # The ways' nodes tagged as a signal (`extract.read_ways`), for
+    # what a side path crosses (`rate_side_paths`); empty where none were read.
+    control_nodes: dict[int, str] = field(default_factory=dict)
+    # The level of a road that carries a protected lane on its own way, classified without
+    # that lane (`facility.without_bike_facility`): the level a rider in the roadway has,
+    # which the lane is rated from and never above (`apply_beside_busy_road`).
+    bare_level_by_way: dict[int, float] = field(default_factory=dict)
     ways_by_id: dict[int, extract.Way] = field(default_factory=dict)
     # The whole `Match`, not `(aadt, tier)`. The stage that reads this is the
     # last one that could record where a count came from, and the pair dropped
@@ -1881,15 +1888,11 @@ def agency_rated(result, ratings, tags: Mapping[str, str], *, urban: bool):
     service-road step again, which rank above them (`apply_agency_ratings`)."""
     mapped = facility.facility(dict(tags))
     return service_road_step(
-        rural_floor(
-            agency_lts.apply(
-                result,
-                ratings,
-                facility_mapped=mapped is not facility.Facility.NONE,
-                painted_lane=mapped is facility.Facility.LANE,
-            ),
-            tags,
-            urban=urban,
+        agency_lts.apply(
+            result,
+            ratings,
+            facility_mapped=mapped is not facility.Facility.NONE,
+            painted_lane=mapped is facility.Facility.LANE,
         ),
         tags,
     )
@@ -1908,7 +1911,7 @@ def osm_tags_tier(result, tags: Mapping[str, str], ratings, *, urban: bool, owne
     tier."""
     if owner_lane:
         result = bike_lanes.owner_tier(result, tags)
-    result = service_road_step(rural_floor(result, tags, urban=urban), tags)
+    result = service_road_step(result, tags)
     if ratings and not owner_lane:
         result = agency_rated(result, ratings, tags, urban=urban)
     return result
@@ -1939,7 +1942,17 @@ def assert_rating_rules(context: RebuildContext) -> None:
     for way_id in lts_sentinels.rural_lts1_ways(schema):
         way = by_id.get(way_id)
         tags = context.class_tags_by_way.get(way_id, way.tags if way is not None else {})
-        if rural_floor_applies(tags, urban=False):
+        # The classifier's own verdict where the rebuild still holds it: it read the way
+        # with its curated speed, its agency record and its state, which these tags alone
+        # do not carry (review r1, finding 13: a curated 25 mph on a rural residential
+        # street made the two disagree and the rebuild refuse a correct LTS 1).
+        rated = context.stress_by_way.get(way_id)
+        held = (
+            getattr(rated, "rural_minimum", False)
+            if rated is not None
+            else rural_minimum_applies(tags)
+        )
+        if held:
             rural.append(way_id)
     # A `moco-lts5-*` row keeps Avoid where our own rules already said Avoid
     # (`overrides.stress_adjustment`'s `own_avoid`), as `agency_lts.apply` does for the layer.
@@ -1979,12 +1992,26 @@ def assert_mass_capacity(
 
 
 def apply_beside_busy_road(
-    stress_by_way: dict, side_streets: dict, crossings: dict | None = None
+    stress_by_way: dict,
+    side_streets: dict,
+    crossings: dict | None = None,
+    bare_level: dict | None = None,
 ) -> int:
     """Rate each side path or protected lane from the street it runs beside
     (`stress.beside_busy_road_step`): the busiest level among the street's ways that carry at
     least `BESIDE_BUSY_ROAD_MIN_SHARE` of the path's length found beside it, and what it
-    crosses (`facility.side_path_crossings`). Returns how many ways the step moved."""
+    crosses (`facility.side_path_crossings`). Returns how many ways the step moved.
+
+    A sidewalk open to bicycles is never rated above the level the same sidewalk has with no
+    bicycle tag (`sidewalks.TIER` beside a 4.5 or Avoid road, `sidewalks.LAST_RESORT_TIER`
+    beside any other), so a tag that opens it never makes it worse (the audit, 2026-11-13,
+    I8).
+
+    A protected lane tagged on the road itself (`facility.on_road_tracks`,
+    `SideStreet.road_sides`) reads the road's level without the lane from `bare_level`
+    (`RebuildContext.bare_level_by_way`) and is left alone where that is not known. A track
+    is at a flat LTS 1 by the classifier and steps as a path does; a painted lane behind
+    posts takes the same level, never above the painted-lane level it has now."""
     from routemaker.stress import BESIDE_BUSY_ROAD_MIN_SHARE, beside_busy_road_step
 
     moved = 0
@@ -1992,51 +2019,107 @@ def apply_beside_busy_road(
         current = stress_by_way.get(path_id)
         if current is None:
             continue
-        total = sum(found.metres_by_way.values())
-        levels = [
-            level_of(stress_by_way[street_id])
-            for street_id, metres in found.metres_by_way.items()
-            if street_id in stress_by_way
-            and stress_by_way[street_id].tier is not None
-            and total > 0
-            and metres >= BESIDE_BUSY_ROAD_MIN_SHARE * total
-        ]
         crossed = (crossings or {}).get(path_id)
+        ceiling = None
+        asked = current
+        if found.road_sides:
+            road_level = (bare_level or {}).get(path_id)
+            if road_level is None or getattr(current, "adjustment", None) is not None:
+                continue
+            if found.posts and current.tier is not None and level_of(current) > 1.0:
+                # A lane behind posts, at its painted-lane level: asked as the track it is.
+                ceiling = level_of(current)
+                asked = replace(current, tier=Stress.LTS1, half=False)
+        else:
+            total = sum(found.metres_by_way.values())
+            levels = [
+                level_of(stress_by_way[street_id])
+                for street_id, metres in found.metres_by_way.items()
+                if street_id in stress_by_way
+                and stress_by_way[street_id].tier is not None
+                and total > 0
+                and metres >= BESIDE_BUSY_ROAD_MIN_SHARE * total
+            ]
+            road_level = max(levels, default=None)
+            if found.sidewalk and road_level is not None:
+                ceiling = float(sidewalks.TIER if road_level >= 4.5 else sidewalks.LAST_RESORT_TIER)
         stepped = beside_busy_road_step(
-            current,
-            max(levels, default=None),
-            crossing_score=crossed.score_per_mile if crossed else None,
-            slip_lane=crossed.slip_lane if crossed else False,
+            asked,
+            road_level,
+            crossing_ft_per_mile=crossed.ft_per_mile if crossed else None,
+            contraflow=found.contraflow,
+            ceiling=ceiling,
         )
-        if stepped is not current:
+        if stepped is not asked:
             stress_by_way[path_id] = stepped
             moved += 1
     return moved
 
 
-def rate_side_paths(ways, stress_by_way: dict) -> tuple[dict, int]:
+def junction_road(stress):
+    """A way's `StressResult` as the junction model's road at route time
+    (`routemaker.intersections.Road`): the same facts `write_segments` puts on the segment
+    table and `core.junctions.roads_by_way` reads back (the greater of the tier and the
+    tier before smoothing, the half step, the agency's count, the posted speed, the lanes a
+    direction, the direction, the statutory default speed). None where the way has no
+    level. So the rebuild and the route read one mouth one way (`facility.crossed_road`)."""
+    from routemaker.intersections import Road
+
+    if stress is None or stress.tier is None:
+        return None
+    raw = getattr(stress, "unsmoothed_tier", None)
+    tier = max(int(stress.tier), int(raw)) if raw is not None else int(stress.tier)
+    speed = _smallint(getattr(stress, "speed_mph", None))
+    default = _smallint(getattr(stress, "default_speed_mph", None))
+    return Road(
+        tier=tier,
+        speed_mph=None if speed is None else float(speed),
+        lanes=_smallint(getattr(stress, "lanes", None)),
+        oneway=getattr(stress, "graph_oneway", None),
+        aadt=getattr(stress, "volume_aadt", None),
+        default_speed_mph=None if default is None else float(default),
+        half=bool(getattr(stress, "half", False)) and tier == int(stress.tier) and tier < 5,
+    )
+
+
+def rate_side_paths(
+    ways,
+    stress_by_way: dict,
+    *,
+    control_nodes: dict | None = None,
+    bare_level: dict | None = None,
+) -> tuple[dict, int]:
     """The side paths and protected lanes beside busy roads (`stress.BESIDE_BUSY_ROAD_RULE`;
-    the owner, 2026-11-12): each unnamed bike way's named street alongside
-    (`facility.side_streets`), what the path crosses (`facility.side_path_crossings`), and the
-    level it takes from them (`apply_beside_busy_road`). Returns the streets found, kept for
-    the side-path names (`write_segments`), and how many ways the step moved.
+    the owner, 2026-11-12): each bike way's named street alongside, by geometry
+    (`facility.side_streets`), and each protected lane tagged on its road
+    (`facility.on_road_tracks`); what a rider following each crosses
+    (`facility.side_path_crossings`; `control_nodes` are the signals,
+    `extract.read_ways`); and the level each takes (`apply_beside_busy_road`). Returns the
+    streets found beside the ways mapped on their own, kept for the side-path names
+    (`write_segments`) and PR #1242's weekend rule, and how many ways the step moved.
 
     Run once every street's level is final: after the rows (a row on the street sets the
     level the path reads, a row on the path stands), after the circle parks', Capitol
     grounds' and Mall's walks are opened, and after `car_free_tier_1` and
     `raise_ridden_sidewalks` (`classify_facilities`), so a road closed to cars for good,
     lowered to LTS 1 there, never lifts the path beside it."""
-    side_streets = facility.side_streets([(way.osm_id, way.tags, way.coordinates) for way in ways])
+    placed = [(way.osm_id, way.tags, way.coordinates) for way in ways]
+    side_streets = facility.side_streets(placed)
+    # Only the tracks whose road's own level is known and busy enough to step them.
+    tracks = {
+        osm_id: found
+        for osm_id, found in facility.on_road_tracks(placed).items()
+        if (bare_level or {}).get(osm_id) is not None
+    }
     crossings = facility.side_path_crossings(
         [(way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates) for way in ways],
-        side_streets,
-        lambda osm_id: (
-            level_of(stress_by_way[osm_id])
-            if osm_id in stress_by_way and stress_by_way[osm_id].tier is not None
-            else None
-        ),
+        {**side_streets, **tracks},
+        control_at=control_nodes,
+        road_of=lambda osm_id: junction_road(stress_by_way.get(osm_id)),
     )
-    return side_streets, apply_beside_busy_road(stress_by_way, side_streets, crossings)
+    moved = apply_beside_busy_road(stress_by_way, side_streets, crossings)
+    moved += apply_beside_busy_road(stress_by_way, tracks, crossings, bare_level)
+    return side_streets, moved
 
 
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
@@ -2467,7 +2550,12 @@ def build_handlers(
         # The ways' nodes tagged `button_operated=yes` are read in the same pass (the beg
         # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
         context.button_nodes = set()
-        context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
+        context.control_nodes = {}
+        context.ways = extract.read_ways(
+            context.source_pbf,
+            button_nodes=context.button_nodes,
+            control_nodes=context.control_nodes,
+        )
         # The OSM route relations the ways are in, for the zoomed-out long trails
         # (OWNER-DECISIONS 375).
         routes = trail_routes.read_routes(context.source_pbf)
@@ -2790,6 +2878,11 @@ def build_handlers(
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
         used: set[int] = set()
+        # Measured speeds and estimated counts for single ways, where a source has been
+        # installed (`pipeline.way_observations`; none is today, and then this is empty).
+        observed = way_observations.load(context.reference_dir)
+        if observed:
+            logger.info("way observations: %d ways (%s)", len(observed), way_observations.FILE_NAME)
         # And the curated bike lanes (OWNER-DECISIONS 433, Veirs Mill Road): a painted
         # lane the map is missing, for the classifier and the facility class only.
         lanes = bike_lanes.load()
@@ -2870,8 +2963,11 @@ def build_handlers(
             # The owner's narrow-road rule reads the line only outside urban
             # areas (`stress.NARROW_RURAL_ROAD_MPH`).
             bends = rural and bends_slow_traffic(way.coordinates, tags)
+            noted = observed.get(way.osm_id, way_observations.NONE)
 
-            def classified(aadt, tags=tags, way=way, match=match, facts=facts, bends=bends):
+            def classified(
+                aadt, tags=tags, way=way, match=match, facts=facts, bends=bends, noted=noted
+            ):
                 return classify(
                     tags,
                     aadt=aadt,
@@ -2887,9 +2983,23 @@ def build_handlers(
                     parking_width_m=facts.parking_reach_m if facts is not None else None,
                     winding=bends,
                     side_path=way.osm_id in context.use_sidepath_paths,
+                    estimated_aadt=noted.estimated_aadt,
+                    observed_speed_mph=noted.observed_speed_mph,
                 )
 
             context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
+            if facility.on_road_tracks([(way.osm_id, tags, way.coordinates)]):
+                # A protected lane tagged on the road: the road's own level, without it, for
+                # the side-path rule (`rate_side_paths`; W4, docs/stress/side-paths.md).
+                context.bare_level_by_way[way.osm_id] = level_of(
+                    service_road_step(
+                        classified(
+                            match.aadt if match else None,
+                            tags=facility.without_bike_facility(tags),
+                        ),
+                        tags,
+                    )
+                )
             if match is not None and match.raw_aadt is not None:
                 # Smoothed (OWNER-DECISIONS 285, 303): the link is classified on
                 # the street's median, but the segment publishes what the agency
@@ -2911,10 +3021,10 @@ def build_handlers(
                 context.stress_by_way[way.osm_id] = bike_lanes.owner_tier(
                     context.stress_by_way[way.osm_id], tags
                 )
-            # The owner's rural floor (2026-10-13) and service-road step (2026-11-01), over
+            # The service-road step (2026-11-01), over
             # the classifier's tier and under the owner's own corridors and rows below.
             context.stress_by_way[way.osm_id] = service_road_step(
-                rural_floor(context.stress_by_way[way.osm_id], tags, urban=not rural), tags
+                context.stress_by_way[way.osm_id], tags
             )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(
@@ -3735,7 +3845,12 @@ def build_handlers(
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
         # Last, once every street's level is final (`rate_side_paths`).
-        context.side_streets, stepped = rate_side_paths(context.ways, context.stress_by_way)
+        context.side_streets, stepped = rate_side_paths(
+            context.ways,
+            context.stress_by_way,
+            control_nodes=context.control_nodes,
+            bare_level=context.bare_level_by_way,
+        )
         logger.info("side paths and protected lanes beside a busy road, rated from it: %d", stepped)
         logger.info(
             "contraflow-only facilities shown on the map where the rider with the traffic "
@@ -4028,7 +4143,9 @@ def build_handlers(
                 # DDOT's pavement band for the street (DC-PCI; lua/routemaker_remap.lua).
                 pci = context.pci_by_way.get(way.osm_id)
                 if pci is not None and pci.applied:
-                    derived["pci"] = pci.applied
+                    # Never rougher than good in the router: a rough band was a discount
+                    # (`pavement.graph_band`).
+                    derived["pci"] = pavement.graph_band(pci.applied)
                 # A reviewer's surface penalty (v0.7.0 surface overrides): the remap reads it
                 # as a rougher surface, bounded so the edge stays ridable (`bounded_surface`).
                 penalty = context.reviewer_surface_by_way.get(way.osm_id)
@@ -4396,7 +4513,7 @@ def build_handlers(
         # people on foot share it (`facility.sidepath_name`), for the route description
         # and the road panel.
         sidepath_names = (
-            {osm_id: found.name for osm_id, found in context.side_streets.items()}
+            {osm_id: found.name for osm_id, found in context.side_streets.items() if found.name}
             if context.side_streets is not None
             else facility.side_street_names(
                 [(way.osm_id, way.tags, way.coordinates) for way in context.ways]

@@ -258,7 +258,7 @@ def _ratings_json(stress: StressResult) -> str | None:
         set_aside,
         source_name,
     )
-    from routemaker.stress import RURAL_FLOOR_RULE, SERVICE_ROAD_RULE
+    from routemaker.stress import RURAL_MIN_RULE, SERVICE_ROAD_RULE
 
     ratings = getattr(stress, "agency_ratings", ())
     if not ratings:
@@ -272,7 +272,7 @@ def _ratings_json(stress: StressResult) -> str | None:
             "name": source_name(used),
             "level": int(adjustment.tier) + (0.5 if getattr(adjustment, "half", False) else 0),
         }
-    elif RURAL_FLOOR_RULE in (stress.rule or ""):
+    elif RURAL_MIN_RULE in (stress.rule or ""):
         used = "rural floor"
     elif SERVICE_ROAD_RULE in (stress.rule or ""):
         used = "service road"

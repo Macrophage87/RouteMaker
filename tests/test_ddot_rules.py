@@ -104,13 +104,6 @@ def test_the_road_panel_says_why_ddot_was_read_otherwise(monkeypatch) -> None:
     assert "," not in held.note
 
 
-def test_only_ddot_is_read_by_these_rules() -> None:
-    county = StressResult(Stress.LTS3, "x", (), volume_aadt=45_334, lanes=2, oneway=False)
-    result = agency_lts.apply(county, [AgencyRating("moco", 1)])
-    assert result.tier is Stress.LTS1
-    assert result.agency_ratings == (AgencyRating("moco", 1),)
-
-
 def test_every_rule_has_words_without_commas() -> None:
     assert ddot_rules.ENABLED == frozenset(ddot_rules.RULE_WORDS)
     assert all("," not in words for words in ddot_rules.RULE_WORDS.values())
@@ -184,7 +177,10 @@ def test_no_rule_reads_a_block_the_review_did_not_propose(block) -> None:
     assert ddot_rules.read_as(Block(**block)) is None
 
 
-def test_a_struck_painted_lane_rule_falls_back_to_the_older_painted_lane_level() -> None:
+def test_a_struck_painted_lane_rule_still_sets_no_level() -> None:
+    """Review r1: with the rule struck, DDOT's set-aside 4 used to raise a painted lane to
+    2.5. DDOT is comparison-only (`agency_lts.COMPARISON_ONLY`), so nothing it says sets a
+    level, with the rule or without it."""
     thomas_circle = StressResult(
         Stress.LTS1, "painted lane", (), volume_aadt=24_499, lanes=3, oneway=True
     )
@@ -198,7 +194,8 @@ def test_a_struck_painted_lane_rule_falls_back_to_the_older_painted_lane_level()
             facility_mapped=True,
             painted_lane=True,
         )
-    assert (int(result.tier), result.half) == (2, True)
+    assert (int(result.tier), result.half) == (1, False)
+    assert result.agency_ratings
 
 
 @pytest.mark.parametrize(

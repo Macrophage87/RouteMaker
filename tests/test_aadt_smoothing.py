@@ -10,7 +10,6 @@ import pytest
 
 from pipeline import aadt_smoothing
 from pipeline.conflation import Match
-from routemaker.stress import classify
 
 DATA = Path(__file__).parent / "data" / "first_street_nw.json"
 # Metres per degree of latitude, to lay a synthetic street out in metres.
@@ -203,24 +202,6 @@ def test_agency_and_year_stay_those_of_the_replaced_count() -> None:
     assert (out[3].agency, out[3].year, out[3].feature_id) == ("ddot", 2024, "f3")
 
 
-def test_a_median_off_the_gate_is_what_the_rule_text_marks() -> None:
-    assert aadt_smoothing.crosses_volume_gate(10665, 7520)
-    assert aadt_smoothing.crosses_volume_gate(1200, 1800)
-    assert not aadt_smoothing.crosses_volume_gate(9500, 11000)
-    assert not aadt_smoothing.crosses_volume_gate(5000, 7000)
-    # The owner's busy-street half step: 5,000, and 9,000 under a painted lane.
-    assert aadt_smoothing.crosses_volume_gate(3000, 6000)
-    assert aadt_smoothing.crosses_volume_gate(8999, 9000)
-    assert aadt_smoothing.crosses_volume_gate(7999, 8000)
-    # 1,500 is still quiet and 1,501 is not; 8,000 is busy and 7,999 is not.
-    assert aadt_smoothing.crosses_volume_gate(1500, 1501)
-    assert not aadt_smoothing.crosses_volume_gate(1501, 1502)
-    # And the urban two-way floor is "more than 8,000" (`stress.urban_two_way_floor`),
-    # so 8,000 and 8,001 are either side of it (ARTERIAL review r0, nit).
-    assert aadt_smoothing.crosses_volume_gate(8000, 8001)
-    assert not aadt_smoothing.crosses_volume_gate(8001, 8002)
-
-
 def test_the_midpoint_is_half_way_along_the_line() -> None:
     mid, length = aadt_smoothing.midpoint_and_length(
         [[-77.0, 38.9], [-77.0, 38.901], [-77.001, 38.901]]
@@ -255,20 +236,6 @@ def test_way_483241819_drops_to_the_streets_count() -> None:
     assert 483241819 in {r.way_id for r in report.replaced}
 
 
-def test_and_that_moves_the_block_from_lts_3_to_lts_2_by_the_unchanged_rules() -> None:
-    """Decision 285: LTS 3 "single lane, high volume" on 10,665; the rest of the
-    street's 7,520 is LTS 2. No threshold changed (decision 296)."""
-    ways, by_way = first_street()
-    way = next(w for w in ways if w.osm_id == 483241819)
-    tags = {**way.tags, "maxspeed": "25 mph"}
-    kwargs = dict(urban=True, jurisdiction="DC")
-    raw = classify(tags, aadt=by_way[483241819].aadt, **kwargs)
-    out, _ = smooth(ways, by_way, {w.osm_id: "DC" for w in ways})
-    after = classify(tags, aadt=out[483241819].aadt, **kwargs)
-    assert int(raw.tier) == 3 and "high volume" in raw.rule
-    assert int(after.tier) == 2 and "high volume" not in after.rule
-
-
 def test_a_lower_count_that_is_not_an_outlier_is_untouched_and_the_report_counts() -> None:
     ways, by_way = first_street()
     out, report = smooth(ways, by_way, {w.osm_id: "DC" for w in ways})
@@ -293,3 +260,16 @@ def test_smoothing_only_lowers_a_count_never_raises_one() -> None:
     assert [r.way_id for r in report.replaced] == [2]
     assert all(r.smoothed < r.raw for r in report.replaced)
     assert all(out[w].aadt <= by_way[w].aadt for w in by_way)
+
+
+def test_the_gates_are_the_published_tables_count_breaks():
+    # Furth v2.2's mixed-traffic breaks (751, 1,001, 1,501, 3,001, 8,001), Oregon's rural
+    # ones (400, 1,501, 7,001) and the busy rural highway step (18,000), each the first
+    # count on its busier side. Written out here, not read from `stress.VOLUME_GATES`.
+    for gate in (400, 751, 1_001, 1_501, 3_001, 7_001, 8_001, 18_000):
+        assert aadt_smoothing.crosses_volume_gate(gate, gate - 1), gate
+        assert not aadt_smoothing.crosses_volume_gate(gate - 1, gate - 2), gate
+        assert not aadt_smoothing.crosses_volume_gate(gate + 1, gate), gate
+    # The local steps the classifier had until 2026-11-13 move nothing now.
+    for retired in (5_000, 9_000, 12_000, 20_000):
+        assert not aadt_smoothing.crosses_volume_gate(retired, retired - 1), retired

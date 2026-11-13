@@ -40,11 +40,13 @@ route, under the elevation.
 | Page | What it covers |
 |---|---|
 | [classification.md](classification.md) | How a way gets its tier: inputs, rule order, AADT smoothing, curated files, closures (access) against stress |
+| [side-paths.md](side-paths.md) | Side paths, protected lanes and sidewalks beside a road: what counts as beside, the step for the road's level, crossing points and their cost, slip lanes, riding against traffic, the clamp and the cap, lanes mapped three ways, sidewalks, and what routing does with the level |
 | [overrides.md](overrides.md) | Stress and access override rows, `at_least` floors, `retire` lists, the loader, the owner's sign-off rule, re-matching by fingerprint |
 | [routing-costs.md](routing-costs.md) | Valhalla's graph tags and request knobs, the slider, each preset's values, RouteMaker's ranking (calm search, LTS 4 hold, strict order, worth rule), the junction model |
 | [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints (built), and the rolling stress chart as built |
 | [drawing.md](drawing.md) | Map colors, dashes and widths by level in each palette, zoom rules, half-step drawing (built), the Mass Ride map |
 | [intersections.md](intersections.md) | The junction cost model as built (which roads count, crossing, left, merge and slip costs, caps, orange and red), and the planned revision (467, 468, 468a) |
+| [junction-waits.md](junction-waits.md) | The time a ride loses at junctions and what the ranking counts for it: signals, stop signs, give-way and uncontrolled crossings (one gap-delay formula from the road's count, lanes and speed), time shown against ranking price, time of day |
 | [literature.md](literature.md) | The research consulted, what RouteMaker took from each source, and where and why it differs |
 | [layers.md](layers.md) | The z12-13 ride layer (calm roads, long paths), Mass Ride capacity, and how stress feeds them |
 

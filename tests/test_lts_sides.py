@@ -71,17 +71,6 @@ class TestTheReviewersTable:
         tagged = {**ARTERIAL, f"cycleway:{OTHER[side]}": "track", f"cycleway:{side}": "no"}
         assert classify(tagged).tier is classify(ARTERIAL).tier
 
-    @pytest.mark.parametrize("side", ("left", "right"))
-    def test_a_general_shoulder_with_one_side_saying_no_is_the_bare_road(self, side: str) -> None:
-        """The shoulder mirror: `shoulder=yes` + `shoulder:width=2.4` +
-        `shoulder:right=no` rated LTS3, because the general `yes` was read into
-        the right side and the general width with it."""
-        shouldered = {**ARTERIAL, "shoulder": "yes", "shoulder:width": "2.4"}
-        assert classify(shouldered).tier is Stress.LTS3
-        tagged = {**shouldered, f"shoulder:{side}": "no"}
-        assert has_shoulder(tagged) is False
-        assert classify(tagged).tier is classify(ARTERIAL).tier
-
     @pytest.mark.parametrize("speed", ("25 mph", "30 mph"))
     @pytest.mark.parametrize("side", ("left", "right"))
     @pytest.mark.parametrize("general_key", ("cycleway", "cycleway:both"))

@@ -17,7 +17,11 @@ from pipeline.extract import Way
 from pipeline.overrides import Override
 from routemaker import agency_lts
 from routemaker.agency_lts import PROHIBITED_NO_BICYCLE, AgencyRating
-from routemaker.stress import Stress, StressResult, classify, rural_floor
+from routemaker.stress import (
+    Stress,
+    StressResult,
+    classify,
+)
 
 FORMULA = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ("maxspeed",))
 OVERRIDES = Path(__file__).resolve().parents[1] / "fixtures" / "overrides"
@@ -41,21 +45,6 @@ def _step(result) -> float:
     return int(result.tier) + (0.5 if half else 0.0)
 
 
-@pytest.mark.parametrize("urban", [False, True])
-def test_a_county_5_is_45_on_rural_and_urban_ways(urban):
-    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
-    result = rural_floor(rated, {"highway": "primary"}, urban=urban)
-    assert _step(result) == 4.5
-    # The county's own number is kept for the road panel.
-    assert [r.level for r in result.agency_ratings] == [5]
-
-
-def test_the_county_5_beats_the_states_lower_level_and_reads_as_45():
-    result = agency_lts.apply(FORMULA, [AgencyRating("mdot-sha", 3), AgencyRating("moco", 5)])
-    assert _step(result) == 4.5
-    assert result.rule.endswith(f", {agency_lts.READ_AS_REASON}")
-
-
 def test_ddot_5_stays_avoid_and_wins_a_tie_with_the_county_5(monkeypatch):
     # With DDOT's level in use (`agency_lts.COMPARISON_ONLY` off; since 2026-11-13 it is
     # recorded only, and the county's 4.5 is used).
@@ -64,11 +53,6 @@ def test_ddot_5_stays_avoid_and_wins_a_tie_with_the_county_5(monkeypatch):
     # Two local agencies at one line: the higher level as the map uses it, DDOT's Avoid.
     pick = agency_lts.chosen([AgencyRating("moco", 5), AgencyRating("ddot", 5)])
     assert pick.agency == "ddot"
-
-
-def test_with_ddot_recorded_only_the_county_5_is_used():
-    pick = agency_lts.chosen([AgencyRating("moco", 5), AgencyRating("ddot", 5)])
-    assert pick.agency == "moco"
 
 
 def test_mdot_5_still_closes_the_way():
@@ -120,15 +104,6 @@ def test_the_owners_darnestown_rows_stay_lts4():
         override = Override(kind="stress", osm_way_id=row["osm_way_id"], value=row["value"])
         overrides.apply_stress(by_way, [override])
         assert _step(by_way[row["osm_way_id"]]) == 4
-
-
-def test_the_panel_says_the_county_rates_it_5_and_the_map_uses_45():
-    from core import segment_info
-
-    rule = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)]).rule
-    assert segment_info.rule_words(rule) == (
-        "Rated LTS 5 by Montgomery County Planning, which means very high stress: LTS 4.5 here"
-    )
 
 
 @pytest.mark.parametrize(
@@ -188,12 +163,6 @@ def test_a_county_4_no_longer_lowers_the_formulas_own_avoid():
     assert result.agency_ratings == (AgencyRating("moco", 4),)
 
 
-def test_the_painted_lane_report_uses_45():
-    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
-    row = agency_lts.painted_lane_row(1, "Darnestown Rd", "MD", result)
-    assert row["agency_level"] == "4.5" and row["differs"] == "yes"
-
-
 @pytest.mark.parametrize(
     "tags,side_path",
     [
@@ -221,17 +190,3 @@ def test_an_agency_level_never_lowers_a_legal_but_avoid_road(tags, side_path, ra
     assert result.tier is Stress.AVOID and not result.half
     assert result.rule == formula.rule
     assert result.agency_ratings == (rating,)
-
-
-def test_an_owners_reading_still_sets_an_urban_expressways_level_but_not_a_side_paths():
-    # An owner's reading of an agency level (`read_as`; MDOT SHA's `rural-expressway` 4.5, the
-    # owner, 2026-10-31: the same rule everywhere) is a level of its own on an expressway; on a
-    # side path's road or a bike-legal motorway the Avoid is about the road's place and stays.
-    read = AgencyRating("mdot-sha", 4, read_as=4.5, note="a 4+ lane highway posted 55 mph")
-    expressway = classify({"highway": "primary", "expressway": "yes", "maxspeed": "55 mph"})
-    result = agency_lts.apply(expressway, [read])
-    assert (result.tier, result.half) == (Stress.LTS4, True)
-    side = classify(
-        {"highway": "primary", "bicycle": "use_sidepath", "maxspeed": "40 mph"}, side_path=True
-    )
-    assert agency_lts.apply(side, [read]).tier is Stress.AVOID

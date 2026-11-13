@@ -32,29 +32,12 @@ def test_an_mdot_5_closes_a_road():
     assert [(r.way_id, r.outcome) for r in rows] == [(1, agency_ratings.CLOSED)]
 
 
-def test_a_county_5_alone_is_45_and_open():
-    """Montgomery's 5 is very high stress, our 4.5 (the owner, 2026-10-19), and open."""
-    rated = {1: (AgencyRating("moco", 5),)}
-    added, rows = _close([_way(1)], rated)
-    assert (added, rows) == ({}, [])
-    result = agency_lts.apply(agency_lts_formula(), rated[1])
-    assert (result.tier, result.half) == (Stress.LTS4, True)
-
-
 def test_a_ddot_5_stays_open_too():
     assert agency_ratings.prohibited_ways({1: (AgencyRating("ddot", 5),)}) == set()
 
 
 def test_an_mdot_4_closes_nothing():
     assert agency_ratings.prohibited_ways({1: (AgencyRating("mdot-sha", 4),)}) == set()
-
-
-def test_the_ban_holds_under_a_county_level_the_map_uses():
-    rated = (AgencyRating("moco", 4), AgencyRating("mdot-sha", 5))
-    # The map's level is the county's, but access is not a level: still closed.
-    assert agency_lts.chosen(rated).agency == "moco"
-    added, _rows = _close([_way(1)], {1: rated})
-    assert added == {1: PROHIBITED_NO_BICYCLE}
 
 
 def test_a_path_is_listed_and_never_closed():
@@ -141,26 +124,6 @@ def test_a_ban_alone_leaves_the_formulas_tier():
     # Kept for the road panel and for the closure.
     assert result.agency_ratings == (AgencyRating("mdot-sha", 5),)
     assert agency_ratings.prohibited_ways({1: result.agency_ratings}) == {1}
-
-
-def test_a_ban_is_never_the_chosen_level():
-    assert agency_lts.chosen([AgencyRating("mdot-sha", 5)]) is None
-    assert agency_lts.chosen([AgencyRating("mdot-sha", 4)]).level == 4
-    pick = agency_lts.chosen([AgencyRating("mdot-sha", 5), AgencyRating("moco", 2)])
-    assert pick.agency == "moco"
-
-
-def test_a_banned_way_left_open_takes_the_next_rating():
-    from routemaker.stress import StressResult
-
-    formula = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above")
-    assert (
-        agency_lts.apply(formula, [AgencyRating("mdot-sha", 5), AgencyRating("moco", 3)]).tier
-        is Stress.LTS3
-    )
-    # Its own formula Avoid (a bike-legal motorway) is not lowered by it either.
-    avoid = StressResult(Stress.AVOID, "legal but avoid: a motorway open to bicycles")
-    assert agency_lts.apply(avoid, [AgencyRating("mdot-sha", 5)]).tier is Stress.AVOID
 
 
 def test_the_bridge_and_the_reopened_road_are_rated_by_the_formula():

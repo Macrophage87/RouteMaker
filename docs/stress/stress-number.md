@@ -23,7 +23,7 @@ window of about a mile).
 | Status | built | built | built | built | built | built | built | built | built |
 
 Today the value is `segment.stress_tier` (1-5). A road closed to cars at the time of the
-ride counts as 1 (`src/core/routing.py:382`). A piece no segment rated is `unknown` and
+ride counts as 1 (`src/core/routing.py`). A piece no segment rated is `unknown` and
 has no number. Half steps come from the stress editor (441i-441l; section 3). They are
 stored as the lower tier plus a half flag (`segment.stress_half`, the override value's
 `"half": true`, the tiles' `half`), so every integer reader keeps working. The number is ordinal, as LTS is. Harvey, Fang & Rodriguez (MTI 19-20) warn
@@ -46,49 +46,52 @@ no road details. It is computed from today's code, in three parts.
 - **Router.** `M = 1 + added(L) / 2.2`. `added(L)` is the graded cost per meter as a
   multiple of time ([routing-costs.md](routing-costs.md), section 1). 2.2 is
   `QUIET_COST_FACTOR`, the measured cost of a meter of quiet street as a multiple of its
-  time (`src/core/refine.py:141-144`), the same exchange rate RouteMaker's own score uses.
+  time (`src/core/refine.py`), the same exchange rate RouteMaker's own score uses.
   Valhalla's factor depends on the road's speed and lanes, so a range is given over the
   five modeled road types.
 - **Calm rate above 80.** Plus `rate x w(L)`, the exposure weight `w` at that position's
-  calm rate (`Analysis.score`, `refine.py:339-343`).
+  calm rate (`Analysis.score`, `refine.py`).
 - **Top of the slider (100).** There is no per-meter price. Ranking is in the strict
   order, and the worth rule sets the exchange: a meter of LTS 3-equivalent stress saved
   is worth 5 m of extra distance with no target, and 2.5 m past a target
-  (`refine.py:423-546`). The multiplier is then `1 + 5 x w_std(L)`, or `1 + 2.5 x w_std(L)`
+  (`refine.py`). The multiplier is then `1 + 5 x w_std(L)`, or `1 + 2.5 x w_std(L)`
   past a target. Up to a rider's target distance a meter of stress saved is worth 10 m
-  of extra distance (`WORTH_UP_TO_TARGET`, `src/core/refine.py:444`; the owner's "One rule",
+  of extra distance (`WORTH_UP_TO_TARGET`, `src/core/refine.py`; the owner's "One rule",
   2026-10-10, filed under 435; not yet in OWNER-DECISIONS), so the multiplier there is `1 + 10 x w_std(L)`. The rolling chart uses that
   price wherever a target is set (section 4).
 
-Avoid also pays an **entry charge** of 1,800 s on each entry (`presets.py:167`). It is
-shown as quiet-street distance at the preset's planning speed
-(`1800 / (2.2 x 3.6 / km/h)` meters).
+Avoid also pays an **entry charge** on each entry: one distance, 2.54 mi [4.09 km] of quiet
+street, on every ride type since 2026-11-13 (`calm.AVOID_ENTRY_M`; it is the 1,800 router cost
+seconds of before at the 18 km/h reference, `1800 / (2.2 x 3.6 / 18)` meters). The router is
+sent that distance at the ride's own speed (`presets.avoid_entry_cost_s`) and the stress
+number counts the same distance (`calm.avoid_entry_m`). Before, both used 1,800 s at the
+ride's speed: 1.4 mi on Mass Ride, 3.4 mi on E-bike.
 
 ### Today, whole levels, at each preset's starting position
 
 | Preset (position) | LTS 1-2 | LTS 3 | LTS 4 | Avoid per meter | Avoid entry |
 |---|---|---|---|---|---|
-| Mass Ride (0, locked, no-trail graph) | 1 | 1 | 1 (not graded) | 1 | 1.4 mi [2.2 km] |
+| Mass Ride (0, locked, no-trail graph) | 1 | 1 | 1 (not graded) | 1 | 2.5 mi [4.1 km] |
 | Any ride at 0 on the standard graph | 1 | 1 | 1.37-1.52 | as LTS 4 | as the preset |
 | Fast (10) | 1 | 1.22-1.36 | 2.11-2.34 | as LTS 4 | 2.5 mi [4.1 km] |
-| Group Ride, Mountain Goat, Gravel (40) | 1 | 1.93-2.85 | 5.38-6.25 | as LTS 4 | 2.8 mi [4.5 km] |
+| Group Ride, Mountain Goat, Gravel (40) | 1 | 1.93-2.85 | 5.38-6.25 | as LTS 4 | 2.5 mi [4.1 km] |
 | Default (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
-| E-bike (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 3.4 mi [5.5 km] |
-| Cargo Bike, carrying cargo (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
-| Cargo Bike, with passengers (80) | 1 (LTS 2: about 2.0) | 3.16-6.84 | 15.61-19.42 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
+| E-bike (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
+| Cargo Bike, carrying cargo (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
+| Cargo Bike, with passengers (80) | 1 (LTS 2: about 2.0) | 3.16-6.84 | 15.61-19.42 | as LTS 4 | 2.5 mi [4.1 km] |
 | Slider at 85, standard / stress-averse weights | 1 | 3.74-7.42 | 16.78-20.59 / 20.29-24.10 | 17.36-21.17 / 24.97-28.78 | as the preset |
 | Slider at 90, standard / stress-averse | 1 | 4.98-8.66 | 19.26-23.07 / 30.20-34.01 | 21.08-24.89 / 44.79-48.60 | as the preset |
 | Slider at 95, standard / stress-averse | 1 | 7.61-11.28 | 24.50-28.31 / 51.19-54.99 | 28.95-32.76 / 86.76-90.57 | as the preset |
-| Trailmaxxing (100), no target | 1 (LTS 2: 2.25) | 6 | 11, and LTS 4 always ranks first | 16 | 2.8 mi [4.5 km] in Valhalla's candidates |
+| Trailmaxxing (100), no target | 1 (LTS 2: 2.25) | 6 | 11, and LTS 4 always ranks first | 16 | 2.5 mi [4.1 km] in Valhalla's candidates |
 | Trailmaxxing (100), past a target | 1 (LTS 2: 1.625) | 3.5 | 6, and LTS 4 always ranks first | 8.5 | as above |
-| Riding with kids (100), no target | 1 (LTS 2: 3.5) | 6 | 11, and LTS 4 always ranks first | 16 | 1.4 mi [2.3 km] in Valhalla's candidates |
+| Riding with kids (100), no target | 1 (LTS 2: 3.5) | 6 | 11, and LTS 4 always ranks first | 16 | 2.5 mi [4.1 km] in Valhalla's candidates |
 | Riding with kids (100), past a target | 1 (LTS 2: 2.25) | 3.5 | 6, and LTS 4 always ranks first | 8.5 | as above |
 
 Notes:
 
 - The stress-averse weights (1/8/16) count in the score only above 80. At 80 (Cargo with
   passengers, Bikeshare) and at 100 (Trailmaxxing, Riding with kids) they reach only the Traffic-wins guard,
-  `calmer_or_own` and the LTS 4 hold. The worth rule always uses 1/2/3 (`refine.py:445-451`).
+  `calmer_or_own` and the LTS 4 hold. The worth rule always uses 1/2/3 (`refine.py`).
 - The tier adds nothing at LTS 1 or LTS 2, in any layer, except on the rides that weigh
   LTS 2 (OWNER-DECISIONS 240, `presets.Exposure.lts2`): there a meter of LTS 2 counts as
   a quarter of a meter of LTS 3 on Trailmaxxing and Cargo with passengers, and half on
@@ -101,27 +104,71 @@ Notes:
   never reaches a router request, and the rolling chart still draws it at 1. Elsewhere
   no rule separates LTS 1 and LTS 2. The
   facility class still changes the cost. A traffic-free path costs `0.1 + 0.9u` of its
-  time with no roadway term (`lua/routemaker_remap.lua:1240-1245`), a factor of about
+  time with no roadway term (`lua/routemaker_remap.lua`), a factor of about
   1.19 at Default, against about 2.2 for a quiet street (`QUIET_COST_FACTOR`). So a path
   meter counts about 0.55 quiet meters, on every graph except no-trail (Mass Ride), which
   has no facility classes. A street with a protected lane is priced `(0.15 + 0.6u)` times
   its stress, about 1.25 at Default, so it counts for about 0.57, the same as a path
-  (`lua/routemaker_remap.lua:1237-1240`). The 1 in the table is a quiet street: a quiet
+  (`lua/routemaker_remap.lua`). The 1 in the table is a quiet street: a quiet
   street counts as 1, and paths and protected bike lanes count for less (except on Mass
   Ride). It is not every calm way.
 - The Fast and Group columns are interpolated between the modeled positions
   ([routing-costs.md](routing-costs.md), section 1).
 - Junction costs are separate. They are added at their point (section 4) and weighted by
   the intersection weight: 0.25 at 0, 0.357 at 10, 0.679 at 40, 1.0 from 70
-  (`refine.py:214-219`). Mass Ride's routing charges none (the calm search does not run
+  (`refine.py`). Mass Ride's routing charges none (the calm search does not run
   on it).
 
-## 3. Half steps: midpoints (461a) **built**
+## 3. Half steps
 
-461a supersedes 460.2's geometric mean. A half step's cost multiplier and each of its
-rule effects is the **arithmetic midpoint** of its two levels' values under today's
-weights. On an on/off rule a tie goes to the **cautious** side, with two exceptions:
-drawing uses the **lower** level (460.1), and **4.5 is never Avoid** (441k).
+A half step (1.5, 2.5, 3.5, 4.5) says a road sits between two levels. On the map, in the
+stress chart and in RouteMaker's ranking it counts as exactly halfway between them. In the
+router's search it does not: the router has no "level" to split, so a half step is written as
+a different set of marks and its price lands near, not at, the midpoint. A rider sees the
+difference only as the router being a little more or less willing to use such a road than the
+number suggests.
+
+```mermaid
+flowchart TD
+  A["Half step set on a way"] --> B["Map, chart, ranking: exact midpoint"]
+  A --> C["Search: marks written at the next graph build"]
+  C --> D["2.5: about a third of the way from 2 to 3"]
+  C --> E["3.5: a little past halfway from 3 to 4"]
+  C --> F["1.5 priced as 1, 4.5 priced as 4"]
+```
+
+Quiet miles per mile in the search at Default, from `calm.edge_factor` (run 2026-11-13):
+
+| Road | 2 | 2.5 | true midpoint | 3 | 3.5 | true midpoint | 4 |
+|---|---|---|---|---|---|---|---|
+| Residential, 25 mph | 1.13 | 1.59 | 1.90 | 2.66 | 10.05 | 9.45 | 16.23 |
+| Tertiary, 30 mph | 1.36 | 1.96 | 2.44 | 3.52 | 10.50 | 10.19 | 16.85 |
+| Secondary, 35 mph, 2 lanes each way | 1.71 | 2.36 | 3.25 | 4.79 | 10.95 | 11.13 | 17.47 |
+| Primary, 40 mph, 2 lanes each way | 2.11 | 2.88 | 4.20 | 6.29 | 11.85 | 12.51 | 18.72 |
+
+<details>
+<summary>Full reasoning and citations (for review)</summary>
+
+**This is a design limit of pricing through graph tags.** Valhalla's bicycle costing takes
+no per-edge stress number; RouteMaker can only write tags it already reads (a side-path mark,
+a lane count, a practical speed). The marks for 2.5 and 3.5 were chosen to keep the nine
+steps in order at every slider position but one (below), not to hit the midpoint. A true
+midpoint in the search would take a Lua change that writes one price per edge from the level
+alone, and a costing that multiplies by it; any Lua change is a hand ship, so it is written up
+in the audit notes ("Needs Lua") and not done. At slider 0 the order breaks: 2.5 (1.15) costs
+more than LTS 3 (1.03) on a residential street.
+
+The owner, 2026-10-09 (typed): "Then just have the half steps be midpoints." (461a, which
+superseded 460.2's geometric mean.) That is what the map, the chart and the ranking do
+(`routemaker.calm.multiplier`, `core.refine.half_weight`). On an on/off rule a tie goes to
+the **cautious** side, with two exceptions: drawing uses the **lower** level (460.1), and
+**4.5 is never Avoid** (441k). Measured on our data: on the owner's logged rides 3.5 is ridden
+like 4 (0.37 against 0.34 of its share of the roads available) and 2.5 between 2 and 3 (0.91);
+so pricing 3.5 nearer 4 than 3, as the search does, is not contradicted, and whether the
+ranking's exact midpoint for 3.5 is right is an open question.
+
+The tables below are the ranking's and the chart's figures (exact midpoints of the two levels'
+values), and the search's marks.
 
 ### Multipliers
 
@@ -194,7 +241,7 @@ the z12-13 ride layer's calm runs (`trail_routes.is_calm_candidate`,
 | Exposure weight, standard (0 / 1 / 2 / 3) | 0 | 0.5 | 1.5 | 2.5 |
 | Exposure weight, stress-averse (0 / 1 / 8 / 16) | 0 | 0.5 | 4.5 | 12 |
 | Worth rule weight (1 / 2 / 3) | 0 | 0.5 | 1.5 | 2.5 |
-| LTS 4 hold, meters counted (`LTS4_TIERS`, `refine.py:960`) | 0 | 0 | 0.5 a meter | 1 (LTS 4 and Avoid both count 1) |
+| LTS 4 hold, meters counted (`LTS4_TIERS`, `refine.py`) | 0 | 0 | 0.5 a meter | 1 (LTS 4 and Avoid both count 1) |
 | Strict order: top / second figure | - | 0 / 0.5 | 0.5 / 0.5 | 1 / 0 |
 | Junction, stopped side (0 / 1,600 / 4,000 ft, before factors) | 0 | 800 ft (orange) | 2,800 ft (orange) | 4,000 ft (red) |
 | Junction at a signal (0 / 150 / 600 ft) | 0 | 75 ft | 375 ft | 600 ft |
@@ -222,6 +269,8 @@ whole or half. Only roads at that same half step are split (a rider on a 3.5 roa
 the right of way. A 2.5 road's small fixed costs (an all-way stop, passing it with
 priority, a right off it) halve, since LTS 2 costs nothing at a junction. The junction's words say the half step as the route's sections do
 ("LTS 3.5"; `crossed_half` in the API).
+
+</details>
 
 ### Parked
 
@@ -386,8 +435,9 @@ length `w` centered on the point at distance `x`:
   the weight, on `wip/isect-costs-c`). The two agree from 70 up. Where the route's
   junctions could not be read, none are counted, and the summary says so
   (`junctions_counted`).
-- Avoid's **entry charge** (1,800 s) counts as quiet meters at the ride's speed
-  (`avoid_entry_m`), at the point the route enters an Avoid stretch.
+- Avoid's **entry charge** counts as 2.54 mi [4.09 km] of quiet meters on every ride type
+  (`avoid_entry_m`, the distance the router is sent), at the point the route enters an Avoid
+  stretch.
 - The scale matches the multiplier. **1.0 is the local quiet street** (the reference
   road above), and higher is more
   stress. Quiet meters per meter, or calm miles per mile.

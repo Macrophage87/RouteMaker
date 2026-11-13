@@ -508,13 +508,6 @@ CTX = context(rate=10.0)
 TOP = context(rate=100.0, maxcalm=True)
 
 
-@pytest.fixture
-def quarter_mile_rule(monkeypatch):
-    """272's quarter mile + turn charge, which `TIE_RULE_ALL_PRESETS` off restores
-    (OWNER-DECISIONS 298(1) put every preset on the tie step)."""
-    monkeypatch.setattr(dedodge, "TIE_RULE_ALL_PRESETS", False)
-
-
 def verdict(dodge, direct, ctx=CTX, original=None):
     return dedodge.judge(dodge, direct, ctx, original)
 
@@ -549,10 +542,10 @@ class TestTurns:
             )
             return dedodge.turn_count([a, b])
 
-        assert turned(dedodge.TURN_DEGREES - 1) == 0
-        assert turned(dedodge.TURN_DEGREES) == 1
-        assert turned(360 - dedodge.TURN_DEGREES) == 1
-        assert turned(360 - dedodge.TURN_DEGREES + 1) == 0
+        assert turned(refine.TURN_DEGREES - 1) == 0
+        assert turned(refine.TURN_DEGREES) == 1
+        assert turned(360 - refine.TURN_DEGREES) == 1
+        assert turned(360 - refine.TURN_DEGREES + 1) == 0
 
     def test_without_headings_each_change_of_street_is_a_turn(self) -> None:
         a = routing.Piece(1, LON0, LAT0, 100.0, names=("A",))
@@ -562,17 +555,20 @@ class TestTurns:
 
 
 class TestWhatItMustAvoid:
-    def test_a_quarter_of_a_mile(self) -> None:
-        assert dedodge.MIN_AVOIDED_M == pytest.approx(402.336)
-        assert dedodge.needed_m(0) == dedodge.needed_m(2) == pytest.approx(0.25 * MILE)
+    def test_the_tie_step_plus_the_turn_price_for_each_turn_saved(self) -> None:
+        """One rule since 2026-11-13 (272's quarter mile + 260 ft a turn past two, switched
+        off by 298(1), is removed)."""
+        assert dedodge.TIE_STEP_M == refine.MAXCALM_STEPS[1] == 50.0
+        assert dedodge.needed_m(0) == dedodge.needed_m(9) == 50.0
+        assert dedodge.needed_m(3, 10.0) == pytest.approx(80.0)
+        # A main road with more turns than the dodge charges nothing.
+        assert dedodge.needed_m(-4, 10.0) == 50.0
+        assert not hasattr(dedodge, "MIN_AVOIDED_M") and not hasattr(dedodge, "TURN_CHARGE_M")
 
-    def test_each_turn_past_the_two_every_dodge_has_adds_a_charge(self) -> None:
-        assert dedodge.BASE_TURNS == 2 and dedodge.TURN_CHARGE_M == 80.0
-        assert dedodge.needed_m(3) == pytest.approx(0.25 * MILE + 80.0)
-        assert dedodge.needed_m(6) == pytest.approx(0.25 * MILE + 320.0)
-
-    def test_fewer_turns_than_a_dodge_must_have_ask_less_of_nothing(self) -> None:
-        assert dedodge.needed_m(-4) == dedodge.needed_m(1) == pytest.approx(0.25 * MILE)
+    def test_a_turn_is_counted_by_the_planners_one_definition(self) -> None:
+        assert not hasattr(dedodge, "TURN_DEGREES")
+        pieces = chain(1000.0, 3)
+        assert dedodge.turn_count(pieces) == refine.turns_in(pieces) == 3
 
     def test_the_stress_avoided_is_the_figures_the_main_road_has_more_of(self) -> None:
         dodge = read(lts3=100.0, lts4=10.0)
@@ -597,33 +593,10 @@ class TestTheVerdict:
         assert got.remove and got.reason == "no_stress_gain"
         assert got.avoided_m == 0.0 and got.turns_saved == 2 and got.extra_m == pytest.approx(500.0)
 
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_it_is_kept_if_it_avoids_a_quarter_of_a_mile(self) -> None:
-        need = dedodge.MIN_AVOIDED_M
-        kept = verdict(read(turns=2, lts3=0.0), read(lts3=need))
-        assert not kept.remove and kept.reason == "stress", "exactly enough is enough"
-        gone = verdict(read(turns=2, lts3=0.0), read(lts3=need - 1.0))
-        assert gone.remove
-
     def test_what_it_avoids_may_be_lts3_or_lts4(self) -> None:
-        assert not verdict(read(turns=2), read(lts4=dedodge.MIN_AVOIDED_M)).remove
+        assert not verdict(read(turns=2), read(lts4=402.0)).remove
         # LTS 4 avoided is kept whatever its amount (below).
         assert not verdict(read(turns=2), read(lts4=50.0)).remove
-
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_each_extra_turn_raises_what_it_must_avoid(self) -> None:
-        base = dedodge.MIN_AVOIDED_M
-        # Two turns: a quarter of a mile is enough; four: 160 m more.
-        assert not verdict(read(turns=2), read(lts3=base)).remove
-        assert verdict(read(turns=4), read(lts3=base + 159.0)).remove
-        assert not verdict(read(turns=4), read(lts3=base + 160.0)).remove
-        assert not verdict(read(turns=4), read(lts3=base + 161.0)).remove
-
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_a_main_road_with_more_turns_charges_nothing(self) -> None:
-        got = verdict(read(turns=0), read(turns=4, lts3=dedodge.MIN_AVOIDED_M - 1.0))
-        assert got.remove and got.turns_saved == -4
-        assert not verdict(read(turns=0), read(turns=4, lts3=dedodge.MIN_AVOIDED_M)).remove
 
     def test_it_is_never_removed_where_the_top_figure_rises(self) -> None:
         """The order of 258-262 and the hold of 250: LTS 4, Avoid and red junction cost
@@ -643,7 +616,7 @@ class TestTheVerdict:
         """Avoided at the second figure, not the top: kept by its cost, not by the guard."""
         small = verdict(read(turns=2), read(orange=[500.0]))
         assert small.remove
-        big = verdict(read(turns=2), read(orange=[1500.0]))
+        big = verdict(read(turns=2), read(orange=[1400.0]))
         assert not big.remove and big.reason == "stress"
 
     def test_it_is_never_removed_for_a_longer_route(self) -> None:
@@ -665,13 +638,6 @@ class TestTheVerdict:
         assert not a.remove and a.reason == "events"
         assert not b.remove and b.reason == "events"
         assert verdict(read(turns=2, events=False), read(events=False)).remove
-
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_the_figures_are_reported(self) -> None:
-        got = verdict(read(length=1300.0, turns=3, lts3=100.0), read(length=1000.0, lts3=500.0))
-        assert got.avoided_m == pytest.approx(400.0)
-        assert got.needed_m == pytest.approx(dedodge.MIN_AVOIDED_M + 80.0)
-        assert got.turns_saved == 3 and got.extra_m == pytest.approx(300.0)
 
 
 # --- Splicing ----------------------------------------------------------------------------------
@@ -837,7 +803,6 @@ class TestThePass:
         dedodge.apply(trip, ctx_for())
         assert json.dumps(trip) == before
 
-    @pytest.mark.usefixtures("quarter_mile_rule")
     def test_a_dodge_that_avoids_a_quarter_of_a_mile_is_kept(self, monkeypatch) -> None:
         # The main road's 700 m is LTS 3, the side street's LTS 1.
         unit, world, trip = one_dodge(monkeypatch, reach=700.0, side="1", main="3")
@@ -847,34 +812,6 @@ class TestThePass:
         assert item["action"] == "kept" and item["reason"] == "stress"
         assert item["avoided_m"] == pytest.approx(700.0, abs=1.5)
         assert (info["removed"], info["kept"]) == (0, 1)
-
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_one_metre_short_of_enough_is_removed(self, monkeypatch) -> None:
-        unit, world, trip = one_dodge(
-            monkeypatch, reach=dedodge.MIN_AVOIDED_M - 5.0, side="1", main="3"
-        )
-        new, info = dedodge.apply(trip, ctx_for())
-        assert info["removed"] == 1 and new is not trip
-        unit, world, trip = one_dodge(
-            monkeypatch, reach=dedodge.MIN_AVOIDED_M + 5.0, side="1", main="3"
-        )
-        new, info = dedodge.apply(trip, ctx_for())
-        assert info["kept"] == 1 and new is trip
-
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_four_turns_ask_for_more(self, monkeypatch) -> None:
-        """Three side streets are four turns: 160 m more than a quarter of a mile."""
-        reach = dedodge.MIN_AVOIDED_M + 60.0
-        unit, world, trip = one_dodge(monkeypatch, reach=reach, side="1", main="3", cross=True)
-        new, info = dedodge.apply(trip, ctx_for())
-        assert info["items"][0]["turns_saved"] == 4
-        assert info["items"][0]["needed_m"] == pytest.approx(dedodge.MIN_AVOIDED_M + 160.0, abs=0.1)
-        assert info["removed"] == 1
-        unit, world, trip = one_dodge(
-            monkeypatch, reach=dedodge.MIN_AVOIDED_M + 200.0, side="1", main="3", cross=True
-        )
-        new, info = dedodge.apply(trip, ctx_for())
-        assert info["kept"] == 1
 
     def test_a_dodge_that_avoids_lts4_is_kept_however_short(self, monkeypatch) -> None:
         unit, world, trip = one_dodge(monkeypatch, reach=120.0, side="3", main="4")
@@ -1193,22 +1130,6 @@ class TestBounds:
         want = metres_of([*u1.direct, *u2.direct[1:]]) / 1000.0
         assert new["summary"]["length"] == pytest.approx(want, rel=3e-3)
 
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_each_dodge_is_judged_by_itself_not_against_the_route_before_the_last_was_removed(
-        self, monkeypatch
-    ) -> None:
-        """Two dodges of 300 m, each calmer than the road: neither avoids a quarter of a
-        mile. Read against the route as it was before the first was removed, the second
-        would seem to avoid 600 m."""
-        graph = Graph()
-        u1 = Unit(graph, at(0, 0), reach=300.0, side="1", main="3", ways=10)
-        u2 = Unit(graph, u1.e, reach=300.0, side="1", main="3", ways=20)
-        World(monkeypatch, graph, [u1, u2])
-        trip = trip_of(leg_of([*u1.dodge_route, *u2.dodge_route[1:]]))
-        new, info = dedodge.apply(trip, ctx_for())
-        assert [i["action"] for i in info["items"]] == ["removed", "removed"]
-        assert info["items"][0]["avoided_m"] == pytest.approx(300.0, abs=1.5)
-
     def test_a_kept_dodge_does_not_stop_the_next(self, monkeypatch) -> None:
         graph = Graph()
         u1 = Unit(graph, at(0, 0), reach=800.0, side="1", main="3", ways=10)
@@ -1383,20 +1304,6 @@ class TestKonterraDrive:
         new, info = dedodge.apply(world.trip(), ctx_for())
         assert info["items"][0]["action"] == "kept" and info["items"][0]["reason"] == "top"
 
-    @pytest.mark.usefixtures("quarter_mile_rule")
-    def test_even_calm_side_streets_are_not_kept_for_under_a_quarter_of_a_mile(
-        self, monkeypatch
-    ) -> None:
-        """Virginia Manor Road at LTS 1 against Konterra's LTS 3: the road's stretch
-        is 0.16 mi, under the quarter mile, so even then the dodge is not worth its turns."""
-        world = Konterra(
-            monkeypatch, tiers={235061913: "1", 1473496057: "1", 240334415: "1", 6104012: "1"}
-        )
-        new, info = dedodge.apply(world.trip(), ctx_for())
-        assert info["items"][0]["avoided_m"] == pytest.approx(261.0, abs=2.0)
-        assert info["items"][0]["needed_m"] == pytest.approx(dedodge.MIN_AVOIDED_M + 80.0, abs=0.1)
-        assert info["items"][0]["action"] == "removed"
-
 
 # --- Review r0: the top of the slider, the checks worth making, the bounds ------------------
 
@@ -1404,39 +1311,26 @@ class TestKonterraDrive:
 class TestTheTieStepOnEveryPreset:
     """OWNER-DECISIONS 298(1), "Same as Trailmaxxing (Recommended)": on every ride type,
     Default included, a dodge is taken out only where what it avoids is within the
-    second level's tie step (50 m), and no turns are charged (it amends 272's quarter
-    mile, the rule first built for every plan below the top of the slider). Read here with
-    the every-setting turn charge off (`presets.TURN_CHARGE_EVERY_SETTING`), the rule as it
-    stands without it; `TestTurnsChargedEverySetting` reads it on."""
-
-    @pytest.fixture(autouse=True)
-    def _turns_off(self, monkeypatch) -> None:
-        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", False)
+    second level's tie step (50 m) plus the turn price for each turn the main road saves
+    (it amended 272's quarter mile, whose code is removed). Read here with no turns saved;
+    `TestTurnsChargedEverySetting` reads the turns."""
 
     def test_the_rule_and_its_step(self) -> None:
-        assert dedodge.TIE_RULE_ALL_PRESETS is True
         assert dedodge.TIE_STEP_M == refine.MAXCALM_STEPS[1] == 50.0
-        assert dedodge.tie_rule()
-        assert dedodge.needed_m(0, True) == dedodge.needed_m(9, True) == 50.0
+        assert dedodge.needed_m(0) == dedodge.needed_m(9) == 50.0
 
     @pytest.mark.parametrize("ctx", [TOP, CTX], ids=["top", "default"])
     def test_within_the_step_is_a_tie_and_the_main_road_is_taken(self, ctx) -> None:
-        got = verdict(read(turns=2), read(lts3=50.0), ctx)
+        got = verdict(read(turns=0), read(lts3=50.0), ctx)
         assert got.remove and got.reason == "no_stress_gain" and got.needed_m == 50.0
-        got = verdict(read(turns=2), read(lts3=50.5), ctx)
+        got = verdict(read(turns=0), read(lts3=50.5), ctx)
         assert not got.remove and got.reason == "stress"
 
-    @pytest.mark.parametrize("ctx", [TOP, CTX], ids=["top", "default"])
-    def test_no_turns_are_charged(self, ctx) -> None:
-        """Six turns asked 0.25 mi + 320 m by 272's rule; by the tie step, 50 m."""
-        got = verdict(read(turns=6), read(lts3=60.0), ctx)
-        assert not got.remove and got.needed_m == 50.0
-
     def test_an_orange_junction_counts_at_the_second_level(self) -> None:
-        # 900 ft of junction cost (an orange junction is 800 ft or more since 468; 700 ft
-        # was one at 600) is 274 m.
-        got = verdict(read(turns=2), read(orange=[900.0]), CTX)
-        assert not got.remove and got.avoided_m == pytest.approx(900.0 * FT)
+        # 1,000 ft of junction cost (an orange junction is 984 ft or more since 2026-11-13;
+        # it was 800 ft) is 305 m.
+        got = verdict(read(turns=2), read(orange=[1000.0]), CTX)
+        assert not got.remove and got.avoided_m == pytest.approx(1000.0 * FT)
 
     def test_the_guards_still_hold(self) -> None:
         for ctx in (TOP, CTX):
@@ -1448,13 +1342,8 @@ class TestTheTieStepOnEveryPreset:
     def test_default_keeps_what_the_quarter_mile_rule_removed(self) -> None:
         """300 m of LTS 3 avoided: 272's rule removed it below the top; 298(1) keeps it."""
         got = verdict(read(turns=2), read(lts3=300.0), CTX)
-        assert not got.remove and got.needed_m == 50.0
-
-    def test_the_switch_puts_every_plan_on_the_quarter_mile(self, monkeypatch) -> None:
-        monkeypatch.setattr(dedodge, "TIE_RULE_ALL_PRESETS", False)
-        for ctx in (TOP, CTX):
-            got = verdict(read(turns=2), read(lts3=300.0), ctx)
-            assert got.remove and got.needed_m == pytest.approx(dedodge.MIN_AVOIDED_M)
+        assert not got.remove
+        assert got.needed_m == pytest.approx(50.0 + 2 * dedodge.turn_lts3_m(CTX))
 
     @pytest.mark.parametrize("maxcalm", [True, False], ids=["top", "default"])
     def test_in_the_pass(self, monkeypatch, maxcalm) -> None:
@@ -1462,7 +1351,7 @@ class TestTheTieStepOnEveryPreset:
         unit, world, trip = one_dodge(monkeypatch, reach=300.0, side="1", main="3")
         new, info = dedodge.apply(trip, ctx_for(maxcalm=maxcalm))
         assert new is trip and info["items"][0]["reason"] == "stress"
-        assert info["items"][0]["needed_m"] == 50.0
+        assert 50.0 <= info["items"][0]["needed_m"] < 300.0
         # No calmer: taken out everywhere.
         unit, world, trip = one_dodge(monkeypatch, side="3", main="3")
         new, info = dedodge.apply(trip, ctx_for(maxcalm=maxcalm))
@@ -1689,7 +1578,7 @@ class TestPinnedBounds:
         assert rejoin(100) == [] and rejoin(140) == []
 
     def test_a_turn_is_40_degrees(self) -> None:
-        assert dedodge.TURN_DEGREES == 40.0
+        assert refine.TURN_DEGREES == 40.0
 
         def turned(degrees):
             a = routing.Piece(1, LON0, LAT0, 100.0, names=("A",), heading_in=0.0, heading_out=0.0)
@@ -1964,27 +1853,24 @@ class TestAReadingCutShort:
 
 class TestTurnsChargedEverySetting:
     """Owner decision 254's every-preset half (the backlog's "fewer turns" item, 2026-11-12):
-    with `presets.TURN_CHARGE_EVERY_SETTING` on, a dodge must avoid the tie step plus each
-    turn the main road saves, a turn priced as the router prices it (`turn_lts3_m`). On as
-    shipped (the owner's "Every setting"); pinned on here so the class reads the rule itself."""
-
-    @pytest.fixture(autouse=True)
-    def _turns_on(self, monkeypatch) -> None:
-        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
+    a dodge must avoid the tie step plus each turn the main road saves, a turn priced at
+    the one price the router and the ranking share (`refine.turn_price_s`, the owner's
+    "Every setting"). Before 2026-11-13 the pass charged 15 seconds of riding, 2.2 times
+    the router's 15 cost seconds."""
 
     def test_a_turn_is_the_routers_charge_in_metres_of_lts_3(self) -> None:
         for ctx in (TOP, CTX):
             per = dedodge.turn_lts3_m(ctx)
-            assert per == pytest.approx(
-                refine.QUIET_COST_FACTOR
-                * refine.TURN_RANK_S
-                / ctx.quiet_cost
-                / refine.lts3_added_m(ctx)
-            )
-            assert dedodge.needed_m(0, True, per) == 50.0
-            assert dedodge.needed_m(2, True, per) == pytest.approx(50.0 + 2 * per)
+            price = refine.turn_price_s(ctx)
+            assert price == presets.turn_cost_s(ctx.costing.get("bicycle") or {})
+            assert per == pytest.approx(price / ctx.quiet_cost / refine.lts3_added_m(ctx))
+            assert dedodge.needed_m(0, per) == 50.0
+            assert dedodge.needed_m(2, per) == pytest.approx(50.0 + 2 * per)
             # A dodge the main road makes no shorter in turns is charged nothing.
-            assert dedodge.needed_m(-1, True, per) == 50.0
+            assert dedodge.needed_m(-1, per) == 50.0
+
+    def test_without_a_price_for_a_quiet_metre_no_turn_is_charged(self) -> None:
+        assert dedodge.turn_lts3_m(dataclasses.replace(CTX, quiet_cost=0.0)) == 0.0
 
     @pytest.mark.parametrize("ctx", [TOP, CTX], ids=["top", "default"])
     def test_a_weave_must_buy_calm_for_its_turns(self, ctx) -> None:
@@ -1998,30 +1884,29 @@ class TestTurnsChargedEverySetting:
         got = verdict(read(turns=6), read(lts3=60.0 + 6 * per), ctx)
         assert not got.remove and got.reason == "stress"
 
-    def test_without_a_price_the_turn_is_item_254s_figure(self) -> None:
-        ctx = dataclasses.replace(CTX, quiet_cost=0.0)
-        assert dedodge.turn_lts3_m(ctx) == dedodge.TURN_CHARGE_M
-
 
 class TestTheRidersFewerTurns:
     """The rider's "Fewer turns" (`refine.Context.fewer_turns`, 2026-11-12): turns charged in
-    the dodge pass whatever the every-setting switch, at `presets.FEWER_TURNS_PENALTY_S`."""
+    the dodge pass at `presets.FEWER_TURNS_FT`."""
 
-    def test_turns_are_charged_at_the_riders_price_with_the_switch_off(self, monkeypatch) -> None:
-        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", False)
+    def test_turns_are_charged_at_the_riders_price(self) -> None:
         ctx = dataclasses.replace(CTX, fewer_turns=True)
         per = dedodge.turn_lts3_m(ctx)
         assert per == pytest.approx(
-            dedodge.turn_lts3_m(CTX) * presets.FEWER_TURNS_PENALTY_S / refine.TURN_RANK_S
+            dedodge.turn_lts3_m(CTX) * presets.FEWER_TURNS_FT / presets.TURN_FT, rel=3e-3
         )
         got = verdict(read(turns=4), read(lts3=60.0), ctx)
         assert got.remove and got.needed_m == pytest.approx(50.0 + 4 * per)
-        # Without it, the same weave is kept by the tie step alone.
+        # Without it, the same weave is charged the every-setting price.
         got = verdict(read(turns=4), read(lts3=60.0), CTX)
-        assert not got.remove and got.needed_m == 50.0
+        assert got.needed_m == pytest.approx(50.0 + 4 * dedodge.turn_lts3_m(CTX))
 
     def test_a_ride_type_that_charges_more_is_priced_at_its_own_charge(self) -> None:
-        own = dataclasses.replace(CTX, costing={"bicycle": {"maneuver_penalty": 30}})
+        # A request that tells the router the fewer-turns charge (30 cost seconds) is a
+        # fewer-turns ride: its turns are priced at `presets.FEWER_TURNS_FT` here.
+        own = dataclasses.replace(
+            CTX, costing={"bicycle": {"maneuver_penalty": presets.ROUTER_FEWER_TURNS_S}}
+        )
         assert dedodge.turn_lts3_m(own) == pytest.approx(
-            dedodge.turn_lts3_m(CTX) * 30 / refine.TURN_RANK_S
+            dedodge.turn_lts3_m(CTX) * presets.FEWER_TURNS_FT / presets.TURN_FT, rel=3e-3
         )

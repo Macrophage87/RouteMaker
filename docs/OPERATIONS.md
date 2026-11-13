@@ -7126,7 +7126,7 @@ the 5 s). Measured against the pass off (the harness, live routers read-only): U
 checks, 11 more `/route`, 8 more `trace_attributes`, 35 more `/locate`; Bowie to Annapolis at
 Trailmaxxing, 6 checks, 15, 8 and 67; a short trip with one check, 1 or 2, 1 and 2 to 4. No knob needs
 setting: `dedodge.BUDGET_S`, `MAX_CHECKS`, `MAX_EXCLUDES`, `MIN_DODGE_M`, `MIN_UNNAMED_DODGE_M`,
-`TIE_RULE_ALL_PRESETS` and `TIE_STEP_M` are code constants. The last two are the rule the owner chose
+and `TIE_STEP_M` are code constants. The last is the rule the owner chose
 in OWNER-DECISIONS 298(1): on every ride type, Default included, a dodge that avoids no more than 50 m
 [160 ft] is taken out.
 

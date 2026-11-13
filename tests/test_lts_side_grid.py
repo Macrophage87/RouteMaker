@@ -43,7 +43,8 @@ import pytest
 
 from routemaker.stress import Stress, classify
 
-ROAD = {"highway": "secondary", "maxspeed": "30 mph", "lanes": "2", "parking:both": "no"}
+# 50 mph, where the width of a lane or shoulder still moves the level on a rural road.
+ROAD = {"highway": "secondary", "maxspeed": "50 mph", "lanes": "2", "parking:both": "no"}
 
 ONEWAYS: tuple[dict[str, str], ...] = (
     {},
@@ -182,31 +183,6 @@ def test_adding_a_cycleway_never_raises_the_tier(cycleway_grid) -> None:
     assert excused < checked // 100
 
 
-def test_a_narrower_cycleway_never_lowers_the_tier(cycleway_grid) -> None:
-    checked = worsened = 0
-    failures = []
-    for (values, widths, oneway), tier in cycleway_grid.items():
-        for position, current in enumerate(widths):
-            for new in CW_WIDTHS[1:]:
-                if current is not None:
-                    if float(new) >= float(current):
-                        continue
-                else:
-                    # A width added where none was is a narrowing only if every
-                    # side the key answers for already had a wider one.
-                    reached = [_resolve(widths, side) for side in _governs(position, widths)]
-                    if not reached or any(r is None or float(r) <= float(new) for r in reached):
-                        continue
-                after = cycleway_grid[values, _replace(widths, position, new), oneway]
-                checked += 1
-                worsened += after > tier
-                if after < tier:
-                    failures.append((values, widths, position, new, ONEWAYS[oneway], tier, after))
-    assert not failures, failures[:5]
-    assert checked > 50_000
-    assert worsened > 1_000
-
-
 def test_the_cycleway_key_form_does_not_matter(cycleway_grid) -> None:
     """Every way scores as its two sides spelled on the side keys alone."""
     for (values, widths, oneway), tier in cycleway_grid.items():
@@ -296,6 +272,42 @@ def test_adding_a_shoulder_never_raises_the_tier(shoulder_grid) -> None:
     assert excused < checked // 100
 
 
+def test_the_shoulder_key_form_does_not_matter(shoulder_grid) -> None:
+    for (values, widths, oneway), tier in shoulder_grid.items():
+        canonical_values, canonical_widths = [None, None], [None, None]
+        for side in SIDES:
+            present, width = _shoulder_side(values, widths, side)
+            canonical_values.append(None if present is None else ("yes" if present else "no"))
+            canonical_widths.append(width)
+        canonical = shoulder_grid[tuple(canonical_values), tuple(canonical_widths), oneway]
+        assert canonical is tier, (values, widths, ONEWAYS[oneway])
+
+
+def test_a_narrower_cycleway_never_lowers_the_tier(cycleway_grid) -> None:
+    checked = worsened = 0
+    failures = []
+    for (values, widths, oneway), tier in cycleway_grid.items():
+        for position, current in enumerate(widths):
+            for new in CW_WIDTHS[1:]:
+                if current is not None:
+                    if float(new) >= float(current):
+                        continue
+                else:
+                    # A width added where none was is a narrowing only if every
+                    # side the key answers for already had a wider one.
+                    reached = [_resolve(widths, side) for side in _governs(position, widths)]
+                    if not reached or any(r is None or float(r) <= float(new) for r in reached):
+                        continue
+                after = cycleway_grid[values, _replace(widths, position, new), oneway]
+                checked += 1
+                worsened += after > tier
+                if after < tier:
+                    failures.append((values, widths, position, new, ONEWAYS[oneway], tier, after))
+    assert not failures, failures[:5]
+    assert checked > 50_000
+    assert worsened > 1_000
+
+
 def test_a_narrower_shoulder_never_lowers_the_tier(shoulder_grid) -> None:
     checked = worsened = 0
     failures = []
@@ -311,14 +323,3 @@ def test_a_narrower_shoulder_never_lowers_the_tier(shoulder_grid) -> None:
     assert not failures, failures[:5]
     assert checked > 50_000
     assert worsened > 1_000
-
-
-def test_the_shoulder_key_form_does_not_matter(shoulder_grid) -> None:
-    for (values, widths, oneway), tier in shoulder_grid.items():
-        canonical_values, canonical_widths = [None, None], [None, None]
-        for side in SIDES:
-            present, width = _shoulder_side(values, widths, side)
-            canonical_values.append(None if present is None else ("yes" if present else "no"))
-            canonical_widths.append(width)
-        canonical = shoulder_grid[tuple(canonical_values), tuple(canonical_widths), oneway]
-        assert canonical is tier, (values, widths, ONEWAYS[oneway])

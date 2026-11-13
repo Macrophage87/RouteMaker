@@ -1,4 +1,12 @@
-"""Agency bicycle stress ratings, in the owner's order of precedence (v0.7.0).
+"""Agency bicycle stress ratings, kept beside the formula's level for comparison.
+
+SINCE 2026-11-13 NO AGENCY'S RATING SETS A WAY'S LEVEL (`COMPARISON_ONLY` names all three).
+The formula is the same everywhere and an agency's layer is local data: it is recorded on
+the way for the road panel and the comparison reports, and that is all. One thing an agency
+says is still used, because it is an access fact and not a level: MDOT SHA's 5 means
+bicycles are prohibited (`PROHIBITING_LEVELS`). The precedence machinery below (`chosen`,
+`apply`, `READ_AS`) still runs for any agency not in `COMPARISON_ONLY`, which is none; what
+follows is the history it was built on.
 
 The owner, 2026-10-13: "1. Ratings from Community Input (including my judgment)
 win over everything 2. Ratings from the local government win over a formula
@@ -59,7 +67,13 @@ AGENCY_RULE = "agency rating"
 # that means that I feel the formula is wrong" and "Many roads rated very dangerous in 2020 have
 # been targets for improvement in the 6 years since". The formula decides in the District from
 # the city's own counts, lanes and speeds; DDOT's level stays on the road panel beside it.
-COMPARISON_ONLY = frozenset({"ddot"})
+#
+# Montgomery County Planning's and MDOT SHA's layers likewise since 2026-11-13 (the owner:
+# "Own calls were mainly to help tune the formula not override it"; "The end goal is a proof
+# of concept that can be made widely applicable"). A county's 5 no longer sets 4.5 here
+# (`READ_AS` is still what the road panel says beside the county's number). MDOT SHA's 5
+# still closes the way to bicycles: that is access (`PROHIBITING_LEVELS`), not a level.
+COMPARISON_ONLY = frozenset(AGENCIES)
 
 # An agency layer older than the bike facilities on the ground. DDOT's is its 2020 Level of
 # Traffic Stress (`scripts/install_agency_lts.py`), from before K Street's, Irving Street's and
@@ -379,6 +393,9 @@ def apply(
         # reads the lane by the traffic beside it; this stands only with that rule struck.
         if (
             painted_lane
+            # Never for a comparison-only agency, which is every agency today (review r1:
+            # striking the rule from `ddot_rules.ENABLED` could otherwise set a level).
+            and any(r.agency not in COMPARISON_ONLY for r in aside)
             and "painted-lane" not in ddot_rules.ENABLED
             and set_aside_level > PAINTED_LANE_LEVEL > formula_level
         ):

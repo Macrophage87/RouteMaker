@@ -33,9 +33,12 @@ from dataclasses import dataclass
 from django.db import connection
 
 from routemaker import agency_lts
-from routemaker.stress import VERY_BUSY_STREET_RULE
 
 from .schema import validate_schema_name
+
+# The rule text of the 20,000-a-day count step the classifier had until 2026-11-13. No new
+# build writes it; a table built before then still carries it.
+VERY_BUSY_STREET_RULE = "very busy city street"
 
 _TIERS_SQL = """
 SELECT COALESCE(sum(len), 0),
@@ -205,7 +208,7 @@ def stretch_problems(tiers: StretchTiers) -> list[str]:
 SAMPLE_WAYS = 10
 
 # Rural road rows at LTS 1 that no override row set. The classifier's tier on a rural road
-# open to cars is raised to LTS 2 after every agency rating (`stress.rural_floor`); the
+# open to cars is LTS 2 at least (`stress.RURAL_MIN_LEVEL`, the rural table's lowest level); the
 # candidates are read back here, and the caller drops those its tags exempt (a road closed to
 # cars, a separated track alongside), which the table does not record.
 _RURAL_LTS1_SQL = """
@@ -288,7 +291,7 @@ def rating_rule_problems(
     if rural_lts1:
         found.append(
             f"{_named(rural_lts1)} on a rural road open to cars came out LTS 1 with no "
-            "override row: the owner's rural floor is LTS 2 (stress.rural_floor)"
+            "override row: the rural minimum is LTS 2 (stress.RURAL_MIN_LEVEL)"
         )
     if county_five:
         found.append(

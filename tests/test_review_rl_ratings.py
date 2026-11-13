@@ -15,8 +15,7 @@ from core import segment_info
 from pipeline import run as run_module
 from pipeline import variants
 from pipeline.extract import Way
-from pipeline.rebuild import Stage
-from pipeline.run import RebuildContext, build_handlers
+from pipeline.run import RebuildContext
 from pipeline.schema import MOTOR_ONLY_RULE
 from routemaker import agency_lts
 from routemaker.agency_lts import AgencyRating
@@ -37,52 +36,9 @@ LANE = {"cycleway:both": "lane", "cycleway:both:width": "1.8"}
 
 
 class TestAPaintedLaneOnAWideTwoWayStreet:
-    @pytest.mark.parametrize("urban", (True, False))
-    @pytest.mark.parametrize("width", ("1.8", "2.4"))
-    def test_it_stays_lts3(self, urban: bool, width: str) -> None:
-        """Measured, before this: LTS 3 bare and LTS 1 with the lane (LTS 2 rural)."""
-        tags = {**SIX_LANE, "cycleway:both": "lane", "cycleway:both:width": width}
-        result = classify(tags, urban=urban)
-        assert result.tier is Stress.LTS3
-        assert result.rule.startswith("bike lane")
-        assert "a wide two-way road, so rated at least this" in segment_info.rule_words(result.rule)
-
-    def test_four_lanes_two_each_way_and_a_buffered_lane(self) -> None:
-        road = {**SIX_LANE, "lanes": "4", "cycleway:both": "buffered_lane"}
-        assert classify(road).tier is Stress.LTS3
-
     def test_one_lane_each_way_keeps_furths_table(self) -> None:
         road = {**SIX_LANE, "lanes": "2", "cycleway:both:width": "2.4", "cycleway:both": "lane"}
         assert classify(road).tier is Stress.LTS1
-
-    def test_a_one_way_keeps_its_relief_and_a_divided_carriageway_does_not(self) -> None:
-        one_way = {**SIX_LANE, "lanes": "2", "oneway": "yes", **LANE}
-        assert classify(one_way).tier < Stress.LTS3
-        assert classify(one_way, divided=True).tier is Stress.LTS3
-
-    def test_a_wide_one_way_holds_the_floor_too(self) -> None:
-        """Review 2026-10-29: a three-lane one-way is LTS 3 in mixed traffic (the wide
-        one-way floor), and was LTS 1 with a painted lane. Measured before this."""
-        road = {
-            "highway": "secondary",
-            "oneway": "yes",
-            "lanes": "3",
-            "maxspeed": "25 mph",
-            "parking:both": "no",
-        }
-        assert classify(road).rule.endswith("wide one-way floor")
-        lane = {**road, "cycleway:right": "lane", "cycleway:right:width": "2.0"}
-        result = classify(lane)
-        assert result.tier is Stress.LTS3
-        assert result.rule.startswith("bike lane")
-        assert result.rule.endswith("wide one-way floor")
-        assert "a wide one-way road, so rated at least this" in segment_info.rule_words(result.rule)
-        # Four lanes at 30 mph: LTS 4 bare and busy, LTS 3 with the lane (was LTS 2).
-        busy = {**lane, "lanes": "4", "maxspeed": "30 mph"}
-        assert classify(busy, aadt=20_000).tier is Stress.LTS3
-        # A rideable shoulder is held at the lane's floor.
-        shoulder = {**road, "shoulder": "right", "shoulder:width": "2.4"}
-        assert classify(shoulder).tier is Stress.LTS3
 
     def test_a_track_is_still_separation(self) -> None:
         assert classify({**SIX_LANE, "cycleway:both": "track"}).tier is Stress.LTS1
@@ -123,18 +79,6 @@ def result_for(ratings=()) -> object:
 
 
 class TestTheFlagList:
-    def test_a_ddot_and_a_montgomery_row(self, monkeypatch) -> None:
-        monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
-        row = agency_lts.painted_lane_row(1, "K St", "DC", result_for([AgencyRating("ddot", 2)]))
-        assert row is not None
-        assert (row["scope"], row["agency"], row["agency_level"]) == ("DC", "ddot", "2")
-        assert (row["formula_level"], row["differs"]) == ("3", "yes")
-        assert row["formula_rule"].endswith("two-way floor")
-        moco = agency_lts.painted_lane_row(
-            2, "", "MD", result_for([AgencyRating("mdot-sha", 4), AgencyRating("moco", 3)])
-        )
-        assert (moco["scope"], moco["agency"], moco["differs"]) == ("MoCo", "moco", "no")
-
     def test_scope(self) -> None:
         assert agency_lts.painted_lane_row(3, "", "DC", result_for())["scope"] == "DC"
         # Maryland outside Montgomery's ratings is not on the list; the state's rating alone
@@ -204,22 +148,6 @@ def stage_context(tmp_path, monkeypatch) -> RebuildContext:
         },
     )
     return context
-
-
-def test_the_rebuild_writes_the_flag_list(tmp_path, monkeypatch) -> None:
-    context = stage_context(tmp_path, monkeypatch)
-    build_handlers(context, load_overrides=lambda: [])[Stage.CLASSIFY_STRESS]()
-    # The agencies' levels decide; the formula's is kept beside them.
-    assert context.stress_by_way[DC_LANE].tier is Stress.LTS2
-    assert context.stress_by_way[MD_LANE].tier is Stress.LTS1
-    assert context.stress_by_way[VA_LANE].tier is Stress.LTS3
-    report = context.work_dir / "reports" / agency_lts.PAINTED_LANE_REPORT_NAME
-    rows = {int(r["way_id"]): r for r in csv.DictReader(report.open())}
-    assert set(rows) == {DC_LANE, VA_LANE, MD_LANE}
-    assert rows[DC_LANE]["name"] == "K Street"
-    assert (rows[DC_LANE]["agency_level"], rows[DC_LANE]["formula_level"]) == ("2", "3")
-    assert (rows[MD_LANE]["scope"], rows[MD_LANE]["agency_level"]) == ("MoCo", "1.5")
-    assert rows[VA_LANE]["scope"] == "comparison"
 
 
 # -- RL-5 ----------------------------------------------------------------------------------------

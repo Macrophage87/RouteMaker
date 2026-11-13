@@ -61,10 +61,11 @@ def reading(
 
 class TestTheFigures:
     def test_red_and_orange_junctions_are_told_apart_by_their_cost(self) -> None:
-        # Red is from 3,100 ft since 2026-10-10 (2,000 before 468, 2,900 after): 3,300 is red.
-        a = reading(red=[3300.0, 3300.0], orange=[1000.0, 1500.0])
+        # Red is from 1,476 ft and orange from 984 ft since 2026-11-13 (waits of 45 s and
+        # 30 s; they were 3,100 and 800 ft).
+        a = reading(red=[3300.0, 3300.0], orange=[1000.0, 1400.0])
         assert a.red_m == pytest.approx(6600.0 / FT)
-        assert a.orange_m == pytest.approx(2500.0 / FT)
+        assert a.orange_m == pytest.approx(2400.0 / FT)
 
     def test_the_top_figure_is_lts4_and_avoid_plus_the_red_cost(self) -> None:
         a = reading(lts4=200.0, red=[3300.0])
@@ -556,7 +557,7 @@ class TestTheHoldOnTheTopFigure:
 
     def test_an_orange_junction_does_not_count_in_it(self) -> None:
         ctx = self.held(held_reading(100.0))
-        assert not refine.more_lts4(held_reading(100.0, red=[1500.0]), ctx.first_lts4, ctx)
+        assert not refine.more_lts4(held_reading(100.0, red=[1400.0]), ctx.first_lts4, ctx)
 
     def test_one_metre_of_slack(self) -> None:
         ctx = self.held(held_reading(100.0))

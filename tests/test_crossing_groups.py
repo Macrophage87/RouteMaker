@@ -566,17 +566,6 @@ class TestFlaggingOnAMassRide:
         )
         assert m.assess(j, group=True) is None
 
-    @pytest.mark.parametrize("control", [Control.NONE, Control.CROSS_STOP])
-    def test_nor_past_a_lesser_busy_cross_street_where_the_rider_has_priority(
-        self, control
-    ) -> None:
-        avenue = road("Constitution Avenue", 4)
-        cross = road("Cross Street", 3)
-        j = junction(
-            incoming=avenue, outgoing=avenue, crossed=(cross,), control=control, continues=True
-        )
-        assert m.assess(j, group=True) is None
-
     def test_a_mile_of_a_busier_road_past_ten_side_streets_is_no_flags_at_all(self) -> None:
         avenue = road("Constitution Avenue", 4)
         side = Road(2, names=frozenset({"side st"}))

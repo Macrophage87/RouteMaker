@@ -947,13 +947,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         REFINE,
     ),
     (
-        "doubling back: the wide search does not refuse it",
-        RF,
-        "        busier = busier or doubles_back(read, start_retrace_m)\n",
-        "",
-        REFINE,
-    ),
-    (
         "doubling back: no reference",
         RF,
         "    return retrace_m(read) > reference_m + RETRACE_SLACK_M",
@@ -1021,20 +1014,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         RF,
         "RETRACE_MATCH_M = 2.0",
         "RETRACE_MATCH_M = 60.0",
-        REFINE,
-    ),
-    (
-        "doubling back: the wide search held to the best so far",
-        RF,
-        "        busier = busier or doubles_back(read, start_retrace_m)\n",
-        "        busier = busier or doubles_back(read, retrace_m(best))\n",
-        REFINE,
-    ),
-    (
-        "doubling back: the wide search held to none",
-        RF,
-        "        busier = busier or doubles_back(read, start_retrace_m)\n",
-        "        busier = busier or doubles_back(read, 0.0)\n",
         REFINE,
     ),
     (
@@ -1111,8 +1090,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: no margin",
         RF,
-        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False",
-        "        if read.score(ctx) >= best.score(ctx):\n            return False",
+        "        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:\n            return False",
+        "        if score(read, ctx) >= score(best, ctx):\n            return False",
         REFINE,
     ),
     (
@@ -1162,13 +1141,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         RF,
         "        held = more_lts4(current, ctx.first_lts4, ctx)",
         "        held = False",
-        REFINE,
-    ),
-    (
-        "250: the wide search does not hold",
-        RF,
-        "        busier = busier or more_lts4(read, ctx.first_lts4, ctx) or too_long(read.length_m, ctx)",
-        "        busier = busier or too_long(read.length_m, ctx)",
         REFINE,
     ),
     (

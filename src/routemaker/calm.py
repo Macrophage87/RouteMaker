@@ -64,12 +64,17 @@ import bisect
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from routemaker.geo import METRES_PER_FOOT
+
 # 461e: "a reasonable roll, maybe a mile or so". One setting, so it can be tuned.
 WINDOW_M = 1609.344
-METRES_PER_FOOT = 0.3048
-# A quiet metre's cost over its time (refine.QUIET_COST_FACTOR; restated, as this package
-# does not import core).
+# A quiet metre's cost to the router over its time: measured on our data (median 2.2, range
+# 1.8 to 2.9, on the live standard router). The one home of the number: `core.presets` and
+# `core.refine` read it from here (this package does not import core).
 QUIET_FACTOR = 2.2
+# The speed a price in feet is quoted at where a speed is needed: Default's planning speed
+# (Valhalla's Hybrid default, 11.2 mph). Our choice of reference, not a measurement.
+REFERENCE_SPEED_KMH = 18.0
 # A quiet street's roadway stress term in Valhalla's `time x (1 + accommodation x stress)`:
 # the quiet metre's 2.2 less its time.
 QUIET_STRESS = QUIET_FACTOR - 1.0
@@ -94,8 +99,13 @@ WORTH_DEFAULT = 5.0
 WORTH_UP_TO_TARGET = 10.0
 WORTH_WEIGHTS = {3: 1.0, 4: 2.0, 5: 3.0}
 
-# Avoid's entry charge (presets.AVOID_ENTRY_PENALTY_S), cost seconds.
+# Avoid's entry charge: 1,800 router cost seconds at the reference speed (the owner's choice,
+# 2026-09-27, "Probably a 30 minute penalty"; no published value), and the distance of quiet
+# riding that is, 4,091 m (2.54 mi), which is what every ride type is charged: the router is
+# sent it at the ride's own speed (`core.presets.avoid_entry_cost_s`) and the stress number
+# counts it (`avoid_entry_m`). The one home of the number.
 AVOID_ENTRY_S = 1800.0
+AVOID_ENTRY_M = AVOID_ENTRY_S * REFERENCE_SPEED_KMH / 3.6 / QUIET_FACTOR
 
 
 @dataclass(frozen=True)
@@ -166,6 +176,23 @@ def multiplier(
     added = lts3 if level == 3 or pricing.no_trail else lts4
     weight = pricing.weights[level - 3]
     return 1.0 + added / QUIET_FACTOR + pricing.rate * weight
+
+
+def level_gap(built: float, live: float, use_roads: float, no_trail: bool = False) -> float:
+    """Quiet metres a metre of road costs more at the `live` level than at the level the
+    router's graph was `built` with (negative where it was lowered), in the router's own
+    price at this `use_roads`: the tier's figure (`multiplier`: the middle of the five road
+    types, a half step the midpoint of its two levels), since a road edited since the last
+    rebuild has no marks of its new level to read. Levels are 1 to 5 in half steps. An
+    estimate: it is exact only for the typical road. The ranking adds it for the ways a
+    route rides whose level an admin changed since the rebuild (`core.refine.graph_gap_m`)."""
+    pricing = Pricing(use_roads=use_roads, no_trail=no_trail)
+
+    def at(level: float) -> float:
+        tier = int(level)
+        return multiplier(tier, None, pricing, half=level - tier >= 0.5) or 0.0
+
+    return at(live) - at(built)
 
 
 # --- The router's own cost of a road -------------------------------------------------------
@@ -518,8 +545,9 @@ def road_multiplier(
 
 
 def avoid_entry_m(pricing: Pricing) -> float:
-    """Avoid's entry charge as quiet metres at this ride's speed."""
-    return AVOID_ENTRY_S / pricing.quiet_cost_s if pricing.quiet_cost_s > 0 else 0.0
+    """Avoid's entry charge as quiet metres: one distance on every ride type, the one the
+    router is sent (`AVOID_ENTRY_M`); nothing where the ride prices no quiet metre."""
+    return AVOID_ENTRY_M if pricing.quiet_cost_s > 0 else 0.0
 
 
 def junction_m(cost_ft: float, severity: str | None, flagged: bool, pricing: Pricing) -> float:

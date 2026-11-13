@@ -105,9 +105,21 @@ class TestMultiplier:
     def test_unrated_has_no_number(self) -> None:
         assert calm.multiplier(None, None, DEFAULT) is None
 
-    def test_avoid_entry_is_quiet_metres_at_the_ride_speed(self) -> None:
-        # stress-number.md section 2: 2.5 mi [4.1 km] at Default.
+    def test_avoid_entry_is_the_one_distance_the_router_is_sent(self) -> None:
+        # stress-number.md section 2: 2.5 mi [4.1 km] on every ride type. The review's F5:
+        # before, the number counted 1,800 cost seconds at the ride's own speed (1.84 mi on
+        # Bikeshare, 3.53 mi on Road Bike) while the router was sent 2.54 mi on both.
         assert calm.avoid_entry_m(DEFAULT) / MILE == pytest.approx(2.54, abs=0.01)
+        entries = set()
+        for name in ("bikeshare", presets.ROAD_BIKE, "default"):
+            bicycle = presets.costing(name)["bicycle"]
+            quiet_cost_s = calm.QUIET_FACTOR * 3.6 / presets.speed_kmh_of(bicycle)
+            pricing = calm.Pricing(use_roads=bicycle["use_roads"], quiet_cost_s=quiet_cost_s)
+            entries.add(calm.avoid_entry_m(pricing))
+            sent_m = bicycle["alley_penalty"] / quiet_cost_s
+            assert sent_m == pytest.approx(calm.AVOID_ENTRY_M, rel=1e-3), name
+        assert entries == {calm.AVOID_ENTRY_M}
+        assert presets.AVOID_ENTRY_FT == round(calm.AVOID_ENTRY_M / calm.METRES_PER_FOOT)
 
     def test_at_zero_there_is_no_lts_3_band_so_quiet_streets_never_read_as_lts_3(self) -> None:
         # Correctness review SF1: LTS 3 costs nothing extra at 0, so (1 + 1) / 2 would put a

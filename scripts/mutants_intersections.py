@@ -45,6 +45,24 @@ survivor is not this release's: `shared: the road ridden along counts`
 the base 8809da8 too, since neither intersections.py nor its tests change in
 the release (mutation review, section 1). It is left for the intersections
 work to kill, not masked here.
+
+The audit of 2026-11-13 (package W2) replaced the model's factor tables with one crossing
+function (`crossing_ft`: Broach by count, Furth by lanes and speed, the wait for a gap).
+The 21 mutants whose lines that rewrite removed are dropped (the speed, lane, volume and
+rural factors, the severe tier, the time-of-day factors, the rush-hour floor, the refuge
+x0.75, the trail crossing's x0.5 and orange cap, the red surcharge), and the "w2:" mutants
+at the end of the list take their place, against tests/test_crossing_table.py and the
+junction tests of tests/test_refine.py. One tried and left out as equivalent: letting rush
+hour raise the count in `traffic_level` changes no price, because `_at_level` takes the
+lower of the day's level and the hour's.
+
+The independent review of 2026-11-13 (r2-junctions) found junction_delay.py and facility.py
+outside this file and eight survivors of its own. The "r2:" mutants at the end are those
+eight and the one-reading rules of the fix (who stops, the wait priced and shown, a
+divided road, a signal below a stop sign, a side path's mouth charged once), against
+tests/test_junction_one_reading.py, tests/test_crossing_table.py,
+tests/test_beside_busy_road.py and tests/test_junctions.py. "merge keeps the colour" went
+with `Event.max_severity`, which nothing set.
 """
 
 # ruff: noqa: E501
@@ -66,6 +84,11 @@ SLIDER = ["tests/test_calm_slider.py", "tests/test_presets.py"]
 REFINE = ["tests/test_refine.py"]
 JUNCTIONS = ["tests/test_junctions.py"]
 ROUTE = ["tests/test_route_intersections.py"]
+TABLE = ["tests/test_crossing_table.py"]
+ONE = ["tests/test_junction_one_reading.py"]
+SIDE = ["tests/test_beside_busy_road.py"]
+DELAY_MODEL = "src/routemaker/junction_delay.py"
+FACILITY = "src/routemaker/facility.py"
 
 INTERSECTIONS = "src/routemaker/intersections.py"
 T = "src/routemaker/trace_junctions.py"
@@ -92,94 +115,10 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         PURE,
     ),
     (
-        "band edge inclusive",
-        INTERSECTIONS,
-        "        if value <= limit:\n            return factor",
-        "        if value < limit:\n            return factor",
-        PURE,
-    ),
-    (
-        "rural from the free side too",
-        INTERSECTIONS,
-        "        if (stopped_side or hard) and speed >= RURAL_SPEED_MPH and rural:",
-        "        if speed >= RURAL_SPEED_MPH and rural:",
-        PURE,
-    ),
-    (
-        "rural edge",
-        INTERSECTIONS,
-        "        if (stopped_side or hard) and speed >= RURAL_SPEED_MPH and rural:",
-        "        if (stopped_side or hard) and speed > RURAL_SPEED_MPH and rural:",
-        PURE,
-    ),
-    (
-        "signal costs the stopped price",
-        INTERSECTIONS,
-        "        return _table(SIGNALISED_CROSSING_FT, road)\n    if control is Control.ALL_STOP",
-        "        return _table(STOPPED_CROSSING_FT, road)\n    if control is Control.ALL_STOP",
-        PURE,
-    ),
-    (
-        "cross stop is not priority",
-        INTERSECTIONS,
-        "    if control is Control.CROSS_STOP:\n        return PRIORITY_SIDE_FT\n",
-        "    if False:\n        return PRIORITY_SIDE_FT\n",
-        PURE,
-    ),
-    (
-        "busier rider road priority edge",
-        INTERSECTIONS,
-        "    if rider > road.level:\n        return True\n",
-        "    if rider >= road.level:\n        return True\n",
-        PURE,
-    ),
-    (
-        "merge counts the lane it is in",
-        INTERSECTIONS,
-        "    feet = max(lanes - 1, 0) * MERGE_MILES_PER_LANE",
-        "    feet = max(lanes, 0) * MERGE_MILES_PER_LANE",
-        PURE,
-    ),
-    (
         "merge cap is a floor",
         INTERSECTIONS,
         "    return min(feet, BOX_TURN_CAP_FT) if control is Control.SIGNAL else feet",
         "    return max(feet, BOX_TURN_CAP_FT) if control is Control.SIGNAL else feet",
-        PURE,
-    ),
-    (
-        "one-way has oncoming traffic",
-        INTERSECTIONS,
-        "    oncoming = 0.0 if road.oneway else _table(LEFT_ACROSS_ONCOMING_FT, road)",
-        "    oncoming = _table(LEFT_ACROSS_ONCOMING_FT, road)",
-        PURE,
-    ),
-    (
-        "signal does not lower a left",
-        INTERSECTIONS,
-        "            oncoming *= SIGNALISED_LEFT_FACTOR\n",
-        "            oncoming *= 1.0\n",
-        PURE,
-    ),
-    (
-        "right off a busy road costs a left",
-        INTERSECTIONS,
-        '            take(RIGHT_FROM_BUSY_FT, "right_from", j.incoming)',
-        '            take(left_from_ft(j.incoming, j.control), "right_from", j.incoming)',
-        PURE,
-    ),
-    (
-        "onto a busy road ignores the movement",
-        INTERSECTIONS,
-        "        factor = MOVEMENT_FACTOR_ONTO[j.movement.value]",
-        "        factor = 1.0",
-        PURE,
-    ),
-    (
-        "marked crossing not discounted",
-        INTERSECTIONS,
-        "                value *= MARKED_CROSSING_FACTOR",
-        "                value *= 1.0",
         PURE,
     ),
     (
@@ -206,8 +145,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "merge edge",
         INTERSECTIONS,
-        "if group and event.m - group[-1].m > MERGE_WITHIN_M:",
-        "if group and event.m - group[-1].m >= MERGE_WITHIN_M:",
+        "if group and event.m - group[-1].m > MERGE_WITHIN_M and",
+        "if group and event.m - group[-1].m >= MERGE_WITHIN_M and",
         PURE,
     ),
     (
@@ -215,13 +154,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         INTERSECTIONS,
         "extra = sum(e.cost_ft for e in ones if e is not worst) * MERGED_SHARE",
         "extra = sum(e.cost_ft for e in ones if e is not worst)",
-        PURE,
-    ),
-    (
-        "merge keeps the colour",
-        INTERSECTIONS,
-        "        severity = _at_most(severity_of(cost), worst.max_severity)",
-        "        severity = severity_of(cost)",
         PURE,
     ),
     (
@@ -424,15 +356,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "improvement margin",
         R,
-        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
-        "        if read.score(ctx) >= best.score(ctx):\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx):\n            return False\n        return read.length_m <= best.length_m",
         REFINE,
     ),
     (
         "any improvement wins nothing",
         R,
-        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
-        "        if read.score(ctx) > best.score(ctx) + IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) > score(best, ctx) + IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
         REFINE,
     ),
     (
@@ -473,8 +405,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "crossings in the first round only",
         R,
-        "        new = crossing_targets(current, ctx, no_way)\n",
-        "        new = crossing_targets(current, ctx, no_way) if number == 0 else []\n",
+        "        new = crossing_targets(current, ctx, no_way) + pending_targets(current, ctx)\n",
+        "        new = (crossing_targets(current, ctx, no_way) if number == 0 else []) + pending_targets(current, ctx)\n",
         REFINE,
     ),
     (
@@ -723,8 +655,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "assumed speed kept",
         "src/routemaker/stress.py",
-        '        speed_mph=None if "maxspeed" in assumed else speed_mph,',
-        "        speed_mph=speed_mph,",
+        "        speed_mph=limit_mph if speed_posted else None,",
+        "        speed_mph=limit_mph,",
         ["tests/test_road_traits.py"],
     ),
     (
@@ -736,13 +668,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     # --- round 1: the model (B3, items 185, 186, the review's survivors) -------
     ("straight to 60", INTERSECTIONS, "STRAIGHT_MAX_DEG = 35.0", "STRAIGHT_MAX_DEG = 60.0", PURE),
-    (
-        "rural on a left off",
-        INTERSECTIONS,
-        "        oncoming *= scale(road, stopped_side=False)",
-        "        oncoming *= scale(road, stopped_side=True)",
-        PURE,
-    ),
     (
         "straight off a busy road priced",
         INTERSECTIONS,
@@ -779,13 +704,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         PURE,
     ),
     (
-        "the quietest slip lane road",
-        INTERSECTIONS,
-        "busiest = max(roads, key=lambda r: r.level) if roads else None",
-        "busiest = min(roads, key=lambda r: r.level) if roads else None",
-        PURE,
-    ),
-    (
         "slip lane links ignored",
         INTERSECTIONS,
         "        roads = [r for r in (j.incoming, j.outgoing, *j.crossed, *j.links) if r.busy]",
@@ -795,8 +713,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "merge anchored on the first",
         INTERSECTIONS,
-        "        if group and event.m - group[-1].m > MERGE_WITHIN_M:",
-        "        if group and event.m - group[0].m > MERGE_WITHIN_M:",
+        "        if group and event.m - group[-1].m > MERGE_WITHIN_M and",
+        "        if group and event.m - group[0].m > MERGE_WITHIN_M and",
         PURE,
     ),
     (
@@ -825,48 +743,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         INTERSECTIONS,
         "        and j.movement is not Movement.STRAIGHT\n        and (j.outgoing.level > j.incoming.level",
         "        and (j.outgoing.level > j.incoming.level",
-        PURE,
-    ),
-    (
-        "onto uncapped",
-        INTERSECTIONS,
-        "        take(min(base * factor, MAX_CROSSING_FT),",
-        "        take(base * factor,",
-        PURE,
-    ),
-    (
-        "left across uncapped",
-        INTERSECTIONS,
-        '            take(min(value, MAX_CROSSING_FT), "left_across", road)',
-        '            take(value, "left_across", road)',
-        PURE,
-    ),
-    (
-        "no box cap at a signal",
-        INTERSECTIONS,
-        "    if control is Control.SIGNAL:\n        total = min(total, BOX_TURN_CAP_FT)\n",
-        "",
-        PURE,
-    ),
-    (
-        "box cap everywhere",
-        INTERSECTIONS,
-        "    if control is Control.SIGNAL:\n        total = min(total, BOX_TURN_CAP_FT)\n",
-        "    total = min(total, BOX_TURN_CAP_FT)\n",
-        PURE,
-    ),
-    (
-        "no trail cap",
-        INTERSECTIONS,
-        "    cap = MARKED_CROSSING_MAX_SEVERITY if marked else None",
-        "    cap = None",
-        PURE,
-    ),
-    (
-        "no refuge credit",
-        INTERSECTIONS,
-        "    cost = worst.cost_ft * MEDIAN_REFUGE_FACTOR",
-        "    cost = worst.cost_ft",
         PURE,
     ),
     (
@@ -932,49 +808,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         R,
         "        if metres < CALM_MIN_EDGE_M:\n            continue\n",
         "",
-        REFINE,
-    ),
-    (
-        "wide busier taken",
-        R,
-        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
-        "        if better(read, best, ctx):\n            best, best_trip = read, candidate",
-        REFINE,
-    ),
-    (
-        "wide via breaks",
-        R,
-        '            {"lon": lon, "lat": lat, "type": "through"},',
-        '            {"lon": lon, "lat": lat, "type": "break"},',
-        REFINE,
-    ),
-    (
-        "wide sides flipped",
-        R,
-        "    left_east, left_north = -north / length, east / length",
-        "    left_east, left_north = north / length, -east / length",
-        REFINE,
-    ),
-    (
-        "wide on by default",
-        R,
-        "WIDE_SEARCH_FROM_RATE: float | None = None",
-        "WIDE_SEARCH_FROM_RATE: float | None = 0.0",
-        REFINE,
-    ),
-    (
-        "wide margin",
-        R,
-        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
-        "        if read.score(ctx) < best.score(ctx) and not busier:\n            best, best_trip = read, candidate",
-        REFINE,
-    ),
-    (
-        "wide unread taken",
-        R,
-        # The wide search's own check; the seek's whole-trip check is the same line.
-        "        if read is None or read.events is None:\n            continue\n        busier = _busier(read, first_exposure, ctx)",
-        "        if read is None:\n            continue\n        busier = _busier(read, first_exposure, ctx)",
         REFINE,
     ),
     # --- the answer --------------------------------------------------------
@@ -1164,8 +997,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "shared: no sharing",
         INTERSECTIONS,
-        "        for junction in share_controls(junctions)\n    )",
-        "        for junction in junctions\n    )",
+        "    shared = share_controls(junctions)\n    paired",
+        "    shared = junctions\n    paired",
         PURE,
     ),
     # Hunt J5 (2026-11-08): the junction model's signals reach the delay model.
@@ -1189,13 +1022,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         INTERSECTIONS,
         "    if j.ring_movement is not None and j.outgoing.busy:",
         "    if False:",
-        PURE,
-    ),
-    (
-        "j4 ring: the rider's road keeps priority",
-        INTERSECTIONS,
-        "        value = crossing_ft(j.outgoing, j.control, None)",
-        "        value = crossing_ft(j.outgoing, j.control, _rider(j.incoming), _read(j.incoming))",
         PURE,
     ),
     (
@@ -1271,8 +1097,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "continuing: joins anyway",
         INTERSECTIONS,
-        "    if j.outgoing.busy and not j.continues and (not j.incoming.busy or turning_from_busy_onto):",
-        "    if j.outgoing.busy and (not j.incoming.busy or turning_from_busy_onto):",
+        "    return not j.continues and (not j.incoming.busy or turning_from_busy_onto)",
+        "    return not j.incoming.busy or turning_from_busy_onto",
         PURE,
     ),
     (
@@ -1663,6 +1489,375 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
             "tests/test_longcalm.py",
             "tests/test_longcalm_api.py",
         ],
+    ),
+    # --- the one crossing function (the audit of 2026-11-13, package W2) ------
+    (
+        "w2: the count never lowers the level",
+        INTERSECTIONS,
+        "level = max(level, _at(count, COUNT_LEVELS))",
+        "level = min(level, _at(count, COUNT_LEVELS))",
+        TABLE,
+    ),
+    (
+        "w2: the refuge table on undivided roads",
+        INTERSECTIONS,
+        "REFUGE_LTS if road.divided else CROSSING_LTS, speed)",
+        "CROSSING_LTS if road.divided else REFUGE_LTS, speed)",
+        TABLE,
+    ),
+    (
+        "w2: no wait for a gap",
+        INTERSECTIONS,
+        "return max(_at_level(STOPPED_CROSSING_FT, road, when), gap_ft(road, when, lanes))",
+        "return _at_level(STOPPED_CROSSING_FT, road, when)",
+        TABLE,
+    ),
+    (
+        "w2: a signal keeps a stress price",
+        INTERSECTIONS,
+        "    if control is Control.SIGNAL:\n        return 0.0\n",
+        "    if control is Control.SIGNAL:\n        return 150.0\n",
+        TABLE,
+    ),
+    (
+        "w2: the hour never lowers the count",
+        INTERSECTIONS,
+        "quieter = min(hour_share(when) / hour_share(None), 1.0)",
+        "quieter = 1.0",
+        TABLE,
+    ),
+    (
+        "w2: a refuge is one stage",
+        INTERSECTIONS,
+        "hourly, lanes, stages = hourly / 2.0, max(lanes_crossed(road) // 2, 1), 2",
+        "hourly, lanes, stages = hourly, max(lanes_crossed(road), 1), 1",
+        TABLE,
+    ),
+    (
+        "w2: the gap wait at one for one",
+        INTERSECTIONS,
+        "return WAIT_PAIN * wait_s(road, when, lanes) * QUIET_FT_PER_S",
+        "return wait_s(road, when, lanes) * QUIET_FT_PER_S",
+        TABLE,
+    ),
+    (
+        "w2: the whole left uncapped",
+        INTERSECTIONS,
+        "total = min(oncoming + merge_ft(road), LEFT_ACROSS_ONCOMING_FT[4])",
+        "total = oncoming + merge_ft(road)",
+        TABLE,
+    ),
+    (
+        "w2: a left off at an all-way stop as uncontrolled",
+        INTERSECTIONS,
+        "        return ALL_WAY_STOP_FT * _fade(road)\n    oncoming = ",
+        "        pass\n    oncoming = ",
+        TABLE,
+    ),
+    (
+        "w2: a right onto at the crossing's price",
+        INTERSECTIONS,
+        "return min(base, RIGHT_ONTO_MAX_FT) if movement is Movement.RIGHT else base",
+        "return base",
+        TABLE,
+    ),
+    (
+        "w2: a marked crossing by the share who yield",
+        INTERSECTIONS,
+        "value *= 1.0 - _at(fastest",
+        "value *= _at(fastest",
+        TABLE,
+    ),
+    (
+        "w2: no priority by traffic",
+        INTERSECTIONS,
+        "    if margin >= PRIORITY_MARGIN:\n        return True",
+        "    if margin >= PRIORITY_MARGIN + 9:\n        return True",
+        TABLE,
+    ),
+    (
+        "w2: no priority by class",
+        INTERSECTIONS,
+        "    return margin >= 0 and edge >= 1",
+        "    return margin >= 0 and edge >= 99",
+        TABLE,
+    ),
+    (
+        "w2: a side path without its road's priority",
+        INTERSECTIONS,
+        "        if beside > rider:",
+        "        if False:",
+        TABLE,
+    ),
+    (
+        "w2: the hook does not fade",
+        INTERSECTIONS,
+        "cost += RIGHT_HOOK_FT * _fade(hooked)",
+        "cost += RIGHT_HOOK_FT",
+        TABLE,
+    ),
+    ("w2: no hook", INTERSECTIONS, "cost += RIGHT_HOOK_FT * _fade(hooked)", "cost += 0.0", TABLE),
+    (
+        "w2: fixed charges fade a level late",
+        INTERSECTIONS,
+        "return min(max(crossing_level(road) - 1.0, 0.0), 1.0)",
+        "return min(max(crossing_level(road) - 2.0, 0.0), 1.0)",
+        TABLE,
+    ),
+    (
+        "w2: a carriageway that costs nothing alone is dropped",
+        INTERSECTIONS,
+        'if whole_kind == "crossing" and whole_about is not None and whole_about.divided:',
+        "if False:",
+        TABLE,
+    ),
+    (
+        "w2: stress and wait both count with no signal",
+        R,
+        "counted = stress_m + wait_m if signal else max(stress_m, wait_m)",
+        "counted = stress_m + wait_m",
+        REFINE,
+    ),
+    (
+        "w2: the larger counts at a signal too",
+        R,
+        "counted = stress_m + wait_m if signal else max(stress_m, wait_m)",
+        "counted = max(stress_m, wait_m)",
+        REFINE,
+    ),
+    (
+        "w2: no cap on the whole junction",
+        R,
+        "over += stress_m + wait_m - min(counted, cap_m)",
+        "over += stress_m + wait_m - counted",
+        REFINE,
+    ),
+    (
+        "w2: a far wait belongs to the junction",
+        R,
+        "if abs(events[place].m - wait.m) <= model.MERGE_WITHIN_M:",
+        "if True:",
+        REFINE,
+    ),
+    # The independent review of 2026-11-13 (r2-junctions): its eight survivors, and the one
+    # reading of who stops, how long, a divided road and a side path's mouth, across
+    # intersections.py, junction_delay.py, facility.py and core/junctions.py.
+    (
+        "r2: a left off prices a gap across all the lanes",
+        INTERSECTIONS,
+        "total = max(total, gap_ft(road, when, lanes=road.lanes or 1))",
+        "total = max(total, gap_ft(road, when))",
+        TABLE,
+    ),
+    (
+        "r2: a left off waits for all the lanes",
+        INTERSECTIONS,
+        "oncoming = wait_s(j.incoming, when, lanes=j.incoming.lanes or 1)",
+        "oncoming = wait_s(j.incoming, when)",
+        ONE,
+    ),
+    (
+        "r2: each stage of a divided road crosses all its lanes",
+        INTERSECTIONS,
+        "hourly, lanes, stages = hourly / 2.0, max(lanes_crossed(road) // 2, 1), 2",
+        "hourly, lanes, stages = hourly / 2.0, lanes_crossed(road), 2",
+        TABLE,
+    ),
+    (
+        "r2: priority needs a level and a half",
+        INTERSECTIONS,
+        "PRIORITY_MARGIN = 0.5",
+        "PRIORITY_MARGIN = 1.5",
+        TABLE,
+    ),
+    (
+        "r2: the rider's own stop sign is ignored",
+        INTERSECTIONS,
+        "    return junction.control is Control.NONE and has_priority(junction, road)",
+        "    return has_priority(junction, road)",
+        ONE,
+    ),
+    (
+        "r2: an assumed speed is never said",
+        INTERSECTIONS,
+        "assumed = speed_assumed(about) and junction.control is not Control.SIGNAL",
+        "assumed = False",
+        TABLE,
+    ),
+    (
+        "r2: lanes unknown merge across one lane",
+        INTERSECTIONS,
+        "else min(max(level - 3.0, 0.0), 1.0)",
+        "else 1.0",
+        TABLE,
+    ),
+    (
+        "r2: a signalised slip lane at full price",
+        INTERSECTIONS,
+        "SIGNALISED_SLIP_FACTOR = 0.5",
+        "SIGNALISED_SLIP_FACTOR = 1.0",
+        TABLE,
+    ),
+    (
+        "r2: the refuge credit priced with no ride time",
+        INTERSECTIONS,
+        "refuge, refuge_untimed, _factor = priced(whole, whole_about, when)",
+        "refuge, refuge_untimed, _factor = priced(whole, whole_about, None)",
+        TABLE,
+    ),
+    (
+        "r2: the priced wait uncapped",
+        INTERSECTIONS,
+        "    return min(gap_delay_s(traffic, when, lanes), GAP_WAIT_MAX_S)",
+        "    return gap_delay_s(traffic, when, lanes)",
+        ONE,
+    ),
+    (
+        "r2: a right turn waits for both directions",
+        INTERSECTIONS,
+        "    return road.lanes or 1\n\n\ndef merge_ft",
+        "    return None\n\n\ndef merge_ft",
+        ONE,
+    ),
+    (
+        "r2: priority by class though both roads are read",
+        INTERSECTIONS,
+        "    if unread and edge:",
+        "    if edge:",
+        TABLE,
+    ),
+    (
+        "r2: a divided pair needs no shared name",
+        INTERSECTIONS,
+        "            and ra.names & rb.names and not ra.ways & rb.ways",
+        "            and not ra.ways & rb.ways",
+        ONE,
+    ),
+    (
+        "r2: carriageways merge only within reach",
+        INTERSECTIONS,
+        "> MERGE_WITHIN_M and not carriageways:",
+        "> MERGE_WITHIN_M:",
+        ONE,
+    ),
+    (
+        "r2: the second carriageway waits again",
+        INTERSECTIONS,
+        "found[first], found[second] = whole, GiveWay(False)",
+        "found[first] = whole",
+        ONE,
+    ),
+    (
+        "r2: a signal's stop sign is not read",
+        INTERSECTIONS,
+        "found[place] = None if stopped is None else replace(stopped, at_signal=True)",
+        "found[place] = None",
+        ONE,
+    ),
+    (
+        "r2: the price asks priority, the time asks has_way",
+        INTERSECTIONS,
+        "    if control is Control.CROSS_STOP or priority:",
+        "    if control is Control.CROSS_STOP:",
+        ONE,
+    ),
+    (
+        "r2: the signal held below the stop sign only above 1x",
+        DELAY_MODEL,
+        "    if w.stop_s is not None:\n        # At every wait weight",
+        "    if w.stop_s is not None and wait_weight > 1.0:\n        # At every wait weight",
+        ONE,
+    ),
+    (
+        "r2: the stop sign across the road is its price alone",
+        DELAY_MODEL,
+        "stop = max(stop_extra_s, (stop_wait_s or 0.0) - signal_own_s)",
+        "stop = stop_extra_s",
+        ONE,
+    ),
+    (
+        "r2: the signal's own price is not taken off the stop sign's wait",
+        DELAY_MODEL,
+        "stop = max(stop_extra_s, (stop_wait_s or 0.0) - signal_own_s)",
+        "stop = max(stop_extra_s, stop_wait_s or 0.0)",
+        ONE,
+    ),
+    (
+        "r2: a left off a road is timed a stop sign too",
+        DELAY_MODEL,
+        "(STOP_SIGN_S if reading.stop_sign else 0.0)",
+        "STOP_SIGN_S",
+        ONE,
+    ),
+    (
+        "r2: the model's reading of who stops is ignored",
+        DELAY_MODEL,
+        "        elif reading is not None and not reading.at_signal:",
+        "        elif False:",
+        ONE,
+    ),
+    (
+        "r2: a rider with the right of way is timed a stop",
+        DELAY_MODEL,
+        "    if not reading.stops:\n        return 0.0",
+        "    if False:\n        return 0.0",
+        ONE,
+    ),
+    (
+        "r2: the waits merge at a distance of their own",
+        DELAY_MODEL,
+        "\nMERGE_M = MERGE_WITHIN_M",
+        "\nMERGE_M = 35.0",
+        ONE,
+    ),
+    (
+        "r2: a mouth priced at route time is in the level too",
+        FACILITY,
+        "return highway in SLIP_LANE_HIGHWAY or read.busy, ix.crossing_level(read)",
+        "return highway in SLIP_LANE_HIGHWAY, ix.crossing_level(read)",
+        SIDE,
+    ),
+    (
+        "r2: a mouth by its map level",
+        FACILITY,
+        "    read = ix._by_traffic(road)",
+        "    read = road",
+        SIDE,
+    ),
+    (
+        "r2: the level never asks for the route-time road",
+        FACILITY,
+        "road = road_of(osm_id) if road_of is not None else None",
+        "road = None",
+        SIDE,
+    ),
+    (
+        "r2: the half step is a mile again",
+        "src/routemaker/stress.py",
+        "CROSSING_FT_PER_HALF_STEP = _half_step_ft_per_mile()",
+        "CROSSING_FT_PER_HALF_STEP = 5280.0",
+        SIDE,
+    ),
+    (
+        "r2: any path has a road beside it",
+        J,
+        "WHERE p.osm_way_id = j.own AND p.is_trail_class AND ({side_path})",
+        "WHERE p.osm_way_id = j.own",
+        JUNCTIONS,
+    ),
+    (
+        "r2: a motorway can be the road beside",
+        J,
+        "      AND s.map_class = 'road'\n",
+        "",
+        JUNCTIONS,
+    ),
+    (
+        "r2: a trail can be the road beside",
+        J,
+        "      AND NOT s.is_trail_class\n      AND s.map_class",
+        "      AND s.map_class",
+        JUNCTIONS,
     ),
 ]
 

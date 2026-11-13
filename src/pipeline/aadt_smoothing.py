@@ -3,7 +3,7 @@
 A count is a point measurement that conflation attributes to the way it lands
 on. Where two agencies, or two vintages, disagree about one street, a single
 block can carry a count that its neighbours do not, and the volume gates in
-`routemaker.stress` (VOLUME_QUIET 1,500 and VOLUME_BUSY 8,000) then flip that one
+`routemaker.stress` (`VOLUME_GATES`: the published tables' count breaks) then flip that one
 block a tier on a number the rest of the street does not support. The owner's
 case: 1st Street NW from Q Street to Quincy Place, 110 m, carries DDOT's
 10,665 between neighbours at 7,520, and classified LTS 3 where the blocks either
