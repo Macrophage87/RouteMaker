@@ -10341,3 +10341,30 @@ the signal returns, the server plans it again.
   about 250 miles (`MAX_LINE_M`, our default) is refused with a 400.
 - Privacy: the request carries the route's line only; nothing about the rider is logged or
   kept, and the phone keeps the network in memory for the ride only.
+
+### Region packs (v0.27.0)
+
+The optional whole-area download beside each ride's mile-wide network (the owner, 2026-11-12:
+"Potentially split it by subregion"; "Beltway, NoVA, NW exurbs, Baltimore and suburbs, etc.").
+Five packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
+exurbs, Baltimore and suburbs, and the rest of the map (the coverage box less the others). The
+borders are our draft, approximate; each pack also takes the roads within a mile of its border.
+
+- **Built after every map swap**, in the rebuild's last stage, from the live `offline_way`
+  table: `${DATA_ROOT}/tiles/offline-packs/<build id>/<region>.json.gz` and `manifest.json`,
+  then `current` is pointed at that build in one rename. The two newest builds are kept. The
+  log reads `offline pack <region>: N ways, B bytes` for each; that is where the sizes come
+  from. A failure is logged (`offline region packs not built`) and never fails the rebuild:
+  the map is already live, and the previous packs stay listed.
+- **Listed** by `GET /api/offline/packs` (each pack's name, bytes, checksum and address, and
+  the ride's level prices); 503 `not_built` before the first build. 30 a minute per client
+  (our default).
+- **Served** by the web server, never a worker: `/offline-packs/<build id>/<region>.json.gz`,
+  same-site only, kept a day. Compose's Caddy mounts `${DATA_ROOT}/tiles` read-only at
+  `/srv/tiles`; beta's nginx reads the folder directly. **Deploy step on beta:** render the
+  nginx template again and reload nginx (the new `/offline-packs/` location), and on compose
+  `docker compose up -d caddy` for the new mount.
+- To build the packs by hand for the live map (after a swap whose pack build failed), in
+  `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
+  then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
+  settings.COVERAGE_BBOX)`.

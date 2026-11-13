@@ -200,6 +200,25 @@
 		file_server
 	}
 
+	# The region packs for riding off grid (core/offline_packs.py): gzip JSON files the
+	# rebuild writes under ${DATA_ROOT}/tiles/offline-packs/<build id>/ after each map swap,
+	# listed by GET /api/offline/packs. Compose mounts the tiles folder read-only at
+	# /srv/tiles (so no folder has to exist before the first build); the path rule below lets
+	# out nothing but pack files. The same same-site guard as the base map; only a build's pack files,
+	# never the manifest or `current`. A build's files never change under their name, so
+	# they are kept a day.
+	handle /offline-packs/* {
+		@foreign not expression `{header.Origin} == {scheme} + "://" + {hostport} || ({header.Origin} == "" && {header.Referer}.startsWith({scheme} + "://" + {hostport} + "/"))`
+		respond @foreign 403
+		@unlisted not path_regexp ^/offline-packs/[0-9A-Za-z_-]+/[a-z-]+\.json\.gz$
+		respond @unlisted 404
+		header Cache-Control "private, max-age=86400"
+		header @foreign Cache-Control "no-store"
+		# The path kept whole (`handle`, not `handle_path`): /offline-packs/... under /srv/tiles.
+		root * /srv/tiles
+		file_server
+	}
+
 	# The public front end (PLAN.md "Frontend"): the static single-page app that
 	# `npm run build` writes and the deploy step copies to ${DATA_ROOT}/frontend,
 	# which compose mounts read-only at /srv/frontend (docs/DEPLOYMENT.md, "The

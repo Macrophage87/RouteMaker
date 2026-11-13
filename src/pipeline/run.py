@@ -93,6 +93,7 @@ from . import (
     major_corridors,
     mass_capacity,
     offline_network,
+    offline_packs,
     overrides,
     promotion,
     rated_facts,
@@ -4889,6 +4890,18 @@ def build_handlers(
             _setting("SEGMENT_SCHEMA_LIVE"),
             _setting("SEGMENT_SCHEMA_RETIRED"),
         )
+        # The region packs for off-grid riding (core.offline_packs), from the map now live. The
+        # map is live whatever happens here: a failure is logged and the last packs stay served
+        # (their manifest names the older build), never a failed rebuild.
+        try:
+            offline_packs.build_packs(
+                _setting("SEGMENT_SCHEMA_LIVE"),
+                Path(context.tiles_dir) / "offline-packs",
+                context.build_id,
+                _setting("COVERAGE_BBOX"),
+            )
+        except Exception:  # noqa: BLE001 - logged; the swap already stands
+            logger.exception("offline region packs not built; the previous packs stay served")
 
     def unless_resumed(handler: Callable[[], None]) -> Callable[[], None]:
         """A stage the classification checkpoint stands in for. Whether this attempt
