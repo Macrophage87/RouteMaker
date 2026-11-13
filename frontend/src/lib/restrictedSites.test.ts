@@ -60,6 +60,29 @@ test("closed sites: says 'No public access' under the name, and dashes the edge 
     assert.deepEqual(edge.paint["line-dasharray"], [3, 2]);
   });
 
+test("closed sites: no names on a city-wide view; the name from zoom 13, 'No public access' from 14, a small piece from 15", () => {
+    const label = restrictedLayers(false).find((l) => l.id === RESTRICTED_LABEL_LAYER) as {
+      minzoom: number;
+      layout: Record<string, unknown>;
+    };
+    assert.equal(label.minzoom, 13);
+    const field = label.layout["text-field"] as unknown[];
+    const small = ["==", ["get", "small"], true];
+    assert.deepEqual(field.slice(0, 2), ["step", ["zoom"]]);
+    // 13-14: the name alone, none on a small piece.
+    assert.deepEqual(field[2], ["case", small, "", ["get", "name"]]);
+    // 14-15: the name and 'No public access', still none on a small piece.
+    assert.equal(field[3], 14);
+    assert.deepEqual((field[4] as unknown[]).slice(0, 3), ["case", small, ""]);
+    assert.ok(JSON.stringify(field[4]).includes(NO_PUBLIC_ACCESS));
+    // 15 on: both lines on every piece.
+    assert.equal(field[5], 15);
+    assert.equal((field[6] as unknown[])[0], "format");
+    assert.ok(JSON.stringify(field[6]).includes(NO_PUBLIC_ACCESS));
+    // The shading stays from zoom 10.
+    assert.equal((restrictedLayers(false).find((l) => l.id === RESTRICTED_TINT_LAYER) as { minzoom: number }).minzoom, 10);
+  });
+
 test("closed sites: repaints for the dark map and back", () => {
     const dark = overlayDarkPaint();
     const light = overlayLightPaint();

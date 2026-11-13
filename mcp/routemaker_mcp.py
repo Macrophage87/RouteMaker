@@ -45,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.26.0"
+SERVER_VERSION = "0.26.1"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
