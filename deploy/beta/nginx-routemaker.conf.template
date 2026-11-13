@@ -545,6 +545,22 @@ server {
         add_header Cache-Control "private, max-age=86400" always;
     }
 
+    # The region packs for riding off grid (Caddyfile handle_path /offline-packs/*): a build's
+    # gzip JSON pack files only, same-site, kept a day (a build's files never change).
+    location ~ ^/offline-packs/([0-9A-Za-z_-]+/[a-z-]+\.json\.gz)$ {
+        if ($rmbeta_basemap_foreign) {
+            add_header Cache-Control "no-store" always;
+            add_header X-Robots-Tag "noindex, nofollow" always;
+            return 403;
+        }
+        alias @DATA_ROOT@/tiles/offline-packs/$1;
+        default_type application/gzip;
+        types { }
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "private, max-age=86400" always;
+    }
+
     location ^~ /basemap/ {
         if ($rmbeta_basemap_foreign) {
             add_header Cache-Control "no-store" always;

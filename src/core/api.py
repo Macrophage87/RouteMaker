@@ -101,6 +101,7 @@ from . import (
     micromobility,
     nearest,
     offline_network,
+    offline_packs,
     parallel,
     plan_cancel,
     presets,
@@ -3982,6 +3983,59 @@ def offline_network_view(request, body: OfflineNetworkIn):
         return Status(503, {"error": "too_slow"})
     factors = offline_network.level_factors(body.preset, body.stress, body.carrying)
     return {**graph, "level_factor": factors}
+
+
+class OfflinePacksIn(Schema):
+    preset: str = Field(
+        default="default", max_length=40, description="The ride type, for the levels' prices."
+    )
+    stress: int | None = Field(
+        default=None, ge=0, le=100, description="The stress slider; none: the ride type's own."
+    )
+    carrying: str | None = Field(
+        default=None, max_length=20, description="Cargo Bike's load, as the route was asked."
+    )
+
+
+@api.get(
+    "/offline/packs",
+    response={200: dict, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="The region packs for riding off grid, and the ride's prices for their levels",
+    description=(
+        "The whole road network of a riding area, an optional download (core.offline_packs):"
+        " each region's name, size and address (served by the web server under"
+        " /offline-packs/), and `level_factor` as POST /offline/network answers it. 503"
+        " `not_built` until the first map rebuild that builds them."
+    ),
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.OFFLINE_PACKS),
+    same_site("the offline region packs answer this site's own pages only"),
+    errors_as_json,
+)
+def offline_packs_view(request, params: Query[OfflinePacksIn]):
+    found = offline_packs.manifest()
+    if found is None:
+        return Status(503, {"error": "not_built"})
+    build = found["build_id"]
+    packs = [
+        {
+            "id": pack["id"],
+            "name": pack["name"],
+            "bytes": pack["bytes"],
+            "sha256": pack["sha256"],
+            "url": f"/offline-packs/{build}/{pack['file']}",
+        }
+        for pack in found["packs"]
+    ]
+    factors = offline_network.level_factors(params.preset, params.stress, params.carrying)
+    return {
+        "build_id": build,
+        "built_at": found["built_at"],
+        "graph_v": found["graph_v"],
+        "packs": packs,
+        "level_factor": factors,
+    }
 
 
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
