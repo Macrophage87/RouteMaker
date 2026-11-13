@@ -191,7 +191,7 @@ test("App puts the ride type's button first and every dial behind the Ride setti
     'label={t("Traffic")}',
     'label={t("Hills")}',
     '<legend>{t("When")}</legend>',
-    "{view.target && (",
+    "{view.target && !hideTarget && (",
   ].map(at);
   assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance");
   // The Avoid gravel box became the Road Bike ride type (Stephen, 2026-11-02).
