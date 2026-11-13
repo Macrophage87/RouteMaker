@@ -42,7 +42,9 @@ test("one line: both dates, either alone, or nothing", () => {
 
 test("Settings' About shows it under the version, from the coverage answer App already fetches", () => {
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
-  assert.match(sheets, /versionSaid\(\)\}<\/p>\}\n.*\n\s*\{dataAge && <p className="hint settings-data-age">\{dataAge\}<\/p>\}/);
+  const version = sheets.indexOf("{versionSaid()}</p>}");
+  const line = sheets.indexOf('{dataAge && <p className="hint settings-data-age">{dataAge}</p>}');
+  assert.ok(version > 0 && line > version, "the data-age line follows the version line");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /setMapDay\(mapDataDay\(coverage\.properties\)\)/);
   assert.match(app, /mapDataDay: mapDay,/);

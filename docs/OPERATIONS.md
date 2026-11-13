@@ -3889,7 +3889,8 @@ water layer's refresh by hand, and a later refresh runs the same:
     .venv311/bin/python scripts/build_food.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
-(after a map rebuild, `scripts/refresh_places.py` runs it with the others), then records the printed counts, size and digest in
+(after a map rebuild, `scripts/refresh_places.py` runs it with the
+others), then records the printed counts, size and digest in
 `frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
 the file. It is a hashed asset under `/assets/`, fetched on the first search
 only (2.3 MB, 555 KB with `gzip -9`, for the committed file) and left out of the service worker's
@@ -6592,11 +6593,12 @@ Refresh it about once a year: the classes are for drawing, not routing, and chan
 ## Refreshing the places after a map rebuild
 
 Backlog item "Data that says how old it is" (2026-11-13). The places riders act on in the moment
-(Find food, Places to see, water and restrooms, repair stands, bike racks, trail mile markers) and
-the barrier list Cargo and Tandem plan round are committed files built from the OSM extract, and
-the rebuild does not write them. So after every map rebuild, once the swap is done, refresh them
-all from that rebuild's extract in one step, on the build host (pyosmium; each builder reads the
-whole extract in turn, so under the heavy-job lock with at least 3,000 MB free):
+(Find food, Places to see, water and restrooms, repair stands, bike racks, trail mile markers), the
+restricted sites with their gates, and the barrier list Cargo and Tandem plan round are committed
+files built from the OSM extract, and the rebuild does not write them. So after every map rebuild,
+once the swap is done, refresh them all from that rebuild's extract in one step, on the build host
+(pyosmium; each builder reads the whole extract in turn, so under the heavy-job lock with at least
+3,000 MB free):
 
     free -m    # "available" at least 3,000 MB; else stop
     flock <the host's heavy.lock> .venv311/bin/python scripts/refresh_places.py \
@@ -6610,6 +6612,8 @@ it. It writes, in the checkout it runs from:
 - `frontend/src/amenity-data/` `water-restrooms.json`, `food.json`, `places.json`,
   `trail-miles.json`, `bike-parking.json`, and `as-of.json` (each file's extract day, and the day
   the cities' racks were fetched);
+- `frontend/src/restricted-data/restricted-sites.json` (the restricted sites and their gates; the
+  api image copies it too);
 - `src/core/geodata/barriers.json` (with the extract's day as its `built`); the census's coverage
   report goes to `~/barrier-census-<day>.md`, kept with the release's notes, never committed.
 
@@ -6622,8 +6626,8 @@ when they matter, and commit the files on a branch for the next release. A build
 stops the run before `as-of.json` is written and prints the `git restore` line for the files it
 had already changed.
 
-The front-end files reach riders with the next front-end build; `barriers.json` with the next api
-image (a hand ship). Riders see the dates in Settings, About, under the version: "Map data from
+The front-end files reach riders with the next front-end build; `barriers.json` and
+`restricted-sites.json` reach the router with the next api image (a hand ship). Riders see the dates in Settings, About, under the version: "Map data from
 Nov 10, 2026. Places and racks from Oct 9, 2026." The map's day is the live standard graph's build
 day (`GET /api/coverage`'s `properties.map_data`, from the `valhalla_upstream` row), so it moves
 with a map swap by itself; the places' day is the oldest in `as-of.json`, so it moves only with
@@ -8559,8 +8563,9 @@ each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and
 access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
 15 (our defaults). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
-PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
-rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
+PC against the extract (`frontend/src/restricted-data/README.md`); `scripts/refresh_places.py`
+reruns it after each map rebuild ("Refreshing the places after a map rebuild"). No map rebuild
+is needed for it.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the

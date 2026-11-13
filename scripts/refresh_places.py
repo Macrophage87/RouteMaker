@@ -2,15 +2,16 @@
 """Refresh every snapshot built from the OSM extract, in one step, after each map rebuild.
 
 Backlog item "Data that says how old it is" (2026-11-13): the places riders act on in the moment
-(Find food, Places to see, water and restrooms, repair stands, racks, trail mile markers) and the
-barrier list Cargo and Tandem plan round are committed files built from the extract by hand, and
-nothing in the rebuild refreshed them, so they drifted weeks behind the map. This runs each
-builder against the rebuild's own extract, then writes `frontend/src/amenity-data/as-of.json`,
-the dates Settings' About line shows ("Places and racks from Nov 10, 2026"), and prints a short
-change report (each file's count before and after, how many added and removed) for the rebuild's
-thread. It reads only the extract (and, with --cities, DDOT's and BCDOT's rack layers); it writes
-only the files below, in this checkout. Check the report, then commit the files: the front-end
-files reach riders with the next front-end build, `barriers.json` with the next api image (a hand
+(Find food, Places to see, water and restrooms, repair stands, racks, trail mile markers), the
+restricted sites and their gates, and the barrier list Cargo and Tandem plan round are committed
+files built from the extract by hand, and nothing in the rebuild refreshed them, so they drifted
+weeks behind the map. This runs each builder against the rebuild's own extract, then writes
+`frontend/src/amenity-data/as-of.json`, the dates Settings' About line shows ("Places and racks
+from Nov 10, 2026"), and prints a short change report (each file's count before and after, how
+many added and removed) for the rebuild's thread. It reads only the extract (and, with --cities,
+DDOT's and BCDOT's rack layers); it writes only the files below, in this checkout. Check the
+report, then commit the files: the front-end files reach riders with the next front-end build,
+`barriers.json` and `restricted-sites.json` reach the router with the next api image (a hand
 ship). docs/OPERATIONS.md, "Refreshing the places after a map rebuild".
 
 Run on the build host with pyosmium (the builders need it), under the heavy-job lock: each
@@ -72,6 +73,11 @@ def _trail_items(doc: dict) -> list[str]:
     ]
 
 
+def _feature_items(doc: dict) -> list[str]:
+    """A GeoJSON file's features by what each is (a site's or a gate's id, its kind and name)."""
+    return [json.dumps(f.get("properties", {}), sort_keys=True) for f in doc.get("features", [])]
+
+
 def _barrier_items(doc: dict) -> list[str]:
     return [f"{b[0]},{b[1]}" for b in doc.get("barriers", [])]
 
@@ -111,6 +117,13 @@ SNAPSHOTS: tuple[Snapshot, ...] = (
         "build_bike_parking.py",
         lambda pbf, _: ["--pbf", str(pbf)],
         _ids("points"),
+    ),
+    Snapshot(
+        "restricted-sites",
+        REPO / "frontend" / "src" / "restricted-data" / "restricted-sites.json",
+        "build_restricted_sites.py",
+        lambda pbf, _: ["--pbf", str(pbf)],
+        _feature_items,
     ),
     Snapshot(
         "barriers",

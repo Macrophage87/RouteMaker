@@ -26,7 +26,15 @@ spec.loader.exec_module(mod)
 
 def test_every_extract_snapshot_and_builder_is_listed() -> None:
     names = {s.name for s in mod.SNAPSHOTS}
-    assert names == {"water-restrooms", "food", "places", "trail-miles", "bike-parking", "barriers"}
+    assert names == {
+        "water-restrooms",
+        "food",
+        "places",
+        "trail-miles",
+        "bike-parking",
+        "restricted-sites",
+        "barriers",
+    }
     for snapshot in mod.SNAPSHOTS:
         assert (REPO / "scripts" / snapshot.script).is_file(), snapshot.script
         assert snapshot.path.is_file(), snapshot.path
