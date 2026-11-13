@@ -5137,7 +5137,7 @@ map". No map rebuild and no new control.
 - **The list.** `src/core/geodata/barriers.json` is a committed snapshot of the barrier nodes
   and steps on the bikeable network, written from the region extract by
   `scripts/barrier_census.py --json` (refreshed by hand, as the water and food snapshots are:
-  docs/OPERATIONS.md, "Barrier list"). The graph cannot tell them apart (`remap_node` makes a
+  docs/OPERATIONS.md, "Licences, and the credits every map must carry", the barrier list paragraph). The graph cannot tell them apart (`remap_node` makes a
   stile, kissing gate, turnstile, cycle barrier and narrow bollard one kind of gate), so the
   kind and mapped width come from the snapshot. Each row carries a point or two on the
   barrier's own way beside it (4 m off, our default), on a trail's way where the barrier is on

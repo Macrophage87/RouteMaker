@@ -2756,6 +2756,11 @@ def test_a_failed_guard_stops_the_command_it_gates(tmp_path: Path, present: bool
     if present:
         for p in paths.values():
             Path(p).mkdir()
+        # A guard on a path inside one of them ("$RM_DATA/status"): that path exists too.
+        for line in gated_lines():
+            for var, sub in re.findall(r'rm_absent "\$(RM_[A-Z_]+)/([^"]+)"', line):
+                if var in paths:
+                    (Path(paths[var]) / sub).mkdir(parents=True, exist_ok=True)
     env = {"PATH": f"{stubs}:{os.environ['PATH']}", "HOME": str(home), **paths}
     for line in gated_lines():
         if (

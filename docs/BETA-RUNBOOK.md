@@ -259,6 +259,7 @@ database initialised with the old one. The required values and what is optional:
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://beta.example.org/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. From v0.7.0 sign-in is on by itself once both keys are set (the Settings line "Sign in with Discord to save routes and sync settings across devices." appears); migration 0020 adds saved settings and routes. Ride links keep anonymous rider dots in the api container's `/dev/shm` (a tmpfs, memory only), so the api needs no volume for them. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | no | The beta's database carries **no accounts** (the dump strips them, OWNER-DECISIONS 367.3), so the owner claims instance admin afresh. Set this to the owner's Discord user id only if Discord sign-in is turned on, and have the owner sign in once promptly after the api starts. Otherwise leave it empty. |
 | `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com`, `graph.mapillary.com` and `*.fbcdn.net` from the api: the server fetches the photo's file from Mapillary's image host and serves the browser its own copy, so the CSP's `img-src` stays `'self'` and the browser never contacts Mapillary. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
+| `FEEDBACK_WEBHOOK_URL` | no | v0.26.0 riders' Send feedback (`core/feedback.py`), read by the api: a webhook of the bug-reports forum on Discord, which the owner pastes himself; then `beta-compose.sh up -d api`. Empty: no Send feedback entry. Allow outbound `discord.com` from the api. Nothing a rider sends is kept on the server. |
 | `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty (as on beta): the problem stays in the rider's 311 log. Before setting it, put the DC 311 lines back in the privacy policy (`core/privacy_policy.py`, removed 2026-10-29 while the send is off). Allow outbound `app.311.dc.gov` from the api. Sending is for signed-in riders (signed out, the problem stays in the 311 log): each send needs a 15-minute ticket for that account from `GET /api/report311`, each account sends at most 10 an hour, and at most 60 reports an hour leave the server in all. |
 | `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
 | `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, `GARMIN_REDIRECT_URI` | no | Garmin Connect (`core/garmin.py`): the Connect Developer Program app's client id and secret from Garmin's developer portal, and `https://beta.example.org/auth/garmin/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Garmin connection. The host must reach `diauth.garmin.com` and `apis.garmin.com` (443). In the portal, point the deregistration notice at `https://beta.example.org/garmin/deregistrations`. Then `beta-compose.sh up -d api`. |
@@ -281,8 +282,8 @@ CD agent's and the host's own, is kept outside this repository, with the owner):
   server fetches the street photo's file and serves the browser its own copy); `app.311.dc.gov`
   (with `DC311_API_KEY`); the short map links a shared place is followed through
   (`core/share_links.py`): `maps.app.goo.gl`, `goo.gl`, `maps.apple`, `www.google.com`,
-  `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` only
-  with Discord sign-in; `api.weather.gov` and `api.open-meteo.com` (v0.12.1, weather along the
+  `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` with Discord
+  sign-in, and with `FEEDBACK_WEBHOOK_URL` (riders' Send feedback, `core/feedback.py`); `api.weather.gov` and `api.open-meteo.com` (v0.12.1, weather along the
   route, `core/weather.py`: rounded points, no key).
 - **worker** (`refresh_dc_closures`, every 15 minutes): `maps2.dcgis.dc.gov`, `mpdc.dc.gov`,
   `trainingtrack.hsema.dc.gov`, `developer.nps.gov` (with `NPS_API_KEY`), `geo.dcwater.com` and
@@ -1586,7 +1587,7 @@ What is posted, each as one short message starting "RouteMaker beta:":
 
   ```sh
   . "$HOME/routemaker-beta-state/vars.sh"
-  rm_absent "$RM_DATA/status" && mkdir -m 755 "$RM_DATA/status"
+  rm_absent "$RM_DATA/status" && sudo install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$RM_DATA/status"
   ```
 
   then the nginx template's new `/status.json` location goes in as in "A new release sha", step 9
