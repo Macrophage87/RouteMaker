@@ -256,7 +256,7 @@ services:
     # Pinned by digest to the build home runs (PostgreSQL 16.4, PostGIS 3.4.3): a pull by digest
     # fetches exactly this image and does not move the shared, moving `16-3.4` tag that another
     # stack on the host may use (review r1, N7).
-    image: docker.io/postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
+    image: docker.io/postgis/postgis:18-3.7@sha256:c5d1ba4292ff7b4471ff41cd515c677633797b72cdd2a7bb691cadaab91f1a1f
     # The image's entrypoint passes a command that starts with `postgres` straight
     # through. 256 MB of shared_buffers holds the hot part of `live` (606 MB, mostly
     # the segment table) and all of `public` (105 MB); the rest is the OS cache's.
