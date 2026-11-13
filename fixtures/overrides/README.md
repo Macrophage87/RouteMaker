@@ -794,3 +794,10 @@ in the database still names it: delete that row in the admin when loading the fi
   facility and count, take that level; 3 ways (Arlington Blvd Service Road, St Mary's Pl NW)
   that carried the count of a bikes-barred road beside or above them take their own street's
   level. Each Why names the principle. Ways with an existing owner row were left out.
+
+- `2026-11-13-owner-md-urban-borrowed-counts.json` (DRAFT, not approved; do not load until the
+  owner confirms the file): the owner's Bucklodge Rd call applied as a guide to 50 ways on eight
+  Maryland urban roads (East Joppa Rd, Brock Bridge Rd, Obrecht Rd, South Potomac St, Garland
+  Groh Blvd, Baltimore Annapolis Blvd, Tuckerman Ln, Ritchie Marlboro Rd) whose level rested on
+  an MDOT SHA count taken past a junction: each is rated from its own traffic by the urban
+  anchors. Load after the 2026-11-09 Maryland own-picks file.

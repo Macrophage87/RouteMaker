@@ -1,0 +1,1109 @@
+{
+  "version": 1,
+  "decided": "2026-11-13",
+  "decided_by": "the deployment owner",
+  "status": "DRAFT, not approved: levels proposed by Claude from the owner's Bucklodge Rd call applied as a guide (the owner, 2026-11-13: \"Don't use my calls as one-offs but guides to inference\"). Do not load until he confirms this file; then load with load_overrides (dry run first) after the 2026-11-09 own-picks file; takes effect on the next rebuild.",
+  "annotations": "50 ways on 8 Maryland urban roads whose level rested on an MDOT SHA count taken past a junction with another busy road (reports/borrowed-counts/JUDGMENT.md, 'urban street' rows). Each is rated from its own traffic (its own counts nearby, or the section's count less the joining road's) by the BRIEF urban anchors. Roads whose own traffic gives the same or a higher level, or with no usable estimate, are left as they are.",
+  "rows": [
+    {
+      "kind": "stress",
+      "osm_way_id": 11538074,
+      "value": {
+        "tier": 2,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-11538074",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Obrecht Road: two lanes, no posted speed, about 1,300 cars a day of its own: an urban two-lane street under 5,000 a day is 2. MDOT SHA's 6,152 is counted on Third Ave (Co 675), past a junction."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Obrecht Road: two lanes, no posted speed, about 1,300 cars a day of its own: an urban two-lane street under 5,000 a day is 2 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3, rested on MDOT SHA's 6,152 for THIRD AVE (CO 675), MD 97 TO OBRECHT RD (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 11538074, LTS 3, speed nan, lanes 1.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Obrecht Road",
+        "highway": "tertiary",
+        "length_m": 3139.5,
+        "line": "-77.005279,39.384646 -77.004661,39.384515 -77.003904,39.384328 -77.003027,39.384116 -77.002530,39.383988 -77.002159,39.383893 -77.001288,39.383695 -77.000658,39.383532 -77.000108,39.383393 -76.999632,39.383293 -76.998634,39.383095 -76.997785,39.382884 -76.997725,39.382867 -76.997679,39.382854 -76.997349,39.382759 -76.997063,39.382678 -76.997013,39.382664 -76.996810,39.382604 -76.996204,39.382425 -76.995870,39.382328 -76.995540,39.382230 -76.995219,39.382123 -76.994296,39.381716 -76.993746,39.381436 -76.993439,39.381289 -76.992871,39.381017 -76.992328,39.380764 -76.992099,39.380668 -76.991924,39.380603 -76.991799,39.380566 -76.991655,39.380532 -76.991494,39.380507 -76.991302,39.380480 -76.991120,39.380467 -76.990676,39.380470 -76.990602,39.380464 -76.990413,39.380450 -76.990240,39.380427 -76.990087,39.380403 -76.989902,39.380357 -76.989885,39.380353 -76.989689,39.380303 -76.989521,39.380251 -76.989374,39.380199 -76.989205,39.380130 -76.989093,39.380083 -76.988984,39.380031 -76.988666,39.379902 -76.988445,39.379797 -76.988242,39.379711 -76.988024,39.379623 -76.987933,39.379596 -76.987734,39.379545 -76.987422,39.379491 -76.987159,39.379461 -76.987038,39.379451 -76.986960,39.379445 -76.986735,39.379441 -76.986475,39.379456 -76.986217,39.379474 -76.985606,39.379616 -76.985469,39.379643 -76.985292,39.379674 -76.984888,39.379749 -76.984752,39.379776 -76.983722,39.379977 -76.982797,39.380158 -76.982568,39.380201 -76.982370,39.380236 -76.982189,39.380265 -76.982039,39.380279 -76.981853,39.380294 -76.981751,39.380296 -76.981612,39.380291 -76.980394,39.380199 -76.979650,39.380130 -76.979603,39.380126 -76.979150,39.380094 -76.978669,39.380059 -76.978546,39.380039 -76.978440,39.380006 -76.978343,39.379962 -76.978265,39.379912 -76.978204,39.379861 -76.978153,39.379805 -76.978113,39.379742 -76.978072,39.379657 -76.977998,39.379446 -76.977934,39.379314 -76.977883,39.379216 -76.977773,39.378904 -76.977695,39.378712 -76.977591,39.378475 -76.977549,39.378393 -76.977516,39.378336 -76.977494,39.378302 -76.977335,39.378126 -76.977214,39.378013 -76.976550,39.377495 -76.976285,39.377280 -76.976087,39.377116 -76.976027,39.377068 -76.975986,39.377033 -76.975576,39.376691 -76.975377,39.376550 -76.975274,39.376470 -76.975203,39.376399 -76.975100,39.376268 -76.975083,39.376246 -76.975006,39.376145 -76.974944,39.376037 -76.974852,39.375858 -76.974772,39.375703 -76.974718,39.375606 -76.974691,39.375569 -76.974639,39.375496 -76.974589,39.375445 -76.974526,39.375381 -76.974385,39.375260 -76.974240,39.375163 -76.973985,39.375019"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 169731566,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-169731566",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 169731566, LTS 4, speed 35.0, lanes 3.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 44.9,
+        "line": "-76.586758,39.399006 -76.586641,39.398977 -76.586263,39.398885"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 178248065,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-178248065",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 178248065, LTS 4, speed 35.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 25.4,
+        "line": "-76.574042,39.395844 -76.574158,39.395844 -76.574336,39.395843"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 178248066,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-178248066",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 178248066, LTS 4, speed 30.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 211.5,
+        "line": "-76.567181,39.396587 -76.567064,39.396601 -76.566902,39.396620 -76.566700,39.396644 -76.566497,39.396668 -76.566144,39.396712 -76.566058,39.396723 -76.566010,39.396729 -76.565964,39.396735 -76.565699,39.396769 -76.565581,39.396786 -76.565468,39.396802 -76.565165,39.396854 -76.564982,39.396888 -76.564777,39.396929"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 188427082,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-188427082",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 188427082, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 67.6,
+        "line": "-76.575109,39.395815 -76.575006,39.395808 -76.574845,39.395799 -76.574611,39.395791 -76.574336,39.395843"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 191923150,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-191923150",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 191923150, LTS 4, speed 30.0, lanes 4.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 40.7,
+        "line": "-76.563851,39.397156 -76.563509,39.397260 -76.563412,39.397289"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 191923151,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-191923151",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 191923151, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 181.3,
+        "line": "-76.577810,39.396385 -76.578423,39.396558 -76.578669,39.396634 -76.578887,39.396706 -76.579330,39.396862 -76.579746,39.397011"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 424994367,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-424994367",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 424994367, LTS 4, speed 35.0, lanes 3.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 57.5,
+        "line": "-76.585318,39.398655 -76.585187,39.398623 -76.584684,39.398499"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 424996946,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-424996946",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 424996946, LTS 4, speed 30.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 523.1,
+        "line": "-76.573893,39.395849 -76.573700,39.395860 -76.573526,39.395869 -76.573178,39.395892 -76.572975,39.395908 -76.572872,39.395916 -76.572791,39.395923 -76.572603,39.395944 -76.572551,39.395949 -76.572416,39.395966 -76.572264,39.395984 -76.572074,39.396007 -76.571746,39.396047 -76.571398,39.396089 -76.571181,39.396115 -76.570807,39.396160 -76.570732,39.396169 -76.570589,39.396186 -76.570472,39.396200 -76.570237,39.396228 -76.569664,39.396296 -76.569007,39.396373 -76.568899,39.396386 -76.568618,39.396419 -76.568554,39.396426 -76.568420,39.396442 -76.568175,39.396471 -76.567907,39.396503"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 424996947,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-424996947",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 424996947, LTS 4, speed 30.0, lanes 3.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 44.0,
+        "line": "-76.567907,39.396503 -76.567835,39.396511 -76.567622,39.396535 -76.567404,39.396561"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 424996948,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-424996948",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 424996948, LTS 4, speed 30.0, lanes 4.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 84.0,
+        "line": "-76.564777,39.396929 -76.564630,39.396960 -76.564505,39.396989 -76.564367,39.397020 -76.564233,39.397053 -76.564100,39.397087 -76.563977,39.397120 -76.563897,39.397142 -76.563851,39.397156"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719988,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719988",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719988, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 184.3,
+        "line": "-76.581481,39.397634 -76.582198,39.397883 -76.582460,39.397963 -76.582831,39.398069 -76.583341,39.398201 -76.583474,39.398199"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719989,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719989",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719989, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 113.1,
+        "line": "-76.577861,39.396268 -76.577397,39.396157 -76.576942,39.396058 -76.576601,39.395996"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719990,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719990",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719990, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 54.3,
+        "line": "-76.578451,39.396436 -76.578248,39.396377 -76.577861,39.396268"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719991,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719991",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719991, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 63.3,
+        "line": "-76.577110,39.396219 -76.577371,39.396277 -76.577810,39.396385"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719992,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719992",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719992, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 101.8,
+        "line": "-76.575962,39.396019 -76.576396,39.396085 -76.576822,39.396160 -76.577110,39.396219"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719993,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719993",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719993, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 20.6,
+        "line": "-76.576601,39.395996 -76.576368,39.395958"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719995,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719995",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719995, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 61.4,
+        "line": "-76.575258,39.395948 -76.575815,39.395999 -76.575962,39.396019"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 547719996,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-547719996",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 547719996, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 78.4,
+        "line": "-76.576008,39.395901 -76.575842,39.395880 -76.575400,39.395835 -76.575109,39.395815"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 945434018,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-945434018",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 945434018, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 31.8,
+        "line": "-76.576368,39.395958 -76.576008,39.395901"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 979674102,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-979674102",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 979674102, LTS 4, speed 30.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 19.5,
+        "line": "-76.567404,39.396561 -76.567181,39.396587"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 981076008,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-981076008",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 981076008, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 81.0,
+        "line": "-76.574336,39.395843 -76.574608,39.395907 -76.574938,39.395925 -76.575258,39.395948"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 982251442,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-982251442",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 982251442, LTS 4, speed 35.0, lanes 3.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 56.5,
+        "line": "-76.586263,39.398885 -76.585639,39.398733"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1054405862,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1054405862",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1054405862, LTS 4, speed 30.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 12.9,
+        "line": "-76.574042,39.395844 -76.573893,39.395849"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1305153967,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1305153967",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1305153967, LTS 4, speed 35.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 109.8,
+        "line": "-76.584684,39.398499 -76.583474,39.398199"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1305153968,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1305153968",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "East Joppa Road: about 17,800 cars a day of its own (MDOT SHA's 22,571 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. East Joppa Road: 30 to 35 mph, 2 to 4 lanes, about 17,800 cars a day of its own: an urban arterial between 12,000 and 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 22,571 for JOPPA RD E (CO 8762), MD 41 TO GOUCHER BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1305153968, LTS 4, speed 35.0, lanes 3.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "East Joppa Road",
+        "highway": "secondary",
+        "length_m": 29.1,
+        "line": "-76.585639,39.398733 -76.585318,39.398655"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 11516717,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-11516717",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Brock Bridge Road: about 7,600 cars a day of its own (MDOT SHA's 13,374 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Brock Bridge Road: two lanes, 35 mph posted, about 7,600 cars a day of its own: a 35 mph two-lane road at 5,000 to 12,000 a day is 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 13,374 for NATIONAL BUSINESS PKWY (CO 957), NATIONAL BUSINESS PKWY TO GUILFORD RD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 11516717, LTS 4, speed 35.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Brock Bridge Road",
+        "highway": "tertiary",
+        "length_m": 1631.4,
+        "line": "-76.764417,39.140113 -76.764894,39.139809 -76.768533,39.137477 -76.768656,39.137399 -76.770524,39.136233 -76.770704,39.136121 -76.770914,39.135990 -76.770960,39.135963 -76.771594,39.135565 -76.772687,39.134884 -76.772981,39.134695 -76.773077,39.134636 -76.773150,39.134591 -76.773273,39.134514 -76.774640,39.133666 -76.774729,39.133615 -76.774960,39.133485 -76.775081,39.133421 -76.775219,39.133353 -76.775449,39.133256 -76.775542,39.133220 -76.775669,39.133175 -76.775966,39.133080 -76.776163,39.133023 -76.776332,39.132978 -76.776826,39.132858 -76.777360,39.132735 -76.777653,39.132667 -76.777882,39.132623 -76.778091,39.132590 -76.778656,39.132532 -76.779037,39.132492 -76.779349,39.132453 -76.779617,39.132429 -76.780057,39.132424"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 78343998,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-78343998",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Brock Bridge Road: about 7,600 cars a day of its own (MDOT SHA's 13,374 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Brock Bridge Road: two lanes, 35 mph posted, about 7,600 cars a day of its own: a 35 mph two-lane road at 5,000 to 12,000 a day is 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 13,374 for NATIONAL BUSINESS PKWY (CO 957), NATIONAL BUSINESS PKWY TO GUILFORD RD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 78343998, LTS 4, speed 35.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Brock Bridge Road",
+        "highway": "tertiary",
+        "length_m": 591.5,
+        "line": "-76.780245,39.132426 -76.780509,39.132425 -76.780781,39.132409 -76.781152,39.132364 -76.781823,39.132264 -76.782068,39.132222 -76.782241,39.132182 -76.782398,39.132135 -76.782572,39.132074 -76.782720,39.132002 -76.782901,39.131906 -76.784380,39.131076 -76.784501,39.131007 -76.785021,39.130715 -76.785258,39.130582 -76.785385,39.130508 -76.785481,39.130438 -76.785578,39.130347 -76.785662,39.130253 -76.785808,39.130040 -76.785927,39.129858"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 40117460,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-40117460",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "South Potomac Street: about 7,300 cars a day of its own (MDOT SHA's 20,791 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. South Potomac Street: two lanes, no posted speed (town street), about 7,300 cars a day of its own: an urban two-lane street at 5,000 to 15,000 a day is 2.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 20,791 for SHARPSBURG PIKE (MU 2005), S LOCUST ST TO MD 65 (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 40117460, LTS 4, speed 25.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "South Potomac Street",
+        "highway": "secondary",
+        "length_m": 414.8,
+        "line": "-77.723384,39.631572 -77.723404,39.631553 -77.724030,39.630759 -77.724259,39.630443 -77.724394,39.630266 -77.725718,39.628532 -77.725852,39.628356"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 454434389,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-454434389",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "South Potomac Street: about 7,300 cars a day of its own (MDOT SHA's 20,791 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. South Potomac Street: two lanes, no posted speed (town street), about 7,300 cars a day of its own: an urban two-lane street at 5,000 to 15,000 a day is 2.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 20,791 for SHARPSBURG PIKE (MU 2005), S LOCUST ST TO MD 65 (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 454434389, LTS 4, speed 25.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "South Potomac Street",
+        "highway": "secondary",
+        "length_m": 51.2,
+        "line": "-77.726158,39.628022 -77.726245,39.627919 -77.726331,39.627817 -77.726469,39.627628"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 454434390,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-454434390",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "South Potomac Street: about 7,300 cars a day of its own (MDOT SHA's 20,791 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. South Potomac Street: two lanes, no posted speed (town street), about 7,300 cars a day of its own: an urban two-lane street at 5,000 to 15,000 a day is 2.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 20,791 for SHARPSBURG PIKE (MU 2005), S LOCUST ST TO MD 65 (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 454434390, LTS 4, speed 25.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "South Potomac Street",
+        "highway": "secondary",
+        "length_m": 298.5,
+        "line": "-77.726469,39.627628 -77.726570,39.627410 -77.726829,39.626791 -77.726926,39.626560 -77.727215,39.625871 -77.727230,39.625833 -77.727344,39.625562 -77.727444,39.625320 -77.727556,39.625066"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 887473597,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-887473597",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "South Potomac Street: about 7,300 cars a day of its own (MDOT SHA's 20,791 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. South Potomac Street: two lanes, no posted speed (town street), about 7,300 cars a day of its own: an urban two-lane street at 5,000 to 15,000 a day is 2.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 20,791 for SHARPSBURG PIKE (MU 2005), S LOCUST ST TO MD 65 (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 887473597, LTS 4, speed 25.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "South Potomac Street",
+        "highway": "secondary",
+        "length_m": 45.4,
+        "line": "-77.725852,39.628356 -77.726158,39.628022"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1418662372,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1418662372",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "South Potomac Street: about 7,300 cars a day of its own (MDOT SHA's 20,791 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. South Potomac Street: two lanes, no posted speed (town street), about 7,300 cars a day of its own: an urban two-lane street at 5,000 to 15,000 a day is 2.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 20,791 for SHARPSBURG PIKE (MU 2005), S LOCUST ST TO MD 65 (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1418662372, LTS 4, speed 25.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "South Potomac Street",
+        "highway": "secondary",
+        "length_m": 114.5,
+        "line": "-77.727556,39.625066 -77.727633,39.624869 -77.727758,39.624568 -77.727863,39.624296 -77.727947,39.624077"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1424929690,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1424929690",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "South Potomac Street: about 7,300 cars a day of its own (MDOT SHA's 20,791 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. South Potomac Street: two lanes, no posted speed (town street), about 7,300 cars a day of its own: an urban two-lane street at 5,000 to 15,000 a day is 2.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 20,791 for SHARPSBURG PIKE (MU 2005), S LOCUST ST TO MD 65 (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1424929690, LTS 4, speed 25.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "South Potomac Street",
+        "highway": "secondary",
+        "length_m": 292.5,
+        "line": "-77.722823,39.634613 -77.722892,39.633961 -77.722944,39.633480 -77.722953,39.633360 -77.722959,39.633276 -77.722987,39.632931 -77.723005,39.632739 -77.723020,39.632528 -77.723052,39.632362 -77.723105,39.632091 -77.723118,39.631979"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1424929691,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1424929691",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "South Potomac Street: about 7,300 cars a day of its own (MDOT SHA's 20,791 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. South Potomac Street: two lanes, no posted speed (town street), about 7,300 cars a day of its own: an urban two-lane street at 5,000 to 15,000 a day is 2.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 20,791 for SHARPSBURG PIKE (MU 2005), S LOCUST ST TO MD 65 (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1424929691, LTS 4, speed 25.0, lanes 2.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "South Potomac Street",
+        "highway": "secondary",
+        "length_m": 50.8,
+        "line": "-77.723118,39.631979 -77.723131,39.631947 -77.723152,39.631898 -77.723175,39.631843 -77.723384,39.631572"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 11559436,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-11559436",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Garland Groh Boulevard: about 3,000 cars a day of its own (MDOT SHA's 13,531 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Garland Groh Boulevard: a divided boulevard, 35 mph posted, about 3,000 cars a day of its own: low traffic, but two lanes each way at 35 mph, so 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3.5, rested on MDOT SHA's 13,531 for BROADFORDING RD (MU 885), MD 58 TO CENTRE BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 11559436, LTS 3.5, speed 35.0, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Garland Groh Boulevard",
+        "highway": "tertiary",
+        "length_m": 286.7,
+        "line": "-77.742905,39.666591 -77.743135,39.666452 -77.743234,39.666338 -77.743397,39.666121 -77.743587,39.665837 -77.743776,39.665432 -77.743905,39.665154 -77.744270,39.664306 -77.744287,39.664275"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 278441898,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-278441898",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Garland Groh Boulevard: about 3,000 cars a day of its own (MDOT SHA's 13,531 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Garland Groh Boulevard: a divided boulevard, 35 mph posted, about 3,000 cars a day of its own: low traffic, but two lanes each way at 35 mph, so 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3.5, rested on MDOT SHA's 13,531 for BROADFORDING RD (MU 885), MD 58 TO CENTRE BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 278441898, LTS 3.5, speed nan, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Garland Groh Boulevard",
+        "highway": "tertiary",
+        "length_m": 506.6,
+        "line": "-77.750845,39.654890 -77.750605,39.654972 -77.750401,39.655025 -77.750203,39.655056 -77.749942,39.655085 -77.749512,39.655125 -77.749292,39.655156 -77.749088,39.655206 -77.748912,39.655257 -77.748721,39.655329 -77.748470,39.655458 -77.748250,39.655606 -77.748042,39.655789 -77.746430,39.657522"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 737644963,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-737644963",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Garland Groh Boulevard: about 3,000 cars a day of its own (MDOT SHA's 13,531 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Garland Groh Boulevard: a divided boulevard, 35 mph posted, about 3,000 cars a day of its own: low traffic, but two lanes each way at 35 mph, so 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3.5, rested on MDOT SHA's 13,531 for BROADFORDING RD (MU 885), MD 58 TO CENTRE BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 737644963, LTS 3.5, speed 35.0, lanes nan, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Garland Groh Boulevard",
+        "highway": "tertiary",
+        "length_m": 180.2,
+        "line": "-77.744287,39.664275 -77.744413,39.664136 -77.744597,39.663730 -77.744723,39.663429 -77.745011,39.662754"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1537051754,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-1537051754",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Garland Groh Boulevard: about 3,000 cars a day of its own (MDOT SHA's 13,531 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Garland Groh Boulevard: a divided boulevard, 35 mph posted, about 3,000 cars a day of its own: low traffic, but two lanes each way at 35 mph, so 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3.5, rested on MDOT SHA's 13,531 for BROADFORDING RD (MU 885), MD 58 TO CENTRE BLVD. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1537051754, LTS 3.5, speed nan, lanes nan, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Garland Groh Boulevard",
+        "highway": "tertiary",
+        "length_m": 158.3,
+        "line": "-77.745658,39.658805 -77.745696,39.658672 -77.745747,39.658533 -77.745821,39.658353 -77.745926,39.658149 -77.746132,39.657855 -77.746430,39.657522"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 56232118,
+      "value": {
+        "tier": 2,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-56232118",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Baltimore Annapolis Boulevard: about 700 cars a day of its own (MDOT SHA's 8,991 is counted past a junction), so 2."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Baltimore Annapolis Boulevard: a two-lane residential stretch, no posted speed, about 700 cars a day of its own: under 5,000 a day is 2 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 2.5, rested on MDOT SHA's 8,991 for BALTO ANNAPOLIS BLVD (MD 648), MD 450 TO ROAD END. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 56232118, LTS 2.5, speed nan, lanes nan, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Baltimore Annapolis Boulevard",
+        "highway": "residential",
+        "length_m": 1069.7,
+        "line": "-76.486017,39.016327 -76.485880,39.016125 -76.485869,39.015891 -76.485923,39.015691 -76.485949,39.015641 -76.486177,39.015195 -76.486804,39.013995 -76.486983,39.013515 -76.487082,39.013165 -76.487168,39.012915 -76.487108,39.012838 -76.486996,39.012690 -76.486680,39.012544 -76.486545,39.012481 -76.485827,39.012148 -76.485644,39.012073 -76.485290,39.011923 -76.484960,39.011782 -76.484585,39.011370 -76.484408,39.011088 -76.484336,39.010960 -76.484160,39.010368 -76.484186,39.008963 -76.484204,39.007973"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 249628728,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-249628728",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Tuckerman Lane: about 2,900 cars a day of its own (MDOT SHA's 7,271 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Tuckerman Lane: 35 mph posted, about 2,900 cars a day of its own: one lane each way is 2.5; where it splits into two lanes one way, 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3.5, rested on MDOT SHA's 7,271 for TUCKERMAN LA (CO 164), SEVEN LOCKS RD TO MD 189. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 249628728, LTS 3.5, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Tuckerman Lane",
+        "highway": "secondary",
+        "length_m": 222.6,
+        "line": "-77.159171,39.040783 -77.159339,39.040814 -77.159567,39.040855 -77.159813,39.040887 -77.160100,39.040912 -77.160484,39.040939 -77.160739,39.040964 -77.160996,39.040995 -77.161302,39.041052 -77.161507,39.041109 -77.161601,39.041135 -77.161694,39.041123"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1079380913,
+      "value": {
+        "tier": 3,
+        "half": false,
+        "adjustment_id": "md-borrowed-urban-1079380913",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Tuckerman Lane: about 2,900 cars a day of its own (MDOT SHA's 7,271 is counted past a junction), so 3."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Tuckerman Lane: 35 mph posted, about 2,900 cars a day of its own: one lane each way is 2.5; where it splits into two lanes one way, 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3.5, rested on MDOT SHA's 7,271 for TUCKERMAN LA (CO 164), SEVEN LOCKS RD TO MD 189. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1079380913, LTS 3.5, speed 35.0, lanes nan, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Tuckerman Lane",
+        "highway": "secondary",
+        "length_m": 9.8,
+        "line": "-77.159063,39.040755 -77.159107,39.040766 -77.159171,39.040783"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1165975088,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1165975088",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Tuckerman Lane: about 2,900 cars a day of its own (MDOT SHA's 7,271 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Tuckerman Lane: 35 mph posted, about 2,900 cars a day of its own: one lane each way is 2.5; where it splits into two lanes one way, 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3.5, rested on MDOT SHA's 7,271 for TUCKERMAN LA (CO 164), SEVEN LOCKS RD TO MD 189. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1165975088, LTS 3.5, speed 35.0, lanes 1.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Tuckerman Lane",
+        "highway": "secondary",
+        "length_m": 55.3,
+        "line": "-77.161694,39.041123 -77.162298,39.041287"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1501503839,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1501503839",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Tuckerman Lane: about 2,900 cars a day of its own (MDOT SHA's 7,271 is counted past a junction), so 2.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Tuckerman Lane: 35 mph posted, about 2,900 cars a day of its own: one lane each way is 2.5; where it splits into two lanes one way, 3 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 3, rested on MDOT SHA's 7,271 for TUCKERMAN LA (CO 164), SEVEN LOCKS RD TO MD 189. The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1501503839, LTS 3, speed 35.0, lanes 1.0, oneway False; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Tuckerman Lane",
+        "highway": "secondary",
+        "length_m": 195.3,
+        "line": "-77.162298,39.041287 -77.162806,39.041420 -77.163136,39.041477 -77.163483,39.041488 -77.164517,39.041427"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468850565,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-468850565",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Ritchie Marlboro Road: about 13,700 cars a day of its own (MDOT SHA's 25,460 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Ritchie Marlboro Road: a divided road, 35 mph posted, 2 to 3 lanes each way, about 13,700 cars a day of its own: 12,000 to 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 25,460 for WALKER MILL RD (CO 974), WHITE HOUSE RD TO MD 221A (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 468850565, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Ritchie Marlboro Road",
+        "highway": "secondary",
+        "length_m": 33.7,
+        "line": "-76.834929,38.866414 -76.834689,38.866399 -76.834541,38.866392"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468850574,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-468850574",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Ritchie Marlboro Road: about 13,700 cars a day of its own (MDOT SHA's 25,460 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Ritchie Marlboro Road: a divided road, 35 mph posted, 2 to 3 lanes each way, about 13,700 cars a day of its own: 12,000 to 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 25,460 for WALKER MILL RD (CO 974), WHITE HOUSE RD TO MD 221A (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 468850574, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Ritchie Marlboro Road",
+        "highway": "secondary",
+        "length_m": 120.3,
+        "line": "-76.837077,38.866940 -76.837569,38.867112 -76.838349,38.867379"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468850580,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-468850580",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Ritchie Marlboro Road: about 13,700 cars a day of its own (MDOT SHA's 25,460 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Ritchie Marlboro Road: a divided road, 35 mph posted, 2 to 3 lanes each way, about 13,700 cars a day of its own: 12,000 to 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 25,460 for WALKER MILL RD (CO 974), WHITE HOUSE RD TO MD 221A (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 468850580, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Ritchie Marlboro Road",
+        "highway": "secondary",
+        "length_m": 161.7,
+        "line": "-76.834584,38.866587 -76.835024,38.866592 -76.835871,38.866676 -76.836430,38.866784"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1039289822,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1039289822",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Ritchie Marlboro Road: about 13,700 cars a day of its own (MDOT SHA's 25,460 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Ritchie Marlboro Road: a divided road, 35 mph posted, 2 to 3 lanes each way, about 13,700 cars a day of its own: 12,000 to 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 25,460 for WALKER MILL RD (CO 974), WHITE HOUSE RD TO MD 221A (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1039289822, LTS 4, speed 35.0, lanes 2.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Ritchie Marlboro Road",
+        "highway": "secondary",
+        "length_m": 36.1,
+        "line": "-76.838349,38.867379 -76.838737,38.867500"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1055901700,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1055901700",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Ritchie Marlboro Road: about 13,700 cars a day of its own (MDOT SHA's 25,460 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Ritchie Marlboro Road: a divided road, 35 mph posted, 2 to 3 lanes each way, about 13,700 cars a day of its own: 12,000 to 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 25,460 for WALKER MILL RD (CO 974), WHITE HOUSE RD TO MD 221A (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1055901700, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Ritchie Marlboro Road",
+        "highway": "secondary",
+        "length_m": 58.6,
+        "line": "-76.836430,38.866784 -76.836687,38.866834 -76.837077,38.866940"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1512352219,
+      "value": {
+        "tier": 3,
+        "half": true,
+        "adjustment_id": "md-borrowed-urban-1512352219",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Ritchie Marlboro Road: about 13,700 cars a day of its own (MDOT SHA's 25,460 is counted past a junction), so 3.5."
+      },
+      "reason": "Principle (the owner's Bucklodge Rd call, 2026-11-13, and \"Don't use my calls as one-offs but guides to inference\"): rate a road from its own traffic, not a count measured past a junction with another busy road. Ritchie Marlboro Road: a divided road, 35 mph posted, 2 to 3 lanes each way, about 13,700 cars a day of its own: 12,000 to 20,000 a day is 3.5 (BRIEF urban anchors, reports/agency-roads-sweep). The level on the map, 4, rested on MDOT SHA's 25,460 for WALKER MILL RD (CO 974), WHITE HOUSE RD TO MD 221A (AHEAD). The own-traffic figure is an estimate (reports/borrowed-counts), not a measurement.",
+      "evidence": "2026-11-11 map: way 1512352219, LTS 4, speed 35.0, lanes 3.0, oneway True; borrowed-count lists (reports/borrowed-counts/JUDGMENT.md, Bucklodge thread).",
+      "fingerprint": {
+        "name": "Ritchie Marlboro Road",
+        "highway": "secondary",
+        "length_m": 29.2,
+        "line": "-76.838737,38.867500 -76.839051,38.867597"
+      }
+    }
+  ]
+}
