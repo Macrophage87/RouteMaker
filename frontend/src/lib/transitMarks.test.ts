@@ -30,7 +30,7 @@ test("a trip's legs: emoji and minutes to see, words to hear", () => {
     { mode: "metro", minutes: 18, system: "Metro", lines: ["Red Line"] },
     { mode: "ride", minutes: 1 },
   ];
-  assert.equal(legsText(legs), "🚶 4 min · 🚲 12 min · 🔴 18 min · 🚲 1 min");
+  assert.equal(legsText(legs), "🚶 4 min · 🚲 12 min · 🔴 Red Line 18 min · 🚲 1 min");
   assert.equal(legsSaid(legs), "walk 4 minutes, bikeshare 12 minutes, Red Line 18 minutes, bike 1 minute");
   assert.equal(legMark({ mode: "bus", minutes: 9, system: "Metrobus", lines: ["C53"] }).mark, "🚌C53");
 });

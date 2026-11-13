@@ -1871,6 +1871,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Front rack": "Ön raf",
   "Arriving": "Geliyor",
   "{min} min": "{min} dk",
+  "{a} or {b}": "{a} veya {b}",
   "Get off here: {name}.": "Burada inin: {name}.",
   "Next stop: {name}. Get off there.": "Sonraki durak: {name}. Orada inin.",
   "Next stop: {name}. Press the stop button to get off there.": "Sonraki durak: {name}. Orada inmek için durak düğmesine basın.",
