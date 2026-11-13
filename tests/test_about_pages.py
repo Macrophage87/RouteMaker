@@ -30,8 +30,8 @@ DOCS = (
     "acknowledgements",
 )
 SET = (*DOCS, "stress")
-# Outside the menu (the owner, 2026-10-31): the guide we send Android testers, and the welcome we send every new
-# tester (backlog 2026-11-12), each with no docs menu.
+# Outside the menu (the owner, 2026-10-31): the guide we send Android testers, and the welcome we
+# send every new tester (backlog 2026-11-12), each with no docs menu.
 GUIDES = ("android-beta", "welcome")
 
 
@@ -183,8 +183,9 @@ def test_the_android_guide_keeps_its_three_steps_on_the_first_screen() -> None:
 
 
 def test_the_welcome_page_gives_each_device_its_block_and_no_email() -> None:
-    """The welcome we send every new tester (backlog 2026-11-12): no docs menu, a block per device reached from the
-    first screen (no script, so it cannot pick one), and no e-mail address, whose domain is the beta's."""
+    """The welcome we send every new tester (backlog 2026-11-12): no docs menu, a block per device
+    reached from the first screen (no script, so it cannot pick one), and no e-mail address, whose
+    domain is the beta's."""
     page = read("welcome")
     assert '<nav class="docs"' not in page
     for anchor in ("android", "iphone", "computer"):

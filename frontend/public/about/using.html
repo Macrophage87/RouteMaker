@@ -356,7 +356,13 @@ with how far that rack is from the first: each press moves the end to the neares
 [305 m] of the first rack, and the button goes once none is left. A route opened from a link, a saved route, a
 file or Plan shows the pins but not the button.</li>
 <li><strong>Route choice:</strong> beside your route, Go can draw <strong>More direct</strong> and
-<strong>Trailmaxxed</strong>, each with how much time or busy riding it saves or adds. More direct is
+<strong>Trailmaxxed</strong>, and after them <strong>Fewer turns</strong> and <strong>All paved</strong> (Plan shows
+only these two, under Other routes), each with how much time or busy riding it saves or adds. Fewer turns is
+looked for when a route has 6 or more turns and shown only when it has at least 3 and a quarter fewer; All paved is
+shown only when it takes at least 0.1 mi [160 m] of unpaved riding off (both our defaults). Neither is offered on
+transit ride types, Bikeshare, Mass Ride, Rebalance Ride or Run, nor Fewer turns where turns already count 30
+seconds, nor All paved on Road Bike. Picking one keeps it for that ride's re-plans; it is never a setting or in a
+link. More direct is
 up to two notches more tolerant of traffic and is shown only when it saves at least a minute.
 Trailmaxxed is planned at the top of the traffic slider and is shown only when it takes at least
 250 ft [80 m] off busy riding. Press a line, or its row, to choose it; your own setting doesn't
@@ -381,7 +387,8 @@ Clear says "Route cleared".</li>
 <strong>Own bike + transit</strong> and <strong>Bikeshare + transit</strong> appear beside the route,
 each naming the busy stretch it avoids.</li>
 <li><strong>A transit trip in Go</strong> fits one screen: when you would arrive, the trip's legs as one strip of
-icons and minutes, the next departure, and any live alerts or elevator warnings. <strong>Steps, in order</strong>
+icons and minutes (the words in the app's language; a Metro line keeps its own name, such as "Red Line", beside its
+colored dot, so color is never the only cue), the next departure, and any live alerts or elevator warnings. <strong>Steps, in order</strong>
 and the other trips are folded shut. Plan shows everything open.</li>
 <li><strong>Ride types:</strong> Go shows them as one row of buttons that scrolls sideways: the one in use
 first, then your default, the starred ones and the transit ones. A button whose sliders you moved says
@@ -581,6 +588,15 @@ right-click the map (press and hold on a phone) and choose <strong>Set as end</s
 <strong>Make this the destination</strong> on a search result, or <strong>End here</strong> on a station's card.
 Each ends the ride there and turns the loop off.
 <strong>Reverse</strong> rides the stops the other way round.</li>
+<li><strong>Loop by distance:</strong> with Loop on and only the start placed, type a <strong>Distance</strong> (3 to
+100 mi [5 to 160 km]; it starts at 20 mi [32 km] the first time, then at the last distance you used, both our
+defaults) and press <strong>Find loops</strong>. RouteMaker
+tries triangle-shaped loops in six directions and keeps up to three, each read as "Heads north" and so on with its
+length, climb and how much of it is quiet (traffic stress 1 or 2). The best is planned at once; pick another shape
+to plan that one. Undo goes back to the start alone. The planned loop is an ordinary route with two via points, so
+it saves, shares and exports like any other. Plan only (the owner's choice). The start, the distance and your
+settings are sent to plan it; the server keeps nothing, and this device remembers the last distance. Not on Mass
+Ride, Bikeshare, transit ride types or Run. While this box shows, Ride settings' Target distance is hidden.</li>
 <li>While you plan, bold lines with arrows join your points in the order you'll ride them. A loop also
 shows its way back to the start. Drag a line to add a via point in that leg, the same as on a planned
 route.</li>
@@ -619,11 +635,15 @@ lanes on LTS 4 and Avoid roads and counts them in the route's totals. Off unless
 you to confirm before it is planned.</li>
 </ul>
 <h3>Reading the route</h3>
+<p><strong>Stress and facilities</strong> also gives the route's <strong>Turns</strong>, its <strong>Waiting at
+lights and stops</strong> (part of the moving time) and, from 0.05 mi [80 m], <strong>Unpaved</strong>. These
+figures and Other routes' lines are in English for now.</p>
 <p>Under the route are its folds: <strong>Elevation and climbs</strong> (its key behind <strong>Key</strong>), <strong>Stress and
 facilities</strong>, <strong>Directions</strong> (with <strong>Full detail</strong>, and a copy or
 download as text, and the route's notices in one closed line before step 1, such as "8 alerts on this
 route"), <strong>Junctions to watch</strong>, <strong>Other routes</strong> (up to three
-more at the top of the traffic slider) and <strong>Water and restrooms</strong> along the way. Each
+more, planned at the top of the traffic slider or, for Fewer turns and All paved, at your own setting; each with
+its turns, waiting at lights and stops, and unpaved miles) and <strong>Water and restrooms</strong> along the way. Each
 starts closed, and opening one of them closes the one that was open. A line under the time gives dawn and sunrise, or sunset and dusk, when the first of them still ahead
 falls during the ride or within
 about an hour of arriving, worked out on your device<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.
