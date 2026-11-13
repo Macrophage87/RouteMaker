@@ -333,7 +333,7 @@ test("opening view: a busier bikeshare street with no path or protected lane wai
   assert.equal(path.filter({ zoom: 11 }, line(carFree)), true);
 });
 
-test("park names: the big parks and reserves are named, over the neighbourhoods and under the towns, once", async () => {
+test("park names: every named green place is named, over the neighbourhoods and under the towns, once", async () => {
   const { featureFilter } = await import("@maplibre/maplibre-gl-style-spec");
   // The owner, 2026-11-12: "Rock Creek Park isn't labeled, but the neighborhoods are."
   const layers = shipped(false);
@@ -344,14 +344,26 @@ test("park names: the big parks and reserves are named, over the neighbourhoods 
   assert.equal(parks["source-layer"], "pois");
   const drawn = (layer: { filter?: unknown; id: string }, kind: string, minZoom: number, zoom: number) =>
     featureFilter(layer.filter as never, `layers.${layer.id}.filter`).filter({ zoom } as never, { type: 1, properties: { kind, min_zoom: minZoom } } as never);
-  // Rock Creek Park (national_park, min_zoom 10) from zoom 10; a small park is left to the places layer.
+  // Rock Creek Park (national_park, min_zoom 10) from zoom 10.
   assert.ok(drawn(parks, "national_park", 10, 10));
   assert.ok(!drawn(parks, "national_park", 10, 9));
   assert.ok(drawn(parks, "nature_reserve", 11, 12));
-  assert.ok(!drawn(parks, "park", 14, 15));
+  // The owner, 2026-11-13: "Treat large parks and cemeteries like neighborhoods", "Also golf courses. but at a lower
+  // level. Essentially anywhere there's a bunch of green, explain why". Druid Hill Park (park, min_zoom 13) from 13;
+  // every green place from its own min_zoom; a golf course only from zoom 15.
+  assert.ok(drawn(parks, "park", 13, 13));
+  assert.ok(!drawn(parks, "park", 13, 12));
+  assert.ok(drawn(parks, "park", 15, 15));
+  assert.ok(drawn(parks, "cemetery", 13, 13));
+  assert.ok(!drawn(parks, "cemetery", 15, 14));
+  assert.ok(drawn(parks, "forest", 14, 14));
+  assert.ok(!drawn(parks, "golf_course", 13, 14));
+  assert.ok(drawn(parks, "golf_course", 13, 15));
+  assert.ok(!drawn(parks, "parking", 13, 15));
   const pois = layers.find((l) => l.id === "pois") as { filter?: unknown; id: string };
   assert.ok(!drawn(pois, "park", 11, 13), "not named twice");
-  assert.ok(drawn(pois, "park", 14, 15));
+  assert.ok(!drawn(pois, "park", 14, 15), "not named twice");
+  assert.ok(drawn(pois, "cafe", 14, 15));
   assert.equal(parks.paint?.["text-color"], PARK_NAME.color);
   const dark = withClearRoadLabels(protomapsLayers("protomaps", namedFlavor("dark"), { lang: "en" }), false, true) as Layer[];
   assert.equal(dark.find((l) => l.id === PARK_NAME_LAYER_ID)!.paint?.["text-color"], PARK_NAME.darkColor);
