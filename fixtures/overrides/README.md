@@ -785,3 +785,12 @@ in the database still names it: delete that row in the admin when loading the fi
   The owner, 2026-11-13: "Kennedy street has more signal priority and is probably overrated."
   LTS 2.5, the level of the Kennedy St blocks either side on the same facts (two lanes,
   25 mph, sharrows, about 6,300 cars a day). Public Why note.
+
+- `2026-11-13-owner-same-street-and-freeway-counts.json` (DRAFT, not approved; do not load until
+  the owner confirms the file): the owner's Kennedy St NW and Water St NW calls applied as guides
+  (the owner, 2026-11-13: "Don't use my calls as one-offs but guides to inference"). 126 ways
+  (about 9 mi, mostly DC) whose level came from an agency layer alone and differs from our own
+  reviewed level on the same street's adjoining blocks with the same class, speed, lanes, bike
+  facility and count, take that level; 3 ways (Arlington Blvd Service Road, St Mary's Pl NW)
+  that carried the count of a bikes-barred road beside or above them take their own street's
+  level. Each Why names the principle. Ways with an existing owner row were left out.
