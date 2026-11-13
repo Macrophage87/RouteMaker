@@ -596,7 +596,7 @@ was not looked at.
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
   land"), so a rider who cannot point at the map gets the names.
-- The a11y harness counts every check: `EXPECTED = 187` in `scripts/a11y/check.mjs`.
+- The a11y harness counts every check: `EXPECTED = 187` in `scripts/a11y/check.mjs` (then; since 2026-11-13 each section declares its own count, see "--shard I/N" below).
 
 ### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
@@ -9166,7 +9166,8 @@ each section is behind `if (mine(N))`, N the number of checks it makes, and shar
 with another, so a new section needs the same prefix with its own count. A section that makes other
 than its N checks fails the run with a `MISCOUNT` line naming it (it stopped early, or a check was
 added without raising N). Each section keeps its own count, so PRs adding sections no longer collide
-on one `EXPECTED` total (retired 2026-11-13). CI runs three shards on three runners (`a11y-shard`);
+on one `EXPECTED` total (retired 2026-11-13). What a per-section count cannot see is a whole
+section dropped by a merge: a reviewer checks that a diff to `check.mjs` removes no `if (mine(N))`. CI runs three shards on three runners (`a11y-shard`);
 its `a11y` job is green only when all three passed.
 
 ## Junction suggestions and junction overrides (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)

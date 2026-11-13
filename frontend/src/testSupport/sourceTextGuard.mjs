@@ -12,7 +12,7 @@ const withoutImports = (text) => text.replace(/\bfrom\s*["'][^"']*["']/g, "").re
 export function readsSourceText(text) {
   const reads = /\breadFile(?:Sync)?\(/.test(text);
   // A walk that reads what it finds counts when it looks for .tsx files: a walk of a fixtures folder does not.
-  const walks = /\breaddirSync\(/.test(text) && /tsx/.test(text);
+  const walks = /\breaddirSync\(/.test(text) && /tsx/.test(withoutImports(text));
   return (reads && (walks || SOURCE_PATH.test(withoutImports(text)))) || /\bappSource\b/.test(text);
 }
 
