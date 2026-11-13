@@ -261,7 +261,7 @@ class TestThePlan:
         below = plan(unit)
         assert below["dodges"]["kept"] == 1 and below["dodges"]["removed"] == 0
         # The tie step, plus the two turns the main road saves at the router's price
-        # (`presets.TURN_CHARGE_EVERY_SETTING`, the owner's yes, 2026-11-12); 300 m clears it.
+        # (`presets.TURN_FT`); 300 m clears it.
         assert 50.0 < below["dodges"]["items"][0]["needed_m"] < 300.0
 
     def test_it_is_the_planners_own_module_wired_in(self) -> None:

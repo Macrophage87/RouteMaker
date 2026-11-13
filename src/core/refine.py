@@ -25,8 +25,16 @@ extra price, in the router's cost seconds, for what the router cannot see:
 
     router cost + QUIET COST x ( CALM RATE x (LTS 3 metres + 2 x LTS 4 + 3 x Avoid)
                                + INTERSECTION WEIGHT x (the junction events' cost in metres)
-                               + HILL - ROUTER'S CLIMB CHARGE )
+                               + HILL - ROUTER'S CLIMB CHARGE
+                               + GRAPH GAP )
                  + 2.2 x 600 s x INTERSECTION WEIGHT x (red junctions)  (`RED_DETOUR_S`)
+                 + TURN PRICE x (turns the router's own charge missed)  (`turn_price_s`)
+
+(GRAPH GAP, `graph_gap_m`: on a way whose level an admin changed since the router's graph was
+built, what the live level costs more than the graph charged, so riding along an edited road
+and crossing it are both priced at the live level. Every term but the router's cost, the
+waits and the turn price is a distance of quiet riding, the same on every ride type;
+`quiet_ft` and `Analysis.terms_ft` say each in feet.)
 
 (The 1, 2 and 3 are the preset's `presets.Exposure`: Trailmaxxing and Cargo with
 passengers weigh LTS 4 at 8 and Avoid at 16, and never take a route with more
@@ -118,7 +126,7 @@ from routemaker import (
     trace_junctions,
 )
 from routemaker import intersections as model
-from routemaker.geo import Point, haversine
+from routemaker.geo import Point, bearing_delta, haversine
 
 from . import junctions, legsplit, parallel, presets, route_hazards, routing, trailseek
 
@@ -239,11 +247,47 @@ INTERSECTION_WEIGHT_AT_ZERO = 0.25
 def quiet_cost_per_m(costing: dict) -> float:
     """The router's cost, in seconds, of a metre of quiet-street riding at this
     request's speed."""
-    options = costing.get("bicycle") or {}
-    kmh = options.get("cycling_speed") or presets.VALHALLA_DEFAULT_SPEED_KMH.get(
-        options.get("bicycle_type", "Hybrid"), 18.0
-    )
-    return QUIET_COST_FACTOR * 3.6 / kmh
+    return QUIET_COST_FACTOR * 3.6 / presets.speed_kmh_of(costing.get("bicycle") or {})
+
+
+# --- One unit for the ranking: feet of quiet riding -----------------------------------------
+#
+# The score is kept in the router's cost seconds (its first term is the router's own cost), but
+# every term the ranking adds is a length of quiet-street riding times `Context.quiet_cost`.
+# A term that is a fixed distance (a junction's stress cost, a metre of LTS 3) therefore
+# means the same distance on every ride type. A term fixed in seconds does not: it is worth
+# more feet the faster the ride. `quiet_ft` is the one conversion, so a price can be said in
+# feet at one stated speed (docs/stress/routing-costs.md, "One unit"; `Analysis.terms_ft`).
+#
+# The reference speed is Default's planning speed, Valhalla's Hybrid default of 18 km/h
+# (11.2 mph, `presets.VALHALLA_DEFAULT_SPEED_KMH`). Our choice of reference, not a measurement.
+REFERENCE_SPEED_KMH = presets.REFERENCE_SPEED_KMH
+FEET_PER_METRE = model.FEET_PER_METRE
+# The units `quiet_ft` converts from.
+FEET, METRES, RIDE_S, COST_S = "ft", "m", "ride_s", "cost_s"
+
+
+def quiet_ft(value: float, unit: str, kmh: float = REFERENCE_SPEED_KMH) -> float:
+    """`value` as feet of quiet-street riding at `kmh` (the reference speed where not given):
+    feet and metres as they are; seconds of riding (`RIDE_S`: a wait, the owner's "ride 10
+    minutes more") at that speed; the router's cost seconds (`COST_S`: a turn charge, the
+    Avoid entry) at that speed over QUIET_COST_FACTOR, since a quiet metre costs the router
+    2.2 times its time."""
+    if unit == FEET:
+        return value
+    if unit == METRES:
+        return value * FEET_PER_METRE
+    metres_a_second = kmh / 3.6
+    if unit == RIDE_S:
+        return value * metres_a_second * FEET_PER_METRE
+    if unit == COST_S:
+        return value * metres_a_second / QUIET_COST_FACTOR * FEET_PER_METRE
+    raise ValueError(f"unknown unit {unit!r}")
+
+
+def speed_kmh_of(costing: dict) -> float:
+    """The request's flat planning speed, km/h (`quiet_cost_per_m` reads the same)."""
+    return QUIET_COST_FACTOR * 3.6 / quiet_cost_per_m(costing)
 
 
 def flat_speed_ms(costing: dict) -> float:
@@ -315,8 +359,13 @@ class Context:
     seek: bool = False
     schema: str = ""
     avoid_gravel: bool = False
-    # The rider's "Fewer turns" (`routing.Dials.fewer_turns`): turns ranked at every position,
-    # at `presets.FEWER_TURNS_PENALTY_S` each (`turn_m`).
+    # The ways whose level an admin changed since the router's graph was built, {OSM way:
+    # (built level, live level)} (`stress_edits.pending_levels`): the ranking prices the
+    # difference on the ways a route rides (`graph_gap_m`) and asks the router round the
+    # ones raised (`pending_targets`). Empty: none, or not read.
+    pending: dict = field(default_factory=dict)
+    # The rider's "Fewer turns" (`routing.Dials.fewer_turns`): turns priced at
+    # `presets.FEWER_TURNS_FT` each (`turn_price_s`).
     fewer_turns: bool = False
     # What a second of junction waiting costs against a second of riding when routes are
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
@@ -539,9 +588,18 @@ class Analysis:
     # price is switched off since 2026-11-10, `junction_delay.BUTTONS_PRICED`). None: the
     # waits shown (an analysis made without the reading).
     junction_ranked_s: float | None = None
-    # The turns the router's directions give (`turns_of`), which the top of the slider ranks
-    # at `TURN_RANK_S` each (`turn_m`), as the router's own cost already does below it.
+    # The route's turns (`turns_in`, the one definition), and how many of them the router's
+    # own turn charge missed because the two ways share a name (a trail's zig-zag). The top
+    # of the slider, which does not read the router's cost, ranks every turn at the turn
+    # price (`turn_m`); the score, which starts from the router's cost, adds the price only
+    # for the ones the router missed, so every turn is paid once at every setting.
     turns: int = 0
+    unpriced_turns: int = 0
+    # What the live levels cost more than the graph charged, in quiet metres, on the ways
+    # this route rides whose level changed since the rebuild (`graph_gap_m`; negative where
+    # a road was lowered), and the metres ridden on such ways.
+    graph_gap_m: float = 0.0
+    pending_m: float = 0.0
 
     @property
     def ranked_delay_s(self) -> float:
@@ -592,16 +650,60 @@ class Analysis:
             + self.hill_m
             - self.router_climb_m
         )
-        if ctx.rate == 0 and self.lts2_weight > 0:
-            lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
-            extra += self.lts2_weight * lts3_added_m(ctx) * lts2
+        extra += self.lts2_score_m(ctx)
         return (
             self.cost_s
             + ctx.quiet_cost * extra
             + avoid_model.penalty_s(self.avoid_passages)
             + QUIET_COST_FACTOR * ctx.wait_weight * self.ranked_delay_s
             + QUIET_COST_FACTOR * RED_DETOUR_S * ctx.weight * red_count(self)
+            + turn_price_s(ctx) * self.unpriced_turns
+            + ctx.quiet_cost * self.graph_gap_m
         )
+
+    def lts2_score_m(self, ctx: Context) -> float:
+        """The score's LTS 2 term (240 (A)), in metres of quiet riding: only where the calm
+        rate is 0 and the ride weighs LTS 2."""
+        if ctx.rate == 0 and self.lts2_weight > 0:
+            lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
+            return self.lts2_weight * lts3_added_m(ctx) * lts2
+        return 0.0
+
+    def terms_ft(self, ctx: Context) -> dict[str, float]:
+        """Every term of `score`, each in feet of quiet riding at this ride's own speed, so
+        they can be read side by side and add up to the score (score = the sum, in metres,
+        x `ctx.quiet_cost`). Three kinds (docs/stress/routing-costs.md, "One unit"):
+        - distances, the same feet on every ride type: `stress` (the calm rate's metres and
+          the hill's share), `junctions` (the junction model's feet at the intersection
+          weight), `hills`, `lts2`, `graph_gap`;
+        - the router's cost seconds, which are worth more feet the faster the ride because
+          the router charges them: `router` (its whole cost for the route), `turns` (the
+          turn price for the turns it missed), `avoid_junctions` (1,800 a pass, 308);
+        - seconds of riding, likewise: `waits` (real time at junctions) and `red_surcharge`
+          (600 s a red; W2's term, to become a fixed 9,840 ft).
+        For reading and for the docs; `score` is the ranking."""
+        if ctx.quiet_cost <= 0:
+            return {}
+        penalty = model.penalty_m(self.events) if self.events else 0.0
+        hill = self.hill_exposure_m
+        cost_m = 1.0 / ctx.quiet_cost
+        metres_of = {
+            "router": self.cost_s * cost_m,
+            "stress": ctx.rate * (self.exposure_m - hill) + max(ctx.rate, 1.0) * hill,
+            "junctions": ctx.weight * penalty,
+            "hills": self.hill_m - self.router_climb_m,
+            "lts2": self.lts2_score_m(ctx),
+            "avoid_junctions": avoid_model.penalty_s(self.avoid_passages) * cost_m,
+            "waits": QUIET_COST_FACTOR * ctx.wait_weight * self.ranked_delay_s * cost_m,
+            "red_surcharge": QUIET_COST_FACTOR
+            * RED_DETOUR_S
+            * ctx.weight
+            * red_count(self)
+            * cost_m,
+            "turns": turn_price_s(ctx) * self.unpriced_turns * cost_m,
+            "graph_gap": self.graph_gap_m,
+        }
+        return {name: metres * FEET_PER_METRE for name, metres in metres_of.items()}
 
     @property
     def red_m(self) -> float:
@@ -639,6 +741,31 @@ class Analysis:
         return (self.top_m, self.second_m, level3(self, ctx))
 
 
+def graph_gap_m(pieces: list, ctx: Context) -> tuple[float, float]:
+    """(quiet metres, metres ridden): what the live levels cost more than the router's graph
+    charged on the ways of this route whose level an admin changed since the graph was built
+    (`Context.pending`), at the router's own price for a level at this request's `use_roads`
+    (`calm.level_gap`). Until 2026-11-13 the ranking read the live level for a road CROSSED
+    (the junction model) but a road RIDDEN kept the graph's old price below 81 on the slider,
+    where the ranking adds nothing a metre: Default avoided crossing a road just raised and
+    still rode along it. Now both read the live level. Negative for a road lowered, so a
+    candidate that rides it is not ranked at the old high price. Never on a trail-class way
+    (the graph carries no level there). The router still has to offer the route: see
+    `pending_targets`, and docs/stress/routing-costs.md, "After a rating is edited"."""
+    if not ctx.pending:
+        return 0.0, 0.0
+    use_roads = (ctx.costing.get("bicycle") or {}).get("use_roads", VALHALLA_DEFAULT_USE_ROADS)
+    gap = ridden = 0.0
+    for piece in pieces:
+        levels = ctx.pending.get(piece.way_id)
+        if levels is None or piece.use in calm.TRAIL_USES:
+            continue
+        built, live = levels
+        gap += piece.metres * calm.level_gap(built, live, use_roads, ctx.roadway_only)
+        ridden += piece.metres
+    return gap, ridden
+
+
 def lts3_added_m(ctx: Context) -> float:
     """What a metre of LTS 3 adds in the router's own cost at this request's `use_roads`,
     in metres of quiet street: the graded-stress model's added cost (`calm.added_cost`,
@@ -671,46 +798,123 @@ def level3(read: Analysis, ctx: Context) -> float:
     )
 
 
-# Valhalla's maneuver types that are turns: slight, plain and sharp right (9 to 11), the two
-# U-turns (12, 13) and sharp, plain and slight left (14 to 16). A turn "to stay on" a trail is
-# one of these too, which the router's `maneuver_penalty` (charged only where the name
-# changes) does not price.
-TURN_MANEUVERS = frozenset(range(9, 17))
-# What one turn costs in the calm search's ranking (above `presets.STRESS_TODAYS_TOP`, where
-# the router's own turn charge rises too), seconds of quiet riding:
-# `presets.CALM_MANEUVER_PENALTY_S`, the charge the router makes there (our default, not
-# measured). At or below the old top the ranking adds nothing for turns unless
-# `presets.TURN_CHARGE_EVERY_SETTING` is on (owner decision 254, "every preset"). The owner,
-# 2026-11-10: "Trailmaxxing seems to cause a lot of fiddly turns when there's an easy road
-# nearby".
-TURN_RANK_S = presets.CALM_MANEUVER_PENALTY_S
+# --- Turns: one definition, one price, and what a turn may never buy -------------------------
+#
+# THE PURPOSE, in the owner's words (2026-11-13): "trying to remove a large amount of
+# cognitive load on a cyclist for meaningless differences in time and comfort". So a route
+# never gains a turn for a difference too small to matter, and a turn saved never costs the
+# rider a meaningfully busier road.
+#
+# ONE DEFINITION (`turns_in`): a turn is a decision point, a place where the rider has to act
+# on a cue, not a bend. The route's heading changes by TURN_DEGREES or more from one edge to
+# the next, and either
+# - the two are different ways that share no street name (the rider leaves one street for
+#   another; the router's own `maneuver_penalty`, charged where the name changes, has priced
+#   it), or
+# - they share a name or are one way (a trail that zig-zags, a street that turns a corner)
+#   and another rideable way leaves that node (`Piece.choice`): the rider must pick. A bare
+#   bend with nowhere else to go is not a turn. The router charges nothing here, which is the
+#   owner's Bethesda Trolley Trail complaint (2026-11-10: "Trailmaxxing seems to cause a lot
+#   of fiddly turns when there's an easy road nearby"), so the ranking does (`Analysis.
+#   unpriced_turns`).
+# Read from the traced pieces, not from the router's directions, because a route the planner
+# has spliced (the dodge pass) has pieces but no directions of its own. Before 2026-11-13
+# there were three definitions (Valhalla's name change, the directions' maneuver types 9 to
+# 16 here, and a 40 degree change of street in `dedodge`).
+#
+# ONE PRICE (`turn_price_s`): `presets.TURN_FT`, 222 ft (68 m) of quiet riding a turn on every
+# ride type and at every slider setting (literature: Broach, Dill and Gliebe 2012, Table 3,
+# commute trips; `presets.FEWER_TURNS_FT`, 391 ft, their non-commute value, on the ride types
+# that plan for fewer turns and with the rider's "Fewer turns"). The request carries it to
+# the router as cost seconds at the ride's speed (29.8 at the 11.2 mph reference) and the
+# ranking reads that same number back, so the two layers charge one price. Before
+# 2026-11-13 the router charged 15 cost seconds (112 ft at Default, 81 ft on Bikeshare) and
+# the ranking 15 seconds of riding (246 ft). So a detour is taken to save a turn only where
+# it is under 222 ft longer, and a turn is added only where it saves more than that.
+#
+# WHAT A TURN MAY NEVER BUY (`turns_count_between`, `better`). The price trades turns
+# against distance and time. It must not trade them against traffic: the router prices a
+# road by its class, not its level, so it can swap a turn for a stretch of LTS 4 it cannot
+# see (the scorecard, 2026-11-12: raising the charge from 5 to 15 cost seconds at slider 25
+# cut turns 7% and added 1.7 mi of LTS 4 over 38 trips, on two of them). So:
+# - between two candidates the turn price counts only where neither is meaningfully busier
+#   than the other (the Traffic-wins guard's own margin, `_allowance`: 2% and 164 ft (50 m)
+#   of weighted exposure; our default, unmeasured). Where one is, the two are compared with
+#   their turns left out;
+# - the search's ask for the router's alternatives is made with no turn charge
+#   (`_alternates_request`), so the route the router would have given had turns been free
+#   is always one of the candidates, at no extra ask. Where that route is meaningfully
+#   calmer than the first, the first cannot beat it on turns.
+# At the top of the slider turns were already below traffic (the third key, `level3`).
+TURN_DEGREES = 40.0
 
 
-def turns_of(trip: dict) -> int:
-    """The turns in a trip's directions (`TURN_MANEUVERS`), every leg."""
-    return sum(
-        1
-        for leg in trip.get("legs") or []
-        for maneuver in leg.get("maneuvers") or []
-        if maneuver.get("type") in TURN_MANEUVERS
-    )
+def _street_names(piece) -> set[str]:
+    """A piece's street names as compared: case and spacing do not tell roads apart."""
+    return {" ".join(name.lower().split()) for name in piece.names}
+
+
+def turns_in(pieces: list) -> tuple[int, int]:
+    """The route's turns, and how many of them the router's turn charge missed (the two
+    ways share a name); see the block above. A route read without headings counts each
+    change of street."""
+    turns = unpriced = 0
+    for here, there in zip(pieces, pieces[1:], strict=False):
+        same = here.way_id == there.way_id or bool(_street_names(here) & _street_names(there))
+        if here.heading_out is None or there.heading_in is None:
+            turns += 0 if same else 1
+        elif bearing_delta(here.heading_out, there.heading_in) >= TURN_DEGREES:
+            if not same:
+                turns += 1
+            elif getattr(there, "choice", None):
+                # Only an edge's first piece carries `choice`, so two pieces of one edge
+                # (which share the edge's headings) are never read as a turn.
+                turns += 1
+                unpriced += 1
+    return turns, unpriced
+
+
+def turn_count(pieces: list) -> int:
+    """The route's turns (`turns_in`)."""
+    return turns_in(pieces)[0]
+
+
+def turn_price_s(ctx: Context) -> float:
+    """What one turn costs, in the router's cost seconds: the request's own
+    `maneuver_penalty` (what the router is charging on this plan), the every-setting charge
+    where the request names none, and never less than the rider's "Fewer turns" price where
+    they asked for it (`Context.fewer_turns`)."""
+    options = ctx.costing.get("bicycle") or {}
+    sent = options.get("maneuver_penalty")
+    price = presets.turn_cost_s(options) if sent is None else float(sent)
+    if ctx.fewer_turns:
+        price = max(price, presets.turn_cost_s(options, fewer_turns=True))
+    return price
+
+
+def turns_count_between(a: Analysis, b: Analysis) -> bool:
+    """Whether the turn price may decide between two candidates: only where neither is
+    meaningfully busier than the other, by the Traffic-wins guard's margin on the rated
+    exposure with the red and Avoid-rated junctions at their cost (`_busier` reads the same).
+    A turn saved never buys a busier road (the block above)."""
+    busy_a = a.rated_exposure_m + a.avoid_junction_m + a.red_m
+    busy_b = b.rated_exposure_m + b.avoid_junction_m + b.red_m
+    return busy_a <= _allowance(busy_b) and busy_b <= _allowance(busy_a)
+
+
+def turn_free_score(read: Analysis, ctx: Context) -> float:
+    """The score with the route's turns left out: the router's charge for the turns it
+    priced and the ranking's for the rest."""
+    return read.score(ctx) - turn_price_s(ctx) * read.turns
 
 
 def turn_m(read: Analysis, ctx: Context) -> float:
-    """The route's turns as metres of quiet riding, at `TURN_RANK_S` a turn and the rate
-    `delay_m` prices a second at, so between routes equally calm the one with fewer turns
-    ranks first. At every position with `presets.TURN_CHARGE_EVERY_SETTING` (owner decision
-    254's "every preset"), so repeats, dodges and loop way-backs weigh turns too; with it off,
-    only where the calm search runs (above `presets.STRESS_TODAYS_TOP`, the same positions the
-    router's turn charge rises at), and 0 at or below it. The rider's "Fewer turns"
-    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`."""
+    """Every turn of the route at the turn price, as metres of quiet riding: what the top of
+    the slider and the dodge pass rank by, which do not read the router's cost (the score
+    does, and adds only `Analysis.unpriced_turns`)."""
     if ctx.quiet_cost <= 0:
         return 0.0
-    if ctx.fewer_turns:
-        return QUIET_COST_FACTOR * presets.FEWER_TURNS_PENALTY_S * read.turns / ctx.quiet_cost
-    if not presets.TURN_CHARGE_EVERY_SETTING and not ctx.maxcalm and ctx.rate <= 0:
-        return 0.0
-    return QUIET_COST_FACTOR * TURN_RANK_S * read.turns / ctx.quiet_cost
+    return turn_price_s(ctx) * read.turns / ctx.quiet_cost
 
 
 def delay_m(read: Analysis, ctx: Context) -> float:
@@ -973,7 +1177,8 @@ def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) ->
     if not ctx.maxcalm:
         # Below the top a longer route must also be worth its miles (OWNER-DECISIONS
         # 435, "One rule"; `worth_ratio`), wherever the calm search runs.
-        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:
+        score = Analysis.score if turns_count_between(read, best) else turn_free_score
+        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:
             return False
         return read.length_m <= best.length_m or worth_it(best, read, ctx, rest_m)
     if read.length_m > best.length_m:
@@ -1138,6 +1343,8 @@ def analyse(
     events = events_of_raws(raws, ctx, deadline) if with_events else None
     # The junctions' waits, the junction model's signals, big roads and stop-sign prices
     # included (hunt J5; the owner, 2026-11-08), each read once for the time and the rank.
+    turns = turns_in(pieces)
+    gap_m, pending_m = graph_gap_m(pieces, ctx)
     found_waits = routing.junction_waits(
         raws, ctx.beacons, events, stop_wait_s_per_ft(ctx), ctx.button_ways, ctx.when
     )
@@ -1186,7 +1393,10 @@ def analyse(
         hazard_kinds=kinds,
         scenic=getattr(real_classes, "scenic", None),
         adjustments=getattr(real_classes, "adjustments", None),
-        turns=turns_of(trip),
+        turns=turns[0],
+        unpriced_turns=turns[1],
+        graph_gap_m=gap_m,
+        pending_m=pending_m,
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
@@ -1346,6 +1556,38 @@ def calm_targets(analysis: Analysis, ctx: Context, min_tier: int = 3) -> list[Ta
     return kept
 
 
+def pending_targets(analysis: Analysis, ctx: Context) -> list[Target]:
+    """Points along the stretches the route rides on a way an admin RAISED to LTS 3 or
+    worse since the router's graph was built (`Context.pending`), one to an edge, as
+    `calm_targets` samples a busy stretch: the graph still prices the way at its old level,
+    so the router is asked for a route without it, at every slider position, and the score
+    (which charges the way its live level, `graph_gap_m`) decides between them. Nothing on
+    the no-trail graph, which grades no road."""
+    if not ctx.pending or ctx.roadway_only:
+        return []
+    kept: list[Target] = []
+    ends, along = [], 0.0
+    for piece in analysis.pieces:
+        along += piece.metres
+        ends.append(along)
+    if not ends:
+        return []
+    for at, lon, lat, _metres in _marks(analysis):
+        piece = analysis.pieces[min(bisect.bisect_left(ends, at), len(ends) - 1)]
+        levels = ctx.pending.get(piece.way_id)
+        if levels is None or piece.use in calm.TRAIL_USES:
+            continue
+        built, live = levels
+        if live < 3 or live <= built:
+            continue
+        point = (lon, lat)
+        if kept and haversine(Point(*kept[-1].point), Point(*point)) < CALM_SAMPLE_M:
+            continue
+        if _clear_of_ends(at, analysis.length_m, analysis.via_m):
+            kept.append(Target(point, min(int(live), 5)))
+    return kept[:CALM_POINTS_PER_ROUND]
+
+
 def avoid_targets(analysis: Analysis, ctx: Context) -> list[Target]:
     """The Avoid-rated junctions the route passes (307), each its own point: an
     exclusion on a junction's node takes out every edge there, which is the way
@@ -1463,6 +1705,9 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["lts4_m_after"] = round(best.lts4_m, 1)
     info["lts3_m_after"] = round(best.lts3_m, 1)
     info["top_m_after"] = round(best.top_m, 1)
+    if best.pending_m > 0:
+        # The answer rides a way whose level changed since the router's graph was built.
+        info["pending_edit_m"] = round(best.pending_m, 1)
     if ctx.exposure.hold_lts4:
         info["lts4_after_m"] = round(rated_lts4_m(best), 1)
     if ctx.options is not None and ctx.alternates:
@@ -1514,6 +1759,14 @@ def _alternates_request(request: dict) -> dict:
     (`exclude_locations`), with ROUTER_ALTERNATES."""
     asked = {k: v for k, v in request.items() if k != "exclude_locations"}
     asked["alternates"] = ROUTER_ALTERNATES
+    options = (asked.get("costing_options") or {}).get("bicycle")
+    if options is not None:
+        # Asked with turns free, so the route the turn charge may have priced out is among
+        # the candidates (`turns_count_between`); each is charged its turns when read.
+        asked["costing_options"] = {
+            **asked["costing_options"],
+            "bicycle": {**options, "maneuver_penalty": 0.0},
+        }
     return asked
 
 
@@ -1569,6 +1822,9 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         return best, trip
     alt_stop = stop_at - ALTERNATES_ROUND_RESERVE_S
     given = ctx.router_trips
+    # The search's own ask is made with turns free (`_alternates_request`); the plan's own
+    # alternatives (the hills slider's avoid half) were priced with them.
+    turns_free = given is None
     if given is None and alt_stop - routing.clock() < ALTERNATES_MIN_S:
         routing._skipped_for_time()
         return best, trip
@@ -1653,6 +1909,9 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         # (Traffic wins), the LTS 4 hold, and junctions that could be read.
         if read is None or read.events is None:
             continue
+        if turns_free:
+            # The router charged this one no turn: the ranking charges every one.
+            read = dataclasses.replace(read, unpriced_turns=read.turns)
         if _busier(read, first_exposure, ctx) or more_lts4(read, ctx.first_lts4, ctx):
             continue
         found["ranked"] += 1
@@ -2426,7 +2685,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
         # so the plan does not count as searched whole and the red pass still runs
         # (`core.red_crossings`).
         said = ctx.rate > 0 or number == 0 or red_count(best) > 0
-        new = crossing_targets(current, ctx, no_way)
+        new = crossing_targets(current, ctx, no_way) + pending_targets(current, ctx)
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
             worst_first = number == 0 and any(c[0] in ("4", "5") for c in current.classes)
@@ -3360,6 +3619,9 @@ def combine(reads: list[Analysis]) -> Analysis:
         junction_delay_s=sum(r.junction_delay_s for r in reads),
         junction_ranked_s=sum(r.ranked_delay_s for r in reads),
         turns=sum(r.turns for r in reads),
+        unpriced_turns=sum(r.unpriced_turns for r in reads),
+        graph_gap_m=sum(r.graph_gap_m for r in reads),
+        pending_m=sum(r.pending_m for r in reads),
     )
 
 

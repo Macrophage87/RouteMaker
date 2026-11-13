@@ -990,7 +990,7 @@ def test_every_preset_charges_entering_a_legal_but_avoid_way(name):
     use_roads 1.0 included (core.presets.AVOID_ENTRY_PENALTY_S), and
     destination-only ways keep Valhalla's own penalty: none is sent."""
     options = presets.costing(name)["bicycle"]
-    assert options["alley_penalty"] == presets.AVOID_ENTRY_PENALTY_S
+    assert options["alley_penalty"] == presets.avoid_entry_cost_s(options)
     assert presets.AVOID_ENTRY_PENALTY_S >= 15 * 60
     assert "destination_only_penalty" not in options
     assert "service_penalty" not in options

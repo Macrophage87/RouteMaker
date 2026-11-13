@@ -4090,9 +4090,7 @@ def route_neighbours(request, body: RouteIn):
         "calmer": calmer,
         # Nor where the ride type already charges a turn that much (Group Ride, Road Bike).
         "fewer_turns": None
-        if body.fewer_turns
-        or presets.costing(body.preset)["bicycle"].get("maneuver_penalty", 0)
-        >= presets.FEWER_TURNS_PENALTY_S
+        if body.fewer_turns or presets.PRESETS[body.preset].fewer_turns
         else same,
         "paved": None if body.paved or body.preset == presets.ROAD_BIKE else same,
     }
@@ -5083,7 +5081,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     leg_costing = None
     if body.novice_legs and body.preset == presets.BIKESHARE_TRANSIT:
         leg_costing = presets.costing(presets.NOVICE)
-        leg_costing["bicycle"]["cycling_speed"] = presets.BIKESHARE_CLASSIC_SPEED_KMH
+        presets.set_speed(leg_costing, presets.BIKESHARE_CLASSIC_SPEED_KMH)
     candidate_costing = leg_costing
     if candidate_costing is None:
         # The candidates priced at the rider's own traffic and hills sliders, as the answer's
@@ -5096,7 +5094,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # The rider's own pace (Settings' Riding speed), so the trips are ranked as they are timed.
     own_speed = presets.rider_speed(body.preset, body.cycling_speed_kmh)
     if own_speed is not None:
-        candidate_costing["bicycle"]["cycling_speed"] = own_speed
+        presets.set_speed(candidate_costing, own_speed)
     # Every trip's walks (Walk's and Walk + transit's, and those to and from the bike or the
     # docks on Bike + and Bikeshare + transit) go round the closures that close the way on
     # foot, and the roads the rider marked closed, at the trip's departure

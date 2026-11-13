@@ -1895,7 +1895,7 @@ def _same_pace(options: dict, request: dict) -> dict:
     plan's own does (`Dials.cycling_speed_kmh`)."""
     speed = ((request.get("costing_options") or {}).get("bicycle") or {}).get("cycling_speed")
     if speed is not None:
-        options["bicycle"]["cycling_speed"] = speed
+        presets.set_speed(options, speed)
     return options
 
 
@@ -2326,6 +2326,20 @@ def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
         # A leg's samples do not join the next leg's: a gap between them.
         profile.append((offset, None))
     return profile
+
+
+def _pending_levels() -> dict:
+    """`stress_edits.pending_levels` for the plan's ranking (`refine.Context.pending`): the
+    ways whose level changed since the router's graph was built. Empty where it cannot be
+    read: the plan then ranks as it did before 2026-11-13, never fails."""
+    from . import stress_edits
+
+    try:
+        with transaction.atomic():
+            return stress_edits.pending_levels()
+    except DatabaseError:
+        logger.warning("the pending stress edits could not be read; ranking without them")
+        return {}
 
 
 def refine_flat_speed_ms(costing: dict) -> float:
@@ -5711,7 +5725,7 @@ def _plan(
         # (its `use_roads` 0): Default's, so a calm road is as welcome as a path.
         costing["bicycle"]["use_roads"] = presets.use_roads_for(presets.stress_start("default"))
     if dials.cycling_speed_kmh is not None:
-        costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
+        presets.set_speed(costing, float(dials.cycling_speed_kmh))
     if following and dials.follow_exact:
         # The manual mode: the file is followed the way it goes, a one-way ridden against its
         # traffic, a turn the map restricts and a way closed to bicycles (a road the police
@@ -6185,6 +6199,7 @@ def _plan(
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
         fewer_turns=dials.fewer_turns,
+        pending=_pending_levels(),
         wait_weight=presets.wait_weight_for(preset_name),
         road_bike_buttons=presets.road_bike_buttons_for(preset_name),
         exposure=exposure,

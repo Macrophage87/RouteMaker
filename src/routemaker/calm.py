@@ -168,6 +168,23 @@ def multiplier(
     return 1.0 + added / QUIET_FACTOR + pricing.rate * weight
 
 
+def level_gap(built: float, live: float, use_roads: float, no_trail: bool = False) -> float:
+    """Quiet metres a metre of road costs more at the `live` level than at the level the
+    router's graph was `built` with (negative where it was lowered), in the router's own
+    price at this `use_roads`: the tier's figure (`multiplier`: the middle of the five road
+    types, a half step the midpoint of its two levels), since a road edited since the last
+    rebuild has no marks of its new level to read. Levels are 1 to 5 in half steps. An
+    estimate: it is exact only for the typical road. The ranking adds it for the ways a
+    route rides whose level an admin changed since the rebuild (`core.refine.graph_gap_m`)."""
+    pricing = Pricing(use_roads=use_roads, no_trail=no_trail)
+
+    def at(level: float) -> float:
+        tier = int(level)
+        return multiplier(tier, None, pricing, half=level - tier >= 0.5) or 0.0
+
+    return at(live) - at(built)
+
+
 # --- The router's own cost of a road -------------------------------------------------------
 #
 # Valhalla 3.9.1's bicycle costing (sif/bicyclecost.cc: `BicycleCost`'s constructor and

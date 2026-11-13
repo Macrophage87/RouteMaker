@@ -424,15 +424,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "improvement margin",
         R,
-        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
-        "        if read.score(ctx) >= best.score(ctx):\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx):\n            return False\n        return read.length_m <= best.length_m",
         REFINE,
     ),
     (
         "any improvement wins nothing",
         R,
-        "        if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
-        "        if read.score(ctx) > best.score(ctx) + IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) >= score(best, ctx) - IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
+        "        if score(read, ctx) > score(best, ctx) + IMPROVEMENT_EPS_S:\n            return False\n        return read.length_m <= best.length_m",
         REFINE,
     ),
     (
@@ -473,8 +473,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "crossings in the first round only",
         R,
-        "        new = crossing_targets(current, ctx, no_way)\n",
-        "        new = crossing_targets(current, ctx, no_way) if number == 0 else []\n",
+        "        new = crossing_targets(current, ctx, no_way) + pending_targets(current, ctx)\n",
+        "        new = (crossing_targets(current, ctx, no_way) if number == 0 else []) + pending_targets(current, ctx)\n",
         REFINE,
     ),
     (
