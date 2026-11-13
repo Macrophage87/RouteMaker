@@ -19,6 +19,8 @@ import {
   TRANSIT_COLOUR,
   TRANSIT_DASH,
   TRANSIT_LINE_WIDTH,
+  legsShown,
+  legsSpoken,
   liveTimesText,
   optionSaid,
   optionText,
@@ -27,7 +29,6 @@ import {
   timesFromText,
   tripNotes,
 } from "./lib/transit.ts";
-import { legsSaid, legsText } from "./lib/transitMarks.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { RIDE_REST, RIDE_REST_HINT } from "./lib/rideTrip.ts";
@@ -220,8 +221,8 @@ export function TransitSummary({
         {/* The chosen trip's legs as one strip ("🚲 6 min · 🔴 18 min · 🚲 4 min"), said in words. */}
         {chosen?.legs && chosen.legs.length > 0 && (
           <p className="transit-legs">
-            <span aria-hidden="true">{legsText(chosen.legs)}</span>
-            <span className="visually-hidden">{legsSaid(chosen.legs)}</span>
+            <span aria-hidden="true">{legsShown(chosen.legs)}</span>
+            <span className="visually-hidden">{legsSpoken(chosen.legs)}</span>
           </p>
         )}
         {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}

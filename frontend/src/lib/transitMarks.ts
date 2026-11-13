@@ -10,8 +10,36 @@
  * - MARC and VRE by their line: "🚆Penn", "🚆Camden", "🚆Brunswick", "🚆Manassas", "🚆Fredericksburg"
  * - Light RailLink 🚈, Metro SubwayLink 🚇
  *
- * Plain functions with no imports, so the module can be copied or imported anywhere.
+ * Plain functions with no imports, so the module can be copied or imported anywhere. The generic words ("walk", "bus",
+ * "minutes", "or") are English by default; Go and Ride pass the page's language in `words` (lib/transit.ts
+ * LEG_WORDS). A line's own name ("Red Line", "C53", "Penn") is the agency's name and stays as it is.
  */
+
+/** The generic words a mark and a leg are said with; English by default (EN_WORDS). */
+export interface LegWords {
+  walk: string;
+  bike: string;
+  bikeshare: string;
+  bus: string;
+  train: string;
+  /** "4 min", shown. */
+  min: (minutes: number) => string;
+  /** "4 minutes" ("1 minute"), said. */
+  minutes: (minutes: number) => string;
+  /** "Orange Line or Silver Line". */
+  or: (a: string, b: string) => string;
+}
+
+export const EN_WORDS: LegWords = {
+  walk: "walk",
+  bike: "bike",
+  bikeshare: "bikeshare",
+  bus: "bus",
+  train: "train",
+  min: (minutes) => `${minutes} min`,
+  minutes: (minutes) => `${minutes} ${minutes === 1 ? "minute" : "minutes"}`,
+  or: (a, b) => `${a} or ${b}`,
+};
 
 export interface Mark {
   /** What shows: "🔴", "🚌C53", "🚆Penn". Always aria-hidden. */
@@ -77,7 +105,7 @@ function lineWords(line: string): string {
  * One transit line's mark: Metro "Red Line" -> 🔴 "Red Line"; bus "C53" -> "🚌C53" "bus C53"; MARC
  * "Penn Line" -> "🚆Penn" "MARC Penn Line"; Light RailLink 🚈; Metro SubwayLink 🚇.
  */
-export function lineMark(system: string | null | undefined, line: string, mode?: string | null): Mark {
+export function lineMark(system: string | null | undefined, line: string, mode?: string | null, words: LegWords = EN_WORDS): Mark {
   const kind = kindOf(system, mode);
   const name = (system ?? "").trim();
   switch (kind) {
@@ -86,17 +114,17 @@ export function lineMark(system: string | null | undefined, line: string, mode?:
       return colour ? { mark: colour, spoken: lineWords(line) } : { mark: SUBWAY, spoken: line ? `${name || "Metro"} ${line}` : name || "Metro" };
     }
     case "bus":
-      return { mark: `${BUS}${line}`, spoken: line ? `bus ${line}` : "bus" };
+      return { mark: `${BUS}${line}`, spoken: line ? `${words.bus} ${line}` : words.bus };
     case "rail": {
       const bare = bareLine(line);
-      return { mark: `${TRAIN}${bare}`, spoken: [name, bare ? lineWords(line) : ""].filter(Boolean).join(" ") || "train" };
+      return { mark: `${TRAIN}${bare}`, spoken: [name, bare ? lineWords(line) : ""].filter(Boolean).join(" ") || words.train };
     }
     case "light-rail":
       return { mark: LIGHT_RAIL, spoken: name || "Light RailLink" };
     case "subway":
       return { mark: SUBWAY, spoken: name || "Metro SubwayLink" };
     default:
-      return { mark: TRAIN, spoken: [name, line].filter(Boolean).join(" ") || "train" };
+      return { mark: TRAIN, spoken: [name, line].filter(Boolean).join(" ") || words.train };
   }
 }
 
@@ -104,9 +132,9 @@ export function lineMark(system: string | null | undefined, line: string, mode?:
  * Several lines that serve the same leg ("Orange Line or Silver Line"): the marks side by side
  * ("🟠⚪", "🚌C51/C53"), the words joined by "or".
  */
-export function linesMark(system: string | null | undefined, lines: readonly string[], mode?: string | null): Mark {
-  if (lines.length === 0) return lineMark(system, "", mode);
-  const marks = lines.map((line) => lineMark(system, line, mode));
+export function linesMark(system: string | null | undefined, lines: readonly string[], mode?: string | null, words: LegWords = EN_WORDS): Mark {
+  if (lines.length === 0) return lineMark(system, "", mode, words);
+  const marks = lines.map((line) => lineMark(system, line, mode, words));
   const kind = kindOf(system, mode);
   // A bus's routes share one 🚌; the other single-mark systems (light rail, SubwayLink) show it once.
   const mark =
@@ -115,7 +143,8 @@ export function linesMark(system: string | null | undefined, lines: readonly str
       : kind === "light-rail" || kind === "subway"
         ? marks[0].mark
         : marks.map((m) => m.mark).join("");
-  const spoken = kind === "bus" ? `bus ${lines.join(" or ")}` : [...new Set(marks.map((m) => m.spoken))].join(" or ");
+  const either = (list: readonly string[]) => list.reduce((all, one) => words.or(all, one));
+  const spoken = kind === "bus" ? `${words.bus} ${either(lines)}` : either([...new Set(marks.map((m) => m.spoken))]);
   return { mark, spoken };
 }
 
@@ -130,25 +159,31 @@ export interface TripLeg {
   lines?: readonly string[];
 }
 
-export function legMark(leg: TripLeg): Mark {
+export function legMark(leg: TripLeg, words: LegWords = EN_WORDS): Mark {
   switch (leg.mode) {
     case "walk":
-      return WALK_MARK;
+      return { ...WALK_MARK, spoken: words.walk };
     case "ride":
-      return BIKE_MARK;
+      return { ...BIKE_MARK, spoken: words.bike };
     case "bikeshare":
-      return BIKESHARE_MARK;
+      return { ...BIKESHARE_MARK, spoken: words.bikeshare };
     default:
-      return linesMark(leg.system, leg.lines ?? [], leg.mode);
+      return linesMark(leg.system, leg.lines ?? [], leg.mode, words);
   }
 }
 
-/** The legs as they show: "🚶 4 min · 🚲 12 min · 🔴 18 min". aria-hidden: say `legsSaid` instead. */
-export function legsText(legs: readonly TripLeg[]): string {
-  return legs.map((leg) => `${legMark(leg).mark} ${leg.minutes} min`).join(" · ");
+/** A Metro leg's mark is a coloured dot only: its line's name shows beside it, so colour is never the only cue. */
+function metroNamed(leg: TripLeg, mark: Mark): string {
+  const colours = Object.values(METRO_LINE_MARKS);
+  return [...mark.mark].every((c) => colours.includes(c)) && mark.mark !== "" ? `${mark.mark} ${(leg.lines ?? []).map(lineWords).join("/")}` : mark.mark;
+}
+
+/** The legs as they show: "🚶 4 min · 🚲 12 min · 🔴 Red Line 18 min". aria-hidden: say `legsSaid` instead. */
+export function legsText(legs: readonly TripLeg[], words: LegWords = EN_WORDS): string {
+  return legs.map((leg) => `${metroNamed(leg, legMark(leg, words))} ${words.min(leg.minutes)}`).join(" · ");
 }
 
 /** The legs in words: "walk 4 minutes, bikeshare 12 minutes, Red Line 18 minutes". */
-export function legsSaid(legs: readonly TripLeg[]): string {
-  return legs.map((leg) => `${legMark(leg).spoken} ${leg.minutes} ${leg.minutes === 1 ? "minute" : "minutes"}`).join(", ");
+export function legsSaid(legs: readonly TripLeg[], words: LegWords = EN_WORDS): string {
+  return legs.map((leg) => `${legMark(leg, words).spoken} ${words.minutes(leg.minutes)}`).join(", ");
 }
