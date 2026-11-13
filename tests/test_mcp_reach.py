@@ -91,6 +91,7 @@ def test_reach_answers_areas_and_places_without_shapes_and_a_link(tools, api) ->
     assert out["calm"]["stress"] == 80
     assert out["link"].startswith("https://routes.example/#p=-77.05000,38.90000")
     assert "preset=fast" in out["link"] and out["link"].endswith("reach=from.any.calm")
+    assert "combine" not in out  # one point: nothing to combine, so no key
 
 
 def test_reach_from_several_points_to_them(tools, api) -> None:

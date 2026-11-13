@@ -163,7 +163,11 @@ test("the arrival leaving now: a ride, a Mass Ride too, at the time now; not a t
   assert.equal(leaveNowArriveMs(ride, now, "weekday_offpeak"), now + 108 * 60_000, "the time chosen is the time now");
   assert.equal(leaveNowArriveMs(ride, now, "weekend"), null);
   assert.equal(leaveNowArriveMs(ride, now, "night"), null, "Night chosen at noon");
-  assert.equal(leaveNowArriveMs({ ...ride, transit: {} }, now, null), null);
+  assert.equal(leaveNowArriveMs({ ...ride, transit: {} }, now, null), null, "a transit plan with no total");
+  // A transit trip: its door-to-door total, from the moment it was planned for (the 2026-11-12 backlog).
+  assert.equal(leaveNowArriveMs({ ...ride, transit: { total_s: 2400 } }, now, null), now + 2400 * 1000);
+  const planned = new Date(now - 3 * 60_000).toISOString();
+  assert.equal(leaveNowArriveMs({ ...ride, transit: { total_s: 2400, departure: { planned_at: planned } } }, now, null), Date.parse(planned) + 2400 * 1000);
   assert.equal(leaveNowArriveMs({ ...ride, bikeshare: {} }, now, null), null);
   // A Mass Ride's arrival shows as any other ride type's (the 2026-10-28 audit, P6).
   assert.equal(leaveNowArriveMs({ ...ride, preset: "mass-ride" }, now, null), now + ride.duration_s * 1000);

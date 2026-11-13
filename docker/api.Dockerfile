@@ -152,6 +152,10 @@ COPY --chown=root:root frontend/src/rail-data/metro-osm-elevators.geojson ./fron
 COPY --chown=root:root frontend/src/amenity-data/bike-parking.json ./frontend/src/amenity-data/bike-parking.json
 COPY --chown=root:root frontend/src/amenity-data/food.json ./frontend/src/amenity-data/food.json
 COPY --chown=root:root frontend/src/amenity-data/places.json ./frontend/src/amenity-data/places.json
+# The trail mile lines a park closure given by milepost is placed on (routemaker.park_alerts).
+COPY --chown=root:root frontend/src/amenity-data/trail-miles.json ./frontend/src/amenity-data/trail-miles.json
+# The closed sites and their gates: a trip point inside one goes to its gate (routemaker.restricted_sites).
+COPY --chown=root:root frontend/src/restricted-data/restricted-sites.json ./frontend/src/restricted-data/restricted-sites.json
 ENV PYTHONPATH=/app/src
 
 # Read-only to the process that runs it: nothing in the application writes to

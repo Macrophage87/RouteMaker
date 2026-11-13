@@ -1,11 +1,13 @@
 # RouteMaker
 
-Collaborative bicycle route planning for the Washington, DC metro area.
+A free, open-source route planning and navigation tool for a wide variety of cycling
+applications, from Washington, DC to Baltimore.
 
-Two gaps in existing tools shape it: planning a ride *with other people*, and
-planning for *differing cycling modalities* — a mass ride that takes the roadway
-at parade pace has almost nothing in common with a rural gravel loop, yet most
-tools offer one router and one set of assumptions.
+Every road is rated by how stressful it is to ride (levels 1 to 4, plus Avoid), and each
+ride type plans differently: a commute, a gravel loop, a mass ride that takes the roadway at
+parade pace, a tandem or cargo bike, bike and transit. Go plans a trip in a few taps, Plan
+gives full control over a route, and Ride gives turn-by-turn cues on the way. (Planning a ride
+together with other people, the first idea behind the project, is not built; PLAN.md says so.)
 
 **[PLAN.md](PLAN.md) is the build specification.** It is the authority on scope,
 architecture, and every decision taken so far, including the ones that were
@@ -13,7 +15,7 @@ reconsidered and why.
 
 ## Status
 
-Release 0.25.1. The planner (the map, the ride types, transit and bikeshare
+Release 0.26.0. The planner (the map, the ride types, transit and bikeshare
 trips, saved and shared routes, Discord sign-in) runs as a private beta for
 invited riders; [docs/BETA-RUNBOOK.md](docs/BETA-RUNBOOK.md) is how that server
 is set up and updated. Decisions live in [PLAN.md](PLAN.md): its "Implemented

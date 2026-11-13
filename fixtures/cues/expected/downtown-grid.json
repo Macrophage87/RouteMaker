@@ -1,0 +1,32 @@
+[
+ {
+  "turn": "Start",
+  "road": "New York Ave NW",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Right",
+  "road": "10th St NW",
+  "then": "then left onto I St NW",
+  "arrow": "turn right,left"
+ },
+ {
+  "turn": "Left",
+  "road": "9th St NW bike Ln",
+  "then": "",
+  "arrow": "turn across left"
+ },
+ {
+  "turn": "Cross",
+  "road": "",
+  "then": "then right onto 9th St NW",
+  "arrow": "turn across right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

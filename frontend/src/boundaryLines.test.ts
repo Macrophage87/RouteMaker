@@ -32,7 +32,8 @@ test("boundaries: the base map's layer becomes its other lines, then county, the
   const at = base().findIndex((l) => l.id === BOUNDARY_LAYER_ID);
   assert.ok(at > 0, "the base map has a boundaries layer");
   assert.deepEqual(ids.slice(at, at + 3), [BOUNDARY_LAYER_ID, BOUNDARY_LINE.county.id, BOUNDARY_LINE.state.id]);
-  assert.equal(ids.length, base().length + 2);
+  // Two more for the split, and one for the big parks' names (stressStyle.js PARK_NAME_LAYER_ID).
+  assert.equal(ids.length, base().length + 3);
 });
 
 test("boundaries: each admin level is drawn by exactly one boundary layer: 4 a state line, 6 a county line", () => {

@@ -116,17 +116,25 @@ export function arrivalClock(nowMs: number, seconds: number, locale: string | un
 /**
  * When a planned route ends if the ride starts at `nowMs`, epoch ms, for the route summary's time (Stephen 2026-10-27:
  * "Add the anticipated end time to the starting screen"); null where leaving now is not what was planned or the
- * route's time is not the trip's. Not a transit plan (it waits on its timetable), a bikeshare one (the time leaves out
- * the walks to and from the docks); a Mass Ride's shows as any other's (the 2026-10-28 audit, P6); nor where the ride time chosen
- * (When) is not the time now: "weekend" chosen on a Tuesday, or Night in the morning. "When I'm planning" (null) is now.
+ * route's time is not the trip's. A transit plan's is its door-to-door total, waits included, from the moment it was
+ * planned for (its departure's planned_at, else now): the 2026-11-12 backlog, the transit sheet had no arrival clock.
+ * Not a bikeshare one (the time leaves out the walks to and from the docks); a Mass Ride's shows as any other's (the
+ * 2026-10-28 audit, P6); nor where the ride time chosen (When) is not the time now: "weekend" chosen on a Tuesday, or
+ * Night in the morning. "When I'm planning" (null) is now.
  */
 export function leaveNowArriveMs(
-  route: { duration_s: number; preset?: string; transit?: unknown; bikeshare?: unknown } | null,
+  route: { duration_s: number; preset?: string; transit?: { total_s?: number; departure?: { planned_at?: string } | null } | null; bikeshare?: unknown } | null,
   nowMs: number,
   chosen: When | null,
 ): number | null {
-  if (!route || route.transit || route.bikeshare) return null;
+  if (!route || route.bikeshare) return null;
   if (chosen !== null && chosen !== whenAt(new Date(nowMs))) return null;
+  if (route.transit) {
+    const total = route.transit.total_s;
+    if (typeof total !== "number" || !(total > 0)) return null;
+    const planned = Date.parse(route.transit.departure?.planned_at ?? "");
+    return (Number.isFinite(planned) ? planned : nowMs) + total * 1000;
+  }
   return nowMs + route.duration_s * 1000;
 }
 

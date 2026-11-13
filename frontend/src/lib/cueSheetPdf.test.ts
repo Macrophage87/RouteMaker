@@ -279,3 +279,26 @@ test("the writer: WinAnsi text, Helvetica widths, wrapping, escaping", () => {
   pdf.text(pdf.addPage(), pdf.element("P"), 10, 10, 10, "regular", "a (b) \\ ©");
   assert.ok(pdf.serialize().includes("(a \\(b\\) \\\\ \\251) Tj"));
 });
+
+test("a crossing between two turns is a Cross row with its road and the turn after it, kept on the strip; a U-turn says U-turn", () => {
+  const base = sampleRoute();
+  const mk = (kind: DescriptionEntry["kind"], from: number, to: number, extra: Partial<DescriptionEntry>): DescriptionEntry =>
+    ({ kind, from_m: from, to_m: to, from_mi: 0, to_mi: 0, street: null, tier: 1, facility: null, turn: null, text: "A stretch.", ...extra }) as DescriptionEntry;
+  const turn = (movement: string, onto: string | null, more: object = {}) => ({ movement, onto, control: null, severity: null, ...more }) as unknown as DescriptionEntry["turn"];
+  const description = [
+    mk("stretch", 0, 1000, { street: "R Street Northwest" }),
+    mk("stretch", 1000, 1008, { street: "unnamed road", turn: turn("left", "unnamed road", { cross: "Beach Drive Northwest" }) }),
+    mk("stretch", 1008, 2000, { street: "Rock Creek Trail", facility: "path", turn: turn("right", "Rock Creek Trail") }),
+    mk("stretch", 2000, 3000, { street: "Rock Creek Trail", facility: "path", turn: turn("uturn", "Rock Creek Trail") }),
+  ];
+  const route = { ...base, description, leg_ends: [300] } as typeof base;
+  for (const kind of ["strip", "sheet"] as const) {
+    const rows = cueRows(route, kind);
+    const cross = rows.find((r) => r.turn === "Cross");
+    assert.ok(cross, kind);
+    assert.equal(cross.road, "Beach Drive Northwest");
+    assert.equal(cross.then, "then right onto Rock Creek Trl");
+    assert.deepEqual(cross.arrow, { kind: "turn", moves: ["right"], across: true });
+    assert.equal(rows.find((r) => r.arrow.kind === "turn" && (r.arrow as { moves: string[] }).moves[0] === "uturn")?.turn, "U-turn", kind);
+  }
+});

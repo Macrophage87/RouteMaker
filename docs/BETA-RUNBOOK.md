@@ -25,7 +25,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 | `~/routemaker-beta-passwords.txt` | Mode 600: the testers' passwords, for the owner to read and hand out | the owner deletes it (`shred -u`) |
 | `~/routemaker-beta-state/cd`, `~/.config/systemd/user/routemaker-beta-cd.*` | Only once continuous deployment is installed ("Continuous deployment", below): the release agent, its state, logs and pre-release snapshots, and its user timer | `auto-release.sh uninstall`, then `rm -rf` the `cd` directory |
 | `~/routemaker-beta-state/cd/bin/restart-routers.sh`, `~/.config/systemd/user/routemaker-beta-routers.*` | Only once the router hook is installed ("The routers after a map swap", below): the script and its user timer | `restart-routers.sh uninstall`, then `rm` the script |
-| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*`, `~/.config/systemd/user/routemaker-beta-heartbeat.*` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, the check timer and the uptime heartbeat's timer | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` directory |
+| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*`, `~/.config/systemd/user/routemaker-beta-heartbeat.*`, `~/.config/systemd/user/routemaker-beta-scorecard.*`, `~/routemaker-beta-state/scorecard` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, the check timer, the uptime heartbeat's timer, and the nightly route scorecard's timer and kept runs (docs/SCORECARD.md) | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` and `scorecard` directories |
 
 Every RouteMaker path above is created only after a check that it **does not exist yet**; if one
 does, stop and ask the owner. Nothing here changes the owner, group or mode of a directory that
@@ -259,6 +259,7 @@ database initialised with the old one. The required values and what is optional:
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://beta.example.org/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. From v0.7.0 sign-in is on by itself once both keys are set (the Settings line "Sign in with Discord to save routes and sync settings across devices." appears); migration 0020 adds saved settings and routes. Ride links keep anonymous rider dots in the api container's `/dev/shm` (a tmpfs, memory only), so the api needs no volume for them. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | no | The beta's database carries **no accounts** (the dump strips them, OWNER-DECISIONS 367.3), so the owner claims instance admin afresh. Set this to the owner's Discord user id only if Discord sign-in is turned on, and have the owner sign in once promptly after the api starts. Otherwise leave it empty. |
 | `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com`, `graph.mapillary.com` and `*.fbcdn.net` from the api: the server fetches the photo's file from Mapillary's image host and serves the browser its own copy, so the CSP's `img-src` stays `'self'` and the browser never contacts Mapillary. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
+| `FEEDBACK_WEBHOOK_URL` | no | v0.26.0 riders' Send feedback (`core/feedback.py`), read by the api: a webhook of the bug-reports forum on Discord, which the owner pastes himself; then `beta-compose.sh up -d api`. Empty: no Send feedback entry. Allow outbound `discord.com` from the api. Nothing a rider sends is kept on the server. |
 | `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty (as on beta): the problem stays in the rider's 311 log. Before setting it, put the DC 311 lines back in the privacy policy (`core/privacy_policy.py`, removed 2026-10-29 while the send is off). Allow outbound `app.311.dc.gov` from the api. Sending is for signed-in riders (signed out, the problem stays in the 311 log): each send needs a 15-minute ticket for that account from `GET /api/report311`, each account sends at most 10 an hour, and at most 60 reports an hour leave the server in all. |
 | `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
 | `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, `GARMIN_REDIRECT_URI` | no | Garmin Connect (`core/garmin.py`): the Connect Developer Program app's client id and secret from Garmin's developer portal, and `https://beta.example.org/auth/garmin/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Garmin connection. The host must reach `diauth.garmin.com` and `apis.garmin.com` (443). In the portal, point the deregistration notice at `https://beta.example.org/garmin/deregistrations`. Then `beta-compose.sh up -d api`. |
@@ -281,13 +282,14 @@ CD agent's and the host's own, is kept outside this repository, with the owner):
   server fetches the street photo's file and serves the browser its own copy); `app.311.dc.gov`
   (with `DC311_API_KEY`); the short map links a shared place is followed through
   (`core/share_links.py`): `maps.app.goo.gl`, `goo.gl`, `maps.apple`, `www.google.com`,
-  `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` only
-  with Discord sign-in; `api.weather.gov` and `api.open-meteo.com` (v0.12.1, weather along the
+  `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` with Discord
+  sign-in, and with `FEEDBACK_WEBHOOK_URL` (riders' Send feedback, `core/feedback.py`); `api.weather.gov` and `api.open-meteo.com` (v0.12.1, weather along the
   route, `core/weather.py`: rounded points, no key).
 - **worker** (`refresh_dc_closures`, every 15 minutes): `maps2.dcgis.dc.gov`, `mpdc.dc.gov`,
   `trainingtrack.hsema.dc.gov`, `developer.nps.gov` (with `NPS_API_KEY`), `geo.dcwater.com` and
   `gisportal.wsscwater.com` (v0.17.0, planned work for Plan's Potential closures),
-  `mdgeodata.md.gov` (v0.17.0, Maryland's Road Closure Reporter); and
+  `mdgeodata.md.gov` (v0.17.0, Maryland's Road Closure Reporter), `www7.montgomerycountymd.gov`
+  (v0.26.0, Montgomery County DOT's road closures); and
   (`refresh_work_zones`, every 5 minutes) `filter.ritis.org` (Maryland) and
   `data.511-atis-ttrip-prod.iteriscloud.com` (Virginia, with `SMARTERROADS_TOKEN`). It also reaches
   Photon and the Valhalla containers on the compose network, as the api does.
@@ -1172,7 +1174,14 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    the newest run of each) green: either one red holds the tag, either one unfinished waits. The check is an unauthenticated read of the public API, a few calls an hour at
    most; a rate limit or a network failure is tried again next pass. Signed tags: the repository has
    none today; setting `RM_CD_REQUIRE_SIGNED_TAGS=1` makes `git verify-tag` a requirement too (the
-   server then needs the signer's public key in its keyring).
+   server then needs the signer's public key in its keyring). A tag made by the release workflow
+   ("The release workflow", below) names the api image it built, by digest, in its message
+   (`api-image: ghcr.io/macrophage87/routemaker-api@sha256:...`): the agent first reads GitHub's
+   build provenance for that digest, which must name this repository's release workflow on `main`
+   and the tag's own commit, in both the statement and its signing certificate (if not, the tag is
+   held), then pulls the image and tags it with the release's `TAG` instead of
+   building one (GitHub or the registry not answering waits for the next pass). Workflow tags are not
+   signed, so `RM_CD_REQUIRE_SIGNED_TAGS=1` holds every one of them.
 5. The gate, over `git diff <deployed>..<new>` (only a code release deploys by itself):
 
 | A change to | Means | What the agent does |
@@ -1185,8 +1194,8 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
 | a compose `image:` line | a third-party image to pull, maybe a data mismatch | **stops** |
-| `docker/api.Dockerfile`, `docker/requirements*.txt`, `docker/api-entrypoint.sh` | a new base image, system package or dependency in the api image | **stops** |
-| `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops** |
+| `docker/api.Dockerfile`, `docker/requirements*.txt`, `docker/api-entrypoint.sh` | a new base image, system package or dependency in the api image | **stops**, unless the tag names the release workflow's image: then deploys with that image (the owner, 2026-11-12) |
+| `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops**; `ship-held` ships it with its map ("Day to day") |
 | `FORMAT_VERSION` in `src/core/stress_tiles.py` or `src/core/mass_tiles.py` | a new tile format (the cache is keyed on it; no data from home) | deploys, then the agent runs the step 8 pre-draw (`predraw_stress_tiles`, which draws both tile sets) and waits for it. The release is already live and smoke-tested by then, so a pre-draw that fails or runs out of its budget is a warning in the report, not a rollback: the tiles not yet drawn are drawn on request |
 | a migration that names the live schema, or a migration removed | data from home | **stops** |
 | a file name with a space, a quote, a backslash, or a control or non-ASCII character | a path the gate cannot be sure of | **stops** (check it by hand) |
@@ -1205,7 +1214,13 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    from home) and, if `frontend/` changed, the front end (`--memory 1536m` and
    `--oom-score-adj 1000`, so a host short of memory kills it first; the api build runs in the
    daemon and is not capped). A build that fails leaves the running release alone and marks the
-   tag failed (`retry <tag>`). Then the runbook's steps, from the stop of the api and worker. The
+   tag failed (`retry <tag>`). **A release with no migration file** (most of them) then skips the
+   stop and the snapshot: the api and worker keep serving while the checkout, `TAG`, the compose gate
+   and the front end move, and `up -d api worker` swaps them onto the new image, a few seconds of
+   "Router unavailable" at most; any failure from there swaps them back (step 7). A migration found
+   pending although no migration file changed fails the deploy before the api moves.
+   `RM_CD_ALWAYS_STOP=1` in `vars.sh` keeps the stop-and-snapshot path for every release. **A release
+   with a migration** takes the runbook's steps, from the stop of the api and worker. Its
    downtime is the stop to the smoke tests (the snapshot, migrations, the start, `/healthz`, the
    smoke tests, and a minute more when they are retried), usually under 5 minutes. During it nginx
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
@@ -1353,6 +1368,12 @@ journalctl --user -u routemaker-beta-cd --since today  # the passes, if the jour
 "$A" hold v0.2.0 "why"            # keep a tag from being deployed
 "$A" mark-deployed v0.2.0         # after shipping by hand, or to clear BROKEN once the owner has looked
 "$A" mark-deployed --force v0.2.0 # the same over a half-done deploy's record (IN PROGRESS), once the owner has put the stack right by hand
+"$A" rollback --dry-run           # the release before the deployed one: what putting it back would do
+"$A" rollback                     # put it back (the agent's own deploy and checks); the undone tag is held
+"$A" rollback-map --dry-run       # the previous map: which graphs, and whether the tables go too
+"$A" rollback-map                 # put it back (no sudo); run it again to bring the newer map back
+"$A" ship-held v0.2.0 --map s3://<bucket>/rebuild-checkpoints/transfer/<run> --dry-run   # a release held for its map
+"$A" ship-held v0.2.0 --map s3://<bucket>/rebuild-checkpoints/transfer/<run>             # its code, then its map (asks for sudo)
 systemctl --user stop routemaker-beta-cd.timer        # or stop the timer altogether
 ```
 
@@ -1394,6 +1415,68 @@ newest 3 of each kind of its own safety dumps in `DATA_ROOT/backups` (`pre-updat
 
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
+
+### One-command rollbacks and map releases
+
+**`rollback`** puts the release before the deployed one (`$RM_STATE/cd/previous-tag`; `mark-deployed`
+records it for a hand ship too) back on through the agent's own deploy: the api image (kept on the
+host for this), the front end rebuilt from that tag, photon and the routers if compose or a router
+setting changed, `/healthz`, the smoke tests. A failure puts the deployed release back by itself.
+The undone tag is held, so no pass deploys it again; a later tag is the way forward (or `retry
+<tag>`). If the release being undone carried a migration it asks which way the database goes:
+`--keep-db` leaves it (fine when the migration only added tables or columns with database
+defaults, as the project's migrations do), `--restore-db` puts back the snapshot taken just before
+that release was deployed (`$RM_STATE/cd/deployed-snapshot`), **losing accounts, saved routes and
+rides changed since**; a snapshot of the database as it is is taken first and kept. A release that
+changed the map side, nginx or compose images is refused unless `--force` (only the code goes
+back): put the old map back first with `rollback-map`.
+
+**`rollback-map`** is rollback A and "B by rename" above in one line, with no sudo: every graph with
+a `previous` build trades `current` and `previous` (moved as the directory's owner, in the postgis
+image already on the host), then, if the last update left `live_old` and unless `--graphs-only`,
+`live` and `live_old` trade names in one short transaction (every live table locked first) and the
+stress-tile cache is emptied. The routers' settings rows follow (`sync_upstreams`), the running
+routers restart one at a time, the pre-draw runs, and the smoke tests. Home's overrides and junction
+ratings stay the newer ones, as in "B by rename". Because it trades places, running it again puts
+the newer map back. A Photon index has no `previous`: it is not rolled back. A failure part-way
+marks the agent BROKEN with what moved.
+
+**`ship-held vX.Y.Z --map RUN_URL`** replaces the per-release hand-ship scripts for a release held
+because it needs a map (`lua/`, the pipeline's graph or table builders, a graph-build setting, a
+migration naming the live schema). It makes the same checks as a pass (release tag, on main,
+descends from the deployed release, CI green), pauses the agent, deploys the code through the
+agent's deploy (with its automatic rollback), then runs `scripts/cloud/import-result.sh --beta
+RUN_URL` and `--swap RUN_URL` (which asks for sudo for the files and the table rename, restarts the
+routers one at a time, pre-draws and smoke-tests), and resumes the agent if it paused it.
+`--allow-sha-mismatch` passes through when the run was built from another commit than the tag;
+`--no-map` ships the code alone. A held release that needs nginx, sudo or a new data path is still
+refused, and so is one whose migration reads the map tables (it must run after the new map is in):
+ship those by hand. It also waits out a running pre-draw and the nightly backup's slot. If the map fails after the code is live, the code stays, the agent stays
+paused, and the report says what to run next.
+
+### The release workflow
+
+`.github/workflows/release.yml` (the owner, 2026-11-12: a workflow he approves may make the tag and
+build the image). Once the release branch has merged into main and CI is green there: GitHub,
+Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`; `docs/releases/vX.Y.Z.md`
+must be in the commit). It releases main's newest commit, the one the run starts at, and no
+other, so the image's provenance names the tag's commit. It checks the
+version (strict, newer than every tag, not taken), the commit (on main), the notes, and that `test`
+and `a11y` are green on that commit, then **waits for the owner's approval** (the `release`
+environment). Approved, it builds the api image from that commit, checks that it starts, records
+GitHub build provenance for it, publishes it as `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag,
+whose message names the image by digest. The agent deploys the tag on its next pass as above,
+pulling that exact image. Tagging from the PC still works as before.
+
+Once, by the owner, before the first run:
+
+1. Repository Settings, Environments, New environment `release`: Required reviewers, add yourself;
+   Deployment branches and tags, Selected, add `main`. That approval is the release button.
+2. After the first run has published the image: the package's page (your GitHub profile, Packages,
+   `routemaker-api`), Package settings, Change visibility, Public, so the beta pulls it without a
+   token (the image holds no secret and no server address). If GitHub refuses the first push
+   because a `routemaker-api` package already exists, give the repository Write under that
+   package's Manage Actions access first.
 
 ### The trail routers, once, after v0.10.1 deploys
 
@@ -1466,13 +1549,52 @@ about to run out is found only by riding.
 
 What is posted, each as one short message starting "RouteMaker beta:":
 
-- **The site:** every 10 minutes a user timer runs the local smoke tests (`smoke-test.sh --local`:
-  health, a route, place search, a tile) and `manage.py check_operations` in the worker (backups,
+- **The site:** every 10 minutes a user timer runs the local smoke tests (`smoke-test.sh --local --trails`:
+  health, a route, a route on each trail graph (Mountain Bike, Gravel, Road Bike), place search, a
+  tile; `export RM_ALERT_TRAILS=0` in `vars.sh` drops `--trails` on a host without trail routers) and `manage.py check_operations` in the worker (backups,
   failed or wedged jobs, disk, the transit timetable's end). A failure seen twice in a row is
   posted with its FAIL lines or the check's report; the same failure is posted again only once a
   day while it lasts, and "working again" when it clears. No check runs while a deploy pass holds
   the agent's lock (a deploy stops the api on purpose). The weekly rebuild's waiting job is
   reported as paused, not stale (above), so it never posts.
+- **What a tester sees** (backlog 2026-11-12, "Ready for a dozen testers"). The same check also
+  posts:
+  - the **public address** not answering: `https://$RM_BETA_HOST/healthz` asked from this host,
+    through DNS, nginx and TLS (200 `ok`, or 401 behind a site password, is fine), seen twice in a
+    row; and the **certificate** ending in under 14 days (certbot renews at 30, so that means
+    renewal has failed). No `RM_BETA_HOST` in `.env`, no check; no `openssl`, no certificate check.
+    The address itself is never in a message.
+  - **server errors**: 3 or more 5xx answers in the api's access log over the last 10 minutes
+    (not the planner's own 503 "busy", which the slow-plans count covers);
+    and **slow plans**: 3 or more `/api/route` answers that took over 30 s (riders waiting for one
+    of the two routing slots).
+  - **restarts**: any container whose restart count went up since the last check, with "killed for
+    memory" when Docker says so. A deploy recreates containers and starts their counts again,
+    which is not posted.
+  - **the host short of memory or disk**: under 300 MiB available, or under 2048 MiB free on `/` or
+    on Docker's disk, seen twice in a row.
+
+  Every number here is our default, unmeasured until beta carries a dozen riders; each can be set
+  in `vars.sh`: `RM_ALERT_CERT_DAYS`, `RM_ALERT_5XX`, `RM_ALERT_SLOW_S`, `RM_ALERT_SLOW_N`,
+  `RM_ALERT_MEM_MIB`, `RM_ALERT_DISK_MIB`. These checks need nothing new installed beyond running
+  `alert.sh install` again, so the timer's copy is the new script.
+- **The riders' status line** (the owner, 2026-11-12: one line in Go and Plan, only while
+  degraded). The release agent writes `$RM_DATA/status/status.json` as `{"state": "updating"}`
+  from the moment it stops the api until its pass ends; the same check writes
+  `{"state": "degraded", "parts": [...]}` (`routing`, `trails`, `search`) once a smoke-test failure
+  is seen twice, and removes the file when all is well. nginx serves it at `/status.json`
+  (never cached), even while the api is stopped; the app reads it at open and when a request
+  fails, and shows one short line. Install once, as the beta's login user (the directory is
+  new, so it is created behind `rm_absent`, readable by nginx):
+
+  ```sh
+  . "$HOME/routemaker-beta-state/vars.sh"
+  rm_absent "$RM_DATA/status" && sudo install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$RM_DATA/status"
+  ```
+
+  then the nginx template's new `/status.json` location goes in as in "A new release sha", step 9
+  (re-render, `--diff "$NGINX_SITE"`, install, `sudo nginx -t && sudo nginx -s reload`). Without the
+directory nothing is written and riders see no line.
 - **The PC's copy of the backups:** once the owner's PC pulls the nightly dumps
   (docs/OPERATIONS.md, "Off-box copies of beta backups"), each run that ends ok writes
   `~/routemaker-beta-state/pc-backup-pull`. The same check posts once that file is over 36 h old

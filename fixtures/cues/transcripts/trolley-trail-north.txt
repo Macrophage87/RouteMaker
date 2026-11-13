@@ -1,0 +1,219 @@
+# trolley-trail-north: Bethesda Trolley Trail north: a crossing then a right onto the trail, forks that keep to it
+
+## The cues Ride made
+    38 m  #0 right Woodmont Ave: Right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue.
+    55 m  #1 left Saint Elmo Ave (joined): Left onto Saint Elmo Avenue.
+   182 m  #2 right Norfolk Ave: Right onto Norfolk Avenue.
+   509 m  #3 left unnamed Rd: Cross the road, then right onto Bethesda Trolley Trail.
+   517 m  #4 right Bethesda Trolley Trl (joined): Right onto Bethesda Trolley Trail.
+   708 m  #5 crossing Battery Ln: Cross Battery Lane.
+   865 m  #6 bear_left Path: Bear left onto the path, then immediately bear left onto Bethesda Trolley Trail.
+   890 m  #7 bear_left Bethesda Trolley Trl (joined): Bear left onto Bethesda Trolley Trail.
+  1147 m  #8 right Bethesda Trolley Trl: Right to stay on Bethesda Trolley Trail.
+  1311 m  #9 right Bethesda Trolley Trl: Right to stay on Bethesda Trolley Trail.
+  1577 m  #10 bear_right Bethesda Trolley Trl: Bear right to stay on Bethesda Trolley Trail.
+  1992 m  #11 right Bethesda Trolley Trl: Right to stay on Bethesda Trolley Trail.
+  2103 m  #12 crossing the Rd: Cross the road.
+  2627 m  #13 crossing Center Dr: Cross Center Drive.
+  2823 m  #14 crossing West Cedar Ln: Cross West Cedar Lane.
+  3082 m  #15 right Alta Vista Rd: Right onto Alta Vista Road.
+  3841 m  #16 right Balfour Dr: Right onto Balfour Drive.
+  4010 m  #17 right Balfour Ct: Right onto Balfour Court.
+  4017 m  #18 end: The end of the route.
+
+## trolley-trail-north at 8 mph, steady
+    0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said
+    7 s     25 m  #0 right Woodmont Ave now (urgent): "Right now onto Woodmont Avenue." -> said
+   11 s     39 m  #1 left Saint Elmo Ave now (urgent): "Left now onto Saint Elmo Avenue." -> said
+   12 s     43 m  #2 right Norfolk Ave advance: "In 450 feet, right onto Norfolk Avenue." -> held 1.6 s
+   39 s    139 m  #2 right Norfolk Ave prepare: "In 140 feet, right onto Norfolk Avenue." -> said
+   47 s    168 m  #2 right Norfolk Ave now (urgent): "Right now onto Norfolk Avenue." -> said
+  101 s    361 m  #3 left unnamed Rd advance: "In 500 feet, cross the road, then right onto Bethesda Trolley Trail." -> said
+  130 s    465 m  #3 left unnamed Rd prepare: "In 140 feet, cross the road, then right." -> said
+  139 s    497 m  #3 left unnamed Rd now (urgent): "Cross the road now." -> said
+  143 s    511 m  #4 right Bethesda Trolley Trl now (urgent): "Right now onto Bethesda Trolley Trail." -> said
+  186 s    665 m  #5 crossing Battery Ln prepare: "In 140 feet, cross Battery Lane." -> said
+  200 s    715 m  #6 bear_left Path advance: "In 500 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail." -> said
+  230 s    823 m  #6 bear_left Path prepare: "In 140 feet, bear left, then immediately bear left." -> said
+  238 s    851 m  #6 bear_left Path now (urgent): "Bear left now onto the path." -> said
+  245 s    876 m  #7 bear_left Bethesda Trolley Trl now (urgent): "Bear left now onto Bethesda Trolley Trail." -> said
+  279 s    998 m  #8 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  309 s   1105 m  #8 right Bethesda Trolley Trl prepare: "In 140 feet, right to stay on Bethesda Trolley Trail." -> said
+  317 s   1134 m  #8 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  325 s   1162 m  #9 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  354 s   1266 m  #9 right Bethesda Trolley Trl prepare: "In 150 feet, right to stay on Bethesda Trolley Trail." -> said
+  363 s   1298 m  #9 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  400 s   1431 m  #10 bear_right Bethesda Trolley Trl advance: "In 500 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  429 s   1534 m  #10 bear_right Bethesda Trolley Trl prepare: "In 140 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  437 s   1563 m  #10 bear_right Bethesda Trolley Trl now (urgent): "Keep right now." -> said
+  516 s   1845 m  #11 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  545 s   1949 m  #11 right Bethesda Trolley Trl prepare: "In 140 feet, right to stay on Bethesda Trolley Trail." -> said
+  553 s   1978 m  #11 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  576 s   2060 m  #12 crossing the Rd prepare: "In 140 feet, cross the road." -> said
+  723 s   2586 m  #13 crossing Center Dr prepare: "In 140 feet, cross Center Drive." -> said
+  777 s   2779 m  #14 crossing West Cedar Ln prepare: "In 150 feet, cross West Cedar Lane." -> said
+  820 s   2933 m  #15 right Alta Vista Rd advance: "In 500 feet, right onto Alta Vista Road." -> said
+  850 s   3040 m  #15 right Alta Vista Rd prepare: "In 140 feet, right onto Alta Vista Road." -> said
+  858 s   3068 m  #15 right Alta Vista Rd now (urgent): "Right now onto Alta Vista Road." -> said
+ 1032 s   3691 m  #16 right Balfour Dr advance: "In 500 feet, right onto Balfour Drive." -> said
+ 1062 s   3798 m  #16 right Balfour Dr prepare: "In 140 feet, right onto Balfour Drive." -> said
+ 1070 s   3827 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
+ 1080 s   3862 m  #17 right Balfour Ct advance: "In 500 feet, right onto Balfour Court." -> said
+ 1109 s   3966 m  #17 right Balfour Ct prepare: "In 140 feet, right onto Balfour Court." -> said
+ 1117 s   3995 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
+ 1118 s   3998 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! cut at 4010 m (#17): "Right now onto Balfour Court." cut off 0.7 s in by #18's arrive
+
+## trolley-trail-north at 12 mph, steady
+    0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said, cut 4.7 s in
+    5 s     27 m  #0 right Woodmont Ave now (urgent): "Right now onto Woodmont Avenue." -> said
+    8 s     43 m  #1 left Saint Elmo Ave now (urgent): "Left now onto Saint Elmo Avenue." -> said
+    9 s     48 m  #2 right Norfolk Ave advance: "In 450 feet, right onto Norfolk Avenue." -> held 1.6 s
+   24 s    129 m  #2 right Norfolk Ave prepare: "In 170 feet, right onto Norfolk Avenue." -> said
+   32 s    172 m  #2 right Norfolk Ave now (urgent): "Right now onto Norfolk Avenue." -> said
+   67 s    359 m  #3 left unnamed Rd advance: "In 500 feet, cross the road, then right onto Bethesda Trolley Trail." -> said
+   85 s    456 m  #3 left unnamed Rd prepare: "In 170 feet, cross the road, then right." -> said
+   93 s    499 m  #3 left unnamed Rd now (urgent): "Cross the road now." -> said
+   95 s    510 m  #4 right Bethesda Trolley Trl now (urgent): "Right now onto Bethesda Trolley Trail." -> said
+  122 s    654 m  #5 crossing Battery Ln prepare: "In 170 feet, cross Battery Lane." -> said
+  134 s    719 m  #6 bear_left Path advance: "In 500 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail." -> said
+  152 s    815 m  #6 bear_left Path prepare: "In 160 feet, bear left, then immediately bear left." -> said
+  159 s    853 m  #6 bear_left Path now (urgent): "Bear left now onto the path." -> said
+  164 s    880 m  #7 bear_left Bethesda Trolley Trl now (urgent): "Bear left now onto Bethesda Trolley Trail." -> said
+  186 s    998 m  #8 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  204 s   1094 m  #8 right Bethesda Trolley Trl prepare: "In 170 feet, right to stay on Bethesda Trolley Trail." -> said
+  211 s   1132 m  #8 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  217 s   1164 m  #9 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  235 s   1261 m  #9 right Bethesda Trolley Trl prepare: "In 160 feet, right to stay on Bethesda Trolley Trail." -> said
+  242 s   1298 m  #9 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  267 s   1432 m  #10 bear_right Bethesda Trolley Trl advance: "In 500 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  285 s   1529 m  #10 bear_right Bethesda Trolley Trl prepare: "In 160 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  292 s   1566 m  #10 bear_right Bethesda Trolley Trl now (urgent): "Keep right now." -> said
+  344 s   1845 m  #11 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  362 s   1942 m  #11 right Bethesda Trolley Trl prepare: "In 170 feet, right to stay on Bethesda Trolley Trail." -> said
+  369 s   1979 m  #11 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  383 s   2055 m  #12 crossing the Rd prepare: "In 160 feet, cross the road." -> said
+  480 s   2575 m  #13 crossing Center Dr prepare: "In 170 feet, cross Center Drive." -> said
+  517 s   2773 m  #14 crossing West Cedar Ln prepare: "In 160 feet, cross West Cedar Lane." -> said
+  547 s   2934 m  #15 right Alta Vista Rd advance: "In 500 feet, right onto Alta Vista Road." -> said
+  565 s   3031 m  #15 right Alta Vista Rd prepare: "In 170 feet, right onto Alta Vista Road." -> said
+  572 s   3068 m  #15 right Alta Vista Rd now (urgent): "Right now onto Alta Vista Road." -> said
+  688 s   3691 m  #16 right Balfour Dr advance: "In 500 feet, right onto Balfour Drive." -> said
+  706 s   3787 m  #16 right Balfour Dr prepare: "In 180 feet, right onto Balfour Drive." -> said
+  714 s   3830 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
+  720 s   3862 m  #17 right Balfour Ct advance: "In 500 feet, right onto Balfour Court." -> said
+  738 s   3959 m  #17 right Balfour Ct prepare: "In 170 feet, right onto Balfour Court." -> said
+  745 s   3997 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
+  746 s   4002 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! cut at 4010 m (#17): "Right now onto Balfour Court." cut off 0.7 s in by #18's arrive
+
+## trolley-trail-north at 18 mph, steady
+    0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said, cut 2.7 s in
+    3 s     24 m  #0 right Woodmont Ave now (urgent): "Right now onto Woodmont Avenue." -> said
+    7 s     56 m  #1 left Saint Elmo Ave now (urgent): "Left now onto Saint Elmo Avenue." -> said
+    8 s     64 m  #2 right Norfolk Ave advance: "In 400 feet, right onto Norfolk Avenue." -> held 1.6 s
+   13 s    105 m  #2 right Norfolk Ave prepare: "In 250 feet, right onto Norfolk Avenue." -> held 3.0 s, as "In 200 feet, right onto Norfolk Avenue."
+   21 s    169 m  #2 right Norfolk Ave now (urgent): "Right now onto Norfolk Avenue." -> said
+   37 s    298 m  #3 left unnamed Rd advance: "In 700 feet, cross the road, then right onto Bethesda Trolley Trail." -> said
+   54 s    435 m  #3 left unnamed Rd prepare: "In 250 feet, cross the road, then right." -> said
+   62 s    499 m  #3 left unnamed Rd now (urgent): "Cross the road now." -> said
+   64 s    515 m  #4 right Bethesda Trolley Trl now (urgent): "Right now onto Bethesda Trolley Trail." -> said
+   78 s    628 m  #5 crossing Battery Ln prepare: "In 250 feet, cross Battery Lane." -> said
+   81 s    652 m  #6 bear_left Path advance: "In 700 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail." -> held 5.0 s, as "In 600 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail."
+   98 s    789 m  #6 bear_left Path prepare: "In 250 feet, bear left, then immediately bear left." -> said
+  106 s    853 m  #6 bear_left Path now (urgent): "Bear left now onto the path." -> said
+  109 s    877 m  #7 bear_left Bethesda Trolley Trl now (urgent): "Bear left now onto Bethesda Trolley Trail." -> said
+  116 s    933 m  #8 right Bethesda Trolley Trl advance: "In 700 feet, right to stay on Bethesda Trolley Trail." -> said
+  133 s   1070 m  #8 right Bethesda Trolley Trl prepare: "In 250 feet, right to stay on Bethesda Trolley Trail." -> said
+  141 s   1135 m  #8 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  142 s   1143 m  #9 right Bethesda Trolley Trl advance: "In 600 feet, right to stay on Bethesda Trolley Trail." -> said
+  153 s   1231 m  #9 right Bethesda Trolley Trl prepare: "In 250 feet, right to stay on Bethesda Trolley Trail." -> said
+  161 s   1296 m  #9 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  170 s   1368 m  #10 bear_right Bethesda Trolley Trl advance: "In 700 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  187 s   1505 m  #10 bear_right Bethesda Trolley Trl prepare: "In 250 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  195 s   1569 m  #10 bear_right Bethesda Trolley Trl now (urgent): "Keep right now." -> said
+  221 s   1778 m  #11 right Bethesda Trolley Trl advance: "In 700 feet, right to stay on Bethesda Trolley Trail." -> said
+  238 s   1915 m  #11 right Bethesda Trolley Trl prepare: "In 250 feet, right to stay on Bethesda Trolley Trail." -> said
+  246 s   1979 m  #11 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  252 s   2028 m  #12 crossing the Rd prepare: "In 250 feet, cross the road." -> said
+  317 s   2551 m  #13 crossing Center Dr prepare: "In 250 feet, cross Center Drive." -> said
+  341 s   2744 m  #14 crossing West Cedar Ln prepare: "In 250 feet, cross West Cedar Lane." -> said
+  357 s   2873 m  #15 right Alta Vista Rd advance: "In 700 feet, right onto Alta Vista Road." -> said
+  374 s   3009 m  #15 right Alta Vista Rd prepare: "In 250 feet, right onto Alta Vista Road." -> said
+  382 s   3074 m  #15 right Alta Vista Rd now (urgent): "Right now onto Alta Vista Road." -> said
+  451 s   3629 m  #16 right Balfour Dr advance: "In 700 feet, right onto Balfour Drive." -> said
+  468 s   3766 m  #16 right Balfour Dr prepare: "In 250 feet, right onto Balfour Drive." -> said
+  476 s   3830 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
+  477 s   3838 m  #17 right Balfour Ct advance: "In 600 feet, right onto Balfour Court." -> held 1.4 s
+  489 s   3935 m  #17 right Balfour Ct prepare: "In 250 feet, right onto Balfour Court." -> said
+  497 s   3999 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
+  498 s   4007 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! cut at 4010 m (#17): "Right now onto Balfour Court." cut off 0.7 s in by #18's arrive
+
+## trolley-trail-north at 12 mph, missed-turn
+    0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said, cut 4.7 s in
+    5 s     27 m  #0 right Woodmont Ave now (urgent): "Right now onto Woodmont Avenue." -> said
+    8 s     43 m  #1 left Saint Elmo Ave now (urgent): "Left now onto Saint Elmo Avenue." -> said
+    9 s     48 m  #2 right Norfolk Ave advance: "In 450 feet, right onto Norfolk Avenue." -> held 1.6 s
+   24 s    129 m  #2 right Norfolk Ave prepare: "In 170 feet, right onto Norfolk Avenue." -> said
+   32 s    172 m  #2 right Norfolk Ave now (urgent): "Right now onto Norfolk Avenue." -> said
+   67 s    359 m  #3 left unnamed Rd advance: "In 500 feet, cross the road, then right onto Bethesda Trolley Trail." -> said
+   85 s    456 m  #3 left unnamed Rd prepare: "In 170 feet, cross the road, then right." -> said
+   93 s    499 m  #3 left unnamed Rd now (urgent): "Cross the road now." -> said
+   95 s    510 m  #4 right Bethesda Trolley Trl now (urgent): "Right now onto Bethesda Trolley Trail." -> said
+  122 s    654 m  #5 crossing Battery Ln prepare: "In 180 feet, cross Battery Lane." -> said
+  134 s    719 m  #6 bear_left Path advance: "In 500 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail." -> said
+  152 s    815 m  #6 bear_left Path prepare: "In 160 feet, bear left, then immediately bear left." -> said
+  159 s    853 m  #6 bear_left Path now (urgent): "Bear left now onto the path." -> said
+  164 s    880 m  #7 bear_left Bethesda Trolley Trl now (urgent): "Bear left now onto Bethesda Trolley Trail." -> said
+  186 s    998 m  #8 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  204 s   1094 m  #8 right Bethesda Trolley Trl prepare: "In 170 feet, right to stay on Bethesda Trolley Trail." -> said
+  211 s   1132 m  #8 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  218 s   1147 m  #9 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  222 s   1147 m  alongside: "Off the planned route." -> held 4.0 s
+  231 s   1147 m  #9 right Bethesda Trolley Trl prepare: "In 160 feet, right to stay on Bethesda Trolley Trail." -> held 3.0 s, as "In 130 feet, right to stay on Bethesda Trolley Trail."
+  239 s   1147 m  #9 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  257 s   1147 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 232 m past the missed turn
+
+## trolley-trail-north at 12 mph, weak-gps
+    0 s      0 m  #0 right Woodmont Ave prepare: "In 120 feet, right onto Woodmont Avenue, then immediately left onto Saint Elmo Avenue." -> said, cut 4.7 s in
+    5 s     27 m  #0 right Woodmont Ave now (urgent): "Right now onto Woodmont Avenue." -> said
+    8 s     43 m  #1 left Saint Elmo Ave now (urgent): "Left now onto Saint Elmo Avenue." -> said
+    9 s     48 m  #2 right Norfolk Ave advance: "In 450 feet, right onto Norfolk Avenue." -> held 1.6 s
+   24 s    129 m  #2 right Norfolk Ave prepare: "In 170 feet, right onto Norfolk Avenue." -> said
+   32 s    172 m  #2 right Norfolk Ave now (urgent): "Right now onto Norfolk Avenue." -> said
+   67 s    359 m  #3 left unnamed Rd advance: "In 500 feet, cross the road, then right onto Bethesda Trolley Trail." -> said
+   85 s    456 m  #3 left unnamed Rd prepare: "In 170 feet, cross the road, then right." -> said
+   93 s    499 m  #3 left unnamed Rd now (urgent): "Cross the road now." -> said
+   95 s    510 m  #4 right Bethesda Trolley Trl now (urgent): "Right now onto Bethesda Trolley Trail." -> said
+  122 s    654 m  #5 crossing Battery Ln prepare: "In 180 feet, cross Battery Lane." -> said
+  134 s    719 m  #6 bear_left Path advance: "In 500 feet, bear left onto the path, then immediately bear left onto Bethesda Trolley Trail." -> said
+  152 s    815 m  #6 bear_left Path prepare: "In 160 feet, bear left, then immediately bear left." -> said
+  159 s    853 m  #6 bear_left Path now (urgent): "Bear left now onto the path." -> said
+  164 s    880 m  #7 bear_left Bethesda Trolley Trl now (urgent): "Bear left now onto Bethesda Trolley Trail." -> said
+  186 s    998 m  #8 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  204 s   1094 m  #8 right Bethesda Trolley Trl prepare: "In 170 feet, right to stay on Bethesda Trolley Trail." -> said
+  211 s   1132 m  #8 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  217 s   1164 m  #9 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  235 s   1261 m  #9 right Bethesda Trolley Trl prepare: "In 160 feet, right to stay on Bethesda Trolley Trail." -> said
+  242 s   1298 m  #9 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  267 s   1432 m  #10 bear_right Bethesda Trolley Trl advance: "In 500 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  285 s   1529 m  #10 bear_right Bethesda Trolley Trl prepare: "In 160 feet, bear right to stay on Bethesda Trolley Trail." -> said
+  292 s   1566 m  #10 bear_right Bethesda Trolley Trl now (urgent): "Keep right now." -> said
+  344 s   1845 m  #11 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
+  362 s   1942 m  #11 right Bethesda Trolley Trl prepare: "In 170 feet, right to stay on Bethesda Trolley Trail." -> said
+  369 s   1979 m  #11 right Bethesda Trolley Trl now (urgent): "Right now." -> said
+  386 s           note: "GPS is weak: turn cues paused."
+  480 s   2575 m  #13 crossing Center Dr prepare: "In 170 feet, cross Center Drive." -> said
+  517 s   2773 m  #14 crossing West Cedar Ln prepare: "In 160 feet, cross West Cedar Lane." -> said
+  547 s   2934 m  #15 right Alta Vista Rd advance: "In 500 feet, right onto Alta Vista Road." -> said
+  565 s   3031 m  #15 right Alta Vista Rd prepare: "In 170 feet, right onto Alta Vista Road." -> said
+  572 s   3068 m  #15 right Alta Vista Rd now (urgent): "Right now onto Alta Vista Road." -> said
+  688 s   3691 m  #16 right Balfour Dr advance: "In 500 feet, right onto Balfour Drive." -> said
+  706 s   3787 m  #16 right Balfour Dr prepare: "In 180 feet, right onto Balfour Drive." -> said
+  714 s   3830 m  #16 right Balfour Dr now (urgent): "Right now onto Balfour Drive." -> said
+  720 s   3862 m  #17 right Balfour Ct advance: "In 500 feet, right onto Balfour Court." -> said
+  738 s   3959 m  #17 right Balfour Ct prepare: "In 170 feet, right onto Balfour Court." -> said
+  745 s   3997 m  #17 right Balfour Ct now (urgent): "Right now onto Balfour Court." -> said, cut 0.7 s in
+  746 s   4002 m  #18 end arrive (urgent): "You have arrived at the end of the route." -> said

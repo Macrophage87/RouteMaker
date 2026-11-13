@@ -2366,6 +2366,7 @@ class ReviewItem(models.Model):
         REMATCH = "rematch", "Overrides that did not re-match"
         PAINTED_LANE = "painted_lane", "Painted lanes on wide two-way roads"
         DC_NO_BIKE = "dc_no_bike", "DC ways closed to bicycles"
+        FACTS_CHANGED = "facts_changed", "Facts changed since rated"
 
     queue = models.CharField(max_length=16, choices=Queue.choices)
     # The build the rebuild changes are of; "" on the other queues.
@@ -2603,6 +2604,11 @@ class ConnectorDraft(models.Model):
     # When the rider saved this route to My routes (save_route, or Save in the app): no longer
     # listed as a draft; still deleted at `KEPT`, as the saved route is its own row.
     saved_at = models.DateTimeField(null=True, blank=True)
+    # When the route was archived (archive_draft, or planned with `test`): no longer listed in
+    # Load route or my_drafts, and still deleted at `KEPT`. For an agent's test and check routes
+    # (the owner, 2026-11-12: "When a test route is made from an agent, it somehow keeps loading
+    # on my account in beta. Archive them when done."). Null: listed.
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "connector_draft"

@@ -30,8 +30,9 @@ DOCS = (
     "acknowledgements",
 )
 SET = (*DOCS, "stress")
-# Outside the menu (the owner, 2026-10-31): the guide we send Android testers, with no docs menu.
-GUIDES = ("android-beta",)
+# Outside the menu (the owner, 2026-10-31): the guide we send Android testers, and the welcome we
+# send every new tester (backlog 2026-11-12), each with no docs menu.
+GUIDES = ("android-beta", "welcome")
 
 
 def read(name: str) -> str:
@@ -155,6 +156,8 @@ def test_the_acknowledgements_credit_every_source_the_map_credits() -> None:
         "Purple Line construction updates",
         "Fairfax County Park Authority",
         "Maryland Road Closure Reporter",
+        "Montgomery County DOT road closures",
+        "Park agency trail alerts",
     )
     # One name per map credit, in the same order: a new credit fails here until it is named.
     assert len(names) == len(map_credits)
@@ -177,3 +180,17 @@ def test_the_android_guide_keeps_its_three_steps_on_the_first_screen() -> None:
     assert len(re.findall(r"<li><strong>", page)) == 3
     assert '<a class="back" href="/">Back to the map</a>' in page
     assert "https://play.google.com/apps/testing/com.routemakerdc.app" in page
+
+
+def test_the_welcome_page_gives_each_device_its_block_and_no_email() -> None:
+    """The welcome we send every new tester (backlog 2026-11-12): no docs menu, a closed fold per
+    device on the first screen (no script, so it cannot pick one; the owner, 2026-11-13: "Have each
+    expandable"), the browser first, and no e-mail address, whose domain is the beta's."""
+    page = read("welcome")
+    assert '<nav class="docs"' not in page
+    for block in ("android", "iphone", "computer", "everyone"):
+        assert f'<details class="more" id="{block}">' in page, block
+    assert page.index("No download needed") < page.index('<details class="more"')
+    assert "mailto:" not in page and "@" not in re.sub(r"<style>.*?</style>", "", page, flags=re.S)
+    assert 'href="/about/accessibility.html"' in page
+    assert "Send feedback" in page and "Set battery to Unrestricted" in page

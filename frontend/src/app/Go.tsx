@@ -636,6 +636,9 @@ export function GoSheet({
   startLine,
   startMissing,
   onStartPick,
+  whereToTyped,
+  onWhereToTyped,
+  destinationWaiting = false,
 }: {
   size: GoSheetSize;
   onSize: (next: GoSheetSize) => void;
@@ -661,6 +664,12 @@ export function GoSheet({
   startMissing: boolean;
   /** A start typed in: it replaces the location. */
   onStartPick: (place: Place) => void;
+  /** Words put in Where to? from outside and searched (a shared address with no map point; app/sharedLaunch.ts). */
+  whereToTyped?: { text: string; n: number } | null;
+  /** The words were put in Where to?: dropped, so they are not put in again when Go is opened again. */
+  onWhereToTyped?: () => void;
+  /** A destination picked waits for a start (no location): its notice names it, and the start box takes the focus. */
+  destinationWaiting?: boolean;
 }) {
   const homeHint = useId();
   const homeSheetId = useId();
@@ -689,6 +698,16 @@ export function GoSheet({
   // More: one chip at the row's end that shows the rest (Metro, Repair, Places to see, Load route); later additions go here, not on the row.
   const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
+  // No location and a destination picked (the notice names it, "To Union Station. … type a start."): the notice
+  // stands beside the start box and the focus moves into it, so the pick visibly did something (the 2026-11-12
+  // backlog: it was the sheet's last line, under the ride chips, and the focus stayed in Where to?).
+  const startInput = useRef<HTMLInputElement>(null);
+  const startNotice = startMissing && notice !== null;
+  // Only for a destination waiting: a notice on opening (location outside the area) leaves the focus, and the
+  // phone's keyboard, alone.
+  useEffect(() => {
+    if (startNotice && destinationWaiting) startInput.current?.focus();
+  }, [startNotice, destinationWaiting, notice]);
   const routeShown = route !== null;
   // Under a route, Where to? and the place chips fold into one "New destination" row (the owner's P1, 2026-10-28:
   // they repeated under the route and made the sheet about two screens); a place picked folds them again.
@@ -698,6 +717,12 @@ export function GoSheet({
   useEffect(() => {
     if (!routeShown) setNewOpen(false);
   }, [routeShown]);
+  // Words put in Where to? from outside while a route is shown: the box is opened, so its results are seen.
+  useEffect(() => {
+    if (whereToTyped && routeShown) setNewOpen(true);
+    // Only a new set of words opens it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whereToTyped?.n]);
   const pickWhereTo = (place: Place) => {
     setNewOpen(false);
     onPick(place);
@@ -723,6 +748,7 @@ export function GoSheet({
             )}
           </div>
         )}
+        {!routeShown && startNotice && <p className="go-notice notice go-start-notice">{notice}</p>}
         {!routeShown && (
           <div id={startBoxId} className="go-start-search" hidden={!startShown}>
             <PlaceSearch
@@ -732,6 +758,7 @@ export function GoSheet({
               gate={geoGate}
               bias={searchBias}
               origin={searchOrigin}
+              inputRef={startInput}
               onPick={(place: Place, _choice: PlaceChoice) => {
                 setStartOpen(false);
                 onStartPick(place);
@@ -746,7 +773,7 @@ export function GoSheet({
           </button>
         )}
         <div id={newId} className="go-new-body" hidden={!whereShown}>
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} typed={whereToTyped} onTyped={onWhereToTyped} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
@@ -869,7 +896,7 @@ export function GoSheet({
       </div>
       {/* With a route, the ride types are in it, under the route card (edit-route redesign, Stephen 2026-10-18). */}
       {/* Said by the app's own region (Go has no Points section's status line; App noticeSaidElsewhere). */}
-      {notice && <p className="go-notice notice">{notice}</p>}
+      {notice && !(startNotice && !routeShown) && <p className="go-notice notice">{notice}</p>}
       <IosLocationHelp notice={notice} />
     </div>
   );

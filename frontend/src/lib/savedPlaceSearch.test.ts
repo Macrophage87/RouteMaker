@@ -86,3 +86,12 @@ test("Hindi and Thai keep their vowel signs: काम is work, कम is not", 
   assert.equal(savedPlacesFor("บ้าน", HOME, FAVORITES, "th").exact?.kind, "home");
   assert.equal(savedPlacesFor("บาน", HOME, FAVORITES, "th").exact, null);
 });
+
+test("the empty box lists Home, Work, then the first favorites in the rider's order, with nothing exact", () => {
+  const more: FavoritePlace[] = [...FAVORITES, { point: [-77.04, 38.91], label: "Library" }, { point: [-77.06, 38.93], label: "Market" }];
+  const hits = savedPlacesFor("", HOME, more, "en");
+  assert.equal(hits.exact, null);
+  assert.deepEqual(hits.places.map((p) => p.label), ["1500 Harvard St NW", "USP Twinbrook", "Joe's Bikes", "Rock Creek Park", "Library"]);
+  assert.deepEqual(savedPlacesFor("  ", HOME, null, "en").places.map((p) => p.kind), ["home"]);
+  assert.deepEqual(savedPlacesFor("", null, null, "en").places, []);
+});

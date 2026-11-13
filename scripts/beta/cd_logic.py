@@ -11,6 +11,9 @@ functions the tests call directly (tests/test_beta_cd.py):
   gate        whether the change between two commits is a code release the server may deploy
               by itself, or needs the owner (data from home, sudo, nginx); and which optional
               steps the deploy needs (front end, router restart, services to recreate)
+  tag-image   the api image a release tag's message names by digest (the release workflow's)
+  provenance  whether GitHub's attestations tie that image to the release workflow on main and
+              to the tag's commit
   rollback    which undo steps a failed deploy needs, from the steps it got through
 
 Standard library only, Python 3.8 or newer: it runs on the server with whatever python3 is
@@ -22,13 +25,15 @@ check-run JSON.
   cd_logic.py semver v0.2.0                               # exit 0 if strict vX.Y.Z
   cd_logic.py ci-verdict --sha <40 hex> < check-runs.json # green | pending | red
   cd_logic.py lock-hash < frontend/package-lock.json      # 64 hex
-  cd_logic.py gate --repo DIR --old SHA --new SHA         # KEY=VALUE lines
+  cd_logic.py gate --repo DIR --old SHA --new SHA [--ci-image]  # KEY=VALUE lines
+  cd_logic.py tag-image < tag-message.txt                 # the image@sha256:..., or nothing
   cd_logic.py rollback --done stopped,snapshot,...        # one undo action per line
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import re
@@ -187,6 +192,23 @@ AGENT_FILES = (
     "scripts/beta/frontend-build.sh",
     "scripts/beta/alert.sh",
 )
+# The api image's own files: they stop a release the agent would build itself, but not one whose
+# image the release workflow built from the tagged commit and named, by digest, in the tag
+# (.github/workflows/release.yml; the owner, 2026-11-12, "Yes, behind your approval").
+CI_IMAGE_PREFIXES = ("docker/api.Dockerfile", "docker/requirements", "docker/api-entrypoint.sh")
+# The stops a map shipped with the release answers (`auto-release.sh ship-held --map`): the graph
+# and table builders, whose change needs a map built at home or on the cloud box.
+MAP_PREFIXES = (
+    "lua/",
+    "valhalla/vendor/",
+    "src/pipeline/schema.py",
+    "src/pipeline/variants.py",
+    "src/pipeline/tiles.py",
+)
+# The line the release workflow writes into the annotated tag's message: the image by digest.
+TAG_IMAGE = re.compile(
+    r"(?m)^api-image: (ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64})\s*$"
+)
 MIGRATION = re.compile(r"^src/[^/]+/migrations/[^/]+\.py$")
 # A migration that names the live schema reads or reshapes data that comes from home. A
 # comment that merely mentions it stops the release too: that errs closed.
@@ -269,16 +291,150 @@ def compose_change(diff_text: str) -> list:
     return sorted(set(reasons))
 
 
+def tag_image(message: str) -> Optional[str]:
+    """The api image a release tag names by digest (the release workflow's `api-image:` line),
+    or None. Exactly one such line, or none counts: two are refused (None)."""
+    found = TAG_IMAGE.findall(message)
+    return found[0] if len(found) == 1 else None
+
+
+RELEASE_WORKFLOW = ".github/workflows/release.yml"
+
+
+# Fulcio's certificate extensions (OID 1.3.6.1.4.1.57264.1.*), each a DER UTF8String: who signed an
+# attestation (the workflow file and ref that ran) and the commit it ran at.
+FULCIO_BUILD_SIGNER_URI = "1.3.6.1.4.1.57264.1.9"
+FULCIO_SOURCE_DIGEST = "1.3.6.1.4.1.57264.1.13"
+
+
+def _der_oid(dotted: str) -> bytes:
+    parts = [int(p) for p in dotted.split(".")]
+    out = bytearray([40 * parts[0] + parts[1]])
+    for n in parts[2:]:
+        chunk = [n & 0x7F]
+        n >>= 7
+        while n:
+            chunk.append(0x80 | (n & 0x7F))
+            n >>= 7
+        out.extend(reversed(chunk))
+    return bytes(out)
+
+
+def _der_items(data: bytes):
+    """(tag, contents) for each DER element in `data`, at this level only; stops at bad input."""
+    i = 0
+    while i + 2 <= len(data):
+        tag, length = data[i], data[i + 1]
+        i += 2
+        if length & 0x80:
+            n = length & 0x7F
+            if n == 0 or n > 4 or i + n > len(data):
+                return
+            length = int.from_bytes(data[i : i + n], "big")
+            i += n
+        if i + length > len(data):
+            return
+        yield tag, data[i : i + length]
+        i += length
+
+
+def cert_extensions(der: bytes) -> dict:
+    """{dotted OID: text} for the certificate's extensions whose value is a DER UTF8String (as
+    Fulcio's are), found anywhere in the structure. Only reads; signatures are not checked."""
+    wanted = {_der_oid(o): o for o in (FULCIO_BUILD_SIGNER_URI, FULCIO_SOURCE_DIGEST)}
+    found: dict = {}
+
+    def walk(data: bytes, depth: int) -> None:
+        if depth > 12:
+            return
+        for tag, body in _der_items(data):
+            if tag in (0x30, 0x31, 0xA0, 0xA3):  # SEQUENCE, SET, [0], [3]: look inside
+                kids = list(_der_items(body))
+                if kids and kids[0][0] == 0x06 and kids[0][1] in wanted and kids[-1][0] == 0x04:
+                    inner = list(_der_items(kids[-1][1]))
+                    if len(inner) == 1 and inner[0][0] == 0x0C:
+                        found[wanted[kids[0][1]]] = inner[0][1].decode("utf-8", "replace")
+                walk(body, depth + 1)
+
+    walk(der, 0)
+    return found
+
+
+def _bundle_cert(bundle: dict) -> Optional[bytes]:
+    material = bundle.get("verificationMaterial") or {}
+    raw = (material.get("certificate") or {}).get("rawBytes")
+    if raw is None:
+        chain = (material.get("x509CertificateChain") or {}).get("certificates") or []
+        raw = chain[0].get("rawBytes") if chain and isinstance(chain[0], dict) else None
+    try:
+        return base64.b64decode(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
+def provenance_ok(payload: dict, digest: str, repo: str, commit: str) -> bool:
+    """Whether GitHub's attestations for an image (GET /repos/{repo}/attestations/sha256:{hex})
+    tie it to this repository's release workflow on main AND to the tag's commit: the statement
+    names the digest, the workflow (.github/workflows/release.yml at refs/heads/main) and the
+    commit it ran at; the signing certificate's own identity (Fulcio's build signer URI and source
+    digest) says the same workflow, ref and commit, so another workflow cannot sign for this one.
+    The workflow builds only the commit it runs at (main's newest), so that commit is the image's.
+    Signatures are GitHub's to check when it stores an attestation; this reads what it stored."""
+    want = digest.split("sha256:", 1)[-1].lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", want) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        return False
+    repo_url = f"https://github.com/{repo}".lower()
+    signer = f"{repo_url}/{RELEASE_WORKFLOW}@refs/heads/main"
+    for item in payload.get("attestations") or []:
+        try:
+            bundle = item["bundle"]
+            statement = json.loads(base64.b64decode(bundle["dsseEnvelope"]["payload"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not isinstance(statement, dict) or not isinstance(bundle, dict):
+            continue
+        subjects = statement.get("subject") or []
+        if not any(
+            isinstance(s, dict) and (s.get("digest") or {}).get("sha256") == want for s in subjects
+        ):
+            continue
+        build = (statement.get("predicate") or {}).get("buildDefinition") or {}
+        workflow = (build.get("externalParameters") or {}).get("workflow") or {}
+        if not (
+            str(workflow.get("repository", "")).lower() == repo_url
+            and workflow.get("path") == RELEASE_WORKFLOW
+            and workflow.get("ref") == "refs/heads/main"
+        ):
+            continue
+        commits = {
+            str((dep.get("digest") or {}).get("gitCommit", "")).lower()
+            for dep in build.get("resolvedDependencies") or []
+            if isinstance(dep, dict)
+        }
+        if commit not in commits:
+            continue
+        der = _bundle_cert(bundle)
+        ext = cert_extensions(der) if der else {}
+        if (
+            ext.get(FULCIO_BUILD_SIGNER_URI, "").lower() == signer
+            and ext.get(FULCIO_SOURCE_DIGEST, "").lower() == commit
+        ):
+            return True
+    return False
+
+
 def gate(
     changes: Sequence[tuple],
     show: Callable[[str, str], Optional[str]],
     compose_diff: str = "",
+    ci_image: bool = False,
 ) -> dict:
     """The verdict on a release.
 
     `changes` is git's --name-status as (status, path[, new path]) tuples; `show(side, path)`
     returns a file's text at "old" or "new" (None if absent there); `compose_diff` is the -U0
-    diff of the compose files. Returns verdict ("deploy" or "stop"), reasons, and the flags the
+    diff of the compose files; `ci_image`: the tag names an image the release workflow built,
+    so the api image's own files need no hand ship. Returns verdict ("deploy" or "stop"), reasons, and the flags the
     deploy acts on."""
     reasons: list = []
     result: dict = {
@@ -291,6 +447,7 @@ def gate(
         "agent_changed": False,
         "changed_files": 0,
         "notes": [],
+        "map_reasons": [],
     }
     paths: list = []
     for change in changes:
@@ -309,7 +466,14 @@ def gate(
         result["changed_files"] += 1
         for prefix, why in STOP_PREFIXES:
             if path == prefix or path.startswith(prefix):
-                reasons.append(f"{path}: {why}")
+                if ci_image and prefix in CI_IMAGE_PREFIXES:
+                    result["notes"].append(
+                        f"{path}: {why}; the release workflow built the image, which is pulled"
+                    )
+                else:
+                    reasons.append(f"{path}: {why}")
+                    if prefix in MAP_PREFIXES:
+                        result["map_reasons"].append(f"{path}: {why}")
                 break
         if path.startswith("frontend/"):
             result["frontend"] = True
@@ -326,10 +490,12 @@ def gate(
         ):
             kind, keys = valhalla_change(show("old", path), show("new", path))
             if kind == "build":
-                reasons.append(
+                why = (
                     f"{path}: a graph-build setting changed ({', '.join(keys[:5])}): "
                     "rebuild the graphs at home"
                 )
+                reasons.append(why)
+                result["map_reasons"].append(why)
             elif kind == "runtime":
                 # Every router restarts, the trail routers (valhalla-offroad, valhalla-mtb,
                 # valhalla-paved, valhalla-paved-weekend) among them once their
@@ -356,10 +522,13 @@ def gate(
             else:
                 result["migrations"] = True
                 if MIGRATION_NEEDS_DATA.search(text):
-                    reasons.append(f"{path}: a migration names the live schema (data from home)")
+                    why = f"{path}: a migration names the live schema (data from home)"
+                    reasons.append(why)
+                    result["map_reasons"].append(why)
     if compose_diff:
         reasons.extend(compose_change(compose_diff))
     result["reasons"] = sorted(set(reasons))
+    result["map_reasons"] = sorted(set(result["map_reasons"]))
     result["verdict"] = "stop" if result["reasons"] else "deploy"
     return result
 
@@ -376,7 +545,7 @@ STEPS = (
     "tag_set",  # TAG= in .env set to the new release
     "migrate",  # migrate started (the database may have moved forward)
     "frontend",  # front end install started (the index may be the new one)
-    "started",  # api and worker started on the new image
+    "started",  # api and worker started (or, without a stop, swapped) on the new image
     "services",  # photon and the routers recreated for a compose change
     "routers",  # the routers restarted for a valhalla/*.json change
 )
@@ -409,7 +578,9 @@ def rollback_plan(done: Iterable[str]) -> list:
         plan.append("restore-db")
     if "frontend" in did:
         plan.append("restore-index")
-    if "stopped" in did:
+    # A release without a migration is deployed with the api and worker running (no "stopped"):
+    # once "started" swapped them onto the new image, `up -d` on the old TAG swaps them back.
+    if "stopped" in did or "started" in did:
         plan.append("start-app")
     if "services" in did:
         plan.append("recreate-services")
@@ -417,7 +588,7 @@ def rollback_plan(done: Iterable[str]) -> list:
         plan.append("restart-routers")
     if "migrate" in did:
         plan.append("predraw")
-    if "stopped" in did:
+    if "stopped" in did or "started" in did:
         plan.append("smoke")
     return plan
 
@@ -453,7 +624,7 @@ def parse_name_status_z(text: str) -> list:
     return changes
 
 
-def git_gate(repo: str, old: str, new: str) -> dict:
+def git_gate(repo: str, old: str, new: str, ci_image: bool = False) -> dict:
     """gate() over the git history of `repo` between two full commit ids."""
     for sha in (old, new):
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -475,7 +646,7 @@ def git_gate(repo: str, old: str, new: str) -> dict:
         done = _git(repo, "show", f"{old if side == 'old' else new}:{path}")
         return done.stdout if done.returncode == 0 else None
 
-    return gate(changes, show, compose.stdout)
+    return gate(changes, show, compose.stdout, ci_image)
 
 
 def _clean(text: str) -> str:
@@ -494,6 +665,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     g.add_argument("--repo", required=True)
     g.add_argument("--old", required=True)
     g.add_argument("--new", required=True)
+    g.add_argument("--ci-image", action="store_true")
+    sub.add_parser("tag-image")
+    pv = sub.add_parser("provenance")
+    pv.add_argument("--digest", required=True)
+    pv.add_argument("--repo", required=True)
+    pv.add_argument("--commit", required=True)
     sub.add_parser("rollback").add_argument("--done", default="")
     args = parser.parse_args(argv)
 
@@ -515,7 +692,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(lock_hash(sys.stdin.read()))
         return 0
     if args.command == "gate":
-        result = git_gate(args.repo, args.old, args.new)
+        result = git_gate(args.repo, args.old, args.new, args.ci_image)
         print(f"verdict={result['verdict']}")
         for key in (
             "frontend",
@@ -532,6 +709,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"reason={_clean(reason)}")
         for note in result["notes"]:
             print(f"note={_clean(note)}")
+        # The reasons above that a map shipped with the release answers (ship-held --map).
+        for reason in result["map_reasons"]:
+            print(f"map_reason={_clean(reason)}")
+        return 0
+    if args.command == "tag-image":
+        image = tag_image(sys.stdin.read())
+        if image:
+            print(image)
+        return 0
+    if args.command == "provenance":
+        try:
+            payload = json.loads(sys.stdin.read() or "{}")
+        except ValueError:
+            payload = {}
+        ok = isinstance(payload, dict) and provenance_ok(
+            payload, args.digest, args.repo, args.commit
+        )
+        print("ok" if ok else "no")
         return 0
     if args.command == "rollback":
         for action in rollback_plan(step for step in args.done.split(",") if step):

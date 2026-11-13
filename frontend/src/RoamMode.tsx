@@ -952,7 +952,6 @@ export function RoamMode({
                     ))}
                   </ol>
                   {found.kind === "water" && <p className="hint">{WATER_CAUTION}</p>}
-                    {found.attribution && <p className="hint">{t("Search: {credits}", { credits: found.attribution.join("; ") })}</p>}
                 </div>
               )}
               <p className="hint">{ROAM_DETOUR_HELP}</p>

@@ -26,6 +26,7 @@ import { candidateRows } from "../lib/candidates.ts";
 import { loopNote, loopNoteShort } from "../lib/loop.ts";
 import { mtbNotes } from "../lib/mtbMode.ts";
 import { roadBikeNotice } from "../lib/roadBike.ts";
+import { barrierNote } from "../lib/barriers.ts";
 import { easyMtbNote } from "../lib/easyMtb.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
@@ -632,6 +633,15 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // Easy MTB trails: a harder trail it could not leave, or the off-road map down (lib/easyMtb.ts).
   const easy = easyMtbNote(route);
   if (easy) lines.push({ key: "easy-mtb", className: "notice easy-mtb-warning", icon: "warn", text: easy.text, short: easy.short });
+  // Cargo and Tandem: an impassable barrier no way round was found for, or the barriers on the route (lib/barriers.ts).
+  const barrier = barrierNote(route);
+  if (barrier) {
+    lines.push(
+      barrier.warn
+        ? { key: "barriers", className: "notice barrier-warning", icon: "warn", text: barrier.text, short: barrier.short }
+        : { key: "barriers", className: "hint barrier-note", icon: "info", text: barrier.text, short: barrier.short },
+    );
+  }
   // Road Bike planned on a fallback map while its own is down: the standard map for the paved-only one,
   // the paved-only map for the weekend one (lib/roadBike.ts).
   const roadBike = roadBikeNotice(route);
@@ -879,7 +889,8 @@ export function RouteSummary({
     <>
       {/* <bdi>: "31 min" keeps its order on a right-to-left page (DC's languages, 2026-10-28). */}
       <bdi>{timeText}</bdi>
-      {arriveMs != null && <ArriveAt arriveMs={arriveMs} />}
+      {/* A transit trip's arrival in Go only (the 2026-11-12 backlog's scope: Plan's transit panel unchanged). */}
+      {arriveMs != null && !(transit && mode !== "go") && <ArriveAt arriveMs={arriveMs} />}
     </>
   );
   const calm = calmPercent(route.stress_m);
@@ -1025,21 +1036,32 @@ export function RouteSummary({
     </Fold>
   ) : null;
 
-  const transitFold = transit ? (
-    // The trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list").
-    <Fold title={t("{ride} trip", { ride: presetLabel(preset) })} said={t("{ride} trip", { ride: presetSaid(preset) })} open className="transit-fold" icon="train">
-      <TransitSummary
-        plan={transit}
-        lineSpans={route.stress_spans}
-        preset={preset}
-        onPick={transitControls?.onPick}
-        busy={transitControls?.busy}
-        announce={transitControls?.announce}
-        onMissed={transitControls?.onMissed}
-        onRideRest={restOffered(rideTripOf(route, points)) ? transitControls?.onRideRest : undefined}
-      />
-    </Fold>
+  // The trip's own ride type, not the chip last pressed: offline, a kept transit plan stands in for whatever
+  // was asked (seen live: "Default trip" over a transit plan; backlog 2026-11-12).
+  const tripPreset = route.preset ?? preset;
+  const transitSummary = transit ? (
+    <TransitSummary
+      plan={transit}
+      lineSpans={route.stress_spans}
+      preset={tripPreset}
+      onPick={transitControls?.onPick}
+      busy={transitControls?.busy}
+      announce={transitControls?.announce}
+      onMissed={transitControls?.onMissed}
+      onRideRest={restOffered(rideTripOf(route, points)) ? transitControls?.onRideRest : undefined}
+      go={goMode}
+    />
   ) : null;
+  // Plan: the trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list"). Go: the
+  // trip on the sheet itself, its steps folded inside it (Stephen 2026-11-12), with no fold title repeating the ride type.
+  const transitFold =
+    transit && !goMode ? (
+      <Fold title={t("{ride} trip", { ride: presetLabel(tripPreset) })} said={t("{ride} trip", { ride: presetSaid(tripPreset) })} open className="transit-fold" icon="train">
+        {transitSummary}
+      </Fold>
+    ) : (
+      transitSummary
+    );
 
   if (goMode) {
     // Go (the approved mockup's route sheets): the time big, the distance and climb in a line, Info, the
@@ -1116,9 +1138,18 @@ export function RouteSummary({
         {!go.peek && bikeshareFold}
         {!go.peek && transitFold}
         {!go.peek && <CapacityShort route={route} corkers={corkerShort(route, profile, rideSize)} />}
+        {/* The route's warnings next, on the half sheet's first screen (Stephen 2026-11-12: answer, stress, warnings,
+            stops, ride type): a rider who taps Start from there has seen a closure, rain or the sunset first. */}
+        {!go.peek && alerts}
+        {!go.peek && noteList}
         {!go.peek && go.routeCard}
-        {!go.peek && go.addStop}
-        {!go.peek && go.endRack}
+        {/* Add a stop and the bike rack on one row (the same 2026-11-12 pick), so the warnings fit above them. */}
+        {!go.peek && (go.addStop || go.endRack) && (
+          <div className="go-stop-row">
+            {go.addStop}
+            {go.endRack}
+          </div>
+        )}
         {!go.peek && go.rides && (
           <div className="go-route-rides">
             {/* Shown, as the route card says what it edits; the chips' group is named "Ride type" for a screen reader. */}
@@ -1128,8 +1159,6 @@ export function RouteSummary({
             {go.rides}
           </div>
         )}
-        {!go.peek && alerts}
-        {!go.peek && noteList}
         {!go.peek && actions.savedNote}
         {/* The routes and Save; the ride type and Plan in detail moved (edit-route redesign): the ride types sit
             under the route card, and the Go/Plan switch at the top is Plan in detail. */}

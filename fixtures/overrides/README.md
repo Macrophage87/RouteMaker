@@ -499,6 +499,12 @@ A file may write its rows in a compact `groups` list instead of, or after, `rows
 with the shared fields. Used by the 2026-11-09 own-picks files, about 180,000 ways that
 would not fit the repository one row each. The loader, the re-match and
 `backfill_override_fingerprints.py` (which fills a group's `fingerprints`) read both forms.
+A stress group or row may also carry `facts`, the facts it was rated from (`highway`,
+`urban`, `speed_mph`, `speed_source`, `lanes`, `oneway`, `count_band`, `facility`;
+`pipeline.rated_facts`), which the rebuild compares with the way's facts now and lists in
+`rated-facts-changed.md` where they moved (docs/stress/overrides.md, "Facts changed since
+rated"). The own-picks files state theirs in each group's `evidence` sentence, which is
+read where there is no `facts` object. The loader checks `facts` and does not load it.
 
 A file that re-points a row at new ways keeps the old way in a top-level `superseded`
 list, with `replaced_by` and the old way's fingerprint, because the row already loaded
@@ -719,3 +725,48 @@ in the database still names it: delete that row in the admin when loading the fi
   the owner's own edit (`scripts/osm_edit.py`); the rows hold the level and the Why line
   meanwhile. It retires a row of the 2026-11-01 Maryland review on eight ways and one of the
   2026-11-09 Maryland own-picks (553709201).
+
+- `2026-11-12-owner-patuxent-whip-poor-will-way.json` (1 way): the southern stretch of
+  Whip-poor-will Way in the Patuxent Research Refuge's North Tract, way 85508536 (0.71 mi,
+  1,150 m), tagged `access=permit` and `bicycle=permit` in OSM, so the map hid it and
+  routes could not use it, though the stretches either side carry `bicycle=yes`. The owner,
+  2026-11-12: "It's the white parts that concerns me." The refuge's June 2026 North Tract
+  map marks the road for walking, biking and horseback riding and names no permit.
+  Opened with a `bicycle=yes` access row, with a fingerprint. South Road's two permit pieces
+  (707456988, 707645386) stay closed: they lie in the area the refuge closed on 2026-06-07.
+  Load like the others; takes effect on the next rebuild.
+
+- `2026-11-12-owner-patuxent-closed-area.json` (one group, 72 ways, 26 mi): the area of the
+  Patuxent Research Refuge's North Tract that the refuge closed to the public on 2026-06-07,
+  the old firing-range impact area inside Wildlife Way ("Closed Area: public entry not
+  permitted" on the FWS June 2026 North Tract map). The owner, 2026-11-12, of Telegraph
+  Road and Duvall Bridge Road there: "Keep them closed, but also make sure the closed part is
+  represented by the shaded area". Every road and track at least half inside the outline,
+  `fixtures/restricted-sites/patuxent-north-tract-closed-area.geojson`, gets a `bicycle=no`
+  access row; footways and paths (already closed by class) and ways already tagged
+  `bicycle=no` are left out. Bald Eagle Drive and Wildlife Way from the contact station over
+  Bailey Bridge to where the map's road ends stay open, as do the pockets by the contact
+  station and Merganser Pond; about 400 m of way 707456987 east of the contact station lies
+  in the hatch but stays open, since a row covers the whole way. It
+  closes the old rebuild road sentinel, way 86073896, so `REBUILD_SENTINEL_CALM_STREET_WAYS`
+  moves to way 11507801 on the open stretch. Load like the others; takes effect on the next
+  rebuild.
+
+- `2026-11-12-owner-side-streets-and-arlington-index.json` (12,396 ways, 12,396 retired): two
+  rechecks of the 2026-11-09 own-picks, each row replacing (and retiring) that way's own-picks
+  row. (1) The own-picks raised uncounted residential streets half a step (2 to 2.5), or from
+  below 2 to 2, wherever jobs within half a mile reached 5,000 a square mile (our default, never
+  measured), so whole side-street grids near Ballston, Bethesda or Silver Spring read busier than
+  they are. The owner, 2026-11-12: "Drop the bump, through streets checked": 9,308 of those
+  streets go back to the level without the bump; 32 through streets linking two main roads were
+  checked on the web and in dated Mapillary photos, and 12 that carry more (buses, shops, a
+  campus) keep the raised level, with that evidence in the Why line. (2) Arlington: every
+  own-picks way matched to Arlington's Bike Comfort Index ends its Why line with the index's
+  level, and its measured volume where it has one (cited as fair use, never republished; a class
+  default is not quoted as a count). Where the two differed by a full level or more (286
+  stretches, 44 mi), the road was rechecked from measured counts, the web and the newest dated
+  Mapillary photos; a protected lane mapped as its own way is rated with the side-path rule, not
+  on the roadway. 28 ways the review could not settle (counts that may belong to another block,
+  only old photos) keep their own-picks rows. The index says "agrees" only at the same level and
+  "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
+  bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
