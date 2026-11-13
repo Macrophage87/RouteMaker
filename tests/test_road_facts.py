@@ -290,3 +290,71 @@ def test_the_narrative_on_side_paths_and_avoid():
 def test_the_plain_sentence_is_left_out_where_the_narrative_says_it():
     assert si.narrative_says_details(CITY, si.road_facts(CITY)) is True
     assert si.narrative_says_details(COUNTRY, si.road_facts(COUNTRY)) is False
+
+
+# --- Setting bands (the owner, 2026-11-13: "Setting can have in it people and jobs within a
+# half mile"). Counts are over the way's half-mile corridor; the panel says them for a
+# typical half-mile circle on it.
+
+
+def counted(people, jobs, sq_mi=si.setting.CIRCLE_SQ_MI, homes=0, **columns):
+    columns.setdefault("road_urban", True)
+    return road(
+        setting_people=people,
+        setting_homes=homes,
+        setting_jobs=jobs,
+        setting_sq_mi=sq_mi,
+        **columns,
+    )
+
+
+def test_the_setting_line_names_the_band_and_the_people_and_jobs_behind_it():
+    # 0.785 sq mi (one circle): 2,600 people and 650 jobs is about 4,140 a square mile, urban.
+    fact = by_id(si.road_facts(counted(2_600, 650)))["setting"]
+    assert fact["value"] == "Urban: about 2,600 people and about 650 jobs within half a mile"
+    assert fact["source"] == "U.S. Census 2020 and LODES 8 jobs"
+    assert fact["date"] == "2020"
+    assert "never changes the level" in fact["detail"]
+    assert "inside a Census urban area" in fact["detail"]
+    # Still an input: the urban/rural switch the level reads is part of the line.
+    assert fact["input"] is True
+
+
+def test_each_band_from_people_and_jobs_a_square_mile():
+    circle = si.setting.CIRCLE_SQ_MI
+
+    def band_of(people, jobs):
+        return by_id(si.road_facts(counted(people * circle, jobs * circle)))["setting"]["value"]
+
+    assert band_of(30, 10).startswith("Remote:")
+    assert band_of(300, 100).startswith("Rural:")
+    assert band_of(2_000, 1_000).startswith("Suburban:")
+    assert band_of(8_000, 3_000).startswith("Urban:")
+    assert band_of(10_000, 30_000).startswith("Dense core:")
+
+
+def test_a_long_road_is_said_per_half_mile_circle_not_for_its_whole_corridor():
+    # Ten circles' worth of area: the counts are said for one typical circle.
+    fact = by_id(si.road_facts(counted(15_700, 3_925, sq_mi=10 * si.setting.CIRCLE_SQ_MI)))
+    assert fact["setting"]["value"] == (
+        "Suburban: about 1,600 people and about 390 jobs within half a mile"
+    )
+
+
+def test_an_empty_place_says_under_ten_and_reads_remote():
+    fact = by_id(si.road_facts(counted(0, 3, road_urban=False)))["setting"]
+    assert fact["value"] == "Remote: under 10 people and under 10 jobs within half a mile"
+    assert "outside a Census urban area" in fact["detail"]
+
+
+def test_without_counts_the_line_says_urban_or_rural_as_before():
+    assert by_id(si.road_facts(CITY))["setting"]["value"] == "Urban"
+    assert by_id(si.road_facts(COUNTRY))["setting"]["value"] == "Rural"
+
+
+def test_counts_without_the_urban_flag_are_shown_but_not_an_input():
+    row = counted(2_600, 650)
+    row.pop("road_urban")
+    fact = by_id(si.road_facts(row))["setting"]
+    assert fact["value"].startswith("Urban:")
+    assert fact["input"] is False

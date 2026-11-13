@@ -549,6 +549,17 @@ No credit: nothing from these is used.
   sha256 `99d6597b1fc7767deef62e01d28d8b5dcbd578e151855f7dc0d173cbf5bf0868`, from
   <https://www2.census.gov/geo/tiger/GENZ2023/shp/>. The District is OpenStreetMap's boundary
   (above).
+- Dataset: **TIGER/Line 2020 blocks** (`TABBLOCK20`, one file per state:
+  `tl_2020_<state FIPS>_tabblock20.zip` from <https://www2.census.gov/geo/tiger/TIGER2020/TABBLOCK20/>),
+  read for each block's 2020 Census people (`POP20`), homes (`HOUSING20`) and internal point,
+  and **LEHD LODES 8 Workplace Area Characteristics** (`<state>_wac_S000_JT00_2023.csv.gz` from
+  <https://lehd.ces.census.gov/data/lodes/LODES8/>), read for each block's jobs (`C000`). Counted
+  within half a mile of each way into `<DATA_ROOT>/reference/setting.json`
+  (`scripts/install_reference_data.py --census-blocks --lodes-wac`, `routemaker.setting`): the
+  road panel's Setting line (remote, rural, suburban, urban, dense core) with the people and
+  jobs near the road; the owner, 2026-11-13. A label only, never a stress input. Checked
+  reachable 2026-11-13 (`tl_2020_11_tabblock20.zip`, 4,694,165 bytes; `dc_wac_S000_JT00_2023.csv.gz`,
+  113,247 bytes); the full set is not yet downloaded, so no sizes or sha256 yet.
 
 ## Photon
 

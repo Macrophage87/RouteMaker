@@ -39,6 +39,7 @@ from routemaker import (
     mtbmode,
     pavement,
     scenic,
+    setting,
     singletrack,
     trail_facts,
 )
@@ -317,6 +318,10 @@ OPTIONAL_COLUMNS = (
     "trail_tags",
     "road_urban",
     "road_default_speed_mph",
+    "setting_people",
+    "setting_homes",
+    "setting_jobs",
+    "setting_sq_mi",
     "pavement_pci",
     "pavement_surveyed",
 )
@@ -1533,6 +1538,14 @@ ATTR_SHORT = {
     "alexandria-transport-streets": "City of Alexandria street record",
 }
 CENSUS_URBAN = "U.S. Census urban areas (2020)"
+CENSUS_PEOPLE_JOBS = f"U.S. Census {setting.BLOCKS_YEAR} and {setting.LODES_VERSION} jobs"
+SETTING_DETAIL = (
+    f"People and homes come from the {setting.BLOCKS_YEAR} Census blocks and jobs from "
+    f"the Census Bureau's {setting.LODES_VERSION} jobs by block, counted within half a mile "
+    "of this road and said for a typical half-mile circle on it. Remote is under 50 people "
+    "and jobs a square mile, rural under 500, suburban under 4,000, urban above that, and a "
+    "dense core has 25,000 jobs a square mile or more. This label never changes the level."
+)
 PCI_SOURCE = "DDOT pavement survey"
 PCI_SOURCE_LONG = "DDOT Pavement Condition Index (DC GIS), FY-25 survey"
 
@@ -1608,6 +1621,48 @@ def _assumed_speed(row: dict) -> tuple[float | None, str]:
     if default is not None:
         return float(default), law
     return None, "Nothing posted"
+
+
+def _setting_fact(row: dict) -> dict | None:
+    """Every road's setting (the owner, 2026-11-13: "We can include setting as something
+    for everything", "Setting can have in it people and jobs within a half mile"): the
+    band with the people and jobs behind it where counted, and always the Census urban
+    area the level reads."""
+    urban = row.get("road_urban")
+    level_reads = {
+        True: "For the level, this road is urban: it lies inside a Census urban area, where "
+        "the city tables apply.",
+        False: "For the level, this road is rural: it lies outside a Census urban area, so "
+        "the rural table applies, with its own speeds and shoulders.",
+    }.get(urban, "")
+    sq_mi = row.get("setting_sq_mi")
+    people, jobs = row.get("setting_people"), row.get("setting_jobs")
+    if sq_mi and people is not None and jobs is not None:
+        band = setting.band(people, jobs, float(sq_mi))
+        if band:
+            near_people = setting.about(setting.per_circle(people, float(sq_mi)))
+            near_jobs = setting.about(setting.per_circle(jobs, float(sq_mi)))
+            return _fact(
+                "setting",
+                "Setting",
+                f"{setting.BAND_WORDS[band]}: {near_people} people and {near_jobs} jobs "
+                "within half a mile",
+                RECORD,
+                CENSUS_PEOPLE_JOBS,
+                str(setting.BLOCKS_YEAR),
+                f"{SETTING_DETAIL} {level_reads}".strip(),
+                input_=urban is not None,
+            )
+    if urban is None:
+        return None
+    return _fact(
+        "setting",
+        "Setting",
+        "Urban" if urban else "Rural",
+        RECORD,
+        CENSUS_URBAN,
+        detail=f"Source: U.S. Census Bureau, TIGER/Line Urban Areas. {FACT_USE['setting']}",
+    )
 
 
 def road_facts(row: dict) -> list[dict]:
@@ -1738,20 +1793,9 @@ def road_facts(row: dict) -> list[dict]:
                     detail=f"{ESTIMATE_DETAIL} {FACT_USE[id_]}",
                 )
             )
-    urban = row.get("road_urban")
-    if urban is not None:
-        # Every road (the owner, 2026-11-13: "We can include setting as something for
-        # everything"): urban or rural, as the level reads it.
-        facts.append(
-            _fact(
-                "setting",
-                "Setting",
-                "Urban" if urban else "Rural",
-                RECORD,
-                CENSUS_URBAN,
-                detail=f"Source: U.S. Census Bureau, TIGER/Line Urban Areas. {FACT_USE['setting']}",
-            )
-        )
+    setting_fact = _setting_fact(row)
+    if setting_fact:
+        facts.append(setting_fact)
     pci = row.get("pavement_pci")
     if pci is not None:
         surveyed = row.get("pavement_surveyed")
