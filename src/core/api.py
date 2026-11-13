@@ -64,7 +64,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import partial, wraps
 from typing import Annotated, Literal
 
@@ -101,6 +101,7 @@ from . import (
     micromobility,
     nearest,
     offline_network,
+    offline_packs,
     parallel,
     plan_cancel,
     presets,
@@ -3984,6 +3985,59 @@ def offline_network_view(request, body: OfflineNetworkIn):
     return {**graph, "level_factor": factors}
 
 
+class OfflinePacksIn(Schema):
+    preset: str = Field(
+        default="default", max_length=40, description="The ride type, for the levels' prices."
+    )
+    stress: int | None = Field(
+        default=None, ge=0, le=100, description="The stress slider; none: the ride type's own."
+    )
+    carrying: str | None = Field(
+        default=None, max_length=20, description="Cargo Bike's load, as the route was asked."
+    )
+
+
+@api.get(
+    "/offline/packs",
+    response={200: dict, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="The region packs for riding off grid, and the ride's prices for their levels",
+    description=(
+        "The whole road network of a riding area, an optional download (core.offline_packs):"
+        " each region's name, size and address (served by the web server under"
+        " /offline-packs/), and `level_factor` as POST /offline/network answers it. 503"
+        " `not_built` until the first map rebuild that builds them."
+    ),
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.OFFLINE_PACKS),
+    same_site("the offline region packs answer this site's own pages only"),
+    errors_as_json,
+)
+def offline_packs_view(request, params: Query[OfflinePacksIn]):
+    found = offline_packs.manifest()
+    if found is None:
+        return Status(503, {"error": "not_built"})
+    build = found["build_id"]
+    packs = [
+        {
+            "id": pack["id"],
+            "name": pack["name"],
+            "bytes": pack["bytes"],
+            "sha256": pack["sha256"],
+            "url": f"/offline-packs/{found['dir']}/{pack['file']}",
+        }
+        for pack in found["packs"]
+    ]
+    factors = offline_network.level_factors(params.preset, params.stress, params.carrying)
+    return {
+        "build_id": build,
+        "built_at": found["built_at"],
+        "graph_v": found["graph_v"],
+        "packs": packs,
+        "level_factor": factors,
+    }
+
+
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
 #
 # POST /api/route/neighbours plans the rider's trip a step more traffic tolerant and a step
@@ -6771,11 +6825,31 @@ def coverage_ring() -> list[list[float]]:
 @decorate_view(ratelimit.rate_limited(ratelimit.COVERAGE), errors_as_json)
 def coverage(request, response: HttpResponse):
     response["Cache-Control"] = f"public, max-age={COVERAGE_MAX_AGE_S}"
+    built = map_data_date()
     return {
         "type": "Feature",
         "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
-        "properties": {},
+        # The live map's date, for Settings' About line ("Map data from Nov 10, 2026"; backlog item
+        # "Data that says how old it is", 2026-11-13). Left out before a first build.
+        "properties": {"map_data": built.isoformat()} if built else {},
     }
+
+
+def map_data_date() -> date | None:
+    """The day the map being served was built: the date part of the standard graph's build id
+    (`20261110T170245Z`, `pipeline.run.new_build_id`), which `sync_upstreams` writes on a server
+    that receives its map rather than building it. The OpenStreetMap extract it was built from is
+    at most `SOURCE_EXTRACT_MAX_AGE` (six days) older. None with no promoted build, or an id that
+    is not a date, or when the row cannot be read: the coverage answer never fails
+    for want of a date."""
+    from core.models import ValhallaUpstream
+
+    try:
+        rows = ValhallaUpstream.objects.filter(variant="standard")
+        build_id = rows.values_list("build_id", flat=True).first()
+        return datetime.strptime((build_id or "")[:8], "%Y%m%d").date()
+    except Exception:  # noqa: BLE001 - a date is a nicety; the coverage mask must not fail over it
+        return None
 
 
 # --- Place search and place names ---------------------------------------------
