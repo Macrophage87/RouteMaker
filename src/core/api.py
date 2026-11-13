@@ -64,7 +64,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import partial, wraps
 from typing import Annotated, Literal
 
@@ -6825,11 +6825,31 @@ def coverage_ring() -> list[list[float]]:
 @decorate_view(ratelimit.rate_limited(ratelimit.COVERAGE), errors_as_json)
 def coverage(request, response: HttpResponse):
     response["Cache-Control"] = f"public, max-age={COVERAGE_MAX_AGE_S}"
+    built = map_data_date()
     return {
         "type": "Feature",
         "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
-        "properties": {},
+        # The live map's date, for Settings' About line ("Map data from Nov 10, 2026"; backlog item
+        # "Data that says how old it is", 2026-11-13). Left out before a first build.
+        "properties": {"map_data": built.isoformat()} if built else {},
     }
+
+
+def map_data_date() -> date | None:
+    """The day the map being served was built: the date part of the standard graph's build id
+    (`20261110T170245Z`, `pipeline.run.new_build_id`), which `sync_upstreams` writes on a server
+    that receives its map rather than building it. The OpenStreetMap extract it was built from is
+    at most `SOURCE_EXTRACT_MAX_AGE` (six days) older. None with no promoted build, or an id that
+    is not a date, or when the row cannot be read: the coverage answer never fails
+    for want of a date."""
+    from core.models import ValhallaUpstream
+
+    try:
+        rows = ValhallaUpstream.objects.filter(variant="standard")
+        build_id = rows.values_list("build_id", flat=True).first()
+        return datetime.strptime((build_id or "")[:8], "%Y%m%d").date()
+    except Exception:  # noqa: BLE001 - a date is a nicety; the coverage mask must not fail over it
+        return None
 
 
 # --- Place search and place names ---------------------------------------------
