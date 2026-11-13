@@ -773,3 +773,17 @@ def test_the_rebuild_rates_side_paths_after_the_car_free_and_sidewalk_correction
     overrides = source[source.index("    def apply_overrides() -> None:") :]
     overrides = overrides[: overrides.index("\n    def ", 10)]
     assert "rate_side_paths" not in overrides and "apply_beside_busy_road" not in overrides
+
+
+def test_on_the_weekend_graphs_a_path_beside_a_weekend_car_free_street_is_not_priced():
+    from pipeline import variants
+    from pipeline.run import weekend_car_free_beside
+    from routemaker import ridetime
+
+    side = {2: facility.SideStreet("Beach Drive bike lane", {1: 900.0})}
+    weekend = {1: frozenset({ridetime.WEEKEND})}
+    for variant in variants.WEEKEND_GRAPHS:
+        assert weekend_car_free_beside(variant, side, weekend, 2)
+    assert not weekend_car_free_beside(variants.Variant.STANDARD, side, weekend, 2)
+    assert not weekend_car_free_beside(next(iter(variants.WEEKEND_GRAPHS)), side, {}, 2)
+    assert not weekend_car_free_beside(next(iter(variants.WEEKEND_GRAPHS)), None, weekend, 2)
