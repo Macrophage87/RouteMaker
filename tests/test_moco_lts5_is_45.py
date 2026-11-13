@@ -108,9 +108,9 @@ def test_darnestown_reads_45_once_the_lts4_pin_is_withdrawn():
     the owner, 2026-11-13: "Darnestown makes sense at 4.5 ... we didn't want to make it a
     complete avoid". The 2026-11-13 file withdraws the pin, so the county's 5 reads as 4.5."""
     pinned = json.loads((OVERRIDES / "2026-10-14-owner-darnestown-road.json").read_text())["rows"]
-    withdrawn = json.loads(
-        (OVERRIDES / "2026-11-13-retire-darnestown-lts4-pin.json").read_text()
-    )["retire"]
+    withdrawn = json.loads((OVERRIDES / "2026-11-13-retire-darnestown-lts4-pin.json").read_text())[
+        "retire"
+    ]
     ways = {5970658, 697630700, 222928109, 92183771, 92183773}
     assert {r["osm_way_id"] for r in pinned} == ways
     assert {(r["osm_way_id"], r["value"]["adjustment_id"]) for r in withdrawn} == {
