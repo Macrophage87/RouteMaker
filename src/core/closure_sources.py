@@ -166,9 +166,9 @@ MAX_NEW_PLACES = {DC: 3000, MPD: 40, ALERTDC: 40, DCWATER: 400}
 # stretches counts each) is kept, and a read of none, or of a small share, from a usually busy
 # source is not taken: the last good copy is kept and the run fails, so the operations page says
 # so. Once the kept copy is past `DROP_AFTER_S` it is not used anyway, and the read is taken;
-# from then on the counts follow it. MPD and AlertDC are left out (`EMPTY_IS_NEWS`): their
-# closures end in the reading (a reopening, an item aging out), so few or none left is real
-# news, and keeping the old copy would route round roads open again.
+# from then on the counts start again from it. MPD and AlertDC are left out (`EMPTY_IS_NEWS`):
+# their closures end in the reading (a reopening, an item aging out), so few or none left is
+# real news, and keeping the old copy would route round roads open again.
 EMPTY_IS_NEWS = frozenset({MPD, ALERTDC})
 
 Fetch = Callable[[str, float, dict], bytes]
