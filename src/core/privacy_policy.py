@@ -61,18 +61,25 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-11-09", "November 9, 2026")
+LAST_UPDATED = ("2026-11-13", "November 13, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
 NO_ADS = "No ads, no analytics, no tracking, and nothing about you is sold or shared for marketing."
+# Every company that gets something about a rider, as the sections below say.
+OTHER_COMPANIES = (
+    "Other companies get data only where this page says so: Discord (sign-in, feedback posts and "
+    "server roles), Garmin or Wahoo if you connect them, an AI assistant app you connect, and your "
+    "browser’s or phone’s speech service when you use Speak."
+)
+IN_THE_US = "RouteMaker is run from the United States, and your data is stored and handled there."
 # Unless the deployment sets PRIVACY_HOSTING (the hosting provider's name).
 HOSTING = (
     "The site's owner runs the server and its database, at home or with a hosting company, which "
-    "stores the data only to run the site."
+    "stores the data only to run the site. " + OTHER_COMPANIES
 )
 HOSTING_LEAD = "The server and its database run at "
-HOSTING_TAIL = ", which stores the data only to run the site. No other company stores your data."
+HOSTING_TAIL = ", which stores the data only to run the site. " + OTHER_COMPANIES
 GARMIN_NO_AI = "Nothing from Garmin is sold, shared, given to AI services, or used to train AI."
 WAHOO_NO_AI = "Nothing from Wahoo is sold, shared, given to AI services, or used to train AI."
 WHERE_YOU_ARE = (
@@ -272,6 +279,8 @@ SECTIONS: list[tuple[str, str]] = [
             ]
         )
         + _p(
+            "Your weight is optional. It is used only to estimate speed and effort on your "
+            "routes, never to judge your health, and you can clear it at any time in Settings. "
             "Only your weight’s total, rounded to whole kilograms, goes with a route "
             "request; it is never in a link, a shared route or a log. Signed out, all of these "
             "stay on your device instead."
@@ -361,6 +370,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "your account when signed in. RouteMaker shows which city or county 311 website "
                 "takes it; you "
                 "send it yourself.",
+                "Ride posts (Featured routes) are the site owner’s own write-ups of rides. Their "
+                "photos show where they were taken. If you are in one and want it removed or "
+                "blurred, contact the owner and it will be.",
                 "Send feedback (Settings, About) passes what you type to the site’s owner on "
                 "Discord, with the app’s version, your browser’s name, the ride type, the language "
                 "and whether you were in Go or Plan. Never where you are. This site keeps none of "
@@ -423,8 +435,11 @@ SECTIONS: list[tuple[str, str]] = [
         "Cookies and your device",
         _p(
             "Two cookies, both needed for the site to work: one keeps you signed in, one protects "
-            "forms. No advertising or tracking cookies. A sign-in ends after 30 days unused, or "
-            "after 90 days. Sign out ends it on the server at once; Sign out everywhere, beside it "
+            "forms. No advertising or tracking cookies. RouteMaker does not track you across "
+            "websites, sell your data or share it for advertising, so there is nothing for Do Not "
+            "Track or Global Privacy Control to switch off."
+            " A sign-in ends after 30 days unused, or after 90 days. Sign out ends it on the "
+            "server at once; Sign out everywhere, beside it "
             "in Settings, Account, ends every sign-in to your account on every device, and "
             "disconnects your AI assistant apps."
         )
@@ -449,7 +464,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "Map tile requests show which area was viewed.",
                 "The app’s own logs are capped in size, so old lines are overwritten.",
                 "When a request fails, an error log may keep more of it, including the internet "
-                "address, for a short time.",
+                "address, until the size-capped log writes over it.",
                 "Request limits count a one-way code made from your internet address (or, for "
                 "some, your account), deleted within about 30 hours.",
             ]
@@ -472,7 +487,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Discord role list and Garmin and Wahoo connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
-                "A note that an account was deleted, and when, under an account number.",
+                "A note that an account was deleted, and when, under an account number, so a "
+                "deleted account cannot be mistaken for a new one.",
             ]
         ),
     ),
@@ -481,6 +497,49 @@ SECTIONS: list[tuple[str, str]] = [
         f'<p><a href="{account_deletion.PATH}">Delete your account</a> on the web, or in the app '
         "under Settings, Account, Delete account. It says what is deleted and what is kept, and "
         "asks once.</p>",
+    ),
+    (
+        "Why RouteMaker may use your data",
+        _ul(
+            [
+                "To give you what you ask for: planning, guiding, saving and sharing routes, and "
+                "your account.",
+                "With your choice: your location, your weight, and Garmin, Wahoo and AI assistant "
+                "connections. You can take that choice back at any time in Settings.",
+                "To keep the site working and safe: request limits, error logs, backups, and "
+                "keeping decided map suggestions as the map’s history.",
+            ]
+        )
+        + _p(
+            "In European law, these are contract, consent and legitimate interests (GDPR "
+            "Article 6(1)(b), (a) and (f))."
+        ),
+    ),
+    (
+        "Your rights",
+        _p(
+            "You can ask for a copy of what RouteMaker holds about you, in a reusable format, ask "
+            "for it to be corrected or deleted, or ask that it stop or limit using it. Write to "
+            "the contact below; you get an answer within 30 days, and asking never changes how "
+            "RouteMaker treats you. If you disagree with the answer, reply asking for another "
+            "look, and you get a second answer within 45 days. In the EU or UK you may also "
+            "complain to your data protection authority."
+        ),
+    ),
+    (
+        "Children",
+        _p(
+            "RouteMaker is not meant for children under 13, and does not knowingly collect their "
+            "data. If you believe a child has given RouteMaker data, contact the owner and it will "
+            "be deleted."
+        ),
+    ),
+    (
+        "Changes to this page",
+        _p(
+            "When this page changes, the date at the top changes, and a big change is announced "
+            "in the app and on Discord before it takes effect."
+        ),
     ),
     # The contact is the deployment's (`contact`), filled in at request time.
     ("Contact", ""),
@@ -504,11 +563,11 @@ def contact() -> str:
 
 def hosting() -> str:
     """The Where your data is kept section: settings.PRIVACY_HOSTING named as the host, or, unset,
-    the owner-run wording."""
+    the owner-run wording; then that it is all in the United States."""
     value = (getattr(settings, "PRIVACY_HOSTING", "") or "").strip()
     if not value:
-        return _p(HOSTING)
-    return _p(f"{HOSTING_LEAD}{value}{HOSTING_TAIL}")
+        return _p(HOSTING) + _p(IN_THE_US)
+    return _p(f"{HOSTING_LEAD}{value}{HOSTING_TAIL}") + _p(IN_THE_US)
 
 
 # The sections whose text is the deployment's, made at request time.
