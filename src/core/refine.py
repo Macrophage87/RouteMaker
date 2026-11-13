@@ -26,8 +26,8 @@ extra price, in the router's cost seconds, for what the router cannot see:
     router cost + QUIET COST x ( CALM RATE x (LTS 3 metres + 2 x LTS 4 + 3 x Avoid)
                                + INTERSECTION WEIGHT x (the junction events' cost in metres)
                                + HILL - ROUTER'S CLIMB CHARGE )
-                 - what any one junction's stress cost and wait together come to past
-                   2 calm miles  (`JUNCTION_CAP_FT`, `junction_over_cap_m`)
+                 - what any one junction is charged twice, or past 2 calm miles in all
+                   (`JUNCTION_CAP_FT`, `junction_over_cap_m`)
 
 (The 1, 2 and 3 are the preset's `presets.Exposure`: Trailmaxxing and Cargo with
 passengers weigh LTS 4 at 8 and Avoid at 16, and never take a route with more
@@ -1001,9 +1001,10 @@ def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
 # Until 2026-11-13 the score also added RED_DETOUR_S, 600 s of quiet riding (9,840 ft at
 # Default) for every red junction, from the owner's 2026-10-23 "rather bike 10 minutes"
 # of the unsignalised crossings of University Blvd and Connecticut Ave in Kensington at
-# rush hour. That sentence is now a calibration point of the junction model's one crossing
-# table, which puts those crossings at the 2 mi top at rush hour by their lanes, speed and
-# count, so it is charged once (the owner, 2026-11-13: "Own calls were mainly to help tune
+# rush hour. That sentence is now the weight of the wait for a gap in the junction model's
+# one crossing function (`intersections.WAIT_PAIN`: ten minutes for five is 2), which puts
+# those crossings at the 2 mi top at rush hour by their lanes, speed and count, so it is
+# charged once (the owner, 2026-11-13: "Own calls were mainly to help tune
 # the formula not override it"). With the surcharge every red, the mildest included, cost
 # 2.4 miles or more, against his "though rare". AN OWNER-DECIDED NUMBER REMOVED; the
 # owner to confirm.
@@ -1011,23 +1012,40 @@ JUNCTION_CAP_FT = model.MAX_CROSSING_FT
 
 
 def junction_over_cap_m(events: list | None, found_waits, ctx: Context) -> float:
-    """What the route's junctions come to past JUNCTION_CAP_FT each, in metres of quiet
-    riding: an event's cost at the intersection weight, plus the ranked waits within
-    `intersections.MERGE_WITHIN_M` of it along the route (the same junction), less the cap,
-    where that is positive. A wait away from any event is a wait alone and far below it."""
+    """What the route's junctions are charged twice or past JUNCTION_CAP_FT each, in metres
+    of quiet riding, which `Analysis.score` takes off again. One junction, one charge
+    (the owner, OWNER-DECISIONS 303: "we don't want to double count"):
+
+    - A junction's stress price (an event's cost at the intersection weight) and the
+      ranked waits within `intersections.MERGE_WITHIN_M` of it are one junction. A wait
+      belongs to the nearest event.
+    - With no signal, the stress price already holds the wait for a gap (twice it,
+      `intersections.gap_ft`, or the published price of the crossing, which is what riders
+      pay to avoid it, wait included): the junction counts the LARGER of the two, not
+      their sum. At a signal the stress price is only what the wait does not cover (a
+      left's box turn), so they add.
+    - The result is never more than JUNCTION_CAP_FT.
+
+    A wait away from any event is a wait alone and far below the cap."""
     if not events or ctx.quiet_cost <= 0:
         return 0.0
     cap_m = JUNCTION_CAP_FT / model.FEET_PER_METRE
-    waits = list(found_waits or ())
     per_s = QUIET_COST_FACTOR * ctx.wait_weight / ctx.quiet_cost
+    near: dict[int, list] = {}
+    for wait in found_waits or ():
+        place = min(range(len(events)), key=lambda n: abs(events[n].m - wait.m))
+        if abs(events[place].m - wait.m) <= model.MERGE_WITHIN_M:
+            near.setdefault(place, []).append(wait)
     over = 0.0
-    for event in events:
-        near = [w for w in waits if abs(w.m - event.m) <= model.MERGE_WITHIN_M]
-        wait_s = junction_delay.ranked_s(
-            near, ctx.wait_weight, road_bike_buttons=ctx.road_bike_buttons
+    for place, event in enumerate(events):
+        waits = near.get(place, [])
+        wait_m = per_s * junction_delay.ranked_s(
+            waits, ctx.wait_weight, road_bike_buttons=ctx.road_bike_buttons
         )
-        total = ctx.weight * event.cost_ft / model.FEET_PER_METRE + per_s * wait_s
-        over += max(total - cap_m, 0.0)
+        stress_m = ctx.weight * event.cost_ft / model.FEET_PER_METRE
+        signal = event.control is model.Control.SIGNAL
+        counted = stress_m + wait_m if signal else max(stress_m, wait_m)
+        over += stress_m + wait_m - min(counted, cap_m)
     return over
 
 
