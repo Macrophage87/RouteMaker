@@ -60,6 +60,10 @@ def provider_login(
     return client.get(f"/auth/{provider}/callback", {"state": state, "code": "abc"})
 
 
+def response_redirects_to_discord(response) -> bool:
+    return response.status_code == 302 and response["Location"].startswith("/auth/login")
+
+
 def discord_login(client, monkeypatch, discord_id: int, *, link: bool = False):
     client.get(reverse("login") + ("?link=1" if link else "?pick=discord"))
     state = client.session[STATE_SESSION_KEY]["state"]
@@ -139,7 +143,9 @@ def test_with_all_three_the_choice_lists_them_but_not_google_in_the_android_app(
     for name in ("Discord", "Google", "Apple"):
         assert f"Sign in with {name}" in body
     in_app = client.get("/auth/sign-in", HTTP_USER_AGENT=WEBVIEW_UA).content.decode()
-    assert "Sign in with Google" not in in_app and "Sign in with Apple" in in_app
+    # The app opens other sites in the phone's browser, away from the sign-in in progress.
+    assert response_redirects_to_discord(client.get("/auth/sign-in", HTTP_USER_AGENT=WEBVIEW_UA))
+    assert "Sign in with Google" not in in_app
     assert client.get("/api/me").json()["sign_in_choices"] == ["discord", "google", "apple"]
 
 
@@ -266,3 +272,84 @@ def test_deleting_the_account_deletes_its_sign_ins(client, keys, monkeypatch) ->
     provider_login(client, monkeypatch, "google", "g-sub")
     delete_account(User.objects.get())
     assert not SignInIdentity.objects.exists()
+
+
+@db
+def test_apple_signs_in_too(client, keys, monkeypatch) -> None:
+    start = client.get("/auth/apple/start")
+    assert start["Location"].startswith("https://appleid.apple.com/auth/authorize?")
+    assert provider_login(client, monkeypatch, "apple", "000999.x").status_code == 302
+    assert SignInIdentity.objects.get().provider == "apple"
+
+
+@db
+def test_signed_in_a_plain_sign_in_does_not_switch_accounts(client, keys, monkeypatch) -> None:
+    discord_login(client, monkeypatch, 4242)
+    response = client.get("/auth/google/start?next=/x")
+    assert response.status_code == 302 and response["Location"] == "/x"
+    assert PENDING_KEY not in client.session
+
+
+@db
+def test_a_link_finished_by_another_account_is_refused(client, keys, monkeypatch) -> None:
+    discord_login(client, monkeypatch, 4242)
+    client.get("/auth/google/start?link=1")
+    pending = client.session[PENDING_KEY]
+    other = User.objects.create(discord_user_id=5)
+    session = client.session
+    session["_auth_user_id"] = str(other.pk)
+    session.save()
+    monkeypatch.setattr("core.sign_in_views.exchange_subject", lambda _p, _c: "g")
+    response = client.get("/auth/google/callback", {"state": pending["state"], "code": "c"})
+    assert response.status_code in (302, 400)
+    assert not SignInIdentity.objects.exists()
+
+
+@db
+def test_unlinking_discord_drops_its_cached_standing(client, keys, monkeypatch) -> None:
+    from core.models import CachedMembership, ConfiguredGuild
+
+    discord_login(client, monkeypatch, 4242)
+    provider_login(client, monkeypatch, "google", "g-sub", link=True)
+    guild = ConfiguredGuild.objects.create(guild_id=1, name="Club")
+    from django.utils import timezone
+
+    CachedMembership.objects.create(
+        discord_user_id=4242, guild=guild, last_confirmed=timezone.now()
+    )
+    client.post("/auth/unlink", {"provider": "discord"})
+    assert not CachedMembership.objects.exists()
+
+
+@db
+def test_a_sign_in_whose_keys_were_removed_does_not_count_as_the_one_kept(
+    client, keys, monkeypatch
+) -> None:
+    discord_login(client, monkeypatch, 4242)
+    provider_login(client, monkeypatch, "google", "g-sub", link=True)
+    keys.GOOGLE_CLIENT_SECRET = ""
+    assert client.post("/auth/unlink", {"provider": "discord"}).status_code == 409
+
+
+@db
+def test_unlink_needs_the_csrf_token(keys, monkeypatch) -> None:
+    from django.test import Client
+
+    client = Client(enforce_csrf_checks=True)
+    discord_login(client, monkeypatch, 4242)
+    provider_login(client, monkeypatch, "google", "g-sub", link=True)
+    assert client.post("/auth/unlink", {"provider": "google"}).status_code == 403
+    assert SignInIdentity.objects.exists()
+
+
+@db
+def test_a_banned_discord_account_cannot_be_linked(client, keys, monkeypatch) -> None:
+    from django.conf import settings
+
+    from core.models import BanTombstone
+    from core.revocation import tombstone
+
+    provider_login(client, monkeypatch, "google", "g-sub")
+    BanTombstone.objects.create(tombstone=tombstone(31337, settings.TOMBSTONE_KEY))
+    assert discord_login(client, monkeypatch, 31337, link=True).status_code == 403
+    assert User.objects.get().discord_user_id is None

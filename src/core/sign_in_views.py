@@ -1,12 +1,12 @@
 """Sign in with Discord, Google or Apple, and link them to one account.
 
-Stephen 2026-11-13: "Yes, and
-allow account linking").
+Stephen 2026-11-13: "Yes, and allow account linking".
 
 - GET /auth/sign-in: the choice of sign-ins this server has keys for. With only Discord's, straight
-  to it, as before. Google is left out inside the Android app: Google refuses its sign-in in an
-  app's built-in browser (a WebView says "; wv)" in its user agent), and a rider there signs in
-  with Discord or Apple.
+  to it, as before. Inside the Android app (a WebView says "; wv)" in its user agent) only Discord
+  is offered: Google refuses its sign-in in an app's built-in browser, and the app opens any other
+  site but Discord's in the phone's browser, which has not got the sign-in in progress. A rider
+  there links Google or Apple in a browser, then reaches the same account with Discord.
 - GET /auth/google/start, /auth/apple/start, and their /callback: OpenID Connect, `openid` alone
   (core.oidc_login). With `link=1` from a signed-in rider, the sign-in is added to that account
   instead.
@@ -24,6 +24,7 @@ from html import escape
 
 from django.conf import settings
 from django.contrib.auth import login as django_login
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse, HttpResponseRedirect
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -82,14 +83,14 @@ def available(provider: str) -> bool:
 
 
 def offered(request) -> list[str]:
-    """The sign-ins to show this browser, in order: those with keys, less Google inside the Android
-    app.
+    """The sign-ins to show this browser, in order: those with keys, and only Discord inside the
+    Android app.
     """
     in_webview = bool(ANDROID_WEBVIEW.search(request.META.get("HTTP_USER_AGENT", "")))
     return [
         p
         for p in ("discord", "google", "apple")
-        if available(p) and not (p == "google" and in_webview)
+        if available(p) and not (p != "discord" and in_webview)
     ]
 
 
@@ -182,8 +183,11 @@ def provider_start(request, provider: str):
         return _note(
             f"{oidc_login.NAMES.get(provider, 'This')} sign-in is not set up on this server.", 503
         )
-    state = oidc_login.new_state()
     link = request.GET.get("link") == "1" and _signed_in(request)
+    if _signed_in(request) and not link:
+        # Already signed in: a plain sign-in would quietly move the rider to another account.
+        return HttpResponseRedirect(safe_redirect_target(request, request.GET.get("next")))
+    state = oidc_login.new_state()
     request.session[PENDING_KEY] = {
         "provider": provider,
         "state": state,
@@ -282,14 +286,29 @@ def provider_callback(request, provider: str):
         if not found:
             if SignInIdentity.objects.filter(user=request.user, provider=provider).exists():
                 return _note(HAS_ONE.format(name=name), 409)
-            SignInIdentity.objects.create(user=request.user, provider=provider, subject_key=key)
+            try:
+                with transaction.atomic():
+                    SignInIdentity.objects.create(
+                        user=request.user, provider=provider, subject_key=key
+                    )
+            except IntegrityError:
+                return _note(TAKEN.format(name=name), 409)
         return HttpResponseRedirect(SIGN_INS_PATH)
 
     if found:
         user = found.user
     else:
-        user = User.objects.create(discord_user_id=None)
-        SignInIdentity.objects.create(user=user, provider=provider, subject_key=key)
+        try:
+            with transaction.atomic():
+                user = User.objects.create(discord_user_id=None)
+                SignInIdentity.objects.create(user=user, provider=provider, subject_key=key)
+        except IntegrityError:
+            # The same sign-in finished twice at once: the other one made the account.
+            user = (
+                SignInIdentity.objects.select_related("user")
+                .get(provider=provider, subject_key=key)
+                .user
+            )
     if user.is_banned or user.is_deleted:
         return _note(NOT_ALLOWED, 403)
     sign_in_as(request, user)
@@ -312,7 +331,11 @@ def link_discord(request, discord_user_id: int) -> HttpResponse:
     if request.user.discord_user_id not in (None, discord_user_id):
         return _note(HAS_ONE.format(name="Discord"), 409)
     request.user.discord_user_id = discord_user_id
-    request.user.save(update_fields=["discord_user_id"])
+    try:
+        with transaction.atomic():
+            request.user.save(update_fields=["discord_user_id"])
+    except IntegrityError:
+        return _note(TAKEN.format(name="Discord"), 409)
     return HttpResponseRedirect(SIGN_INS_PATH)
 
 
@@ -338,7 +361,7 @@ def sign_ins(request):
                 f'value="{escape(get_token(request))}">'
                 f'<input type="hidden" name="provider" value="{provider}">'
                 f'<button type="submit" aria-label="Unlink {name}">Unlink</button></form>'
-                if len(have) > 1
+                if any(p != provider and available(p) for p in have)
                 else ""
             )
             rows.append(f'<li class="row"><span>{name}: linked</span>{action}</li>')
@@ -362,16 +385,21 @@ def unlink(request):
     if not _signed_in(request):
         return HttpResponseRedirect("/")
     provider = request.POST.get("provider", "")
-    have = linked(request.user)
-    if provider not in have:
-        return HttpResponseRedirect(SIGN_INS_PATH)
-    if len(have) <= 1:
-        return _note(LAST_ONE, 409)
-    if provider == "discord":
-        # Its cached guild standing goes with it: standing comes from the Discord account.
-        CachedMembership.objects.filter(discord_user_id=request.user.discord_user_id).delete()
-        request.user.discord_user_id = None
-        request.user.save(update_fields=["discord_user_id"])
-    else:
-        SignInIdentity.objects.filter(user=request.user, provider=provider).delete()
+    with transaction.atomic():
+        # Locked, so two unlinks at once cannot both see two sign-ins and leave none.
+        user = User.objects.select_for_update().get(pk=request.user.pk)
+        have = linked(user)
+        if provider not in have:
+            return HttpResponseRedirect(SIGN_INS_PATH)
+        # The last-one rule counts only sign-ins this server still offers: one whose keys were
+        # taken away could not get the rider back in.
+        if not [p for p in have if p != provider and available(p)]:
+            return _note(LAST_ONE, 409)
+        if provider == "discord":
+            # Its cached guild standing goes with it: standing comes from the Discord account.
+            CachedMembership.objects.filter(discord_user_id=user.discord_user_id).delete()
+            user.discord_user_id = None
+            user.save(update_fields=["discord_user_id"])
+        else:
+            SignInIdentity.objects.filter(user=user, provider=provider).delete()
     return HttpResponseRedirect(SIGN_INS_PATH)
