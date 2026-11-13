@@ -8750,7 +8750,8 @@ PROMPTS = (
 )
 # Plan a mass ride (Stephen, 2026-11-13): "free-flowing rides that don't require more corkers than
 # we'd have"; "typically don't go over 5% grade and definitely not above 8%, either direction";
-# "the goal is the distance, not the directness"; a midpoint "usually about 2/3" of the way.
+# "the goal is the distance, not the directness"; a midpoint "usually about 2/3" of the way, and
+# "A ride could omit a midpoint".
 # Within 10% of the length, and corking from LTS 4 as the first triage to offer: our defaults,
 # unmeasured.
 MASS_RIDE_PROMPT = {
@@ -8771,8 +8772,8 @@ MASS_RIDE_PROMPT = {
         "Plan a mass ride from {start} to {end} with RouteMaker.{known} Before planning, ask me"
         " for whichever of these I have not given: the number of riders, the number of corkers,"
         " the length in miles and the group's speed in mph.{midpoint_how}"
-        " Plan with plan_route, ride type mass-ride, ride_size the riders, the midpoint as a stop"
-        " and any shaping points as via points. The goal:"
+        " Plan with plan_route, ride type mass-ride, ride_size the riders, any midpoint as a"
+        " stop and any shaping points as via points. The goal:"
         " (1) The length I asked for, within 10%: the goal is the distance, not the directness,"
         " so add or move via points (revise_route) until it is that long."
         ' (2) Free-flowing: mass_capacity\'s corkers "about" no more than the corkers I have,'
@@ -8832,9 +8833,10 @@ def prompt_text(name: str, arguments: dict) -> dict:
         "midpoint_how": (
             f" The midpoint stop is {given['midpoint']}."
             if given.get("midpoint")
-            else " Ask me for the midpoint stop (most rides have one, about two thirds of the"
-            " way); if I have none, offer two or three places to stop near the point two thirds"
-            " along a first plan (find_place near it: a park, a plaza, a school yard)."
+            else " Ask me whether the ride has a midpoint stop: many do, about two thirds of the"
+            " way, and some have none. If it has one but I have no place for it, offer two or"
+            " three near the point two thirds along a first plan (find_place near it: a park, a"
+            " plaza, a school yard); if none, plan without it."
         ),
         "loop_said": ""
         if given.get("end")

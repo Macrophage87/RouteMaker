@@ -309,6 +309,8 @@ def test_a_mass_ride_asks_for_what_is_missing_and_holds_to_length_corkers_and_gr
     for word in ("riders", "corkers", "length in miles", "speed in mph", "two thirds"):
         assert word in bare
     assert "So far" not in bare
+    # A ride may have no midpoint: asked, never required.
+    assert "some have none" in bare and "plan without it" in bare
     # The distance is the goal, the corkers are a limit, and the grades 5% and 8% either way.
     assert "not the directness" in bare and "no more than the corkers I have" in bare
     assert "5%" in bare and "8%, up or down" in bare
