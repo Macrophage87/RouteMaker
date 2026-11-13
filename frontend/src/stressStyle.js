@@ -1148,18 +1148,36 @@ export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = f
  * "public areas too should show up a bit higher, like the pautuxet research refuge, or Greenbelt Park". The base
  * map's place layer (`pois`) drew only `park`, never `national_park` or `nature_reserve`, which is what Rock Creek
  * Park and Greenbelt Park are (Protomaps' kinds, min_zoom 10 and 11 on the live tiles), and it sat under the
- * neighbourhood names, which took the space first. So the parks and reserves the tiles show by zoom 12 (the big ones:
- * Protomaps sets min_zoom by size) get a layer of their own, just over the neighbourhood names so a neighbourhood
+ * neighbourhood names, which took the space first. So the parks and reserves (and, since 2026-11-13, every named green
+ * place: below) get a layer of their own, just over the neighbourhood names so a neighbourhood
  * gives way to them (a town's name still wins), from the tiles' own min_zoom, a little larger, the bigger park first, and moved aside rather than
  * dropped where a trail's name or a station sits on its spot (Rock Creek Park at zoom 12.5). The `pois` layer leaves
  * them out, so a name is drawn once.
  */
 export const PARK_NAME_LAYER_ID = "park_names";
-export const PARK_NAME_KINDS = ["national_park", "nature_reserve", "park", "protected_area"];
-/** Our defaults, unmeasured: parks the tiles show by zoom 12 count as big (Protomaps' min_zoom grows as the park
- *  shrinks); the kinds, size and greens (the base map's park green, OTHER_LABEL.poiColors) are ours too. */
-export const PARK_NAME_MAX_MIN_ZOOM = 12;
-export const PARK_NAME_FILTER = ["all", ["in", ["get", "kind"], ["literal", PARK_NAME_KINDS]], ["<=", ["get", "min_zoom"], PARK_NAME_MAX_MIN_ZOOM]];
+/**
+ * The owner, 2026-11-13: "Some parks, like druid hill aren't marked too. Treat large parks and cemeteries like
+ * neighborhoods", "Also golf courses. but at a lower level. Essentially anywhere there's a bunch of green, explain
+ * why", and of cemeteries: "Otherwise they look like big blank spots with roads." So every named green place the
+ * tiles carry (these kinds) is named here, from the tiles' own min_zoom (Protomaps sets it by size: Rock Creek Park 10,
+ * Druid Hill Park and Arlington National Cemetery 13, a small square 15), over the neighbourhood names, the bigger
+ * first; a golf course only from GOLF_NAME_MIN_ZOOM, close in. Our defaults, unmeasured: the kinds, the golf zoom, the
+ * size and greens (the base map's park green, OTHER_LABEL.poiColors).
+ */
+export const PARK_NAME_KINDS = [
+  "national_park",
+  "nature_reserve",
+  "park",
+  "protected_area",
+  "forest",
+  "wood",
+  "garden",
+  "recreation_ground",
+  "cemetery",
+  "golf_course",
+];
+export const GOLF_NAME_MIN_ZOOM = 15;
+export const PARK_NAME_FILTER = ["in", ["get", "kind"], ["literal", PARK_NAME_KINDS]];
 export const PARK_NAME = { size: ["interpolate", ["linear"], ["zoom"], 9, 14, 13, 16, 16, 17], color: "#166534", darkColor: "#86efac" };
 
 export function parkNameLayer(source, dark = false) {
@@ -1168,7 +1186,12 @@ export function parkNameLayer(source, dark = false) {
     type: "symbol",
     source,
     "source-layer": "pois",
-    filter: ["all", PARK_NAME_FILTER, [">=", ["zoom"], ["get", "min_zoom"]]],
+    filter: [
+      "all",
+      PARK_NAME_FILTER,
+      [">=", ["zoom"], ["get", "min_zoom"]],
+      ["any", ["!=", ["get", "kind"], "golf_course"], [">=", ["zoom"], GOLF_NAME_MIN_ZOOM]],
+    ],
     layout: {
       "text-field": ["get", "name"],
       "text-font": [OTHER_LABEL.font],
