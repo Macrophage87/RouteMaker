@@ -771,29 +771,27 @@ in the database still names it: delete that row in the admin when loading the fi
   "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
 
-- `2026-11-13-owner-water-street-nw.json` (levels confirmed by the owner 2026-11-13; load
-  after his go): Water Street NW's last 0.09 mi before the Capital Crescent Trail, ways
-  137952735 and 1000673731, rated LTS 4 from the Whitehurst Freeway's count (37,593 a day) and
-  35 mph, which these ways inherit from the freeway block overhead. The owner, 2026-11-13: "water
-  street is definitely not a high stress road and it connects to the CCT". Rated from the
-  street's own facts (two lanes, ends at the trail): LTS 1 beside the separated track, LTS 2 on
-  the painted-lane piece (owner: "1 by the track, 2 by the lanes"). Public Why notes. Found by matching the owner's rides to the map.
+- `2026-11-13-owner-water-street-nw.json` (levels confirmed by the owner 2026-11-13; OPEN
+  QUESTION, keep only until a rebuild shows the data fixes reach his levels): Water Street NW's
+  last 0.09 mi before the Capital Crescent Trail, ways 137952735 and 1000673731, rated LTS 4
+  from the Whitehurst Freeway's count (37,593 a day) and 35 mph. The owner, 2026-11-13: "water
+  street is definitely not a high stress road and it connects to the CCT"; "1 by the track, 2 by
+  the lanes". Since his rule of the same day ("If I say that a road is incorrectly rated that
+  means that I feel the formula is wrong", "Or the raw data", "keep searching for why") the
+  count is fixed in the matcher (`pipeline.conflation`, a freeway's line goes to the freeway):
+  checked on the live extract, both ways now take no count. Still open: the 35 mph (the
+  freeway block overhead) and the separated track, which OSM does not map on 137952735. Drop
+  this file once those are fixed in the data and `fixtures/known-roads` passes without it.
 
-- `2026-11-13-owner-kennedy-street-nw.json` (approved by the owner 2026-11-13, "2.5, like the
-  blocks beside it"; load only after his go): Kennedy Street NW from Georgia Avenue to about 3rd Street, way 130908107
-  (0.64 mi), rated LTS 4 from DDOT's 2020 layer alone (our formula: 2; no count on the block).
-  The owner, 2026-11-13: "Kennedy street has more signal priority and is probably overrated."
-  LTS 2.5, the level of the Kennedy St blocks either side on the same facts (two lanes,
-  25 mph, sharrows, about 6,300 cars a day). Public Why note.
+- Kennedy Street NW (way 130908107): no override. Its LTS 4 was DDOT's 2020 level standing
+  because the block took no count; the matcher's along-the-street pass now reads every agency
+  and gives it 6,272 a day (checked on the live extract), and DDOT's layer is comparison only
+  (#1241). `fixtures/known-roads` checks it reads 2.5 at the next rebuild. The same-street draft
+  of 2026-11-13 (126 ways, mostly DC, agency-only levels) is withdrawn for the same reasons.
 
-- `2026-11-13-owner-same-street-and-freeway-counts.json` (DRAFT, not approved; do not load until
-  the owner confirms the file): the owner's Kennedy St NW and Water St NW calls applied as guides
-  (the owner, 2026-11-13: "Don't use my calls as one-offs but guides to inference"). 126 ways
-  (about 9 mi, mostly DC) whose level came from an agency layer alone and differs from our own
-  reviewed level on the same street's adjoining blocks with the same class, speed, lanes, bike
-  facility and count, take that level; 3 ways (Arlington Blvd Service Road, St Mary's Pl NW)
-  that carried the count of a bikes-barred road beside or above them take their own street's
-  level. Each Why names the principle. Ways with an existing owner row were left out.
+- `2026-11-13-retire-arlington-blvd-service-road.json` (DRAFT, not approved): withdraws the two
+  VA own-picks rows that rated Arlington Boulevard Service Road 4 on the boulevard's own 42,000
+  a day; adds no row, so the formula reads the service road again.
 
 - `2026-11-13-owner-md-urban-borrowed-counts.json` (DRAFT, not approved; do not load until the
   owner confirms the file): the owner's Bucklodge Rd call applied as a guide to 50 ways on eight
