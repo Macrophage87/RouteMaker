@@ -61,6 +61,10 @@ MIN_OVERLAP_FRACTION = 0.5
 # freeway ways take it (`conflate`'s `freeway`): a surface street running under or beside an
 # elevated freeway lies within MAX_SEPARATION_M of its line, with the same bearing.
 FREEWAY_LINES_FREEWAY_ONLY = True
+# A count line this busy that a freeway on another level is also a candidate for is the
+# freeway's (`conflate`'s `layers`). Our default, unmeasured: a freeway count, not a
+# street's; Water Street NW took 37,593 under the Whitehurst Freeway.
+FREEWAY_STACKED_MIN_AADT = 20_000
 
 # Beyond this the features are not the same road, whatever their bearing.
 MAX_SEPARATION_M = 20.0
@@ -534,6 +538,7 @@ def conflate(
     along_agencies: Collection[str] | None = None,
     name_required: Collection[int] = (),
     freeway: Collection[int] = (),
+    layers: Mapping[int, int] | None = None,
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
 
@@ -552,7 +557,11 @@ def conflate(
     way's, so a way that only touches the end of a line is no candidate.
 
     `freeway` are the motorway ways (`highway=motorway`, not its links): a count line whose
-    nearest candidate is one of them is that freeway's count, and no other way takes it
+    nearest candidate is one of them is that freeway's count, and so is a line of at least
+    FREEWAY_STACKED_MIN_AADT a day that a freeway way on another level (`layers`, each
+    way's OSM layer, a bridge with none read as 1) is a candidate for: the PC's read of the
+    live data found Water Street's own way nearest the freeway's line, under the freeway at
+    layer 2, and no other way takes it
     (FREEWAY_LINES_FREEWAY_ONLY). Water Street NW ran under the Whitehurst Freeway, scored
     1.00 against the freeway's 37,593-a-day line and was rated LTS 4 on it; the owner,
     2026-11-13: "water street is definitely not a high stress road", then "If I say that a
@@ -662,6 +671,15 @@ def conflate(
         if FREEWAY_LINES_FREEWAY_ONLY and freeways
         else set()
     )
+    if FREEWAY_LINES_FREEWAY_ONLY and freeways and layers is not None:
+        # Stacked: the line cannot tell an elevated freeway from the street beneath it.
+        levels: dict[str, tuple[set[int], set[int]]] = {}
+        for _o, way_id, feature, *_r in candidates:
+            if feature.aadt < FREEWAY_STACKED_MIN_AADT:
+                continue
+            fw, st = levels.setdefault(feature.feature_id, (set(), set()))
+            (fw if way_id in freeways else st).add(layers.get(way_id, 0))
+        freeway_lines |= {fid for fid, (fw, st) in levels.items() if fw and st and fw != st}
     if freeway_lines:
         candidates = [
             c for c in candidates if c[1] in freeways or c[2].feature_id not in freeway_lines
@@ -762,6 +780,20 @@ def conflate(
 
     unmatched = [f.feature_id for f in features if f.feature_id not in used_features]
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
+
+
+def way_layer(tags: Mapping[str, str]) -> int:
+    """A way's level for `conflate`'s `layers`: its OSM `layer`, a bridge with none read as
+    1, a tunnel with none as -1, else 0."""
+    try:
+        return int(tags["layer"])
+    except (KeyError, ValueError):
+        pass
+    if tags.get("bridge", "no") != "no":
+        return 1
+    if tags.get("tunnel", "no") != "no":
+        return -1
+    return 0
 
 
 def _precedence(feature: AgencyFeature) -> int:

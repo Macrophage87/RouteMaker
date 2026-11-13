@@ -2663,7 +2663,11 @@ def build_handlers(
         # A freeway's count line goes to the freeway only (`conflation.conflate`'s `freeway`).
         freeway = {way.osm_id for way in context.ways if way.tags.get("highway") == "motorway"}
         result = conflation.conflate(
-            entries, reference.volume_features, name_required=nameless, freeway=freeway
+            entries,
+            reference.volume_features,
+            name_required=nameless,
+            freeway=freeway,
+            layers={way.osm_id: conflation.way_layer(way.tags) for way in context.ways},
         )
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,

@@ -1175,3 +1175,19 @@ class TestRawCountFixes:
         ]
         assert 1 not in conflate([(1, way)], blocks, along_agencies=("vdot",)).matched
         assert conflate([(1, way)], blocks).matched[1].aadt == 6272
+
+    def test_a_freeways_line_nearest_the_street_beneath_it_goes_to_the_freeway(self) -> None:
+        """The PC's read of the live data: the Whitehurst Freeway's line lay nearest Water
+        Street NW (1.00), with the freeway at layer 2 also a candidate."""
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90012), (-77.0095, 38.90012)]
+        line = feature(
+            "fwy", [(-77.0205, 38.90001), (-77.0095, 38.90001)], 37593, "locality", "ddot"
+        )
+        ways = [(1, street), (2, elevated)]
+        assert conflate(ways, [line], freeway={2}).matched[1].aadt == 37593
+        after = conflate(ways, [line], freeway={2}, layers={1: 0, 2: 2})
+        assert 1 not in after.matched
+        # A street's own quieter line under the freeway stays the street's.
+        own = feature("st", [(-77.0205, 38.90001), (-77.0095, 38.90001)], 5000, "locality", "ddot")
+        assert conflate(ways, [own], freeway={2}, layers={1: 0, 2: 2}).matched[1].aadt == 5000
