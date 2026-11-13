@@ -4809,8 +4809,9 @@ RIDE_OPTIONS = {
     "depart_at": {
         "type": "string",
         "description": (
-            "Transit ride types only: ISO 8601 departure time; the bike legs are planned for its"
-            " traffic and closures too, unless `when` says otherwise. Absent: now."
+            "ISO 8601 departure time, any ride type but bikeshare and rebalance (planned from the"
+            " docks now): transit timetables for that day, and the ride's traffic and closures"
+            " at that moment, unless `when` says otherwise. Absent: now."
         ),
     },
     "transit_option": {

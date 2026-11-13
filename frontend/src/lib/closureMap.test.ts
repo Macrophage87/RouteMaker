@@ -187,7 +187,7 @@ test("Go and a ride ask for the closures known to be on; Plan keeps DDOT's permi
   assert.match(app, /goNow \? \{ \.\.\.timed, closuresNow: true \}/);
   // Start ride, from Go or Plan, and a ride's re-plans.
   assert.match(app, /nowOnly = !!planDials\.closuresNow \|\| why === "ride"/);
-  assert.match(app, /rideDials\(\{ \.\.\.planDials, closuresNow: true \}/);
+  assert.match(app, /rideDials\(\{ \.\.\.planDials, closuresNow: true, startAt: undefined \}/);
   // Switching views keeps the route: the plan's key leaves closuresNow out.
   assert.match(app, /const \{ closuresNow: _now, \.\.\.keyed \} = planDials;/);
 });

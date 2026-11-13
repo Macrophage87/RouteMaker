@@ -47,13 +47,17 @@ export function startMs(wall: string | undefined | null): number | null {
   const m = wall ? WALL.exec(wall) : null;
   if (!m) return null;
   const [year, month, day, hour, minute] = m.slice(1).map(Number);
+  const asked = m[0];
   const asUtc = Date.UTC(year, month - 1, day, hour, minute);
   if (Number.isNaN(asUtc)) return null;
-  // The zone's offset (wall clock less UTC) found at the time read as UTC, then again at the moment that gives, which
-  // settles it across a change of clocks.
+  // The zone's offset (wall clock less UTC) a day before and a day after: the earlier where it gives this wall clock
+  // (a repeated hour in November is its first), else the later; an hour skipped in March takes the earlier, as the
+  // API's Python reads it (fold 0), so page and plan agree.
   const offset = (ms: number) => Date.parse(`${wallClock(ms)}:00Z`) - ms;
-  const first = asUtc - offset(asUtc);
-  return asUtc - offset(first);
+  const before = asUtc - offset(asUtc - 86_400_000);
+  if (wallClock(before) === asked) return before;
+  const after = asUtc - offset(asUtc + 86_400_000);
+  return wallClock(after) === asked ? after : before;
 }
 
 /** Our default when the rider first picks Leave at (unmeasured): the next whole hour. */
@@ -86,7 +90,7 @@ export function startShort(ms: number, locale?: string): string {
   }).format(new Date(ms));
 }
 
-/** The arrival as a screen reader hears it with a start set (Plan only; English and Spanish, as Plan's words are). */
-export function startArrivalSaid(time: string): string {
-  return t("arriving about {time} at the start time you set", { time });
+/** The arrival as a screen reader hears it with a start set, "{start}" as startShort says it (Plan only; English and Spanish, as Plan's words are). */
+export function startArrivalSaid(time: string, start: string): string {
+  return t("arriving about {time} if you leave {start}", { time, start });
 }

@@ -282,7 +282,7 @@ import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
 import { leaveNowArriveMs } from "./lib/arrival.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
-import { offersStartTime, startMs } from "./lib/startTime.ts";
+import { fitStart, offersStartTime, startMs } from "./lib/startTime.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
@@ -618,10 +618,12 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- on the change of view only
   }, [mode]);
   // Go always plans from now (the owner, 2026-11-13): coming into Go drops Plan's start time, so its Ride settings
-  // line never says a time it is not planning for.
+  // line never says a time it is not planning for. In Plan, a start that has come and gone falls back to Now.
+  const startClock = useMinute(Boolean(dials.startAt));
   useEffect(() => {
-    if (mode === "go") setDials((now) => (now.startAt ? { ...now, startAt: undefined } : now));
-  }, [mode]);
+    if (!dials.startAt) return;
+    if (mode === "go" || fitStart(dials.startAt, startClock) === undefined) setDials((now) => ({ ...now, startAt: undefined }));
+  }, [mode, dials.startAt, startClock]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
   // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
   // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
@@ -4066,7 +4068,8 @@ export function App() {
     const onFixed = !rest && fixedLine.current !== null && route.geometry.coordinates === fixedLine.current;
     const fixed = fixedRide(leg, opened ?? (onFixed ? { ride: true } : null), !!rest);
     setResumeStats(null);
-    const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
+    // A ride is now: Plan's start time (lib/startTime.ts) never goes with it into its re-plans.
+    const rideDialsNow = rideDials({ ...planDials, closuresNow: true, startAt: undefined }, rest ? null : route);
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts): a Bikeshare or transit trip
     // whole, its leg worked out again at Resume (Stephen 2026-11-04: on the train, switching apps "terminated the route
     // without offering a resume"), and Ride the rest; a detour from Roam is not.
@@ -5465,7 +5468,8 @@ export function App() {
       window.setTimeout(() => roamingNow.current && announce(keyless ? BROADCAST_NO_KEY : BROADCAST_FOLLOWING), START_NOTE_MS);
     }
   }, [sharedFollow, roamFollow]);
-  // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
+  // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now
+  // (or at Plan's start time).
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
   const minute = useMinute(shown !== null && !riding && (mode === "plan" || mode === "go"));
   const lightKept = useRef<LightMark[]>([]);
@@ -5476,7 +5480,7 @@ export function App() {
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
   }, [shown, minute, dials.when, startsMs]);
-  // The route's arrival leaving now, after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
+  // The route's arrival leaving now (or at Plan's start time), after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
   const arriveMs = leaveNowArriveMs(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
   // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows. Not

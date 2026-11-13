@@ -246,7 +246,7 @@ const WHEN_HOW =
   t("On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.");
 
 /** Leave at, behind the same (i), in Plan only. */
-const START_HOW = t("Leave at plans the ride for a day and start time: the closures in force then, that day's transit timetable, and sunrise and sunset along the way. The arrival time is for leaving then.");
+const START_HOW = t("Leave at plans for that day and time: its closures, transit times and daylight.");
 
 function whenLabel(when: When): string {
   return WHENS.find((option) => option.id === when)?.label ?? when;

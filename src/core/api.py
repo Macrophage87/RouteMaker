@@ -6060,7 +6060,8 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
     answered within its life (`core.route_cache`, v0.7.0 "Faster routing" step 5), else
     planned and kept there where it may be."""
     timings = timing.current()
-    when = body.when or routing.default_when()
+    # The dials' ride time where they have one: a start time's (`_bike_dials`), not now's.
+    when = dials.when or body.when or routing.default_when()
     key = route_cache.key_for(
         body.model_dump(mode="json"),
         when,

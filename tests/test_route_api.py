@@ -30,7 +30,7 @@ from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
 from core import presets, refine, route_hazards, routing, segment_info
-from routemaker import calm, flow
+from routemaker import calm, flow, ridetime
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -3660,12 +3660,22 @@ class TestStartTime:
         days = (5 - local.weekday()) % 7 or 7
         return (local + timedelta(days=days)).replace(hour=10, minute=0, second=0, microsecond=0)
 
+    def other_kind_of_day(self) -> tuple[datetime, str]:
+        """A start whose ride time differs from now's: Saturday morning from a weekday, else a
+        Wednesday at 11 PM (night on any day, holiday or not)."""
+        local = timezone.now().astimezone(ZoneInfo("America/New_York"))
+        if ridetime.when_at(local) != "weekend":
+            return self.saturday_morning(), "weekend"
+        days = (2 - local.weekday()) % 7 or 7
+        at = (local + timedelta(days=days)).replace(hour=23, minute=0, second=0, microsecond=0)
+        return at, "night"
+
     def test_a_bike_plan_takes_a_start_time(self, client, segments, router) -> None:
         router(standard_router())
-        at = self.saturday_morning()
+        at, expected = self.other_kind_of_day()
         response = post(client, {**good_body(), "depart_at": at.isoformat()})
         assert response.status_code == 200, response.content
-        assert response.json()["dials"]["when"] == "weekend"
+        assert response.json()["dials"]["when"] == expected
 
     def test_the_riders_own_when_stands(self, client, segments, router) -> None:
         router(standard_router())
