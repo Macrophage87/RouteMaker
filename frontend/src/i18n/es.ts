@@ -115,6 +115,8 @@ export const ES: Readonly<Record<string, string>> = {
   "You have reached stop {stop}, {name}.": "Ha llegado a la parada {stop}, {name}.",
   "You have reached stop {stop}.": "Ha llegado a la parada {stop}.",
   "In {distance}, {cue}": "En {distance}, {cue}",
+  "In about {distance}, {cue}": "En unos {distance}, {cue}",
+  "About here: {cue}": "Más o menos aquí: {cue}",
   "{n} feet": "{n} pies",
   "1 mile": "1 milla",
   "{n} miles": "{n} millas",

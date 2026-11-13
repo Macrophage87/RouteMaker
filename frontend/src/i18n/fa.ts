@@ -106,6 +106,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have reached stop {stop}, {name}.": "به توقف {stop}، {name} رسیده‌اید.",
   "You have reached stop {stop}.": "به توقف {stop} رسیده‌اید.",
   "In {distance}, {cue}": "در {distance} دیگر، {cue}",
+  "In about {distance}, {cue}": "حدود {distance} دیگر، {cue}",
+  "About here: {cue}": "تقریباً اینجا: {cue}",
   "{n} feet": "{n} فوت",
   "1 mile": "1 مایل",
   "{n} miles": "{n} مایل",

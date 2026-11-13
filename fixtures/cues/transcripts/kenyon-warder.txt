@@ -57,7 +57,7 @@
    77 s    413 m  #1 left Warder St NW advance: "In 500 feet, left onto Warder Street Northwest." -> said
    95 s    510 m  #1 left Warder St NW prepare: "In 170 feet, left onto Warder Street Northwest." -> said
   102 s    547 m  #1 left Warder St NW now (urgent): "Left now onto Warder Street Northwest." -> said
-  136 s           note: "GPS is weak: turn cues paused."
+  154 s           note: "GPS is weak: turn cues paused."
   205 s   1100 m  #2 left Quebec Pl NW advance: "In 500 feet, left onto Quebec Place Northwest, then immediately right onto the service road, then immediately left to stay on the service road." -> said
   223 s   1196 m  #2 left Quebec Pl NW prepare: "In 160 feet, left, then immediately right, then immediately left." -> said
   230 s   1234 m  #2 left Quebec Pl NW now (urgent): "Left now onto Quebec Place Northwest." -> said

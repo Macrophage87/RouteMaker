@@ -32,7 +32,7 @@
   246 s    880 m  #5 left unnamed Rd advance: "In 500 feet, cross the road, then left to stay on the path. Busy junction." -> said
   276 s    987 m  #5 left unnamed Rd prepare: "In 140 feet, cross the road, then left." -> said
   284 s   1016 m  #5 left unnamed Rd now (urgent): "Cross the road now." -> said
-  288 s   1030 m  #6 left Path now (urgent): "Left now." -> said
+  288 s   1030 m  #6 left Path now (urgent): "Left now." -> said, cut 0.7 s in
   289 s   1034 m  #7 stop arrive (urgent): "You have reached stop 1. Destination on your right." -> said
   290 s   1037 m  #8 left 7th St SE prepare: "In 120 feet, left onto 7th Street Southeast." -> held 2.9 s
   297 s   1062 m  #8 left 7th St SE now (urgent): "Left now onto 7th Street Southeast." -> said
@@ -42,13 +42,14 @@
   562 s   2010 m  #10 left 4th St SE advance: "In 500 feet, left onto 4th Street Southeast." -> said
   592 s   2117 m  #10 left 4th St SE prepare: "In 140 feet, left onto 4th Street Southeast." -> said
   600 s   2146 m  #10 left 4th St SE now (urgent): "Left now onto 4th Street Southeast." -> said
-  601 s   2149 m  #11 right M St SE Cycletrack advance: "In 450 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 1.8 s
+  601 s   2149 m  #11 right M St SE Cycletrack advance: "In 450 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 2.0 s
   627 s   2242 m  #11 right M St SE Cycletrack prepare: "In 140 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> said
   635 s   2271 m  #11 right M St SE Cycletrack now (urgent): "Cross M Street Southeast now, then right onto M Street Southeast Cycletrack." -> said
   675 s   2414 m  #12 uturn M St SE Cycletrack advance: "In 500 feet, make a U-turn." -> said
   705 s   2521 m  #12 uturn M St SE Cycletrack prepare: "In 140 feet, make a U-turn." -> said
   713 s   2550 m  #12 uturn M St SE Cycletrack now (urgent): "Make a U-turn now." -> said
   730 s   2611 m  #13 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! cut at 1035 m (#6): "Left now." cut off 0.7 s in by #7's arrive
   ! late at 1075 m (#8): Left onto 7th Street Southeast. first said 7.4 s before the turn
 
 ## capitol-hill-stop at 12 mph, steady
@@ -67,7 +68,7 @@
   164 s    880 m  #5 left unnamed Rd advance: "In 500 feet, cross the road, then left to stay on the path. Busy junction." -> said
   182 s    976 m  #5 left unnamed Rd prepare: "In 170 feet, cross the road, then left." -> said
   190 s   1019 m  #5 left unnamed Rd now (urgent): "Cross the road now." -> said
-  193 s   1035 m  #6 left Path now (urgent): "Left now." -> said
+  193 s   1035 m  #6 left Path now (urgent): "Left now." -> said, cut 0.7 s in
   194 s   1041 m  #7 stop arrive (urgent): "You have reached stop 1. Destination on your right." -> said
   195 s   1046 m  #8 left 7th St SE prepare: "In 100 feet, left onto 7th Street Southeast." -> dropped
   198 s   1062 m  #8 left 7th St SE now (urgent): "Left now onto 7th Street Southeast." -> said
@@ -77,13 +78,14 @@
   375 s   2012 m  #10 left 4th St SE advance: "In 500 feet, left onto 4th Street Southeast." -> said
   393 s   2108 m  #10 left 4th St SE prepare: "In 170 feet, left onto 4th Street Southeast." -> said
   400 s   2146 m  #10 left 4th St SE now (urgent): "Left now onto 4th Street Southeast." -> said
-  401 s   2151 m  #11 right M St SE Cycletrack advance: "In 450 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 1.8 s
+  401 s   2151 m  #11 right M St SE Cycletrack advance: "In 450 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 2.0 s
   416 s   2232 m  #11 right M St SE Cycletrack prepare: "In 170 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> said
   424 s   2275 m  #11 right M St SE Cycletrack now (urgent): "Cross M Street Southeast now, then right onto M Street Southeast Cycletrack." -> said
   450 s   2414 m  #12 uturn M St SE Cycletrack advance: "In 500 feet, make a U-turn." -> said
   468 s   2511 m  #12 uturn M St SE Cycletrack prepare: "In 170 feet, make a U-turn." -> said
   476 s   2553 m  #12 uturn M St SE Cycletrack now (urgent): "Make a U-turn now." -> said
   487 s   2613 m  #13 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! cut at 1035 m (#6): "Left now." cut off 0.7 s in by #7's arrive
 
 ## capitol-hill-stop at 18 mph, steady
     0 s      0 m  #0 left 7th St SE prepare: "In 60 feet, left onto 7th Street Southeast." -> said, cut 0.7 s in
@@ -101,7 +103,7 @@
   101 s    813 m  #5 left unnamed Rd advance: "In 700 feet, cross the road, then left to stay on the path. Busy junction." -> said
   118 s    950 m  #5 left unnamed Rd prepare: "In 250 feet, cross the road, then left." -> said
   126 s   1014 m  #5 left unnamed Rd now (urgent): "Cross the road now." -> said
-  129 s   1038 m  #6 left Path now (urgent): "Left now." -> said
+  129 s   1038 m  #6 left Path now (urgent): "Left now." -> said, cut 0.7 s in
   130 s   1046 m  #7 stop arrive (urgent): "You have reached stop 1. Destination on your right." -> said, cut 1.7 s in
   131 s   1054 m  #8 left 7th St SE prepare: "In 70 feet, left onto 7th Street Southeast." -> dropped
   132 s   1062 m  #8 left 7th St SE now (urgent): "Left now onto 7th Street Southeast." -> said
@@ -111,13 +113,14 @@
   242 s   1947 m  #10 left 4th St SE advance: "In 700 feet, left onto 4th Street Southeast." -> said
   259 s   2084 m  #10 left 4th St SE prepare: "In 250 feet, left onto 4th Street Southeast." -> said
   267 s   2148 m  #10 left 4th St SE now (urgent): "Left now onto 4th Street Southeast." -> said
-  268 s   2157 m  #11 right M St SE Cycletrack advance: "In 400 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 1.8 s
-  274 s   2205 m  #11 right M St SE Cycletrack prepare: "In 250 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 2.2 s, cut 5.5 s in
+  268 s   2157 m  #11 right M St SE Cycletrack advance: "In 400 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 2.0 s
+  274 s   2205 m  #11 right M St SE Cycletrack prepare: "In 250 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 2.6 s, cut 5.1 s in
   282 s   2269 m  #11 right M St SE Cycletrack now (urgent): "Cross M Street Southeast now, then right onto M Street Southeast Cycletrack." -> said
   292 s   2350 m  #12 uturn M St SE Cycletrack advance: "In 700 feet, make a U-turn." -> said
   309 s   2486 m  #12 uturn M St SE Cycletrack prepare: "In 250 feet, make a U-turn." -> said
   317 s   2551 m  #12 uturn M St SE Cycletrack now (urgent): "Make a U-turn now." -> said
   325 s   2615 m  #13 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! cut at 1035 m (#6): "Left now." cut off 0.7 s in by #7's arrive
   ! cut at 1052 m (#7): "You have reached stop 1. Destination on your right." cut off 1.7 s in by #8's now
 
 ## capitol-hill-stop at 12 mph, missed-turn
@@ -152,18 +155,18 @@
   164 s    880 m  #5 left unnamed Rd advance: "In 500 feet, cross the road, then left to stay on the path. Busy junction." -> said
   182 s    976 m  #5 left unnamed Rd prepare: "In 170 feet, cross the road, then left." -> said
   190 s   1019 m  #5 left unnamed Rd now (urgent): "Cross the road now." -> said
-  192 s   1030 m  #6 left Path now (urgent): "Left now." -> said
+  192 s   1030 m  #6 left Path now (urgent): "Left now." -> said, cut 0.7 s in
   193 s   1035 m  #7 stop arrive (urgent): "You have reached stop 1. Destination on your right." -> said
   194 s   1041 m  #8 left 7th St SE prepare: "In 110 feet, left onto 7th Street Southeast." -> held 2.9 s, cut 0.8 s in
   198 s   1062 m  #8 left 7th St SE now (urgent): "Left now onto 7th Street Southeast." -> said
-  257 s           note: "GPS is weak: turn cues paused."
+  275 s           note: "GPS is weak: turn cues paused."
   304 s   1631 m  #9 right L St SE advance: "In 500 feet, right onto L Street Southeast." -> said
   322 s   1727 m  #9 right L St SE prepare: "In 160 feet, right onto L Street Southeast." -> said
   329 s   1765 m  #9 right L St SE now (urgent): "Right now onto L Street Southeast." -> said
   375 s   2012 m  #10 left 4th St SE advance: "In 500 feet, left onto 4th Street Southeast." -> said
   393 s   2108 m  #10 left 4th St SE prepare: "In 170 feet, left onto 4th Street Southeast." -> said
   400 s   2146 m  #10 left 4th St SE now (urgent): "Left now onto 4th Street Southeast." -> said
-  401 s   2151 m  #11 right M St SE Cycletrack advance: "In 450 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 1.8 s
+  401 s   2151 m  #11 right M St SE Cycletrack advance: "In 450 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> held 2.0 s
   416 s   2232 m  #11 right M St SE Cycletrack prepare: "In 170 feet, cross M Street Southeast, then right onto M Street Southeast Cycletrack." -> said
   424 s   2275 m  #11 right M St SE Cycletrack now (urgent): "Cross M Street Southeast now, then right onto M Street Southeast Cycletrack." -> said
   450 s   2414 m  #12 uturn M St SE Cycletrack advance: "In 500 feet, make a U-turn." -> said

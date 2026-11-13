@@ -88,12 +88,12 @@
     5 s     40 m  #0 right 20th St NW Cycletrack advance: "In 700 feet, right onto 20th Street Northwest Cycletrack." -> said
    20 s    161 m  #0 right 20th St NW Cycletrack prepare: "In 250 feet, right onto 20th Street Northwest Cycletrack." -> said
    28 s    225 m  #0 right 20th St NW Cycletrack now (urgent): "Right now onto 20th Street Northwest Cycletrack." -> said
-   29 s    233 m  #1 crossing New Hampshire Ave NW prepare: "In 250 feet, cross New Hampshire Avenue Northwest." -> held 2.7 s
+   29 s    233 m  #1 crossing New Hampshire Ave NW prepare: "In 250 feet, cross New Hampshire Avenue Northwest." -> held 2.9 s
    61 s    491 m  #2 crossing M St NW prepare: "In 250 feet, cross M Street Northwest." -> said
    70 s    563 m  #3 left L St NW advance: "In 700 feet, cross 20th Street Northwest, then left onto L Street Northwest." -> said
    87 s    700 m  #3 left L St NW prepare: "In 250 feet, cross 20th Street Northwest, then left onto L Street Northwest." -> said
    95 s    764 m  #3 left L St NW now (urgent): "Cross 20th Street Northwest now, then left onto L Street Northwest." -> said
-   98 s    789 m  #5 hazard advance: "In 700 feet, busy crossing, no signal." -> held 2.1 s
+   98 s    789 m  #5 hazard advance: "In 700 feet, busy crossing, no signal." -> held 2.3 s
   103 s    829 m  #4 crossing 19th St NW prepare: "In 250 feet, cross 19th Street Northwest." -> held 3.0 s, as "In 200 feet, cross 19th Street Northwest."
   122 s    982 m  #6 crossing 18th St NW prepare: "In 250 feet, cross 18th Street Northwest." -> said
   139 s   1118 m  #7 crossing Connecticut Ave NW prepare: "In 250 feet, cross Connecticut Avenue Northwest." -> said
@@ -147,7 +147,7 @@
   248 s   1330 m  #8 left 17th St NW bike Ln now (urgent): "Cross 17th Street Northwest now, then left onto 17th Street Northwest bike lane." -> said
   279 s   1497 m  #9 crossing M St NW prepare: "In 160 feet, cross M Street Northwest." -> said
   298 s   1599 m  #10 crossing Rhode Island Ave NW prepare: "In 170 feet, cross Rhode Island Avenue Northwest." -> said
-  321 s           note: "GPS is weak: turn cues paused."
+  339 s           note: "GPS is weak: turn cues paused."
   362 s   1942 m  #12 crossing P St NW prepare: "In 170 feet, cross P Street Northwest." -> said
   436 s   2339 m  #13 left S St NW advance: "In 500 feet, left onto S Street Northwest." -> said
   454 s   2435 m  #13 left S St NW prepare: "In 170 feet, left onto S Street Northwest." -> said
