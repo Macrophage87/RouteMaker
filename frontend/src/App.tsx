@@ -352,7 +352,7 @@ const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => 
 const CheckRoute = later(() => import("./CheckRoute.tsx").then((m) => m.CheckRoute));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
-import { BARRIER_PRESETS, barrierAvoidFor, barrierAvoidPoints, barrierAvoidSaid, toggleBarrierAvoid, type BarrierAvoid } from "./lib/barriers.ts";
+import { BARRIER_PRESETS, NO_BARRIERS, barrierAvoidFor, barrierAvoidPoints, barrierAvoidSaid, toggleBarrierAvoid, type BarrierAvoid } from "./lib/barriers.ts";
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 const RideGroup = later(() => import("./RideGroup.tsx").then((m) => m.RideGroup));
 const RoamMode = later(() => import("./RoamMode.tsx").then((m) => m.RoamMode));
@@ -3074,7 +3074,7 @@ export function App() {
     if (action.kind !== "route" || twoPointsOnly(ridePreset)) return;
     const ends: LonLat[] = [action.point, dest];
     if (spanKm(ends) > GO_EARLY_MAX_KM) return;
-    const { closureBypass: _bypass, ...kept } = planDialsNow.current;
+    const { closureBypass: _bypass, barrierAvoid: _avoid, ...kept } = planDialsNow.current;
     const asked = { dials: { ...kept, loop: false }, quick: true };
     earlyStart.current?.start(routeRequestBody(ends, ridePreset, asked), () => requestRoute(ends, ridePreset, asked));
   };
@@ -7021,8 +7021,9 @@ export function App() {
         letteredShown={riding || (roaming && roamLettered) ? null : letteredShown}
         letteredRefit={letteredRefit}
         stopActionFor={stopActionFor}
-        barrierAvoided={barrierAvoided}
-        onBarrierAvoid={(item, on) => {
+        // Not on a ride: its re-plans use the dials it started with, so a press there would change nothing.
+        barrierAvoided={riding ? NO_BARRIERS : barrierAvoided}
+        onBarrierAvoid={riding ? undefined : (item, on) => {
           setBarrierAvoid((now) => toggleBarrierAvoid(now, bypassPlan, item, on));
           // One press plans again, in Plan too: the card says "Planning again".
           setRouteAsk((n) => n + 1);

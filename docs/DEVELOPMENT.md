@@ -5183,8 +5183,10 @@ map". No map rebuild and no new control.
   "Undo: go through it"; one still on the route turns red, its card saying "No way round
   found.". Impassable ones have no button: they are planned round already. Per plan (start and
   end), request only, never in a link, as "Route through anyway" is for a closure. Ordinary
-  bollards are never left out unasked (the owner, 2026-11-13: most are fine). Ten more phrases,
-  drafted in every language.
+  bollards are never left out unasked (the owner, 2026-11-13: most are fine). During a ride the
+  card has no button (a ride re-plans with the dials it started with). An open card stays open
+  across a new route while its barrier is still marked, and after Go around or Undo the focus
+  goes to that barrier's new button. Ten more phrases, drafted in every language.
 - **Coverage.** `scripts/barrier_census.py` (without `--json`) prints how much of this OSM
   records: barriers by kind with readable `maxwidth`, a width under another key only, what the
   remap does with each, kerbs, steps and their ramps, walk stretches and trail access points.

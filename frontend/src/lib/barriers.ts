@@ -117,7 +117,9 @@ export function sameBarrier(a: Pick<BarrierItem, "lon" | "lat">, b: Pick<Barrier
   return Math.abs(a.lon - b.lon) < 5e-7 && Math.abs(a.lat - b.lat) < 5e-7;
 }
 
-const NONE: readonly BarrierItem[] = Object.freeze([]);
+/** No barriers gone round: one list, so a map effect keyed on it does not run again on every render. */
+export const NO_BARRIERS: readonly BarrierItem[] = Object.freeze([]);
+const NONE = NO_BARRIERS;
 
 /** The barriers gone round on this plan: none where they were chosen on another (the same empty list each time, so a
  * map effect keyed on it does not run again on every render). */

@@ -9,7 +9,9 @@ import {
   barrierLayer,
   barrierMarkName,
   barrierMarks,
+  sameBarrier,
   type BarrierCard,
+  type BarrierMark,
 } from "./lib/barriers.ts";
 import type { BarrierItem } from "./lib/api.ts";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
@@ -2556,8 +2558,14 @@ export function MapView(props: Props) {
   // reaches and a screen reader names, which opens its card: what it is, what is known of it, and "Go around" or Undo.
   const barrierButtons = useRef<Marker[]>([]);
   const barrierPopup = useRef<Popup | null>(null);
+  // The barrier whose card is open, kept open across a new route while that barrier is still marked (Go's quick route
+  // swapped for the full plan must not close it); and the barrier whose Go around or Undo was pressed, whose new
+  // button takes the focus once the marks are drawn again.
+  const barrierOpen = useRef<BarrierItem | null>(null);
+  const barrierFocus = useRef<BarrierItem | null>(null);
   useEffect(() => {
     const map = mapRef.current;
+    const wasOpen = barrierPopup.current ? barrierOpen.current : null;
     barrierPopup.current?.remove();
     barrierPopup.current = null;
     barrierButtons.current.forEach((marker) => marker.remove());
@@ -2566,6 +2574,25 @@ export function MapView(props: Props) {
     const route = props.stale ? null : (props.route ?? null);
     const avoided = props.barrierAvoided ?? [];
     (map.getSource(BARRIER_SOURCE) as GeoJSONSource | undefined)?.setData(barrierFeatures(route, avoided) as never);
+    const open = (mark: BarrierMark, element: HTMLButtonElement) => {
+      barrierPopup.current?.remove();
+      // No button where nothing would take it (a ride: its route is planned from the dials it started with).
+      const card = barrierCard(mark.item, mark.avoided, mark.onRoute);
+      const shown = callbacks.current.onBarrierAvoid ? card : { ...card, action: null };
+      const popup = showBarrierCard(map, [mark.item.lon, mark.item.lat], shown, (avoid) => {
+        barrierFocus.current = mark.item;
+        popup.remove();
+        callbacks.current.onBarrierAvoid?.(mark.item, avoid);
+      });
+      barrierPopup.current = popup;
+      barrierOpen.current = mark.item;
+      const cardElement = popup.getElement();
+      popup.on("close", () => {
+        if (barrierPopup.current === popup) barrierPopup.current = null;
+        const active = document.activeElement;
+        if (element.isConnected && (!active || active === document.body || cardElement.contains(active))) element.focus();
+      });
+    };
     for (const mark of barrierMarks(route, avoided)) {
       const element = document.createElement("button");
       element.type = "button";
@@ -2576,20 +2603,14 @@ export function MapView(props: Props) {
       element.addEventListener("click", (event) => {
         // A press on a mark is not a press on the map: it must not add a point.
         event.stopPropagation();
-        barrierPopup.current?.remove();
-        const popup = showBarrierCard(map, [mark.item.lon, mark.item.lat], barrierCard(mark.item, mark.avoided, mark.onRoute), (avoid) => {
-          popup.remove();
-          callbacks.current.onBarrierAvoid?.(mark.item, avoid);
-        });
-        barrierPopup.current = popup;
-        const card = popup.getElement();
-        popup.on("close", () => {
-          if (barrierPopup.current === popup) barrierPopup.current = null;
-          const active = document.activeElement;
-          if (element.isConnected && (!active || active === document.body || card.contains(active))) element.focus();
-        });
+        open(mark, element);
       });
       barrierButtons.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat([mark.item.lon, mark.item.lat]).addTo(map));
+      if (wasOpen && sameBarrier(wasOpen, mark.item)) open(mark, element);
+      else if (barrierFocus.current && sameBarrier(barrierFocus.current, mark.item)) {
+        barrierFocus.current = null;
+        element.focus();
+      }
     }
   }, [props.route, props.stale, props.barrierAvoided]);
 
