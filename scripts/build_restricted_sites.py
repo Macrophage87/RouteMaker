@@ -18,8 +18,9 @@ One GeoJSON FeatureCollection, `frontend/src/restricted-data/restricted-sites.js
 - a Polygon or MultiPolygon per site, `{"site": id, "kind": "military" | "secured", "name": ...}`,
   simplified to SIMPLIFY_DEG; a site under MIN_SHADE_M2 is left out (our default: a recruiting
   office or an armory's yard is no campus anyone wonders about);
-- a Point per labelled site, `{"site": id, "name": ...}`: a named site of LABEL_MIN_M2 or more
-  (our default), at a point inside it (shapely's representative point);
+- a Point per piece of a named site, `{"site": id, "name": ..., "small"?: true}`, at a point
+  inside the piece (shapely's representative point): `small` when the piece is under
+  LABEL_MIN_M2 (our default), which the map names only close in;
 - a Point per gate, `{"gate": id}`: where a road the rule closes meets a way open to bicycles (a
   shared node), so the place a route can reach and go no further. A site with no such road
   gate takes the meeting points of its closed paths instead;
@@ -62,9 +63,9 @@ OUT = REPO / "frontend" / "src" / "restricted-data" / "restricted-sites.json"
 # labelled; no gates, so a trip point inside one is routed as before.
 DRAWN = REPO / "fixtures" / "restricted-sites"
 
-# Our defaults, unmeasured: shade a site of half a hectare or more; label a named one of a
-# quarter of a square kilometre or more (Goddard's main campus is about 4 km2, the Rowley
-# Training Center about 2).
+# Our defaults, unmeasured: shade a site of half a hectare or more; name a piece of a quarter of
+# a square kilometre or more from a city view, a smaller one only close in (Goddard's main campus
+# is about 4 km2, the Rowley Training Center about 2, the Marine Barracks' blocks about 0.03).
 MIN_SHADE_M2 = 5_000.0
 LABEL_MIN_M2 = 250_000.0
 # About 5 m (our default): the shading is a wash over the site, not its fence line.
@@ -241,6 +242,39 @@ def gates_and_open_ways(
     return gates, lines
 
 
+def part_m2(part) -> float:
+    """A shapely Polygon's area in square metres (`ring_m2`), its holes taken out."""
+    return max(
+        ring_m2(list(part.exterior.coords)[:-1])
+        - sum(ring_m2(list(r.coords)[:-1]) for r in part.interiors),
+        0.0,
+    )
+
+
+def label_features(osm: str, name: str, shape) -> list[dict]:
+    """A label Point per separate piece of a named site, at a point inside the piece, so an
+    exclave (the Marine Barracks' blocks, an outlying lab) is named where it is. A piece under
+    LABEL_MIN_M2 is marked `small`: the map names it only close in (`lib/restrictedSites.ts`).
+    The owner, 2026-11-13, of hatched blocks on Capitol Hill with no name: "some of the exclaves
+    are unlabeled"."""
+    out: list[dict] = []
+    for part in getattr(shape, "geoms", [shape]):
+        if part.is_empty:
+            continue
+        spot = part.representative_point()
+        props: dict = {"site": osm, "name": name}
+        if part_m2(part) < LABEL_MIN_M2:
+            props["small"] = True
+        out.append(
+            {
+                "type": "Feature",
+                "properties": props,
+                "geometry": {"type": "Point", "coordinates": _round((spot.x, spot.y))},
+            }
+        )
+    return out
+
+
 def _round(p: Iterable[float]) -> list[float]:
     return [round(float(v), PLACES) for v in p]
 
@@ -271,15 +305,8 @@ def collection(areas: dict, ways: Sequence) -> dict:
         if name:
             props["name"] = name
         features.append({"type": "Feature", "properties": props, "geometry": geometry})
-        if name and area_m2(area) >= LABEL_MIN_M2:
-            spot = shape.representative_point()
-            features.append(
-                {
-                    "type": "Feature",
-                    "properties": {"site": osm, "name": name},
-                    "geometry": {"type": "Point", "coordinates": _round((spot.x, spot.y))},
-                }
-            )
+        if name:
+            features.extend(label_features(osm, name, shape))
         for gate in gates.get(osm, []):
             features.append(
                 {
