@@ -115,6 +115,29 @@ def test_the_published_count_is_the_agencys_not_the_median(tmp_path, monkeypatch
     assert kept.unsmoothed_tier is None
 
 
+def test_the_junction_is_still_read_on_the_raw_count(tmp_path, monkeypatch) -> None:
+    """The owner's reason for lower-only smoothing (303): "In most cases, the smoothing
+    is probably bunching by the intersection. Given that our routing is a sum of
+    intersection stress and route stress, we don't want to double count." So the link
+    stops paying for the bunched count and the junction keeps reading it: the block (read
+    here with two lanes each way at 30 mph, `four_lanes`) is LTS 3 as a link, the tier on
+    the agency's own count is kept beside it, and the crossing is read on that count."""
+    from routemaker.intersections import Road, traffic_level
+
+    context = make_context(tmp_path, monkeypatch)
+    four_lanes(context)
+    classify(context)
+    result = context.stress_by_way[FIRST_ST_WAY]
+    assert result.tier is Stress.LTS3
+    assert result.unsmoothed_tier is Stress.LTS4
+    # What the junction model reads off the segment table (`core.junctions`: the greater
+    # of the two tiers, and `volume_aadt`, the agency's count).
+    facts = {"speed_mph": 25.0, "lanes": 1, "oneway": False}
+    counted = Road(max(int(result.tier), int(result.unsmoothed_tier)), aadt=10665, **facts)
+    assert counted.aadt == result.volume_aadt
+    assert traffic_level(counted) > traffic_level(Road(3, aadt=7520, **facts))
+
+
 def test_the_owner_can_veto_smoothing(tmp_path, monkeypatch) -> None:
     context = make_context(tmp_path, monkeypatch, smooth=False)
     classify(context)
