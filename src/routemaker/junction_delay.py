@@ -5,8 +5,8 @@ Valhalla's bicycle costing (3.9.1, `BicycleCost::TransitionCost`) times a juncti
 going straight: about a second at most for a straight crossing, whatever controls it. A
 real stop costs a rider far more. Fajans and Curry measured riders at a steady effort on
 two parallel San Francisco streets: one stop every 530 ft (California St) against one every
-2,800 ft (Sacramento St) cut the average speed from 14.2 to 10.9 mph, about 7.6 s for each
-extra stop ("Why Bicyclists Hate Stop Signs", ACCESS 18, 2001,
+2,800 ft (Sacramento St) cut the average speed from 14.2 to 10.9 mph, about 9.5 s for each
+extra stop (77 s a mile over about 8 more stops a mile; "Why Bicyclists Hate Stop Signs", ACCESS 18, 2001,
 https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs). So a line through
 twenty stop signs was timed as if it had none, and a route on a grid of all-way stops was
 both timed too quick and preferred over a trail of the same length (the owner's ride of
@@ -118,8 +118,10 @@ from dataclasses import dataclass, replace
 from .intersections import MERGE_WITHIN_M, Movement, time_factor
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
 
-# One full stop and the speed built up again: Fajans and Curry's 14.2 to 10.9 mph at one
-# stop every 530 ft against one every 2,800 ft (see the docstring) is 7.6 s a stop, rounded.
+# One full stop and the speed built up again. Our default, 8 s: Fajans and Curry's 14.2 to
+# 10.9 mph at one stop every 530 ft against one every 2,800 ft (see the docstring) is about
+# 9.5 s a stop (it was misread as 7.6 s until the methodology audit's check, 2026-11-13).
+# CITY_PASS_S and SUBURBAN_PASS_S include it for the share of passes that stopped.
 STOP_DELAY_S = 8.0
 # A signal: the average wait for a rider arriving at random, red squared over twice the
 # cycle (Webster's uniform delay with no queue), at a 100 s cycle with 50 s of red, is
