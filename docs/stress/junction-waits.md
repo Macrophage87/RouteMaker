@@ -23,54 +23,42 @@ methodology audit, section 3.5). Draft PR #1240 changes the signal rules; see "S
 
 ## Signals
 
-At a traffic signal the time shown is the average a rider loses per pass, green passes
-included: 12 seconds at a big city road, 4 to 5 at smaller ones, and 10 to 24 in the
-suburbs, where cycles are longer. The ranking price is a full red, 15 to 30 seconds in the
-cities and 60 to 90 in the suburbs, because the owner chose to rank by the red and show the
-average. **Draft PR #1240 replaces this section**: it splits a city signal by whether the
-rider rides along the big road or crosses it. Its numbers are not described here until it
-merges.
+Written by the thread that owns PR #1240 (the signal split and the measured ride-time
+factor). It describes the signal code as that PR leaves it; until it merges, this branch
+still runs the release's signal figures.
+
+At a traffic light we keep two numbers. The first is the time a route shows you: the average wait per pass, counting the times the light was green. The second is what the route planner weighs when it compares routes: the wait at a red. In the cities both come from the owner's own rides through the District's signals. Crossing a big road from a side street, he stopped at about 4 passes in 10, and a stop lasted about half a minute. Riding along the big road, he stopped at about 2 in 10, and a stop lasted about 25 seconds. So a route that rides along a main road through its lights shows less waiting than one that crosses it at every light. The waits are shorter at night, about two thirds of the usual. Outside the cities, lights are longer (45 seconds across a big road, 30 at others), and the planner counts those reds twice, because long suburban lights are a real pain.
 
 ```mermaid
 flowchart TD
-    A["Signal on the route"] --> B{"Inside DC, Baltimore City,<br/>Alexandria or Arlington?"}
-    B -- yes --> C["Busiest road there:<br/>big / secondary / other"]
-    C --> D["Shown: 12 / 5 / 4 s, by hour<br/>Ranked: 30 / 15 / 20 s"]
-    B -- no --> E{"Crossing or joining<br/>a big road?"}
-    E -- yes --> F["Shown: 24 s<br/>Ranked: 45 s x 2 = 90 s"]
-    E -- no --> G["Shown: 15 or 10 s<br/>Ranked: 30 s x 2 = 60 s"]
+  S[Signal on the route] --> C{In DC, Baltimore City,<br/>Alexandria or Arlington?}
+  C -->|yes| R{Riding along the busiest road,<br/>or crossing onto it?}
+  R -->|along| A[Shown 7.8 s, red 25 s<br/>big road]
+  R -->|crossing| X[Shown 16.9 s, red 29 s<br/>big road]
+  A --> H[x ride-time factor:<br/>night 0.68, weekday 1.15, weekend 1.01]
+  X --> H
+  C -->|no| U[Shown 24 s, red 45 s<br/>big road; red counted twice]
 ```
 
-<details>
-<summary>Full reasoning and citations (for review)</summary>
+<details><summary>Full reasoning and citations (for review)</summary>
 
-As built on `release/v0.26.0`, in `src/routemaker/junction_delay.py`, function
-`signal_wait`. Nothing in this section was changed by the 2026-11-13 junction-wait work.
+- Code: `routemaker.junction_delay.signal_wait`, `city_red_s`, `city_pass_s`; constants `CITY_RED_S`, `CITY_PASS_S`, `CITY_HOUR_FACTOR`, `SUBURBAN_BIG_SIGNAL_S`, `SUBURBAN_SIGNAL_S`, `SUBURBAN_PASS_S`, `SUBURBAN_SIGNAL_WEIGHT`, `STOP_DELAY_S`.
+- Evidence (city): the owner's rides, pulled 2026-11-13 from his Garmin account (2,330 rides; GPS tracks deleted after; only aggregates kept). 92,843 junction passes; 34,156 straight through a DC signal. A pass "stopped" if the rider stood still more than 3 s within 40 m of the junction; stops over 4 minutes left out as breaks. "Busiest road": OSM class at the junction (trunk/primary, secondary, other). Table by ride-time setting: reports/ride-check/junction-test/junction-waits-by-band.csv (project files); scripts: reports/ride-check/code/junction_nodes.py, junction_passes.py, junction_waits_table.py, pull_with_band.py.
 
-| What | Value | Symbol | Label |
-|---|---|---|---|
-| City time shown (big / secondary / other road), no ride time | 12 / 5 / 4 s | `CITY_PASS_S` | measured on our data: a year of the owner's rides, 4,797 / 2,798 / 724 passes, average stopped time per pass plus 8 s for the share that stopped |
-| The same by ride time | night 9 / 4 / 2; rush 15 / 6 / 6; off-peak 14 / 6 / 4; weekend 11 / 4 / 4 s | `CITY_PASS_S` | measured on our data, same passes split by hour |
-| Suburban time shown | 24 / 15 / 10 s | `SUBURBAN_PASS_S` | measured on our data: 489 / 116 / 113 passes |
-| City red, ranked | 30 / 15 / 20 s | `CITY_BIG_SIGNAL_S`, `CITY_SECONDARY_SIGNAL_S`, `CITY_SIGNAL_S` | our default, unmeasured. The code comment says "the owner's city rides", but the measured median red was 19 s at 4 signals |
-| Suburban red, ranked before the weight | 45 s crossing or joining a big road, 30 s otherwise | `SUBURBAN_BIG_SIGNAL_S`, `SUBURBAN_SIGNAL_S` | the owner's choice, 2026-11-08 ("30 is probably more realistic"), on a measured base of 21 suburban signals |
-| Suburban weight | x2 | `SUBURBAN_SIGNAL_WEIGHT` | the owner's choice, 2026-11-08 ("There's a 'pain' factor to waiting at busy roads") |
-| "Averages for time, reds for choice" | | | the owner's choice, 2026-11-08 |
+| City signal | Passes | Signals | Stopped | Median stop (IQR) | Time shown |
+|---|---|---|---|---|---|
+| Crossing a big road | 9,191 | 474 | 42% | 29 s (17-44) | 16.9 s |
+| Along a big road | 9,752 | 914 | 21% | 25 s (13-39) | 7.8 s |
+| Crossing a secondary road | 2,019 | 156 | 39% | 21 s (12-36) | 13.3 s |
+| Along a secondary road | 9,086 | 422 | 19% | 20 s (12-33) | 6.4 s |
+| Crossing another road | 118 | 31 | 28% | 20 s (14-33) | 8.6 s |
+| Along another road | 3,990 | 233 | 28% | 20 s (12-35) | 9.4 s |
 
-A "big" road at a signal is a trunk or primary road by class, or one the junction model
-reads with 4 or more lanes in all or at 40 mph or more (`intersections.big_signal_points`).
-"City" means inside the District, Baltimore City, Alexandria or Arlington
-(`src/core/city_limits.py`).
-
-Known limits, from the audit (areas/07): the pass counts carry no junction count and no
-spread; six ways carry half of all pass-miles, so the true sample is a few dozen junctions;
-the rides are mostly early, which biases waits low. A perception study found riders judge
-a wait about five times longer than it is (Fioreze et al. 2019, below), which is the only
-published support found for ranking a signal above its clock time.
-
-What #1240 changes, by its own description: the along-or-crossing split of a city signal
-from the owner's rides, an hour factor on the ranking, and rebuilt city averages. That
-thread writes this section when it merges.
+- Time shown = mean stopped time per pass + `STOP_DELAY_S` (8 s, one full stop and the speed built up again, from Fajans and Curry's stop-frequency measurements, see the module docstring) x the share that stopped.
+- Ride-time factor: the same signals' time per pass by setting over the average of all settings, the mix held fixed: night (21:00-07:00) 0.68, weekday rush 1.14, weekday off-peak 1.15, weekend 1.01. One factor for every city signal and for both numbers.
+- Owner decisions: "Averages for time, reds for choice" (2026-11-08); suburban reds 45 s and 30 s, counted twice ("There's a 'pain' factor to waiting at busy roads", 2026-11-08); "Split signals, keep give-way" and "make sure to add a time of day penalty like we had earlier" (2026-11-13).
+- Changed 2026-11-13 after the methodology audit (area 07): the red is no longer multiplied by the stop-rate split (it had given 41.4 s and 19.2 s, which no red measured); the hour factor is the measured one, not the stress model's 0.5 / 1.25 / 0.85; the pass count is stated from the table (the earlier "about 85,000" was wrong; the first table summed to 66,511 before ride times were added).
+- Known limits: one rider, mostly early-morning commutes; DC's signals only, applied to Baltimore City, Alexandria and Arlington too; straight-through passes only, so a left turn at a signal is priced as a crossing or riding along by road rank; the suburban figures are from the 2026-11-08 study (718 passes) and take no ride-time factor; the class of a road, not its traffic, decides "busiest" (the audit, area 07, 2.10, is with the junction work).
 
 </details>
 
@@ -405,7 +393,8 @@ choices about junction **stress** (decisions 468a, 469c to 469e), reused; they a
 measured waits. With the formula the request is met by the traffic itself, and the effect
 is larger where it should be: x1.1 at a 4,000-a-day street and x1.9 at a 20,000-a-day
 four-lane road from off-peak to rush. So that factor is not needed for junctions without
-a signal and should be dropped from #1240 when the two meet.
+a signal. #1240's `hour_factor` is by now used only by `_give_way_ranked`; both should be
+deleted when the two branches meet.
 
 **One definition of urban.** The stress model halves a busy junction's cost at night
 where the crossed road lies in a Census urban area (`intersections.Road.urban`, the
@@ -414,11 +403,12 @@ instead, so a crossing in Silver Spring took x0.5 from one model and x0.85 from 
 other. `junction_delay.junction_urban(road_urban, in_city)` is the one rule for any
 ride-time factor in the wait model: the Census flag of the road where it is known; the
 city limits only where it is not; otherwise not urban, as the stress model reads an
-unknown flag. Nothing calls it for junctions without a signal any more. It is there for
-the signal factor in #1240. `intersections.py` has no function of its own for this yet.
+unknown flag. Nothing calls it today: junctions without a signal take the hour through
+traffic, and #1240 settled on one measured factor for city signals and none for suburban
+ones. It stays as the single place to ask the question if a factor by place returns.
+`intersections.py` has no function of its own for this yet.
 
-**Signals** have a measured table by hour for the time shown (`CITY_PASS_S`); on
-`release/v0.26.0` a signal's ranking does not change with the hour.
+**Signals**: see "Signals" above for #1240's measured ride-time factor.
 
 **What would change it.** Hourly counts for the region; hours on the ride data.
 
