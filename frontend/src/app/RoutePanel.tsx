@@ -67,7 +67,7 @@ import {
   type ShareKeep,
   type ShareKeepChoice,
 } from "../lib/sharedRoutes.ts";
-import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "../lib/quickFigures.ts";
+import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts, surfaceGlanceParts } from "../lib/quickFigures.ts";
 import { facilityRows } from "../lib/facilityBar.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
@@ -699,7 +699,7 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
  * hears every share: the bar's name, and the strip's. `line` takes the key's place, or the plain words', where the ride
  * type says it its own way (Group Ride, lib/quickFigures.ts groupRideLine; the audit's P6).
  */
-function StressFigure({ segments, go, line = null }: { segments: StressSegment[]; line?: string | null; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
+function StressFigure({ segments, go, line = null, surface = [] }: { segments: StressSegment[]; line?: string | null; surface?: readonly string[]; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
   const keyHintId = useId();
   // One image to a screen reader, named with each share; the line under it says the same in text.
   const bar = (
@@ -731,6 +731,13 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
             {stressBarKey(segments)}
           </p>
         )}
+        {/* Surface at a glance (Plan item 10): the unpaved riding by kind, where the route has some. */}
+        {surface.length > 0 && (
+          <p className="stress-key surface-line">
+            <span aria-hidden="true">{surface.join(" · ")}</span>
+            <span className="visually-hidden">{`${surface.join(", ")}.`}</span>
+          </p>
+        )}
       </figure>
     );
   }
@@ -745,7 +752,7 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
         ))}
       </div>
     ) : null;
-  const parts = line ? [line] : stressPlainParts(go.route);
+  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route);
   return (
     <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
       <figcaption id="stress-figure-caption" className="visually-hidden">
@@ -1238,7 +1245,7 @@ export function RouteSummary({
       {infoBody}
       {transitFold}
       <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
-      {segments.length > 0 && <StressFigure segments={segments} />}
+      {segments.length > 0 && <StressFigure segments={segments} surface={surfaceGlanceParts(route.stress_spans)} />}
       {alerts}
       {noteList}
       {actions.savedNote}
