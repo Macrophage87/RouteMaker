@@ -28,6 +28,7 @@ class FakeAsk:
         self.refuse = set(refuse)
         self.climb_m = climb_m
         self.asked: list[list[tuple[float, float]]] = []
+        self.payloads: list[dict] = []
 
     def bearing_of(self, points) -> float:
         lon0, lat0 = points[0]
@@ -41,6 +42,7 @@ class FakeAsk:
     def __call__(self, payload: dict, cap_s: float) -> dict:
         points = [(p["lon"], p["lat"]) for p in payload["locations"]]
         self.asked.append(points)
+        self.payloads.append(payload)
         bearing = self.bearing_of(points)
         if bearing in self.refuse:
             raise routing.RouterRefused(400, 442, "no way")
@@ -222,8 +224,12 @@ class TestEndpoint:
         assert 1 <= len(body["shapes"]) <= 3
         assert body["shapes"][0]["via_points"] == [1, 2]
         assert body["tried"] >= 6
-        # Every triangle asked rides the ride type's own costing.
-        assert stand_in.asked
+        # Every triangle asked rides the ride type's own costing, as its plan would.
+        _variant, costing = bike_loop.stoporder.ride_graph("default", routing.Dials(loop=True))
+        assert stand_in.payloads
+        for payload in stand_in.payloads:
+            assert payload["costing"] == "bicycle"
+            assert payload["costing_options"] == costing
 
     def test_the_corners_go_through_and_the_start_breaks(self, client, monkeypatch) -> None:
         seen: list[dict] = []
@@ -294,7 +300,8 @@ class TestEndpoint:
 
         def fake_ask(variant, endpoint, payload, deadline):
             answer, _graph = ask(payload, 1.0)
-            return answer, "paved"
+            # Not the ride type's own graph: the one a twin that is down fell back to.
+            return answer, "fallback-graph"
 
         def fake_trace(variant, costing, shape, deadline):
             traced_on.append(variant)
@@ -313,17 +320,19 @@ class TestEndpoint:
             client, {"start": list(START), "target_distance_m": 10 * MILE, "preset": "road-bike"}
         )
         assert answer.status_code == 200, answer.content
-        assert traced_on and set(traced_on) == {"paved"}
-        assert read_on and set(read_on) == {"paved"}
+        assert traced_on and set(traced_on) == {"fallback-graph"}
+        assert read_on and set(read_on) == {"fallback-graph"}
         assert routing._routed_graph.get() is None
 
     def test_the_roads_the_rider_closed_are_left_out(self, client, monkeypatch) -> None:
         asked_with: list = []
         ask = FakeAsk(factor=1.3)
 
+        ring = [[-77.031, 38.899], [-77.019, 38.899], [-77.019, 38.901], [-77.031, 38.899]]
+
         def exclusions(points, dials, reach_m=0.0):
             asked_with.append(dials.blocked)
-            return []
+            return [ring]
 
         monkeypatch.setattr(bike_loop.stoporder, "_ask", lambda v, e, p, d: ask(p, 1.0))
         monkeypatch.setattr(bike_loop.stoporder, "ride_exclusions", exclusions)
@@ -339,6 +348,10 @@ class TestEndpoint:
             },
         )
         assert asked_with == [(((-77.03, 38.90), (-77.02, 38.90)),)]
+        # The closures that come back, the rider's closed roads among them, reach the router.
+        assert ask.payloads
+        for payload in ask.payloads:
+            assert payload["exclude_polygons"] == [ring]
 
     def test_a_cancelled_search_is_answered_as_cancelled(self, client, monkeypatch) -> None:
         def cancelled(*a, **k):

@@ -17,7 +17,32 @@ import { t } from "./i18n.ts";
 import { isTransit, presetSaid, type PresetId } from "./presets.ts";
 import { stressShares } from "./profileChart.ts";
 import { routeSections, usableSpans, type RouteSection } from "./routeColours.ts";
-import { legsSaid, legsText } from "./transitMarks.ts";
+import { legsSaid, legsText, type LegWords } from "./transitMarks.ts";
+
+/**
+ * A trip's legs in the page's language (the v0.26.0 release review: Go's legs strip was English only). Read when
+ * called, so a language picked later is used. A line's own name stays the agency's ("Red Line", "C53").
+ */
+export function legWords(): LegWords {
+  return {
+    walk: t("Walk"),
+    bike: t("Bike"),
+    bikeshare: t("Bikeshare"),
+    bus: t("Bus"),
+    train: t("Train"),
+    min: (minutes) => t("{min} min", { min: minutes }),
+    minutes: (minutes) => (minutes === 1 ? t("1 minute") : t("{n} minutes", { n: minutes })),
+    or: (a, b) => t("{a} or {b}", { a, b }),
+  };
+}
+
+/** The legs shown ("🚲 5 min · 🔴 Red Line 25 min"), aria-hidden, and said, in the page's language. */
+export function legsShown(legs: Parameters<typeof legsText>[0]): string {
+  return legsText(legs, legWords());
+}
+export function legsSpoken(legs: Parameters<typeof legsSaid>[0]): string {
+  return legsSaid(legs, legWords());
+}
 
 export function transitOf(route: Pick<RouteResponse, "transit"> | null | undefined): TransitPlan | null {
   return route?.transit ?? null;
@@ -121,7 +146,7 @@ export function optionText(
   option: Pick<TransitOption, "label" | "minutes" | "legs" | "hop" | "busy_m">,
   index: number,
 ): string {
-  const what = marked(option) ? legsText(option.legs ?? []) : option.label;
+  const what = marked(option) ? legsShown(option.legs ?? []) : option.label;
   return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: ${t("about {minutes} min", { minutes: option.minutes })}${busyText(option.busy_m, "shown")}`;
 }
 
@@ -151,7 +176,7 @@ export function optionSaid(
   option: Pick<TransitOption, "label" | "minutes" | "legs" | "hop" | "busy_m" | "elevator_out">,
   index: number,
 ): string {
-  const what = marked(option) ? legsSaid(option.legs ?? []) : option.label;
+  const what = marked(option) ? legsSpoken(option.legs ?? []) : option.label;
   const elevator = option.elevator_out ? `; ${ELEVATOR_OUT_SAID}` : "";
   return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: ${t("about {minutes} min", { minutes: option.minutes })}${busyText(option.busy_m, "said")}${elevator}`;
 }

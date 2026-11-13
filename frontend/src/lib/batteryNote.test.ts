@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BATTERY_PLUGIN, batteryNoteDue, openBatterySettings, type Shown } from "./batteryNote.ts";
+import { BATTERY_PLUGIN, batteryNoteDue, markBatteryNoteSeen, openBatterySettings, type Shown } from "./batteryNote.ts";
 import type { CapacitorBridge } from "./nativeShell.ts";
 
 function bridge(answer: unknown, plugins = [BATTERY_PLUGIN]) {
@@ -23,11 +23,13 @@ function memory(): Shown & { value: boolean } {
   return box;
 }
 
-test("shown once, only for an optimised app on a maker known to stop rides", async () => {
+test("shown until dismissed, only for an optimised app on a maker known to stop rides", async () => {
   const shown = memory();
   assert.equal(await batteryNoteDue(bridge({ optimised: true, strictMaker: true }).fake, shown), true);
-  assert.equal(shown.value, true);
-  assert.equal(await batteryNoteDue(bridge({ optimised: true, strictMaker: true }).fake, shown), false, "the first Start ride only");
+  assert.equal(shown.value, false, "not marked until the rider closes it: a line drawn unread comes back");
+  assert.equal(await batteryNoteDue(bridge({ optimised: true, strictMaker: true }).fake, shown), true);
+  markBatteryNoteSeen(shown);
+  assert.equal(await batteryNoteDue(bridge({ optimised: true, strictMaker: true }).fake, shown), false, "once closed, never again");
   for (const answer of [{ optimised: false, strictMaker: true }, { optimised: true, strictMaker: false }, null, new Error("no")]) {
     const fresh = memory();
     assert.equal(await batteryNoteDue(bridge(answer).fake, fresh), false, JSON.stringify(answer));

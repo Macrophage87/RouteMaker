@@ -1871,6 +1871,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Front rack": "แร็คด้านหน้า",
   "Arriving": "กำลังเข้าสถานี",
   "{min} min": "{min} นาที",
+  "{a} or {b}": "{a} หรือ {b}",
   "Get off here: {name}.": "ลงที่นี่: {name}",
   "Next stop: {name}. Get off there.": "ป้ายถัดไป: {name} ลงที่นั่น",
   "Next stop: {name}. Press the stop button to get off there.": "ป้ายถัดไป: {name} กดปุ่มขอลงเพื่อลงที่นั่น",

@@ -7933,7 +7933,8 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
     `valhalla-paved-weekend` and leaves a stopped one stopped, with a warning, when it is short.
   - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
     `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
-    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).
+    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short); since
+    v0.26.0 the weekday one is likewise skipped while `valhalla-paved` is stopped.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where
     installed, `scripts/beta/restart-routers.sh install`, from the new checkout, after
     `mark-deployed`; then `resume`.
@@ -8008,8 +8009,11 @@ releases without the PC (#1195), testers' alerts, status line, Send feedback and
   `runs.STALE_AFTER`), reading the same AlertDC host as before;
 - one new outbound host, `www7.montgomerycountymd.gov` (443), for `refresh_dc_closures` (#1189);
 - new endpoints: `GET /api/closures/stamp` (20 a minute per address, our default),
-  `POST /api/offline/network` (12 a minute, our default; `503 not_built` until the next rebuild)
-  and `POST /api/feedback`, all through `location /` like the rest of `/api/`;
+  `POST /api/offline/network` (12 a minute, our default; `503 not_built` until the next rebuild),
+  `POST /api/route/loop-shapes` (counts 3 on the routing limit and takes one of the routing
+  slots), and `GET`/`POST /api/feedback` (sending: 5 an hour per client, 60 an hour in all), all through
+  `location /` like the rest of `/api/`. Feedback is posted by the api to `discord.com`, so on a
+  filtered beta the api needs that host even without Discord sign-in;
 - `compose.yaml`: one optional secret for the api, `FEEDBACK_WEBHOOK_URL` (unset: no Send
   feedback entry);
 - the beta's nginx template (#1197, #1191): a `/status.json` location for the riders' status line,
@@ -8050,11 +8054,14 @@ before the tag.
   (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
   built there, `migrate`, the worker recreated so it picks up `refresh_alertdc`, the front end built
   on the PC). Before the smoke test, the three one-time steps of BETA-RUNBOOK "Alerts" (#1197):
-  `rm_absent "$RM_DATA/status" && mkdir -m 755 "$RM_DATA/status"`; the nginx template re-rendered,
+  `rm_absent "$RM_DATA/status" && sudo install -d -m 755 -o "$(id -un)" -g "$(id -gn)" "$RM_DATA/status"`
+  (the data root is root's, and the login user's agent and alert.sh write the file); the nginx template re-rendered,
   `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload` (as in "A new release
   sha", step 9); and, when the owner has the bug-reports forum's webhook, `FEEDBACK_WEBHOOK_URL=` in
   `.env` and `beta-compose.sh up -d api`. Then `smoke-test.sh --local`, then `smoke-test.sh --public
-  <url> --passwords-file <file>`, then `auto-release.sh mark-deployed v0.26.0`, then
+  <url> --passwords-file <file>`, then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
+  (the new script's, not the installed v0.25.x copy's: only the new one records v0.25.1 as the
+  release `rollback` puts back), then
   `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not reinstall the agent, and
   v0.26.0 changes it: #1195's quick deploys, `rollback`, `rollback-map`, `ship-held` and the
   workflow image pull start with the next release), then `~/routemaker-beta-state/cd/bin/alert.sh
@@ -8065,7 +8072,9 @@ before the tag.
   means the host is not answering (the run itself only fails after 45 minutes), and the next
   `refresh_dc_closures` succeeds with the new host. `GET /api/closures/stamp` answers 200 (a group
   of more than 20 riders on one Wi-Fi gets some 429s, which the app skips until the next minute);
-  `GET /status.json` answers 404 when all is well; `POST /api/offline/network` answers `503
+  `GET /status.json` answers 404 when all is well (if it reads "trails" for good, the
+  watch's trail check is failing, for example on the Road Bike router the agent leaves stopped on
+  a host short of memory: set `RM_ALERT_TRAILS=0` and say so in the thread); `POST /api/offline/network` answers `503
   not_built` until the next map rebuild, and Ride rides as before. The AlertDC parser was written
   from a made-up sample: when the live list next carries a police or crash road item, check that it
   shows as a closure (the map, the road panel) with the title "Police activity: streets closed

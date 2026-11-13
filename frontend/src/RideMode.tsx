@@ -4594,7 +4594,7 @@ export function RideMode({
               {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />}
               <ScreenSleepNote note={wakeNote} kind={phone} />
               {/* The Android app's battery saver may stop the ride: one line, at the first Start ride only. */}
-              <BatteryNote />
+              <BatteryNote onDone={() => headingRef.current?.focus({ preventScroll: true })} />
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
                 <p className="notice">

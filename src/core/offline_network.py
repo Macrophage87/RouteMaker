@@ -30,7 +30,8 @@ CORRIDOR_M = 1609
 # At most this many ways in one answer, nearest the line first, so a long ride through the city
 # stays a download of a few MB and a bounded read. Our default, unmeasured.
 MAX_WAYS = 25_000
-# The line is simplified to about this (degrees, ~30 ft) before the search, so a long route's
+# The line is simplified to about this (degrees, about 100 ft north to south; our default,
+# unmeasured) before the search, so a long route's
 # thousands of points do not slow the corridor query; a mile's width hides the difference.
 SIMPLIFY_DEG = 0.0003
 # At most this many points of the route's line in a request (the phone sends at most 1,500,

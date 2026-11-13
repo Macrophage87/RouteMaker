@@ -2844,11 +2844,39 @@ def test_an_image_file_change_deploys_only_with_the_workflow_s_image(path: str) 
     assert lua["verdict"] == "stop"
 
 
+COMMIT = "c0" * 20
+SIGNER = "https://github.com/Macrophage87/RouteMaker/.github/workflows/release.yml@refs/heads/main"
+
+
+def _der(tag: int, body: bytes) -> bytes:
+    n = len(body)
+    if n < 0x80:
+        return bytes([tag, n]) + body
+    size = n.to_bytes((n.bit_length() + 7) // 8, "big")
+    return bytes([tag, 0x80 | len(size)]) + size + body
+
+
+def _fake_cert(signer: str = SIGNER, commit: str = COMMIT) -> bytes:
+    """A certificate-shaped DER: TBS with an extensions block holding Fulcio's two extensions."""
+
+    def ext(oid: str, text: str) -> bytes:
+        value = _der(0x04, _der(0x0C, text.encode()))
+        return _der(0x30, _der(0x06, cd_logic._der_oid(oid)) + value)
+
+    exts = ext(cd_logic.FULCIO_BUILD_SIGNER_URI, signer) + ext(
+        cd_logic.FULCIO_SOURCE_DIGEST, commit
+    )
+    tbs = _der(0x30, _der(0xA0, _der(0x02, b"\x02")) + _der(0xA3, _der(0x30, exts)))
+    return _der(0x30, tbs + _der(0x30, b"") + _der(0x03, b"\x00"))
+
+
 def _attestations(
     digest: str = DIGEST,
     ref: str = "refs/heads/main",
     path: str = ".github/workflows/release.yml",
     repo: str = "https://github.com/Macrophage87/RouteMaker",
+    commit: str = COMMIT,
+    cert: bytes | None = None,
 ) -> dict:
     statement = {
         "_type": "https://in-toto.io/Statement/v1",
@@ -2856,26 +2884,66 @@ def _attestations(
         "predicateType": "https://slsa.dev/provenance/v1",
         "predicate": {
             "buildDefinition": {
-                "externalParameters": {"workflow": {"ref": ref, "repository": repo, "path": path}}
+                "externalParameters": {"workflow": {"ref": ref, "repository": repo, "path": path}},
+                "resolvedDependencies": [
+                    {"uri": f"git+{repo}@{ref}", "digest": {"gitCommit": commit}}
+                ],
             }
         },
     }
     payload = base64.b64encode(json.dumps(statement).encode()).decode()
-    return {"attestations": [{"bundle": {"dsseEnvelope": {"payload": payload}}}]}
+    raw = base64.b64encode(_fake_cert(commit=commit) if cert is None else cert).decode()
+    bundle = {
+        "dsseEnvelope": {"payload": payload},
+        "verificationMaterial": {"certificate": {"rawBytes": raw}},
+    }
+    return {"attestations": [{"bundle": bundle}]}
 
 
 def test_the_image_s_provenance_must_name_the_release_workflow_on_main() -> None:
     repo = "Macrophage87/RouteMaker"
-    assert cd_logic.provenance_ok(_attestations(), DIGEST, repo)
-    assert not cd_logic.provenance_ok(_attestations(ref="refs/heads/other"), DIGEST, repo)
-    assert not cd_logic.provenance_ok(_attestations(path=".github/workflows/x.yml"), DIGEST, repo)
+    assert cd_logic.provenance_ok(_attestations(), DIGEST, repo, COMMIT)
+    assert not cd_logic.provenance_ok(_attestations(ref="refs/heads/other"), DIGEST, repo, COMMIT)
     assert not cd_logic.provenance_ok(
-        _attestations(repo="https://github.com/someone/fork"), DIGEST, repo
+        _attestations(path=".github/workflows/x.yml"), DIGEST, repo, COMMIT
+    )
+    assert not cd_logic.provenance_ok(
+        _attestations(repo="https://github.com/someone/fork"), DIGEST, repo, COMMIT
     )
     other = DIGEST[:-2] + "cd"
-    assert not cd_logic.provenance_ok(_attestations(digest=other), DIGEST, repo)
-    assert not cd_logic.provenance_ok({"attestations": [{"bundle": {}}]}, DIGEST, repo)
-    assert not cd_logic.provenance_ok({}, DIGEST, repo)
+    assert not cd_logic.provenance_ok(_attestations(digest=other), DIGEST, repo, COMMIT)
+    assert not cd_logic.provenance_ok({"attestations": [{"bundle": {}}]}, DIGEST, repo, COMMIT)
+    assert not cd_logic.provenance_ok({}, DIGEST, repo, COMMIT)
+
+
+def test_the_image_must_be_built_from_the_tag_s_commit() -> None:
+    # Before: a genuine image from another commit passed. After: the statement's commit and the
+    # signing certificate's source digest must both be the tag's commit.
+    repo = "Macrophage87/RouteMaker"
+    elsewhere = "d1" * 20
+    assert not cd_logic.provenance_ok(_attestations(commit=elsewhere), DIGEST, repo, COMMIT)
+    mixed = _attestations(cert=_fake_cert(commit=elsewhere))
+    assert not cd_logic.provenance_ok(mixed, DIGEST, repo, COMMIT)
+
+
+def test_the_signing_certificate_must_be_the_release_workflow_s() -> None:
+    # Before: a statement claiming release.yml passed whoever signed it. After: the certificate's
+    # build signer must be release.yml on main; another workflow cannot sign for it.
+    repo = "Macrophage87/RouteMaker"
+    other = SIGNER.replace("release.yml", "other.yml")
+    assert not cd_logic.provenance_ok(
+        _attestations(cert=_fake_cert(signer=other)), DIGEST, repo, COMMIT
+    )
+    no_cert = _attestations()
+    del no_cert["attestations"][0]["bundle"]["verificationMaterial"]
+    assert not cd_logic.provenance_ok(no_cert, DIGEST, repo, COMMIT)
+    chain = _attestations()
+    raw = chain["attestations"][0]["bundle"]["verificationMaterial"].pop("certificate")
+    chain["attestations"][0]["bundle"]["verificationMaterial"]["x509CertificateChain"] = {
+        "certificates": [raw]
+    }
+    assert cd_logic.provenance_ok(chain, DIGEST, repo, COMMIT)
+    assert cd_logic.cert_extensions(b"\x30\xff garbage") == {}
 
 
 def _workflow_release(beta: Beta, files: dict[str, str]) -> str:
@@ -2890,7 +2958,7 @@ def test_a_workflow_tag_pulls_its_image_and_deploys_a_dockerfile_change(beta: Be
     sha = _workflow_release(beta, {"docker/requirements.txt": "django==9\n"})
     pulled = beta.tmp / "pulled"
     attest = beta.tmp / "attest.json"
-    attest.write_text(json.dumps(_attestations()))
+    attest.write_text(json.dumps(_attestations(commit=sha)))
     done = beta.agent(
         "run", STUB_RUNNING="postgis", STUB_PULLED=str(pulled), STUB_ATTEST=str(attest)
     )
@@ -2917,9 +2985,9 @@ def test_an_image_without_the_workflow_s_provenance_is_held_and_never_pulled(bet
 
 
 def test_a_pull_that_fails_waits_and_touches_nothing(beta: Beta) -> None:
-    _workflow_release(beta, {"src/core/a.py": "x = 2\n"})
+    sha = _workflow_release(beta, {"src/core/a.py": "x = 2\n"})
     attest = beta.tmp / "attest.json"
-    attest.write_text(json.dumps(_attestations()))
+    attest.write_text(json.dumps(_attestations(commit=sha)))
     done = beta.agent("run", STUB_RUNNING="postgis", STUB_PULL_RC="1", STUB_ATTEST=str(attest))
     assert done.returncode == 0, done.stdout
     assert "waiting" in beta.status() and "could not check or pull" in beta.status()
@@ -2972,7 +3040,7 @@ def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval
 STUB_IMPORT = """#!/bin/sh
 echo "import $*" >> "$STUB_LOG"
 case "$*" in *--swap*) exit "${STUB_SWAP_RC:-0}" ;; esac
-exit 0
+exit "${STUB_IMPORT_RC:-0}"
 """
 RUN = "s3://bucket/rebuild-checkpoints/transfer/cloud-20261112a"
 
@@ -3044,6 +3112,69 @@ def test_a_failed_map_swap_leaves_the_code_live_and_the_agent_paused(beta: Beta)
     assert (beta.cd / "PAUSED").exists()
 
 
+def test_a_map_that_does_not_download_never_reaches_the_swap(beta: Beta) -> None:
+    _map_release(beta)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_IMPORT_RC="1")
+    assert done.returncode == 1
+    assert "the map did not download or verify" in beta.status()
+    assert "--swap" not in beta.calls()
+    assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_code_that_fails_rolls_back_and_installs_no_map(beta: Beta) -> None:
+    _map_release(beta, {"scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS})
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert done.returncode == 1
+    assert "rolled-back" in beta.status() and "no map was installed" in beta.status()
+    assert "import" not in beta.calls()
+    assert beta.head() == beta.v1 and (beta.cd / "deployed-tag").read_text() == "v0.1.0\n"
+    assert (beta.cd / "PAUSED").exists() and not (beta.cd / "BROKEN").exists()
+
+
+def test_ship_held_whose_rollback_fails_is_broken(beta: Beta) -> None:
+    _map_release(beta, {"scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS})
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_GATE_FAIL=beta.v1[:12])
+    assert done.returncode == 1
+    assert "broken" in beta.status() and (beta.cd / "BROKEN").exists()
+    assert "import" not in beta.calls()
+    # and nothing else runs until the owner has looked
+    again = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert again.returncode == 1 and "a rollback failed earlier" in beta.status()
+
+
+def test_ship_held_whose_build_fails_leaves_the_old_release_untouched(beta: Beta) -> None:
+    _map_release(beta)
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", STUB_RUNNING="postgis", STUB_BUILD_RC="1")
+    assert done.returncode == 1
+    assert "could not be exported or built" in beta.status()
+    assert "up -d" not in beta.calls() and "stop api" not in beta.calls()
+    assert beta.head() == beta.v1 and (beta.cd / "deployed-tag").read_text() == "v0.1.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_tag_whose_ci_is_not_green(beta: Beta) -> None:
+    _map_release(beta)
+    beta.green(conclusion="failure")
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "not green" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_tag_off_main(beta: Beta) -> None:
+    git(beta.origin, "checkout", "-q", "-b", "side")
+    beta.release("v0.2.0", {"lua/tags.lua": "-- new\n"})
+    git(beta.origin, "checkout", "-q", "main")
+    beta.agent("run", **UP)
+    beta.log.unlink(missing_ok=True)
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "is not on main" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
+
+
 def test_ship_held_refuses_a_release_that_needs_nginx_and_changes_nothing(beta: Beta) -> None:
     beta.release("v0.2.0", {"deploy/beta/401.html": "<p>x</p>\n"})
     beta.agent("run", **UP)
@@ -3102,3 +3233,13 @@ def test_a_release_swapped_in_place_tells_riders_nothing(beta: Beta) -> None:
     done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
     assert done.returncode == 0, done.stdout + done.stderr
     assert not any(line.startswith("status|") for line in _alerts(beta))
+
+
+def test_a_genuine_image_built_from_another_commit_is_held(beta: Beta) -> None:
+    _workflow_release(beta, {"src/core/a.py": "x = 2\n"})
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations(commit=beta.v1)))  # built from the old release
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_ATTEST=str(attest))
+    assert "held: v0.2.0" in beta.status(), done.stdout
+    assert "from this commit" in beta.status()
+    assert "docker pull" not in beta.calls() and "up -d" not in beta.calls()
