@@ -317,9 +317,8 @@ import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type Hom
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
-import { CHECK_NOT_PUT, pointsKept, spliceAt, stretchEnds, usedSaid, type Planner, type WorstStretch } from "./lib/worstStretches.ts";
+import type { Planner, WorstStretch } from "./lib/worstStretches.ts";
 
-import { CheckRoute } from "./CheckRoute.tsx";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { countUse } from "./lib/usage.ts";
 import { useWeather } from "./useWeather.ts";
@@ -347,6 +346,8 @@ import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
 import type { ShareCardSource } from "./ShareCardDialog.tsx";
 const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => m.ShareCardDialog));
+// Check a route (Plan, an opened file only): loaded on first use, its module with it.
+const CheckRoute = later(() => import("./CheckRoute.tsx").then((m) => m.CheckRoute));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
@@ -4375,10 +4376,12 @@ export function App() {
   // Check a route's Use this way (CheckRoute.tsx, the owner's pick 2026-11-13): the calmer way goes into the file's
   // full line in place of the stretch, as a closure's detour does (closureReroute), and the plan follows that line. One
   // edit, so Undo takes it out; the download is then the line with it (its text is gone, as after a detour).
-  const takeCalmerWay = (stretch: WorstStretch, way: LonLat[]) => {
+  const takeCalmerWay = async (stretch: WorstStretch, way: LonLat[]) => {
     const file = rideRef.current.imported;
     const route = shown;
     if (!file?.verbatim || !route) return;
+    // Loaded already with the list (CheckRoute.tsx), so this waits on nothing.
+    const { CHECK_NOT_PUT, pointsKept, spliceAt, stretchEnds, usedSaid } = await import("./lib/worstStretches.ts");
     const line = file.verbatim.track;
     const ends = stretchEnds(route, stretch);
     const cut = spliceAt(line, way, ends.share, ends.paddedM, ends.padded);
@@ -6806,7 +6809,7 @@ export function App() {
         // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
         check:
           mode === "plan" && imported && fileShown()?.follows_file ? (
-            <CheckRoute route={shown as RouteResponse} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={imported.verbatim ? takeCalmerWay : undefined} />
+            <CheckRoute route={shown as RouteResponse} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={imported.verbatim ? (stretch, way) => void takeCalmerWay(stretch, way) : undefined} />
           ) : null,
       }}
     />
