@@ -216,7 +216,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   penalty), under 55 poor (rough), on streets only; alleys and trails keep OSM's.
   The road panel also shows the street's score and survey date as its Pavement line
   (`segment.pavement_pci`, `pavement_surveyed`; `core.segment_info.road_facts`), even where a
-  correction or a newer OSM `smoothness` keeps OSM's reading for routing.
+  newer OSM `smoothness` keeps OSM's reading for routing (not where a correction overrides it).
   Fetched at rebuild time with `scripts/fetch_agency_layer.py` (docs/OPERATIONS.md,
   "DC pavement condition (DC-PCI)"); not yet downloaded, so no size or sha256 yet.
 - Publisher: District Department of Transportation and DC GIS (the service's

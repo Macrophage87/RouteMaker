@@ -1549,7 +1549,8 @@ FACT_USE = {
     "shoulder": "On a country road a wide shoulder lowers the level.",
     "lane_width": "A narrow painted lane rates higher than a wide one.",
     "parking": "Parked cars beside a painted lane add door and pull-out risk.",
-    "setting": "Country roads read the rural table, with its own speeds and shoulders.",
+    "setting": "Inside a Census urban area the city tables apply; outside it, the rural "
+    "table, with its own speeds and shoulders.",
     "pavement": "Shown for riding comfort. It does not change the stress level; rough "
     "pavement makes routes cost more (DC streets only so far).",
 }
@@ -1594,14 +1595,20 @@ def _attr_short(row: dict, key: str) -> tuple[str, str]:
     return ATTR_SHORT.get(code, OSM), ATTR_SOURCES.get(code, OSM)
 
 
-def _assumed_speed(row: dict) -> float | None:
-    """The speed the classifier assumed where nothing is posted: the law's default for the
-    place (`road_default_speed_mph`), else the speed the rule names."""
-    default = row.get("road_default_speed_mph")
-    if default is not None:
-        return float(default)
+def _assumed_speed(row: dict) -> tuple[float | None, str]:
+    """The speed the classifier rated at where nothing is posted, and what it rests on: the
+    speed the rule names (what the level used: a road-type default, a narrow rural road's 25
+    mph), said as the law's default where it is that (`road_default_speed_mph`)."""
     found = _SPEED.search(str(row.get("stress_rule") or ""))
-    return float(found.group(1)) if found else None
+    default = row.get("road_default_speed_mph")
+    law = "Nothing posted; the law's default here"
+    if found:
+        mph = float(found.group(1))
+        same = default is not None and float(default) == mph
+        return mph, law if same else "Nothing posted; read from the road's type"
+    if default is not None:
+        return float(default), law
+    return None, "Nothing posted"
 
 
 def road_facts(row: dict) -> list[dict]:
@@ -1612,7 +1619,19 @@ def road_facts(row: dict) -> list[dict]:
     assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
     facts = []
     speed = row.get("road_speed_mph")
-    if speed is not None:
+    if speed is not None and "maxspeed unit" in assumed:
+        # A number posted with no unit mapped: read as mph, an estimate of the unit.
+        facts.append(
+            _fact(
+                "speed",
+                "Speed limit",
+                mph_and_kmh(float(speed)),
+                ESTIMATED,
+                "Unit not mapped; read as mph",
+                detail=f"{ESTIMATE_DETAIL} {FACT_USE['speed']}",
+            )
+        )
+    elif speed is not None:
         short, long = _attr_short(row, "maxspeed")
         facts.append(
             _fact(
@@ -1624,18 +1643,15 @@ def road_facts(row: dict) -> list[dict]:
                 detail=f"Source: {long}. {FACT_USE['speed']}",
             )
         )
-    elif "maxspeed" in assumed or "maxspeed unit" in assumed:
-        mph = _assumed_speed(row)
-        value = f"{mph_and_kmh(mph)}" if mph is not None else "Not posted"
+    elif "maxspeed" in assumed:
+        mph, why = _assumed_speed(row)
         facts.append(
             _fact(
                 "speed",
                 "Speed limit",
-                value,
+                mph_and_kmh(mph) if mph is not None else "Not posted",
                 ESTIMATED,
-                "Nothing posted; the law's default here"
-                if "maxspeed" in assumed
-                else "Unit not mapped; read as mph",
+                why,
                 detail=f"{ESTIMATE_DETAIL} {FACT_USE['speed']}",
             )
         )
@@ -1694,7 +1710,11 @@ def road_facts(row: dict) -> list[dict]:
             )
         )
     facility = row.get("facility_shown") or row.get("facility")
-    if facility in FACILITY_SHORT:
+    # "None" is a record only where a source said so: an agency's street record, or OSM's own
+    # cycleway tags on the way. A way with no bike tags at all has no line: absence is not a
+    # record (the review of e054a670).
+    said_none = (_attr(row, "bike") or "default") != "default"
+    if facility in FACILITY_SHORT and (facility != "none" or said_none):
         short, long = _attr_short(row, "bike")
         against = " (against traffic only)" if row.get("facility_shown") else ""
         facts.append(
@@ -1719,12 +1739,15 @@ def road_facts(row: dict) -> list[dict]:
                     detail=f"{ESTIMATE_DETAIL} {FACT_USE[id_]}",
                 )
             )
-    if row.get("road_urban") is False:
+    urban = row.get("road_urban")
+    if urban is not None:
+        # Every road (the owner, 2026-11-13: "We can include setting as something for
+        # everything"): urban or rural, as the level reads it.
         facts.append(
             _fact(
                 "setting",
                 "Setting",
-                "Rural",
+                "Urban" if urban else "Rural",
                 RECORD,
                 CENSUS_URBAN,
                 detail=f"Source: U.S. Census Bureau, TIGER/Line Urban Areas. {FACT_USE['setting']}",
@@ -1769,9 +1792,13 @@ ESTIMATED_EXTRAS = (
 )
 
 
-def evidence_of(facts: list[dict]) -> dict | None:
+def evidence_of(facts: list[dict], row: dict | None = None) -> dict | None:
     """How much of the level rests on records: {records, inputs, strength, words}; None with
-    no inputs (a path)."""
+    no inputs (a path), and None where a rating row set the level (an owner's, a community's or
+    an agency's): the facts did not decide it, so scoring them would mislead (the review of
+    e054a670). The Why line then says whose rating it is."""
+    if row is not None and row.get("stress_adjustment_id") is not None:
+        return None
     inputs = [f for f in facts if f["input"]]
     if not inputs:
         return None
@@ -1908,7 +1935,7 @@ def describe(row: dict, router: dict) -> dict:
         "summary": with_facts(summary_rows(row, router, open_), row, facts),
         # The facts behind the level and how much rests on records (`road_facts`).
         "facts": facts,
-        "evidence": evidence_of(facts),
+        "evidence": evidence_of(facts, row),
         "plain": plain_sentence(facts),
         "sections": sections,
         "more": more_link(row, router),

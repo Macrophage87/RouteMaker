@@ -38,7 +38,9 @@ CITY = road(
     volume_source="ddot",
     volume_aadt=24_100,
     volume_year=2023,
-    attr_sources=json.dumps({"maxspeed": "dc-roadway-block", "lanes": "dc-roadway-block"}),
+    attr_sources=json.dumps(
+        {"maxspeed": "dc-roadway-block", "lanes": "dc-roadway-block", "bike": "dc-roadway-block"}
+    ),
     pavement_pci=78.4,
     pavement_surveyed=date(2026, 3, 2),
 )
@@ -53,7 +55,7 @@ COUNTRY = road(
 
 def test_a_city_road_with_records_shows_each_with_its_source_and_date():
     facts = by_id(si.road_facts(CITY))
-    assert list(facts) == ["speed", "traffic", "lanes", "facility", "pavement"]
+    assert list(facts) == ["speed", "traffic", "lanes", "facility", "setting", "pavement"]
     assert facts["speed"]["kind"] == si.RECORD
     assert facts["speed"]["value"] == "25 mph (40 km/h), posted"
     assert facts["speed"]["source"] == "DDOT street record"
@@ -61,7 +63,8 @@ def test_a_city_road_with_records_shows_each_with_its_source_and_date():
     assert (facts["traffic"]["source"], facts["traffic"]["date"]) == ("DDOT count", "2023")
     assert facts["lanes"]["value"] == "2 each way"
     assert facts["facility"]["value"] == "None"
-    assert facts["facility"]["source"] == "OpenStreetMap"
+    assert facts["facility"]["source"] == "DDOT street record"
+    assert facts["setting"]["value"] == "Urban"
     # Pavement is shown, with its survey year, but is no input to the level.
     assert facts["pavement"]["value"] == "Good (78 of 100)"
     assert facts["pavement"]["date"] == "2026"
@@ -78,7 +81,8 @@ def test_travel_speed_has_no_line_since_no_department_publishes_it():
 
 def test_a_country_road_with_little_data_looks_thin():
     facts = by_id(si.road_facts(COUNTRY))
-    assert list(facts) == ["speed", "traffic", "lanes", "facility", "shoulder", "setting"]
+    # No bike tags at all: no Bike lane line, since absence is not a record.
+    assert list(facts) == ["speed", "traffic", "lanes", "shoulder", "setting"]
     assert facts["speed"]["kind"] == si.ESTIMATED
     assert facts["speed"]["value"] == "55 mph (89 km/h)"
     assert facts["speed"]["source"] == "Nothing posted; the law's default here"
@@ -88,13 +92,50 @@ def test_a_country_road_with_little_data_looks_thin():
     assert facts["setting"]["kind"] == si.RECORD
     evidence = si.evidence_of(list(facts.values()))
     assert evidence["strength"] == "thin"
-    assert evidence["words"] == "Thin evidence: 2 of 6 from records"
+    assert evidence["words"] == "Thin evidence: 1 of 5 from records"
 
 
 def test_evidence_counts_only_the_level_inputs():
     evidence = si.evidence_of(si.road_facts(CITY))
-    assert (evidence["records"], evidence["inputs"]) == (4, 4)
-    assert evidence["words"] == "Strong evidence: 4 of 4 from records"
+    assert (evidence["records"], evidence["inputs"]) == (5, 5)
+    assert evidence["words"] == "Strong evidence: 5 of 5 from records"
+
+
+def test_an_estimated_speed_is_the_one_the_level_used():
+    # The rule read a narrow rural road at 25 mph; the law's 50 is not what the level used.
+    narrow = road(
+        stress_rule="narrow rural road, 25 mph",
+        stress_assumed=json.dumps(["maxspeed"]),
+        road_default_speed_mph=50,
+    )
+    speed = by_id(si.road_facts(narrow))["speed"]
+    assert speed["value"] == "25 mph (40 km/h)"
+    assert speed["source"] == "Nothing posted; read from the road's type"
+
+
+def test_a_speed_with_no_unit_is_an_estimate():
+    row = road(road_speed_mph=30, stress_assumed=json.dumps(["maxspeed unit"]))
+    speed = by_id(si.road_facts(row))["speed"]
+    assert (speed["kind"], speed["source"]) == (si.ESTIMATED, "Unit not mapped; read as mph")
+
+
+def test_no_bike_lane_is_a_record_only_where_a_source_said_so():
+    def facility(sources):
+        row = road(attr_sources=json.dumps(sources)) if sources is not None else road()
+        return by_id(si.road_facts(row)).get("facility")
+
+    assert facility(None) is None
+    assert facility({"bike": "default"}) is None
+    assert facility({"bike": "osm"})["value"] == "None"
+    assert facility({"bike": "dc-roadway-block"})["source"] == "DDOT street record"
+    # A mapped lane is a record whatever the attr sources say.
+    assert by_id(si.road_facts(road(facility="lane")))["facility"]["value"] == "Painted"
+
+
+def test_no_evidence_line_where_a_rating_row_set_the_level():
+    row = {**CITY, "stress_adjustment_id": "2026-11-12-owner-side-streets:1"}
+    assert si.evidence_of(si.road_facts(row), row) is None
+    assert si.evidence_of(si.road_facts(CITY), CITY) is not None
 
 
 def test_evidence_breaks():
@@ -171,7 +212,9 @@ def test_pavement_columns_only_where_the_survey_speaks_for_the_street():
     assert pavement.panel_columns(None) == {"pavement_pci": None, "pavement_surveyed": None}
     assert pavement.panel_columns(reading("not_street"))["pavement_pci"] is None
     assert pavement.panel_columns(reading("unpaved"))["pavement_pci"] is None
-    for why in ("pci", "override", "osm_newer"):
+    # An approved correction says the survey is wrong or stale there: not shown.
+    assert pavement.panel_columns(reading("override"))["pavement_pci"] is None
+    for why in ("pci", "osm_newer"):
         assert pavement.panel_columns(reading(why)) == {
             "pavement_pci": 61.0,
             "pavement_surveyed": date(2026, 2, 27),

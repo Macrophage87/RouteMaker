@@ -407,12 +407,11 @@ class TestAnswer:
             "Bikes: Allowed",
         ]
         assert facts(body) == [
-            "Speed limit: 20 mph (32 km/h), estimated (Nothing posted; the law's default here)",
+            "Speed limit: 20 mph (32 km/h), estimated (Nothing posted; read from the road's type)",
             "Traffic: Not counted, estimated (Read from the road's type)",
             "Through lanes: 1 each way, estimated (Not mapped)",
-            "Bike lane: None (OpenStreetMap)",
         ]
-        assert body["evidence"]["words"] == "Thin evidence: 1 of 4 from records"
+        assert body["evidence"]["words"] == "Thin evidence: 0 of 3 from records"
         assert body["plain"] == (
             "Nothing is posted or counted here, so speed and traffic are estimates."
         )
