@@ -44,7 +44,7 @@
   683 s   2443 m  #13 left S St NW prepare: "In 150 feet, left onto S Street Northwest." -> said
   692 s   2475 m  #13 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
   774 s   2768 m  #14 busy unnamed Rd advance: "In 500 feet, heavy traffic." -> said
-  778 s   2782 m  #15 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> held 4.0 s, as "In 450 feet, right onto 19th Street Northwest."
+  778 s   2782 m  #15 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> said
   808 s   2890 m  #15 right 19th St NW prepare: "In 140 feet, right onto 19th Street Northwest." -> said
   816 s   2918 m  #15 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
   881 s   3151 m  #16 right Svc Rd advance: "In 500 feet, right onto the service road." -> said
@@ -76,7 +76,7 @@
   454 s   2435 m  #13 left S St NW prepare: "In 170 feet, left onto S Street Northwest." -> said
   461 s   2473 m  #13 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
   516 s   2768 m  #14 busy unnamed Rd advance: "In 500 feet, heavy traffic." -> said
-  519 s   2784 m  #15 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> held 5.0 s, as "In 400 feet, right onto 19th Street Northwest."
+  519 s   2784 m  #15 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> said
   537 s   2881 m  #15 right 19th St NW prepare: "In 170 feet, right onto 19th Street Northwest." -> said
   544 s   2918 m  #15 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
   588 s   3154 m  #16 right Svc Rd advance: "In 500 feet, right onto the service road." -> said
@@ -97,7 +97,7 @@
   103 s    829 m  #4 crossing 19th St NW prepare: "In 250 feet, cross 19th Street Northwest." -> held 3.0 s, as "In 200 feet, cross 19th Street Northwest."
   122 s    982 m  #6 crossing 18th St NW prepare: "In 250 feet, cross 18th Street Northwest." -> said
   139 s   1118 m  #7 crossing Connecticut Ave NW prepare: "In 250 feet, cross Connecticut Avenue Northwest." -> said
-  140 s   1127 m  #8 left 17th St NW bike Ln advance: "In 700 feet, cross 17th Street Northwest, then left onto 17th Street Northwest bike lane." -> held 7.0 s, as "In 500 feet, cross 17th Street Northwest, then left onto 17th Street Northwest bike lane."
+  140 s   1127 m  #8 left 17th St NW bike Ln advance: "In 700 feet, cross 17th Street Northwest, then left onto 17th Street Northwest bike lane." -> held 2.7 s
   157 s   1263 m  #8 left 17th St NW bike Ln prepare: "In 250 feet, cross 17th Street Northwest, then left onto 17th Street Northwest bike lane." -> said
   165 s   1328 m  #8 left 17th St NW bike Ln now (urgent): "Cross 17th Street Northwest now, then left onto 17th Street Northwest bike lane." -> said
   183 s   1473 m  #9 crossing M St NW prepare: "In 250 feet, cross M Street Northwest." -> said
@@ -108,14 +108,13 @@
   300 s   2414 m  #13 left S St NW prepare: "In 250 feet, left onto S Street Northwest." -> said
   308 s   2478 m  #13 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
   336 s   2704 m  #14 busy unnamed Rd advance: "In 700 feet, heavy traffic." -> said
-  338 s   2720 m  #15 right 19th St NW advance: "In 700 feet, right onto 19th Street Northwest." -> held 6.0 s, as "In 600 feet, right onto 19th Street Northwest."
+  338 s   2720 m  #15 right 19th St NW advance: "In 700 feet, right onto 19th Street Northwest." -> held 0.2 s
   355 s   2857 m  #15 right 19th St NW prepare: "In 250 feet, right onto 19th Street Northwest." -> said
   363 s   2921 m  #15 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
   384 s   3090 m  #16 right Svc Rd advance: "In 700 feet, right onto the service road." -> said
   401 s   3227 m  #16 right Svc Rd prepare: "In 250 feet, right onto the service road." -> said
-  409 s   3291 m  #16 right Svc Rd now (urgent): "Right now onto the service road." -> said, cut 1.7 s in
-  411 s   3307 m  #17 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said
-  ! cut at 3300 m (#16): "Right now onto the service road." cut off 1.7 s in by #17's arrive
+  409 s   3291 m  #16 right Svc Rd now (urgent): "Right now onto the service road." -> said
+  411 s   3307 m  #17 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> held 0.8 s
 
 ## dupont-cycletracks at 12 mph, missed-turn
    17 s     91 m  #0 right 20th St NW Cycletrack advance: "In 500 feet, right onto 20th Street Northwest Cycletrack." -> said
@@ -153,7 +152,7 @@
   454 s   2435 m  #13 left S St NW prepare: "In 170 feet, left onto S Street Northwest." -> said
   461 s   2473 m  #13 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
   516 s   2768 m  #14 busy unnamed Rd advance: "In 500 feet, heavy traffic." -> said
-  519 s   2784 m  #15 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> held 5.0 s, as "In 400 feet, right onto 19th Street Northwest."
+  519 s   2784 m  #15 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> said
   537 s   2881 m  #15 right 19th St NW prepare: "In 170 feet, right onto 19th Street Northwest." -> said
   544 s   2918 m  #15 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
   588 s   3154 m  #16 right Svc Rd advance: "In 500 feet, right onto the service road." -> said

@@ -123,3 +123,18 @@ test("the weak-GPS note waits for the estimates where the ride is reckoned, so i
   assert.equal(weighFix(weak, 80, GPS_WEAK_MS + 1, ESTIMATE_MS).sayNow, false);
   assert.equal(weighFix(weak, 80, ESTIMATE_MS, ESTIMATE_MS).sayNow, true);
 });
+
+test("arriving waits for the last turn's 'now' to be said instead of cutting it off (the cue bench)", () => {
+  const model = rideModel(lRoute());
+  let state = rideTo(model, 805);
+  const events = [];
+  for (let m = 810, s = 200; m <= 2000; m += 5, s += 1) {
+    const out = step(model, state, { point: pointAt(model, m), accuracyM: 5, speedMs: 5, headingDeg: 0, at: s * 1000 }, "full");
+    state = out.state;
+    events.push(...out.events);
+  }
+  const arrive = events.find((e) => e.phase === "arrive");
+  assert.ok(arrive);
+  assert.equal(arrive.urgent, true);
+  assert.equal(arrive.after, true);
+});

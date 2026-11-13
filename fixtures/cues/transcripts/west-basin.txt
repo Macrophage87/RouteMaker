@@ -38,7 +38,7 @@
     0 s      0 m  #0 calmer Path advance: "In 190 feet, calmer riding on the path beside Ohio Drive Southwest." -> said
   129 s    692 m  #1 bear_left Path advance: "In about 500 feet, cross Ohio Drive Southwest, then right onto the path beside Ohio Drive Southwest, then immediately bear left onto the path beside West Basin Drive Southwest." -> said
   144 s           note: "GPS is weak: turn cues paused."
-  147 s    789 m  #1 bear_left Path prepare: "In 170 feet, cross Ohio Drive Southwest, then right, then immediately bear left." -> held 5.0 s, cut 2.7 s in, as "In 100 feet, cross Ohio Drive Southwest, then right, then immediately bear left."
+  147 s    789 m  #1 bear_left Path prepare: "In 170 feet, cross Ohio Drive Southwest, then right, then immediately bear left." -> said
   155 s    831 m  #1 bear_left Path now (urgent): "Cross Ohio Drive Southwest now." -> said
   157 s    842 m  #2 right Path now (urgent): "Right now onto the path beside Ohio Drive Southwest." -> held 0.7 s
   170 s    912 m  #3 bear_left Path now (urgent): "Bear left now onto the path beside West Basin Drive Southwest." -> said
