@@ -1219,3 +1219,69 @@ def test_the_scripts_coverage_box_is_the_settings_one(settings) -> None:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert module.COVERAGE_BBOX == tuple(settings.COVERAGE_BBOX)
+
+
+class TestSettingCounts:
+    """`--census-blocks` and `--lodes-wac` write `setting.json`: people, homes and jobs
+    within half a mile of each way, for the road panel's Setting line (`routemaker.setting`)."""
+
+    def census_inputs(self, tmp_path: Path) -> tuple[Path, Path]:
+        import gzip
+        import zipfile
+
+        from test_setting import FIELDS, dbf
+
+        near = L_SHAPED_LAT + 500 / 111_133  # 500 m north of the east-west leg
+        blocks = tmp_path / "tl_2020_51_tabblock20.zip"
+        with zipfile.ZipFile(blocks, "w") as archive:
+            archive.writestr(
+                "tl_2020_51_tabblock20.dbf",
+                dbf(
+                    FIELDS,
+                    [
+                        ("510000000000001", f"+{near:.7f}", f"{L_SHAPED_LON + 0.001:.7f}", 80, 30),
+                        ("510000000000002", "+38.5000000", "-077.0000000", 9000, 4000),
+                    ],
+                ),
+            )
+        wac = tmp_path / "va_wac_S000_JT00_2023.csv.gz"
+        with gzip.open(wac, "wt") as out:
+            out.write("w_geocode,C000\n510000000000001,12\n510000000000002,700\n")
+        return blocks, wac
+
+    def test_the_counts_around_each_way_are_installed_and_loaded(self, tmp_path) -> None:
+        from pipeline.run import ReferenceData
+
+        extract = tmp_path / "l.osm.pbf"
+        build_l_shaped_extract(extract)
+        blocks, wac = self.census_inputs(tmp_path)
+        done = install(
+            tmp_path,
+            "--extract",
+            str(extract),
+            "--census-blocks",
+            str(blocks),
+            "--lodes-wac",
+            str(wac),
+        )
+        # Exits non-zero for the required files this test does not install; the
+        # setting file is written regardless.
+        assert "wrote" in done.stdout and "around 1 ways" in done.stdout, done.stderr
+        target = tmp_path / "data" / "reference" / "setting.json"
+        people, homes, jobs, sq_mi = json.loads(target.read_text())["100"]
+        # Only the near block: the far one is tens of kilometres away.
+        assert (people, homes, jobs) == (80, 30, 12)
+        assert sq_mi > 0.785
+        assert ReferenceData.load_setting(target)[100] == [80, 30, 12, sq_mi]
+
+    def test_one_without_the_other_is_refused(self, tmp_path) -> None:
+        blocks, _ = self.census_inputs(tmp_path)
+        done = install(tmp_path, "--census-blocks", str(blocks))
+        assert done.returncode != 0
+        assert "go together" in done.stderr
+
+    def test_an_absent_file_loads_as_no_counts(self, tmp_path, caplog) -> None:
+        from pipeline.run import ReferenceData
+
+        assert ReferenceData.load_setting(tmp_path / "setting.json") == {}
+        assert "Setting line says urban or rural alone" in caplog.text

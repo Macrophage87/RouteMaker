@@ -4,16 +4,16 @@
  *
  * - Search: the place search box (PlaceSearch, variant "home"), in Go's Home sheet (the Home chip, with no Home
  *   yet; "Change Home" under More once there is one) and in Settings, My Go.
- * - The map: press and hold (or right-click) a spot, then "Set as Home" in the road panel's "Use this spot" row,
- *   or "Pick on the map" in the Home sheet, then a tap on the map.
+ * - The map: "Pick on the map" in the Home sheet, then a tap on the map. The road panel no longer has a Set as Home
+ *   button (the owner, 2026-11-13: "Don't bother with set as home. That would be in Favorites").
  *
  * Presses to set Home with no Home yet (the owner's targets: 3 or fewer with search, 2 from the map):
  *
  *   before                                        after
  *   search: Home chip (Settings opens, scrolled   search: Home chip, the search box, a result (3)
  *     to My Go), the search box, a result (3)
- *   map: no way                                   map: hold the spot, Set as Home (2);
- *                                                   or Home chip, Pick on the map, the spot (3)
+ *   map: no way                                   map: Home chip, Pick on the map, the
+ *                                                   spot (3)
  *
  * Signed in, Home is saved to the account (POST /api/me/go, as before); signed out, on this device (lib/myGo.ts).
  * Every way says "Home set to <name>." through the page's polite region. Go's Home sheet then closes and gives
