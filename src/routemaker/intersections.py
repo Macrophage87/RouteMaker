@@ -449,22 +449,26 @@ PRIORITY_MARGIN = 0.5
 SLIP_LANE_FT = 1000.0
 SIGNALISED_SLIP_FACTOR = 0.5
 
-# --- Right hooks on a painted lane (the owner, 2026-11-13) ---------------------
+# --- Right hooks at a bike lane or side path (the owner, 2026-11-13) ----------
 #
-# Riding straight on along a painted lane past a busy road, cars on the rider's road turn
-# across the lane into it (a right hook, or a left across from the other side). The owner,
-# of R Street NW by Dupont Circle (typed): "Right hook chances"; then "3 would probably
-# make people avoid this more likely. The problem is that it's everywhere. Add the risks
-# to the junctions, rather than the road", and "It's not as bad as a slip lane, but it's
-# still a cost". So the lane's own level is left as it is, and each such junction costs a
-# QUARTER OF A SLIP LANE (250 ft) on top of whatever else it costs, at a signal too, where
-# turning on green is the right hook. Not a number of its own, and like every fixed charge
-# here it fades in with the crossed road's level (`_fade`) and is part of the junction's
-# one price (`cost_of`). Unmeasured. Painted lanes only: a side path's and a protected
-# lane's mouths are counted in that way's own level (`stress.beside_busy_road_step`), so
-# charging them here would count them twice; the 2024 National Academies crash model does
-# not find painted lanes worse than separated ones at junctions, so when that step is
-# gone this should cover every right-edge bike facility.
+# Riding straight on along a bike lane, or a path beside a road, past a busy road, cars on
+# the rider's road turn across the rider's line into it (a right hook, or a left across
+# from the other side). The owner, of a painted lane (typed): "Right hook chances"; then
+# "3 would probably make people avoid this more likely. The problem is that it's
+# everywhere. Add the risks to the junctions, rather than the road", and "It's not as bad
+# as a slip lane, but it's still a cost". So the lane's own level is left as it is, and
+# each such junction costs a QUARTER OF A SLIP LANE (250 ft) on top of whatever else it
+# costs, at a signal too, where turning on green is the right hook. Not a number of its
+# own, and like every fixed charge here it fades in with the crossed road's level
+# (`_fade`: none at a quiet street's mouth) and is part of the junction's one price
+# (`cost_of`). The quarter is unmeasured.
+#
+# Which facilities: a painted lane, a protected lane (`Road.painted_lane`, both) and a path
+# that runs beside a road (`Junction.beside`). He spoke of painted lanes; the 2024 National
+# Academies crash model (the audit's areas/14, 2g) finds a separated lane no safer than a
+# painted one at junctions, and a side path's level (`stress.beside_busy_road_step`) now
+# counts only driveways and quiet-street mouths, leaving busy cross streets, slip lanes
+# and hooks to this charge, once (OWNER-DECISIONS 303: "we don't want to double count").
 RIGHT_HOOK_FT = SLIP_LANE_FT / 4
 
 # --- Severity (item 172) ----------------------------------------------------
@@ -631,8 +635,9 @@ class Road:
     # road lies in a Census urban area (`is_urban`). None on a table built before them.
     default_speed_mph: float | None = field(default=None, compare=False)
     urban: bool | None = field(default=None, compare=False)
-    # The road carries a painted bike lane (`facility.Facility.LANE`) on the segment table:
-    # riding straight on along it past a busy road costs RIGHT_HOOK_FT.
+    # The road carries a bike lane, painted or protected (`facility.Facility.LANE`,
+    # `PROTECTED`) on the segment table: riding straight on along it past a busy road costs
+    # RIGHT_HOOK_FT.
     painted_lane: bool = field(default=False, compare=False)
     # A half step (OWNER-DECISIONS 441i-441l, 461a): the road is half a level above `tier`.
     # Its base costs are the midpoints of its two levels' (`_table`); an on/off rule
@@ -1044,9 +1049,11 @@ def cost_of(junction: Junction, when: str | None = None) -> tuple[float, str, Ro
         busiest = max(roads, key=crossing_level) if roads else None
         if busiest is not None:
             take(slip_ft(j.control) * _fade(busiest), "slip_lane", busiest)
-    if j.movement is Movement.STRAIGHT and j.incoming.painted_lane and not j.incoming.car_free:
-        # Straight on along a painted lane past a busy road: cars turn across the lane
-        # (`RIGHT_HOOK_FT`), on top of the junction's other cost.
+    edge = j.incoming.painted_lane or j.beside is not None
+    if j.movement is Movement.STRAIGHT and edge and not j.incoming.car_free:
+        # Straight on along a bike lane (painted or protected) or a path beside a road,
+        # past a busy road: cars turn across the rider's line (`RIGHT_HOOK_FT`), on top
+        # of the junction's other cost.
         hooks = [r for r in (*j.crossed, *j.links) if r.busy and not r.car_free]
         if hooks:
             hooked = max(hooks, key=crossing_level)

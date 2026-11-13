@@ -285,14 +285,14 @@ flowchart TD
 ## Slip lanes and right hooks
 
 Crossing the path of a free-flowing turn lane (a slip lane) costs a fixed amount,
-because drivers there are looking the other way. Riding straight on along a painted
-bike lane past a busy road costs a quarter of that, at signals too: it is where a
-turning car cuts across the lane (a right hook).
+because drivers there are looking the other way. Riding straight on along a bike lane,
+or a path beside a road, past a busy road costs a quarter of that, at signals too: it is
+where a turning car cuts across the rider's line (a right hook).
 
 ```mermaid
 flowchart LR
   A["Route crosses a slip lane's path"] --> B["1,000 ft (500 ft at a signal)"]
-  C["Straight on along a painted lane past a busy road"] --> D["+ 250 ft, a quarter of a slip lane"]
+  C["Straight on along a bike lane or side path past a busy road"] --> D["+ 250 ft, a quarter of a slip lane"]
   D --> E["Added to the junction's one price"]
 ```
 
@@ -309,12 +309,16 @@ flowchart LR
   cost". The placing is his; the quarter is unmeasured. It fades in with the crossed
   road's level and is added to the junction's price inside `cost_of`, so it is part of
   the one price and of the 2 mile cap.
-- **Painted lanes only, and why that is a known limit.** A side path's and a protected
-  lane's side-street mouths are already counted in that way's own level
-  (`stress.beside_busy_road_step`), so charging them here would count them twice. The
-  2024 National Academies crash model (audit areas/14, section 2g) does not find painted
-  lanes worse than separated ones at junctions, so the charge belongs on every
-  right-edge bike facility once the level step is gone. Listed for the side-path work.
+- **Which facilities.** A painted lane, a protected lane, and a path that runs beside a
+  road (`Road.painted_lane`, which is true for both kinds of lane; `Junction.beside`). He
+  spoke of painted lanes. The 2024 National Academies crash model (audit areas/14,
+  section 2g) finds a separated lane no safer than a painted one at junctions. A side
+  path's own level (`stress.beside_busy_road_step`) counts only driveways and quiet-street
+  mouths since 2026-11-13, so busy cross streets, slip lanes and hooks at a side path are
+  charged here and nowhere else. The charge fades to nothing at a quiet street's mouth,
+  so the two do not overlap.
+- **Limit.** No charge for a left-turning car crossing from the other side as a thing of
+  its own; no source we opened gives feet for either.
 
 </details>
 

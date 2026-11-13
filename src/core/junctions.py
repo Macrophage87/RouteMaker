@@ -1175,7 +1175,7 @@ def roads_by_way(
         # Closed to cars at the ride's time: no traffic to read it by (`intersections.by_traffic`).
         car_free="(%s = ANY(s.car_free_when))" if with_facility else "false",
         # A painted lane (`intersections.RIGHT_HOOK_FT`).
-        painted_lane="(s.facility = 'lane')" if with_facility else "false",
+        painted_lane="(s.facility IN ('lane', 'protected'))" if with_facility else "false",
         speed="s.road_speed_mph" if traits else "NULL::smallint",
         lanes="s.road_lanes" if traits else "NULL::smallint",
         oneway="s.road_oneway" if traits else "NULL::boolean",

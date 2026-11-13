@@ -140,7 +140,8 @@ class TestRefuge:
         return Road(2, speed_mph=speed, lanes=lanes, oneway=True, aadt=aadt)
 
     def refuge(self, lanes: int, speed: float, aadt: int | None = None) -> float:
-        return assess(crossing(self.one_way(lanes, speed, aadt))).refuge_ft
+        event = assess(crossing(self.one_way(lanes, speed, aadt)))
+        return 0.0 if event is None else event.refuge_ft
 
     def test_table_8(self) -> None:
         assert self.refuge(2, 25) == 0  # four lanes at 25 mph: level 1 with a refuge
@@ -246,7 +247,10 @@ class TestSidePath:
         side = road(1, 35, 8_000)
         alone = crossing(side, Control.NONE, own=path, path_crossing=True)
         beside = replace(alone, beside=road(2, 40, 30_000))
-        assert cost(beside) <= model.PRIORITY_SIDE_FT < cost(alone)
+        # The priority side's pass and the hook of cars turning off the main road.
+        # (The pass is a marked crossing's, x0.83 at 35 mph.)
+        assert cost(beside) == pytest.approx(25 * 0.83 + model.RIGHT_HOOK_FT)
+        assert cost(beside) < cost(alone)
 
 
 class TestRightHook:
@@ -263,6 +267,15 @@ class TestRightHook:
             (250 + 25) / 2
         )
         assert assess(crossing(road(1, 25), Control.CROSS_STOP, own=lane)) is None
+
+    def test_a_path_beside_a_road_takes_it_too_and_only_once(self) -> None:
+        # The side path's own level no longer counts busy cross streets (package W4).
+        path = Road(1, speed_mph=None, lanes=None)
+        busy = road(2, 35, 30_000)
+        main = road(3, 40, 40_000)
+        alone = crossing(busy, Control.SIGNAL, own=path, path_crossing=True)
+        beside = replace(alone, beside=main)
+        assert cost(alone) == 0 and cost(beside) == 250
 
 
 def test_urban_has_one_definition() -> None:
