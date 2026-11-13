@@ -3,7 +3,7 @@
  "decided": "2026-11-13",
  "decided_by": "the deployment owner",
  "status": "Re-rate asked for by the owner in conversation on 2026-11-13; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
- "annotations": "Every road re-rated on 2026-11-13 with one lean rater brief: one rater for every road, a second for the doubtful ones, a third where those two disagreed. This file holds only the ways whose level changed; rows from earlier files that it replaces are retired. Rows from the owner's own earlier rating files are replaced too (the owner, 2026-11-13: \"Ignore my own calls\"); closed roads, streets rated from Baltimore City's bike facility records (2026-10-01, a fact the raters were not given), ways with only an access row and ways whose level did not change are left as they are. Method and results: reports/rerate-2026-11-13/REPORT.md.",
+ "annotations": "Every road re-rated on 2026-11-13 with one lean rater brief: one rater for every road, a second for the doubtful ones, a third where those two disagreed. This file holds only the ways whose level changed, plus (Maryland) the Baltimore streets whose bike facility the city records and the map lacks, re-rated with that record as a fact; rows from earlier files that it replaces are retired. Rows from the owner's own earlier rating files are replaced too (the owner, 2026-11-13: \"Ignore my own calls\"); closed roads, ways with only an access row and ways whose level did not change are left as they are. Method and results: reports/rerate-2026-11-13/REPORT.md.",
  "retire": [
   {
    "kind": "stress",
