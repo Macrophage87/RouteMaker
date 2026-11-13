@@ -10001,7 +10001,8 @@ side:
   plugin 1.2.26 would start its foreground service before the grant and Android 14+ refuses that; End
   ride's `clearWatch` removes the native watcher, which stops the foreground service), the native voice behind the same `SpeechEnv` (rideOutput's `Voice`
   is unchanged), a wake lock that never says "keep your screen on yourself", no `HIDDEN_STOP_MS` pause
-  (`ridesHidden()`), Android's silent "Latest cue" notification (`showCue`, each delivered sentence),
+  (`ridesHidden()`), Android's silent "Latest cue" notification (`showCue`, each delivered sentence; since v0.27.0 the live turn card,
+  `showTurnCard`, lib/turnCard.ts, below),
   and `speaksAloud()`: the rider's output choice as before, plus "My screen reader" spoken while the
   page is hidden (TalkBack reads nothing of a hidden page, so nothing is said twice). `RIDE_SAFETY`
   drops "needs the screen on" in the app. RideGroup's own watch stays the browser's.
@@ -10054,3 +10055,33 @@ side:
   share ride. A ride (own bike or share bike) after the last transit leg names the ending
   (`transit._ending`). Tests: tests/test_transit.py. No map rebuild.
 - X4-3 (darkness over a run's span) is built under "Round 4 owner decisions (2026-11-09)".
+
+## Riding with the phone in a pocket (v0.27.0)
+
+The owner, 2026-11-13, picked "All three, no new switches" from the backlog's pocket-riding item. No control was
+added; every figure below is our default, unmeasured.
+
+- **Live turn card** (`lib/turnCard.ts`, `nativeShell.ts` `showTurnCard`, `mobile/.../RideCuePlugin.java`): one
+  silent, lock-screen-public notification with the next turn, stop or end from `cueSheet`: "450 ft · Left", the
+  street, and "Then in 0.3 mi · Right · R St NW". The distance is in the rider's unit alone (`format.ts`
+  `cardDistance`), to the nearest 50 ft or m, so it changes every few seconds. `CueNotice` skips an update that
+  changes nothing; an older app without the plugin gets the old "Latest cue" with the turn and street only.
+  Android 16: `setRequestPromotedOngoing` (Live Update) where the phone allows it.
+- **Tone before a turn cue** (`lib/cueTone.ts`): `cueMark` gives a turn's cue a tone (its "now" also a buzz for
+  its side) and off route its own tone; nothing else gets one. `Announcer` carries the mark, `Voice` puts it on
+  the utterance (`UtteranceLike.chime`), and the speech env plays it first: `RideCuePlugin.chime` inside the
+  voice's audio turn in the app, Web Audio (`chimed`, `browserChime`) in a browser. A cancel during the tone
+  drops the words. One 880 Hz beep of 150 ms for a turn, two 660 Hz beeps for off route, 60 ms before the words.
+- **Buzz for left and right** (`rideBuzz`): at a turn's "now", one 450 ms buzz for left (and a U-turn), two of
+  140 ms for right; `RideCuePlugin.buzz` skips a phone set to silent; a browser uses `navigator.vibrate`. Not
+  with the cue output "Neither".
+- **Estimated cues through weak GPS** (`navigate.ts` `estimateStep`, `ESTIMATE_MS` 30 s, `ESTIMATE_AFTER_MS`
+  5 s): with no good fix for 5 s while riding the line (not off route, alongside, arrived, or under about
+  2 mph), RideMode's 3 s check carries the ride on along the line at the last speed (`RideState.estM`, never
+  `progressM`) and says the next turn's phases as estimates: "In about 450 feet, ...", "About here: ...". A
+  stop, the end and road notes wait for a real fix; nothing goes off route or re-plans on a guess. The weak-GPS
+  note waits until the estimates end (`weakNoteAfterMs`). The cue bench's weak-GPS variant rides it.
+- **Cue timing** (cue bench findings): a polite turn warning waits only for the gap after the last turn
+  warning, never behind a road note (`Announcer.lastTurn`); arriving at a stop or the end is `after`, so it
+  waits for the turn's "now" being said instead of cutting it off.
+
