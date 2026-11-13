@@ -278,10 +278,11 @@ def test_a_holiday_is_weekday_offpeak_unless_it_falls_on_a_weekend():
     assert ridetime.when_at(veterans_day) not in ridetime.closed_settings(sligo)
     # Christmas 2027 falls on a Saturday: the day itself is still the weekend.
     assert ridetime.when_at(datetime(2027, 12, 25, 10, 0, tzinfo=ridetime.ZONE)) == "weekend"
-    # And so the holiday takes the off-peak junction factor, not the weekend's.
+    # And so the holiday takes the off-peak hour's traffic at a junction, not the weekend's.
     from routemaker import intersections
 
-    assert intersections.TIME_FACTORS[ridetime.when_at(veterans_day)] == 1.0
+    holiday = intersections.hour_share(ridetime.when_at(veterans_day))
+    assert holiday == intersections.hour_share(None) != intersections.hour_share("weekend")
 
 
 def test_sunday_evening_after_the_car_free_windows_is_offpeak():
