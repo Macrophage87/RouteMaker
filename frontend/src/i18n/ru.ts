@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "Поставьте старт, затем одну-две остановки по пути.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "Эта поездка заканчивается там, где начинается, поэтому строится как петля: обратный путь избегает дорог, пройденных туда, если есть другой путь.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "Начинается и заканчивается в первой точке. Каждая следующая точка — остановка на петле, а обратный путь избегает дорог, пройденных туда, если есть другой путь.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "Включите, чтобы закончить возвращением к старту. Каждая добавленная точка становится остановкой.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "Строит путь до финиша, затем другой обратный путь к старту. Обратный путь избегает дорог, пройденных туда, если есть другой путь.",
   "Loop returns the same way: no other fit.": "Петля возвращается той же дорогой: другого подходящего пути нет.",
   "({credit}, live)": "({credit}, в реальном времени)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "На карте пунктир через остановки с отметкой системы (Metro, MARC, Автобус) — поездка на транспорте.",

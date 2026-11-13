@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "ضع البداية، ثم توقفًا أو اثنين على الطريق.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "هذه الرحلة تنتهي حيث تبدأ، لذا تُحسب كحلقة: طريق العودة يتجنب الطرق المستخدمة في الذهاب إن وُجد طريق آخر.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "تبدأ وتنتهي عند نقطتك الأولى. كل نقطة تضيفها بعدها توقف على الحلقة، وطريق العودة يتجنب الطرق المستخدمة في الذهاب إن وُجد طريق آخر.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "شغّله للانتهاء بالعودة إلى البداية. كل نقطة تضيفها تصبح توقفًا.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "يحسب الطريق إلى نهايتك، ثم طريق عودة مختلفًا إلى البداية. طريق العودة يتجنب الطرق المستخدمة في الذهاب إن وُجد طريق آخر.",
   "Loop returns the same way: no other fit.": "تعود الحلقة من الطريق نفسه: لا يوجد طريق مناسب آخر.",
   "({credit}, live)": "({credit}، مباشر)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "على الخريطة، الخط المتقطع عبر المحطات المعلَّمة بنظامها (Metro، MARC، حافلة) هو الرحلة بالنقل العام.",

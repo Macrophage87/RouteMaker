@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "শুরু রাখুন, তারপর পথে এক-দুটি থামার জায়গা।",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "এই সফর যেখানে শুরু সেখানেই শেষ, তাই লুপ হিসেবে হিসাব হয়: অন্য পথ থাকলে ফেরার পথ যাওয়ার রাস্তাগুলো এড়ায়।",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "প্রথম বিন্দুতে শুরু ও শেষ। পরে যোগ করা প্রতিটি বিন্দু লুপে একটি থামার জায়গা, আর অন্য পথ থাকলে ফেরার পথ যাওয়ার রাস্তাগুলো এড়ায়।",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "শুরুতে ফিরে শেষ করতে চালু করুন। যোগ করা প্রতিটি বিন্দু থামার জায়গা হয়।",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "গন্তব্য পর্যন্ত পথ হিসাব করে, তারপর শুরুতে আলাদা ফেরার পথ। অন্য পথ থাকলে ফেরার পথ যাওয়ার রাস্তাগুলো এড়ায়।",
   "Loop returns the same way: no other fit.": "লুপ একই পথে ফেরে: আর কোনো উপযুক্ত পথ নেই।",
   "({credit}, live)": "({credit}, সরাসরি)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "মানচিত্রে, নিজের ব্যবস্থা (Metro, MARC, বাস) চিহ্নিত স্টপ দিয়ে যাওয়া ভাঙা রেখা গণপরিবহনের যাত্রা।",

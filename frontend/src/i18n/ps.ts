@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "پیل کېږدئ، بیا په لاره کې یو یا دوه تمځایونه.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "دا سفر هلته پای ته رسېږي چېرته چې پیلېږي، نو د کړۍ په توګه محاسبه کېږي: د بېرته راتګ لار، که بله لار وي، د تګ له لارو ډډه کوي.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "په لومړي ټکي کې پیل او پای ته رسېږي. هر ټکی چې وروسته یې زیاتوئ پر کړۍ تمځای دی، او د بېرته راتګ لار، که بله لار وي، د تګ له لارو ډډه کوي.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "چالان یې کړئ چې پیل ته په بېرته راتګ پای ته ورسېږي. هر ټکی چې زیاتوئ یې تمځای کېږي.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "تر پای پورې لار محاسبه کوي، بیا پیل ته بېله د راتګ لار. د بېرته راتګ لار، که بله لار وي، د تګ له لارو ډډه کوي.",
   "Loop returns the same way: no other fit.": "کړۍ په همغه لاره بېرته راځي: بله مناسبه لار نشته.",
   "({credit}, live)": "({credit}، ژوندی)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "په نقشه کې، د خپل سیستم (Metro، MARC، بس) نښه لرونکو تمځایونو له لارې ماته کرښه د عامه ترانسپورت سفر دی.",

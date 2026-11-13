@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "출발지를 놓고 길 중간 경유지를 한두 곳 넣으세요.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "이 라이딩은 시작한 곳에서 끝나므로 순환으로 계산합니다: 다른 길이 있으면 돌아오는 길은 가는 길을 피합니다.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "첫 지점에서 시작해 첫 지점에서 끝납니다. 나중에 더한 지점은 순환 경유지가 되고, 다른 길이 있으면 돌아오는 길은 가는 길을 피합니다.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "켜면 출발지로 돌아와 끝납니다. 더한 지점은 모두 경유지가 됩니다.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "도착지까지 길을 계산한 뒤 출발지로 다른 귀갓길을 계산합니다. 다른 길이 있으면 돌아오는 길은 가는 길을 피합니다.",
   "Loop returns the same way: no other fit.": "순환이 같은 길로 돌아옵니다: 다른 알맞은 길이 없습니다.",
   "({credit}, live)": "({credit}, 실시간)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "지도에서 노선(Metro, MARC, 버스)이 표시된 정류장을 지나는 파선은 대중교통 구간입니다.",

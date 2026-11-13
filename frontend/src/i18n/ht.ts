@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "Mete pwen depa a, epi youn oswa de arè sou wout la.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "Woulib sa a fini kote li kòmanse, kidonk li kalkile kòm yon bouk: retou a evite wout ale a te pran, lè gen yon lòt chemen.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "Kòmanse epi fini nan premye pwen ou. Chak pwen ou ajoute apre se yon arè sou bouk la, epi retou a evite wout ale a te pran lè gen yon lòt chemen.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "Limen pou fini nan depa a. Chak pwen ou ajoute vin yon arè.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "Kalkile chemen rive nan pwen fen ou, epi yon lòt chemen pou retounen nan depa a. Retou a evite wout ale a te pran lè gen yon lòt chemen.",
   "Loop returns the same way: no other fit.": "Bouk la retounen menm chemen an: pa gen lòt ki bon.",
   "({credit}, live)": "({credit}, an dirèk)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "Sou kat la, yon liy tirè ak non sistèm li (Metro, MARC, Bis) se vwayaj nan transpò a, pa arè li yo.",

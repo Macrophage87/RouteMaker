@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "शुरुआत रखें, फिर रास्ते में एक-दो पड़ाव।",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "यह सवारी वहीं ख़त्म होती है जहाँ शुरू होती है, इसलिए लूप की तरह निकाली जाती है: लौटने का रास्ता, अगर दूसरा रास्ता हो, जाते समय की सड़कों से बचता है।",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "आपके पहले बिंदु पर शुरू और ख़त्म होती है। बाद में जोड़ा हर बिंदु लूप पर एक पड़ाव है, और लौटने का रास्ता, अगर दूसरा रास्ता हो, जाते समय की सड़कों से बचता है।",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "शुरुआत पर लौटकर ख़त्म करने के लिए चालू करें। जोड़ा हर बिंदु पड़ाव बनता है।",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "मंज़िल तक का रास्ता निकालता है, फिर शुरुआत तक अलग लौटने का रास्ता। लौटने का रास्ता, अगर दूसरा रास्ता हो, जाते समय की सड़कों से बचता है।",
   "Loop returns the same way: no other fit.": "लूप उसी रास्ते से लौटता है: कोई और उपयुक्त रास्ता नहीं।",
   "({credit}, live)": "({credit}, लाइव)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "नक्शे पर, अपने सिस्टम (Metro, MARC, बस) से चिह्नित पड़ावों से गुज़रती टूटी रेखा सार्वजनिक परिवहन की यात्रा है।",

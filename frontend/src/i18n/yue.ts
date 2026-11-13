@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "先擺起點，再喺路上加一兩個中途站。",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "呢程喺起點完，所以當環線計：有其他路嘅話，回程避開去程行過嘅路。",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "由第一個點出發再返嚟呢度。之後加嘅每個點都係環線上嘅中途站；有其他路嘅話，回程避開去程行過嘅路。",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "打開就會返起點先完。加嘅每個點都會變中途站。",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "先計去終點嘅路，再計另一條返起點嘅路。有其他路嘅話，回程避開去程行過嘅路。",
   "Loop returns the same way: no other fit.": "環線行返同一條路：冇其他合適嘅路。",
   "({credit}, live)": "（{credit}，即時）",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "地圖上，經過標咗系統（Metro、MARC、巴士）嘅站嘅虛線係公共交通路段。",

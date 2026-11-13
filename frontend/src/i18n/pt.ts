@@ -1288,8 +1288,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Place the starting point, then a stop or two along the way.": "Marque o ponto de partida e depois uma ou duas paradas pelo caminho.",
   "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way.": "Este pedal termina onde começa, então é calculado como volta: o caminho de volta evita as ruas da ida, onde houver outro caminho.",
   "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way.": "Começa e termina no seu primeiro ponto. Cada ponto adicionado depois é uma parada na volta, e o caminho de volta evita as ruas da ida onde houver outro caminho.",
-  "Turn on to finish back at the start. Each point you add is then a stop.": "Ligue para terminar de volta no início. Cada ponto adicionado vira uma parada.",
-  "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.": "Calcula o caminho até o ponto final e depois outro caminho de volta ao início. A volta evita as ruas da ida onde houver outro caminho.",
   "Loop returns the same way: no other fit.": "A volta usa o mesmo caminho: nenhum outro serve.",
   "({credit}, live)": "({credit}, ao vivo)",
   "On the map, a dashed line marked with its system (Metro, MARC, Bus) is the ride on transit, through its stops.": "No mapa, uma linha tracejada marcada com o sistema (Metro, MARC, ônibus) é o trecho de transporte, por suas paradas.",
