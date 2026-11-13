@@ -6786,14 +6786,15 @@ def map_data_date() -> date | None:
     (`20261110T170245Z`, `pipeline.run.new_build_id`), which `sync_upstreams` writes on a server
     that receives its map rather than building it. The OpenStreetMap extract it was built from is
     at most `SOURCE_EXTRACT_MAX_AGE` (six days) older. None with no promoted build, or an id that
-    is not a date."""
+    is not a date, or when the row cannot be read: the coverage answer never fails
+    for want of a date."""
     from core.models import ValhallaUpstream
 
-    rows = ValhallaUpstream.objects.filter(variant="standard")
-    build_id = rows.values_list("build_id", flat=True).first()
     try:
+        rows = ValhallaUpstream.objects.filter(variant="standard")
+        build_id = rows.values_list("build_id", flat=True).first()
         return datetime.strptime((build_id or "")[:8], "%Y%m%d").date()
-    except ValueError:
+    except Exception:  # noqa: BLE001 - a date is a nicety; the coverage mask must not fail over it
         return None
 
 

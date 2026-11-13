@@ -3888,7 +3888,7 @@ water layer's refresh by hand, and a later refresh runs the same:
     .venv311/bin/python scripts/build_food.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
-then records the printed counts, size and digest in
+(after a map rebuild, `scripts/refresh_places.py` runs it with the others), then records the printed counts, size and digest in
 `frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
 the file. It is a hashed asset under `/assets/`, fetched on the first search
 only (2.3 MB, 555 KB with `gzip -9`, for the committed file) and left out of the service worker's
@@ -6609,7 +6609,8 @@ it. It writes, in the checkout it runs from:
 - `frontend/src/amenity-data/` `water-restrooms.json`, `food.json`, `places.json`,
   `trail-miles.json`, `bike-parking.json`, and `as-of.json` (each file's extract day, and the day
   the cities' racks were fetched);
-- `src/core/geodata/barriers.json` (with the extract's day as its `built`).
+- `src/core/geodata/barriers.json` (with the extract's day as its `built`); the census's coverage
+  report goes to `~/barrier-census-<day>.md`, kept with the release's notes, never committed.
 
 It ends with a change report, one line a file: the count before and after and how many came and
 went (`food: 15,663 -> 15,702 (+120, -81)`). A file left with under 80% of what it had (our
@@ -6617,14 +6618,16 @@ default, unmeasured) is marked `CHECK`: a builder that read a truncated or wrong
 small file rather than failing, so explain the drop before committing. Put the report in the
 rebuild's thread, update the counts in `frontend/src/amenity-data/README.md`'s "Status" sections
 when they matter, and commit the files on a branch for the next release. A builder that fails
-stops the run before `as-of.json` is written; `git restore` the files it had already changed.
+stops the run before `as-of.json` is written and prints the `git restore` line for the files it
+had already changed.
 
 The front-end files reach riders with the next front-end build; `barriers.json` with the next api
 image (a hand ship). Riders see the dates in Settings, About, under the version: "Map data from
 Nov 10, 2026. Places and racks from Oct 9, 2026." The map's day is the live standard graph's build
 day (`GET /api/coverage`'s `properties.map_data`, from the `valhalla_upstream` row), so it moves
 with a map swap by itself; the places' day is the oldest in `as-of.json`, so it moves only with
-this refresh. The climbs file is not part of it: it reads the live table, `manage.py build_climbs`
+this refresh (it is also never newer than the cities' racks: run with `--cities` now and then).
+The climbs file is not part of it: it reads the live table, `manage.py build_climbs`
 ("The Climbs layer").
 
 ## Deployment actions

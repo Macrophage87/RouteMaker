@@ -5,8 +5,12 @@ import { dataAgeSaid, dayLabel, mapDataDay, PLACE_FILES, placesAsOf } from "./da
 
 const AS_OF = JSON.parse(readFileSync(new URL("../amenity-data/as-of.json", import.meta.url), "utf8"));
 
-test("the places' date is the oldest of the place files, and the barrier list is not a place", () => {
-  assert.equal(placesAsOf({ extract: { "water-restrooms": "2026-11-10", food: "2026-10-09", places: "2026-11-10", "trail-miles": "2026-11-10", "bike-parking": "2026-11-10", barriers: "2026-01-01" } }), "2026-10-09");
+test("the places' date is the oldest of the place files and the cities' racks, and the barrier list is not a place", () => {
+  const fresh = { "water-restrooms": "2026-11-10", food: "2026-11-10", places: "2026-11-10", "trail-miles": "2026-11-10", "bike-parking": "2026-11-10", barriers: "2026-01-01" };
+  assert.equal(placesAsOf({ extract: { ...fresh, food: "2026-10-09" }, cities: "2026-11-10" }), "2026-10-09");
+  // Racks DDOT and BCDOT listed weeks ago are not called this week's because the OSM part was refreshed.
+  assert.equal(placesAsOf({ extract: fresh, cities: "2026-11-01" }), "2026-11-01");
+  assert.equal(placesAsOf({ extract: fresh }), null);
   // A file the dates file does not name is not claimed: no date rather than a wrong one.
   assert.equal(placesAsOf({ extract: { food: "2026-11-10" } }), null);
   assert.equal(placesAsOf({ extract: { "water-restrooms": "soon", food: "2026-10-09", places: "2026-11-10", "trail-miles": "2026-11-10", "bike-parking": "2026-11-10" } }), null);

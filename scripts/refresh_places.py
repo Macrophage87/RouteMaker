@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -115,8 +116,17 @@ SNAPSHOTS: tuple[Snapshot, ...] = (
         "barriers",
         BARRIERS,
         "barrier_census.py",
-        # The census prints its coverage report; it is kept beside the rebuild's notes, not here.
-        lambda pbf, day: ["--pbf", str(pbf), "--json", str(BARRIERS), "--built", day],
+        # Its coverage report goes in the home folder, for the rebuild's notes; never committed.
+        lambda pbf, day: [
+            "--pbf",
+            str(pbf),
+            "--json",
+            str(BARRIERS),
+            "--built",
+            day,
+            "--out",
+            str(Path.home() / f"barrier-census-{day}.md"),
+        ],
         _barrier_items,
     ),
 )
@@ -169,8 +179,7 @@ def write_as_of(doc: dict, path: Path = AS_OF) -> None:
 def run_builder(python: str, snapshot: Snapshot, pbf: Path, day: str, extra: list[str]) -> None:
     command = [python, str(SCRIPTS / snapshot.script), *snapshot.args(pbf, day), *extra]
     print(f"refresh: {snapshot.name}: {' '.join(command[1:])}", flush=True)
-    output = subprocess.DEVNULL if snapshot.name == "barriers" else None
-    subprocess.run(command, check=True, cwd=REPO, stdout=output)
+    subprocess.run(command, check=True, cwd=REPO)
 
 
 def main(argv: list[str] | None = None, run: Callable[..., None] = run_builder) -> int:
@@ -189,10 +198,21 @@ def main(argv: list[str] | None = None, run: Callable[..., None] = run_builder) 
     day = extract_day(args.pbf, args.extract_date)
 
     lines = []
+    done: list[Path] = []
     for snapshot in SNAPSHOTS:
         before = read_items(snapshot)
         extra = ["--ddot", "--baltimore"] if snapshot.name == "bike-parking" and args.cities else []
-        run(args.python, snapshot, args.pbf, day, extra)
+        try:
+            run(args.python, snapshot, args.pbf, day, extra)
+        except subprocess.CalledProcessError:
+            # Its own file may be half written too, so it is named with the ones already done.
+            changed = " ".join(os.path.relpath(p, REPO) for p in [*done, snapshot.path])
+            print(
+                f"refresh: {snapshot.name} failed; as-of.json not written. "
+                f"Put back: git restore {changed}"
+            )
+            raise
+        done.append(snapshot.path)
         lines.append(change_line(snapshot.name, before, read_items(snapshot)))
 
     today = datetime.now(UTC).date().isoformat()

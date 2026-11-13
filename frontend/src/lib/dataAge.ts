@@ -17,10 +17,13 @@ export const PLACE_FILES = ["water-restrooms", "food", "places", "trail-miles", 
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The oldest extract day among the place files, or null when the file names none. */
-export function placesAsOf(doc: { extract?: Record<string, string> } = AS_OF): string | null {
-  const days = PLACE_FILES.map((name) => doc.extract?.[name]).filter((day): day is string => typeof day === "string" && DAY.test(day));
-  return days.length === PLACE_FILES.length ? [...days].sort()[0] : null;
+/**
+ * The oldest day among the place files' extracts and the cities' racks (DDOT's and BCDOT's, fetched only when the
+ * refresh is told to), or null when the file does not name them all.
+ */
+export function placesAsOf(doc: { extract?: Record<string, string>; cities?: string } = AS_OF): string | null {
+  const days = [...PLACE_FILES.map((name) => doc.extract?.[name]), doc.cities].filter((day): day is string => typeof day === "string" && DAY.test(day));
+  return days.length === PLACE_FILES.length + 1 ? [...days].sort()[0] : null;
 }
 
 /** The map's day from GET /api/coverage's properties, or null before a first build. */

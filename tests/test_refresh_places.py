@@ -74,6 +74,8 @@ def test_one_run_refreshes_all_from_the_extracts_day(tmp_path, monkeypatch, caps
     assert mod.main(["--pbf", str(pbf)], run=run) == 0
     assert [c[0] for c in calls] == [s.name for s in mod.SNAPSHOTS]
     assert all(str(pbf) in c[1] for c in calls)
+    census = next(c for c in calls if c[0] == "barriers")[1]
+    assert census[census.index("--out") + 1].endswith("barrier-census-2026-11-10.md")
     assert all(c[2] == [] for c in calls), "no network without --cities"
     barriers = next(c for c in calls if c[0] == "barriers")
     assert barriers[1][barriers[1].index("--built") + 1] == "2026-11-10"
@@ -95,7 +97,7 @@ def test_cities_fetches_the_racks_and_dates_them_today(tmp_path, monkeypatch) ->
     assert doc["cities"] == datetime.now(UTC).date().isoformat()
 
 
-def test_a_failed_builder_leaves_the_dates_file_alone(tmp_path, monkeypatch) -> None:
+def test_a_failed_builder_leaves_the_dates_file_alone(tmp_path, monkeypatch, capsys) -> None:
     pbf, _, _ = _setup(tmp_path, monkeypatch)
     before = mod.AS_OF.read_text()
 
@@ -107,3 +109,7 @@ def test_a_failed_builder_leaves_the_dates_file_alone(tmp_path, monkeypatch) -> 
     except mod.subprocess.CalledProcessError:
         pass
     assert mod.AS_OF.read_text() == before
+    assert (
+        "water-restrooms failed; as-of.json not written. Put back: git restore "
+        in capsys.readouterr().out
+    )
