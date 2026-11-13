@@ -3040,7 +3040,7 @@ def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval
 STUB_IMPORT = """#!/bin/sh
 echo "import $*" >> "$STUB_LOG"
 case "$*" in *--swap*) exit "${STUB_SWAP_RC:-0}" ;; esac
-exit 0
+exit "${STUB_IMPORT_RC:-0}"
 """
 RUN = "s3://bucket/rebuild-checkpoints/transfer/cloud-20261112a"
 
@@ -3110,6 +3110,69 @@ def test_a_failed_map_swap_leaves_the_code_live_and_the_agent_paused(beta: Beta)
     assert "the map swap failed" in beta.status() and "rollback-map" in beta.status()
     assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
     assert (beta.cd / "PAUSED").exists()
+
+
+def test_a_map_that_does_not_download_never_reaches_the_swap(beta: Beta) -> None:
+    _map_release(beta)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_IMPORT_RC="1")
+    assert done.returncode == 1
+    assert "the map did not download or verify" in beta.status()
+    assert "--swap" not in beta.calls()
+    assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_code_that_fails_rolls_back_and_installs_no_map(beta: Beta) -> None:
+    _map_release(beta, {"scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS})
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert done.returncode == 1
+    assert "rolled-back" in beta.status() and "no map was installed" in beta.status()
+    assert "import" not in beta.calls()
+    assert beta.head() == beta.v1 and (beta.cd / "deployed-tag").read_text() == "v0.1.0\n"
+    assert (beta.cd / "PAUSED").exists() and not (beta.cd / "BROKEN").exists()
+
+
+def test_ship_held_whose_rollback_fails_is_broken(beta: Beta) -> None:
+    _map_release(beta, {"scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS})
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_GATE_FAIL=beta.v1[:12])
+    assert done.returncode == 1
+    assert "broken" in beta.status() and (beta.cd / "BROKEN").exists()
+    assert "import" not in beta.calls()
+    # and nothing else runs until the owner has looked
+    again = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert again.returncode == 1 and "a rollback failed earlier" in beta.status()
+
+
+def test_ship_held_whose_build_fails_leaves_the_old_release_untouched(beta: Beta) -> None:
+    _map_release(beta)
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", STUB_RUNNING="postgis", STUB_BUILD_RC="1")
+    assert done.returncode == 1
+    assert "could not be exported or built" in beta.status()
+    assert "up -d" not in beta.calls() and "stop api" not in beta.calls()
+    assert beta.head() == beta.v1 and (beta.cd / "deployed-tag").read_text() == "v0.1.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_tag_whose_ci_is_not_green(beta: Beta) -> None:
+    _map_release(beta)
+    beta.green(conclusion="failure")
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "not green" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_tag_off_main(beta: Beta) -> None:
+    git(beta.origin, "checkout", "-q", "-b", "side")
+    beta.release("v0.2.0", {"lua/tags.lua": "-- new\n"})
+    git(beta.origin, "checkout", "-q", "main")
+    beta.agent("run", **UP)
+    beta.log.unlink(missing_ok=True)
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "is not on main" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
 
 
 def test_ship_held_refuses_a_release_that_needs_nginx_and_changes_nothing(beta: Beta) -> None:
