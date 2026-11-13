@@ -8482,8 +8482,10 @@ a road or signed path open to bicycles) and `moved_points` says so (reason `rest
 a point within 100 m (our default) of a way inside the site that stays open (the Goddard Visitor
 Center's way in, a public road the outline takes in), a ride's re-plan's start, a drawn or opened
 line, a point whose gate is where the point before it is routed, and a point in a site with no
-gate found. The map washes, hatches and dashes the edge of each site, with its name and "No
-public access" on sites of 0.25 km2 or more (our default). Sites, gates and the hand-drawn closed
+gate found. The map washes, hatches and dashes the edge of each site from zoom 10, and names
+each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and with "No public
+access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
+15 (our defaults). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
 PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
 rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
