@@ -99,3 +99,10 @@ test("App: the kept route is the map's dashed line while comparing, and going ba
   // Clear drops it; a change of plan does not.
   assert.match(app, /const clearPlan = \(\) => \{\n\s+setCompareKept\(null\);/);
 });
+
+test("styles.css closes every rule it opens (a merge once left one open, nesting the compare and loop rules inside it)", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.equal((css.match(/\{/g) ?? []).length, (css.match(/\}/g) ?? []).length);
+  assert.match(css, /\n\.plan-compare \{/);
+  assert.match(css, /\n\.loop-way\.chosen \{/);
+});

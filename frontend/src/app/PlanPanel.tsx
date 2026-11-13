@@ -65,12 +65,21 @@ export function PlanPanel(props: PlanPanelProps) {
   }, [routing !== null]);
   // Keep to compare, Use kept route and Stop comparing each take their own button away (or the whole block while the
   // kept route is put back): the focus, left on nothing, goes to the block's first button, else the panel.
+  // Only after one of them was pressed: a route arriving on its own (a link opened) never moves the focus.
   const compareState = compare ? `${compare.kept}-${compare.rows !== null}-${compare.edited}` : "none";
+  const comparePressed = useRef(false);
   useEffect(() => {
+    if (!comparePressed.current) return;
     if (document.activeElement && document.activeElement !== document.body) return;
     const target = panelRef.current?.querySelector<HTMLElement>(".plan-compare button") ?? null;
-    if (target) target.focus();
+    if (!target) return;
+    comparePressed.current = false;
+    target.focus({ preventScroll: true });
   }, [compareState]);
+  const pressed = (act: () => void) => () => {
+    comparePressed.current = true;
+    act();
+  };
   const route = () => {
     if (routing) return;
     // Enter with nothing to route ("The route shown is up to date."): said on the status line, not met with silence.
@@ -193,7 +202,7 @@ export function PlanPanel(props: PlanPanelProps) {
           ))}
         </ul>
       )}
-      {compare && compareBlock(compare)}
+      {compare && compareBlock({ ...compare, onKeep: pressed(compare.onKeep), onUse: pressed(compare.onUse), onStop: pressed(compare.onStop) })}
     </section>
   );
 }
