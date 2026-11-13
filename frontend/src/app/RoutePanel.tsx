@@ -1279,7 +1279,7 @@ export function RouteSummary({
           className="facilities-fold"
           name={ROUTE_FOLD_GROUP}
         >
-          {/* The quick figures, first in the fold: the owner's four (choice 4), then turns, waits and any unpaved miles (#1200). */}
+          {/* The four quick figures, first in the fold (the owner's choice 4). */}
           <QuickFigures figures={quickFigures(route)} />
           {segments.length > 0 && (
             <figure className="stress" aria-labelledby="stress-detail-caption">
