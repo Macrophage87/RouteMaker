@@ -1191,3 +1191,16 @@ class TestRawCountFixes:
         # A street's own quieter line under the freeway stays the street's.
         own = feature("st", [(-77.0205, 38.90001), (-77.0095, 38.90001)], 5000, "locality", "ddot")
         assert conflate(ways, [own], freeway={2}, layers={1: 0, 2: 2}).matched[1].aadt == 5000
+
+    def test_a_line_no_freeway_way_takes_goes_back_to_the_street(self) -> None:
+        """The PC's read of 12a81f6d: K Street NW's own 23,366 line, with the freeway on
+        another layer within reach but already counted by its own line, reached no way."""
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90012), (-77.0095, 38.90012)]
+        fwy = feature(
+            "fwy", [(-77.0205, 38.90013), (-77.0095, 38.90013)], 40000, "locality", "ddot"
+        )
+        own = feature("k", [(-77.0205, 38.90003), (-77.0095, 38.90003)], 23366, "locality", "ddot")
+        after = conflate([(1, street), (2, elevated)], [fwy, own], freeway={2}, layers={1: 0, 2: 2})
+        assert after.matched[2].aadt == 40000
+        assert after.matched[1].aadt == 23366

@@ -680,7 +680,12 @@ def conflate(
             fw, st = levels.setdefault(feature.feature_id, (set(), set()))
             (fw if way_id in freeways else st).add(layers.get(way_id, 0))
         freeway_lines |= {fid for fid, (fw, st) in levels.items() if fw and st and fw != st}
+    # Held back, not dropped: a freeway's line that no freeway way takes after all (K Street
+    # NW's own 23,366 line, a freeway on another layer within reach) goes back to the
+    # streets it was a candidate for, after every other line has been placed.
+    held = []
     if freeway_lines:
+        held = [c for c in candidates if c[1] not in freeways and c[2].feature_id in freeway_lines]
         candidates = [
             c for c in candidates if c[1] in freeways or c[2].feature_id not in freeway_lines
         ]
@@ -712,21 +717,28 @@ def conflate(
     used_features: set[str] = set()
     claimed: dict[str, list[tuple[float, float]]] = {}
 
-    for overlap, way_id, feature, span, _mean_distance, _ranked in sorted(candidates, key=rank):
-        match = Match(
-            osm_way_id=way_id,
-            feature_id=feature.feature_id,
-            aadt=feature.aadt,
-            source=feature.source,
-            year=feature.year,
-            score=overlap,
-            agency=feature.agency,
-        )
-        if way_id in matched or not _claim(claimed, feature.feature_id, span):
-            rejected.append((way_id, match))
-            continue
-        matched[way_id] = match
-        used_features.add(feature.feature_id)
+    def place(chosen) -> None:
+        for overlap, way_id, feature, span, _mean_distance, _ranked in sorted(chosen, key=rank):
+            match = Match(
+                osm_way_id=way_id,
+                feature_id=feature.feature_id,
+                aadt=feature.aadt,
+                source=feature.source,
+                year=feature.year,
+                score=overlap,
+                agency=feature.agency,
+            )
+            if way_id in matched or not _claim(claimed, feature.feature_id, span):
+                rejected.append((way_id, match))
+                continue
+            matched[way_id] = match
+            used_features.add(feature.feature_id)
+
+    place(candidates)
+    place([c for c in held if c[2].feature_id not in used_features])
+    candidates += held
+    # The freeway's lines a freeway way did take stay off the streets in the next pass too.
+    freeway_lines = {m.feature_id for w, m in matched.items() if w in freeways} & freeway_lines
 
     # The ways no single count line was a candidate for at all (`_along_counts`). A street
     # beside a freeway does not take the freeway's line this way either.
