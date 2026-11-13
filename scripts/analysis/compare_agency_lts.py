@@ -50,7 +50,7 @@ from pipeline.overrides import file_rows  # noqa: E402
 from routemaker import agency_roads, divided, facility, speed_corrections  # noqa: E402
 from routemaker.classes import TRAIL_CLASS_HIGHWAY  # noqa: E402
 from routemaker.geo import Point, haversine  # noqa: E402
-from routemaker.stress import bends_slow_traffic, classify, rural_floor  # noqa: E402
+from routemaker.stress import bends_slow_traffic, classify  # noqa: E402
 
 MI = 1609.344
 FT_PER_M = 3.28084
@@ -263,7 +263,7 @@ class Context:
             parking_width_m=facts.parking_reach_m if facts is not None else None,
             winding=not urban and bends_slow_traffic(way.coordinates, tags),
         )
-        return rural_floor(result, tags, urban=urban)
+        return result
 
 
 def match(ctx: Context, features: list[conflation.RoadFeature], only_state: str | None = None):

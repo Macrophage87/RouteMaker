@@ -28,7 +28,9 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from routemaker.stress import BUSY_PAINTED_LANE_AADT
+# The count from which the 2026-10-31 reading of DDOT's levels held a painted lane at 2.5.
+# The classifier no longer has a step there (2026-11-13); this reading is comparison-only.
+BUSY_PAINTED_LANE_AADT = 9_000
 
 AGENCY = "ddot"
 

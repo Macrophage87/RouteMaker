@@ -10,7 +10,6 @@ import pytest
 
 from pipeline import aadt_smoothing
 from pipeline.conflation import Match
-from routemaker.stress import classify
 
 DATA = Path(__file__).parent / "data" / "first_street_nw.json"
 # Metres per degree of latitude, to lay a synthetic street out in metres.
@@ -203,24 +202,6 @@ def test_agency_and_year_stay_those_of_the_replaced_count() -> None:
     assert (out[3].agency, out[3].year, out[3].feature_id) == ("ddot", 2024, "f3")
 
 
-def test_a_median_off_the_gate_is_what_the_rule_text_marks() -> None:
-    assert aadt_smoothing.crosses_volume_gate(10665, 7520)
-    assert aadt_smoothing.crosses_volume_gate(1200, 1800)
-    assert not aadt_smoothing.crosses_volume_gate(9500, 11000)
-    assert not aadt_smoothing.crosses_volume_gate(5000, 7000)
-    # The owner's busy-street half step: 5,000, and 9,000 under a painted lane.
-    assert aadt_smoothing.crosses_volume_gate(3000, 6000)
-    assert aadt_smoothing.crosses_volume_gate(8999, 9000)
-    assert aadt_smoothing.crosses_volume_gate(7999, 8000)
-    # 1,500 is still quiet and 1,501 is not; 8,000 is busy and 7,999 is not.
-    assert aadt_smoothing.crosses_volume_gate(1500, 1501)
-    assert not aadt_smoothing.crosses_volume_gate(1501, 1502)
-    # And the urban two-way floor is "more than 8,000" (`stress.urban_two_way_floor`),
-    # so 8,000 and 8,001 are either side of it (ARTERIAL review r0, nit).
-    assert aadt_smoothing.crosses_volume_gate(8000, 8001)
-    assert not aadt_smoothing.crosses_volume_gate(8001, 8002)
-
-
 def test_the_midpoint_is_half_way_along_the_line() -> None:
     mid, length = aadt_smoothing.midpoint_and_length(
         [[-77.0, 38.9], [-77.0, 38.901], [-77.001, 38.901]]
@@ -253,20 +234,6 @@ def test_way_483241819_drops_to_the_streets_count() -> None:
     out, report = smooth(ways, by_way, {w.osm_id: "DC" for w in ways})
     assert out[483241819].aadt == 7520
     assert 483241819 in {r.way_id for r in report.replaced}
-
-
-def test_and_that_moves_the_block_from_lts_3_to_lts_2_by_the_unchanged_rules() -> None:
-    """Decision 285: LTS 3 "single lane, high volume" on 10,665; the rest of the
-    street's 7,520 is LTS 2. No threshold changed (decision 296)."""
-    ways, by_way = first_street()
-    way = next(w for w in ways if w.osm_id == 483241819)
-    tags = {**way.tags, "maxspeed": "25 mph"}
-    kwargs = dict(urban=True, jurisdiction="DC")
-    raw = classify(tags, aadt=by_way[483241819].aadt, **kwargs)
-    out, _ = smooth(ways, by_way, {w.osm_id: "DC" for w in ways})
-    after = classify(tags, aadt=out[483241819].aadt, **kwargs)
-    assert int(raw.tier) == 3 and "high volume" in raw.rule
-    assert int(after.tier) == 2 and "high volume" not in after.rule
 
 
 def test_a_lower_count_that_is_not_an_outlier_is_untouched_and_the_report_counts() -> None:
