@@ -329,7 +329,7 @@ def test_a_mass_ride_asks_for_what_is_missing_and_holds_to_length_corkers_and_gr
     # A riding time counts the hills and the waits at signals.
     timed = mass(start="Dupont Circle", end="Union Station", minutes="80", speed_mph="10")
     assert "So far: 80 minutes of riding, 10 mph." in timed
-    assert "junction_waits" in timed and "x 6 / mph" in timed
+    assert "junction_waits" in timed and "x 6 / mph" in timed and "summary minutes" in timed
 
 
 def test_a_prompt_without_its_place_or_by_another_name_is_refused():

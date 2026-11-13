@@ -1974,6 +1974,9 @@ def summary(answer: dict) -> dict:
         "distance": miles_text(distance),
         "distance_mi": round(distance / METRES_PER_MILE, 1),
         "moving_time": f"{(answer.get('duration_s') or 0) / 3600:.1f} h",
+        # The same to the minute, hills and junction waits counted (the mass ride prompt's
+        # riding time needs it on a ride with no stop, which has no `legs`).
+        "minutes": round((answer.get("duration_s") or 0) / 60),
         "climb": feet_text(answer.get("climb_m") or 0.0),
         "traffic_stress": shares(
             stress,
@@ -8777,23 +8780,24 @@ MASS_RIDE_PROMPT = {
         " for whichever of these I have not given: the number of riders, the number of corkers,"
         " the riding time in minutes (typically 75 to 90) or the length in miles, and the"
         " group's speed in mph.{midpoint_how}"
-        " Plan with plan_route, ride type mass-ride, ride_size the riders, any midpoint as a"
-        " stop and any shaping points as via points. The goal:"
+        " Plan with plan_route, ride type mass-ride, ride_size the riders (100 to 2000; 100 for a"
+        " smaller group), any midpoint as a stop and any shaping points as via points. The goal:"
         " (1) The length I asked for, within 10%: the goal is the length, not the directness, so"
         " add or move via points (revise_route) until it is that long. Given a riding time,"
-        " aim at it, with the hills and traffic signals counted: the plan's time (its legs' minutes"
-        " added up) is Mass Ride's 6 mph on the flat slowed by the hills, plus waits at signals"
-        " and stop signs (summary junction_waits), so at my speed it is (that time less the"
-        " waits) x 6 / mph, plus the waits."
-        ' (2) Free-flowing: mass_capacity\'s corkers "about" no more than the corkers I have,'
-        " and few narrow stretches; where it needs more, move the route off the busiest"
-        " junctions, or offer corking (from_lts 4) to see which junctions to leave uncorked."
+        " aim at it, with the hills and traffic signals counted: the plan's summary minutes"
+        " are Mass Ride's 6 mph on the flat slowed by the hills, plus waits at signals and stop"
+        " signs (summary junction_waits, absent under half a minute), so at my speed the time"
+        " is (minutes less the waits) x 6 / mph, plus the waits."
+        ' (2) Free-flowing: mass_capacity\'s corkers "about" no more than the corkers I have'
+        " (where corkers is null, say they are not known), and few narrow stretches; where it"
+        " needs more, move the route off the busiest junctions, or offer corking (from_lts 4)"
+        " to see which junctions to leave uncorked. Road room steers the route only without"
+        " stops or via points, so with them check mass_capacity's narrow stretches yourself."
         " (3) No grade over 5% where it can be helped and never over 8%, up or down: read"
-        " steep_grades and route_segments' steepest grade, and avoid or route round any"
-        " stretch past that."
+        " steep_grades (both directions, with direction and grade_pct), and avoid or route"
+        " round any stretch past that."
         " Give the miles, the riding time at my speed with hills and signals counted, the"
-        " corkers"
-        " needed against the corkers I have, the steepest grade, then the link."
+        " corkers needed against the corkers I have, the steepest grade, then the link."
     ),
 }
 PROMPTS = (*PROMPTS, MASS_RIDE_PROMPT)
