@@ -306,11 +306,11 @@ def test_a_mass_ride_asks_for_what_is_missing_and_holds_to_length_corkers_and_gr
     bare = mass(start="Dupont Circle", end="Union Station")
     assert "mass-ride" in bare and "ride_size" in bare
     # Asks for riders, corkers, length and speed, and for the midpoint or offers some.
-    for word in ("riders", "corkers", "length in miles", "speed in mph", "two thirds"):
+    for word in ("riders", "corkers", "75 to 90", "length in miles", "speed in mph", "two thirds"):
         assert word in bare
     assert "So far" not in bare
     # A ride may have no midpoint: asked, never required.
-    assert "some have none" in bare and "plan without it" in bare
+    assert "want it left out, or want suggestions?" in bare and "plan without it" in bare
     # The distance is the goal, the corkers are a limit, and the grades 5% and 8% either way.
     assert "not the directness" in bare and "no more than the corkers I have" in bare
     assert "5%" in bare and "8%, up or down" in bare
@@ -326,6 +326,10 @@ def test_a_mass_ride_asks_for_what_is_missing_and_holds_to_length_corkers_and_gr
     assert "So far: 800 riders, 40 corkers, 15 miles, 10 mph." in full
     assert "The midpoint stop is the Wharf." in full and "two thirds" not in full
     assert "{" not in full
+    # A riding time counts the hills and the waits at signals.
+    timed = mass(start="Dupont Circle", end="Union Station", minutes="80", speed_mph="10")
+    assert "So far: 80 minutes of riding, 10 mph." in timed
+    assert "junction_waits" in timed and "x 6 / mph" in timed
 
 
 def test_a_prompt_without_its_place_or_by_another_name_is_refused():

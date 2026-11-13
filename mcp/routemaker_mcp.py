@@ -8751,7 +8751,9 @@ PROMPTS = (
 # Plan a mass ride (Stephen, 2026-11-13): "free-flowing rides that don't require more corkers than
 # we'd have"; "typically don't go over 5% grade and definitely not above 8%, either direction";
 # "the goal is the distance, not the directness"; a midpoint "usually about 2/3" of the way, and
-# "A ride could omit a midpoint".
+# "A ride could omit a midpoint" ("in the prompt ask to omit or if suggestions are desired"); "the time length of ride typically about 75-90 minutes of
+# riding. That way, hills are considered", "And traffic signals". Mass Ride is planned at 6 mph
+# on the flat (core.presets MASS_RIDE_PLANNING_SPEED_KMH).
 # Within 10% of the length, and corking from LTS 4 as the first triage to offer: our defaults,
 # unmeasured.
 MASS_RIDE_PROMPT = {
@@ -8764,26 +8766,33 @@ MASS_RIDE_PROMPT = {
         {"name": "end", "description": "Where it ends", "required": True},
         {"name": "riders", "description": "About how many riders"},
         {"name": "corkers", "description": "How many corkers you have"},
-        {"name": "miles", "description": "How long the ride should be, in miles"},
+        {"name": "minutes", "description": "How long the riding should take, in minutes"},
+        {"name": "miles", "description": "Or how long the ride should be, in miles"},
         {"name": "speed_mph", "description": "The group's speed, mph"},
         {"name": "midpoint", "description": "The midpoint stop, if you have one"},
     ],
     "text": (
         "Plan a mass ride from {start} to {end} with RouteMaker.{known} Before planning, ask me"
         " for whichever of these I have not given: the number of riders, the number of corkers,"
-        " the length in miles and the group's speed in mph.{midpoint_how}"
+        " the riding time in minutes (typically 75 to 90) or the length in miles, and the"
+        " group's speed in mph.{midpoint_how}"
         " Plan with plan_route, ride type mass-ride, ride_size the riders, any midpoint as a"
         " stop and any shaping points as via points. The goal:"
-        " (1) The length I asked for, within 10%: the goal is the distance, not the directness,"
-        " so add or move via points (revise_route) until it is that long."
+        " (1) The length I asked for, within 10%: the goal is the length, not the directness, so"
+        " add or move via points (revise_route) until it is that long. Given a riding time,"
+        " aim at it, with the hills and traffic signals counted: the plan's time (its legs' minutes"
+        " added up) is Mass Ride's 6 mph on the flat slowed by the hills, plus waits at signals"
+        " and stop signs (summary junction_waits), so at my speed it is (that time less the"
+        " waits) x 6 / mph, plus the waits."
         ' (2) Free-flowing: mass_capacity\'s corkers "about" no more than the corkers I have,'
         " and few narrow stretches; where it needs more, move the route off the busiest"
         " junctions, or offer corking (from_lts 4) to see which junctions to leave uncorked."
         " (3) No grade over 5% where it can be helped and never over 8%, up or down: read"
         " steep_grades and route_segments' steepest grade, and avoid or route round any"
         " stretch past that."
-        " Give the time at my speed (miles / mph), the corkers needed against the corkers I"
-        " have, the steepest grade, then the link."
+        " Give the miles, the riding time at my speed with hills and signals counted, the"
+        " corkers"
+        " needed against the corkers I have, the steepest grade, then the link."
     ),
 }
 PROMPTS = (*PROMPTS, MASS_RIDE_PROMPT)
@@ -8817,6 +8826,7 @@ def prompt_text(name: str, arguments: dict) -> dict:
         for k, what in (
             ("riders", "riders"),
             ("corkers", "corkers"),
+            ("minutes", "minutes of riding"),
             ("miles", "miles"),
             ("speed_mph", "mph"),
         )
@@ -8833,10 +8843,10 @@ def prompt_text(name: str, arguments: dict) -> dict:
         "midpoint_how": (
             f" The midpoint stop is {given['midpoint']}."
             if given.get("midpoint")
-            else " Ask me whether the ride has a midpoint stop: many do, about two thirds of the"
-            " way, and some have none. If it has one but I have no place for it, offer two or"
-            " three near the point two thirds along a first plan (find_place near it: a park, a"
-            " plaza, a school yard); if none, plan without it."
+            else " Ask me about a midpoint stop (many rides have one, about two thirds of the"
+            " way): do I have a place for it, want it left out, or want suggestions? Left out,"
+            " plan without it. For suggestions, offer two or three near the point two thirds"
+            " along a first plan (find_place near it: a park, a plaza, a school yard)."
         ),
         "loop_said": ""
         if given.get("end")
