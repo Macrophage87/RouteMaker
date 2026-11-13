@@ -11462,3 +11462,113 @@ button.route-note:focus-visible {
 .feedback-box .feedback-said:empty {
   display: none;
 }
+
+/* The facts behind a road's level (RoadFacts.tsx; the owner, 2026-11-13). A filled mark is a record, a
+   hollow one an estimate; the words say the same ("estimated", "Strong evidence: 4 of 5 from records"). */
+.road-facts {
+  margin-top: 8px;
+}
+
+.road-facts-plain {
+  margin: 0 0 6px;
+}
+
+.road-facts-evidence {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.road-facts-marks {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
+.road-facts-mark {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--text);
+  box-sizing: border-box;
+  flex: none;
+}
+
+.road-facts-mark-on {
+  background: var(--text);
+}
+
+.road-facts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.road-facts-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.road-facts-row > .road-facts-mark {
+  margin-top: 0.3em;
+}
+
+.road-facts-text {
+  overflow-wrap: anywhere;
+}
+
+.road-facts-estimated {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.road-facts-source {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.road-facts-detail {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.875rem;
+}
+
+/* The (i): a 44px touch target around a 28px ring. */
+.road-facts-info {
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px -8px 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.road-facts-info {
+  background-image: radial-gradient(circle, transparent 12px, var(--text-muted) 12.5px, var(--text-muted) 14px, transparent 14.5px);
+}
+
+.road-facts-info[aria-expanded="true"] {
+  color: var(--accent);
+  background-image: radial-gradient(circle, transparent 12px, var(--accent) 12.5px, var(--accent) 14px, transparent 14.5px);
+}

@@ -101,6 +101,17 @@ def summary(body) -> list[str]:
     return [f"{r['label']}: {r['value']}" for r in body["summary"]]
 
 
+def facts(body) -> list[str]:
+    """The facts behind the level, as read: "Traffic: 18,400 vehicles a day", an estimate
+    with ", estimated", then its source and date."""
+    return [
+        f"{f['label']}: {f['value']}"
+        + (", estimated" if f["kind"] == "estimated" else "")
+        + (f" ({', '.join(x for x in (f['source'], f['date']) if x)})" if f["source"] else "")
+        for f in body["facts"]
+    ]
+
+
 def section(body, sid):
     found = [s for s in body["sections"] if s["id"] == sid]
     assert found, (sid, body)
@@ -164,16 +175,22 @@ class TestAnswer:
         # The compact summary: one short line a fact, the lanes not said twice, paved
         # left out on a road, the capacity (the panel shows it on the Mass Ride map only).
         assert body["kind"] == "Main road"
+        # Speed, lanes, traffic and the bike lane are facts (`road_facts`), each with its
+        # source; the evidence line says how sure in place of "measured".
         assert summary(body) == [
-            "Traffic stress: LTS 3 · For experienced cyclists · measured",
+            "Traffic stress: LTS 3 · For experienced cyclists",
             "Why: 30 mph (48 km/h), mixed traffic",
-            "Speed: 30 mph (48 km/h), posted",
-            "Lanes: 2 each way",
-            "Traffic: 18,400 a day (DDOT 2024)",
-            "Bike lane: Painted",
             "Bikes: Allowed",
             f"Room for: About {riders:,} riders a minute",
         ]
+        assert facts(body) == [
+            "Speed limit: 30 mph (48 km/h), posted (DDOT street record)",
+            "Traffic: 18,400 vehicles a day (DDOT count, 2024)",
+            "Through lanes: 2 each way (OpenStreetMap)",
+            "Bike lane: Painted (OpenStreetMap)",
+        ]
+        assert body["evidence"]["words"] == "Strong evidence: 4 of 4 from records"
+        assert body["plain"] == "Two lanes each way at 30 mph, about 18,400 vehicles a day."
         assert [r["id"] for r in body["summary"]][-1] == "mass"
         # Street View opens on the way itself (OWNER-DECISIONS 441o): the spot is on it here.
         assert body["on_way"] == [round(SPOT[0], 6), round(SPOT[1], 6)]
@@ -202,7 +219,7 @@ class TestAnswer:
         assert riding["Bike facility"]["value"] == (
             "Painted bike lane, against the one-way traffic only"
         )
-        assert "Bike lane: Painted (against traffic only)" in summary(body)
+        assert "Bike lane: Painted (against traffic only) (OpenStreetMap)" in facts(body)
 
     def test_nothing_within_reach_is_no_road_here(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
@@ -225,6 +242,9 @@ class TestAnswer:
             "mtb_trail": False,
             "trail_open": None,
             "trail_level": None,
+            "facts": [],
+            "evidence": None,
+            "plain": None,
             "attribution": ["© OpenStreetMap contributors (ODbL)"],
         }
         assert router.calls == []
@@ -338,7 +358,7 @@ class TestAnswer:
         insert(live, 121, [SPOT, east(SPOT, 80)], road_lanes=3, road_oneway=True)
         router.answers = {"bicycle": [edge(121, "9th Street Northwest")]}
         body = get(client).json()
-        assert "Lanes: 3 in this direction" in summary(body)
+        assert "Through lanes: 3 in this direction (OpenStreetMap)" in facts(body)
         assert section(body, "traffic")["Lanes"]["value"] == (
             "3 in this direction (a one-way street, or one side of a divided road)"
         )
@@ -348,7 +368,7 @@ class TestAnswer:
         insert(live, 122, [SPOT, east(SPOT, 80)], road_lanes=2, road_oneway=False)
         router.answers = {"bicycle": [edge(122, "16th Street Northwest")]}
         body = get(client).json()
-        assert "Lanes: 2 each way" in summary(body)
+        assert "Through lanes: 2 each way (OpenStreetMap)" in facts(body)
         assert section(body, "traffic")["Lanes"]["value"] == "2 each way"
 
     def test_assumed_lanes_on_a_one_way_street(self, client, segment_schemas, router) -> None:
@@ -356,7 +376,7 @@ class TestAnswer:
         insert(live, 123, [SPOT, east(SPOT, 80)], stress_assumed=["lanes"], road_oneway=True)
         router.answers = {"bicycle": [edge(123, "Corcoran Street Northwest")]}
         body = get(client).json()
-        assert "Lanes: 1 in this direction, assumed" in summary(body)
+        assert "Through lanes: 1 in this direction, estimated (Not mapped)" in facts(body)
         assert (
             section(body, "traffic")["Lanes"]["value"] == "Not mapped; assumed 1 in this direction"
         )
@@ -382,12 +402,20 @@ class TestAnswer:
         assert section(body, "road")["Kind"]["value"] == "Residential street"
         # Assumed figures say so; no count is left out, not printed as "none".
         assert summary(body) == [
-            "Traffic stress: LTS 2 · Fine for adults · inferred from surroundings",
+            "Traffic stress: LTS 2 · Fine for adults",
             "Why: 20 mph (32 km/h) or below, mixed traffic",
-            "Speed: 20 mph (32 km/h), assumed",
-            "Lanes: 1 each way, assumed",
             "Bikes: Allowed",
         ]
+        assert facts(body) == [
+            "Speed limit: 20 mph (32 km/h), estimated (Nothing posted; the law's default here)",
+            "Traffic: Not counted, estimated (Read from the road's type)",
+            "Through lanes: 1 each way, estimated (Not mapped)",
+            "Bike lane: None (OpenStreetMap)",
+        ]
+        assert body["evidence"]["words"] == "Thin evidence: 1 of 4 from records"
+        assert body["plain"] == (
+            "Nothing is posted or counted here, so speed and traffic are estimates."
+        )
 
     def test_a_closed_way_says_why(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas

@@ -807,6 +807,14 @@ CREATE TABLE {schema}.segment (
     -- needing its button (`core.routing.button_ways`). No migration: the table is created
     -- whole on every rebuild, and the route reads it only where the live table has it.
     button_operated boolean     NOT NULL DEFAULT false,
+    -- The street's pavement survey for the road panel (`core.segment_info` "Pavement"):
+    -- DDOT's Pavement Condition Index, 0 to 100, and the survey's date
+    -- (`routemaker.pavement.Reading`). Shown whether or not the graph reads it, since a
+    -- newer OSM `smoothness` or a correction may keep OSM's reading for routing. Null where
+    -- no survey reaches the way (outside the District, alleys, paths, unpaved streets).
+    -- Display only; no migration: the table is created whole on every rebuild.
+    pavement_pci    real        CHECK (pavement_pci BETWEEN 0 AND 100),
+    pavement_surveyed date,
     -- The zoomed-out map's network marks (OVERVIEW_COLUMN, STRAY_ZOOM_COLUMN;
     -- `pipeline.bike_network`). Display only.
     overview        smallint    NOT NULL DEFAULT 0 CHECK (overview BETWEEN 0 AND 4),

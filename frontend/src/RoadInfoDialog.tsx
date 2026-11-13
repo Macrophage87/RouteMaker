@@ -49,6 +49,7 @@ import {
   refreshedSaid,
   osmEditUrl,
   shownSections,
+  shownFacts,
   shownSummary,
   streetViewUrl,
   subtitle,
@@ -58,6 +59,7 @@ import {
   type InfoState,
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
+import { RoadFacts } from "./RoadFacts.tsx";
 import { SET_AS_HOME_TEXT } from "./lib/homeSet.ts";
 import { SAVE_SPOT_TEXT } from "./lib/favoritePlaces.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
@@ -189,6 +191,8 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
 }
 
 /** Both rail systems shown: where the panel is not told the map's toggles. */
+/** The summary lines above the facts: the level and why. The rest follow the facts. */
+const LEAD_LINES: ReadonlySet<string> = new Set(["stress", "why"]);
 const ALL_RAIL: RailVisibility = { metro: true, marc: true };
 const NO_TRAIL_RIDER: TrailRider = { rideType: "", mtbLevel: null };
 
@@ -741,7 +745,31 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         )}
         {summary.length > 0 && (
           <ul className="road-info-summary" aria-label={t("Summary")}>
-            {summary.map((row) => (
+            {summary.filter((row) => LEAD_LINES.has(row.id)).map((row) => (
+              <li key={row.id} className={`road-info-line road-info-line-${row.id}`}>
+                <span className="road-info-label">{row.label}:</span>{" "}
+                {valueParts(row.value).map((part, n) => (
+                  <span key={n}>
+                    {n > 0 && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <span className="visually-hidden">, </span>
+                      </>
+                    )}
+                    {part}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
+        {/* The facts behind the level, after the level and its why (the owner, 2026-11-13; RoadFacts.tsx). */}
+        {ready && (
+          <RoadFacts facts={shownFacts(ready)} evidence={ready.evidence ?? null} plain={ready.plain ?? null} uid={id("facts").replace(/[^A-Za-z0-9_-]/g, "")} />
+        )}
+        {summary.some((row) => !LEAD_LINES.has(row.id)) && (
+          <ul className="road-info-summary" aria-label={t("More about this road")}>
+            {summary.filter((row) => !LEAD_LINES.has(row.id)).map((row) => (
               <li key={row.id} className={`road-info-line road-info-line-${row.id}`}>
                 <span className="road-info-label">{row.label}:</span>{" "}
                 {valueParts(row.value).map((part, n) => (

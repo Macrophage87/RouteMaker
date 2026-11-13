@@ -6995,6 +6995,28 @@ class InfoSummaryOut(Schema):
     value: str
 
 
+class RoadFactOut(Schema):
+    id: str = Field(description="What the fact is: speed, traffic, lanes, facility, shoulder, ...")
+    label: str
+    value: str
+    kind: Literal["record", "estimated"] = Field(
+        description="A record (posted, counted, mapped, surveyed) or the classifier's estimate."
+    )
+    source: str | None = Field(default=None, description="Who published it, in a few words.")
+    date: str | None = Field(default=None, description="The record's year, where it has one.")
+    detail: str | None = Field(
+        default=None, description="The full source and how the level uses it, behind (i)."
+    )
+    input: bool = Field(description="Whether the stress level reads it (pavement does not).")
+
+
+class RoadEvidenceOut(Schema):
+    records: int
+    inputs: int
+    strength: Literal["strong", "some", "thin"]
+    words: str = Field(description="'Strong evidence: 4 of 5 from records'.")
+
+
 class MoreLinkOut(Schema):
     label: str
     url: str
@@ -7061,6 +7083,16 @@ class SegmentInfoOut(Schema):
             "On a mountain-bike trail: the level (1-4) Mountain Bike's hardest-level"
             " choice reads it at."
         ),
+    )
+    facts: list[RoadFactOut] = Field(
+        default_factory=list,
+        description="The facts behind the level, each with its source; none on a path or trail.",
+    )
+    evidence: RoadEvidenceOut | None = Field(
+        default=None, description="How much of the level rests on records; null with no facts."
+    )
+    plain: str | None = Field(
+        default=None, description="The road in one plain sentence from its facts."
     )
     attribution: list[str]
 

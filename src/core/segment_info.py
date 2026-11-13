@@ -37,6 +37,7 @@ from routemaker import (
     hazards,
     more_links,
     mtbmode,
+    pavement,
     scenic,
     singletrack,
     trail_facts,
@@ -314,6 +315,10 @@ OPTIONAL_COLUMNS = (
     "scenic",
     "hazard",
     "trail_tags",
+    "road_urban",
+    "road_default_speed_mph",
+    "pavement_pci",
+    "pavement_surveyed",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -1501,6 +1506,343 @@ def scenic_rows(row: dict) -> list[dict]:
     return [_row("Scenic", text, scenic.credits(text))] if text else []
 
 
+# --- The facts behind the level (the owner, 2026-11-13) -------------------------------
+#
+# "Redesign the panel of each road to adequately reflect the available raw data when people
+# look at a spot": the level first, one plain sentence, how much of the level rests on records,
+# then one line per fact with its source and date, each with a longer note behind (i). A road
+# with little data shows hollow marks and "estimated", so it looks thin. Only facts a
+# transportation department publishes get a line (the owner, 2026-11-13: "A value that's never
+# going to exist doesn't matter. If no department of transportation has it, then don't include
+# it"), so travel speed has none: no agency publishes it, and the speed line says the limit.
+#
+# Each fact: {id, label, value, kind, source, date, detail, input}. `kind` is RECORD (posted,
+# counted, mapped or surveyed) or ESTIMATED (the classifier's stated default where the road
+# has no record); `input` whether the level reads it (pavement does not: it is shown because
+# riders care). The facts come from what the segment row holds (`stress_assumed` names what
+# the classifier estimated), so a road shows only what its own rating used.
+RECORD = "record"
+ESTIMATED = "estimated"
+
+# Who published a fact, in a few words for the line under it; the long names stay in the
+# details' sources (ATTR_SOURCES, VOLUME_SOURCES).
+ATTR_SHORT = {
+    "osm": "OpenStreetMap",
+    "dc-roadway-block": "DDOT street record",
+    "baltimore-centerline": "Baltimore City street record",
+    "alexandria-transport-streets": "City of Alexandria street record",
+}
+CENSUS_URBAN = "U.S. Census urban areas (2020)"
+PCI_SOURCE = "DDOT pavement survey"
+PCI_SOURCE_LONG = "DDOT Pavement Condition Index (DC GIS), FY-25 survey"
+
+# How each fact is used, said once behind its (i).
+FACT_USE = {
+    "speed": "The stress tables read the speed with the traffic and the lanes. It is the "
+    "limit, not a measured speed: no transportation department publishes how fast traffic "
+    "really goes street by street.",
+    "traffic": "Vehicles a day, averaged over the year. Busier roads rate higher at the same "
+    "speed.",
+    "lanes": "Through lanes in one direction; turn lanes are not counted. More lanes rate higher.",
+    "facility": "A painted lane reads a calmer table than mixed traffic; a protected lane or "
+    "a path away from traffic is rated on its own.",
+    "shoulder": "On a country road a wide shoulder lowers the level.",
+    "lane_width": "A narrow painted lane rates higher than a wide one.",
+    "parking": "Parked cars beside a painted lane add door and pull-out risk.",
+    "setting": "Country roads read the rural table, with its own speeds and shoulders.",
+    "pavement": "Shown for riding comfort. It does not change the stress level; rough "
+    "pavement makes routes cost more (DC streets only so far).",
+}
+# What a source-less estimate rests on, said behind its (i).
+ESTIMATE_DETAIL = (
+    "Estimated: the road has no record of this, so the rating uses the stated default. A "
+    "record (a sign mapped in OpenStreetMap, an agency count) replaces it at the next data update."
+)
+
+# How much of the level rests on records: the share of the level's inputs that are records.
+# The breaks (three quarters, one half) are our default, unmeasured.
+STRONG_SHARE = 0.75
+SOME_SHARE = 0.5
+EVIDENCE_WORDS = {"strong": "Strong evidence", "some": "Some evidence", "thin": "Thin evidence"}
+
+
+def _fact(
+    id_: str,
+    label: str,
+    value: str,
+    kind: str,
+    source: str | None,
+    date_: str | None = None,
+    detail: str | None = None,
+    input_: bool = True,
+) -> dict:
+    return {
+        "id": id_,
+        "label": label,
+        "value": value,
+        "kind": kind,
+        "source": source,
+        "date": date_,
+        "detail": detail,
+        "input": input_,
+    }
+
+
+def _attr_short(row: dict, key: str) -> tuple[str, str]:
+    """Who a classifier input came from: (short, long)."""
+    code = _attr(row, key) or "osm"
+    return ATTR_SHORT.get(code, OSM), ATTR_SOURCES.get(code, OSM)
+
+
+def _assumed_speed(row: dict) -> float | None:
+    """The speed the classifier assumed where nothing is posted: the law's default for the
+    place (`road_default_speed_mph`), else the speed the rule names."""
+    default = row.get("road_default_speed_mph")
+    if default is not None:
+        return float(default)
+    found = _SPEED.search(str(row.get("stress_rule") or ""))
+    return float(found.group(1)) if found else None
+
+
+def road_facts(row: dict) -> list[dict]:
+    """The facts behind a road's level, in reading order; none on a path or trail (no traffic
+    to rate) or a way closed to bicycles' traffic rating (a mountain-bike trail)."""
+    if row.get("is_trail_class") or is_mtb_trail(row):
+        return []
+    assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
+    facts = []
+    speed = row.get("road_speed_mph")
+    if speed is not None:
+        short, long = _attr_short(row, "maxspeed")
+        facts.append(
+            _fact(
+                "speed",
+                "Speed limit",
+                f"{mph_and_kmh(float(speed))}, {_speed_how(row)}",
+                RECORD,
+                short,
+                detail=f"Source: {long}. {FACT_USE['speed']}",
+            )
+        )
+    elif "maxspeed" in assumed or "maxspeed unit" in assumed:
+        mph = _assumed_speed(row)
+        value = f"{mph_and_kmh(mph)}" if mph is not None else "Not posted"
+        facts.append(
+            _fact(
+                "speed",
+                "Speed limit",
+                value,
+                ESTIMATED,
+                "Nothing posted; the law's default here"
+                if "maxspeed" in assumed
+                else "Unit not mapped; read as mph",
+                detail=f"{ESTIMATE_DETAIL} {FACT_USE['speed']}",
+            )
+        )
+    aadt = row.get("volume_aadt")
+    if aadt is not None:
+        code = str(row.get("volume_source") or "")
+        who = VOLUME_SHORT.get(code) or code.upper() or None
+        long = VOLUME_SOURCES.get(code) or who
+        year = row.get("volume_year")
+        facts.append(
+            _fact(
+                "traffic",
+                "Traffic",
+                f"{int(aadt):,} vehicles a day",
+                RECORD,
+                f"{who} count" if who else "Traffic count",
+                str(year) if year else None,
+                f"Source: {long}" + (f", {year} count" if year else ", year not known") + ". "
+                f"{FACT_USE['traffic']}",
+            )
+        )
+    else:
+        facts.append(
+            _fact(
+                "traffic",
+                "Traffic",
+                "Not counted",
+                ESTIMATED,
+                "Read from the road's type",
+                detail=f"{ESTIMATE_DETAIL} {FACT_USE['traffic']}",
+            )
+        )
+    lanes = row.get("road_lanes")
+    way = "in this direction" if row.get("road_oneway") is True else "each way"
+    if lanes is not None:
+        short, long = _attr_short(row, "lanes")
+        facts.append(
+            _fact(
+                "lanes",
+                "Through lanes",
+                f"{lanes} {way}",
+                RECORD,
+                short,
+                detail=f"Source: {long}. {FACT_USE['lanes']}",
+            )
+        )
+    elif "lanes" in assumed:
+        facts.append(
+            _fact(
+                "lanes",
+                "Through lanes",
+                f"1 {way}",
+                ESTIMATED,
+                "Not mapped",
+                detail=f"{ESTIMATE_DETAIL} {FACT_USE['lanes']}",
+            )
+        )
+    facility = row.get("facility_shown") or row.get("facility")
+    if facility in FACILITY_SHORT:
+        short, long = _attr_short(row, "bike")
+        against = " (against traffic only)" if row.get("facility_shown") else ""
+        facts.append(
+            _fact(
+                "facility",
+                "Bike lane",
+                FACILITY_SHORT[facility] + against,
+                RECORD,
+                short,
+                detail=f"Source: {long}. {FACT_USE['facility']}",
+            )
+        )
+    for name, id_, label, value in ESTIMATED_EXTRAS:
+        if name in assumed and (id_ not in ("lane_width", "parking") or facility == "lane"):
+            facts.append(
+                _fact(
+                    id_,
+                    label,
+                    value,
+                    ESTIMATED,
+                    "Not mapped",
+                    detail=f"{ESTIMATE_DETAIL} {FACT_USE[id_]}",
+                )
+            )
+    if row.get("road_urban") is False:
+        facts.append(
+            _fact(
+                "setting",
+                "Setting",
+                "Rural",
+                RECORD,
+                CENSUS_URBAN,
+                detail=f"Source: U.S. Census Bureau, TIGER/Line Urban Areas. {FACT_USE['setting']}",
+            )
+        )
+    pci = row.get("pavement_pci")
+    if pci is not None:
+        surveyed = row.get("pavement_surveyed")
+        when = surveyed.isoformat() if hasattr(surveyed, "isoformat") else surveyed
+        words = PCI_WORDS[pavement.band(float(pci))]
+        facts.append(
+            _fact(
+                "pavement",
+                "Pavement",
+                f"{words} ({float(pci):.0f} of 100)",
+                RECORD,
+                PCI_SOURCE,
+                str(when)[:4] if when else None,
+                f"Source: {PCI_SOURCE_LONG}"
+                + (f", surveyed {when}" if when else "")
+                + f". 70 and over is good, 55 to 69 fair, under 55 poor. {FACT_USE['pavement']}",
+                input_=False,
+            )
+        )
+    return facts
+
+
+FACILITY_SHORT = {
+    "path": "Traffic-free path",
+    "protected": "Protected",
+    "lane": "Painted",
+    "none": "None",
+}
+PCI_WORDS = {pavement.GOOD: "Good", pavement.FAIR: "Fair", pavement.POOR: "Poor"}
+# The classifier's estimates with no record of their own to show (`stress.QUANTITY_OF_ASSUMED`
+# says the same in its words): the `stress_assumed` name, the fact's id, label and value.
+ESTIMATED_EXTRAS = (
+    ("shoulder", "shoulder", "Shoulder", "Under 4 ft"),
+    ("shoulder width", "shoulder", "Shoulder", "Width not mapped"),
+    ("cycleway width", "lane_width", "Bike lane width", "Read as narrow"),
+    ("parking", "parking", "Parking beside the lane", "Read as present"),
+)
+
+
+def evidence_of(facts: list[dict]) -> dict | None:
+    """How much of the level rests on records: {records, inputs, strength, words}; None with
+    no inputs (a path)."""
+    inputs = [f for f in facts if f["input"]]
+    if not inputs:
+        return None
+    records = sum(1 for f in inputs if f["kind"] == RECORD)
+    share = records / len(inputs)
+    strength = "strong" if share >= STRONG_SHARE else "some" if share >= SOME_SHARE else "thin"
+    return {
+        "records": records,
+        "inputs": len(inputs),
+        "strength": strength,
+        "words": f"{EVIDENCE_WORDS[strength]}: {records} of {len(inputs)} from records",
+    }
+
+
+# The summary lines a fact line says instead (`with_facts`).
+FACT_LINES = frozenset({"speed", "lanes", "traffic", "bike_lane"})
+
+
+def with_facts(summary: list[dict], row: dict, facts: list[dict]) -> list[dict]:
+    """The summary beside the facts: the lines they say are left out, and the level's line
+    drops its how-sure words, which the evidence line now says (a rider-checked level keeps
+    its word: no fact says that)."""
+    if not facts:
+        return summary
+    kept = []
+    for line in summary:
+        if line["id"] in FACT_LINES:
+            continue
+        if line["id"] == "stress":
+            tier, half = int(row["stress_tier"]), row.get("stress_half") is True
+            value = stress_short(tier, half)
+            if evidence_grade(row) == RIDER_CHECKED:
+                value += f" · {GRADE_WORDS[RIDER_CHECKED]}"
+            line = {**line, "value": value}
+        kept.append(line)
+    return kept
+
+
+_COUNT_WORDS = {1: "One", 2: "Two", 3: "Three", 4: "Four"}
+
+
+def plain_sentence(facts: list[dict]) -> str | None:
+    """The road in one plain sentence from its facts: "Two lanes each way at 25 mph, about
+    24,100 vehicles a day." Estimates are said as such; None with no facts."""
+    by = {f["id"]: f for f in facts}
+    speed, traffic, lanes = by.get("speed"), by.get("traffic"), by.get("lanes")
+    if not (speed or traffic or lanes):
+        return None
+    if speed and traffic and speed["kind"] == ESTIMATED and traffic["kind"] == ESTIMATED:
+        return "Nothing is posted or counted here, so speed and traffic are estimates."
+    parts = []
+    if lanes and lanes["kind"] == RECORD:
+        count, _, rest = lanes["value"].partition(" ")
+        n = int(count) if count.isdigit() else None
+        noun = "lane" if n == 1 else "lanes"
+        parts.append(f"{_COUNT_WORDS.get(n, count)} {noun} {rest}")
+    if speed and speed["kind"] == RECORD:
+        mph = _SPEED.search(speed["value"])
+        if mph:
+            parts.append(f"at {mph.group(1)} mph")
+    head = " ".join(parts)
+    if traffic and traffic["kind"] == RECORD:
+        tail = f"about {traffic['value']}"
+    elif traffic:
+        tail = "traffic not counted"
+    else:
+        tail = ""
+    text = ", ".join(p for p in (head, tail) if p)
+    return (text[0].upper() + text[1:] + ".") if text else None
+
+
 def describe(row: dict, router: dict) -> dict:
     """The panel's answer for one row and the router's facts about its way."""
     path = bool(row.get("is_trail_class"))
@@ -1526,6 +1868,7 @@ def describe(row: dict, router: dict) -> dict:
         UNNAMED_PATH_TITLE if path or router.get("use") in PATH_USES else UNNAMED_ROAD_TITLE
     )
     open_, access = access_rows(row, router.get("bicycle"))
+    facts = road_facts(row)
     sections = [
         {
             "id": "road",
@@ -1562,7 +1905,11 @@ def describe(row: dict, router: dict) -> dict:
         # opens there, on the road it describes (OWNER-DECISIONS 441o).
         "on_way": [round(float(row["on_lon"]), 6), round(float(row["on_lat"]), 6)],
         "kind": kind,
-        "summary": summary_rows(row, router, open_),
+        "summary": with_facts(summary_rows(row, router, open_), row, facts),
+        # The facts behind the level and how much rests on records (`road_facts`).
+        "facts": facts,
+        "evidence": evidence_of(facts),
+        "plain": plain_sentence(facts),
         "sections": sections,
         "more": more_link(row, router),
         # A mountain-bike trail the layer draws: the panel asks for its elevation profile

@@ -314,6 +314,21 @@ def resolve(
     return reading(band(pci), "pci")
 
 
+# The readings the road panel may show: a street the survey speaks for (`resolve`'s "pci",
+# "override" and "osm_newer"), never a way it does not ("not_street", "unpaved").
+SHOWN_WHY = frozenset({"pci", "override", "osm_newer"})
+
+
+def panel_columns(item: Reading | None) -> dict:
+    """`segment.pavement_pci` and `pavement_surveyed` for one way: the survey's score and date
+    where it speaks for the street, else nulls. The road panel shows the survey even where a
+    correction or a newer OSM `smoothness` keeps OSM's reading for routing: it is what the
+    District measured."""
+    if item is None or item.why not in SHOWN_WHY:
+        return {"pavement_pci": None, "pavement_surveyed": None}
+    return {"pavement_pci": item.pci, "pavement_surveyed": item.surveyed}
+
+
 REPORT_HEADER = "osm_way_id,pci,band_applied,why,surveyed,blocks"
 
 
