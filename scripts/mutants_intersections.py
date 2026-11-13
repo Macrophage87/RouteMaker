@@ -934,49 +934,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "",
         REFINE,
     ),
-    (
-        "wide busier taken",
-        R,
-        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
-        "        if better(read, best, ctx):\n            best, best_trip = read, candidate",
-        REFINE,
-    ),
-    (
-        "wide via breaks",
-        R,
-        '            {"lon": lon, "lat": lat, "type": "through"},',
-        '            {"lon": lon, "lat": lat, "type": "break"},',
-        REFINE,
-    ),
-    (
-        "wide sides flipped",
-        R,
-        "    left_east, left_north = -north / length, east / length",
-        "    left_east, left_north = north / length, -east / length",
-        REFINE,
-    ),
-    (
-        "wide on by default",
-        R,
-        "WIDE_SEARCH_FROM_RATE: float | None = None",
-        "WIDE_SEARCH_FROM_RATE: float | None = 0.0",
-        REFINE,
-    ),
-    (
-        "wide margin",
-        R,
-        "        if better(read, best, ctx) and not busier:\n            best, best_trip = read, candidate",
-        "        if read.score(ctx) < best.score(ctx) and not busier:\n            best, best_trip = read, candidate",
-        REFINE,
-    ),
-    (
-        "wide unread taken",
-        R,
-        # The wide search's own check; the seek's whole-trip check is the same line.
-        "        if read is None or read.events is None:\n            continue\n        busier = _busier(read, first_exposure, ctx)",
-        "        if read is None:\n            continue\n        busier = _busier(read, first_exposure, ctx)",
-        REFINE,
-    ),
     # --- the answer --------------------------------------------------------
     (
         "neighbourhood stops listed",

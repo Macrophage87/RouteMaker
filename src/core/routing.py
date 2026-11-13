@@ -6181,7 +6181,6 @@ def _plan(
         mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
         assist_w=hill_price.assist_w,
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
-        wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,

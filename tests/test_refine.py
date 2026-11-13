@@ -1008,124 +1008,6 @@ class TestTargets:
         assert refine.calm_targets(a, context(rate=10.0)) == []
 
 
-class TestWideSearch:
-    """OWNER-DECISIONS 187, an exploration: candidates through points off the
-    straight line, which the nested exclusion rounds cannot reach."""
-
-    def wide_context(self, rate=10.0) -> refine.Context:
-        ctx = context(rate=rate)
-        ctx.request["locations"] = [
-            {"lon": BASE[0], "lat": BASE[1]},
-            {"lon": BASE[0] + 0.1, "lat": BASE[1]},
-        ]
-        ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.1, BASE[1]]]
-        ctx.wide = True
-        return ctx
-
-    def test_off_unless_the_owner_turns_it_on(self, monkeypatch) -> None:
-        assert refine.WIDE_SEARCH_FROM_RATE is None
-        assert not refine.wide_search_for(1e9)
-        monkeypatch.setattr(refine, "WIDE_SEARCH_FROM_RATE", 10.0)
-        assert refine.wide_search_for(10.0) and not refine.wide_search_for(9.9)
-
-    def test_the_points_are_either_side_of_the_middle(self) -> None:
-        span_lon = 0.1
-        points = refine.wide_points([[BASE[0], BASE[1]], [BASE[0] + span_lon, BASE[1]]])
-        assert len(points) == len(refine.WIDE_OFFSETS)
-        for (lon, lat), offset in zip(points, refine.WIDE_OFFSETS, strict=True):
-            assert lon == pytest.approx(BASE[0] + span_lon / 2, abs=1e-9)
-            # Going east, left is north.
-            assert (lat > BASE[1]) == (offset > 0)
-        north = sorted(lat for _lon, lat in points)
-        assert north[0] < north[1] < BASE[1] < north[2] < north[3]
-
-    def test_a_short_span_has_no_room(self) -> None:
-        assert refine.wide_points([[BASE[0], BASE[1]], [BASE[0] + 0.01, BASE[1]]]) == []
-
-    def test_each_point_is_asked_as_a_through_location_and_the_best_kept(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0)
-        # The exclusion rounds find nothing better ...
-        worse = analysis("w", "1" * 10 + "3" * 10 + "1" * 20, cost_s=9000.0, shift=100)
-        # ... and the second wide point is calm.
-        wide_calm = analysis("c", "1" * 50, cost_s=4800.0, shift=300)
-        wide_busy = analysis("b", "1" * 10 + "4" * 10 + "1" * 30, cost_s=4100.0, shift=600)
-        routes = [trip_of("w", 4.0), trip_of("w", 4.0)] + [
-            trip_of(n, 5.0) for n in ("b", "c", "b", "b")
-        ]
-        world = World(monkeypatch, {"o": orig, "w": worse, "c": wide_calm, "b": wide_busy}, routes)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context())
-        assert kept["legs"][0]["shape"] == "c"
-        assert info["wide"] == {"asked": 4, "taken": True}
-        wide_asks = [r for r in world.requests if len(r["locations"]) == 3]
-        assert len(wide_asks) == 4
-        assert all(r["locations"][1]["type"] == "through" for r in wide_asks)
-        assert all("exclude_locations" not in r and "alternates" not in r for r in wide_asks)
-
-    def test_a_busier_wide_route_is_never_taken(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0)
-        busy = analysis("b", "1" * 10 + "4" * 10 + "1" * 20, cost_s=100.0, shift=100)
-        routes = [refine_none for refine_none in [routing.RouterRefused(400, 442, "no path")] * 2]
-        routes += [trip_of("b", 4.0)] * 4
-        World(monkeypatch, {"o": orig, "b": busy}, routes)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "o"
-        assert info["wide"] == {"asked": 4, "taken": False}
-
-    def wide_world(self, monkeypatch, wide_cost: float, events=NO_EVENTS):
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        wide = analysis("w", "1" * 40, cost_s=wide_cost, shift=100, events=events)
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 4)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        return kept["legs"][0]["shape"], info
-
-    def test_a_wide_route_must_beat_the_best_by_the_margin(self, monkeypatch) -> None:
-        shape, _info = self.wide_world(monkeypatch, 4000.0 - refine.IMPROVEMENT_EPS_S / 2)
-        assert shape == "o"
-        shape, info = self.wide_world(monkeypatch, 4000.0 - refine.IMPROVEMENT_EPS_S - 1)
-        assert shape == "w" and info["wide"]["taken"]
-
-    def test_a_wide_route_that_rides_out_and_back_is_not_taken(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        spur = doubling_back("w", spur=8, cost_s=1000.0)
-        World(monkeypatch, {"o": orig, "w": spur}, [trip_of("w", 4.8)] * 4)
-        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "o" and not info["wide"]["taken"]
-
-    def test_each_wide_route_is_held_to_the_route_it_started_from(self, monkeypatch) -> None:
-        # The first point is taken with 40 m of retrace; the second, with 80 m, is past
-        # the starting route by more than the slack, though not past the first's.
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        first = analysis("a", "1" * 40, cost_s=3000.0, shift=100)
-        second = analysis("b", "1" * 40, cost_s=2000.0, shift=200)
-        retraced = {id(first): 40.0, id(second): 80.0}
-        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
-        routes = [trip_of("a", 4.0)] + [trip_of("b", 4.0)] * 3
-        World(monkeypatch, {"o": orig, "a": first, "b": second}, routes)
-        kept, _info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "a"
-
-    def test_a_wide_route_that_retraces_no_more_than_its_start_is_taken(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 40, cost_s=4000.0)
-        wide = analysis("w", "1" * 40, cost_s=3000.0, shift=100)
-        retraced = {id(orig): 300.0, id(wide): 300.0}
-        monkeypatch.setattr(refine, "retrace_m", lambda read: retraced.get(id(read), 0.0))
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 4)
-        kept, _info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
-        assert kept["legs"][0]["shape"] == "w"
-
-    def test_a_wide_route_whose_junctions_were_not_read_is_not_taken(self, monkeypatch) -> None:
-        shape, info = self.wide_world(monkeypatch, 1000.0, events=None)
-        assert shape == "o" and not info["wide"]["taken"]
-
-    def test_not_asked_without_the_time(self, monkeypatch) -> None:
-        orig = analysis("o", "1" * 40)
-        world = World(monkeypatch, {"o": orig}, [])
-        ctx = self.wide_context(rate=0.0)
-        ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1, 35)
-        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        assert world.requests == [] and info["wide"] == {"asked": 0, "taken": False}
-
-
 class AlternatesWorld(World):
     """A World whose router gives alternatives where they are asked for: `alternates`
     is what the ask with `alternates` gets after its first trip (trips, or an
@@ -3293,28 +3175,6 @@ class TestSeekWiring:
     """Mutation review F11, F12, F2: the order of the wide search and the seek,
     an unread junction reading, and the seek's own count of routes."""
 
-    def test_the_wide_search_runs_before_the_seek_and_hands_it_its_best(self, monkeypatch) -> None:
-        order = []
-        wide_best = analysis("w", "1" * 40, cost_s=100.0)
-
-        def wide(best, best_trip, first_exposure, stop_at, ctx, info):
-            order.append("wide")
-            return wide_best, trip_of("w", 4.0)
-
-        def seek(best, best_trip, first_exposure, ctx, info, original=None):
-            order.append(("seek", best is wide_best, best_trip["legs"][0]["shape"]))
-            return best, best_trip
-
-        monkeypatch.setattr(refine, "_wide", wide)
-        monkeypatch.setattr(refine, "_seek", seek)
-        World(monkeypatch, {"o": analysis("o", "1" * 40)}, [NO_ROUTE])
-        ctx = context(rate=10.0)
-        ctx.wide = True
-        ctx.seek = True
-        kept, _info = refine.refine(trip_of("o", 4.0), ctx)
-        assert order == ["wide", ("seek", True, "w")]
-        assert kept["legs"][0]["shape"] == "w"
-
     def test_a_junction_already_located_in_the_plan_is_not_asked_again(self, monkeypatch) -> None:
         # Review speed-1: the candidates share most of their junctions.
         asked = []
@@ -3893,27 +3753,6 @@ class TestTheHoldInTheSearch:
         kept, info = refine.refine(trip_of("o", 4.0), ctx)
         assert kept["legs"][0]["shape"] == "c"
         assert (info["lts4_before_m"], info["lts4_after_m"]) == (300.0, 100.0)
-
-    def test_the_wide_search_holds_it_too(self, monkeypatch) -> None:
-        ctx = averse_context(rate=0.0)
-        ctx.request["locations"] = [
-            {"lon": BASE[0], "lat": BASE[1]},
-            {"lon": BASE[0] + 0.1, "lat": BASE[1]},
-        ]
-        ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.1, BASE[1]]]
-        ctx.wide = True
-        orig = weighed(analysis("o", ORIG, cost_s=4000.0))
-        wide = weighed(analysis("w", TRADE, cost_s=1000.0, shift=100))
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 5)
-        kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        assert kept["legs"][0]["shape"] == "o" and info["wide"]["taken"] is False
-        # And takes it where the ride does not hold LTS 4.
-        ctx.exposure = presets.EXPOSURE_STANDARD
-        ctx.analyses.clear()
-        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 5)
-        kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        assert kept["legs"][0]["shape"] == "w"
-
 
 class TestTheHoldInTheSeek(TestTrailSeek):
     """The seek's candidates, one leg and whole trip (TestTrailSeek's world)."""

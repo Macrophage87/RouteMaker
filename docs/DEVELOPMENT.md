@@ -3461,11 +3461,12 @@ What it shows:
   route at all.
 - "125" plans exactly what "150" does on these trips.
 
-**The wider search.** To give the top end routes the nesting cannot reach,
-`core.refine` can also ask the router for the route through a point off the
-straight line, either side of its middle at a quarter and a half of the span
-(`WIDE_OFFSETS`), as a `through` location, each scored and guarded as every
-other candidate (`WIDE_SEARCH_FROM_RATE`, off). Measured:
+**The wider search (tried, removed 2026-11-13).** To give the top end routes the
+nesting cannot reach, `core.refine` could also ask the router for the route through a
+point off the straight line, either side of its middle at a quarter and a half of the
+span, as a `through` location, each scored and guarded as every other candidate. It was
+never switched on; the code went with the 2026-11-13 audit and the measurements stay
+here. Measured:
 
 | Trip | 100 | 100 + wide | "150" | "150" + wide |
 |---|---|---|---|---|
@@ -3484,8 +3485,8 @@ and changed one route: Bowie - Annapolis, 18.6 mi longer for 1.5 mi less LTS 3+,
 with 5 red and 29 orange markers against 4 and 11.
 
 **Not adopted.** Neither "150" nor the wider search is clearly better, so the
-slider is unchanged (100 is the top, at a rate of 10) and the wider search is
-off (`WIDE_SEARCH_FROM_RATE = None`). The constraint at the top end is the
+slider is unchanged (100 is the top, at a rate of 10) and the wider search was
+never switched on (its code was removed 2026-11-13). The constraint at the top end is the
 candidates, not the rate: past about 10 the search keeps choosing among the
 same nested few. What would make the top end differ is a candidate generator
 that goes looking for calm infrastructure (via points on the trails and
@@ -3849,9 +3850,7 @@ A seek candidate is refused, outcome `doubles_back`, where it retraces more than
 started from, never the best so far, so each candidate taken cannot raise the bar).
 The outcomes are tried in the order `busier`, `more_lts4`, `doubles_back`,
 `too_long`, then `taken` or `not_better`; a refused candidate is not offered among the
-routes to choose from. The wide search holds its candidates the same way against the
-route it started from (it is off, `WIDE_SEARCH_FROM_RATE = None`; the guard keeps its
-guards alike). On the plan above both seek candidates are now refused: the one taken
+routes to choose from. On the plan above both seek candidates are now refused: the one taken
 before only scored calmer because of its spur, and the route carries 272 ft (83 m) more
 LTS 3 for dropping it, never more LTS 4 or Avoid.
 

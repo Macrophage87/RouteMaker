@@ -234,21 +234,6 @@ INTERSECTION_WEIGHT_AT_ZERO = 0.25
 # at most `ROUTING_CONCURRENCY` searches run at once across the deployment,
 # below the router's threads (review r2: the per-process and per-container lock
 # files round 1 added could never all be taken, and were dropped).
-# The wider search (OWNER-DECISIONS 187, an exploration: "Make max calm even
-# higher. Let's see what 150 would do."). The exclusion rounds' candidates are
-# nested - each excludes what the last one rode - so above a rate of about 2 the
-# same calm candidate wins and 90 and 100 plan the same route. The wider search
-# adds candidates the nesting cannot reach: the router's route through a point
-# off the straight line, either side of its middle, at these fractions of the
-# straight-line span. Each is one route, its trace and its junctions (1 to 3 s
-# on the live router), scored and guarded as every other candidate. Off unless
-# the calm rate is at least WIDE_SEARCH_FROM_RATE (None: never), which is the
-# owner's choice (docs/DEVELOPMENT.md, "The top of the slider: what 150 would
-# do"); the measurements are there.
-WIDE_SEARCH_FROM_RATE: float | None = None
-WIDE_OFFSETS = (0.25, -0.25, 0.5, -0.5)
-# Spans shorter than this have no room to go wide in.
-WIDE_MIN_SPAN_M = 3000.0
 
 
 def quiet_cost_per_m(costing: dict) -> float:
@@ -270,31 +255,6 @@ def flat_speed_ms(costing: dict) -> float:
 def use_hills_of(ctx: Context) -> float:
     """The request's `use_hills` (1.0, the detent's, where it sets none)."""
     return float((ctx.costing.get("bicycle") or {}).get("use_hills", 1.0))
-
-
-def wide_search_for(rate: float) -> bool:
-    """Whether a plan at this calm rate also asks for the wider candidates."""
-    return WIDE_SEARCH_FROM_RATE is not None and rate >= WIDE_SEARCH_FROM_RATE
-
-
-def wide_points(points: list[list[float]]) -> list[tuple[float, float]]:
-    """The points off the straight line from the start to the end, either side
-    of its middle (WIDE_OFFSETS of the span); none for a short span."""
-    (lon_a, lat_a), (lon_b, lat_b) = points[0][:2], points[-1][:2]
-    span = haversine(Point(lon_a, lat_a), Point(lon_b, lat_b))
-    if span < WIDE_MIN_SPAN_M:
-        return []
-    mid_lon, mid_lat = (lon_a + lon_b) / 2, (lat_a + lat_b) / 2
-    kx = 111_320.0 * math.cos(math.radians(mid_lat))
-    ky = 110_540.0
-    east, north = (lon_b - lon_a) * kx, (lat_b - lat_a) * ky
-    length = math.hypot(east, north)
-    # Left of the direction of travel.
-    left_east, left_north = -north / length, east / length
-    return [
-        (mid_lon + left_east * span * f / kx, mid_lat + left_north * span * f / ky)
-        for f in WIDE_OFFSETS
-    ]
 
 
 def intersection_weight(stress: int) -> float:
@@ -350,8 +310,6 @@ class Context:
     # radius) (`locator`): the candidates are mostly detours of one route and share
     # most of its junctions, so each is asked once (review speed-1).
     located: dict = field(default_factory=dict)
-    # Whether the wider search runs after the exclusion rounds (`wide_search_for`).
-    wide: bool = False
     # Whether the trail seek runs after them (`trailseek.seek_for`), the segment
     # schema it reads, and whether the rider asked to avoid gravel.
     seek: bool = False
@@ -1498,8 +1456,6 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         info["lts4_before_m"] = round(rated_lts4_m(best), 1)
     best, best_trip = _router_alternates(trip, best, first_exposure, stop_at, ctx, info)
     best, best_trip = _search(best_trip, best, first_exposure, stop_at, ctx, info)
-    if ctx.wide:
-        best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
     if ctx.seek:
         best, best_trip = _seek(best, best_trip, first_exposure, ctx, info, original)
     info["extra_distance_m"] = round(best.length_m - (info["original_m"] or 0.0), 1)
@@ -2434,96 +2390,6 @@ SEEK_RETRY_SLACK_M = 500.0
 def _expected_m(incumbent: Analysis, proposal) -> float:
     """The length past which a candidate is much longer than its corridor says."""
     return (incumbent.length_m + proposal.detour_m) * (1 + SEEK_RETRY_OVER) + SEEK_RETRY_SLACK_M
-
-
-def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
-    """The wider candidates (WIDE_OFFSETS): the router's route through each
-    point off the straight line, kept where it scores better and is not
-    busier. `info["wide"]` says how many were asked and whether one was kept."""
-    if len(ctx.points) != 2:
-        return best, best_trip
-    vias = wide_points(ctx.points)
-    asked = taken = 0
-    # The route the wide search starts from, held fixed as the guards above hold
-    # `first_exposure`: each point taken cannot raise the bar.
-    start_retrace_m = retrace_m(best)
-    locations = ctx.request.get("locations") or []
-
-    def wide_request(lon: float, lat: float) -> dict:
-        request = {
-            k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")
-        }
-        request["locations"] = [
-            locations[0],
-            {"lon": lon, "lat": lat, "type": "through"},
-            locations[-1],
-        ]
-        return request
-
-    round_deadline = routing.Deadline(
-        stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
-    )
-    # The wide routes do not depend on each other: asked together, and their traces
-    # after them, on the pool (v0.7.0, "Faster routing" step 3); each is then read in
-    # turn below, as before. Nothing is started without the time for one round.
-    asking = None
-    if (
-        parallel.enabled()
-        and len(vias) > 1
-        and len(locations) >= 2
-        and stop_at - routing.clock() >= REFINE_ROUND_MIN_S
-    ):
-        asking = [
-            parallel.submit(
-                routing._call, ctx.variant, "route", wide_request(lon, lat), round_deadline
-            )
-            for lon, lat in vias
-        ]
-        answered = []
-        for future in asking:
-            try:
-                answered.append(routing.await_future(future).get("trip") or {})
-            except routing.PlanCancelled:
-                # Cancelled while waiting (`core.plan_cancel`): the loop below gives way.
-                break
-            except Exception:  # noqa: BLE001 - read again, and handled, in the loop below
-                continue
-        routing.prefetch_traces(
-            ctx.variant,
-            ctx.costing,
-            answered,
-            routing.Deadline(stop_at, ctx.deadline.per_call_s),
-            ctx.traces,
-        )
-    for number, (lon, lat) in enumerate(vias):
-        if stop_at - routing.clock() < REFINE_ROUND_MIN_S or len(locations) < 2:
-            info["limited"] = info["limited"] or "time"
-            break
-        asked += 1
-        try:
-            if asking is not None:
-                answer = routing.await_future(asking[number])
-            else:
-                answer = routing._call(ctx.variant, "route", wide_request(lon, lat), round_deadline)
-            candidate = answer.get("trip") or {}
-            if not candidate.get("legs"):
-                continue
-            read = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
-        except routing.RouterRefused:
-            continue
-        except (routing.DeadlineExceeded, routing.RouterUnavailable):
-            info["limited"] = info["limited"] or "time"
-            break
-        if read is None or read.events is None:
-            continue
-        busier = _busier(read, first_exposure, ctx)
-        busier = busier or more_lts4(read, ctx.first_lts4, ctx) or too_long(read.length_m, ctx)
-        busier = busier or doubles_back(read, start_retrace_m)
-        if better(read, best, ctx) and not busier:
-            best, best_trip = read, candidate
-            taken += 1
-    info["wide"] = {"asked": asked, "taken": taken > 0}
-    return best, best_trip
 
 
 def _halves(targets: list[Target]) -> list[list[Target]]:
