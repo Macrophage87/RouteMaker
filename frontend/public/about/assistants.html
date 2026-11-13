@@ -306,7 +306,8 @@ rider's requests count against their own limits, as in the app.</p>
 The assistant chooses the ride type and settings that fit what you ask, and you can name them yourself.
 Assistants that offer ready-made prompts list five: <strong>Plan a commute</strong>, <strong>Family trail
 ride</strong>, <strong>Loop of N miles</strong>, <strong>Bike plus Metro</strong> and <strong>Plan a mass
-ride</strong>. A bike route's answer also says why it goes the way it does: how much longer it is than Fast's route
+ride</strong>. A one-way bike route of up to 25 mi between its points (in straight lines) also says why it goes the way it
+does, when there is time for the extra plan: how much longer it is than Fast's route
 through the same points, how many fewer busy miles, and up to three busy roads it leaves, such as "leaves Georgia
 Avenue (LTS 4) for the Metropolitan Branch Trail". That plans the same points once more on the server.</p>
 <figure id="fig-mcp-drafts" class="has-narrow">
@@ -710,8 +711,9 @@ answers within about a minute, so a long loop may be planned in fewer rounds; th
 stopped early, and asking for a revision can still fix it. On your own computer, if the assistant gives
 up first, raise its tool timeout (Claude Code: <code>MCP_TOOL_TIMEOUT=600000</code>) or ask for fewer
 plans. A request the assistant gives up on keeps nothing.</li>
-<li><strong>Calls sent together.</strong> An assistant that sends several requests at once has them wait their
-turn, up to about 4 seconds each (our default); past that it is told to try again shortly.</li>
+<li><strong>Calls sent together.</strong> An assistant that sends several requests at once has their place
+searches wait their turn, about 4 seconds in all per request (our default), and a busy route planner is waited out
+once, up to 30 seconds; past that it is told to try again shortly.</li>
 <li><strong>Changes in between.</strong> If closures or the map change between planning and opening the
 route in the app, a route planned again may differ a little. A saved route keeps the line exactly as
 planned.</li>
