@@ -4737,7 +4737,9 @@ the first host to run it is the first test of it.
    `"$DATA_ROOT/reference/inputs"` first
    (`https://www2.census.gov/geo/tiger/TIGER2020/TABBLOCK20/tl_2020_<FIPS>_tabblock20.zip`,
    `https://lehd.ces.census.gov/data/lodes/LODES8/<st>/wac/<st>_wac_S000_JT00_2023.csv.gz`).
-   Never a stress input, so it can be remade at any rebuild:
+   Never a stress input. Like `urban-areas.json` it lists the way ids of the extract
+   it was made from, so **remake it whenever the extract changes**: a way added later
+   has no counts and its line falls back to plain urban or rural.
 
    ```sh
    docker compose exec -T rebuild python3 scripts/install_reference_data.py \

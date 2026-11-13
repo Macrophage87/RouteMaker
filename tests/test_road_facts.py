@@ -311,10 +311,14 @@ def counted(people, jobs, sq_mi=si.setting.CIRCLE_SQ_MI, homes=0, **columns):
 def test_the_setting_line_names_the_band_and_the_people_and_jobs_behind_it():
     # 0.785 sq mi (one circle): 2,600 people and 650 jobs is about 4,140 a square mile, urban.
     fact = by_id(si.road_facts(counted(2_600, 650)))["setting"]
-    assert fact["value"] == "Urban: about 2,600 people and about 650 jobs within half a mile"
-    assert fact["source"] == "U.S. Census 2020 and LODES 8 jobs"
+    assert (
+        fact["value"]
+        == "Urban: about 2,600 people and about 650 jobs within half a mile of a spot here"
+    )
+    assert fact["source"] == "U.S. Census Bureau (2020 people, 2023 jobs)"
     assert fact["date"] == "2020"
     assert "never changes the level" in fact["detail"]
+    assert "Homes nearby: under 10." in fact["detail"]
     assert "inside a Census urban area" in fact["detail"]
     # Still an input: the urban/rural switch the level reads is part of the line.
     assert fact["input"] is True
@@ -337,13 +341,16 @@ def test_a_long_road_is_said_per_half_mile_circle_not_for_its_whole_corridor():
     # Ten circles' worth of area: the counts are said for one typical circle.
     fact = by_id(si.road_facts(counted(15_700, 3_925, sq_mi=10 * si.setting.CIRCLE_SQ_MI)))
     assert fact["setting"]["value"] == (
-        "Suburban: about 1,600 people and about 390 jobs within half a mile"
+        "Suburban: about 1,600 people and about 390 jobs within half a mile of a spot here"
     )
 
 
 def test_an_empty_place_says_under_ten_and_reads_remote():
     fact = by_id(si.road_facts(counted(0, 3, road_urban=False)))["setting"]
-    assert fact["value"] == "Remote: under 10 people and under 10 jobs within half a mile"
+    assert (
+        fact["value"]
+        == "Remote: under 10 people and under 10 jobs within half a mile of a spot here"
+    )
     assert "outside a Census urban area" in fact["detail"]
 
 

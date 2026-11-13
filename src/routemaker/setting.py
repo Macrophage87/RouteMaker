@@ -57,9 +57,30 @@ BAND_WORDS = {
     "dense": "Dense core",
 }
 
+# Highway classes with no traffic facts in the road panel, so no Setting line: left out of
+# `setting.json` to keep the rebuild's copy small.
+NOT_ROADS = frozenset(
+    {
+        "footway",
+        "path",
+        "cycleway",
+        "steps",
+        "pedestrian",
+        "bridleway",
+        "corridor",
+        "elevator",
+        "platform",
+        "proposed",
+        "construction",
+        "abandoned",
+        "razed",
+    }
+)
+
 # The census vintages the panel names.
 BLOCKS_YEAR = 2020
 LODES_VERSION = "LODES 8"
+LODES_YEAR = 2023
 
 
 def band(people: float, jobs: float, sq_mi: float) -> str | None:

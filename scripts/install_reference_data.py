@@ -375,8 +375,15 @@ def install_setting(
         blocks.extend(setting.join_jobs(rows, jobs))
     if not blocks:
         raise SystemExit("the --census-blocks files hold no blocks inside the coverage box")
+    # Roads only: a path or footway has no traffic facts, so no Setting line, and the
+    # rebuild holds this file in memory.
     counts = setting.count_around(
-        ((way.osm_id, way.coordinates) for way in read_ways(extract)), blocks
+        (
+            (way.osm_id, way.coordinates)
+            for way in read_ways(extract)
+            if way.tags.get("highway") not in setting.NOT_ROADS
+        ),
+        blocks,
     )
     target.write_text(json.dumps({str(way_id): row for way_id, row in counts.items()}))
     return len(counts)

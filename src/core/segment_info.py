@@ -1538,13 +1538,15 @@ ATTR_SHORT = {
     "alexandria-transport-streets": "City of Alexandria street record",
 }
 CENSUS_URBAN = "U.S. Census urban areas (2020)"
-CENSUS_PEOPLE_JOBS = f"U.S. Census {setting.BLOCKS_YEAR} and {setting.LODES_VERSION} jobs"
+CENSUS_PEOPLE_JOBS = f"U.S. Census Bureau ({setting.BLOCKS_YEAR} people, {setting.LODES_YEAR} jobs)"
 SETTING_DETAIL = (
-    f"People and homes come from the {setting.BLOCKS_YEAR} Census blocks and jobs from "
-    f"the Census Bureau's {setting.LODES_VERSION} jobs by block, counted within half a mile "
-    "of this road and said for a typical half-mile circle on it. Remote is under 50 people "
-    "and jobs a square mile, rural under 500, suburban under 4,000, urban above that, and a "
-    "dense core has 25,000 jobs a square mile or more. This label never changes the level."
+    f"People and homes come from the {setting.BLOCKS_YEAR} Census and jobs from the Census "
+    f"Bureau's {setting.LODES_YEAR} jobs by block ({setting.LODES_VERSION}). They are counted "
+    "within half a mile of this road and shown as the average for a half-mile circle around a "
+    "spot on it. Remote is under 50 people and jobs a square mile, rural under 500, suburban "
+    "under 4,000, urban above that, and a dense core has 25,000 jobs a square mile or more. "
+    "Water counts as empty land, so a shoreline road can read one band lower. This label "
+    "never changes the level."
 )
 PCI_SOURCE = "DDOT pavement survey"
 PCI_SOURCE_LONG = "DDOT Pavement Condition Index (DC GIS), FY-25 survey"
@@ -1642,15 +1644,21 @@ def _setting_fact(row: dict) -> dict | None:
         if band:
             near_people = setting.about(setting.per_circle(people, float(sq_mi)))
             near_jobs = setting.about(setting.per_circle(jobs, float(sq_mi)))
+            homes = row.get("setting_homes")
+            homes_words = (
+                f" Homes nearby: {setting.about(setting.per_circle(homes, float(sq_mi)))}."
+                if homes is not None
+                else ""
+            )
             return _fact(
                 "setting",
                 "Setting",
                 f"{setting.BAND_WORDS[band]}: {near_people} people and {near_jobs} jobs "
-                "within half a mile",
+                "within half a mile of a spot here",
                 RECORD,
                 CENSUS_PEOPLE_JOBS,
                 str(setting.BLOCKS_YEAR),
-                f"{SETTING_DETAIL} {level_reads}".strip(),
+                f"{SETTING_DETAIL}{homes_words} {level_reads}".strip(),
                 input_=urban is not None,
             )
     if urban is None:
