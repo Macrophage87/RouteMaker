@@ -33,10 +33,12 @@ export const BETA_DISCORD_URL = "https://discord.gg/Qwz6BEt6gc";
 export const BETA_SIGNUP_TEXT = t("Sign up to test here!");
 
 /**
- * The Android beta's how-to-join page (Stephen 2026-11-06: "For sign up to test in Beta, send the webpage with
- * instructions to the Google group"): join the testers' Google Group, opt in on Play, install. Was the sign-up form.
+ * The testers' welcome page (backlog 2026-11-12, "Ready for a dozen testers"): one screen with a block each for
+ * Android (the same join steps, linking the Android beta's how-to-join page), iPhone and computer. Was the Android
+ * page alone (Stephen 2026-11-06: "For sign up to test in Beta, send the webpage with instructions to the Google
+ * group"), which left iPhone testers with nothing; before that the sign-up form.
  */
-export const BETA_SIGNUP_URL = "/about/android-beta.html";
+export const BETA_SIGNUP_URL = "/about/welcome.html";
 
 /** The help guides' button beside it (lib/mapInfo.ts GUIDES_PAGE, the page Help's button opens too). */
 export const BETA_GUIDES_TEXT = t("Using RouteMaker");
