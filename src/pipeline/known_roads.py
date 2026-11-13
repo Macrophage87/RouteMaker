@@ -2,7 +2,7 @@
 ratings item 5).
 
 The owner has named the level of many roads he rides ("Most of Conn Ave is LTS4",
-"Darnestown Rd ... LTS 4", "Aspen Street ... Probably a 2.5"). Most of those calls live in
+"Darnestown makes sense at 4.5", "Aspen Street ... Probably a 2.5"). Most of those calls live in
 override rows, and an override row is matched to its way by id and fingerprint. When OSM
 splits or redraws a way the row can stop reaching it, and the road quietly takes the
 formula's level again: Peach Tree Rd went from 2 to 4 that way. This check reads each
