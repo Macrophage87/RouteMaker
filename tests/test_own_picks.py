@@ -56,7 +56,9 @@ def test_no_way_is_also_named_by_another_file() -> None:
         for path in OVERRIDES.glob("2026-11-13-owner-*-rerate.json")
         for row in json.loads(path.read_text())["retire"]
     }
-    assert set(ours) & retired - recheck - rerate == {553709201}
+    # It replaces the North Bethesda row on Woodglen Drive too (the owner: "Ignore my own calls").
+    assert set(ours) & retired - recheck - rerate == set()
+    assert 553709201 in rerate
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)

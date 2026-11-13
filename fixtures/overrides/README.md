@@ -772,17 +772,19 @@ in the database still names it: delete that row in the admin when loading the fi
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
 
 - `2026-11-13-owner-dc-rerate.json`, `-md-rerate.json`, `-va-rerate.json`, `-wv-rerate.json`
-  (127,893 ways, 125,162 retired): every road re-rated on 2026-11-13 with one lean rater brief
+  (128,761 ways, 126,030 retired): every road re-rated on 2026-11-13 with one lean rater brief
   (the owner, 2026-11-13: "Rerate the entire dataset on sonnet with the 'why' included. Then if
   skepticism is needed, use opus to review them. If the values disagree, use a higher effort to
   break the tie."). One rater rated all 280,996 ways blind to agency ratings, a second reviewed
   the doubtful ones, and a third settled the 165 stretches where those two were more than half a
-  level apart. The files hold only the ways whose level changed (87,399 half a level, 38,831 a
-  full level, 1,663 more), each row replacing (and retiring) that way's row from the 2026-11-01
-  to 2026-11-12 sweeps where it had one. Left as they are: ways whose level did not change, the
-  1,466 ways in the owner's own files, and the 33 ways the raters called closed (a closure is an
-  access row with on-the-spot evidence, never a rating). 2,731 ways had no row before and carry
-  no fingerprint yet (`scripts/analysis/backfill_override_fingerprints.py` on the PC). Method
-  and results: `reports/rerate-2026-11-13/REPORT.md` in the project files. Not loaded; load like
-  the others, one file at a time after the owner confirms that file; takes effect on the next
-  rebuild.
+  level apart. The files hold only the ways whose level changed (most by half a level or one
+  level), each row replacing (and retiring) the row in force on that way where
+  it had one, the owner's own earlier rating rows among them (the owner, 2026-11-13: "Ignore my
+  own calls"). Left as they are: ways whose level did not change, 257 ways rated from Baltimore City's bike
+  facility records (`2026-10-01-owner-baltimore-facilities.json`: a separated lane the map
+  lacks is a fact the raters were not given, not a call), 62 ways that carry only an
+  access row, and the 33 ways the raters called closed (a closure is an access row with
+  on-the-spot evidence, never a rating). 2,731 ways had no row before and carry no fingerprint
+  yet (`scripts/analysis/backfill_override_fingerprints.py` on the PC). Method and results:
+  `reports/rerate-2026-11-13/REPORT.md` in the project files. Not loaded; load like the others,
+  one file at a time after the owner confirms that file; takes effect on the next rebuild.
