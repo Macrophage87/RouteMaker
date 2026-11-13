@@ -50,6 +50,7 @@ from routemaker import md_closures as md
 from routemaker import planned_work as planned
 from routemaker import workzones as rules
 
+from . import feed_sense
 from .workzones import FeedError
 
 logger = logging.getLogger(__name__)
@@ -159,21 +160,15 @@ RETRY_PLACE_S = 6 * 60 * 60.0
 # At most this many new places are looked for a refresh, per source.
 MAX_NEW_PLACES = {DC: 3000, MPD: 40, ALERTDC: 40, DCWATER: 400}
 
-# A source that still answers but reads as nothing (backlog 2026-11-12, item 8; AlertDC's RSS
-# turned into an HTML page in 2026 and nothing noticed): each good read's count of zones and
-# notices (a closure along several stretches counts each) is kept (the last `COUNTS_KEPT`), and a
-# read of none from a source whose usual count (the median of those kept, at least
-# `ZERO_ALARM_READS` of them) is `ZERO_ALARM_USUAL` or more is not taken: the last good copy is
-# kept and the run fails, so the operations page says so. A source that is often empty
-# (Montgomery County's closures) has a usual count under that, so it never trips. Once the kept
-# copy is past `DROP_AFTER_S` it is not used anyway, and the empty read is taken; from then on
-# the kept copy is empty, so the next empty read is taken quietly. MPD and AlertDC are left out
-# (`EMPTY_IS_NEWS`): their closures end in the reading (a reopening, an item aging out), so none
-# left is real news, and keeping the old copy would route round roads open again. All three
-# numbers are our default, unmeasured.
-COUNTS_KEPT = 8
-ZERO_ALARM_READS = 3
-ZERO_ALARM_USUAL = 5
+# A source that still answers but has stopped making sense (`core.feed_sense`; backlog
+# 2026-11-12, items 8 and data sources 2; AlertDC's RSS turned into an HTML page in 2026 and
+# nothing noticed): each good read's count of zones and notices (a closure along several
+# stretches counts each) is kept, and a read of none, or of a small share, from a usually busy
+# source is not taken: the last good copy is kept and the run fails, so the operations page says
+# so. Once the kept copy is past `DROP_AFTER_S` it is not used anyway, and the read is taken;
+# from then on the counts follow it. MPD and AlertDC are left out (`EMPTY_IS_NEWS`): their
+# closures end in the reading (a reopening, an item aging out), so few or none left is real
+# news, and keeping the old copy would route round roads open again.
 EMPTY_IS_NEWS = frozenset({MPD, ALERTDC})
 
 Fetch = Callable[[str, float, dict], bytes]
@@ -729,30 +724,17 @@ def _fresh_at(feed: dict) -> datetime | None:
     return max((t for t in times if t is not None), default=None)
 
 
-def usual_count(feed: dict) -> int | None:
-    """The source's usual count of closures and notices a read (the median of the last good
-    reads'), or None with too few reads to say."""
-    counts = [c for c in feed.get("counts") or [] if isinstance(c, int)]
-    if len(counts) < ZERO_ALARM_READS:
-        return None
-    ordered = sorted(counts)
-    return ordered[len(ordered) // 2]
-
-
-def read_as_nothing(feed: dict, found: int, source: str, now: datetime) -> int | None:
-    """The usual count, where a read of `found` items is not to be believed: none read from a
-    source that usually has `ZERO_ALARM_USUAL` or more, while its kept copy is still in use."""
-    if found or source in EMPTY_IS_NEWS:
+def doubted(feed: dict, found: int, source: str, now: datetime) -> str | None:
+    """Why a read of `found` items is not to be believed (`feed_sense.doubt`) while the kept
+    copy is still in use, or None."""
+    if source in EMPTY_IS_NEWS:
         return None
     if not (feed.get("zones") or feed.get("notices")):
         return None  # the kept copy is empty too: nothing to protect
-    usual = usual_count(feed)
-    if usual is None or usual < ZERO_ALARM_USUAL:
-        return None
     kept_at = rules._when(feed.get("read_at"))
     if kept_at is None or (now - kept_at).total_seconds() > DROP_AFTER_S[source]:
         return None
-    return usual
+    return feed_sense.doubt(feed.get("counts"), found)
 
 
 def _due(feed: dict, source: str, now: datetime) -> bool:
@@ -873,16 +855,12 @@ def refresh(
             said.append(f"{source} failed")
             continue
         found = len(zones) + len(notices)
-        usual = read_as_nothing(kept, found, source, moment)
-        if usual is not None:
-            logger.warning(
-                "closures: the %s source read as nothing (usually %d items); its last copy kept",
-                source,
-                usual,
-            )
+        why = doubted(kept, found, source, moment)
+        if why is not None:
+            logger.warning("closures: the %s source %s; its last copy kept", source, why)
             feeds[source] = {**kept, "failed_at": moment.isoformat()}
             touched.add(source)
-            said.append(f"{source} read as nothing (usually {usual} items)")
+            said.append(f"{source} {why}")
             empty.append(source)
             continue
         feeds[source] = {
@@ -891,7 +869,7 @@ def refresh(
             "zones": [zone.to_json() for zone in zones],
             "notices": [notice.to_json() for notice in notices],
             "placed": places.used,
-            "counts": [*(kept.get("counts") or []), found][-COUNTS_KEPT:],
+            "counts": feed_sense.remember(kept.get("counts"), found),
         }
         if digest is not None:
             feeds[source].update(digest=digest, parsed_at=moment.isoformat())
@@ -917,14 +895,14 @@ def refresh(
         when = _fresh_at(feeds.get(source) or {})
         if when is None or (now() - when).total_seconds() > STALE_AFTER_S[source]:
             stale.append(source)
-    # A source that read as nothing fails the run at once, not only once it is stale: its
+    # A source whose read was doubted fails the run at once, not only once it is stale: its
     # copy is still in use, but a parser that broke should be looked at the same day.
     empty = [source for source in empty if source not in PLANNED]
     problems = []
     if stale:
         problems.append(f"no good read in time: {', '.join(stale)}")
     if empty:
-        problems.append(f"read as nothing: {', '.join(empty)}")
+        problems.append(f"read did not make sense: {', '.join(empty)}")
     if problems:
         raise FeedError(f"{line}; {'; '.join(problems)}")
     return line

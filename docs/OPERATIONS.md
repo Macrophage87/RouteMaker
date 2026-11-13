@@ -5772,17 +5772,20 @@ without it NPS is simply not read. The host needs egress to the four hosts, and 
 Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.26.0) `www7.montgomerycountymd.gov` for
 Montgomery County's road closures.
 
-**A source that reads as nothing** (v0.26.0). Each good read's count of closures and notices is
-kept (the last 8). A read of none from a source whose usual count (the median of those, once there
-are 3) is 5 or more is not taken: its last copy is kept, and the run fails at once with "read as
-nothing: <source>", so the operations page shows it the same day. It almost always means the page
-or layer changed shape (AlertDC's RSS turning into an HTML list in 2026): fetch it by hand and
-compare with its sample in `tests/data/closures`. A source that is often empty (Montgomery
-County's closures) never trips it, and MPD and AlertDC are left out (their closures end in the
-reading, so none left is real news). Once the kept copy is past its "Dropped after" age the empty
-read is taken, and further empty reads are quiet. Counts are zones and notices, so a closure along
-several stretches counts each. 8, 3 and 5 are our default, unmeasured
-(`COUNTS_KEPT`, `ZERO_ALARM_READS`, `ZERO_ALARM_USUAL` in src/core/closure_sources.py).
+**A source that has stopped making sense** (v0.26.0, widened in v0.27.0; `core.feed_sense`).
+Each good read's count of closures and notices is kept (the last 8). A read that does not fit the
+source's usual count (the median of those, once there are 3) is not taken: none from a source that
+usually has 5 or more, or under a fifth of the usual from one that usually has 20 or more. Its last
+copy is kept, and the run fails at once with "read did not make sense: <source>" (the detail says
+"read as nothing (usually N items)" or "read only N items (usually M)"), so the operations page
+shows it the same day. It almost always means the page or layer changed shape (AlertDC's RSS
+turning into an HTML list in 2026), or a changed field made the parser drop most items: fetch it by
+hand and compare with its sample in `tests/data/closures`. A source that is often empty or small
+(Montgomery County's closures) never trips it, and MPD and AlertDC are left out (their closures end
+in the reading, so few or none left is real news). Once the kept copy is past its "Dropped after"
+age the read is taken, and the usual count follows it from then on. Counts are zones and notices,
+so a closure along several stretches counts each. 8, 3, 5, 20 and a fifth are our default,
+unmeasured (`src/core/feed_sense.py`).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -9714,7 +9717,13 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    zones read before stay in use as the labels below say, and the failing runs are what turns
    `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
-   real reading here.
+   real reading here. Once a feed has 3 good reads (v0.27.0, `core.feed_sense`, as the closure
+   sources), a read of none from one that usually has 5 or more, or under a fifth of the usual from
+   one that usually has 20 or more, is not taken (the last copy is kept until it is 2 hours old)
+   and the run fails with `read did not make sense: md`. So does a feed whose own
+   `feed_info.update_date` is more than 3 days old (`md not updated by its publisher since ...`):
+   its zones are still used, since they are still what the state publishes, but the feed has
+   stopped being fed and is worth a look. All these numbers are our default, unmeasured.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.

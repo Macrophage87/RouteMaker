@@ -99,6 +99,55 @@ class TestRefresh:
         assert workzones.refresh(feeds, no_sleep, lambda: NOW) == "work zones: md 5 zones"
 
 
+def _sample_with(zones: int | None = None, updated: datetime | None = None) -> bytes:
+    """The sample feed with its first zone repeated `zones` times, or its update date moved."""
+    document = json.loads(SAMPLE)
+    if zones is not None:
+        first = document["features"][0]
+        document["features"] = [{**first, "id": f"z{n}"} for n in range(zones)]
+    if updated is not None:
+        document["feed_info"]["update_date"] = updated.isoformat()
+    return json.dumps(document).encode()
+
+
+@db
+class TestMakesSense:
+    """Backlog 2026-11-12, data sources item 2: a feed that still answers but has stopped
+    making sense fails the run (the operations page shows it) instead of a quiet success."""
+
+    def test_a_usually_busy_feed_reading_none_keeps_its_copy_and_fails_the_run(self) -> None:
+        times = [NOW + timedelta(minutes=5 * n) for n in range(4)]
+        for when in times[:3]:
+            workzones.refresh(Feeds(md=_sample_with(zones=8)), no_sleep, lambda w=when: w)
+        with pytest.raises(workzones.FeedError) as failed:
+            workzones.refresh(Feeds(md=_sample_with(zones=0)), no_sleep, lambda: times[3])
+        assert "md read as nothing (usually 8 items)" in str(failed.value)
+        assert "read did not make sense: md" in str(failed.value)
+        feed = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
+        assert len(feed["zones"]) == 8, "the last good copy is kept"
+        assert feed["read_at"] == times[2].isoformat()
+        assert feed["counts"] == [8, 8, 8]
+
+    def test_past_the_drop_age_the_read_is_taken(self) -> None:
+        for n in range(3):
+            when = NOW + timedelta(minutes=5 * n)
+            workzones.refresh(Feeds(md=_sample_with(zones=8)), no_sleep, lambda w=when: w)
+        late = NOW + timedelta(hours=3)
+        line = workzones.refresh(
+            Feeds(md=_sample_with(zones=0, updated=late)), no_sleep, lambda: late
+        )
+        assert line == "work zones: md 0 zones"
+
+    def test_a_feed_its_publisher_stopped_updating_is_taken_and_fails_the_run(self) -> None:
+        later = NOW + timedelta(days=4)
+        with pytest.raises(workzones.FeedError) as failed:
+            workzones.refresh(Feeds(md=SAMPLE), no_sleep, lambda: later)
+        assert "md not updated by its publisher since 2026-10-11" in str(failed.value)
+        assert "read did not make sense: md" in str(failed.value)
+        feed = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
+        assert len(feed["zones"]) == 5 and feed["read_at"] == later.isoformat()
+
+
 @db
 class TestSnapshot:
     def test_current_stale_and_unavailable(self) -> None:
