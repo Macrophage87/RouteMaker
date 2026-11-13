@@ -1160,7 +1160,7 @@ export const PARK_NAME_LAYER_ID = "park_names";
  * neighborhoods", "Also golf courses. but at a lower level. Essentially anywhere there's a bunch of green, explain
  * why", and of cemeteries: "Otherwise they look like big blank spots with roads." So every named green place the
  * tiles carry (these kinds) is named here, from the tiles' own min_zoom (Protomaps sets it by size: Rock Creek Park 10,
- * Druid Hill Park and Arlington National Cemetery 13, a small square 15), over the neighbourhood names, the bigger
+ * Druid Hill Park and Glenwood Cemetery 13, a small square 15), over the neighbourhood names, the bigger
  * first; a golf course only from GOLF_NAME_MIN_ZOOM, close in. Our defaults, unmeasured: the kinds, the golf zoom, the
  * size and greens (the base map's park green, OTHER_LABEL.poiColors).
  */
