@@ -896,6 +896,30 @@ def test_a_district_record_of_no_facility_removes_osm_s_painted_lane() -> None:
     assert result.disagreements == ()
 
 
+def test_a_completed_ddot_project_keeps_osm_s_lane_where_the_record_has_none() -> None:
+    """The owner, 2026-11-13: "When there's a mismatch in data, we search for the project's
+    own data." Inside a completed DDOT bikeway project (`routemaker.ddot_projects`) the block's
+    record of no facility is the stale source, and OSM's painted lane stands."""
+    tags = {"highway": "tertiary", "cycleway:both": "lane"}
+    kept = A.overlay(tags, way_facts(), project_lane=True)
+    assert kept.tags["cycleway:both"] == "lane"
+    assert A.ROW_NO_FACILITY not in kept.precedence
+    assert kept.disagreements == (
+        "bike facility: OSM has one where the agency records none"
+        " and a completed DDOT project keeps it",
+    )
+    # Outside a project, row A as before.
+    assert "cycleway:both" not in A.overlay(tags, way_facts()).tags
+
+
+def test_the_completed_projects_file_names_the_ways_ddot_built_lanes_on() -> None:
+    from routemaker import ddot_projects
+
+    ways = ddot_projects.project_lane_ways()
+    # K St NE, 6th to 8th St (2024), and New Jersey Ave NW, Louisiana Ave to H St (2025).
+    assert {509324732, 589905456, 296345143} <= ways
+
+
 def test_the_record_date_is_the_roadway_block_retrieval_date_in_sources() -> None:
     """`DC_RECORD_AS_OF` is the installed record's retrieval date, the date a newer
     OSM edit is flagged against for the owner (hunt D6, 2026-11-08); a reinstall

@@ -1570,6 +1570,7 @@ def overlay(
     side_lane: bool = False,
     length_m: float | None = None,
     rows: Collection[str] = ROWS_190,
+    project_lane: bool = False,
 ) -> Overlay:
     """The way's tags as the classifier should read them, given its blocks' facts.
 
@@ -1591,7 +1592,11 @@ def overlay(
     in `Overlay.precedence`:
 
     * A, no facility recorded on any block of the way: OSM's painted lane is
-      removed (a track OSM maps on the road is kept and reported);
+      removed (a track OSM maps on the road is kept and reported) - except on a
+      way inside a completed DDOT bikeway project (`project_lane`,
+      `routemaker.ddot_projects`; the owner, 2026-11-13: "When there's a
+      mismatch in data, we search for the project's own data"), where the
+      project says the lane was built and OSM's lane stands;
     * B, one-way recorded where OSM says two-way in so many words: the way is
       one-way - except on a block with reversible lanes, on a junction stub
       of MIN_ONE_WAY_OVERRIDE_M or less (`length_m`, `is_junction_stub`), or
@@ -1842,12 +1847,18 @@ def overlay(
             and ROW_NO_FACILITY in rows
             and not separate
             and not facts.bike_recorded
+            and not project_lane
             and _drop_painted(out)
         ):
             sources["bike"] = agency
             precedence.append(ROW_NO_FACILITY)
             if set(_FACILITY_VALUES) & _cycleway_values(out):
                 disagreements.append("bike facility: OSM has a track, the agency records none")
+        elif has_osm_facility and project_lane and not facts.bike_recorded:
+            disagreements.append(
+                "bike facility: OSM has one where the agency records none"
+                " and a completed DDOT project keeps it"
+            )
         elif has_osm_facility:
             disagreements.append("bike facility: OSM has one, the agency records none")
 
