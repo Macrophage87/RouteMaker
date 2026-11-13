@@ -270,7 +270,8 @@ HALF_GRADED_SPEED_KPH = 90
 HALF_GRADED_LANES = 11
 HALF_LOW_LANES = 10
 # Valhalla's path uses, priced by their separation from walkers, and the trail-class uses,
-# which never carry the stress mark (lua/routemaker_remap.lua: "never on a trail-class way").
+# which this model never gives the stress mark. (The graph does give it to a winding trail on
+# the Road Bike graphs and to a side path beside a busy road from LTS 3 up; not modelled yet.)
 PATH_USES = frozenset({"cycleway", "footway", "path"})
 TRAIL_USES = PATH_USES | {"steps", "pedestrian", "bridleway", "sidewalk", "mountain_bike"}
 # What a ridden sidewalk's or crosswalk's edge is called in a trace, and the practical speed
@@ -425,7 +426,8 @@ def _path_factor(road: Road, u: float) -> float:
 def edge_factor(road: Road, tier: int, use_roads: float) -> float:
     """Valhalla's cost of a metre of the edge as a multiple of its time, grade and surface
     left out: `1 + accommodation x roadway stress`. The stress mark is the graph's from
-    LTS 3, never on a trail-class way; a graded edge carries it whatever `tier` says (the
+    LTS 3, never on a trail-class way here (the graph's marks on winding trails and side paths
+    beside busy roads are not modelled yet); a graded edge carries it whatever `tier` says (the
     two are written together, and a stress edit changes the tier before a rebuild)."""
     u = min(max(use_roads, 0.0), 1.0)
     stress = 1.0

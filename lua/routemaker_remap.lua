@@ -869,7 +869,8 @@ function M.remap_way(tags, derived)
   end
 
   -- The stress penalty: `bicycle=use_sidepath` on every way the classifier or
-  -- a curated override rates tier 3 or more (never a trail-class way).
+  -- a curated override rates tier 3 or more (here never a trail-class way; a winding
+  -- trail and a side path beside a busy road pay it below).
   -- Upstream's transform reads `use_sidepath` as bicycle access in both
   -- directions, exactly as `yes`, and Valhalla adds `3 * (1 - use_roads)` to
   -- the accommodation factor of such an edge (sif/bicyclecost.cc,
@@ -919,7 +920,23 @@ function M.remap_way(tags, derived)
   -- penalty, so a road bike rides round Sligo Creek Trail's bends as it would round an LTS 3
   -- street (the owner, 2026-11-02: road bikes "stay away from trails with lots of direction
   -- changes"). Only where the trail is open to a bicycle, as above.
-  if derived.winding and derived.is_trail_class
+  if derived.winding and derived.is_trail_class and not M.walked(derived)
+    and M.may_penalise(tags, out.bicycle or tags.bicycle)
+  then
+    out.bicycle = M.STRESS_PENALTY_BICYCLE
+  end
+
+  -- A side path or protected lane rated from the busy road beside it (`rm:beside_busy_road`,
+  -- `routemaker.stress.BESIDE_BUSY_ROAD_RULE`; the owner, 2026-11-13: "Yes, price them in
+  -- routing"): from LTS 3 up it pays the same penalty as an LTS 3 street, so a route leaves
+  -- a path with many bad crossings beside a busy road where a calm way runs alongside. A
+  -- path edge has no lanes or speed for Valhalla to grade (sif/bicyclecost.cc prices only
+  -- its pedestrian separation and `use_sidepath`), so 3.5 to 4.5 cost what 3 does, and 1.5
+  -- to 2.5 what 1 does; RouteMaker's own ranking still reads the full level (core.refine).
+  -- Only where the path is open to a bicycle, as above, and never on a way walked with the
+  -- bike (`M.walked`), which the blocks below write as `dismount`.
+  if derived.beside_busy_road and derived.is_trail_class and not M.walked(derived)
+    and derived.stress_tier ~= nil and derived.stress_tier >= M.STRESS_PENALTY_TIER
     and M.may_penalise(tags, out.bicycle or tags.bicycle)
   then
     out.bicycle = M.STRESS_PENALTY_BICYCLE
@@ -2348,6 +2365,14 @@ function M.half_step_marks(tags, derived, out)
     marks["lanes:backward"] = M.HALF_LOW_LANES
   end
   return marks
+end
+
+--- Whether the rebuild has this way walked with the bike: a station's walkway, a footway
+-- into a station, or a short link walked (`rm:platform_walk`, `rm:walk_link`,
+-- `rm:link_walk`). `remap_way` writes those `bicycle=dismount` only where nothing above wrote
+-- a bicycle value, so the stress penalty is never written on them first.
+function M.walked(derived)
+  return derived.platform_walk == true or derived.walk_link == true or derived.link_walk == true
 end
 
 -- "Legal but avoid", and the write that carries it (see `remap_way`).

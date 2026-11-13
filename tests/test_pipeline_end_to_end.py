@@ -5338,3 +5338,52 @@ def test_only_the_road_bike_graph_prices_gravel_as_gravel_and_marks_winding_trai
         assert (tags.get(600, {}).get("rm:winding") == "yes") is road_bike, variant
         straight = tags.get(200, {})
         assert "rm:rough_unpaved" not in straight and "rm:winding" not in straight, variant
+
+
+def build_side_path_extract(path: Path) -> None:
+    """The toy extract with way 100 a busy four-lane primary road, and way 900 an unnamed
+    cycleway 10 m beside a kilometre of it."""
+    build_one_road_extract(path, highway="primary", extra={"maxspeed": "45 mph", "lanes": "4"})
+    staged = Path(path).with_suffix(".staged.osm.pbf")
+    shutil.move(path, staged)
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        for obj in osmium.FileProcessor(str(staged), osmium.osm.NODE):
+            writer.add_node(obj)
+        beside = range(2001, 2012)
+        for i, node_id in enumerate(beside):
+            writer.add_node(
+                osmium.osm.mutable.Node(
+                    id=node_id,
+                    location=(-77.015 + i * 0.0012, 38.90 + 10 / 110_540.0),
+                    tags={},
+                    version=1,
+                )
+            )
+        for obj in osmium.FileProcessor(str(staged), osmium.osm.WAY):
+            writer.add_way(obj)
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=900, nodes=list(beside), version=1, tags={"highway": "cycleway"}
+            )
+        )
+    finally:
+        close_writer(writer)
+        staged.unlink(missing_ok=True)
+
+
+def test_a_side_path_rated_from_the_busy_road_beside_it_is_marked_for_routing(
+    workspace, states
+) -> None:
+    """The owner, 2026-11-13: "Yes, price them in routing". A side path the rebuild rates
+    from the busy road beside it (`stress.BESIDE_BUSY_ROAD_RULE`) carries
+    `rm:beside_busy_road`, which lua/routemaker_remap.lua prices from LTS 3 up; a named
+    trail does not."""
+    from pipeline.extract import read_ways
+
+    clipped = install_source_extract(_scratch_dir(), build=build_side_path_extract)
+    context, _ = run_pipeline(clipped, clipped.parent, skip=NOT_SWAPPED)
+    assert context.stress_by_way[900].rule.startswith("path beside a busy road")
+    tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert tags[900].get("rm:beside_busy_road") == "yes"
+    assert "rm:beside_busy_road" not in tags[200]

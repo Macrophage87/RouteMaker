@@ -1409,6 +1409,44 @@ check("a winding path with bicycle=no stays closed", M.remap_way({ highway = "pa
 check("a winding path with bicycle=dismount is still walked", M.remap_way({ highway = "path",
   bicycle = "dismount" }, { is_trail_class = true, winding = true }).bicycle
   ~= M.STRESS_PENALTY_BICYCLE)
+-- A side path rated from the busy road beside it (`rm:beside_busy_road`) pays the LTS 3
+-- penalty from LTS 3 up (the owner, 2026-11-13: "Yes, price them in routing").
+for _, tier in ipairs({ 3, 4, 5 }) do
+  check("a side path beside a busy road at LTS " .. tier .. " pays the stress penalty",
+    M.remap_way({ highway = "cycleway" }, { is_trail_class = true, beside_busy_road = true,
+      stress_tier = tier }).bicycle == M.STRESS_PENALTY_BICYCLE)
+end
+check("so does a bicycle-marked footway beside one", M.remap_way({ highway = "footway",
+  bicycle = "designated" }, { is_trail_class = true, beside_busy_road = true, stress_tier = 3 })
+  .bicycle == M.STRESS_PENALTY_BICYCLE)
+check("a side path beside a busy road at LTS 2.5 pays nothing", M.remap_way(
+  { highway = "cycleway" }, { is_trail_class = true, beside_busy_road = true, stress_tier = 2,
+    stress_half = true }).bicycle == nil)
+check("a side path beside a busy road at LTS 3.5 is not graded like a street", (function()
+  local out = M.remap_way({ highway = "cycleway" }, { is_trail_class = true,
+    beside_busy_road = true, stress_tier = 3, stress_half = true })
+  return out.bicycle == M.STRESS_PENALTY_BICYCLE and out["maxspeed:practical"] == nil
+    and out["lanes:forward"] == nil
+end)())
+for _, key in ipairs({ "platform_walk", "walk_link", "link_walk" }) do
+  local derived = { is_trail_class = true, beside_busy_road = true, stress_tier = 4,
+    winding = true }
+  derived[key] = true
+  check("a " .. key .. " beside a busy road is still walked, not priced",
+    M.remap_way({ highway = "footway", bicycle = key == "platform_walk" and "yes" or nil },
+      derived).bicycle ~= M.STRESS_PENALTY_BICYCLE)
+end
+check("a platform walk beside a busy road is walked", M.remap_way({ highway = "footway",
+  bicycle = "yes" }, { is_trail_class = true, beside_busy_road = true, stress_tier = 4,
+    platform_walk = true }).bicycle == "dismount")
+check("any other trail at LTS 3 pays nothing", M.remap_way({ highway = "cycleway" },
+  { is_trail_class = true, stress_tier = 3 }).bicycle == nil)
+check("a footway beside a busy road closed to bicycles stays closed", M.remap_way(
+  { highway = "footway" }, { is_trail_class = true, beside_busy_road = true, stress_tier = 4 })
+  .bicycle ~= M.STRESS_PENALTY_BICYCLE)
+check("a side path beside a busy road with bicycle=no stays closed", M.remap_way(
+  { highway = "cycleway", bicycle = "no" }, { is_trail_class = true, beside_busy_road = true,
+    stress_tier = 4 }).bicycle == nil)
 for _, surface in ipairs({ "metal", "metal_grid", "brick", "bricks", "sett", "tartan", "rubber",
     "cobblestone", "unhewn_cobblestone", "paving_stones:lanes", "asphalt:lanes", "boardwalk" }) do
   check(surface .. " is paved", M.is_paved({ surface = surface }))

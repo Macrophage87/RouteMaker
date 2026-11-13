@@ -63,6 +63,7 @@ from routemaker import (
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import (
+    BESIDE_BUSY_ROAD_RULE,
     Stress,
     bends_slow_traffic,
     classify,
@@ -2246,6 +2247,22 @@ def facility_derived(
     return {}
 
 
+def weekend_car_free_beside(
+    variant: variants.Variant,
+    side_streets: dict | None,
+    car_free_by_way: dict[int, frozenset[str]],
+    way_id: int,
+) -> bool:
+    """Whether, on a weekend graph, a street a side path runs beside is car-free all weekend:
+    LTS 1 there (`facility_derived`), so the path is not priced as beside a busy road."""
+    if variant not in variants.WEEKEND_GRAPHS or not side_streets or way_id not in side_streets:
+        return False
+    return any(
+        ridetime.WEEKEND in car_free_by_way.get(street_id, ())
+        for street_id in side_streets[way_id].metres_by_way
+    )
+
+
 def build_handlers(
     context: RebuildContext,
     run: Callable[[Sequence[str]], str] | None = None,
@@ -4229,6 +4246,19 @@ def build_handlers(
                     and winding.is_winding(way.coordinates)
                 ):
                     derived["winding"] = True
+                # A side path or protected lane rated from the busy road beside it
+                # (`stress.BESIDE_BUSY_ROAD_RULE`): lua/routemaker_remap.lua prices it from
+                # LTS 3 up, as it prices a street (the owner, 2026-11-13: "Yes, price them
+                # in routing"). Not on the weekend graphs where the street beside it is
+                # car-free all weekend (`facility_derived` makes that street LTS 1 there).
+                if (
+                    stress is not None
+                    and stress.rule.startswith(BESIDE_BUSY_ROAD_RULE)
+                    and not weekend_car_free_beside(
+                        variant, context.side_streets, context.car_free_by_way, way.osm_id
+                    )
+                ):
+                    derived["beside_busy_road"] = True
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 
