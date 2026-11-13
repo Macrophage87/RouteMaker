@@ -628,7 +628,7 @@ def _rule_words(rule: str) -> str:
             if road
             else (" (Avoid)" if "road rated Avoid" in rule else "")
         )
-        crossed = re.search(r"crossings score (\d+) a mile", rule)
+        crossed = re.search(r"crossings (?:score \d+|cost \d+ ft) a mile", rule)
         extra = ["many or busy street and driveway crossings"] if crossed else []
         if "crosses a slip lane" in rule:
             extra.append("crosses a slip lane")
