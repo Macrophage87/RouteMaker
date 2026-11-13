@@ -362,7 +362,7 @@ test("the ride screen and the trip panel wire Ride the rest and the walk through
   assert.match(summary, /onClick=\{onRideRest\} aria-describedby=\{`\$\{id\}-rest`\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const result = await requestRoute\(asked\.points, asked\.preset,/);
-  assert.match(app, /if \(!rideableRoute\(result\.route\)\) return RIDE_TOO_LONG;/);
+  assert.match(app, /if \(!rideableRoute\(result\.route\)\) return rideTooLong\(installState\(\)\.ios\);/);
   // End ride (or another ride) while the request runs: nothing starts.
   assert.match(app, /const stillOn = \(\) => \(fromRide \? ridingNow\.current && rideNow\.current\.start\?\.n === n : !ridingNow\.current\);/);
   assert.match(app, /const result = await requestRoute\(asked\.points, asked\.preset, [^\n]*routeOnly: true \}\);\n\s*if \(!stillOn\(\)\) return null;/);

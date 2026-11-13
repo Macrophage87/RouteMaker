@@ -36,7 +36,8 @@ import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
-import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { IPHONE_RIDE_LINE, rideTooLong } from "../lib/navigate.ts";
+import { installState } from "../lib/installOffer.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
 import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine, walksLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
@@ -935,16 +936,27 @@ export function RouteSummary({
       )}
     </>
   ) : null;
+  // An iPhone or iPad has no RouteMaker app yet (Stephen 2026-11-13: after Android), so a ride there stops when the screen
+  // locks: said in one shown line under Start, with the long-ride answer (backlog 2026-11-12, ride item 14).
+  const iphone = !ridesHidden() && installState().ios;
   const startHint = rideable ? (
-    // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
-    // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
-    <p id="start-ride-hint" className="visually-hidden start-ride-hint">
-      {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
-    </p>
+    iphone ? (
+      // Shown on iPhone, and said with Start as the hint is elsewhere.
+      <p id="start-ride-hint" className="hint start-ride-hint iphone-ride-line">
+        <span className="visually-hidden">{t("Turn-by-turn directions on this phone, said as you chose.")} </span>
+        {IPHONE_RIDE_LINE}
+      </p>
+    ) : (
+      // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
+      // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
+      <p id="start-ride-hint" className="visually-hidden start-ride-hint">
+        {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
+      </p>
+    )
   ) : noBike ? (
     <p className="hint no-bike-line">{noBike}</p>
   ) : !ridesLine(route) ? null : (
-    <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
+    <p className="hint start-ride-long">{rideTooLong(iphone)}</p>
   );
   const alerts = (
     <>

@@ -2208,4 +2208,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "ምድላው መገዲ ሕጂ ኣይሰርሕን።",
   "Some ride types are not working right now.": "ገለ ዓይነታት ጉዕዞ ሕጂ ኣይሰርሑን።",
   "Place search is down right now.": "ምድላይ ቦታ ሕጂ ኣይሰርሕን።",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "ኣብ iPhone «ጉዕዞ ጀምር» ክሳብ {distance} ንዝኾኑ ጉዕዞታት እዩ። ንነዊሕ ጉዕዞ፣ ስእልታት መምርሒ ናይ ዝተዓጽወ ስክሪን ዓቅቡ፣ ወይ ንኮምፒተር ብሽክለታ «GPX ኣውርድ»።",
+  "On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.": "ኣብ iPhone ክሳብ {distance} ንዝኾኑ ጉዕዞታት ስክሪን ብሩህ እዚ ገጽ ድማ ኣብ ቅድሚት ሓዝ። ንነዊሕ ጉዕዞ ወይ ዝተዓጽወ ስልኪ፣ ስእልታት መምርሒ ናይ ዝተዓጽወ ስክሪን ወይ GPX ተጠቐሙ።",
 };

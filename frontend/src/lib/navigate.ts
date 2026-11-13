@@ -62,6 +62,21 @@ export const RIDE_MAX_M = 30 * METRES_PER_MILE;
 export const RIDE_TOO_LONG = t("Start ride in a browser is for rides up to {distance}. Use the phone app, or Download GPX for a bike computer.", {
   distance: formatRoughDistance(RIDE_MAX_M),
 });
+/**
+ * The same on an iPhone or iPad, which has no RouteMaker app yet (backlog 2026-11-12, ride item 14; Stephen 2026-11-13:
+ * an app comes after Android): no "Use the phone app", and the lock-screen cue images offered with GPX.
+ */
+export const RIDE_TOO_LONG_IPHONE = t("On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.", {
+  distance: formatRoughDistance(RIDE_MAX_M),
+});
+/** Shown under Start ride on an iPhone or iPad: what a ride there needs, said before it goes quiet in a pocket. */
+export const IPHONE_RIDE_LINE = t("On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.", {
+  distance: formatRoughDistance(RIDE_MAX_M),
+});
+/** The too-long line for this device: `ios` from lib/installOffer.ts installState(). */
+export function rideTooLong(ios: boolean): string {
+  return ios ? RIDE_TOO_LONG_IPHONE : RIDE_TOO_LONG;
+}
 
 // ---- Thresholds (plan sections 2 and 4) ---------------------------------------------------------
 

@@ -2208,4 +2208,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "ルート計画は現在使えません。",
   "Some ride types are not working right now.": "一部のライドタイプは現在使えません。",
   "Place search is down right now.": "場所の検索は現在使えません。",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "iPhoneでの「ライドを開始」は{distance}までのライド向けです。長いライドでは、ロック画面用の案内画像を保存するか、サイクルコンピューター用に「GPXをダウンロード」してください。",
+  "On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.": "iPhoneでは{distance}までのライドで、画面をつけたまま、このページを前面にしてください。長いライドや画面ロック時は、ロック画面用の案内画像かGPXを使ってください。",
 };

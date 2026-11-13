@@ -2208,4 +2208,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Perencanaan rute sedang tidak berfungsi.",
   "Some ride types are not working right now.": "Beberapa jenis perjalanan sedang tidak berfungsi.",
   "Place search is down right now.": "Pencarian tempat sedang tidak berfungsi.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "Di iPhone, Mulai perjalanan untuk perjalanan hingga {distance}. Untuk perjalanan lebih jauh, simpan gambar petunjuk layar kunci atau Unduh GPX untuk komputer sepeda.",
+  "On iPhone, keep the screen on and this page in front, for rides up to {distance}. For longer rides or a locked phone, use the lock-screen cue images or GPX.": "Di iPhone, biarkan layar menyala dan halaman ini di depan, untuk perjalanan hingga {distance}. Untuk perjalanan lebih jauh atau ponsel terkunci, gunakan gambar petunjuk layar kunci atau GPX.",
 };
