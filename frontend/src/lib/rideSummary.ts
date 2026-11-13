@@ -15,6 +15,7 @@ import { formatDistance } from "./format.ts";
 import { onFoot, presetLabel, presetSaid, runs, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
 import { t } from "./i18n.ts";
+import { startMs, startShort } from "./startTime.ts";
 
 /** The traffic slider's position in two or three words. */
 export function trafficShort(stress: number): string {
@@ -37,7 +38,10 @@ export function hillsShort(hills: number, climbs: boolean): string {
 }
 
 /** The ride time: "now" for "when I'm planning", else the option's own words, first letter lowered. */
-export function whenShort(when: Dials["when"]): string {
+export function whenShort(when: Dials["when"], startAt?: string): string {
+  // Plan's day and start time (lib/startTime.ts): "leave Sat, Nov 15, 8:00 AM".
+  const starts = startMs(startAt);
+  if (when === null && starts !== null) return t("leave {time}", { time: startShort(starts) });
   if (when === null) return t("now");
   const label = WHENS.find((option) => option.id === when)?.label;
   return label ? whenInSentence(label) : t("now");
@@ -64,13 +68,13 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
   const locked = stressMax(preset) === 0;
   const target = targetShort(dials.targetDistanceM);
   // Walk and Walk + 🚆🚌 (2026-11-02): no traffic or hills to say, only when.
-  if (onFoot(preset)) return [rideTypeShort(preset, dials, name), whenShort(dials.when)];
+  if (onFoot(preset)) return [rideTypeShort(preset, dials, name), whenShort(dials.when, dials.startAt)];
   // Run (2026-11-02): its hills, when, its target and loop; no traffic.
   if (runs(preset)) {
     return [
       rideTypeShort(preset, dials, name),
       ...(dials.hills < -20 ? [t("fewer climbs")] : []),
-      whenShort(dials.when),
+      whenShort(dials.when, dials.startAt),
       ...(target ? [target] : []),
       ...(dials.loop === true ? [t("loop")] : []),
     ];
@@ -79,7 +83,7 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
     rideTypeShort(preset, dials, name),
     locked ? t("most direct roadway") : trafficShort(dials.stress),
     hillsShort(dials.hills, seeksClimbs(preset)),
-    whenShort(dials.when),
+    whenShort(dials.when, dials.startAt),
     ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? [t("loop")] : []),
     ...(dials.trailsOff === true && !trailsOffLocked(preset) ? [t("roads only")] : []),

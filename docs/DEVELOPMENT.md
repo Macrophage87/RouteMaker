@@ -27,6 +27,7 @@ Contents:
 - [The final-fix round (2026-10-03)](#the-final-fix-round-2026-10-03)
 - [The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)](#the-ride-layer-and-surface-unknown-paths-owner-decisions-376-391-402a-403)
 - [Long calm trips, the target distance and the routes to choose from (FOLLOWUP-LONG-CALM, items 256 to 271)](#long-calm-trips-the-target-distance-and-the-routes-to-choose-from-followup-long-calm-items-256-to-271)
+- [Long rides get the calm search (backlog 2026-11-12, v0.27.0)](#long-rides-get-the-calm-search-backlog-2026-11-12-v0270)
 - [No dodging through side streets (FOLLOWUP-DEDODGE, items 272, 273)](#no-dodging-through-side-streets-followup-dedodge-items-272-273)
 - [The rider and bike weight (OWNER-DECISIONS 313-318, 337-340, 352)](#the-rider-and-bike-weight-owner-decisions-313-318-337-340-352)
 - [Reversible lanes and the reference LTS 4 road (OWNER-DECISIONS 405, 408, 409, 411-414, 416, 419, 425)](#reversible-lanes-and-the-reference-lts-4-road-owner-decisions-405-408-409-411-414-416-419-425)
@@ -596,7 +597,7 @@ was not looked at.
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
   land"), so a rider who cannot point at the map gets the names.
-- The a11y harness counts every check: `EXPECTED = 187` in `scripts/a11y/check.mjs`.
+- The a11y harness counts every check: `EXPECTED = 187` in `scripts/a11y/check.mjs` (then; since 2026-11-13 each section declares its own count, see "--shard I/N" below).
 
 ### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
@@ -3064,8 +3065,8 @@ out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
 road). `calm_search` in the answer says what it did; `limited` is `time`,
-`no_route`, `untraceable` or, where it did not run, `span` (past 19 mi
-[30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
+`no_route`, `untraceable` or, where it did not run, `span` (past 37 mi
+[60 km] apart; 19 mi [30 km] until v0.27.0), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
 
 **The router's own alternatives** (OWNER-DECISIONS 435, 2026-10-05: "Yes, rank
@@ -3159,7 +3160,7 @@ The router's limits are not in the way: `max_exclude_locations` is 200,
 `max_alternates` 3 (the calm search asks for all three once, below) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
-- starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
+- starts and ends more than 37 mi (60 km) apart (19 mi (30 km) until v0.27.0), on a long ride, and rides
   with more than a start and an end where the hills slider is seeking (the
   search says so, `limited`);
 - a start or end whose only way out is a busy road (the first 500 m are never
@@ -5177,6 +5178,19 @@ map". No map rebuild and no new control.
   amber with a dark "!" and rim otherwise, so shape tells them apart as well as colour, 22 px, named from
   zoom 13 red and 15 amber). The connector's summary has the same line as `barriers`. The 16
   phrases are drafted in every Go and Ride language and need a native check.
+- **Go around** (the owner, 2026-11-13: "Put the bollard on the map, and offer them a go
+  around."). Each mark is a clear button over the octagon (Tab reaches it, named "Barrier:
+  bollard (width not mapped)"); it opens a card with what is known of it and "Go around", which
+  plans again with that barrier in `barrier_avoid` (its `lon`, `lat` as the answer gave them; at
+  most 20). `barriers.settle` then treats it as impassable (`blocking(..., avoid)`), and
+  `reread` does the same. A gone-round barrier is drawn hollow (white, a heavy dark rim) with
+  "Undo: go through it"; one still on the route turns red, its card saying "No way round
+  found.". Impassable ones have no button: they are planned round already. Per plan (start and
+  end), request only, never in a link, as "Route through anyway" is for a closure. Ordinary
+  bollards are never left out unasked (the owner, 2026-11-13: most are fine). During a ride the
+  card has no button (a ride re-plans with the dials it started with). An open card stays open
+  across a new route while its barrier is still marked, and after Go around or Undo the focus
+  goes to that barrier's new button. Ten more phrases, drafted in every language.
 - **Coverage.** `scripts/barrier_census.py` (without `--json`) prints how much of this OSM
   records: barriers by kind with readable `maxwidth`, a width under another key only, what the
   remap does with each, kerbs, steps and their ramps, walk stretches and trail access points.
@@ -6571,7 +6585,7 @@ stress page's cost table.
 | Living streets | 1.0 (fully preferred) | as Trailmaxxing |
 | Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
 | Turn penalty | Default's 15 s (`presets.CALM_MANEUVER_PENALTY_S`, every setting since 2026-11-12) | as Default; item 254's higher charge for groups stays Group Ride's 30 s |
-| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
+| Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`; 37 mi (60 km) since v0.27.0) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
 
 At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
 least 1 mi (1.6 km) more, or 1.25 times the rider's target distance where one is set. It is
@@ -6709,7 +6723,8 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
 - **A long calm plan takes the long ride's in-flight slot** as well as an ordinary one
   (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment), and needs no
   confirmation (it is under the confirm span). Its timed-out 503 carries `long_ride_timed_out`.
-- Other ride types keep today's limits: past 19 mi the calm search does not run (`limited: "span"`).
+- Other ride types keep today's limits: past 19 mi the calm search does not run (`limited: "span"`;
+  37 mi (60 km) since v0.27.0).
   Cargo with passengers, the only other stress-averse ride, tops out at 80, where there is no calm
   search at all.
 
@@ -6958,12 +6973,12 @@ it was kept only where every asked way back shared at least as much, so one that
 different calm street (20%) lost to an asked one sharing 8% over a kilometre of LTS 4. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points
 excluded and the routes asked. The search that follows keeps the way back different: a candidate that
 shares more than the loop does (or 30%, if the loop shares less) is refused. A loop past 19 mi (30 km)
-of straight line in all is not searched (`limited: "span"`; `refine_long` would ask each leg of the
+of straight line in all (37 mi (60 km) since v0.27.0) is not searched (`limited: "span"`; `refine_long` would ask each leg of the
 way back without its exclusions); the way back is still made different. **A loop is never a long
 calm plan** (`routing.plan`: `long_calm` is false for a loop), so a long Trailmaxxing loop gets no
 calm search at all. The span is `straight_span_m` over the loop's points, the way back included, so
-a loop with a 9.5 mi out-leg is already past it, and its note ("over 19 mi in a straight line")
-counts both halves. Such a loop is not left with its red crossings (the 2026-11-08 hunt, R1, H4):
+a loop with a 9.5 mi out-leg was already past it (since v0.27.0, one with an 18.6 mi out-leg), and
+its note ("over 37 mi in a straight line") counts both halves. Such a loop is not left with its red crossings (the 2026-11-08 hunt, R1, H4):
 the red pass (`core.red_crossings`) runs on every loop, asking each red round by its own stretch
 of the route (a window of its leg either side of it), never the plan's own request, so the way
 back `make_loop` made is kept and a way round that puts more of it on the way out than the loop
@@ -7236,6 +7251,52 @@ live stress tiles into a scratch segment table, as in the final-fix round; the p
 count the harness's tile matching. Rides are weekday off-peak (the standard graph) for both the live
 and the harness runs. "Live" is the deployed API (47c2f52, graph 20261003T142804Z); "old code" is
 47c2f52 in the same harness.
+
+## Long rides get the calm search (backlog 2026-11-12, v0.27.0)
+
+Until v0.27.0 the calm search (and, below the top of the slider, the search for a way round red
+crossings) ran only on plans up to 19 mi (30 km) of straight line, Trailmaxxing at the top
+excepted, which plans leg by leg past that (`refine_long`). Every other ride type past it got the
+router's first route plus the red-crossing pass, and the note "The calmer-route search does not
+run on trips over 19 mi". The limit came from September: on the live router a cold 42-48 km
+request took 33 s. The owner rides long (DC to Baltimore, Purcellville to Harpers Ferry), so the
+rides the app is named for were the ones it took least care over.
+
+What changed: the search in one piece now runs up to `refine.REFINE_MAX_SPAN_M` = 60 km (37 mi)
+of straight line, every ride type, inside the ordinary plan's 40 s budget. Its rounds stop at the
+deadline as on any plan (`_refine_limit`'s "time", `REFINE_ROUND_MIN_S`), so a trip that is slow
+to route gets fewer rounds, never a late answer, and the note then says the search ran out of
+time. No new slot, no new budget: it holds the ordinary routing slot it already held. Past 30 km
+the search does not rank the router's own alternatives (`routing.alternates_span_ok`), as it did
+not before: they roughly double a long route's router call and, asked early, would hold a second
+pool slot (beta's pool is two); from the PR's review. Go's other options (More direct, Fewer
+turns, All paved) keep their shared 25 s, one after another: each option's search is held to its
+own 14 s (`refine.REFINE_BUDGET_S`) after its router call, and on a 54.6 km trip the router call
+alone took 11 to 20 s, so the later options were already often left out there before this change.
+Splitting the 25 s evenly was tried and dropped in review: on DC to Baltimore it left each option
+too little for even its router call. A
+Trailmaxxing plan at the top still goes leg by leg past 30 km (`refine.LONG_CALM_SPAN_M`, kept
+where OWNER-DECISIONS 256 put it). Past 60 km and up to the long-ride span (93 mi, 150 km) other
+ride types keep the router's route and the red-crossing pass, as before. The hills slider's avoid
+half keeps its own 25 km (`routing.AVOID_MAX_SPAN_M`).
+
+Why 60 km: the PC's scorecard runs of 2026-11-12 (the v0.26.0 run and the four fewer-turns runs,
+five runs of each plan; seconds from the route-check service, whole /api/route answers):
+
+| Trip (straight line) | Ride type | Search | Seconds |
+|---|---|---|---|
+| Dupont Circle to Reston (27.8 km) | Default | in one piece | 3.9 to 5.0 |
+| Silver Spring to Columbia (28.7 km) | Default | in one piece | 4.0 to 9.2 |
+| Old Town to Bowie (31.0 km) | Default | none (span) | 5.0 to 6.0 |
+| Union Station to Inner Harbor (54.6 km) | Default | none (span) | 10.9 to 19.9 |
+| Union Station to Inner Harbor (54.6 km) | Trailmaxxing | leg by leg, 5 legs | 20.4 to 25.0, cut short by time, router's route kept every time |
+
+So DC to Baltimore leaves at least 20 s of the 40 s budget to search in, and the search on trips
+just under the old limit took under 10 s. 60 km is our default, unmeasured past the old limit:
+the before and after on the scorecard's long trips, with their seconds, is the measurement, and
+beta (about 5 GB free, a routing pool of two) has not been measured. In Go the rider sees the
+first route at once and the searched one is swapped in before Start ("Found a calmer route"), as
+on shorter trips (`lib/progressive.ts`); in Plan the wait is the plan's.
 
 ## No dodging through side streets (FOLLOWUP-DEDODGE, items 272, 273)
 
@@ -9165,11 +9226,13 @@ and from the I key on the junction, none away from it, and that the legend has n
 `A11Y_CDP_PORT=9847 node scripts/a11y/check.mjs --port 5847`.
 
 `--shard I/N` (or `A11Y_SHARD=I/N` to `run.sh`) runs every Nth top-level section, from the Ith:
-each section is behind `if (mine())` and shares no page or state with another, so a new section
-needs the same prefix. A shard writes its check count to `a11y-count.txt` in the shots directory
-and skips the `EXPECTED` comparison; CI runs three shards on three runners (`a11y-shard`), and its
-`a11y` job is green only when all three passed and their counts add up to `EXPECTED`. Run alone, as
-at home, the check runs every section and compares with `EXPECTED` itself.
+each section is behind `if (mine(N))`, N the number of checks it makes, and shares no page or state
+with another, so a new section needs the same prefix with its own count. A section that makes other
+than its N checks fails the run with a `MISCOUNT` line naming it (it stopped early, or a check was
+added without raising N). Each section keeps its own count, so PRs adding sections no longer collide
+on one `EXPECTED` total (retired 2026-11-13). What a per-section count cannot see is a whole
+section dropped by a merge: a reviewer checks that a diff to `check.mjs` removes no `if (mine(N))`. CI runs three shards on three runners (`a11y-shard`);
+its `a11y` job is green only when all three passed.
 
 ## Junction suggestions and junction overrides (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)
 

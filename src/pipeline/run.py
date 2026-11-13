@@ -95,6 +95,7 @@ from . import (
     major_corridors,
     mass_capacity,
     offline_network,
+    offline_packs,
     overrides,
     promotion,
     rated_facts,
@@ -4951,6 +4952,19 @@ def build_handlers(
             raise
 
     def reconcile_after_swap() -> None:
+        # The region packs for off-grid riding (core.offline_packs), from the map now live. The
+        # map is live whatever happens here: a failure is logged and the last packs stay listed
+        # (their manifest names the older build), never a failed rebuild. Before the drift
+        # report, so a failure there still leaves the packs built.
+        try:
+            offline_packs.build_packs(
+                _setting("SEGMENT_SCHEMA_LIVE"),
+                Path(context.tiles_dir) / "offline-packs",
+                context.build_id,
+                _setting("COVERAGE_BBOX"),
+            )
+        except Exception:  # noqa: BLE001 - logged; the swap already stands
+            logger.exception("offline region packs not built; the previous packs stay served")
         context.drift_report = reconcile.drift_report(
             context.build_id,
             _setting("SEGMENT_SCHEMA_LIVE"),
