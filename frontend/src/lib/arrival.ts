@@ -17,6 +17,7 @@ import { clockLocale, t } from "./i18n.ts";
 import type { When } from "./dials.ts";
 import { whenAt } from "./rideTime.ts";
 import { ZONE } from "./departure.ts";
+import { startArrivalSaid } from "./startTime.ts";
 
 /** A halt counted up to this, in seconds. */
 export const HALT_CAP_S = 90;
@@ -139,9 +140,11 @@ export function leaveNowArriveMs(
 }
 
 /** That arrival in words: "arrive 8:27 AM" on screen; a screen reader hears it is an estimate, for leaving now. */
-export function leaveNowArrival(arriveMs: number, locale?: string): { shown: string; said: string } {
+export function leaveNowArrival(arriveMs: number, locale?: string, startSet = false): { shown: string; said: string } {
   const time = arrivalClock(arriveMs, 0, locale);
-  return { shown: t("arrive {time}", { time }), said: t("arriving about {time} if you leave now", { time }) };
+  // With Plan's start time set (lib/startTime.ts), the estimate is for leaving then, which When says.
+  const said = startSet ? startArrivalSaid(time) : t("arriving about {time} if you leave now", { time });
+  return { shown: t("arrive {time}", { time }), said };
 }
 
 /** The time to go, eased to the rider's own pace: each estimate divided by how much faster than the plan they ride. */

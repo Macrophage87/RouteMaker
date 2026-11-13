@@ -36,6 +36,7 @@ import {
 import { RIDE_SIZE_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
+import { defaultStart, fitStart, startBounds } from "./lib/startTime.ts";
 import { sentences } from "./lib/sentences.ts";
 
 /** Walk and Walk + 🚆🚌 in the sliders' place: a walk is planned on foot, not by traffic or hills. */
@@ -51,6 +52,8 @@ interface Props {
   ridingSpeed?: RidingSpeedControl;
   /** Leave out the Target distance dial (Plan's Loop by distance box is showing: one distance control). */
   hideTarget?: boolean;
+  /** Offer Leave at, a day and start time (lib/startTime.ts): Plan only (the owner, 2026-11-13), not the docks' ride types. */
+  startTime?: boolean;
 }
 
 function Slider(props: {
@@ -242,6 +245,9 @@ function NumberDial(props: {
 const WHEN_HOW =
   t("On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.");
 
+/** Leave at, behind the same (i), in Plan only. */
+const START_HOW = t("Leave at plans the ride for a day and start time: the closures in force then, that day's transit timetable, and sunrise and sunset along the way. The arrival time is for leaving then.");
+
 function whenLabel(when: When): string {
   return WHENS.find((option) => option.id === when)?.label ?? when;
 }
@@ -270,7 +276,7 @@ function withBike(dials: Dials, bike: Bike): Dials {
   return next;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed, hideTarget }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed, hideTarget, startTime }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -292,6 +298,10 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   const trailsOffInfoId = useId();
   // Each row's (i) opens and closes on its own, as Settings' rows do.
   const [whenInfo, setWhenInfo] = useState(false);
+  const startId = useId();
+  // The day and time last chosen, so Leave at picked again after Now comes back to it.
+  const [lastStart, setLastStart] = useState<string | undefined>(dials.startAt);
+  const startSet = Boolean(startTime && dials.startAt);
   const [trailsOffInfo, setTrailsOffInfo] = useState(false);
   const easyMtbHintId = useId();
   const easyMtbInfoId = useId();
@@ -494,12 +504,47 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
             type="radio"
             name="when"
             value=""
-            checked={dials.when === null}
-            onChange={() => onCommit({ ...dials, when: null })}
+            checked={dials.when === null && !startSet}
+            onChange={() => onCommit({ ...dials, when: null, startAt: undefined })}
           />
           {t("Now")}
-          {dials.when === null && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
+          {dials.when === null && !startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
         </label>
+        {startTime && (
+          <label className="toggle">
+            <input
+              type="radio"
+              name="when"
+              value="start"
+              checked={startSet}
+              onChange={() => {
+                const now = Date.now();
+                onCommit({ ...dials, when: null, startAt: fitStart(lastStart, now) ?? defaultStart(now) });
+              }}
+            />
+            {t("Leave at")}
+            {startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
+          </label>
+        )}
+        {startSet && (
+          <div className="start-time">
+            <label htmlFor={startId}>{t("Day and start time")}</label>
+            <input
+              id={startId}
+              type="datetime-local"
+              step={300}
+              {...startBounds(Date.now())}
+              value={dials.startAt}
+              onChange={(event) => {
+                // Only a whole, real time within the year ahead: a box half typed changes nothing.
+                const next = fitStart(event.currentTarget.value, Date.now());
+                if (!next || next === dials.startAt) return;
+                setLastStart(next);
+                onCommit({ ...dials, when: null, startAt: next });
+              }}
+            />
+          </div>
+        )}
         {WHENS.map((option) => (
           <label key={option.id} className="toggle">
             <input
@@ -507,7 +552,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
               name="when"
               value={option.id}
               checked={dials.when === option.id}
-              onChange={() => onCommit({ ...dials, when: option.id as When })}
+              onChange={() => onCommit({ ...dials, when: option.id as When, startAt: undefined })}
             />
             {option.label}
           </label>
@@ -519,7 +564,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           <InfoButton open={whenInfo} onToggle={() => setWhenInfo(!whenInfo)} controls={whenInfoId} about="when" />
         </div>
         <DialInfo id={whenInfoId} open={whenInfo}>
-          <Bullets text={WHEN_HOW} />
+          <Bullets text={startTime ? `${START_HOW} ${WHEN_HOW}` : WHEN_HOW} />
         </DialInfo>
       </fieldset>
       {view.target && !hideTarget && (

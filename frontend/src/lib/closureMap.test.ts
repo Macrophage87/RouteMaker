@@ -184,7 +184,7 @@ test("Go and a ride ask for the closures known to be on; Plan keeps DDOT's permi
   assert.equal(go.closures_now, true);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const goNow = mode === "go";/);
-  assert.match(app, /goNow \? \{ \.\.\.made, closuresNow: true \}/);
+  assert.match(app, /goNow \? \{ \.\.\.timed, closuresNow: true \}/);
   // Start ride, from Go or Plan, and a ride's re-plans.
   assert.match(app, /nowOnly = !!planDials\.closuresNow \|\| why === "ride"/);
   assert.match(app, /rideDials\(\{ \.\.\.planDials, closuresNow: true \}/);
