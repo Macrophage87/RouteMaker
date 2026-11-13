@@ -1738,6 +1738,7 @@ def test_the_calm_search_swaps_the_routers_climbing_charge_for_the_riders():
     )
     ctx = type("Ctx", (), {})()
     ctx.rate, ctx.weight, ctx.quiet_cost, ctx.wait_weight = 0.0, 1.0, 0.44, 1.0
+    ctx.costing, ctx.fewer_turns = {}, False
     assert read.score(ctx) == pytest.approx(600.0 + 0.44 * (2000.0 - 1300.0))
 
 

@@ -105,7 +105,7 @@ road with no bike lane):
 - **The owner's choices.** "I'd probably want LTS 4 to be twice the stress level of LTS 3 at
   least" (2026-09-28, typed). The search gives 2.5 to 6 times. Measured on our data: on his
   logged rides LTS 3 is ridden at 0.81 of its share of the roads available and LTS 4 at 0.34
-  (`/home/user/audit/impl/owner-calls-routing.md`, P1 and P2), a ratio of 2.4. So the ratio
+  (the 2026-11-13 audit's review of the owner's routing calls, P1 and P2), a ratio of 2.4. So the ratio
   between the two is supported; Default's absolute LTS 3 price (3 to 6 quiet miles a mile)
   looks high against the same rides and is an open question, not changed here.
 - **Our default, unmeasured:** the 3 in `3 x (1 - use_roads)` is Valhalla's; the graded marks
@@ -354,7 +354,7 @@ flowchart LR
 <details>
 <summary>Full reasoning and citations (for review)</summary>
 
-- `presets.AVOID_ENTRY_FT` 13,423 ft, sent as `alley_penalty` at the ride's speed
+- `presets.AVOID_ENTRY_FT` 13,422 ft, sent as `alley_penalty` at the ride's speed
   (`presets.avoid_entry_cost_s`): 1,800 cost seconds on Default, as before. Before 2026-11-13
   every ride type sent 1,800, which was 1.4 mi on Mass Ride, 1.8 mi on Bikeshare and 3.5 mi on
   Road Bike.

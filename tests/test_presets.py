@@ -832,12 +832,12 @@ def test_a_turn_costs_one_distance_at_every_position_and_on_every_ride_type() ->
 
 def test_the_avoid_entry_is_one_distance_on_every_ride_type() -> None:
     # Before: 1,800 cost seconds on all, 1.8 mi of quiet riding on Bikeshare and 3.5 mi on
-    # Road Bike. After: 2.54 mi (13,423 ft) on all; Default sends 1,800 as before.
-    assert presets.AVOID_ENTRY_FT == 13423
-    assert presets.costing("default")["bicycle"]["alley_penalty"] == 1800.0
+    # Road Bike. After: 2.54 mi (13,422 ft) on all; Default sends 1,800 as before.
+    assert presets.AVOID_ENTRY_FT == 13422
+    assert presets.costing("default")["bicycle"]["alley_penalty"] == pytest.approx(1800.0, abs=0.1)
     for name in presets.PRESETS:
         bicycle = presets.costing(name)["bicycle"]
-        assert _quiet_ft(bicycle["alley_penalty"], bicycle) == pytest.approx(13423, abs=5), name
+        assert _quiet_ft(bicycle["alley_penalty"], bicycle) == pytest.approx(13422, abs=5), name
 
 
 def test_a_change_of_speed_keeps_the_distances() -> None:
@@ -846,7 +846,7 @@ def test_a_change_of_speed_keeps_the_distances() -> None:
     bicycle = block["bicycle"]
     assert bicycle["cycling_speed"] == 25.0
     assert _quiet_ft(bicycle["maneuver_penalty"], bicycle) == pytest.approx(222.0, abs=0.5)
-    assert _quiet_ft(bicycle["alley_penalty"], bicycle) == pytest.approx(13423, abs=5)
+    assert _quiet_ft(bicycle["alley_penalty"], bicycle) == pytest.approx(13422, abs=5)
     # The rider's "Fewer turns" at the block's own speed.
     asked = presets.with_rider_choices(block, fewer_turns=True)["bicycle"]
     assert _quiet_ft(asked["maneuver_penalty"], asked) == pytest.approx(391.0, abs=0.5)

@@ -305,7 +305,7 @@ _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_pena
 # own 600 s exactly as before.
 AVOID_ENTRY_PENALTY_S = 1800
 # The same charge as a distance, so it is the same on every ride type: what 1,800 cost seconds
-# buys at the 11.2 mph reference, 13,423 ft (2.54 mi) of quiet riding. Each preset sends the
+# buys at the 11.2 mph reference, 13,422 ft (2.54 mi) of quiet riding. Each preset sends the
 # cost seconds that distance is worth at its own speed (`avoid_entry_cost_s`): 1,800 on
 # Default as before; before 2026-11-13 every ride type sent 1,800, which was 1.8 mi on
 # Bikeshare, 1.4 mi on Mass Ride and 3.5 mi on Road Bike. The 30 minutes is the owner's
@@ -333,7 +333,7 @@ def set_speed(costing_block: dict, kmh: float) -> dict:
     options["cycling_speed"] = kmh
     for key in ("maneuver_penalty", "alley_penalty"):
         if key in options and kmh > 0:
-            options[key] = round(options[key] * old / kmh, 1)
+            options[key] = round(options[key] * old / kmh, 2)
     return costing_block
 
 

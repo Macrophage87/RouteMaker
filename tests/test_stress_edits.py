@@ -1402,3 +1402,29 @@ class TestRoutingPending:
         done = edit(live, admin, 4)
         stress_edits.undo(admin, done.edit.pk)
         assert not stress_edits.routing_pending(WAY)
+
+
+@db
+class TestPendingLevels:
+    """Audit 2026-11-13 (report gap 8): after an edit the ranking read the live level and the
+    router's graph the built one. `pending_levels` is what the ranking prices the gap from
+    (`refine.graph_gap_m`): each way edited since the rebuild, as (built, live)."""
+
+    def test_an_edited_way_is_pending_with_its_built_and_live_levels(
+        self, live, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(stress_edits, "_pending_cache", None)
+        assert stress_edits.pending_levels(now_s=0.0) == {}
+        edit(live, make_user(), 4)
+        # Kept a minute a worker: the same answer inside the minute, the edit after it.
+        assert stress_edits.pending_levels(now_s=1.0) == {}
+        assert stress_edits.pending_levels(now_s=stress_edits.PENDING_TTL_S + 1) == {
+            WAY: (3.0, 4.0)
+        }
+
+    def test_a_way_edited_back_to_its_built_level_is_not_pending(self, live, monkeypatch) -> None:
+        monkeypatch.setattr(stress_edits, "_pending_cache", None)
+        admin = make_user()
+        edit(live, admin, 4)
+        edit(live, admin, 3)
+        assert stress_edits.pending_levels(now_s=0.0) == {}

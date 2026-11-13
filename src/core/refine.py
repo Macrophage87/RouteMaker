@@ -851,7 +851,11 @@ TURN_DEGREES = 40.0
 
 def _street_names(piece) -> set[str]:
     """A piece's street names as compared: case and spacing do not tell roads apart."""
-    return {" ".join(name.lower().split()) for name in piece.names}
+    return {" ".join(name.lower().split()) for name in getattr(piece, "names", ())}
+
+
+def _way(piece) -> int | None:
+    return getattr(piece, "way_id", None)
 
 
 def turns_in(pieces: list) -> tuple[int, int]:
@@ -860,10 +864,11 @@ def turns_in(pieces: list) -> tuple[int, int]:
     change of street."""
     turns = unpriced = 0
     for here, there in zip(pieces, pieces[1:], strict=False):
-        same = here.way_id == there.way_id or bool(_street_names(here) & _street_names(there))
-        if here.heading_out is None or there.heading_in is None:
+        same = _way(here) == _way(there) or bool(_street_names(here) & _street_names(there))
+        out, into = getattr(here, "heading_out", None), getattr(there, "heading_in", None)
+        if out is None or into is None:
             turns += 0 if same else 1
-        elif bearing_delta(here.heading_out, there.heading_in) >= TURN_DEGREES:
+        elif bearing_delta(out, into) >= TURN_DEGREES:
             if not same:
                 turns += 1
             elif getattr(there, "choice", None):
