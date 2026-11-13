@@ -447,6 +447,8 @@ export interface LoopInfo {
   tried?: number;
   /** `out_and_back` where the way back is the way out whatever is avoided. */
   fallback?: string | null;
+  /** The rider chose Out and back (2026-11-13): the same way back on purpose, nothing avoided. */
+  same_way?: boolean;
 }
 
 /** One side-street dodge the planner found (core.api.DodgeOut, OWNER-DECISIONS 272). */

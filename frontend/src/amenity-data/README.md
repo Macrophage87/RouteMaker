@@ -173,8 +173,12 @@ first with them: 161 stands and 127 shops, in the table.
 
 ## Refresh
 
-Rerun the command above on a newer extract. Nothing else changes: the map reads
-the file as it is.
+After each map rebuild, refresh every file here at once from the rebuild's extract with
+`scripts/refresh_places.py` (docs/OPERATIONS.md, "Refreshing the places after a map rebuild");
+it also writes `as-of.json`, the extract's day each file was built from, which Settings' About
+shows riders ("Places and racks from Oct 9, 2026"). Running one builder alone still works, but
+then `as-of.json` no longer says that file's day: prefer the refresh. Nothing else changes: the
+map reads the file as it is.
 
 Update the figures and digest in "Status" and commit the file. The test
 `test_bundled_file_is_well_formed` checks the result; the front end needs no

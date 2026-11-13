@@ -2753,3 +2753,22 @@ class RoutePostPhoto(models.Model):
 
     def __str__(self) -> str:
         return self.alt_text
+
+
+class DailyUsage(models.Model):
+    """How many times a tool was used on a day (core.usage): the day, the tool's name and a
+    number. Nothing about who, where or when in the day; the owner, 2026-11-13: "Yes to anonymous
+    data totals"."""
+
+    day = models.DateField()
+    tool = models.CharField(max_length=64)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "daily_usage"
+        constraints = [models.UniqueConstraint(fields=("day", "tool"), name="daily_usage_day_tool")]
+        ordering = ("-day", "tool")
+        verbose_name = "daily usage total"
+
+    def __str__(self) -> str:
+        return f"{self.day} {self.tool}: {self.count}"
