@@ -587,10 +587,15 @@ def _hold_lock(lock: Path, release: Path) -> subprocess.Popen[bytes]:
     command = ["flock", str(lock), "sh", "-c", wait_for_release, "sh", str(release)]
     holder = subprocess.Popen(command)
     deadline = time.monotonic() + 30
-    while subprocess.run(["flock", "-n", str(lock), "true"]).returncode == 0:
-        assert holder.poll() is None, "the lock holder exited before taking the lock"
-        assert time.monotonic() < deadline, "the lock holder never took the lock"
-        time.sleep(0.05)
+    try:
+        while subprocess.run(["flock", "-n", str(lock), "true"]).returncode == 0:
+            assert holder.poll() is None, "the lock holder exited before taking the lock"
+            assert time.monotonic() < deadline, "the lock holder never took the lock"
+            time.sleep(0.05)
+    except BaseException:
+        holder.kill()
+        holder.wait()
+        raise
     return holder
 
 
@@ -624,7 +629,7 @@ def test_the_scorecard_waits_for_the_lock_and_skips_a_long_deploy(box: Box) -> N
         holder.kill()
         holder.wait()
         runner.join(30)
-    assert result
+    assert result and result[0].returncode == 0
     assert "nightly" in log.read_text()
     # A deploy holding it past the wait: the night is skipped.
     log.unlink()
