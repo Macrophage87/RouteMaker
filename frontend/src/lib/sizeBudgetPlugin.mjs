@@ -4,6 +4,9 @@
  * shows (the loader, App's chunk and every chunk either imports at once, and their stylesheets), gzipped as the
  * server sends them, and fails `npm run build` when that or the app chunk grows past its limit.
  *
+ * Not counted: the language's catalog (English needs none; another language's is one lang-* file) the fonts'
+ * files (a stylesheet asks for one only when text uses it), and data files fetched later (food, climbs).
+ *
  * The limits are our default, set from the build measured when they were added (2026-11-13: 953 KB and 351 KB after Roam, the review tools, the share card and a ride's riders moved to first use) with a little headroom; lower them
  * when a change makes the first load smaller, raise them only on purpose, in the same PR as the change that needs it.
  */

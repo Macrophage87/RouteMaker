@@ -10,7 +10,7 @@
  * A test of what the rider sees goes here, not in a readFileSync of App.tsx, RideMode.tsx or styles.css: those
  * pass while the screen is broken and fail when working code is only reformatted (frontend/TESTING.md).
  */
-import { afterEach } from "node:test";
+import { after, afterEach } from "node:test";
 import { Window } from "happy-dom";
 import type { ReactNode } from "react";
 
@@ -25,10 +25,12 @@ for (const key of Object.getOwnPropertyNames(window)) {
     // A getter happy-dom does not let be read from outside: no component here needs it.
   }
 }
-for (const key of ["window", "document", "navigator", "localStorage", "sessionStorage", "location", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame", "matchMedia"]) {
+// The DOM's own events, not Node's, so a component's `new Event(...)` dispatches on happy-dom's nodes.
+for (const key of ["Event", "CustomEvent", "KeyboardEvent", "MouseEvent", "FocusEvent", "InputEvent", "PointerEvent", "window", "document", "navigator", "localStorage", "sessionStorage", "location", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame", "matchMedia"]) {
   const value = key === "window" ? window : (window as unknown as Record<string, unknown>)[key];
   Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: typeof value === "function" ? value.bind(window) : value });
 }
+after(() => window.happyDOM.close());
 // React's own switch for act() outside a test framework it knows.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

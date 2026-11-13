@@ -27,6 +27,9 @@ test("the guard sees the ways a test reads source, and not a test's own imports"
   assert.ok(readsSourceText('const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");'));
   assert.ok(readsSourceText('const read = (p) => readFileSync(p, "utf8");\nread("../styles.css");'));
   assert.ok(readsSourceText('import { appSource } from "./testSupport/appSource.mjs";'));
+  assert.ok(readsSourceText('const { readFile } = await import("node:fs/promises");\nawait readFile(new URL("../App.tsx", import.meta.url));'));
+  assert.ok(readsSourceText('for (const name of readdirSync(srcDir)) if (/\\.tsx$/.test(name)) readFileSync(name);'));
+  assert.ok(!readsSourceText('for (const name of readdirSync(FIXTURES)) readFileSync(new URL(name, FIXTURES));'), "a fixtures walk");
   assert.ok(!readsSourceText('import { readFileSync } from "node:fs";\nimport { x } from "./lib/x.ts";\nreadFileSync("../fixtures/a.json");'));
   assert.ok(!readsSourceText('import { render } from "./testSupport/render.ts";'));
 });

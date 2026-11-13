@@ -20,6 +20,9 @@ assert.ok(screen.dialog("Choose a ride type"));
 look at the page as a screen reader would (aria-hidden text is left out of names); `click`, `type` and `press`
 act as a rider would. Each test's screens are unmounted after it. `src/RideTypePicker.test.tsx` is the example.
 
+`import.meta.env` (Vite's build values) reads as a test build's (`DEV`, `MODE: "test"`) in `.tsx` files only; a
+plain `.ts` module still runs under Node's own type stripping, where it is undefined, so read it with `?.` there.
+
 ## No new tests that read source as text
 
 A test that reads `App.tsx`, `RideMode.tsx`, `styles.css` or another source file with `readFileSync` (or

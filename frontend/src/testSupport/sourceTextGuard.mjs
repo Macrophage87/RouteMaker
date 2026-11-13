@@ -7,9 +7,13 @@ const SOURCE_PATH = /["'`][^"'`\n]*\.(?:tsx|ts|css|mjs)["'`]/;
 /** The file's text without its import statements, whose paths name modules it runs, not text it reads. */
 const withoutImports = (text) => text.replace(/\bfrom\s*["'][^"']*["']/g, "").replace(/\bimport\s*\(?\s*["'][^"']*["']/g, "");
 
-/** Whether a test file's text reads source as text. */
+/** Whether a test file's text reads source as text: a file read with a source path in the file, a walk of the source
+ *  folder that reads what it finds, or appSource.mjs's stitched App. */
 export function readsSourceText(text) {
-  return (text.includes("readFileSync") && SOURCE_PATH.test(withoutImports(text))) || /\bappSource\b/.test(text);
+  const reads = /\breadFile(?:Sync)?\(/.test(text);
+  // A walk that reads what it finds counts when it looks for .tsx files: a walk of a fixtures folder does not.
+  const walks = /\breaddirSync\(/.test(text) && /tsx/.test(text);
+  return (reads && (walks || SOURCE_PATH.test(withoutImports(text)))) || /\bappSource\b/.test(text);
 }
 
 /** Every test file under `dir` (src/), as a path from src/, sorted. */

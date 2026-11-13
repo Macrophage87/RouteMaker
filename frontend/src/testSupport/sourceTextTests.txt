@@ -11,6 +11,7 @@ lib/accountSettings.test.ts
 lib/addStops.test.ts
 lib/aheadGraph.test.ts
 lib/aheadSlim.test.ts
+lib/api.test.ts
 lib/appPreloadPlugin.test.mjs
 lib/appVersion.test.ts
 lib/arrival.test.ts
@@ -188,6 +189,7 @@ lib/waterRestrooms.test.ts
 lib/weather.test.ts
 lib/weight.test.ts
 licences/notices.test.mjs
+passengersName.test.ts
 popupClose.test.ts
 railLegend.test.ts
 reviewUi.test.ts
