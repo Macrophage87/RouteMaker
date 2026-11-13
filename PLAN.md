@@ -440,7 +440,7 @@ Deferred work the owner has named, each with the OWNER-DECISIONS items that deci
 - The costing fork (Phase 6): no "how much to avoid paths" dial, no lit-road weighting, no per-road grade charge in the router, no closed-course variant. Trails off stays a separate graph (the owner, 2026-10-29).
 - Bloom routing: no iNaturalist code.
 - Import from Strava or Ride with GPS (Phase 5): GPX file import only.
-- FOLLOWUP-TURN-LOAD (254): Novice and Group Ride keep the router's default turn cost.
+- FOLLOWUP-TURN-LOAD (254): settled 2026-11-12 by the every-setting turn charge (15 s at every position; Group Ride keeps its own 30 s).
 - The skull marker on the Mass Ride chart's junction ticks (333): left out.
 
 *Partly built.*
@@ -1095,7 +1095,7 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 
 - 298(1), Owner 2026-10-04, release review questions, the Default dodge rule: "Same as Trailmaxxing (Recommended)". Every preset, Default included, removes only dodges that avoid within the 50 m second-level tie step (as the top of the slider did). This amends 272's 0.25 mi rule; Konterra-type dodges, which avoid nothing, are still removed everywhere.
 
-  Implemented as (FOLLOWUP-DEDODGE; item 272, above): one rule on every ride type (`dedodge.TIE_RULE_ALL_PRESETS`). A dodge is taken out where it avoids no more than `dedodge.TIE_STEP_M`, 50 m [160 ft] (the second level's tie step, `refine.MAXCALM_STEPS[1]`), of the top and second figures together, with no turn charge. `dedodge.tie_rule()` reads the switch; set to False it restores 272's quarter mile (`MIN_AVOIDED_M`) and turn charge (`TURN_CHARGE_M`), which are kept as the documented fallback and still tested with the switch off, but decide no plan as shipped. The guards are unchanged: no removal adds LTS 4, Avoid or red-junction cost, makes the route longer, or makes it worse on the Hills slider's blended distance. Gap: a loop's dodges are not checked at all (`routing.py`, `if not loop`), so "every preset" holds for every ride type's point-to-point plans and not yet for loops.
+  Implemented as (FOLLOWUP-DEDODGE; item 272, above): one rule on every ride type (`dedodge.TIE_RULE_ALL_PRESETS`). A dodge is taken out where it avoids no more than `dedodge.TIE_STEP_M`, 50 m [160 ft] (the second level's tie step, `refine.MAXCALM_STEPS[1]`), of the top and second figures together, plus each turn the main road saves at the router's own price since the every-setting turn charge (`presets.TURN_CHARGE_EVERY_SETTING`, the owner's yes, 2026-11-12). `dedodge.tie_rule()` reads the switch; set to False it restores 272's quarter mile (`MIN_AVOIDED_M`) and turn charge (`TURN_CHARGE_M`), which are kept as the documented fallback and still tested with the switch off, but decide no plan as shipped. The guards are unchanged: no removal adds LTS 4, Avoid or red-junction cost, makes the route longer, or makes it worse on the Hills slider's blended distance. Gap: a loop's dodges are not checked at all (`routing.py`, `if not loop`), so "every preset" holds for every ride type's point-to-point plans and not yet for loops.
 
 - 298(2), Owner 2026-10-04, release review questions, no route within the 1.25x ceiling: "Calmest found, flagged (Recommended)". Return the calmest route found, flagged with how far over target it is; this amends the as-built "shortest".
 

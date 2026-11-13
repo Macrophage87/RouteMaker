@@ -804,13 +804,12 @@ class TestMountainBike:
         assert mtb.brake_grade is None
 
 
-def test_with_the_every_setting_charge_turns_cost_the_same_at_every_position(monkeypatch) -> None:
+def test_with_the_every_setting_charge_turns_cost_the_same_at_every_position() -> None:
     # Owner decision 254, "every preset" (the backlog's "fewer turns" item, 2026-11-12).
     # Before: 5 s at Default's 70, where Go plans; after: 15 s (our default, unmeasured) at
     # every position and on every ride type that charged Valhalla's 5 s; 30 s kept.
-    # Off until the owner's yes (the switch's comment).
-    assert presets.TURN_CHARGE_EVERY_SETTING is False
-    monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
+    # On: the owner's "Every setting", 2026-11-12, after the scorecard's before/after table.
+    assert presets.TURN_CHARGE_EVERY_SETTING is True
     for stress in (0, 40, 70, presets.STRESS_TODAYS_TOP, 90, presets.STRESS_MAX):
         got = presets.costing("default", stress)["bicycle"]["maneuver_penalty"]
         assert got == presets.CALM_MANEUVER_PENALTY_S, stress
