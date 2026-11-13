@@ -11,6 +11,7 @@ import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { leaveNowArrival } from "../lib/arrival.ts";
+import { startMs } from "../lib/startTime.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { firstWordAndRest, t } from "../lib/i18n.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
@@ -303,9 +304,9 @@ export interface RouteSectionProps {
   go: GoRouteControls;
   /** The transit ride types' options and departure (TransitSummary). */
   transitControls: TransitControls;
-  /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now; empty otherwise. */
+  /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now or at Plan's start; empty otherwise. */
   light: readonly LightMark[];
-  /** When the route shown ends leaving now (lib/arrival.ts leaveNowArriveMs), kept current each minute; else null. */
+  /** When the route shown ends leaving now, or at Plan's start time (lib/arrival.ts leaveNowArriveMs); else null. */
   arriveMs: number | null;
   /** Weather along the route, leaving now (lib/weather.ts), once checked; else null. */
   weather: WeatherReport | null;
@@ -414,6 +415,7 @@ export function RouteSection(props: RouteSectionProps) {
           transitControls={{ ...transitControls, busy: stale }}
           light={light}
           arriveMs={arriveMs}
+          startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
           check={props.check ?? null}
         />
@@ -792,8 +794,8 @@ function StressFigure({ segments, go, line = null, surface = [] }: { segments: S
 const climbCount = (n: number) => (n === 1 ? t("1 climb") : t("{count} climbs", { count: n }));
 
 /** " · arrive 8:27 AM" after the route's time: when the ride ends if it starts now, as the ride shows it. */
-function ArriveAt({ arriveMs }: { arriveMs: number }) {
-  const { shown, said } = leaveNowArrival(arriveMs);
+function ArriveAt({ arriveMs, startsMs }: { arriveMs: number; startsMs: number | null }) {
+  const { shown, said } = leaveNowArrival(arriveMs, undefined, startsMs);
   return (
     <span className="route-arrive">
       <span aria-hidden="true"> · {shown}</span>
@@ -827,6 +829,7 @@ export function RouteSummary({
   transitControls,
   light = [],
   arriveMs = null,
+  startsMs = null,
   weather = null,
   check = null,
 }: {
@@ -863,6 +866,8 @@ export function RouteSummary({
   light?: readonly LightMark[];
   /** When the ride ends leaving now (lib/arrival.ts leaveNowArriveMs), shown after the route's time; null for none. */
   arriveMs?: number | null;
+  /** Plan's start time (lib/startTime.ts), when set: the arrival is for leaving then, not now. */
+  startsMs?: number | null;
   /** Weather along the route (lib/weather.ts): the NWS alerts and rain coming, with the warnings. */
   weather?: WeatherReport | null;
   /** Plan's Check a route on an opened file (CheckRoute.tsx), under the warnings; null otherwise. */
@@ -904,7 +909,7 @@ export function RouteSummary({
       {/* <bdi>: "31 min" keeps its order on a right-to-left page (DC's languages, 2026-10-28). */}
       <bdi>{timeText}</bdi>
       {/* A transit trip's arrival in Go only (the 2026-11-12 backlog's scope: Plan's transit panel unchanged). */}
-      {arriveMs != null && !(transit && mode !== "go") && <ArriveAt arriveMs={arriveMs} />}
+      {arriveMs != null && !(transit && mode !== "go") && <ArriveAt arriveMs={arriveMs} startsMs={startsMs} />}
     </>
   );
   const calm = calmPercent(route.stress_m);

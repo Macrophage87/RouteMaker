@@ -2768,6 +2768,13 @@ export const ES: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "La planificación de rutas no funciona ahora mismo.",
   "Some ride types are not working right now.": "Algunos tipos de recorrido no funcionan ahora mismo.",
   "Place search is down right now.": "La búsqueda de lugares no funciona ahora mismo.",
+  // Plan's day and start time (lib/startTime.ts, 2026-11-13).
+  "Leave at": "Salir a las",
+  "Day and start time": "Día y hora de salida",
+  "Pick a time from now to a year ahead.": "Elija una hora entre ahora y dentro de un año.",
+  "Leave at plans for that day and time: its closures, transit times and daylight.": "Salir a las planifica para ese día y esa hora: sus cierres, horarios de transporte y luz del día.",
+  "leave {time}": "salida {time}",
+  "arriving about {time} if you leave {start}": "llegada estimada {time} si sale el {start}",
   // ---- Check a route (lib/worstStretches.ts, CheckRoute.tsx; Plan) ----
   "Busiest stretches": "Tramos con más tráfico",
   "busiest stretches": "tramos con más tráfico",

@@ -109,7 +109,8 @@ export const REACH_RETRY_MAX_S = 10;
 /** The request's body: the points (at most REACH_MAX_POINTS, the first ones), the ride type and its dials. */
 export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Dials, view: ReachView, runPaceKmh?: number): Record<string, unknown> {
   const sent = points.slice(0, REACH_MAX_POINTS);
-  const fields = dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false });
+  // Nor Plan's start time (lib/startTime.ts): the rings are for the ride time chosen, or now.
+  const fields = dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false, startAt: undefined });
   // A ride's own fields the rings do not take: Mass Ride's size, Mountain Bike's levels, Easy MTB trails, a share
   // bike's docks.
   // A share e-bike is Reach's `assist` on Bikeshare: its pace, hills and graph, as the plan rides it.

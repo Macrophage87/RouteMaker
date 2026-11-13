@@ -3209,6 +3209,21 @@ button.secondary,
   font-weight: 700;
 }
 
+/* Plan's Leave at: its day and time box on a row of its own, under the chip (lib/startTime.ts) */
+.dials fieldset.when .start-time {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0 0 4px;
+}
+
+.dials fieldset.when .start-time input {
+  min-height: 36px;
+  font: inherit;
+}
+
 .dials fieldset.when .hint,
 .dials fieldset.when .dial-head,
 .dials fieldset.when .dial-info {

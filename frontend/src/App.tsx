@@ -285,6 +285,7 @@ import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
 import { leaveNowArriveMs } from "./lib/arrival.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
+import { fitStart, offersStartTime, startMs } from "./lib/startTime.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
@@ -588,7 +589,9 @@ export function App() {
   const planDials = useMemo(() => {
     const base = withTransitOption(withStations(withSpeed(withWeight(dials, weight), ridingSpeed), stationChoice), preset, transitPick, trip);
     const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
-    const now = goNow ? { ...made, closuresNow: true } : made;
+    // Go always plans from now (the owner, 2026-11-13: a start time is Plan's only), as do the docks' ride types.
+    const timed = made.startAt && (goNow || !offersStartTime(preset)) ? { ...made, startAt: undefined } : made;
+    const now = goNow ? { ...timed, closuresNow: true } : timed;
     return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
   }, [routeKey, weight, ridingSpeed, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
@@ -630,6 +633,13 @@ export function App() {
     else if (mode === "go") setDials((now) => (now.loop ? withLoop(now, false) : now));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- on the change of view only
   }, [mode]);
+  // Go always plans from now (the owner, 2026-11-13): coming into Go drops Plan's start time, so its Ride settings
+  // line never says a time it is not planning for. In Plan, a start that has come and gone falls back to Now.
+  const startClock = useMinute(Boolean(dials.startAt));
+  useEffect(() => {
+    if (!dials.startAt) return;
+    if (mode === "go" || fitStart(dials.startAt, startClock) === undefined) setDials((now) => ({ ...now, startAt: undefined }));
+  }, [mode, dials.startAt, startClock]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
   // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
   // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
@@ -1366,7 +1376,9 @@ export function App() {
         if (sharedRevoked && (revokedPlan ??= sentPlanKey(plan.points, plan.preset, plan.dials)) === sentPlanKey(plan.points, plan.preset, plan.dials))
           return { ok: false, error: SHARED_REVOKED_ERROR };
         const saved = savedShown.current;
-        if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
+        // Not with Plan's start time set (lib/startTime.ts): the saved line was planned for another moment, and the key
+        // does not hold the start, so it would come back unchanged.
+        if (saved && !plan.dials.startAt && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
           keptShown.current = null;
           if (saved.once) savedShown.current = null;
           return { ok: true, route: saved.answer };
@@ -4087,7 +4099,8 @@ export function App() {
     const onFixed = !rest && fixedLine.current !== null && route.geometry.coordinates === fixedLine.current;
     const fixed = fixedRide(leg, opened ?? (onFixed ? { ride: true } : null), !!rest);
     setResumeStats(null);
-    const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
+    // A ride is now: Plan's start time (lib/startTime.ts) never goes with it into its re-plans.
+    const rideDialsNow = rideDials({ ...planDials, closuresNow: true, startAt: undefined }, rest ? null : route);
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts): a Bikeshare or transit trip
     // whole, its leg worked out again at Resume (Stephen 2026-11-04: on the train, switching apps "terminated the route
     // without offering a resume"), and Ride the rest; a detour from Roam is not.
@@ -4345,7 +4358,8 @@ export function App() {
         ];
         // The detour's line alone is used: no routes to choose from (review speed-5).
         // The detours go round what the check found: on Start ride, only the closures known to be on.
-        const dials = pending.nowOnly ? { ...planDials, closuresNow: true } : planDials;
+        // A detour on Start ride is for now, never Plan's start time (lib/startTime.ts).
+        const dials = pending.nowOnly ? { ...planDials, closuresNow: true, startAt: undefined } : planDials;
         const result = await requestRoute(ends, rideRef.current.preset, { dials, routeOnly: true });
         return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
       }),
@@ -5516,21 +5530,24 @@ export function App() {
       window.setTimeout(() => roamingNow.current && announce(keyless ? BROADCAST_NO_KEY : BROADCAST_FOLLOWING), START_NOTE_MS);
     }
   }, [sharedFollow, roamFollow]);
-  // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
+  // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now
+  // (or at Plan's start time).
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
   const minute = useMinute(shown !== null && !riding && (mode === "plan" || mode === "go"));
   const lightKept = useRef<LightMark[]>([]);
+  // Plan's start time (lib/startTime.ts): the marks and the arrival are for leaving then, not now.
+  const startsMs = mode === "plan" ? startMs(planDials.startAt) : null;
   const light = useMemo(() => {
-    const next = routeLightMarks(shown, minute, dials.when ?? null);
+    const next = routeLightMarks(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
-  }, [shown, minute, dials.when]);
-  // The route's arrival leaving now, after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
-  const arriveMs = leaveNowArriveMs(shown, minute, dials.when ?? null);
+  }, [shown, minute, dials.when, startsMs]);
+  // The route's arrival leaving now (or at Plan's start time), after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
+  const arriveMs = leaveNowArriveMs(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
   // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows. Not
   // for a plan set to another time (its When): the forecast is for leaving now.
-  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") && !dials.when ? lineKey(shown.geometry.coordinates) : null;
+  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") && !dials.when && !planDials.startAt ? lineKey(shown.geometry.coordinates) : null;
   const weather = useWeather(
     weatherKey,
     () => (shown && shown.duration_s > 0 ? weatherPoints(shown.geometry.coordinates, 0, shown.distance_m / shown.duration_s) : null),
@@ -6824,6 +6841,8 @@ export function App() {
           // One distance control (the v0.26.0 review): while Plan's Loop by distance box shows, the Target distance
           // dial does not.
           hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
+          // A day and start time, in Plan only (the owner, 2026-11-13: Go always plans from now).
+          startTime: mode === "plan" && offersStartTime(preset),
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,
