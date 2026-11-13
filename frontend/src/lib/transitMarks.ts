@@ -12,7 +12,7 @@
  *
  * Plain functions with no imports, so the module can be copied or imported anywhere. The generic words ("walk", "bus",
  * "minutes", "or") are English by default; Go and Ride pass the page's language in `words` (lib/transit.ts
- * LEG_WORDS). A line's own name ("Red Line", "C53", "Penn") is the agency's name and stays as it is.
+ * legWords). A line's own name ("Red Line", "C53", "Penn") is the agency's name and stays as it is.
  */
 
 /** The generic words a mark and a leg are said with; English by default (EN_WORDS). */
@@ -175,7 +175,7 @@ export function legMark(leg: TripLeg, words: LegWords = EN_WORDS): Mark {
 /** A Metro leg's mark is a coloured dot only: its line's name shows beside it, so colour is never the only cue. */
 function metroNamed(leg: TripLeg, mark: Mark): string {
   const colours = Object.values(METRO_LINE_MARKS);
-  return [...mark.mark].every((c) => colours.includes(c)) && mark.mark !== "" ? `${mark.mark} ${(leg.lines ?? []).map(lineWords).join("/")}` : mark.mark;
+  return [...mark.mark].some((c) => colours.includes(c)) ? `${mark.mark} ${(leg.lines ?? []).map(lineWords).join("/")}` : mark.mark;
 }
 
 /** The legs as they show: "🚶 4 min · 🚲 12 min · 🔴 Red Line 18 min". aria-hidden: say `legsSaid` instead. */
