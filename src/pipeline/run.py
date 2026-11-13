@@ -63,6 +63,7 @@ from routemaker import (
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import (
+    BESIDE_BUSY_ROAD_RULE,
     Stress,
     bends_slow_traffic,
     classify,
@@ -4229,6 +4230,16 @@ def build_handlers(
                     and winding.is_winding(way.coordinates)
                 ):
                     derived["winding"] = True
+                # A side path or protected lane rated from the busy road beside it
+                # (`stress.BESIDE_BUSY_ROAD_RULE`): lua/routemaker_remap.lua prices it from
+                # LTS 3 up, as it prices a street (the owner, 2026-11-13: "Yes, price them
+                # in routing").
+                if (
+                    stress is not None
+                    and stress.adjustment is None
+                    and stress.rule.startswith(BESIDE_BUSY_ROAD_RULE)
+                ):
+                    derived["beside_busy_road"] = True
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 

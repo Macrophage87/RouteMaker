@@ -925,6 +925,21 @@ function M.remap_way(tags, derived)
     out.bicycle = M.STRESS_PENALTY_BICYCLE
   end
 
+  -- A side path or protected lane rated from the busy road beside it (`rm:beside_busy_road`,
+  -- `routemaker.stress.BESIDE_BUSY_ROAD_RULE`; the owner, 2026-11-13: "Yes, price them in
+  -- routing"): from LTS 3 up it pays the same penalty as an LTS 3 street, so a route leaves
+  -- a path with many bad crossings beside a busy road where a calm way runs alongside. A
+  -- path edge has no lanes or speed for Valhalla to grade (sif/bicyclecost.cc prices only
+  -- its pedestrian separation and `use_sidepath`), so 3.5 to 4.5 cost what 3 does, and 1.5
+  -- to 2.5 what 1 does; RouteMaker's own ranking still reads the full level (core.refine).
+  -- Only where the path is open to a bicycle, as above.
+  if derived.beside_busy_road and derived.is_trail_class
+    and derived.stress_tier ~= nil and derived.stress_tier >= M.STRESS_PENALTY_TIER
+    and M.may_penalise(tags, out.bicycle or tags.bicycle)
+  then
+    out.bicycle = M.STRESS_PENALTY_BICYCLE
+  end
+
   -- Graded (the owner, 2026-09-28: "Yes, grade them (Recommended)" - "LTS 4
   -- penalised more than LTS 3 at every slider position" - and "I'd probably
   -- want LTS 4 to be twice the stress level of LTS 3 at least."). A way's

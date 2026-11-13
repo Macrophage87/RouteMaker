@@ -102,6 +102,7 @@ local function derived_from(kv)
   if kv["rm:hazard"] then derived.hazard = kv["rm:hazard"] == "yes" end
   if kv["rm:rough_unpaved"] then derived.rough_unpaved = kv["rm:rough_unpaved"] == "yes" end
   if kv["rm:winding"] then derived.winding = kv["rm:winding"] == "yes" end
+  if kv["rm:beside_busy_road"] then derived.beside_busy_road = kv["rm:beside_busy_road"] == "yes" end
   return derived
 end
 
