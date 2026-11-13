@@ -34,7 +34,7 @@ export function groupRideLine(route: Pick<RouteResponse, "description" | "stress
 }
 
 export interface QuickFigure {
-  key: "calm" | "heavy" | "junctions" | "path" | "turns" | "waits" | "unpaved";
+  key: "calm" | "heavy" | "junctions" | "path" | "turns" | "waits" | "surface";
   label: string;
   value: string;
 }
@@ -88,6 +88,77 @@ export function unpavedMetres(spans: RouteResponse["stress_spans"] | undefined):
 /** Under this (metres, 0.05 mi) unpaved is not said: a few metres where a route crosses a gravel lot. */
 export const UNPAVED_SAID_M = 80;
 
+/**
+ * The route's distance by surface, from its sections (`stress_spans`): paved, gravel (unpaved, not rough: the map's
+ * grey), dirt (rough: dirt, grass, a rutted track; the map's brown), unpaved of a kind not said, and not known (no
+ * surface tag; the map draws it as paved). Null where the planner sent no sections (an older API).
+ */
+export interface SurfaceMetres {
+  paved: number;
+  gravel: number;
+  dirt: number;
+  unpaved: number;
+  unknown: number;
+}
+
+export function surfaceMetres(spans: RouteResponse["stress_spans"] | undefined): SurfaceMetres | null {
+  if (!spans) return null;
+  const out: SurfaceMetres = { paved: 0, gravel: 0, dirt: 0, unpaved: 0, unknown: 0 };
+  for (const span of spans) {
+    const m = Math.max(0, span.to_m - span.from_m);
+    if (span.unpaved === true) {
+      if (span.rough === false) out.gravel += m;
+      else if (span.rough === true) out.dirt += m;
+      else out.unpaved += m;
+    } else if (span.unpaved === false) out.paved += m;
+    else out.unknown += m;
+  }
+  return out;
+}
+
+/**
+ * Surface at a glance (backlog 2026-11-12, Plan item 10): the unpaved riding by kind, for the line under the stress bar
+ * in Go and Plan: ["1.2 mi (1.9 km) gravel", "0.3 mi (0.5 km) dirt"]. Empty where the route rides under
+ * UNPAVED_SAID_M unpaved, so a paved route's line stays as it was.
+ */
+export function surfaceGlanceParts(spans: RouteResponse["stress_spans"] | undefined): string[] {
+  const s = surfaceMetres(spans);
+  if (!s || s.gravel + s.dirt + s.unpaved < UNPAVED_SAID_M) return [];
+  return [
+    s.gravel >= PLAIN_MIN_M ? t("{distance} gravel", { distance: formatDistance(s.gravel) }) : null,
+    s.dirt >= PLAIN_MIN_M ? t("{distance} dirt", { distance: formatDistance(s.dirt) }) : null,
+    s.unpaved >= PLAIN_MIN_M ? t("{distance} unpaved", { distance: formatDistance(s.unpaved) }) : null,
+  ].filter((part): part is string => part !== null);
+}
+
+/** A surface is said in the Surface figure from this share of the route (not known: untagged streets are common). */
+export const SURFACE_UNKNOWN_SAID = 0.1;
+
+/**
+ * Plan's Surface figure (English, as Plan is): "All paved", or "12.1 mi (19.5 km) paved, 1.2 mi (1.9 km) gravel, 0.3 mi
+ * (0.5 km) dirt", with "; 2.0 mi (3.2 km) not known" where a tenth or more of the route has no surface tag. Untagged
+ * sections count as paved below that, as the map draws them; unpaved under UNPAVED_SAID_M is not said.
+ */
+export function surfaceFigure(spans: RouteResponse["stress_spans"] | undefined): string {
+  const s = surfaceMetres(spans);
+  if (!s) return NOT_AVAILABLE;
+  const all = s.paved + s.gravel + s.dirt + s.unpaved + s.unknown;
+  if (!(all > 0)) return NOT_AVAILABLE;
+  const rough = s.gravel + s.dirt + s.unpaved;
+  const sayUnknown = s.unknown >= PLAIN_MIN_M && s.unknown / all >= SURFACE_UNKNOWN_SAID;
+  const unpavedSaid = rough >= UNPAVED_SAID_M;
+  const paved = s.paved + (sayUnknown ? 0 : s.unknown) + (unpavedSaid ? 0 : rough);
+  const tail = sayUnknown ? `; ${formatDistance(s.unknown)} not known` : "";
+  if (!unpavedSaid) return (sayUnknown ? `${formatDistance(paved)} paved` : "All paved") + tail;
+  const parts = [
+    paved >= PLAIN_MIN_M ? `${formatDistance(paved)} paved` : null,
+    s.gravel >= PLAIN_MIN_M ? `${formatDistance(s.gravel)} gravel` : null,
+    s.dirt >= PLAIN_MIN_M ? `${formatDistance(s.dirt)} dirt` : null,
+    s.unpaved >= PLAIN_MIN_M ? `${formatDistance(s.unpaved)} unpaved` : null,
+  ].filter((part): part is string => part !== null);
+  return parts.join(", ") + tail;
+}
+
 /** "4 min", "Under 1 min" or "None": the time the route waits at signals and stop signs (`junction_delay_s`, inside the moving time). */
 export function waitFigure(seconds: number | null | undefined): string {
   if (typeof seconds !== "number" || !Number.isFinite(seconds)) return NOT_AVAILABLE;
@@ -97,8 +168,8 @@ export function waitFigure(seconds: number | null | undefined): string {
 
 /**
  * The quick figures (OWNER-DECISIONS 312's four), then the route's turn burden (owner decision 254, the backlog's
- * "fewer turns" item, 2026-11-12): its turns, the time it waits at lights and stops, and its unpaved distance where it
- * has any, so two routes that differ mainly in fiddliness no longer read the same.
+ * "fewer turns" item, 2026-11-12): its turns and the time it waits at lights and stops, so two routes that differ mainly
+ * in fiddliness no longer read the same; then its surface (Plan item 10).
  */
 export function quickFigures(
   route: Pick<RouteResponse, "stress_m" | "facility_m" | "intersections"> &
@@ -107,7 +178,6 @@ export function quickFigures(
   const calm = calmPercent(route.stress_m);
   const heavy = heavyMetres(route.stress_m);
   const path = metres(route.facility_m, "path");
-  const unpaved = unpavedMetres(route.stress_spans);
   return [
     { key: "calm", label: "Paths and quiet streets", value: calm === null ? NOT_AVAILABLE : `${calm}%` },
     {
@@ -123,8 +193,9 @@ export function quickFigures(
     },
     { key: "turns", label: "Turns", value: route.description == null ? NOT_AVAILABLE : turnTotal(route) > 0 ? String(turnTotal(route)) : "None" },
     { key: "waits", label: "Waiting at lights and stops", value: waitFigure(route.junction_delay_s) },
-    // Said only where there is some: most routes have none, and "Unpaved: None" on each would be one more line to read.
-    ...(unpaved !== null && unpaved >= UNPAVED_SAID_M ? [{ key: "unpaved" as const, label: "Unpaved", value: formatDistance(unpaved) }] : []),
+    // Every route's surface (backlog 2026-11-12, Plan item 10: "Is this OK on my road bike?"), by kind where it has
+    // unpaved riding; one line, "All paved" on most routes.
+    ...(route.stress_spans?.length ? [{ key: "surface" as const, label: "Surface", value: surfaceFigure(route.stress_spans) }] : []),
   ];
 }
 
@@ -193,15 +264,17 @@ export function calmWaysText(facility: RouteResponse["facility_m"] | undefined):
 /**
  * Go's line under the stress bar (the owner's P1, 2026-10-28), in place of the shares ("LTS 1: 75%, LTS 4: 21%"):
  * "Mostly calm · 1.1 mi (1.8 km) on paths and protected lanes · busy road for 0.2 mi (0.3 km)", each part left out
- * where it is nothing. Its parts, shown joined by " · " and said joined by commas; the shares stay the bar's name for
+ * where it is nothing, then its unpaved riding by kind where it has some (surfaceGlanceParts: "1.2 mi gravel"). Its
+ * parts, shown joined by " · " and said joined by commas; the shares stay the bar's name for
  * a screen reader (stressBarLabel).
  */
-export function stressPlainParts(route: Pick<RouteResponse, "stress_m" | "facility_m">): string[] {
+export function stressPlainParts(route: Pick<RouteResponse, "stress_m" | "facility_m"> & Partial<Pick<RouteResponse, "stress_spans">>): string[] {
   const busy = busyMetres(route.stress_m);
   return [
     calmWords(route.stress_m),
     calmWaysText(route.facility_m),
     busy >= PLAIN_MIN_M ? t("busy road for {distance}", { distance: formatDistance(busy) }) : null,
+    ...surfaceGlanceParts(route.stress_spans),
   ].filter((part): part is string => part !== null);
 }
 
