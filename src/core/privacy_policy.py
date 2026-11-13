@@ -473,8 +473,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
                 "about a ride is kept longer.",
                 "Shared links: as above.",
-                "Daily totals of how often each tool is used: kept, as they say nothing about "
-                "anyone.",
+                "Daily totals of how often each tool is used: kept. They hold no route, place, "
+                "account or time of day.",
                 "Database backups: one a night, encrypted, the last seven kept, so deleted data "
                 "leaves them within a week, or, if backups fail for longer, with the next one "
                 "that succeeds. Copies taken just before RouteMaker is updated are not encrypted, "

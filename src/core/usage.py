@@ -12,11 +12,13 @@ Three ways in, all through `tally`:
   these anyway).
 - POST /api/usage (core.api) counts what only the browser sees: a ride, walk or run started
   (`CLIENT_TOOLS`). It takes a name from that list and nothing else.
-- core.connector counts each tools/call by the tool's name, when the name is one of the
-  connector's own tools.
+- core.connector counts each tools/call that answered, as one "assistant connector" total
+  (not per tool), leaving out plans marked `test: true` (agents checking the app).
 
-A failed count is logged and dropped: counting never changes or slows an answer by more than
-its one upsert. The totals are read in the admin (core.admin, instance admins only).
+Garmin and Wahoo sends share one total, as a per-service row on a quiet day could point to the
+few linked accounts. A failed count is logged and dropped: counting never changes or slows an
+answer by more than its one upsert. The totals are read in the admin (core.admin, instance
+admins only).
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "api/stop-order"): "order stops",
     ("POST", "api/match"): "import route",
     ("POST", "api/reach"): "reach",
-    ("GET", "api/geocode"): "search",
+    ("GET", "api/geocode"): "place search requests",  # the typeahead: one per pause in typing
     ("GET", "api/segment-info"): "road panel",
     ("GET", "api/scenic-roads"): "scenic roads",
     ("GET", "api/climbs-near"): "climbs near",
@@ -50,8 +52,9 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "api/offline/packs"): "offline packs",
     ("POST", "api/me/routes"): "save route",
     ("POST", "api/shared-routes"): "share link",
-    ("POST", "api/me/garmin/courses"): "send to Garmin",
-    ("POST", "api/me/wahoo/routes"): "send to Wahoo",
+    # One total for both: a per-service row on a quiet day would point to the few linked accounts.
+    ("POST", "api/me/garmin/courses"): "send to Garmin or Wahoo",
+    ("POST", "api/me/wahoo/routes"): "send to Garmin or Wahoo",
     ("POST", "api/rides/<ride_id>/alerts"): "group ride alert",
     ("POST", "api/report311/where"): "311 report",
     ("POST", "api/stress-suggestions"): "road suggestion",
@@ -64,7 +67,9 @@ ROUTES: dict[tuple[str, str], str] = {
 # What the browser reports itself (POST /api/usage): only these names are counted.
 CLIENT_TOOLS = frozenset({"ride", "walk", "run"})
 
-CONNECTOR_PREFIX = "connector: "
+# One total for every assistant tool call, for the same reason: a per-tool row could point to
+# the few riders who connected an assistant.
+CONNECTOR = "assistant connector"
 
 _TALLY = """
 INSERT INTO daily_usage (day, tool, count) VALUES (%s, %s, 1)

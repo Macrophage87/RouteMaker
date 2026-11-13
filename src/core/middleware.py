@@ -15,7 +15,6 @@ from django.utils import timezone
 from . import routing
 from .auth_backend import defer_standing, session_is_current
 from .models import Session
-from .usage import UsageMiddleware  # noqa: F401 - listed in settings.MIDDLEWARE
 
 # How stale `last_seen_at` may get before a request writes it again. Against a
 # 30-day idle lifetime (`revocation.IDLE_SESSION_LIFETIME`) a few minutes change

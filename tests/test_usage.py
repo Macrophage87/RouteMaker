@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from django.db import DatabaseError
 from django.http import HttpResponse
 from django.test import Client, RequestFactory
 from django.urls import resolve
@@ -62,7 +63,7 @@ def test_only_a_successful_answer_from_a_listed_route_is_counted() -> None:
     _through_middleware("GET", "/api/route", 200)  # not the planning method
     _through_middleware("POST", "/api/rides/r1/here", 200)  # a ride's repeated position post
     _through_middleware("GET", "/api/geocode", 200)
-    assert totals() == {"plan route": 1, "search": 1}
+    assert totals() == {"plan route": 1, "place search requests": 1}
 
 
 @pytest.mark.django_db
@@ -90,12 +91,13 @@ def test_a_count_from_another_site_is_refused() -> None:
 
 
 @pytest.mark.django_db
-def test_a_connector_tool_call_is_counted_by_the_tool_s_name_only() -> None:
+def test_a_connector_tool_call_adds_to_one_total_and_test_calls_do_not() -> None:
     _user, token, _client_id = tokens_for()
     mcp(token["access_token"], "tools/call", {"name": "my_drafts", "arguments": {}})
     mcp(token["access_token"], "tools/call", {"name": "not_a_tool", "arguments": {}})
+    mcp(token["access_token"], "tools/call", {"name": "my_drafts", "arguments": {"test": True}})
     mcp(token["access_token"], "tools/list")
-    assert totals() == {"connector: my_drafts": 1}
+    assert totals() == {usage.CONNECTOR: 1}
 
 
 @pytest.mark.django_db
@@ -105,3 +107,18 @@ def test_the_privacy_policy_says_what_is_counted() -> None:
     page = Client().get("/privacy").content.decode()
     assert "no route, place" in privacy_policy.USAGE_TOTALS
     assert "each tool is used each day" in page
+
+
+@pytest.mark.django_db
+def test_a_count_that_fails_never_breaks_the_answer(monkeypatch) -> None:
+    def broken(*_args, **_kwargs):
+        raise DatabaseError("down")
+
+    monkeypatch.setattr(usage.connection, "cursor", broken)
+    request = RequestFactory().post("/api/route")
+
+    def view(request):
+        request.resolver_match = resolve("/api/route")
+        return HttpResponse(status=200)
+
+    assert usage.UsageMiddleware(view)(request).status_code == 200
