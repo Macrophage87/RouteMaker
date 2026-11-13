@@ -2212,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "रूट प्लानिंग अभी काम नहीं कर रही है।",
   "Some ride types are not working right now.": "कुछ सवारी प्रकार अभी काम नहीं कर रहे हैं।",
   "Place search is down right now.": "जगह की खोज अभी काम नहीं कर रही है।",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "iPhone पर «सवारी शुरू करें» {distance} तक की सवारी के लिए है। लंबी सवारी के लिए लॉक-स्क्रीन निर्देश चित्र सहेजें, या बाइक कंप्यूटर के लिए «GPX डाउनलोड करें»।",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "iPhone पर {distance} तक की सवारी में स्क्रीन चालू और यह पेज सामने रखें। लंबी सवारी या लॉक फ़ोन के लिए लॉक-स्क्रीन निर्देश चित्र या GPX इस्तेमाल करें।",
 };

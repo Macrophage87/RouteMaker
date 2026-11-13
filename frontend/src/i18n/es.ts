@@ -2768,6 +2768,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "La planificación de rutas no funciona ahora mismo.",
   "Some ride types are not working right now.": "Algunos tipos de recorrido no funcionan ahora mismo.",
   "Place search is down right now.": "La búsqueda de lugares no funciona ahora mismo.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "En iPhone, Iniciar recorrido es para recorridos de hasta {distance}. Para uno más largo, guarda las imágenes de indicaciones para la pantalla de bloqueo o usa Descargar GPX para un ciclocomputador.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "En iPhone, mantén la pantalla encendida y esta página al frente, para recorridos de hasta {distance}. Para recorridos más largos o con el teléfono bloqueado, usa las imágenes de indicaciones para la pantalla de bloqueo o el GPX.",
   "Keep to compare": "Guardar para comparar",
   "Use kept route": "Usar la ruta guardada",
   "Stop comparing": "Dejar de comparar",
