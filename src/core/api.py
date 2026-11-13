@@ -4048,9 +4048,15 @@ def route_neighbours(request, body: RouteIn):
     direct, calmer = presets.stress_notches(body.preset, stress)
     # "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): the rider's
     # own setting with the one choice on; not where the body already has it, nor on Bikeshare
-    # (its ride between the docks is the option there). Planned in the order asked, so the
-    # page puts the one it wants most first, and one the budget leaves no time for is the last.
-    same = None if body.preset in (presets.BIKESHARE, "mass-ride", presets.RUN) else stress
+    # (its ride between the docks is the option there), Mass Ride, Run or a transit ride type.
+    # Planned in the order asked, so the page puts the one it wants most first, and one the
+    # budget leaves no time for is the last.
+    same = (
+        None
+        if body.preset in (presets.BIKESHARE, "mass-ride", presets.RUN)
+        or body.preset in presets.TRANSIT_PRESETS
+        else stress
+    )
     at = {
         "direct": direct,
         "calmer": calmer,
@@ -4076,11 +4082,12 @@ def route_neighbours(request, body: RouteIn):
     ]
     # Each plan past the two the decorator counted is counted too (Go's More direct and
     # Trailmaxxed, then Fewer turns and All paved): where the client has not the room, the
-    # last ones are left out, never the request refused.
+    # last ones are left out, never the request refused, and nothing is counted for them
+    # (`ratelimit.take`), so the client's next plan is not refused for options it never got.
     extra = len(wanted) - NEIGHBOURS_COST
     if extra > 0:
         client = ratelimit.client_key(ratelimit.client_address(request))
-        if not ratelimit.hit(ratelimit.ROUTING, client, extra).allowed:
+        if not ratelimit.take(ratelimit.ROUTING, client, extra).allowed:
             wanted = wanted[:NEIGHBOURS_COST]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
