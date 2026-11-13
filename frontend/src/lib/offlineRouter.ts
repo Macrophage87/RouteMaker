@@ -62,6 +62,11 @@ export const START_SNAP_M = 150;
 export const JOIN_SNAP_M = 20;
 /** The way back joins the line at least this far past the rider's progress, as the server's way back does (lib/rejoin.ts REJOIN_AHEAD_M). */
 export const JOIN_AHEAD_M = 100;
+/** Only the planned line this far past JOIN_AHEAD_M is looked at for a join, so the search stays quick on
+ * a long route. Our default, unmeasured. */
+export const JOIN_WINDOW_M = 8000;
+/** The cell size of the grid the planned line's segments are put in to find the nodes on it. Our default. */
+const JOIN_CELL_M = 50;
 /**
  * A join further along the planned line is worth this share of the time it saves riding the line: under 1, so of two
  * ways back that cost the same less the line they skip, the one that rejoins sooner wins. Our default, unmeasured.
@@ -193,17 +198,68 @@ function measure(line: readonly LonLat[]): number[] {
   return at;
 }
 
-/** Where a node meets the planned line at or past `fromM`, within JOIN_SNAP_M, or null. */
-function joinAlong(line: readonly LonLat[], measured: number[], fromM: number, p: LonLat): number | null {
-  let best: { d: number; at: number } | null = null;
+/**
+ * The planned line's segments from `fromM` to `toM`, in a grid of JOIN_CELL_M cells (local metres about `origin`), so a
+ * node is checked only against the segments near it, not every segment of the route.
+ */
+function lineGrid(line: readonly LonLat[], measured: number[], fromM: number, toM: number, origin: LonLat): { cells: Map<string, number[]>; xy: (p: LonLat) => [number, number] } {
+  const k = Math.cos((origin[1] * Math.PI) / 180);
+  const xy = (p: LonLat): [number, number] => [(p[0] - origin[0]) * 111_195 * k, (p[1] - origin[1]) * 111_195];
+  const cells = new Map<string, number[]>();
   for (let i = 0; i + 1 < line.length; i++) {
     if (measured[i + 1] < fromM) continue;
-    const near = nearestOn([line[i], line[i + 1]], p);
-    const at = measured[i] + near.alongM;
-    if (at < fromM || near.distM > JOIN_SNAP_M) continue;
-    if (!best || near.distM < best.d) best = { d: near.distM, at };
+    if (measured[i] > toM) break;
+    const [ax, ay] = xy(line[i]);
+    const [bx, by] = xy(line[i + 1]);
+    const pad = JOIN_SNAP_M;
+    for (let cx = Math.floor((Math.min(ax, bx) - pad) / JOIN_CELL_M); cx <= Math.floor((Math.max(ax, bx) + pad) / JOIN_CELL_M); cx++) {
+      for (let cy = Math.floor((Math.min(ay, by) - pad) / JOIN_CELL_M); cy <= Math.floor((Math.max(ay, by) + pad) / JOIN_CELL_M); cy++) {
+        const key = `${cx},${cy}`;
+        const list = cells.get(key);
+        if (list) list.push(i);
+        else cells.set(key, [i]);
+      }
+    }
+  }
+  return { cells, xy };
+}
+
+/** Where a node meets the planned line between `fromM` and `toM`, within JOIN_SNAP_M, or null. */
+function joinAlong(line: readonly LonLat[], measured: number[], fromM: number, toM: number, grid: ReturnType<typeof lineGrid>, p: LonLat): number | null {
+  const [x, y] = grid.xy(p);
+  const near = grid.cells.get(`${Math.floor(x / JOIN_CELL_M)},${Math.floor(y / JOIN_CELL_M)}`);
+  if (!near) return null;
+  let best: { d: number; at: number } | null = null;
+  for (const i of near) {
+    const on = nearestOn([line[i], line[i + 1]], p);
+    const at = measured[i] + on.alongM;
+    if (at < fromM || at > toM || on.distM > JOIN_SNAP_M) continue;
+    if (!best || on.distM < best.d) best = { d: on.distM, at };
   }
   return best ? best.at : null;
+}
+
+/** Whether edge `e`'s nodes and shape points all lie more than `m` metres from `p` on one side (a quick refusal). */
+function edgeFarFrom(g: CorridorGraph, e: number, p: LonLat, m: number): boolean {
+  const dLat = m / 111_195 / GRAPH_DEG;
+  const dLon = dLat / Math.max(Math.cos((p[1] * Math.PI) / 180), 0.01);
+  const px = p[0] / GRAPH_DEG;
+  const py = p[1] / GRAPH_DEG;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  const take = (x: number, y: number) => {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  };
+  const at = e * EDGE_FIELDS;
+  for (const n of [g.edges[at], g.edges[at + 1]]) take(g.nodes[n * 2], g.nodes[n * 2 + 1]);
+  const shape = g.shapes?.[e];
+  if (Array.isArray(shape)) for (let i = 0; i + 1 < shape.length; i += 2) take(shape[i], shape[i + 1]);
+  return minX > px + dLon || maxX < px - dLon || minY > py + dLat || maxY < py - dLat;
 }
 
 /** A small binary heap of [cost, node]. */
@@ -277,6 +333,7 @@ export function offlineWayBack(
   // The start: the nearest point of the nearest edge, its cost to each end by the share of the edge left.
   let start: { e: number; distM: number; fraction: number } | null = null;
   for (let e = 0; e < edgeCount; e++) {
+    if (edgeFarFrom(g, e, rider, START_SNAP_M)) continue;
     const pts = edgePoints(g, e);
     const near = nearestOn(pts, rider);
     if (near.distM <= START_SNAP_M && (!start || near.distM < start.distM)) {
@@ -288,10 +345,12 @@ export function offlineWayBack(
   const fromM = progressM + JOIN_AHEAD_M;
   const lineEndM = measured[measured.length - 1];
   if (fromM > lineEndM) return null;
-  // Each node on the line ahead, and where.
+  // Each node on the line ahead (up to JOIN_WINDOW_M on), and where: each checked only against the segments near it.
+  const toM = fromM + JOIN_WINDOW_M;
+  const grid = lineGrid(line, measured, fromM, toM, rider);
   const joinAt = new Map<number, number>();
   for (let n = 0; n < nodeCount; n++) {
-    const at = joinAlong(line, measured, fromM, nodeAt(g, n));
+    const at = joinAlong(line, measured, fromM, toM, grid, nodeAt(g, n));
     if (at !== null) joinAt.set(n, at);
   }
   if (!joinAt.size) return null;
@@ -319,9 +378,16 @@ export function offlineWayBack(
     }
   }
   const { out } = adjacent(g);
+  // Stops once nothing cheaper can be found: a join's score is at least its cost less the most a join may save (the
+  // whole window), so once the cheapest node left costs that much more than the best join settled, none can beat it.
+  const mostSaved = (Math.min(toM, lineEndM) - fromM) * savedPerM;
+  let bestSettled = Infinity;
   while (heap.size) {
     const [c, n] = heap.pop() as [number, number];
     if (c > cost[n]) continue;
+    const joinedAt = joinAt.get(n);
+    if (joinedAt !== undefined) bestSettled = Math.min(bestSettled, c - (joinedAt - fromM) * savedPerM);
+    if (c - mostSaved > bestSettled) break;
     for (const d of out[n] ?? []) {
       const e = d >> 1;
       const back = d & 1;
@@ -341,7 +407,7 @@ export function offlineWayBack(
   let goalScore = Infinity;
   for (const [n, at] of joinAt) {
     if (!Number.isFinite(cost[n])) continue;
-    const score = cost[n] - at * savedPerM;
+    const score = cost[n] - (at - fromM) * savedPerM;
     if (score < goalScore) {
       goalScore = score;
       goal = n;

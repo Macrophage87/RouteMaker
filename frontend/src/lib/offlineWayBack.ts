@@ -29,20 +29,33 @@ export const OFFLINE_UNPAVED_FACTOR = 0.8;
 
 /** At most this many points of the route's line are sent: the server simplifies it anyway (core/offline_network.py SIMPLIFY_DEG), and a mile's
  * width either side hides the rest. Our default, unmeasured. */
-export const OFFLINE_LINE_POINTS = 2000;
+export const OFFLINE_LINE_POINTS = 1500;
+/** A busy server (429 or 503 with a Retry-After of at most OFFLINE_RETRY_MAX_S: its slot is taken, as when the
+ * ride's own stress tiles are drawn at Start ride) is asked again after its wait, at most this many times, about
+ * 10 s in all. A longer wait (the per-minute count) is not waited out. Our defaults. */
+export const OFFLINE_RETRIES = 5;
+export const OFFLINE_RETRY_MAX_S = 5;
 
 /** The network around `line`, or null (no signal, not built yet, refused). Never throws. */
 export async function fetchOfflineNetwork(
   line: readonly LonLat[],
   ride: { preset: string; stress?: number | null; carrying?: string | null },
   fetcher: typeof fetch = fetch,
+  wait: (s: number) => Promise<void> = (s) => new Promise((done) => setTimeout(done, s * 1000)),
+  wanted: () => boolean = () => true,
 ): Promise<OfflineNetwork | null> {
   try {
-    const answer = await fetcher("/api/offline/network", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ line: thinForMatch(line, OFFLINE_LINE_POINTS), preset: ride.preset, stress: ride.stress ?? null, carrying: ride.carrying ?? null }),
-    });
+    const request = JSON.stringify({ line: thinForMatch(line, OFFLINE_LINE_POINTS), preset: ride.preset, stress: ride.stress ?? null, carrying: ride.carrying ?? null });
+    let answer = await fetcher("/api/offline/network", { method: "POST", headers: { "Content-Type": "application/json" }, body: request });
+    // Busy (the server fetches a few at a time): asked again after its Retry-After. Not built or too slow: not.
+    for (let tries = 0; tries < OFFLINE_RETRIES && (answer.status === 429 || answer.status === 503); tries++) {
+      const header = answer.headers.get("Retry-After")?.trim() ?? "";
+      const after = Number(header);
+      if (!header || !Number.isFinite(after) || after < 0 || after > OFFLINE_RETRY_MAX_S) break;
+      await wait(after);
+      if (!wanted()) return null;
+      answer = await fetcher("/api/offline/network", { method: "POST", headers: { "Content-Type": "application/json" }, body: request });
+    }
     if (!answer.ok) return null;
     const body = (await answer.json()) as CorridorGraph & { level_factor?: number[] };
     if (!readableGraph(body) || !Array.isArray(body.level_factor)) return null;

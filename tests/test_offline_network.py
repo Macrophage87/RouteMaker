@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import math
+
+import pytest
+
+from core import offline_network, ratelimit
 from pipeline.offline_network import (
     AVOID_LEVEL2,
     EDGE_ONEWAY,
@@ -127,3 +133,187 @@ def test_level_factors_rise_with_stress_and_follow_the_ride_type(settings):
     assert calm[6] > fast[6]
     # An unknown ride type is priced as Default.
     assert level_factors("no-such-type") == level_factors("default")
+
+
+# --- POST /api/offline/network: a real route's line, and load protection ------------------------
+
+api_db = pytest.mark.django_db(transaction=True)
+
+
+def _line(points: int, east_m: float = 30_000) -> list[list[float]]:
+    """`points` points running `east_m` east across DC, six decimals as the phone sends."""
+    k = 111_195 * math.cos(math.radians(38.9))
+    return [[round(-77.05 + (i * east_m / (points - 1)) / k, 6), 38.9] for i in range(points)]
+
+
+def _post(client, line, **headers):
+    return client.post(
+        "/api/offline/network",
+        data=json.dumps({"line": line, "preset": "default"}),
+        content_type="application/json",
+        **headers,
+    )
+
+
+@api_db
+def test_a_real_routes_line_is_taken(client) -> None:
+    """1,500 points, what the phone sends at most, is about 35 KB: over the 8 KB every other
+    JSON endpoint takes, so it was refused (400) before the endpoint took a body of its own
+    size and every rider went without a way back (the v0.26.0 release review)."""
+    line = _line(1500)
+    assert len(json.dumps({"line": line})) > 8 * 1024
+    answer = _post(client, line, HTTP_X_FORWARDED_FOR="198.51.100.70")
+    # No map built in the test database: not built, never refused for its size.
+    assert answer.status_code in (200, 503), answer.content
+    assert answer.status_code == 200 or answer.json()["error"] in ("not_built", "too_slow")
+
+
+@api_db
+def test_a_line_too_long_or_too_many_points_is_refused(client) -> None:
+    too_far = _line(50, east_m=offline_network.MAX_LINE_M + 10_000)
+    assert _post(client, too_far, HTTP_X_FORWARDED_FOR="198.51.100.71").status_code == 400
+    too_many = _line(offline_network.MAX_LINE_POINTS + 1)
+    assert _post(client, too_many, HTTP_X_FORWARDED_FOR="198.51.100.72").status_code == 400
+
+
+@api_db
+def test_one_fetch_at_a_time_per_client_from_the_tile_pool(client) -> None:
+    """Load protection: one fetch per client and no more at once than the tile pool's slots,
+    so a burst never holds more workers than the pools already allow. Before, a client's
+    burst inside the per-minute limit ran every fetch at once."""
+    from test_route_api import hold_slots
+
+    limit = ratelimit.OFFLINE_NETWORK_IN_FLIGHT
+    assert limit.total_class == ratelimit.TILES_IN_FLIGHT.total_class
+    key = ratelimit._client_lock_id(ratelimit.client_key("198.51.100.73"))
+    mine = hold_slots([(ratelimit._LOCK_CLASS_CLIENT + limit.scope_id * 64, key)])
+    try:
+        refused = _post(client, _line(10), HTTP_X_FORWARDED_FOR="198.51.100.73")
+        other = _post(client, _line(10), HTTP_X_FORWARDED_FOR="198.51.100.74")
+    finally:
+        mine.close()
+    assert refused.status_code == 429 and int(refused["Retry-After"]) >= 1
+    assert other.status_code != 429
+    pool = hold_slots([(limit.total_class, s) for s in range(limit.total)])
+    try:
+        full = _post(client, _line(10), HTTP_X_FORWARDED_FOR="198.51.100.75")
+    finally:
+        pool.close()
+    assert full.status_code == 503 and int(full["Retry-After"]) >= 1
+
+
+@api_db
+def test_not_built_and_too_slow_are_said_as_such(client, monkeypatch) -> None:
+    for error, said in (
+        (offline_network.NotBuilt, "not_built"),
+        (offline_network.TooSlow, "too_slow"),
+    ):
+
+        def refuse(line, width_m=offline_network.CORRIDOR_M, error=error):
+            raise error
+
+        monkeypatch.setattr(offline_network, "corridor_graph", refuse)
+        answer = _post(client, _line(10), HTTP_X_FORWARDED_FOR="198.51.100.76")
+        assert answer.status_code == 503
+        assert answer.json() == {"error": said}
+
+
+@api_db
+def test_the_line_is_never_logged(client, monkeypatch, caplog) -> None:
+    """Map data for an area: the route's line is not kept or logged, answered or refused."""
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    line = _line(20)
+    _post(client, line, HTTP_X_FORWARDED_FOR="198.51.100.77")
+
+    def fail(line, width_m=offline_network.CORRIDOR_M):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(offline_network, "corridor_graph", fail)
+    _post(client, line, HTTP_X_FORWARDED_FOR="198.51.100.78")
+    logged = caplog.text
+    assert "boom" in logged or caplog.records, "the failure itself is logged"
+    assert not any(f"{lon:.5f}" in logged for lon, _ in line), "a point of the line was logged"
+
+
+@api_db
+def test_twelve_a_minute_then_refused(client, monkeypatch) -> None:
+    from test_ratelimit import in_one_window
+
+    def refuse(line, width_m=offline_network.CORRIDOR_M):
+        raise offline_network.NotBuilt
+
+    monkeypatch.setattr(offline_network, "corridor_graph", refuse)
+    limit = ratelimit.OFFLINE_NETWORK
+
+    def attempt(n):
+        address = f"198.51.100.{90 + n}"
+        statuses = [
+            _post(client, _line(5), HTTP_X_FORWARDED_FOR=address).status_code
+            for _ in range(limit.requests)
+        ]
+        return statuses, _post(client, _line(5), HTTP_X_FORWARDED_FOR=address)
+
+    statuses, refused = in_one_window(limit.window_s, attempt)
+    assert limit.requests == 12
+    assert set(statuses) == {503}
+    assert refused.status_code == 429 and refused["Retry-After"]
+
+
+@api_db
+def test_a_foreign_page_is_refused(client) -> None:
+    answer = _post(
+        client, _line(5), HTTP_X_FORWARDED_FOR="198.51.100.79", HTTP_SEC_FETCH_SITE="cross-site"
+    )
+    assert answer.status_code == 403
+    same = _post(
+        client, _line(5), HTTP_X_FORWARDED_FOR="198.51.100.80", HTTP_SEC_FETCH_SITE="same-origin"
+    )
+    assert same.status_code != 403
+
+
+def test_the_flags_match_the_phones_reader() -> None:
+    """The edge flags and the Avoid level are written here and read by frontend
+    lib/offlineRouter.ts: kept in step by this test, not by hand."""
+    import re
+    from pathlib import Path
+
+    from pipeline import offline_network as pipeline_network
+
+    reader = (
+        Path(__file__).resolve().parents[1] / "frontend" / "src" / "lib" / "offlineRouter.ts"
+    ).read_text()
+
+    def ts(name: str) -> int:
+        found = re.search(rf"export const {name} = (\d+);", reader)
+        assert found, f"{name} not in offlineRouter.ts"
+        return int(found.group(1))
+
+    assert ts("EDGE_ONEWAY") == pipeline_network.EDGE_ONEWAY
+    assert ts("EDGE_WALK") == pipeline_network.EDGE_WALK
+    assert ts("EDGE_UNPAVED") == pipeline_network.EDGE_UNPAVED
+    assert ts("EDGE_FIELDS") == 6
+    assert ts("CORRIDOR_GRAPH_VERSION") == offline_network.VERSION
+
+
+@api_db
+def test_a_refused_request_takes_no_slot(client, monkeypatch) -> None:
+    """The slot is taken last, as /api/route's is: a request refused for its body, its site or
+    its count never holds the tile pool's slot (the release review). A line outside the map is
+    refused by the schema inside the view, as /api/route's points are, in microseconds."""
+    taken = []
+    real = ratelimit.acquire
+
+    def counting(request, limit, **kwargs):
+        if limit is ratelimit.OFFLINE_NETWORK_IN_FLIGHT:
+            taken.append(limit)
+        return real(request, limit, **kwargs)
+
+    monkeypatch.setattr(ratelimit, "acquire", counting)
+    headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.81"}
+    assert client.post(
+        "/api/offline/network", data="x", content_type="text/plain", **headers
+    ).status_code in (400, 415)
+    assert _post(client, _line(5), HTTP_SEC_FETCH_SITE="cross-site", **headers).status_code == 403
+    assert taken == []
