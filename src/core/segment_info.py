@@ -47,10 +47,14 @@ from routemaker.stress import (
     BESIDE_BUSY_ROAD_RULE,
     BUSY_RURAL_HIGHWAY_RULE,
     CLASS_COUNT_RULE,
+    ESTIMATE_COUNT_RULE,
     FAST_MULTILANE_PREFIX,
+    LANE_TOO_NARROW_RULE,
     NOTE_4_RULE,
+    PARKING_NOT_MAPPED_RULE,
     RURAL_EXPRESSWAY_PREFIX,
     RURAL_MIN_RULE,
+    RURAL_TABLE_RULE,
     SERVICE_ROAD_RULE,
     USE_SIDEPATH_ON_ROAD_RULE,
     USE_SIDEPATH_RULE,
@@ -568,9 +572,11 @@ _MIXED_PARTS = {
     "single lane": "one lane each way",
     "urban multilane": "several lanes, city street",
     "multilane": "several lanes",
-    "low volume": "light traffic",
-    "mid volume": "moderate traffic",
-    "high volume": "heavy traffic",
+    # The band of the table's row, not a judgement of the road: the upper band of a
+    # one-lane street starts at 1,501 a day, the lower band of a four-lane road ends at 8,000.
+    "low volume": "lighter traffic for a road this size",
+    "mid volume": "middling traffic for a road this size",
+    "high volume": "heavier traffic for a road this size",
     "rough surface": "rough surface",
     "arterial floor": "a main road, so rated at least this",
     "collector floor": "a collector road, so rated at least this",
@@ -590,7 +596,21 @@ _MIXED_PARTS = {
     "3 or more lanes each way": "three or more lanes each way",
     "any volume": "at any traffic count",
     CLASS_COUNT_RULE: "no traffic count, so its traffic is read from the kind of road it is",
+    ESTIMATE_COUNT_RULE: "no traffic count, so its traffic is an estimate for this road",
     NOTE_4_RULE: "rated as the street itself: its bike lane cannot make it worse",
+    LANE_TOO_NARROW_RULE: "its bike lane is too narrow to count, so rated as the street itself",
+    PARKING_NOT_MAPPED_RULE: "parking beside the lane is not on the map",
+    "beside parking": "beside parked cars",
+    "adequate width": "wide enough",
+    "narrow": "under the table's full width, or its width is not on the map",
+    "under 400 a day": "under 400 vehicles a day",
+    "400 to 1,500 a day": "400 to 1,500 vehicles a day",
+    "1,501 to 7,000 a day": "1,501 to 7,000 vehicles a day",
+    "over 7,000 a day": "over 7,000 vehicles a day",
+    "paved shoulder 6 ft or wider": "a paved shoulder 6 ft or wider",
+    "paved shoulder 4 ft or wider": "a paved shoulder 4 ft or wider",
+    "shoulder under 4 ft": "a shoulder under 4 ft",
+    "no shoulder": "no shoulder",
     RURAL_MIN_RULE: "a rural road open to cars, so rated at least LTS 2",
     "shoulder unknown": "shoulder not recorded on the map",
     BUSY_RURAL_HIGHWAY_RULE: "a busy two-lane rural highway, so half a level higher",
@@ -608,7 +628,9 @@ _SPEED = re.compile(r"(\d+(?:\.\d+)?) mph(?: or (?:below|above))?")
 
 
 def _parts(text: str, table: dict[str, str]) -> list[str]:
-    return [table.get(p.strip(), p.strip()) for p in text.split(",") if p.strip()]
+    # A comma inside a number ("1,501 to 7,000 a day") does not end a part.
+    pieces = re.split(r",(?!\d)", text)
+    return [table.get(p.strip(), p.strip()) for p in pieces if p.strip()]
 
 
 def rule_words(rule: str) -> str:
@@ -686,6 +708,11 @@ def _rule_words(rule: str) -> str:
         return ", ".join([*speed, "mixed traffic", *rest])
     if rule.startswith("bike lane"):
         return "Bike lane, " + ", ".join(_parts(rule[len("bike lane") :], _MIXED_PARTS))
+    if rule.startswith("paved shoulder"):
+        rest = _parts(rule[len("paved shoulder") :], _MIXED_PARTS)
+        return "Paved shoulder, " + ", ".join(rest)
+    if rule.startswith(RURAL_TABLE_RULE):
+        return "Rural road, " + ", ".join(_parts(rule[len(RURAL_TABLE_RULE) :], _MIXED_PARTS))
     match = re.match(
         r"motor traffic restricted \(([^)]*)\), LTS (\d) at most(?:, posted (.*))?", rule
     )

@@ -11,12 +11,14 @@ The tables are published ones, written here from the sources and read as publish
 - Rural two-lane roads at 45 mph or more: Oregon DOT, Analysis Procedures Manual version 2,
   chapter 14 (07/2025), Exhibit 14-17, https://www.oregon.gov/odot/Planning/Documents/APMv2_Ch14.pdf
   (fetched and read 2026-11-13). `RURAL_LEVELS` is that exhibit cell for cell.
-- A road nobody counted is read at its class's traffic, as Oregon's Exhibits 14-6 and 14-7
-  pair each count band with a functional class (`CLASS_AADT`).
+- A road nobody counted is read at the usual count of its class and setting, through the
+  same tables (`CLASS_COUNT`, measured on this region's counted roads), as Oregon's
+  Exhibits 14-6 and 14-7 read "functional class if ADT is not available".
 
 LOGIC AND LOCAL DATA. Nothing in the rules names a road, a place or an agency. What is
 local is data, fed in through arguments and small tables: the speed the law sets where
-nothing is posted (`statutory_default_mph` and the default tables, chosen by `jurisdiction`),
+nothing is posted (`SPEED_LAW`, one entry a jurisdiction, chosen by `jurisdiction`; a new
+state is a new entry and no code), the usual count of a class (`CLASS_COUNT`),
 whether the way is inside a census urban area (`urban`), and a traffic count (`aadt`). An
 agency's own stress rating is recorded beside this one for comparison and never sets the
 level (`agency_lts.COMPARISON_ONLY`). An approved override row (`pipeline.overrides`)
@@ -84,6 +86,7 @@ from .tags import (
     SEPARATED_CYCLEWAY,
     cycleway_provision,
     cycleway_shoulder,
+    cycleway_sides,
     cycleway_values,
     cycleway_width_m,
     has_parking_lane,
@@ -97,7 +100,6 @@ from .tags import (
     posted_maxspeed,
     provision_sides,
     shoulder_width_m,
-    side_buffered,
 )
 
 
@@ -123,27 +125,25 @@ MOTOR_ONLY = MOTOR_ONLY_HIGHWAY
 # level derived from assumptions is distinguishable from one derived from tags. They do
 # NOT all err toward higher stress, as this comment said until 2026-11-13. Each, by kind:
 #
-# - Speed, nothing posted: LAW, in the same class as a sign, where the figure is the
-#   statute's (the District's 20 mph and every rural 50 or 55; see `DC_DEFAULT_MPH` and
-#   `statutory_default_mph`). The urban class tables below are not all the statute:
-#   Maryland's 25 on a residential street is MDOT's imputation (its law says 30), and the
-#   40 and 45 for an urban primary or trunk in a state not named are our default,
-#   unmeasured (higher-stress).
+# - Speed, nothing posted: LAW where the state is known and its statute covers the road
+#   (`SPEED_LAW`, `default_speed`), in the same class as a sign; else the class tables
+#   below, which are OUR DEFAULTS, unmeasured. The result says which
+#   (`StressResult.speed_source`).
 # - Speed, the unit missing: mph (higher-stress, and the only unit on a US sign).
 # - Lanes: one each way (LOWER-stress; our default, unmeasured. A four-lane 25 mph street
-#   with no `lanes` tag is 2 where the tagged one is 3).
-# - Count, none: the table's "none" column (`MIXED_TRAFFIC_LEVELS`): higher-stress from
-#   30 mph, lower-stress at 20 and 25 mph. On a multi-lane city street: busy from 35 mph
-#   (higher-stress), not busy below (lower-stress). Outside urban areas with no count the
-#   default speed decides, which is LTS 4 on a through road (higher-stress).
-# - Parking beside a painted lane: present (higher-stress). Beside a shoulder: absent.
+#   with no `lanes` tag is rated as a two-lane one).
+# - Count, none: the usual count of the road's class and setting (`CLASS_COUNT`), read
+#   through the same table as a counted road.
+# - Parking beside a painted lane, not mapped: the more stressful of Furth's two lane
+#   tables (`_bike_lane_tier`). Beside a shoulder: absent.
 # - Lane or shoulder width: narrow (higher-stress).
 # - Shoulder on a rural road: unknown, read as none for the level (higher-stress) and
 #   never written as "no shoulder".
-# Split by context, not by highway class alone. The same `unclassified` tag
-# covers a 25 mph District side street and a 50 mph Loudoun through road with no
-# shoulder, and assuming the urban figure everywhere put Snickersville Turnpike
-# and Mountain Road at LTS1.
+# The rule (the owner, 2026-11-13): missing data never LOWERS a level. Where a tag is
+# unknown and two published readings apply, the more stressful one is taken.
+# The class tables: OUR DEFAULTS, unmeasured. Split by setting, not by highway class alone:
+# the same `unclassified` tag covers a 25 mph city side street and a 50 mph country through
+# road with no shoulder.
 DEFAULT_MAXSPEED_MPH_URBAN = {
     "residential": 25.0,
     "living_street": 15.0,
@@ -165,12 +165,9 @@ DEFAULT_MAXSPEED_MPH_URBAN = {
     "service": 20.0,
 }
 
-# Rural defaults where nothing is posted, by class, the same table in every state. LAW for
-# the through classes: Maryland 50 undivided and 55 divided (Transportation 21-801.1),
-# Virginia 55 (Code of Virginia 46.2-870), West Virginia 55 (W. Va. Code 17C-6-1); the 50
-# on a minor road in Virginia and West Virginia is below their statute's 55, and nothing
-# turns on it: every figure of 45 or more reads the same column of the table. The 25, 20
-# and 15 on residential streets, service roads and tracks are our defaults, unmeasured.
+# Rural defaults where nothing is posted, by class. OUR DEFAULTS, unmeasured: read where the
+# state is not known, and for service roads, tracks and living streets everywhere. Where
+# the state is known its statute is read instead (`default_speed`).
 DEFAULT_MAXSPEED_MPH_RURAL = {
     "residential": 25.0,
     "living_street": 15.0,
@@ -203,94 +200,140 @@ DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL = 50.0
 
 DEFAULT_LANES_PER_DIRECTION = 1
 
-# LAW. The District's default speed limit: 18 DCMR 2200.6, "On all streets and highways,
-# unless otherwise designated in accordance with § 2200.2, the maximum lawful speed shall
-# be twenty miles per hour (20 mph)" (as amended by DDOT's emergency and proposed
-# rulemaking adopted 2020-06-01, read 2026-11-13 at
-# https://ddot.dc.gov/sites/default/files/dc/sites/ddot/publication/attachments/NEPRM%2020MPH.pdf).
-# Alleys are 15 mph (DDOT, "Speeding laws, fines and safety tips",
-# https://ddot.dc.gov/page/speeding-laws-fines-and-safety-tips; the DCMR subsection was
-# not opened). Inside the District a way with no posted limit is read at these, whatever
-# its class, as a posted sign would be (the owner, 2026-11-13: "DC 20 mph default is the
-# DC code. It's just a fact."; OWNER-DECISIONS 108).
-DC_DEFAULT_MPH = 20.0
-DC_ALLEY_MPH = 15.0
 
-# Maryland's and Virginia's, in their urban areas (OWNER-DECISIONS 112: "Use MD
-# and VA defaults there"): 25 mph on residential streets, 30 on minor through
-# roads, 35 on major roads - MDOT's own imputation for local roads and
-# collectors (MDOT LTS methodology), as the literature review proposed. Other
-# classes, and every class outside the urban areas, keep the tables above: the
-# rural figures are the states' statutory ones, which the rural references
-# depend on, and the owner's answer was about the urban roads in question.
-MD_URBAN_DEFAULT_MPH = {
-    "residential": 25.0,
-    "unclassified": 30.0,
-    "tertiary": 30.0,
-    "tertiary_link": 30.0,
-    "secondary": 35.0,
-    "secondary_link": 35.0,
-    "primary": 35.0,
-    "primary_link": 35.0,
+# --- Statutory speeds: DATA, one entry a jurisdiction ----------------------------------------
+# What the law sets where nothing is posted. This table is the only place a jurisdiction is
+# named for speed; the functions below read it and name none. Adding a state (Pennsylvania,
+# say) is one entry here with its citation, and no code.
+@dataclass(frozen=True)
+class SpeedLaw:
+    """One jurisdiction's statutory speed limits. Every figure is LAW, from `citation`,
+    except `urban_major`, which is OUR DEFAULT."""
+
+    citation: str
+    # (undivided, divided) mph in a business or residence district, and elsewhere.
+    district: tuple[float, float]
+    elsewhere: tuple[float, float]
+    # The statute's lower figure on a road that is not hard surfaced, where it has one.
+    unpaved: float | None = None
+    # By the way's `service` value (an alley).
+    by_service: dict[str, float] = field(default_factory=dict)
+    # True where the statute's figure holds on every street whatever its class, so no
+    # "is this a district?" question arises.
+    every_street: bool = False
+    # OUR DEFAULTS, unmeasured, by class, inside urban areas: the classes too major to
+    # assume they lie in a business or residence district. Reading the district figure
+    # there would lower the level on missing data.
+    urban_major: dict[str, float] = field(default_factory=dict)
+
+
+# The urban arterial figure where the statute's district cannot be assumed: MDOT's imputation
+# for unposted major roads (MDOT LTS methodology), used in every state (OWNER-DECISIONS 112).
+_URBAN_MAJOR = {"secondary": 35.0, "secondary_link": 35.0, "primary": 35.0, "primary_link": 35.0}
+SPEED_LAW: dict[str, SpeedLaw] = {
+    "DC": SpeedLaw(
+        # "On all streets and highways, unless otherwise designated in accordance with
+        # § 2200.2, the maximum lawful speed shall be twenty miles per hour (20 mph)" (as
+        # amended by DDOT's rulemaking adopted 2020-06-01, read 2026-11-13 at
+        # https://ddot.dc.gov/sites/default/files/dc/sites/ddot/publication/attachments/NEPRM%2020MPH.pdf).
+        # Alleys 15 mph: DDOT, "Speeding laws, fines and safety tips",
+        # https://ddot.dc.gov/page/speeding-laws-fines-and-safety-tips (the DCMR subsection
+        # was not opened). The owner, 2026-11-13: "DC 20 mph default is the DC code. It's
+        # just a fact."; OWNER-DECISIONS 108.
+        citation="18 DCMR 2200.6",
+        district=(20.0, 20.0),
+        elsewhere=(20.0, 20.0),
+        by_service={"alley": 15.0},
+        every_street=True,
+    ),
+    "MD": SpeedLaw(
+        # Business district 30; residential district 30 undivided, 35 divided; elsewhere 50
+        # undivided, 55 divided (as MDOT SHA states it,
+        # https://roads.maryland.gov/mdotsha/pages/Index.aspx?PageId=295; the statute's own
+        # text was not opened). Until 2026-11-13 a residential street here was read at
+        # MDOT's imputed 25, not the statute's 30 (the owner, 2026-11-13: law is law).
+        citation="Md. Code, Transportation 21-801.1",
+        district=(30.0, 35.0),
+        elsewhere=(50.0, 55.0),
+        urban_major=_URBAN_MAJOR,
+    ),
+    "VA": SpeedLaw(
+        # 25 in business and residence districts, 55 elsewhere, 35 on a highway that is not
+        # surface treated (as VDOT states it,
+        # https://www.vdot.virginia.gov/about/our-system/highways/speed-limits/; the
+        # sections' own text was not opened).
+        citation="Code of Virginia 46.2-870 to 46.2-878",
+        district=(25.0, 25.0),
+        elsewhere=(55.0, 55.0),
+        unpaved=35.0,
+        urban_major=_URBAN_MAJOR,
+    ),
+    "WV": SpeedLaw(
+        # 25 in a business or residence district, 55 on open country highways, with no
+        # separate figure for an unpaved road (cited from the project's record of
+        # 2026-10-31; not re-opened).
+        citation="W. Va. Code 17C-6-1(b)",
+        district=(25.0, 25.0),
+        elsewhere=(55.0, 55.0),
+        urban_major=_URBAN_MAJOR,
+    ),
 }
-# Virginia's and West Virginia's urban minor roads at their law's 25 (Code of
-# Virginia 46.2-870, W. Va. Code 17C-6-1: 25 in a business or residence district),
-# where Maryland keeps MDOT's 30, which is its own law's business-district figure
-# (the owner, 2026-10-31: the same rules everywhere, the state's own law where it
-# differs). An agency's posted figure, where the map has one, outranks both.
-VA_WV_URBAN_DEFAULT_MPH = {
-    **MD_URBAN_DEFAULT_MPH,
-    "unclassified": 25.0,
-    "tertiary": 25.0,
-    "tertiary_link": 25.0,
-}
-# Each state's urban table, by `speed_zone`'s answer.
-URBAN_DEFAULT_MPH = {
-    "MD": MD_URBAN_DEFAULT_MPH,
-    "VA": VA_WV_URBAN_DEFAULT_MPH,
-    "WV": VA_WV_URBAN_DEFAULT_MPH,
-}
-# The statutory defaults themselves, which the junction model prices an
-# unposted road at (OWNER-DECISIONS 469, 469a). The classifier above reads
-# MDOT's imputation by class inside urban areas and its own rural table; whether
-# it should read these instead is the owner's call, so only junction cost does.
-# Maryland, Transportation 21-801.1 (MDOT SHA,
-# https://roads.maryland.gov/mdotsha/pages/Index.aspx?PageId=295): business
-# district 30; residential undivided 30, divided 35; other undivided 50, divided
-# 55. Virginia, Code of Virginia 46.2-870 to 46.2-878 and 46.2-1300 (VDOT,
-# https://www.vdot.virginia.gov/about/our-system/highways/speed-limits/): 25 in
-# business and residence districts, 55 elsewhere, 35 on a highway that is not
-# surface treated. A business or residence district is read as inside an urban
-# area, and divided as a carriageway of a divided road (`routemaker.divided`).
-MD_STATUTORY_URBAN_MPH = (30.0, 35.0)  # (undivided, divided)
-MD_STATUTORY_OTHER_MPH = (50.0, 55.0)
-VA_STATUTORY_URBAN_MPH = 25.0
-VA_STATUTORY_OTHER_MPH = 55.0
-VA_STATUTORY_UNPAVED_MPH = 35.0
-# West Virginia, W. Va. Code 17C-6-1(b): 25 in a business or residence district,
-# 55 on open country highways, with no separate figure for an unpaved road. The
-# same figures as Virginia, so West Virginia is read as Virginia is, in the
-# classifier's urban table too (the owner, 2026-10-31: the rules are to be the
-# same everywhere unless the law or the road differs).
-WV_STATUTORY_URBAN_MPH = 25.0
-WV_STATUTORY_OTHER_MPH = 55.0
+# The classes a statute's business-or-residence-district figure is read on: inside an urban
+# area, the local streets and minor through roads; outside one, a residential street only
+# (its class is the only evidence of a district the map gives there). A district is the
+# statutes' own term; "inside an urban area" is our reading of it.
+DISTRICT_HIGHWAY_URBAN = frozenset({"residential", "unclassified", "tertiary", "tertiary_link"})
+DISTRICT_HIGHWAY_RURAL = frozenset({"residential"})
+# Where the unposted speed came from (`StressResult.speed_source`).
+SPEED_FROM_STATUTE = "statute"
+SPEED_FROM_CLASS = "class default"
+SPEED_FROM_NARROW_ROAD = "narrow road rule"
 
 
 def statutory_default_mph(
     tags: dict[str, str], zone: str | None, urban: bool, divided: bool
 ) -> float | None:
-    """The speed limit the law sets where none is posted, or None where the
-    state is not known."""
-    if zone == "DC":
-        return DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
-    if zone == "MD":
-        return (MD_STATUTORY_URBAN_MPH if urban else MD_STATUTORY_OTHER_MPH)[divided]
-    if zone == "VA":
-        district = VA_STATUTORY_URBAN_MPH if urban else VA_STATUTORY_OTHER_MPH
-        return min(district, VA_STATUTORY_UNPAVED_MPH) if is_unpaved(tags) else district
-    if zone == "WV":
-        return WV_STATUTORY_URBAN_MPH if urban else WV_STATUTORY_OTHER_MPH
-    return None
+    """The speed limit the law sets where none is posted (`SPEED_LAW`), reading "a business
+    or residence district" as inside an urban area, or None where the state is not known.
+    The junction model prices an unposted road at it (OWNER-DECISIONS 469, 469a)."""
+    law = SPEED_LAW.get(zone or "")
+    if law is None:
+        return None
+    return _statute_mph(law, tags, urban, divided)
+
+
+def _statute_mph(law: SpeedLaw, tags: dict[str, str], district: bool, divided: bool) -> float:
+    service = law.by_service.get(tags.get("service", ""))
+    if service is not None:
+        return service
+    mph = (law.district if district else law.elsewhere)[divided]
+    if law.unpaved is not None and is_unpaved(tags):
+        mph = min(mph, law.unpaved)
+    return mph
+
+
+def default_speed(
+    tags: dict[str, str], zone: str | None, urban: bool, divided: bool
+) -> tuple[float, str]:
+    """The speed an unposted way is read at, and where it came from: the statute
+    (`SPEED_FROM_STATUTE`) where the state is known and its law covers the road, else the
+    class tables (`SPEED_FROM_CLASS`, our defaults)."""
+    highway = tags.get("highway", "")
+    law = SPEED_LAW.get(zone or "")
+    if law is not None:
+        if law.every_street:
+            return _statute_mph(law, tags, urban, divided), SPEED_FROM_STATUTE
+        if urban and highway in law.urban_major:
+            return law.urban_major[highway], SPEED_FROM_CLASS
+        if highway in (DISTRICT_HIGHWAY_URBAN if urban else DISTRICT_HIGHWAY_RURAL):
+            return _statute_mph(law, tags, True, divided), SPEED_FROM_STATUTE
+    table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
+    unknown = DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN if urban else DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL
+    mph = table.get(highway, unknown)
+    if law is not None and not urban and mph >= RURAL_TABLE_MIN_MPH:
+        # An open-country through road: the statute's own figure.
+        return _statute_mph(law, tags, False, divided), SPEED_FROM_STATUTE
+    return mph, SPEED_FROM_CLASS
 
 
 # The keys a mapper records the legal basis of a limit in (OSM's
@@ -322,6 +365,7 @@ def speed_zone(tags: dict[str, str], jurisdiction: str | None) -> str | None:
 # chapter 14, 07/2025: "Paved shoulders less than four feet in width are not considered
 # rideable"; Furth v2.2's minimum bike lane is 4 ft at a curb).
 RIDEABLE_SHOULDER_M = 1.2
+RIDEABLE_FT = 4
 
 # Furth's two bike-lane width criteria, in metres, and the only thing separating
 # a door-zone stripe from a lane a rider can use. A lane running alongside a
@@ -346,8 +390,19 @@ RIDEABLE_SHOULDER_M = 1.2
 # than written inline at the comparison because a reviewer replaced them with
 # 2.1 and 0.7 - half and a third of the published figures - and the whole
 # suite stayed green.
-FURTH_LANE_BESIDE_PARKING_M = 15 * 0.3048
-FURTH_LANE_ALONE_M = 6 * 0.3048
+FURTH_LANE_BESIDE_PARKING_FT = 15
+FURTH_LANE_ALONE_FT = 6
+FURTH_LANE_BESIDE_PARKING_M = FURTH_LANE_BESIDE_PARKING_FT * 0.3048
+FURTH_LANE_ALONE_M = FURTH_LANE_ALONE_FT * 0.3048
+# LITERATURE. Furth v2.2's minimums, note 2 under each lane table (opened 2026-11-13):
+# "Minimum bike lane width is 4 ft next to a curb and 3.5 ft next to a road edge or
+# discontinuous gutter seam. For narrower bike lanes, use Mixed Traffic criteria." and
+# "Minimum bike lane reach is 12 ft. For narrower reach, use Mixed Traffic criteria." OSM
+# does not say curb or road edge, so 4 ft is read (the higher-stress of the two). A lane
+# under them earns no lane credit: the road is rated as if it had none. The reach is
+# checked only where an agency's record gives the parking lane's width.
+FURTH_LANE_MIN_FT = 4
+FURTH_REACH_MIN_FT = 12
 # How far under a width criterion a measured width may fall and still meet it:
 # half a centimetre. A width in feet converted to metres and a sum of two such
 # widths land a hair either side of a criterion that is itself a conversion
@@ -356,14 +411,42 @@ FURTH_LANE_ALONE_M = 6 * 0.3048
 # widths are tagged to the centimetre at best.
 WIDTH_TOLERANCE_M = 0.005
 
+
+def lane_width_m(tags: dict[str, str]) -> float | None:
+    """The surveyed width of the painted lane a way is scored on (`tags.cycleway_width_m`),
+    except that on a two-way street a lane side with no surveyed width makes the width
+    unknown: that side's rider has a lane nobody measured, and missing data never lowers a
+    level. (`cycleway_width_m` leaves an unsurveyed side out of the comparison, so a 2 m
+    lane on one side spoke for an unmeasured lane on the other.)"""
+    width = cycleway_width_m(tags)
+    if width is None or is_oneway(tags):
+        return width
+    sides = cycleway_sides(tags)
+    if any(sides[name].width_m is None for name in provision_sides(tags)):
+        return None
+    return width
+
+
+def meets_width(width_m: float, feet: float) -> bool:
+    """Whether a mapped width meets a published criterion written in feet. The tables are
+    in feet and OSM widths are metres to one decimal, so a 6 ft lane is mapped 1.8 m and a
+    4 ft shoulder 1.2 m: the criterion is the exact conversion or its one-decimal rounding,
+    whichever is smaller, less `WIDTH_TOLERANCE_M`. (Before 2026-11-13 6 ft was compared as
+    1.8288 m, which a lane mapped "1.8" missed, while 4 ft was already compared as 1.2.)"""
+    exact = feet * 0.3048
+    return width_m + WIDTH_TOLERANCE_M >= min(exact, round(exact, 1))
+
+
 # The owner's narrow-road rule (2026-10-13, for v0.7.0): "narrow windy roads that
 # are unlikely to see people travelling at 35 on" - Berryville Road, West Old
 # Baltimore Road and Davis Mill Road in upcounty Montgomery, which the 50 mph rural
 # default above put at LTS 4 and Montgomery Planning rates LTS 1. A rural minor
 # road with no posted limit and no traffic count that shows it is narrow (no
 # centre line, or a surveyed width of one car each way at most) or winding is read
-# at 25 mph instead of the statutory default, which is LTS 2 on the single-lane
-# row; the rural minimum (`RURAL_MIN_LEVEL`) keeps it from LTS 1. Region-wide ("We can do region
+# at 25 mph instead of the statutory default. By the tables that is LTS 1 on an uncounted
+# unclassified road (unlaned row, low band) and LTS 2 on an uncounted tertiary (centerline
+# row, 1,001 to 1,500 a day); the rural minimum (`RURAL_MIN_LEVEL`) makes both 2, which is
+# what the owner's rule intends. Region-wide ("We can do region
 # wide. The goal is also to find the long distance quiet roads"). A posted limit
 # always outranks it, and so does a count above VOLUME_QUIET. A quiet count no longer
 # switches it off (the Virginia review's R4, the owner, 2026-10-31: "Let's go with all
@@ -406,46 +489,52 @@ NARROW_ROAD_RULE = "narrow rural road"
 # single-lane rows). The narrow-road rule reads it.
 VOLUME_QUIET = 1_500
 
-# A road with no count is read at the traffic its class usually carries. LITERATURE for the
-# idea and the first three figures: Oregon DOT's APM chapter 14 pairs each count band of its
-# mixed-traffic tables with a functional class (Exhibits 14-6 and 14-7: 750 or fewer "Local",
-# 750 to 1,500 "Local / Collector", 1,500 to 3,000 "Collector", over 3,000 "Arterial"; "or
-# functional class if ADT is not available") and allows "a mid-range value" where a count is
-# missing (section 14.5). Each figure is the middle of its band; the arterial's band has no
-# top, so 4,500 is OUR DEFAULT, unmeasured (any figure from 3,001 to 8,000 reads the same
-# cells on a one-lane road). On this region's counted roads the median count by class runs
-# the same way (rural: residential 170-380, unclassified 170-570, tertiary 1,100-1,600,
-# secondary 3,200; urban ones are busier; region sweep, 2026-11), which is a check, not the
-# source. `classify(estimated_aadt=...)` replaces the class figure where a caller has a
-# better estimate for the way (a modelled volume band, say); a real count outranks both.
-CLASS_AADT = {
-    "residential": 375,
-    "living_street": 375,
-    "service": 375,
-    "track": 375,
-    "unclassified": 1_125,
-    "road": 1_125,
-    "tertiary": 2_250,
-    "tertiary_link": 2_250,
+# A road with no count is read at an estimated count for its class and setting, through
+# the SAME table as a counted road: no separate reading and no floor (the owner,
+# 2026-11-13). So a count moves a road either way from the estimate, and no count however
+# large reads calmer than the estimate of a quieter road.
+#
+# MEASURED ON OUR DATA: each figure is the mile-weighted median count of this region's
+# counted miles of that class, setting and width (the 2026-11 region sweep,
+# reports/region-sweep: every way of the map with its count, 2 significant figures). Counted
+# roads are not a random sample of a class (agencies count the busier ones first: 19% of
+# urban residential miles are counted, 86% of urban secondary), so on local streets the
+# figure leans high, which is the higher-stress way. Columns: (one lane each way, two or
+# more), urban then rural. None: fewer than 5 counted miles; the one-lane figure is read.
+# LITERATURE for the idea: Oregon DOT's APM chapter 14 reads "functional class if ADT is
+# not available" (Exhibits 14-6, 14-7) and allows "a mid-range value" (section 14.5).
+# Links read their parent class and service roads, tracks and living streets the
+# residential figure (too few are counted to measure: OUR DEFAULT).
+CLASS_COUNT: dict[str, tuple[tuple[int, int | None], tuple[int, int | None]]] = {
+    "residential": ((380, 2_500), (180, None)),
+    "unclassified": ((1_800, 3_400), (220, None)),
+    "tertiary": ((4_400, 6_900), (1_300, None)),
+    "secondary": ((9_300, 14_000), (3_200, 8_200)),
+    "primary": ((14_000, 25_000), (7_500, 16_000)),
+    "trunk": ((18_000, 39_000), (13_000, 25_000)),
 }
-ARTERIAL_CLASS_AADT = 4_500
-# An unpaved road with no count is read in the lowest band whatever its class: gravel here
-# is a low-traffic choice (the owner, 2026-10-12: "We shouldn't overrate sparsely used rural
-# roads"). Until 2026-11-13 this was done by reading every rural gravel road at 30 mph, a
-# speed nobody measured; the count band is the general form. Our default, unmeasured.
-UNPAVED_CLASS_AADT = CLASS_AADT["residential"]
-# A road with two or more through lanes each way and no count is read as carrying more than
-# Furth's 8,000 (the higher-stress reading; MEASURED on our data as the usual case in town:
-# 82 to 99% of this region's counted urban secondary, primary and trunk miles of that width
-# carry 8,000 or more; region sweep, 2026-11).
-MULTILANE_UNCOUNTED_AADT = 8_001
+CLASS_COUNT_AS = {
+    "living_street": "residential",
+    "service": "residential",
+    "track": "residential",
+    "road": "unclassified",
+    "tertiary_link": "tertiary",
+    "secondary_link": "secondary",
+    "primary_link": "primary",
+    "trunk_link": "trunk",
+}
+# A class in neither table (OSM has many rare `highway` values) is read as a secondary: the
+# higher-stress reading of an unknown. Our default.
+CLASS_COUNT_UNKNOWN = "secondary"
+# An unpaved rural road with no count is read as a rural local street whatever its class:
+# gravel there is a low-traffic choice (the owner, 2026-10-12: "We shouldn't overrate
+# sparsely used rural roads"). Our default, unmeasured. In town the class figure stands.
+UNPAVED_RURAL_COUNT_AS = "residential"
 
 # The road classes read as arterials (the rule text and the road panel name them).
 ARTERIAL_HIGHWAY = frozenset(
     {"trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link"}
 )
-ARTERIAL_UNCOUNTED_FLOOR = 3.0
-COLLECTOR_HIGHWAY = frozenset({"tertiary", "tertiary_link"})
 # The classes read on Furth's "unlaned 2-way street (no centerline)" row where
 # `lane_markings` does not say: local streets. Collectors and arterials read his centerline
 # row. OSM seldom records the centerline itself; the class is the proxy. Our default,
@@ -453,18 +542,31 @@ COLLECTOR_HIGHWAY = frozenset({"tertiary", "tertiary_link"})
 UNLANED_HIGHWAY = frozenset(
     {"residential", "living_street", "unclassified", "service", "track", "road"}
 )
+# Where the count the tables read came from (`StressResult.count_source`).
+COUNT_FROM_CLASS = "class estimate"
+COUNT_FROM_CALLER = "supplied estimate"
 
 # The general quantity each entry of `StressResult.assumed` stands for, in plain words
 # (`StressResult.evidence`).
 QUANTITY_OF_ASSUMED = {
-    "maxspeed": "travel speed (the law's default, nothing posted)",
+    "maxspeed": "travel speed (nothing posted)",
     "maxspeed unit": "travel speed (unit not mapped, read as mph)",
     "lanes": "lanes (read as one each way)",
-    "traffic count": "traffic (from the road's class, no count)",
-    "parking": "parking beside the lane (read as present)",
+    "traffic count": "traffic (no count)",
+    "parking": "parking beside the lane (not mapped: the more stressful of the two lane tables)",
     "cycleway width": "bike lane width (read as narrow)",
     "shoulder": "shoulder (not mapped, read as under 4 ft)",
     "shoulder width": "shoulder width (not mapped)",
+}
+# The same, said more exactly where the result records the source.
+SPEED_SOURCE_WORDS = {
+    SPEED_FROM_STATUTE: "travel speed (the statute's default, nothing posted)",
+    SPEED_FROM_CLASS: "travel speed (class default, our default; nothing posted)",
+    SPEED_FROM_NARROW_ROAD: "travel speed (the narrow-road rule's 25 mph, nothing posted)",
+}
+COUNT_SOURCE_WORDS = {
+    COUNT_FROM_CLASS: "traffic (the usual count of the road's class and setting, no count)",
+    COUNT_FROM_CALLER: "traffic (a supplied estimate for this road, no count)",
 }
 
 # Surfaces a road bike will not hold a line on. Surface never sets the tier on
@@ -670,6 +772,15 @@ class StressResult:
     # The measured travel speed the tables read in place of the limit, where the caller
     # gave one (`classify`). None on nearly every way: no speed dataset is wired in yet.
     observed_speed_mph: float | None = None
+    # Where an unposted speed came from (`SPEED_FROM_STATUTE`, `SPEED_FROM_CLASS`,
+    # `SPEED_FROM_NARROW_ROAD`) and where an uncounted road's traffic did
+    # (`COUNT_FROM_CLASS`, `COUNT_FROM_CALLER`). None where posted, or counted.
+    speed_source: str | None = None
+    count_source: str | None = None
+    # The classifier's own verdict that this is a rural road the rural minimum holds at
+    # LTS 2 (`RURAL_MIN_LEVEL`): what the rebuild's check of the built table reads
+    # (`pipeline.lts_sentinels`), so the check cannot read the way differently.
+    rural_minimum: bool = False
 
     @property
     def evidence(self) -> str:
@@ -677,9 +788,17 @@ class StressResult:
         quantities (travel speed, traffic, lanes, the facility's width and parking, the
         shoulder) were estimated because the road has no record of them. A confidence
         note for the reader; it changes no level."""
+        if self.speed_mph is None and self.default_speed_mph is None and not self.assumed:
+            # A trail or a motor-only class: no table was read.
+            return "not rated from road inputs"
+        words = dict(QUANTITY_OF_ASSUMED)
+        if self.speed_source is not None:
+            words["maxspeed"] = SPEED_SOURCE_WORDS[self.speed_source]
+        if self.count_source is not None:
+            words["traffic count"] = COUNT_SOURCE_WORDS[self.count_source]
         # Parking matters only beside a painted lane.
         names = [n for n in self.assumed if n != "parking" or "bike lane" in self.rule]
-        estimated = list(dict.fromkeys(QUANTITY_OF_ASSUMED.get(name, name) for name in names))
+        estimated = list(dict.fromkeys(words.get(name, name) for name in names))
         if self.observed_speed_mph is None and not any(
             e.startswith("travel speed") for e in estimated
         ):
@@ -750,8 +869,11 @@ COUNT_BAND_WORDS = {
     3: ("low volume", "mid volume", "high volume"),
     4: ("low volume", "low volume", "mid volume", "high volume"),
 }
-# Appended where the count was not measured but read from the road's class (`CLASS_AADT`).
+# Appended where the count was not measured but read from the road's class and setting
+# (`CLASS_COUNT`), or from a caller's estimate for the road. THE FIRST IS READ BACK by
+# `core.segment_info`.
 CLASS_COUNT_RULE = "no count: traffic read from the road's class"
+ESTIMATE_COUNT_RULE = "no count: traffic from an estimate for this road"
 
 
 def speed_column(speed_mph: float) -> int:
@@ -759,14 +881,15 @@ def speed_column(speed_mph: float) -> int:
     return bisect.bisect_left(SPEED_COLUMN_MAX_MPH, speed_mph)
 
 
-def class_aadt(tags: dict[str, str], lanes: int = 1) -> int:
-    """The count a road with none is read at, from its class (`CLASS_AADT`). An unpaved
-    road is read as a local one whatever its class (`UNPAVED_CLASS_AADT`)."""
-    if lanes > 1:
-        return MULTILANE_UNCOUNTED_AADT
-    if is_unpaved(tags):
-        return UNPAVED_CLASS_AADT
-    return CLASS_AADT.get(tags.get("highway", ""), ARTERIAL_CLASS_AADT)
+def class_count(tags: dict[str, str], lanes: int = 1, urban: bool = True) -> int:
+    """The count a road with none is read at: the usual count of its class, setting and
+    width (`CLASS_COUNT`)."""
+    highway = tags.get("highway", "")
+    name = CLASS_COUNT_AS.get(highway, highway)
+    if not urban and is_unpaved(tags):
+        name = UNPAVED_RURAL_COUNT_AS
+    one, wide = CLASS_COUNT.get(name, CLASS_COUNT[CLASS_COUNT_UNKNOWN])[0 if urban else 1]
+    return wide if lanes > 1 and wide is not None else one
 
 
 def mixed_traffic_row(tags: dict[str, str], lanes: int, oneway: bool) -> str:
@@ -807,10 +930,11 @@ def mixed_traffic_level(speed_mph: float, aadt: int, row: str = ROW_SINGLE) -> t
 #   1,500-7,000      R4                    R3                R2
 #   over 7,000       R4                    R4                R3
 #
-# Oregon rates a rural road under 45 mph by its ordinary (Furth-derived) tables, as this
-# module does, and R2 is its lowest rural level. It also says its R levels are not the urban
-# ones ("an urban BLTS 2 is not the same experience as a rural BLTS R2") and that frequent
-# sharp curves "can increase the stress level" (footnote 2); neither is modelled here.
+# Oregon rates a rural road under 45 mph by its ordinary (Furth-derived) tables with an R
+# suffix, which allow level 1; R2 is the lowest cell of THIS table only. It also says its R
+# levels are not the urban ones ("an urban BLTS 2 is not the same experience as a rural BLTS
+# R2") and that frequent sharp curves "can increase the stress level" (footnote 2); neither
+# is modelled here.
 # Until 2026-11-13 the map applied a half-step reading of this table through override rows
 # (the owner's pick of 2026-11-09: 2, 2.5, 3, then 4 from 3,000 a day; a 4 ft shoulder one
 # level lower); the published cells are used now. Oregon's bins share their edges; a count
@@ -847,14 +971,21 @@ RURAL_LEVELS = {
     SHOULDER_NONE: _RURAL_NARROW,
     SHOULDER_UNKNOWN: _RURAL_NARROW,
 }
-# Oregon's table is for 45 mph or more; its lowest level is the lowest a rural road is rated.
+# Oregon's table is for 45 mph or more (LITERATURE), and at those speeds its lowest cell,
+# R2, is the lowest level. Below 45 mph two things here are NOT Oregon's:
+# - the minimum of 2 on a rural road open to cars is THE OWNER'S CHOICE (2026-11-13: "the
+#   rural table's minimum is the floor"; reason on record: LTS 1 is for children), except
+#   on a town street (`built_up` at `BUILT_UP_MAX_MPH` or less), which reads the city table;
+# - a rural road under 45 mph takes the lower of the city table and the rural table, so a
+#   lower limit never makes the same road more stressful. OUR DEFAULT, unmeasured.
 RURAL_TABLE_MIN_MPH = 45.0
 RURAL_MIN_LEVEL = 2.0
-WIDE_SHOULDER_M = 6 * 0.3048
-# The road classes the rural table rates: the through roads and streets of the open country.
-RURAL_TABLE_HIGHWAY = frozenset(
-    {"primary", "secondary", "tertiary", "unclassified", "residential", "road"}
-)
+WIDE_SHOULDER_FT = 6
+WIDE_SHOULDER_M = WIDE_SHOULDER_FT * 0.3048
+# The rural table applies by setting and speed, not by a list of road classes. What is left
+# out is what is not a road through the country: driveways and lots, farm tracks, shared
+# streets (each has its own low default speed and rule).
+RURAL_NOT_ROADS = frozenset({"service", "track", "living_street"})
 RURAL_TABLE_RULE = "rural road"
 RURAL_MIN_RULE = "rural roads rate LTS 2 at least"
 # A rural road posted at this or less where the map shows a built-up place is a town street
@@ -865,19 +996,11 @@ SIDEWALK_KEYS = ("sidewalk", "sidewalk:both", "sidewalk:left", "sidewalk:right")
 SIDEWALK_PRESENT = frozenset({"both", "left", "right", "yes", "separate"})
 
 
-def rural_minimum_applies(tags: dict[str, str]) -> bool:
-    """Whether a rural way, from its tags alone, is one the rural minimum holds at LTS 2
-    (`RURAL_MIN_LEVEL`): a road `rural_table_applies` takes, with no separated track and
-    not closed or all but closed to cars (`motor_restriction`). For the rebuild's check of
-    the built table (`pipeline.lts_sentinels`)."""
-    posted = parse_maxspeed_mph(posted_maxspeed(tags))
-    lanes = lanes_per_direction(tags) or DEFAULT_LANES_PER_DIRECTION
-    if not rural_table_applies(tags, False, lanes, False, posted):
-        return False
-    if cycleway_values(tags) & SEPARATED_CYCLEWAY or closed_to_motor_traffic(tags):
-        return False
-    restriction = motor_restriction(tags)
-    return restriction is None or restriction[0] > Stress.LTS1
+def rural_minimum_applies(tags: dict[str, str], jurisdiction: str | None = None) -> bool:
+    """Whether the classifier holds a rural way with these tags at LTS 2 at least
+    (`StressResult.rural_minimum`): it asks the classifier, so the two cannot disagree. For
+    callers with tags and no result (`pipeline.lts_sentinels` falls back to it)."""
+    return _classify(tags, urban=False, jurisdiction=jurisdiction).rural_minimum
 
 
 def built_up(tags: dict[str, str]) -> bool:
@@ -888,16 +1011,24 @@ def built_up(tags: dict[str, str]) -> bool:
 
 
 def rural_shoulder(tags: dict[str, str]) -> str:
-    """What OSM says of a road's shoulder, for the rural table: a surveyed width on the
-    worst side picks the column; `cycleway=shoulder` (OSM's tag for a shoulder a bicycle can
-    use) on both sides of a two-way road with no width is read as 4 ft; `shoulder=no` is
-    none; anything else, a shoulder tagged with no width included, is unknown."""
+    """What OSM says of the strip a rider has beside a rural road's traffic, for the rural
+    table: a surveyed width on the worst side picks the column, whether the strip is mapped
+    as a shoulder or marked as a bike lane (a marked lane is never read worse than an
+    unmarked shoulder of the same width); `cycleway=shoulder` (OSM's tag for a shoulder a
+    bicycle can use) on both sides of a two-way road with no width is read as 4 ft;
+    `shoulder=no` is none; anything else, a strip tagged with no width included, is
+    unknown."""
     present = has_shoulder(tags)
-    width = shoulder_width_m(tags) if present else None
-    if width is not None:
-        if width + WIDTH_TOLERANCE_M >= WIDE_SHOULDER_M:
+    widths = [shoulder_width_m(tags) if present else None]
+    cycleways = cycleway_values(tags)
+    if cycleways & PAINTED_CYCLEWAY and not cycleways & SEPARATED_CYCLEWAY:
+        widths.append(lane_width_m(tags))
+    known = [width for width in widths if width is not None]
+    if known:
+        width = max(known)
+        if meets_width(width, WIDE_SHOULDER_FT):
             return SHOULDER_WIDE
-        return SHOULDER_RIDEABLE if width >= RIDEABLE_SHOULDER_M else SHOULDER_NARROW
+        return SHOULDER_RIDEABLE if meets_width(width, RIDEABLE_FT) else SHOULDER_NARROW
     if cycleway_shoulder(tags):
         return SHOULDER_RIDEABLE
     return SHOULDER_NONE if present is False else SHOULDER_UNKNOWN
@@ -922,7 +1053,8 @@ LANE_LEVELS = (
 )
 # "... alongside a parking lane", by lanes and (reach of 15 ft or more, less); his last
 # column is 38.5 mph and above. His "1-way multilane" and "2-way, 2 lanes per direction"
-# rows are the same; "other 2-way multilane" is LTS 3 throughout.
+# rows are the same, so a one-way street of any width reads the second row at most;
+# "other 2-way multilane" is LTS 3 throughout.
 LANE_BESIDE_PARKING_LEVELS = (
     ((1, 2, 2, 3, 3, 3), (2, 2, 3, 3, 3, 3)),
     ((2, 3, 3, 3, 3, 3), (3, 3, 3, 3, 3, 3)),
@@ -931,12 +1063,16 @@ LANE_BESIDE_PARKING_LEVELS = (
 LANE_SPEED_WORDS = ("25 mph or below", "30 mph", "35 mph", "40 mph", "45 mph", "50 mph or above")
 
 
+PARKING_NOT_MAPPED_RULE = "parking not mapped"
+
+
 def _bike_lane_tier(
     speed_mph: float,
     lanes: int,
     width_m: float | None,
     parking: bool | None,
     facility: str = "bike lane",
+    oneway: bool = False,
 ) -> tuple[Stress, str]:
     """Furth v2.2's bike-lane tables, for a painted lane and a rideable paved shoulder
     alike (`LANE_LEVELS`, `LANE_BESIDE_PARKING_LEVELS`). Until 2026-11-13 this was the 2012
@@ -948,26 +1084,41 @@ def _bike_lane_tier(
     `facility` names the provision in the rule text. `parking` is whether a parking lane
     runs alongside *this provision*: the shoulder call passes False where the road's
     parking is unknown or declared absent (see `_classify`); the bike-lane call passes
-    what the tags say. Unknown parking is read as present and unknown width as narrow:
-    both are usually the higher-stress reading (our defaults, unmeasured), and both are
-    common in OSM. Furth's notes 1 to 3 (blocked lanes, minimum widths, buffers and turn
-    lanes added to the width) are not modelled.
+    what the tags say. Where it is None (not mapped) BOTH tables are read and the more
+    stressful level is taken: beside-parking is the worse reading up to 35 mph and the
+    better one from 40 mph, where Furth's beside-parking table stops at 3 and his other
+    table goes on to 4, so reading unknown parking as present rated a 45 mph six-lane road
+    with a lane calmer than the bare road and calmer than the same lane with `parking=no`
+    (review r1, finding 1). Unknown width is read as narrow. Furth's notes on blocked lanes
+    and on buffers and turn lanes added to the width are not modelled; leaving a buffer
+    out is the higher-stress reading.
     """
-    beside_parking = parking is not False
-    threshold = FURTH_LANE_BESIDE_PARKING_M if beside_parking else FURTH_LANE_ALONE_M
-    narrow = width_m is None or width_m < threshold - WIDTH_TOLERANCE_M
-    table = LANE_BESIDE_PARKING_LEVELS if beside_parking else LANE_LEVELS
     column = bisect.bisect_left(LANE_SPEED_MAX_MPH, speed_mph)
-    level = table[min(lanes, 3) - 1][narrow][column]
-    words = [facility, "narrow" if narrow else "adequate width", LANE_SPEED_WORDS[column]]
-    if beside_parking:
-        words.insert(1, "beside parking")
+
+    def read(beside_parking: bool) -> tuple[int, list[str]]:
+        feet = FURTH_LANE_BESIDE_PARKING_FT if beside_parking else FURTH_LANE_ALONE_FT
+        narrow = width_m is None or not meets_width(width_m, feet)
+        table = LANE_BESIDE_PARKING_LEVELS if beside_parking else LANE_LEVELS
+        row = min(lanes, 2 if beside_parking and oneway else 3) - 1
+        words = [facility, "narrow" if narrow else "adequate width", LANE_SPEED_WORDS[column]]
+        if beside_parking:
+            words.insert(1, "beside parking")
+        return table[row][narrow][column], words
+
+    if parking is None:
+        # The more stressful of the two; the rule says the parking is not mapped, not
+        # which table decided.
+        (level, _), (other, words) = read(True), read(False)
+        level = max(level, other)
+        if width_m is None or not meets_width(width_m, FURTH_LANE_BESIDE_PARKING_FT):
+            words[1] = "narrow"
+        words.insert(1, PARKING_NOT_MAPPED_RULE)
+    else:
+        level, words = read(parking)
     if lanes > 1:
         words.append("multilane")
     return Stress(level), ", ".join(words)
 
-
-DECENT_LANE_MIN_M = 1.5
 
 # A painted lane on a two-way street with this many through lanes each way or
 # more is LTS 3 at least (review RL-3; the owner, 2026-10-16), and so is one on a
@@ -1006,22 +1157,6 @@ def painted_lane_multilane(
             lanes = lanes_per_direction(tags) or DEFAULT_LANES_PER_DIRECTION
         return multilane_floor(is_oneway(tags) and not divided, lanes) is not None
     return False
-
-
-def lane_is_buffered(tags: dict[str, str], cycleways: set[str]) -> bool:
-    """A painted lane with a buffer: `buffered_lane`, or a buffer tag that is not "no",
-    on the sides the provision is scored on (`provision_sides`).
-
-    On a two-way street every such side must have it, the worst side's rule; on a
-    one-way the one rider may use either. Read on any side (hunt 3, stress 6), a
-    buffer on the right made a 40 mph road's lanes "decent", LTS 3, though the
-    rider going the other way had a 1.2 m lane with none, LTS 4.
-    """
-    sides = provision_sides(tags)
-    if not sides:
-        return False
-    buffered = (side_buffered(tags, side) for side in sides)
-    return any(buffered) if is_oneway(tags) else all(buffered)
 
 
 # "Legal but avoid", by rule. OSM's `expressway=yes` is a divided highway with
@@ -1130,7 +1265,7 @@ def winding(coordinates, min_length_m: float = WINDING_MIN_LENGTH_M) -> bool:
 # even on pavement. So an unpaved rural road whose line has tight bends, often
 # enough that they are not one corner on a straight road, reads as winding for the
 # narrow-road rule (25 mph); straight gravel keeps its default speed and is read in the
-# lowest count band (`UNPAVED_CLASS_AADT`).
+# lowest count band (`UNPAVED_RURAL_COUNT_AS`).
 TIGHT_BEND_RADIUS_M = 100.0
 # The arc the radius is read over, and the spacing the line is resampled at.
 TIGHT_BEND_ARC_M = 50.0
@@ -1251,21 +1386,43 @@ BESIDE_BUSY_ROAD_SHARE = 0.5
 # The share of a path's length beside one of the street's ways for that way's level to count,
 # so a few metres along a busier carriageway's end do not set the whole path. Our default.
 BESIDE_BUSY_ROAD_MIN_SHARE = 0.3
-# Half a level more for every CROSSING_FT_PER_HALF_STEP a mile of driveways and quiet-street
-# mouths along the path's run (`facility.side_path_crossings`: each in feet of quiet riding,
-# the junction model's own price for passing that mouth on a path beside a road,
-# `facility.crossing_point_ft`; a busy street or a slip lane is a junction the junction
-# model prices at route time, and is not counted twice: the owner, decision 303, "we don't
-# want to double count"). 5,280 ft a mile, "a calm mile of crossings for every mile of
-# path", is OUR DEFAULT, not measured. It was set when a mouth was priced at 267 ft a level
-# (a frozen copy of the junction model's old figure, to match a retired points rule: ten
-# LTS 2 side streets a mile were half a level). With the junction model's present price
-# (271 ft at an LTS 2 mouth, 135 ft at a driveway, nothing at LTS 1) a half step takes
-# about twenty LTS 2 mouths or forty driveways a mile; the step was not re-fitted to the
-# old levels (1,790 ft a mile would give them back), because the mile is the rule's
-# meaning and the fit was to a rule that is gone. One knob: it is the only number of ours
-# in the crossing step.
-CROSSING_FT_PER_HALF_STEP = 5280.0
+# Half a level more for every CROSSING_FT_PER_HALF_STEP a mile of mouths along the path's
+# run that the junction model does not price at route time (`facility.side_path_crossings`:
+# each in feet of quiet riding, that model's own price for passing it on a path beside a
+# road, `facility.crossing_point_ft`; a way it does price and a slip lane are junctions it
+# charges when a route rides through, and are not counted twice: the owner, decision 303,
+# "we don't want to double count").
+#
+# The step is DERIVED, not chosen: it is what riding one mile half a level higher costs
+# in the ranking, in the same feet of quiet riding. When the mouths along a mile cost as
+# much as riding that mile half a level worse, the path is half a level worse. The
+# ranking's own figures give it (`routemaker.calm.multiplier`, the calm metres a metre of
+# each level counts for, at the Default ride's position on the slider,
+# `CROSSING_STEP_USE_ROADS`): a mile at LTS 2.5 counts 1.67 calm miles more than a mile at
+# LTS 2, so 8,802 ft a mile. The costing prices the level pairs differently (1 to 1.5 and
+# 1.5 to 2 cost nothing more, 3 to 3.5 costs 5.0 miles a mile); the 2 to 2.5 step is the
+# one used, the first step that costs anything and the one most side paths stand at. One
+# value for every ride type and slider position, since a way has one level.
+#
+# It replaces 5,280 ft ("a calm mile of crossings for every mile of path"), our default,
+# first fitted to a retired points rule and then left unfitted when the mouth's price
+# changed (the independent review of 2026-11-13, finding 5). Nothing here is fitted to a
+# road. At today's prices a half step takes 33 LTS 2 mouths or 65 driveways a mile, so the
+# step is rare on a long run; the mouths below a step are not charged at all (the level
+# moves in half steps), which is the known limit of charging them through the level.
+CROSSING_STEP_USE_ROADS = 0.10
+
+
+def _half_step_ft_per_mile() -> float:
+    from . import calm
+
+    pricing = calm.Pricing(use_roads=CROSSING_STEP_USE_ROADS)
+    low = calm.multiplier(2, None, pricing)
+    high = calm.multiplier(2, None, pricing, half=True)
+    return (high - low) * 5280.0
+
+
+CROSSING_FT_PER_HALF_STEP = _half_step_ft_per_mile()
 # Nothing is Avoid (the owner, 2026-11-12): the top of the scale below it.
 BESIDE_BUSY_ROAD_MAX = 4.5
 
@@ -1475,21 +1632,20 @@ def classify(
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
-    `jurisdiction` is the state the way lies in ("DC", "MD", "VA", "WV"), for the
-    speed a way with no posted limit is read at (`default_speed_mph`).
+    `jurisdiction` is the code of the state the way lies in (a key of `SPEED_LAW`), for
+    the speed a way with no posted limit is read at (`default_speed`).
     `divided` says a one-way way is one carriageway of a two-way road
     (`routemaker.divided`): it is scored as the two-way road it is.
     `separate_facility` says the road's bike facility is mapped as its own way
-    and lies beside it (`routemaker.facility.separate_pairs`), which the
-    arterial floor counts as bike infrastructure.
+    and lies beside it (`routemaker.facility.separate_pairs`), which the fast
+    multi-lane rule counts as bike infrastructure (`fast_multilane`).
 
     `parking_width_m` is the width of one parking lane where an agency's street
     record gives it (`routemaker.agency_roads`). Furth measures a bike lane
     beside parking as the lane *plus* the parking lane, 15 ft, and OSM's
     `cycleway:width` is the lane alone, so without it the criterion is read
     against the lane's own width and almost no lane beside parking passes. With
-    it the two are added where a lane runs beside parking, for the table only:
-    whether a lane is decent (`decent_lane`) is about the lane itself.
+    it the two are added where a lane runs beside parking.
 
     `winding` says the way's own line bends enough to keep traffic slow
     (`winding`, computed from its geometry by the caller), for the owner's
@@ -1502,8 +1658,9 @@ def classify(
     path is mapped on its own way (`facility.has_side_path_on_the_road`; hunt 2, S1).
 
     `estimated_aadt` is a caller's estimate of the traffic on a way nobody counted (a
-    modelled volume, say), read in place of the class's usual traffic (`CLASS_AADT`); a real
-    count (`aadt`) outranks it.
+    modelled volume, say), read in place of the class's usual traffic (`CLASS_COUNT`) and
+    said to be an estimate in the rule and the evidence note; a real count (`aadt`)
+    outranks it.
 
     `observed_speed_mph` is the speed traffic actually travels at on the way, where a
     caller has a measurement (an 85th-percentile speed from a public speed dataset, behind
@@ -1632,6 +1789,7 @@ NO_PROVISION_RULES = ("mixed traffic", RURAL_TABLE_RULE)
 # result in lower LTS." The words appended where it decided. THIS TEXT IS READ BACK by
 # `core.segment_info`.
 NOTE_4_RULE = "its bike lane makes it no worse"
+LANE_TOO_NARROW_RULE = "bike lane under the published minimum width: no lane credit"
 
 
 def rural_table_applies(
@@ -1639,17 +1797,18 @@ def rural_table_applies(
     urban: bool,
     lanes: int,
     divided: bool,
-    posted_mph: float | None = None,
+    limit_mph: float | None = None,
 ) -> bool:
     """Whether a way is a rural road for the rural table and its minimum: outside the urban
-    areas, a paved two-way road of one lane each way, of a class in RURAL_TABLE_HIGHWAY, and
-    not a town street (posted BUILT_UP_MAX_MPH or less where the map shows a built-up
-    place, `built_up`)."""
-    if posted_mph is not None and posted_mph <= BUILT_UP_MAX_MPH and built_up(tags):
+    areas, a two-way road of one lane each way (Oregon's table is for two-lane roads), of
+    any class but `RURAL_NOT_ROADS`, and not a town street: one whose limit, posted or the
+    default it is read at, is BUILT_UP_MAX_MPH or less where the map shows a built-up place
+    (`built_up`). A sign that says what the default says changes nothing."""
+    if limit_mph is not None and limit_mph <= BUILT_UP_MAX_MPH and built_up(tags):
         return False
     return (
         not urban
-        and tags.get("highway") in RURAL_TABLE_HIGHWAY
+        and tags.get("highway") not in RURAL_NOT_ROADS
         and lanes <= 1
         and not divided
         and not is_oneway(tags)
@@ -1701,24 +1860,14 @@ def _classify(
         # higher-stress reading and the only one that exists on a US sign.
         assumed.append("maxspeed unit")
     zone = speed_zone(tags, jurisdiction) if speed_mph is None else None
-    if zone == "DC":
-        speed_mph = DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
-        assumed.append("maxspeed")
-    elif urban and highway in URBAN_DEFAULT_MPH.get(zone or "", {}):
-        speed_mph = URBAN_DEFAULT_MPH[zone][highway]
-        assumed.append("maxspeed")
-    elif speed_mph is None:
-        table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
-        unknown = (
-            DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN if urban else DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL
-        )
-        speed_mph = table.get(highway, unknown)
+    speed_source: str | None = None
+    if speed_mph is None:
+        speed_mph, speed_source = default_speed(tags, zone, urban, divided)
         if (
             not urban
             # A quiet count is no evidence against a slow lane: the rule held only
-            # where nothing was counted, so a counted quiet lane (VDOT counts most
-            # Virginia county roads) rated a level worse than the same lane
-            # uncounted in Maryland (the owner, 2026-10-31).
+            # where nothing was counted, so a counted quiet lane rated a level worse than
+            # the same lane uncounted (the owner, 2026-10-31).
             and (aadt is None or aadt <= VOLUME_QUIET)
             and highway in NARROW_ROAD_HIGHWAY
             and (
@@ -1729,7 +1878,7 @@ def _classify(
             )
             and speed_mph > NARROW_RURAL_ROAD_MPH
         ):
-            speed_mph = NARROW_RURAL_ROAD_MPH
+            speed_mph, speed_source = NARROW_RURAL_ROAD_MPH, SPEED_FROM_NARROW_ROAD
             narrow_road = True
         assumed.append("maxspeed")
     speed_posted = "maxspeed" not in assumed
@@ -1746,11 +1895,19 @@ def _classify(
     # A carriageway of a divided road is not a one-way street: the other
     # direction's traffic is across the median (`routemaker.divided`).
     oneway = is_oneway(tags) and not divided
-    # The count the tables read: the measured one, else the caller's estimate, else the
-    # class's (`CLASS_AADT`).
+    # The count the tables read: the measured one, else the caller's estimate for this
+    # road, else the usual count of its class and setting (`CLASS_COUNT`). All three go
+    # through the same tables.
     count = aadt
+    count_source: str | None = None
+    count_rule = ""
     if count is None:
-        count = estimated_aadt if estimated_aadt is not None else class_aadt(tags, lanes)
+        if estimated_aadt is not None:
+            count, count_source, count_rule = estimated_aadt, COUNT_FROM_CALLER, ESTIMATE_COUNT_RULE
+        else:
+            count, count_source = class_count(tags, lanes, urban), COUNT_FROM_CLASS
+            count_rule = CLASS_COUNT_RULE
+        count_rule = f", {count_rule}"
         assumed.append("traffic count")
 
     # --- 2. The road with no bike provision -----------------------------------------------
@@ -1758,23 +1915,15 @@ def _classify(
     # than this (Furth v2.2, note 4), and a separated track's road keeps it for the side-path
     # rules (`StressResult.road_level`).
     bare, bare_rule = mixed_traffic_level(speed_mph, count, mixed_traffic_row(tags, lanes, oneway))
-    if aadt is None:
-        bare_rule += f", {CLASS_COUNT_RULE}"
-        # An arterial nobody counted is LTS 3 at least (the owner's rule, OWNER-DECISIONS
-        # 141: "Make arterials LTS 3 or greater unless there s bike infrastructure"). It
-        # decides only at 20 mph or less, where Furth v2.2 has 2 and Oregon's Exhibit 14-6
-        # (from Furth v2.0) has 3 for an arterial: a low limit on an arterial is seldom its
-        # travel speed. A counted arterial is rated by its count alone.
-        if highway in ARTERIAL_HIGHWAY and bare < ARTERIAL_UNCOUNTED_FLOOR:
-            bare, bare_rule = ARTERIAL_UNCOUNTED_FLOOR, bare_rule + ", arterial floor"
+    bare_rule += count_rule
 
-    # A rural road. At 45 mph or more (posted, or the law's default) Oregon's rural table
-    # rates it. Below that the ordinary table above does, as Oregon has it, but never worse
-    # than the rural table would: a lower limit cannot make the same road more stressful
-    # (before 2026-11-13 a rural road at 1,000 a day was 3 unposted and 4 posted 40). Either
-    # way it is LTS 2 at least, the rural table's lowest level.
+    # A rural road. At 45 mph or more (posted, or the default it is read at) Oregon's rural
+    # table rates it (literature). Below that the ordinary table above does, as Oregon has
+    # it, but never worse than the rural table would (our default): a lower limit cannot
+    # make the same road more stressful. Either way it is LTS 2 at least: Oregon's lowest
+    # cell at 45 mph or more, the owner's choice below (`RURAL_MIN_LEVEL`).
     rural_rated = rural_table_applies(
-        tags, urban, lanes, divided, limit_mph if speed_posted else None
+        tags, urban, lanes, divided, None if narrow_road else limit_mph
     )
     if rural_rated:
         shoulder = rural_shoulder(tags)
@@ -1782,9 +1931,7 @@ def _classify(
             assumed.append("shoulder")
         rural, rural_rule = rural_road_level(count, shoulder)
         if speed_mph >= RURAL_TABLE_MIN_MPH or rural < bare:
-            bare, bare_rule = rural, rural_rule
-            if aadt is None:
-                bare_rule += f", {CLASS_COUNT_RULE}"
+            bare, bare_rule = rural, rural_rule + count_rule
         if bare < RURAL_MIN_LEVEL:
             bare, bare_rule = RURAL_MIN_LEVEL, f"{bare_rule}, {RURAL_MIN_RULE}"
 
@@ -1805,7 +1952,7 @@ def _classify(
     # sit in and someone has surveyed the width.
     shoulder_present = bool(has_shoulder(tags))
     shoulder_width = shoulder_width_m(tags) if shoulder_present else None
-    rideable_shoulder = shoulder_width is not None and shoulder_width >= RIDEABLE_SHOULDER_M
+    rideable_shoulder = shoulder_width is not None and meets_width(shoulder_width, RIDEABLE_FT)
     # A tag asserting the *absence* of a facility (`cycleway=no`) is not a facility.
     painted = bool(cycleways & PAINTED_CYCLEWAY) and not (cycleways & SEPARATED_CYCLEWAY)
     road_level: float | None = None
@@ -1818,7 +1965,7 @@ def _classify(
         # Only the cycleway's own width, and the narrowest among the sides the provision
         # is on (`cycleway_width_m`): reading the roadway `width` made a four-lane
         # arterial lower stress the moment someone surveyed its carriageway.
-        width = cycleway_width_m(tags)
+        width = lane_width_m(tags)
         if width is None:
             assumed.append("cycleway width")
         # The parking beside the lane scored, not anywhere on the road (hunt 2,
@@ -1831,9 +1978,22 @@ def _classify(
         table_width = width
         if width is not None and lane_parking is True and parking_width_m:
             table_width = width + parking_width_m
-        lane_tier, lane_rule = _bike_lane_tier(speed_mph, lanes, table_width, lane_parking)
+        lane_tier, lane_rule = _bike_lane_tier(
+            speed_mph, lanes, table_width, lane_parking, oneway=oneway
+        )
         level, rule = float(lane_tier), lane_rule
-        if bare < level:
+        # Under Furth's minimums the stripe is not a lane for his tables: no lane credit.
+        too_narrow = width is not None and (
+            not meets_width(width, FURTH_LANE_MIN_FT)
+            or (
+                lane_parking is True
+                and bool(parking_width_m)
+                and not meets_width(table_width, FURTH_REACH_MIN_FT)
+            )
+        )
+        if too_narrow:
+            level, rule = bare, f"{bare_rule}, {LANE_TOO_NARROW_RULE}"
+        elif bare < level:
             # Furth v2.2, note 4. Before 2026-11-13 a painted lane made a quiet counted
             # street a level worse (25 mph, 1,500 a day: 1 bare, 2 with a lane).
             level, rule = bare, f"{bare_rule}, {NOTE_4_RULE}"
@@ -1877,6 +2037,7 @@ def _classify(
     # Bragers Road, way 11507607). It only ever lowers the tier, never where a traffic
     # count says what the road carries, and never touches access.
     restriction = motor_restriction(tags) if aadt is None else None
+    capped = False
     if restriction is not None:
         cap, what = restriction
         posted_mph = limit_mph if speed_posted else None
@@ -1887,6 +2048,7 @@ def _classify(
             limited = f"{MOTOR_RESTRICTED_RULE} ({what}), LTS {int(cap)} at most"
             rule = limited if posted_mph is None else f"{limited}, posted {posted_mph:g} mph"
             level = float(cap)
+            capped = level < RURAL_MIN_LEVEL
 
     # A surface that sheds riders is not tolerable to a child, which is what
     # LTS1 asserts, so it floors at LTS2. Maintained gravel still moves nothing.
@@ -1922,6 +2084,9 @@ def _classify(
         ),
         road_level=road_level,
         observed_speed_mph=observed_speed_mph,
+        speed_source=speed_source,
+        count_source=count_source,
+        rural_minimum=rural_rated and road_level is None and not capped,
     )
 
 

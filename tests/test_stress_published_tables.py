@@ -13,9 +13,9 @@ import pytest
 
 from routemaker import stress
 from routemaker.stress import (
-    ARTERIAL_CLASS_AADT,
-    CLASS_AADT,
+    CLASS_COUNT,
     CLASS_COUNT_RULE,
+    ESTIMATE_COUNT_RULE,
     NOTE_4_RULE,
     ROW_SINGLE,
     ROW_THREE_LANES,
@@ -23,6 +23,7 @@ from routemaker.stress import (
     ROW_UNLANED,
     RURAL_MIN_RULE,
     VOLUME_GATES,
+    class_count,
     classify,
     mixed_traffic_level,
     mixed_traffic_row,
@@ -114,38 +115,63 @@ class TestWhichRow:
 
 
 class TestARoadNobodyCounted:
-    def test_the_class_figures_fall_in_oregons_bands(self):
-        assert CLASS_AADT["residential"] <= 750
-        assert 750 < CLASS_AADT["unclassified"] <= 1_500
-        assert 1_500 < CLASS_AADT["tertiary"] <= 3_000
-        assert 3_000 < ARTERIAL_CLASS_AADT <= 8_000
+    """An uncounted road reads the usual count of its class, setting and width through the
+    same table as a counted one: no separate reading, no floor."""
 
-    @pytest.mark.parametrize("state", ["DC", "MD", "VA", "WV"])
-    def test_a_residential_street_at_25_or_less_is_1_in_every_state(self, state):
+    def test_the_estimates_rise_with_the_class_and_are_higher_in_town(self):
+        order = ("residential", "unclassified", "tertiary", "secondary", "primary", "trunk")
+        for setting in (0, 1):
+            ones = [CLASS_COUNT[name][setting][0] for name in order]
+            assert ones == sorted(ones)
+        for name in order:
+            (urban_one, urban_wide), (rural_one, rural_wide) = CLASS_COUNT[name]
+            assert urban_one > rural_one
+            assert urban_wide > urban_one
+            assert rural_wide is None or rural_wide > rural_one
+
+    def test_the_figure_is_by_class_setting_and_width(self):
+        assert class_count({"highway": "secondary"}, 1, True) == 9_300
+        assert class_count({"highway": "secondary"}, 2, True) == 14_000
+        assert class_count({"highway": "secondary"}, 1, False) == 3_200
+        assert class_count({"highway": "secondary_link"}, 1, False) == 3_200
+        assert class_count({"highway": "service"}, 1, True) == 380
+        # No measured wide figure: the one-lane figure of the class and setting.
+        assert class_count({"highway": "tertiary"}, 2, False) == 1_300
+        # A class in no table is read as a secondary.
+        assert class_count({"highway": "busway"}, 1, True) == 9_300
+
+    @pytest.mark.parametrize("state", ["DC", "VA", "WV", None])
+    def test_a_residential_street_at_25_or_less_is_1(self, state):
         result = classify({"highway": "residential"}, jurisdiction=state)
         assert level({"highway": "residential"}, jurisdiction=state) == 1
         assert CLASS_COUNT_RULE in result.rule
         assert "traffic count" in result.assumed
+        assert result.count_source == "class estimate"
 
-    def test_a_residential_street_at_marylands_statutory_30_is_2_not_3(self):
-        # Maryland's law says 30 on a residential street; the default table reads MDOT's 25.
-        # At the statute's figure Furth's unlaned row gives 2.
+    def test_a_residential_street_at_marylands_statutory_30_is_2(self):
+        # Maryland's law says 30 on a residential street, and that is what is read.
+        assert level({"highway": "residential"}, jurisdiction="MD") == 2
         assert level({"highway": "residential", "maxspeed": "30 mph"}) == 2
+        assert level({"highway": "residential", "maxspeed": "25 mph"}, jurisdiction="MD") == 1
 
     def test_a_collector_at_25_is_3_by_the_centerline_row(self):
         assert level({"highway": "tertiary", "maxspeed": "25 mph"}) == 3
 
-    def test_an_uncounted_arterial_is_3_at_least_and_a_counted_one_is_its_count(self):
+    def test_no_floor_a_count_moves_an_arterial_either_way_from_its_estimate(self):
         slow = {"highway": "secondary", "maxspeed": "20 mph"}
-        result = classify(slow)
-        assert level(slow) == 3 and "arterial floor" in result.rule
+        assert level(slow) == 2 and "floor" not in classify(slow).rule
         assert level(slow, aadt=900) == 1
-        assert level(slow, aadt=20_000) == 2
+        assert level(slow, aadt=30_000) == 2
 
-    def test_a_multilane_road_with_no_count_is_read_as_busy(self):
-        road = {"highway": "primary", "lanes": "4", "maxspeed": "30 mph"}
-        assert level(road) == 4
-        assert level(road, aadt=7_000) == 3
+    def test_a_wide_road_with_no_count_reads_its_own_class_not_a_flat_8001(self):
+        # Review r1, finding 4: "over 8,000" was measured on arterials and applied to all.
+        arterial = {"highway": "primary", "lanes": "4", "maxspeed": "30 mph"}
+        assert level(arterial) == 4
+        assert level(arterial, aadt=7_000) == 3
+        collector = {"highway": "tertiary", "lanes": "4", "maxspeed": "30 mph"}
+        local = {"highway": "residential", "lanes": "2", "oneway": "yes", "maxspeed": "30 mph"}
+        assert level(collector) == 3
+        assert level(local) == 3
 
     def test_an_estimate_outranks_the_class_and_a_count_outranks_both(self):
         street = {"highway": "tertiary", "maxspeed": "25 mph"}
@@ -153,10 +179,23 @@ class TestARoadNobodyCounted:
         assert level(street, estimated_aadt=500, aadt=5_000) == 3
         assert classify(street, estimated_aadt=500).volume_aadt is None
 
-    def test_an_unpaved_road_is_read_in_the_lowest_band(self):
-        gravel = {"highway": "tertiary", "surface": "gravel"}
+    def test_an_estimate_is_called_an_estimate(self):
+        street = {"highway": "secondary", "maxspeed": "20 mph"}
+        result = classify(street, estimated_aadt=500)
+        assert ESTIMATE_COUNT_RULE in result.rule and CLASS_COUNT_RULE not in result.rule
+        assert result.count_source == "supplied estimate"
+        assert "a supplied estimate for this road" in result.evidence
+        counted = classify(street, estimated_aadt=500, aadt=5_000)
+        assert counted.count_source is None and "no count" not in counted.rule
+
+    def test_an_unpaved_rural_road_is_read_as_a_local_one(self):
+        gravel = {"highway": "secondary", "surface": "gravel"}
+        assert level({"highway": "secondary"}, urban=False) == 4
         assert level(gravel, urban=False) == 2
         assert level(gravel, urban=False, aadt=2_000) == 4
+        # In town the class figure stands (review r1, finding 15).
+        town = {"highway": "tertiary", "maxspeed": "30 mph"}
+        assert level({**town, "surface": "gravel"}) == level(town)
 
 
 class TestObservedSpeed:
@@ -214,6 +253,8 @@ class TestBikeLanes:
     def test_six_feet_is_wide_and_under_it_is_not(self):
         assert stress.FURTH_LANE_ALONE_M == pytest.approx(1.8288)
         assert int(stress._bike_lane_tier(25, 1, 1.83, False)[0]) == 1
+        # OSM maps a 6 ft lane as 1.8 m (review r1, finding 8).
+        assert int(stress._bike_lane_tier(25, 1, 1.8, False)[0]) == 1
         assert int(stress._bike_lane_tier(25, 1, 1.7, False)[0]) == 2
 
     def test_note_4_a_lane_never_makes_a_street_worse(self):
@@ -316,11 +357,11 @@ class TestRuralRoads:
             highway: level({"highway": highway}, urban=False, jurisdiction="MD")
             for highway in ("unclassified", "tertiary", "secondary")
         }
-        assert got == {"unclassified": 3, "tertiary": 4, "secondary": 4}
+        assert got == {"unclassified": 2, "tertiary": 3, "secondary": 4}
 
     def test_nothing_open_to_cars_at_the_statutory_rural_speed_rates_1(self):
         for highway, aadt in itertools.product(
-            ("residential", "unclassified", "tertiary", "secondary", "primary"),
+            ("unclassified", "tertiary", "secondary", "primary", "trunk"),
             (None, 50, 300, 2_000),
         ):
             assert level({"highway": highway}, urban=False, aadt=aadt) >= 2
@@ -367,14 +408,79 @@ def test_every_count_break_is_a_volume_gate():
     assert set(VOLUME_GATES) == {400, 751, 1_001, 1_501, 3_001, 7_001, 8_001, 18_000}
 
 
-def test_no_logic_names_a_place():
-    # The portability test: the classifier's rule texts name no road, county or agency.
+US_STATE_CODES = frozenset(
+    "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH "
+    "NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split()
+)
+PLACE_WORDS = (
+    "DDOT", "MDOT", "VDOT", "Montgomery", "Aspen", "Connecticut", "Arlington", "Fairfax",
+    "Loudoun", "Maryland", "Virginia", "District of Columbia", "Washington", "Baltimore",
+    "Pennsylvania", "moco", "ddot", "mdot",
+)  # fmt: skip
+
+
+def _strings_in_function_bodies(module) -> list[tuple[str, str]]:
+    """(function, string) for every string constant inside a function of `module`, its
+    docstrings left out: the module's logic, as against its data tables and comments."""
+    import ast
     import inspect
 
-    source = inspect.getsource(stress._classify)
-    code = "\n".join(line.split("#")[0] for line in source.splitlines())
-    for word in ("DDOT", "Montgomery", "Aspen", "Connecticut", "Arlington", "Fairfax"):
-        assert word not in code
+    found = []
+    for node in ast.walk(ast.parse(inspect.getsource(module))):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        docstring = ast.get_docstring(node, clean=False)
+        for child in ast.walk(node):
+            if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                if child.value != docstring:
+                    found.append((node.name, child.value))
+    return found
+
+
+def test_no_logic_names_a_place():
+    # The portability test: no function in the classifier holds a state code or the name
+    # of a jurisdiction, agency or road. Local things are data (`SPEED_LAW`, `CLASS_COUNT`)
+    # the functions read by key.
+    strings = _strings_in_function_bodies(stress)
+    assert len(strings) > 100, "the walk found the module's strings"
+    for function, text in strings:
+        assert text not in US_STATE_CODES, (function, text)
+        for word in PLACE_WORDS:
+            assert word not in text, (function, text)
+
+
+def test_the_place_test_would_see_a_state_code(monkeypatch):
+    import types
+
+    planted = types.ModuleType("planted")
+    source = 'def f(zone):\n    "Doc naming MD is fine."\n    return zone == "MD"\n'
+    monkeypatch.setattr("inspect.getsource", lambda module: source)
+    assert _strings_in_function_bodies(planted) == [("f", "MD")]
+
+
+def test_a_new_state_is_a_data_entry_only(monkeypatch):
+    # Pennsylvania, with made-up figures: one entry, no code.
+    law = stress.SpeedLaw("a made-up statute", district=(22.0, 22.0), elsewhere=(47.0, 47.0))
+    monkeypatch.setitem(stress.SPEED_LAW, "PA", law)
+    street = classify({"highway": "residential"}, jurisdiction="PA")
+    assert street.default_speed_mph == 22.0 and street.speed_source == "statute"
+    assert street.rule.startswith("mixed traffic, 20 mph or below")
+    road = classify({"highway": "tertiary"}, jurisdiction="PA", urban=False)
+    assert road.default_speed_mph == 47.0 and road.speed_source == "statute"
+    assert stress.statutory_default_mph({}, "PA", urban=True, divided=False) == 22.0
+
+
+def test_a_state_with_no_entry_reads_class_defaults_and_says_so():
+    result = classify({"highway": "residential"}, jurisdiction="PA")
+    assert result.speed_source == "class default"
+    assert "class default, our default" in result.evidence
+    assert "statute" not in result.evidence
+
+
+def test_every_speed_law_entry_cites_its_statute():
+    for code, law in stress.SPEED_LAW.items():
+        assert code in US_STATE_CODES
+        assert law.citation.strip()
 
 
 class TestSparseAndRichData:
@@ -439,7 +545,7 @@ def test_the_smoothing_sees_every_published_break_and_nothing_else():
 
 
 class TestCapsStillHold:
-    ROAD = {"highway": "tertiary"}  # rural, unposted, uncounted: 4 by the rural table
+    ROAD = {"highway": "secondary"}  # rural, unposted, uncounted: 4 by the rural table
 
     def test_a_road_closed_to_cars_is_1_at_most(self):
         closed = {**self.ROAD, "motor_vehicle": "no", "bicycle": "yes"}

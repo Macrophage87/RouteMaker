@@ -301,8 +301,10 @@ class TestRulesThatHadNoTest:
         reading the boundary as exactly 35 painted every gravel road in Loudoun
         as an arterial.
         """
-        paved = classify({"highway": "tertiary"}, urban=False)
-        gravel = classify({"highway": "tertiary", "surface": "gravel"}, urban=False)
+        paved = classify({"highway": "secondary"}, urban=False)
+        gravel = classify({"highway": "secondary", "surface": "gravel"}, urban=False)
+        # An uncounted paved rural secondary reads its class's usual 3,200 a day (4); the
+        # gravel one is read as a rural local street (`UNPAVED_RURAL_COUNT_AS`).
         assert paved.tier is Stress.LTS4
         assert gravel.tier < Stress.LTS4
 
@@ -937,9 +939,12 @@ class TestTheNarrowestCyclewayWidthIsTheOneThatCounts:
         and put `cycleway width` back on the assumed list."""
         assert cycleway_width_m({"cycleway:left:width": "2.0"}) == pytest.approx(2.0)
         assert cycleway_width_m({}) is None
+        # The classifier does not let one surveyed side speak for the other on a two-way
+        # street (`stress.lane_width_m`): missing data never lowers a level.
         result = classify({**self.STREET, "cycleway:left:width": "2.0"})
-        assert result.tier is Stress.LTS1
-        assert "cycleway width" not in result.assumed
+        assert "cycleway width" in result.assumed
+        both = classify({**self.STREET, "cycleway:both:width": "2.0"})
+        assert "cycleway width" not in both.assumed
 
 
 class TestParkingAbsence:
@@ -997,8 +1002,8 @@ class TestParkingIsReadByPresenceAndSide:
     )
     def test_an_attribute_beside_a_no_is_not_parking(self, extra) -> None:
         assert has_parking_lane({"parking:both": "no", **extra}) is False
-        # Before: LTS 3, "narrow or multilane at 30 mph".
-        assert classify({**self.LANE, **extra}).tier is classify(self.LANE).tier is Stress.LTS2
+        # A 1.8 m lane is a 6 ft lane (`stress.meets_width`): Furth's wide row, LTS 1 at 30.
+        assert classify({**self.LANE, **extra}).tier is classify(self.LANE).tier is Stress.LTS1
 
     def test_an_orientation_alone_says_parking(self) -> None:
         assert has_parking_lane({"parking:right:orientation": "parallel"}) is True
@@ -1466,7 +1471,8 @@ class TestUrbanMultilane:
 
     def test_a_single_lane_street_is_unchanged(self) -> None:
         one = {**self.street, "lanes": "1"}
-        assert classify(one, urban=True) == classify(one, urban=False)
+        # On the same count: an uncounted street reads its setting's usual count.
+        assert classify(one, urban=True, aadt=900) == classify(one, urban=False, aadt=900)
 
 
 # --- OWNER-DECISIONS 83, 84 and 101: a decent painted lane --------------------
@@ -1530,12 +1536,13 @@ class TestSpeedDefaults:
         road = {"highway": "primary", "maxspeed:type": "US-DC:urban"}
         assert classify(road, urban=True).rule.startswith("mixed traffic, 20 mph or below")
         road = {"highway": "residential", "source:maxspeed": "US-MD:urban"}
-        assert classify(road, urban=True).rule.startswith("mixed traffic, 25 mph")
+        # Maryland's statute: 30 in a residential district (Transportation 21-801.1).
+        assert classify(road, urban=True).rule.startswith("mixed traffic, 30 mph")
 
     @pytest.mark.parametrize(
         ("highway", "speed"),
         [
-            ("residential", "25"),
+            ("residential", "30"),
             ("unclassified", "30"),
             ("tertiary", "30"),
             ("secondary", "35"),
@@ -1544,20 +1551,25 @@ class TestSpeedDefaults:
     )
     @pytest.mark.parametrize("state", ["MD", "VA", "WV"])
     def test_maryland_and_virginia_urban_defaults(self, highway, speed, state) -> None:
-        # Virginia's and West Virginia's minor roads at their law's 25 (the owner,
-        # 2026-10-31); Maryland keeps MDOT's 30.
-        if state != "MD" and highway in ("unclassified", "tertiary"):
+        # Each state's statute on local streets and minor through roads: Maryland 30,
+        # Virginia and West Virginia 25. Major roads read our default 35 in all three.
+        if state != "MD" and highway in ("residential", "unclassified", "tertiary"):
             speed = "25"
         rule = classify({"highway": highway}, urban=True, jurisdiction=state).rule
         assert f"{speed} mph" in rule or (speed == "35" and "35 mph or above" in rule)
 
-    @pytest.mark.parametrize("highway", ["secondary", "tertiary", "residential"])
+    @pytest.mark.parametrize("highway", ["secondary", "tertiary"])
     @pytest.mark.parametrize("state", ["MD", "VA"])
     def test_rural_roads_keep_the_statutory_default(self, highway, state) -> None:
+        # The statute's open-road figure and the class default read the same column, so
+        # the level and rule are the same; only where the speed came from differs.
         road = {"highway": highway}
         known = classify(road, urban=False, jurisdiction=state)
-        assert replace(known, default_speed_mph=None) == replace(
-            classify(road, urban=False), default_speed_mph=None
+        assert known.speed_source == "statute"
+        unknown = classify(road, urban=False)
+        assert unknown.speed_source == "class default"
+        assert replace(known, default_speed_mph=None, speed_source=None) == replace(
+            unknown, default_speed_mph=None, speed_source=None
         )
 
     @pytest.mark.parametrize(
@@ -1618,48 +1630,43 @@ class TestOneWayAndTwoWay:
 # --- OWNER-DECISIONS 141: arterials, and v2.2's middle volume band ----------
 
 
-class TestArterialFloor:
-    """ "Make arterials LTS 3 or greater unless there s bike infrastructure."
-    A trunk, primary or secondary road or its link is LTS 3 at least without a
-    painted, buffered or protected lane or a separately mapped facility."""
+class TestNoArterialFloor:
+    """Until 2026-11-13 an uncounted arterial was LTS 3 at least (OWNER-DECISIONS 141). The
+    floor made 30,000 counted vehicles rate calmer than no count (review r1, finding 5), so
+    it is gone: an uncounted road reads the usual count of its class through the same table
+    as a counted one."""
 
     @pytest.mark.parametrize(
         "highway",
         ["trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link"],
     )
-    def test_an_unposted_district_arterial_is_lts3_not_lts1(self, highway) -> None:
+    def test_an_unposted_one_lane_arterial_at_20_is_furths_2(self, highway) -> None:
         result = classify({"highway": highway, "lanes": "2"}, jurisdiction="DC")
-        assert result.tier is Stress.LTS3
-        assert result.rule.endswith(", arterial floor")
+        assert result.tier is Stress.LTS2
+        assert "arterial floor" not in result.rule
+        assert result.count_source == "class estimate"
 
-    @pytest.mark.parametrize("highway", ["unclassified", "residential", "service"])
-    def test_other_classes_keep_the_district_default(self, highway) -> None:
+    @pytest.mark.parametrize("highway", ["residential", "service"])
+    def test_a_local_street_at_20_is_1(self, highway) -> None:
         assert classify({"highway": highway}, jurisdiction="DC").tier is Stress.LTS1
 
     @pytest.mark.parametrize(
-        "facility",
-        [
-            {"cycleway:both": "lane"},
-            {"cycleway:both": "lane", "cycleway:both:buffer": "yes"},
-            {"cycleway:both": "track"},
-        ],
+        "highway", ["residential", "unclassified", "tertiary", "secondary", "primary", "trunk"]
     )
-    def test_bike_infrastructure_lifts_the_floor(self, facility) -> None:
-        road = {"highway": "secondary", "lanes": "2", **facility}
-        assert classify(road, jurisdiction="DC").tier < Stress.LTS3
-
-    def test_a_lane_on_one_side_of_a_two_way_arterial_is_not_its_provision(self) -> None:
-        road = {"highway": "secondary", "lanes": "2", "cycleway:left": "lane"}
-        assert classify(road, jurisdiction="DC").tier is Stress.LTS3
+    @pytest.mark.parametrize("lanes", ["2", "4", "6"])
+    @pytest.mark.parametrize("speed", [None, "25 mph", "35 mph", "45 mph"])
+    @pytest.mark.parametrize("urban", [True, False])
+    def test_a_heavy_count_never_reads_calmer_than_no_count(self, highway, lanes, speed, urban):
+        road = {"highway": highway, "lanes": lanes}
+        if speed:
+            road["maxspeed"] = speed
+        bare = classify(road, urban=urban, jurisdiction="DC" if urban else "VA")
+        counted = classify(road, urban=urban, jurisdiction="DC" if urban else "VA", aadt=60_000)
+        assert (counted.tier, counted.half) >= (bare.tier, bare.half)
 
     def test_the_floor_never_lowers_a_tier(self) -> None:
         road = {"highway": "primary", "maxspeed": "45 mph"}
         assert classify(road).tier is Stress.LTS4
-
-    def test_everywhere_not_only_in_the_district(self) -> None:
-        road = {"highway": "secondary", "maxspeed": "20 mph", "lanes": "2"}
-        for state in ("MD", "VA", None):
-            assert classify(road, jurisdiction=state).tier is Stress.LTS3
 
 
 class TestMidVolume:
@@ -1720,8 +1727,9 @@ class TestTheFloorsAndAShoulder:
         assert shoulder <= bare
 
     def test_an_unrideable_shoulder_is_no_provision(self) -> None:
-        road = {"highway": "secondary", "lanes": "2", "shoulder": "both", "shoulder:width": "0.5"}
-        assert classify(road, jurisdiction="DC").rule.endswith(", arterial floor")
+        road = {"highway": "secondary", "lanes": "2"}
+        thin = {**road, "shoulder": "both", "shoulder:width": "0.5"}
+        assert classify(thin, jurisdiction="DC").rule == classify(road, jurisdiction="DC").rule
 
 
 class TestCollectorFloor:
@@ -1737,8 +1745,7 @@ class TestCollectorFloor:
 
     def test_not_an_arterial_floor_and_not_other_classes(self) -> None:
         assert classify({"highway": "tertiary"}, jurisdiction="DC").tier is not Stress.LTS3
-        for highway in ("unclassified", "residential"):
-            assert classify({"highway": highway}, jurisdiction="DC").tier is Stress.LTS1
+        assert classify({"highway": "residential"}, jurisdiction="DC").tier is Stress.LTS1
 
 
 class TestParkingWidthBesideABikeLane:

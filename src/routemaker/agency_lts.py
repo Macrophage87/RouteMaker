@@ -393,6 +393,9 @@ def apply(
         # reads the lane by the traffic beside it; this stands only with that rule struck.
         if (
             painted_lane
+            # Never for a comparison-only agency, which is every agency today (review r1:
+            # striking the rule from `ddot_rules.ENABLED` could otherwise set a level).
+            and any(r.agency not in COMPARISON_ONLY for r in aside)
             and "painted-lane" not in ddot_rules.ENABLED
             and set_aside_level > PAINTED_LANE_LEVEL > formula_level
         ):
