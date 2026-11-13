@@ -28,9 +28,11 @@ a crossing's score by about one level.
   ([classification.md](classification.md)), and the crossing logic behind the junction
   costs.
 - **Differs:** RouteMaker adds a fifth tier, **Avoid**, for a road a bicycle may legally
-  use but nobody should be sent onto; the tables never produce it. It also plans **half
-  steps** (**planned**), each costed at the midpoint of its two levels, which the
-  published scale does not define. The published levels are ordered categories, not
+  use but nobody should be sent onto; the tables never produce it. It also has **half
+  steps** (in use since 2026-10: 1.5 for service roads, 4.5 for the worst highways, and
+  others set by override rows), each costed at the midpoint of its two levels, which the
+  published scale does not define. Since 2026-11-13 the classifier's own tables produce
+  whole levels only. The published levels are ordered categories, not
   amounts, so a route's cost does not add up level numbers. It adds up each stretch's
   length times that ride type's **cost multiplier** for the level.
 
@@ -40,9 +42,20 @@ and [the version 2.2 tables](https://bpb-us-e1.wpmucdn.com/sites.northeastern.ed
 These versions refine the tables: lanes per direction, volume bands, speed bands,
 bike-lane width including its buffer, the 15 ft [4.6 m] reach beside parked cars, and
 one-way streets.
-- **Taken:** the base of the classifier, including the lane and buffer rules.
-- **Differs:** the owner's data corrections (speed limits, bike lanes, curated
-  corridors) and approved overrides are applied after the rule tables.
+Full reference: Furth, P. G. (May 2022). *Level of Traffic Stress Criteria for Road
+Segments, version 2.2.* Northeastern University. Fetched and read 2026-11-13.
+- **Taken (2026-11-13):** version 2.2's "Bikes in mixed traffic" table and both bike-lane
+  tables, cell for cell, and note 4 under the lane tables ("Use mixed traffic criteria if
+  it would result in lower LTS"). Until then the code said "Furth 2017" but used the 2012
+  bands with local count steps on top ([classification.md](classification.md)).
+- **Differs:** the road class stands in for the centerline, which OSM seldom records; the
+  posted or statutory limit stands in for prevailing speed; a narrow one-way is read as
+  wide; notes 1 to 3 under the lane tables are not modelled. The owner's data corrections
+  (speed limits, bike lanes, curated corridors) and approved overrides are applied after
+  the tables.
+- **For the record:** version 2.0 (2017) at 45 mph on an unlaned street is LTS 3 up to
+  1,500 a day and 4 above; "750" is the break of its 50 mph and over column. An earlier
+  version of this page had that wrong.
 - **A gap, not a choice:** Furth keeps LTS 1 and LTS 2 as different levels, but today
   RouteMaker's routing cost does not separate them by level. The level adds nothing at
   LTS 1 or LTS 2; only the kind of facility changes the cost there (a traffic-free path
@@ -76,39 +89,43 @@ level even at low volume, because rural drivers do not expect bicycles.
   question for the owner (`intersections.py:139-141`), not a settled choice.
 
 
-#### Oregon's rural segment table, and why we read it a half step calmer (2026-11-09)
-Oregon's Exhibit 14-17 rates rural roads at 45 mph [72 km/h] or more by daily traffic and
-paved shoulder, not by the speed limit:
+#### Oregon's rural segment table (used as published since 2026-11-13)
+Full reference: Oregon Department of Transportation (last updated 07/2025). *Analysis
+Procedures Manual, version 2, chapter 14: Multimodal Analysis*, section 14.4.8, Exhibit
+14-17, "BLTS Rural Segment Criteria with posted speeds 45 mph or greater". Fetched and read
+2026-11-13. It rates rural roads at 45 mph [72 km/h] or more by daily traffic and paved
+shoulder, not by the speed limit:
 
-| Cars a day | Shoulder under 4 ft [1.2 m] | 4-6 ft [1.2-1.8 m] | 6 ft [1.8 m] or more |
+| Vehicles a day | Shoulder under 4 ft [1.2 m] | 4 to under 6 ft [1.2-1.8 m] | 6 ft [1.8 m] or more |
 |---|---|---|---|
 | Under 400 | R2 | R2 | R2 |
 | 400-1,500 | R3 | R2 | R2 |
 | 1,500-7,000 | R4 | R3 | R2 |
 | Over 7,000 | R4 | R4 | R3 |
 
-Under 45 mph Oregon uses its ordinary mixed-traffic tables on the speed actually driven.
-Furth's 2017 criteria have no rural table (at 45 mph or more with no centerline they give 3
-under 750 a day and 4 above). FHWA's rural bikeway framework (FHWA-FLH-19-004, 2019) finds
-lanes shared under about 1,200 a day "may be suitable" even at 45+ mph.
+Under 45 mph Oregon uses its ordinary mixed-traffic tables (Exhibits 14-6 and 14-7), which
+also pair each count band with a functional class "if ADT is not available". FHWA's rural
+bikeway framework (FHWA-FLH-19-004, 2019) finds lanes shared under about 1,200 a day "may
+be suitable" even at 45+ mph.
 
-- **Taken, with half steps (the owner, 2026-11-09, "ODOT with half steps"):** a rural
-  two-lane road open to cars with a shoulder under 4 ft is **2 under 400 cars a day, 2.5 at
-  400-1,500, 3 at 1,500-3,000 and 4 above 3,000** (busy rural highways at 18,000+ stay 4.5).
-  A paved shoulder of 4 ft or more takes off one level, never below the rural floor of 2.
-  Where there is no count the reviewer judges the likely band from the road's class and
-  setting; a statutory or default speed limit alone never makes a quiet country road high
-  stress.
-- **Why calmer than Oregon:** the purposes differ. The owner, 2026-11-09: agencies rate roads
-  "to see which roads need additional bike infrastructure, ours is to choose roads more
-  suitable for biking without undue traffic stress. People would only go on these roads if
-  they want to be out in the country, therefore we should focus on the less stressful ones."
-  An agency's rating flags a road for a shoulder; ours ranks the country roads a rider can
-  choose between, so it must set the quietest apart from the busier ones. The half steps do
-  that inside Oregon's bins.
-- **Where it is used:** the 2026-11-09 review of every road without an owner row
-  ([overrides.md](overrides.md), "Our own rating on every road"); each row's Why line gives
-  this reasoning.
+- **Taken:** the exhibit cell for cell, for rural two-lane roads at 45 mph or more, posted
+  or by statute; R2 as the lowest rural level; the class-for-count pairing for roads nobody
+  counted ([classification.md](classification.md), "Rural roads" and "Traffic counts").
+- **Differs:** a rural road under 45 mph takes the lower of the ordinary table and this
+  one, so a lower limit never raises the level. A shoulder nobody mapped is read on the
+  narrow column and reported as unknown. Oregon's notes that an R level is not the urban
+  level of the same number, and that sharp curves raise stress, are not modelled.
+- **What it replaced:** from 2026-11-09 to 2026-11-13 the map used a reading with half
+  steps (2 under 400 a day, 2.5 to 1,500, 3 to 3,000, 4 above; one level lower with a 4 ft
+  shoulder), applied through override rows. It was half a level calmer than Oregon at 400
+  to 1,500 a day and a whole level calmer in three cells (1,500 to 3,000 with no shoulder;
+  with a 4 ft shoulder at 1,500 to 3,000 and over 7,000), and a level harsher at 3,000 to
+  7,000 with a 6 ft shoulder. No source supported the differences, so the published cells
+  are used. The owner's reason for a calmer reading still stands as a statement of purpose
+  (2026-11-09: agencies rate roads "to see which roads need additional bike
+  infrastructure, ours is to choose roads more suitable for biking without undue traffic
+  stress"); it is a reason to look for better rural evidence (shoulders, measured speeds),
+  not for unsourced cells.
 
 ### Montgomery County Planning, Bicycle Master Plan, Appendix D (LTS 0 to 5)
 [Montgomery County Bicycle Master Plan, Appendix D](https://montgomeryplanning.org/wp-content/uploads/2017/11/Appendix-D.pdf).
@@ -218,6 +235,41 @@ five riders (we have not confirmed the sample size from the full text).
 
 ## Other design guides and studies
 
+- **NACTO (2017)**, *Designing for All Ages & Abilities: Contextual Guidance for
+  High-Comfort Bicycle Facilities*
+  ([page](https://nacto.org/publication/urban-bikeway-design-guide/designing-ages-abilities-new)):
+  on a street of 25 mph or less with one lane each way, sharing suits up to 1,500 vehicles a
+  day, a bicycle boulevard or lane 1,500 to 3,000, a buffered or protected lane 3,000 to
+  6,000, and a protected lane above. *Taken:* a cross-check on Furth's 1,500 break.
+  *Differs:* a design guide, not a rating table; its 3,000 and 6,000 lines are not steps
+  here.
+- **FHWA (Schultheiss and colleagues, 2019)**, *Bikeway Selection Guide*, FHWA-SA-18-077
+  ([PDF](https://highways.dot.gov/sites/fhwa.dot.gov/files/2022-07/fhwasa18077.pdf)): "as
+  motorized traffic volumes increase above 6,000 vehicles/day, it becomes increasingly
+  difficult for motorists and bicyclists to share roadway space". *Taken:* a cross-check.
+  *Differs:* as NACTO.
+- **Jones (2004)**, *Development of Rural Bicycle Compatibility Index*, Nebraska Department
+  of Roads, SPR-PL-1(038) P533
+  ([report](https://dot.nebraska.gov/media/thff4qex/final-report-p533.pdf)): in video
+  ratings of rural Nebraska highways, paved shoulder width and heavy vehicles an hour
+  explained comfort; speed and total volume dropped out. Small sample. *Taken:* nothing
+  yet. *Differs:* our rural table reads volume and shoulder and has no truck input.
+- **Beck and colleagues (2019)**, "How much space do drivers provide when passing
+  cyclists?", *Accident Analysis & Prevention* 128
+  ([doi:10.1016/j.aap.2019.03.007](https://doi.org/10.1016/j.aap.2019.03.007)): drivers
+  passed closer where a painted bike lane existed (abstract read, not the full paper). *Taken:* nothing; noted as a limit of
+  the lane table.
+- **Caltrans DRISI (2026)**, Preliminary Investigation PI-0420, *Statewide Bicycle Level
+  of Traffic Stress Map*
+  ([PDF](https://dot.ca.gov/-/media/dot-media/programs/research-innovation-system-information/documents/preliminary-investigations/pi-0420-statewide-bicycle-level-of-traffic-stress-map-jan-2026-a11y.pdf)):
+  a survey of state methods; every statewide map it found starts from the Mineta tables
+  with local changes, and agencies split on posted against prevailing speed. *Taken:* the
+  second-hand report of Colorado's truck rule, in the gaps section below.
+- **District of Columbia Municipal Regulations, 18 DCMR 2200.6** (as amended by DDOT's
+  rulemaking adopted 2020-06-01;
+  [notice](https://ddot.dc.gov/sites/default/files/dc/sites/ddot/publication/attachments/NEPRM%2020MPH.pdf)):
+  the District's default speed limit is 20 mph. Law, read as a posted sign is.
+
 - **CROW (Netherlands) and the UK's LTN 1/20**
   ([LTN 1/20](https://assets.publishing.service.gov.uk/media/5ffa1f96d3bf7f65d9e35825/cycle-infrastructure-design-ltn-1-20.pdf)):
   riding with cars is acceptable below about 2,000-2,500 vehicles a day at 20 mph [32
@@ -300,8 +352,13 @@ Moving it would change tiers on many roads, so it is left for the owner to confi
 ## Where the evidence has gaps
 
 We found no test, on whole routes, of rating a route by its worst stretch against rating
-it by its average. Comfort studies give no measured effect for trucks, for driveways per
-mile, or for one-way against two-way streets at the same volume, and there are no
+it by its average. Trucks are not an input, though the sources do measure their effect: Jones (2004) above;
+Montgomery's Appendix D floors industrial streets at 2.5 "given the greater volume of
+truck traffic"; and a 2026 Caltrans survey of state methods reports that Colorado raises
+the level where heavy trucks exceed 10% of more than 1,500 vehicles a day (reported at
+second hand; the Colorado document is internal). We found no measured effect for driveways
+per mile, and no table that rates a one-way street calmer than a two-way street at the same
+volume (the published ones read a one-way's count at 1.5 times), and there are no
 figures for leisure loops. The rural crossing factor at 45 mph [72 km/h] is a judgment
 within the published ranges. The severe junction tier goes beyond the published ranges,
 and its cap of 2 calm mi [3.22 km] follows the owner's direction in decision 467, not a
