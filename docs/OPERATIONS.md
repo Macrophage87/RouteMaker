@@ -4730,6 +4730,32 @@ the first host to run it is the first test of it.
        --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson </dev/null
    ```
 
+   **The road panel's Setting line (optional, v0.27.0).** People, homes and jobs
+   within half a mile of each way go to `setting.json`; without it the line says
+   urban or rural alone. One Census block file and one LODES jobs file per state
+   the extract covers (DC 11, MD 24, VA 51, WV 54, PA 42), copied into
+   `"$DATA_ROOT/reference/inputs"` first
+   (`https://www2.census.gov/geo/tiger/TIGER2020/TABBLOCK20/tl_2020_<FIPS>_tabblock20.zip`,
+   `https://lehd.ces.census.gov/data/lodes/LODES8/<st>/wac/<st>_wac_S000_JT00_2023.csv.gz`).
+   Never a stress input. Like `urban-areas.json` it lists the way ids of the extract
+   it was made from, so **remake it whenever the extract changes**: a way added later
+   has no counts and its line falls back to plain urban or rural.
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --extract /data/extracts/source.osm.pbf \
+       --census-blocks /data/reference/inputs/tl_2020_11_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_24_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_51_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_54_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_42_tabblock20.zip \
+       --lodes-wac /data/reference/inputs/dc_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/md_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/va_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/wv_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/pa_wac_S000_JT00_2023.csv.gz </dev/null
+   ```
+
    **Every input path is absolute and inside the container.** A bare
    `tl_2024_us_uac20.geojson` resolves against the image's working directory,
    `/app`, where the file is not and cannot be: the script would exit on a
@@ -5728,7 +5754,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept. A peaceful protest's closure (a protest word and no violence word, `is_peaceful_protest`, 2026-11-13) is kept as ordinary closures instead, under AlertDC's title, with the same 3 h age and reopening |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
@@ -8059,14 +8085,15 @@ before the tag.
   `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload` (as in "A new release
   sha", step 9); and, when the owner has the bug-reports forum's webhook, `FEEDBACK_WEBHOOK_URL=` in
   `.env` and `beta-compose.sh up -d api`. Then `smoke-test.sh --local`, then `smoke-test.sh --public
-  <url> --passwords-file <file>`, then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
+  <url> --open` (no site password since 2026-10-22), then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
   (the new script's, not the installed v0.25.x copy's: only the new one records v0.25.1 as the
   release `rollback` puts back), then
   `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not reinstall the agent, and
   v0.26.0 changes it: #1195's quick deploys, `rollback`, `rollback-map`, `ship-held` and the
-  workflow image pull start with the next release), then `~/routemaker-beta-state/cd/bin/alert.sh
-  install` (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship
-  refreshes the script, not its timers), then `auto-release.sh resume`.
+  workflow image pull start with the next release), then `"$RM_SRC/scripts/beta/alert.sh" install`
+  (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship refreshes the
+  script, not its timers; the checkout's copy, because `install` copies itself into `cd/bin` and the
+  `cd/bin` copy stops with "are the same file"), then `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
   with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
   means the host is not answering (the run itself only fails after 45 minutes), and the next
@@ -8482,8 +8509,10 @@ a road or signed path open to bicycles) and `moved_points` says so (reason `rest
 a point within 100 m (our default) of a way inside the site that stays open (the Goddard Visitor
 Center's way in, a public road the outline takes in), a ride's re-plan's start, a drawn or opened
 line, a point whose gate is where the point before it is routed, and a point in a site with no
-gate found. The map washes, hatches and dashes the edge of each site, with its name and "No
-public access" on sites of 0.25 km2 or more (our default). Sites, gates and the hand-drawn closed
+gate found. The map washes, hatches and dashes the edge of each site from zoom 10, and names
+each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and with "No public
+access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
+15 (our defaults). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
 PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
 rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
@@ -10251,7 +10280,9 @@ Python 3.11 or later, standard library only.
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
-  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing);
+  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing; `motor_vehicle` and
+  `motor_vehicle:conditional` for a road closed or opened to cars, from the managing agency's
+  own notice or what is posted there);
   `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
