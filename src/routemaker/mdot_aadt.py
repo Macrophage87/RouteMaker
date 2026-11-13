@@ -76,3 +76,30 @@ def usable(properties: Mapping[str, object]) -> bool:
         return False
     flag = properties.get("LOC_ERROR")
     return flag is None or str(flag).strip().upper() in NO_ERROR
+
+
+# The route systems OSM tags with a `ref` MDOT SHA's `ID_PREFIX` can be read against:
+# interstates ("IS" to OSM's "I 95"), US and Maryland routes. County ("CO"), municipal
+# ("MU"), ramp ("RP") and the other prefixes number roads OSM does not.
+_REF_PREFIXES = {"IS": "I", "US": "US", "MD": "MD"}
+
+
+def road_name(properties: Mapping[str, object]) -> str | None:
+    """The street a count's section is named for: `ROADNAME` ("THIRD AVE")."""
+    value = properties.get("ROADNAME")
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def route_ref(properties: Mapping[str, object]) -> str | None:
+    """The section's route number as OSM writes a `ref`, "MD 97", or None where OSM
+    numbers no such route (a county or municipal road, a ramp)."""
+    prefix = _REF_PREFIXES.get(str(properties.get("ID_PREFIX") or "").strip().upper())
+    number = str(properties.get("ID_RTE_NO") or "").strip()
+    if not prefix or not number:
+        return None
+    try:
+        number = str(int(float(number)))
+    except ValueError:
+        return None
+    return f"{prefix} {number}"

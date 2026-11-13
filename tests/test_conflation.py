@@ -30,6 +30,7 @@ from pipeline.conflation import (
     _probes,
     _ranked_share,
     conflate,
+    same_road,
 )
 from routemaker.geo import bearing_delta
 
@@ -1204,3 +1205,79 @@ class TestRawCountFixes:
         after = conflate([(1, street), (2, elevated)], [fwy, own], freeway={2}, layers={1: 0, 2: 2})
         assert after.matched[2].aadt == 40000
         assert after.matched[1].aadt == 23366
+
+    def test_a_line_named_for_another_street_is_not_this_ways_count(self) -> None:
+        """MDOT SHA's "THIRD AVE (CO 675), MD 97 TO OBRECHT RD (AHEAD)" ran on along Obrecht
+        Road and gave it Third Avenue's 6,152 a day (the borrowed-counts check)."""
+        road = [(-77.0200, 39.50000), (-77.0100, 39.50000)]
+        line = AgencyFeature(
+            feature_id="third",
+            coordinates=[(-77.0205, 39.50001), (-77.0095, 39.50001)],
+            aadt=6152,
+            source="state",
+            agency="mdot-sha",
+            name="THIRD AVE",
+        )
+        assert conflate([(1, road)], [line]).matched[1].aadt == 6152
+        assert 1 not in conflate([(1, road)], [line], names={1: ("Obrecht Road", None)}).matched
+        # Not the along pass either.
+        halves = [
+            AgencyFeature(
+                feature_id=f"third{i}",
+                coordinates=[(x0, 39.50001), (x0 + 0.0035, 39.50001)],
+                aadt=6152,
+                source="state",
+                agency="mdot-sha",
+                name="THIRD AVE",
+            )
+            for i, x0 in enumerate((-77.0200, -77.0165, -77.0130))
+        ]
+        assert 1 in conflate([(1, road)], halves).matched
+        assert 1 not in conflate([(1, road)], halves, names={1: ("Obrecht Road", None)}).matched
+        # Its own street, and a way with no name, still take it.
+        assert conflate([(1, road)], [line], names={1: ("Third Avenue", None)}).matched[1]
+        assert conflate([(1, road)], [line], names={1: (None, None)}).matched[1]
+
+    def test_one_route_under_two_names_keeps_its_count(self) -> None:
+        """MD 97 is Georgia Avenue to OSM and "ROXBURY MILLS RD" to MDOT SHA near Brookeville."""
+        road = [(-77.0200, 39.50000), (-77.0100, 39.50000)]
+        line = AgencyFeature(
+            feature_id="md97",
+            coordinates=[(-77.0205, 39.50001), (-77.0095, 39.50001)],
+            aadt=12051,
+            source="state",
+            agency="mdot-sha",
+            name="ROXBURY MILLS RD",
+            ref="MD 97",
+        )
+        kept = conflate([(1, road)], [line], names={1: ("Georgia Avenue", "MD 97;MD 650")})
+        assert kept.matched[1].aadt == 12051
+        refused = conflate([(1, road)], [line], names={1: ("Georgia Avenue", "MD 650")})
+        assert 1 not in refused.matched
+
+
+@pytest.mark.parametrize(
+    ("osm", "agency"),
+    [
+        ("Mount Aetna Road", "MT AETNA RD"),
+        ("Highfalcon Road", "HIGH FALCON RD"),
+        ("Spring Hill-Newtown Road", "SPRINGHILL NEWTOWN RD"),
+        ("Baltimore Annapolis Boulevard", "BALTO ANNAPOLIS BLVD"),
+        ("Governor Ritchie Highway", "GOV RITCHIE HWY"),
+        ("Saint Stephens Church Road", "ST STEPHENS CHURCH RD"),
+    ],
+)
+def test_one_street_written_two_ways_agrees(osm: str, agency: str) -> None:
+    assert same_road((osm, None), AgencyFeature("f", [], 1, "state", name=agency))
+
+
+def test_mdot_route_numbers_read_as_osm_refs() -> None:
+    from routemaker import mdot_aadt
+
+    assert mdot_aadt.route_ref({"ID_PREFIX": "MD", "ID_RTE_NO": 97}) == "MD 97"
+    assert mdot_aadt.route_ref({"ID_PREFIX": "IS", "ID_RTE_NO": "95"}) == "I 95"
+    assert mdot_aadt.route_ref({"ID_PREFIX": "CO", "ID_RTE_NO": 675}) is None
+    assert mdot_aadt.road_name({"ROADNAME": " THIRD AVE "}) == "THIRD AVE"
+    assert same_road(
+        ("Interstate 95", "I 95"), AgencyFeature("f", [], 1, "state", name="X", ref="I 95")
+    )

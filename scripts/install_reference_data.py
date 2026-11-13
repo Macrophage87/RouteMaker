@@ -428,6 +428,18 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
                     "source": tier,
                     "agency": agency,
                     "year": year,
+                    # The street and route the section is named for, so the matcher can
+                    # refuse a line drawn on past its own road onto another one
+                    # (`conflation.conflate`'s `names`): MDOT SHA's "THIRD AVE (CO 675),
+                    # MD 97 TO OBRECHT RD (AHEAD)" runs on along Obrecht Road.
+                    **(
+                        {
+                            "name": mdot_aadt.road_name(properties),
+                            "ref": mdot_aadt.route_ref(properties),
+                        }
+                        if maryland
+                        else {}
+                    ),
                 }
             )
     if skipped:

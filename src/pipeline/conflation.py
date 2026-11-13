@@ -30,8 +30,10 @@ between two agencies about the same road is a thing a reviewer needs to see.
 
 from __future__ import annotations
 
+import functools
 import math
-from collections.abc import Collection, Mapping, Sequence
+import re
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from routemaker import agency_roads, divided
@@ -100,6 +102,11 @@ class AgencyFeature:
     source: str
     year: int | None = None
     agency: str | None = None
+    # The street and route the agency names the count for, where it does (MDOT SHA's
+    # `ROADNAME` and route number as OSM writes a `ref`, "MD 97"); None for a line that
+    # names neither (`conflate`'s `names`).
+    name: str | None = None
+    ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -539,6 +546,7 @@ def conflate(
     name_required: Collection[int] = (),
     freeway: Collection[int] = (),
     layers: Mapping[int, int] | None = None,
+    names: Mapping[int, tuple[str | None, str | None]] | None = None,
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
 
@@ -567,6 +575,14 @@ def conflate(
     2026-11-13: "water street is definitely not a high stress road", then "If I say that a
     road is incorrectly rated that means that I feel the formula is wrong. ... Or the raw
     data".
+
+    `names` is each way's OSM name and ref. A line that names its street (`AgencyFeature`
+    `name`) is no candidate for a named way whose name disagrees with it, unless the two
+    share a route number (`same_road`): MDOT SHA draws one count's section on past its own
+    road, so "THIRD AVE (CO 675), MD 97 TO OBRECHT RD (AHEAD)" gave Obrecht Road Third
+    Avenue's 6,152 a day, and "MONOCACY BLVD (CO 413)" gave Gas House Pike 9,374 (the
+    borrowed-counts check, 2026-11-13; the owner: "Or the raw data"). A way left with no
+    count is rated as any uncounted road is.
 
     `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
     was a candidate for; it never changes or rejects a first-pass match, and lists a way it
@@ -654,6 +670,8 @@ def conflate(
                 probes, box, max_separation_m
             )
             if overlap < min_overlap:
+                continue
+            if names is not None and not same_road(names.get(way_id), feature):
                 continue
             candidates.append((overlap, way_id, feature, span, mean_distance, ranked))
 
@@ -758,6 +776,7 @@ def conflate(
             min_overlap,
             max_separation_m,
             skip=frozenset() if way_id in freeways else freeway_lines,
+            keep=None if names is None else functools.partial(same_road, names.get(way_id)),
         )
         if along is not None:
             found.append((way_id, *along))
@@ -792,6 +811,24 @@ def conflate(
 
     unmatched = [f.feature_id for f in features if f.feature_id not in used_features]
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
+
+
+def _refs(ref: str | None) -> set[str]:
+    """A `ref` as a set of route numbers, "I-95;MD 97" as {"I95", "MD97"}."""
+    return {re.sub(r"[^A-Z0-9]", "", part.upper()) for part in (ref or "").split(";")} - {""}
+
+
+def same_road(way: tuple[str | None, str | None] | None, feature: AgencyFeature) -> bool:
+    """Whether a count line may be a way's count by the names they carry (`conflate`'s
+    `names`): yes unless both name a street, the names disagree (`names_agree`), and they
+    share no route number. Georgia Avenue is MDOT SHA's "ROXBURY MILLS RD (MD 97)" north
+    of Brookeville, both MD 97; Obrecht Road is not "THIRD AVE (CO 675)"."""
+    if way is None or not feature.name:
+        return True
+    name, ref = way
+    if names_agree(name, feature.name) is not False:
+        return True
+    return bool(_refs(ref) & _refs(feature.ref))
 
 
 def way_layer(tags: Mapping[str, str]) -> int:
@@ -842,15 +879,18 @@ def _along_counts(
     min_overlap: float,
     max_separation_m: float,
     skip: Collection[str] = frozenset(),
+    keep: Callable[[AgencyFeature], bool] | None = None,
 ) -> tuple[AgencyFeature, float, float, list[tuple[str, tuple[float, float]]]] | None:
     """The count a way left without a candidate would take from the lines it runs along:
     the line, how much of the way they cover, the mean probe distance, and each line's
-    stretch to claim; or None. Claims nothing (`conflate` ranks the ways first)."""
+    stretch to claim; or None. Claims nothing (`conflate` ranks the ways first). `keep`
+    says which lines may count for this way (`conflate`'s `names`)."""
     near = [
         position
         for position in index.near(coordinates)
         if (agencies is None or features[position].agency in agencies)
         and features[position].feature_id not in skip
+        and (keep is None or keep(features[position]))
     ]
     if not near:
         return None

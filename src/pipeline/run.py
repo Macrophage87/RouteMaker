@@ -623,6 +623,8 @@ class ReferenceData:
                 # from the tier: an unknown agency is a thing a reviewer can
                 # see, a tier wearing an agency's name is not.
                 agency=row.get("agency"),
+                name=row.get("name"),
+                ref=row.get("ref"),
             )
             for row in volume_rows
         )
@@ -2668,6 +2670,8 @@ def build_handlers(
             name_required=nameless,
             freeway=freeway,
             layers={way.osm_id: conflation.way_layer(way.tags) for way in context.ways},
+            # A count line that names another street is not this way's (`conflate`'s `names`).
+            names={way.osm_id: (way.name, way.tags.get("ref")) for way in context.ways},
         )
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
