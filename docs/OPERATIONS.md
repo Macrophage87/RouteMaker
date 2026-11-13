@@ -5815,7 +5815,9 @@ several stretches counts each. 8, 3 and 5 are our default, unmeasured
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.
 
-Closures follow the ride time (the When setting). Only closures known to be in effect
+Closures follow the ride time (the When setting); with Plan's Leave at (v0.27.0, #1239: `depart_at`
+on a bike plan, not Bikeshare or Rebalance Ride) they are those in force at that start. Go
+and rides always plan for now. Only closures known to be in effect
 reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
 away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
 around anywhere and give no warning or cue, not even when the TOPS source cannot be
