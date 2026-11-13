@@ -11407,6 +11407,12 @@ button.route-note:focus-visible {
 .bike-loop-ask input {
   width: 5em;
 }
+/* Tall enough to tap (44 px), as every control. */
+.bike-loop-ask input,
+.bike-loop-ask button {
+  min-height: 44px;
+  box-sizing: border-box;
+}
 .bike-loop-shapes {
   margin: 0.5rem 0 0;
   padding: 0;

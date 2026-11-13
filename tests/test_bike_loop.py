@@ -294,7 +294,8 @@ class TestEndpoint:
 
         def fake_ask(variant, endpoint, payload, deadline):
             answer, _graph = ask(payload, 1.0)
-            return answer, "paved"
+            # Not the ride type's own graph: the one a twin that is down fell back to.
+            return answer, "fallback-graph"
 
         def fake_trace(variant, costing, shape, deadline):
             traced_on.append(variant)
@@ -313,8 +314,8 @@ class TestEndpoint:
             client, {"start": list(START), "target_distance_m": 10 * MILE, "preset": "road-bike"}
         )
         assert answer.status_code == 200, answer.content
-        assert traced_on and set(traced_on) == {"paved"}
-        assert read_on and set(read_on) == {"paved"}
+        assert traced_on and set(traced_on) == {"fallback-graph"}
+        assert read_on and set(read_on) == {"fallback-graph"}
         assert routing._routed_graph.get() is None
 
     def test_the_roads_the_rider_closed_are_left_out(self, client, monkeypatch) -> None:
