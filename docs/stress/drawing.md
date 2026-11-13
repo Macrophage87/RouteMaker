@@ -11,11 +11,11 @@ Color is never the only cue: every tier differs in width and dash too.
 
 | Tier | Legend label | Dash (in line widths) | Width (px) |
 |---|---|---|---|
-| 1 | Comfortable for most people | solid | 2.5 |
-| 2 | Comfortable for most adults | [4, 1] | 3.25 |
-| 3 | For confident riders | [2, 0.4] | 4.25 |
-| 4 | Heavy or fast traffic | [8, 1] | 5 |
-| 5 Avoid | Legal, but best avoided | [5, 1, 0.5, 1] (dash-dot, only Avoid) | 6.5 |
+| 1 | Comfortable for everyone | solid | 2.5 |
+| 2 | Fine for adults | [4, 1] | 3.25 |
+| 3 | For experienced cyclists | [2, 0.4] | 4.25 |
+| 4 | High stress: busy, fast traffic | [8, 1] | 5 |
+| 5 Avoid | Avoid | [5, 1, 0.5, 1] (dash-dot, only Avoid) | 6.5 |
 
 Each line has a casing 1 px wider on each side (`CASING_EXTRA_PX`, `:1159-1164`). The
 accessibility switch (labeled High contrast) draws stronger: +0.5 px line, a casing 1.5 px a side, and the

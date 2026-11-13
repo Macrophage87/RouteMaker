@@ -9,6 +9,7 @@ here touches a stack, a server, GitHub or the network.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -490,6 +491,13 @@ def test_every_file_the_agent_installs_is_an_agent_file() -> None:
                 "smoke",
             ],
         ),
+        # Without a migration the api and worker are never stopped: once swapped onto the new
+        # image ("started") they are swapped back, and smoke-tested.
+        (["index_saved", "checkout", "tag_set"], ["checkout-old", "tag-old", "gate"]),
+        (
+            ["index_saved", "checkout", "tag_set", "frontend", "started"],
+            ["checkout-old", "tag-old", "gate", "restore-index", "start-app", "smoke"],
+        ),
     ],
 )
 def test_the_rollback_plan(done: list, plan: list) -> None:
@@ -598,6 +606,10 @@ case "$*" in
   "ps --status running --services") [ -n "${STUB_RUNNING:-}" ] && printf '%s\\n' $STUB_RUNNING ;;
   # STUB_PAVED_UP=1: valhalla-paved is running; STUB_IDS: this project's container ids
   "ps -q --status running valhalla-paved") [ -n "${STUB_PAVED_UP:-}" ] && echo paved1 ;;
+  # STUB_ROUTERS_UP=1: every other router is running
+  "ps -q --status running valhalla-"*) [ -n "${STUB_ROUTERS_UP:-}" ] && echo router1 ;;
+  # STUB_LIVE_OLD=1: the last map update left live_old
+  *"from pg_namespace where nspname = 'live_old'"*) echo "${STUB_LIVE_OLD:-0}" ;;
   "ps -q") [ -n "${STUB_IDS:-}" ] && printf '%s\\n' $STUB_IDS ;;
   *"--format {{.Health}}"*) echo healthy ;;
   # STUB_DBS: the database names postgis lists
@@ -642,7 +654,11 @@ STUB_DOCKER = """#!/bin/sh
 # (/saved into /dest).
 echo "docker $*" >> "$STUB_LOG"
 case "$*" in
-  "image inspect"*) [ -n "${STUB_HAS_IMAGES:-}" ] && exit 0; exit 1 ;;
+  "image inspect"*) [ -n "${STUB_HAS_IMAGES:-}" ] && exit 0
+    [ -n "${STUB_PULLED:-}" ] && [ -f "$STUB_PULLED" ] && exit 0; exit 1 ;;
+  # STUB_PULLED: a file the pull writes, after which the image is on the host; STUB_PULL_RC fails it
+  pull*) [ -n "${STUB_PULL_RC:-}" ] && exit "$STUB_PULL_RC"
+    [ -n "${STUB_PULLED:-}" ] && : > "$STUB_PULLED"; exit 0 ;;
   "image ls"*) [ -n "${STUB_IMAGE_TAGS:-}" ] && printf '%s\n' $STUB_IMAGE_TAGS; exit 0 ;;
   build*)
     if [ -n "${STUB_BUILD_FAIL_ONCE:-}" ] && [ ! -f "$STUB_BUILD_FAIL_ONCE" ]; then
@@ -655,7 +671,7 @@ case "$*" in
     printf '%s\n' "${STUB_STATS:-}" | tr '|' '\n'; exit 0 ;;
   inspect*) echo "stub/postgis:16"; exit 0 ;;
   run*)
-    out=""; src=""; dest=""; saved=""; prev=""
+    out=""; src=""; dest=""; saved=""; tiles=""; prev=""
     for a in "$@"; do
       if [ "$prev" = "-v" ]; then
         case "$a" in
@@ -663,10 +679,21 @@ case "$*" in
           *:/src:ro) src=${a%:/src:ro} ;;
           *:/dest) dest=${a%:/dest} ;;
           *:/saved:ro) saved=${a%:/saved:ro} ;;
+          *:/tiles) tiles=${a%:/tiles} ;;
         esac
       fi
       prev=$a
     done
+    if [ -n "$tiles" ]; then
+      # the link move: its script, run against the host directory mounted as /tiles
+      seen=0
+      while [ $# -gt 0 ]; do
+        if [ "$seen" = 1 ]; then script=$1; shift; break; fi
+        [ "$1" = -c ] && seen=1; shift
+      done
+      script=$(printf '%s' "$script" | sed "s|/tiles|$tiles|g")
+      exec sh -c "$script" "$@"
+    fi
     if [ -n "$out" ]; then
       [ -n "${STUB_FRONTEND_RC:-}" ] && exit "$STUB_FRONTEND_RC"
       mkdir -p "$out/assets"; echo x > "$out/assets/app-1.js"
@@ -691,6 +718,10 @@ while [ $# -gt 0 ]; do
 done
 echo "curl $url" >> "$STUB_LOG"
 case "$url" in
+  # the image's attestations: $STUB_ATTEST (a JSON file) with code $STUB_ATTEST_CODE [200]
+  https://api.github.com/*/attestations/*)
+    [ -n "$out" ] && cat "${STUB_ATTEST:-/dev/null}" > "$out"
+    printf '%s' "${STUB_ATTEST_CODE:-200}" ;;
   https://api.github.com/*)
     [ -n "$out" ] && cat "$STUB_CI" > "$out"
     printf '%s' "${STUB_CI_CODE:-200}" ;;
@@ -714,6 +745,9 @@ exec REAL_DATE "$@"
 GITHUB = "https://github.com/Macrophage87/RouteMaker.git"
 API = "ghcr.io/macrophage87/routemaker-api"
 ROUTERS = "valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+# A migration file: a release carrying one is deployed with the stop and the snapshot; any other
+# release keeps the api and worker running and swaps them onto the new image.
+MIG = {"src/core/migrations/0002_two.py": "from django.db import migrations\n"}
 
 
 class Beta:
@@ -1027,7 +1061,7 @@ def test_a_build_that_fails_once_is_tried_again_and_deploys(beta: Beta) -> None:
 def test_a_failure_after_the_stop_rolls_back_and_starts_the_old_release(beta: Beta) -> None:
     # The image is "there", so the deploy goes on to stop the app; the snapshot then fails
     # (the stub compose reports no postgis running) and the agent rolls back.
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1")
     assert done.returncode == 1, done.stdout
     assert "rolled-back" in beta.status(), done.stdout
@@ -1048,7 +1082,7 @@ def _order(calls: str, *needles: str) -> None:
 
 
 def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> None:
-    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status(), done.stdout
@@ -1077,6 +1111,66 @@ def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> N
     assert "up-to-date: v0.2.0" in beta.status()
     # the deploy's report outlives the idle pass after it
     assert "result: deployed: v0.2.0" in (beta.cd / "last-release-report.txt").read_text()
+
+
+def test_a_release_without_a_migration_never_stops_the_api_or_snapshots(beta: Beta) -> None:
+    # Backlog 2026-11-12, area 09 item 3: no "Router unavailable" gap for a plain code release.
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status(), done.stdout
+    calls = beta.calls()
+    assert "stop api worker" not in calls and "pg_dump" not in calls
+    assert not list((beta.cd / "backups").glob("pre-release-*.dump"))
+    assert "swap the api and worker onto the new image" in done.stdout
+    _order(
+        calls,
+        "migrate ./manage.py migrate --check",
+        "up -d api worker",
+        "exec -T api ./manage.py migrate --check",
+        "smoke --local",
+    )
+    assert beta.head() == sha and f"TAG={sha[:12]}\n" in (beta.src / ".env").read_text()
+
+
+def test_a_quick_deploy_that_fails_swaps_back_to_the_old_release(beta: Beta) -> None:
+    beta.release(
+        "v0.2.0", {"src/core/a.py": "x = 2\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS}
+    )
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 1
+    assert "rolled-back" in beta.status(), done.stdout
+    calls = beta.calls()
+    assert "stop api worker" not in calls and "pg_restore" not in calls
+    assert calls.count("up -d api worker") == 2
+    assert calls.index("smoke-new --local") < calls.rindex("up -d api worker")
+    assert calls.rindex("up -d api worker") < calls.index("smoke --local")
+    assert beta.head() == beta.v1 and f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+
+
+def test_a_pending_migration_without_a_migration_file_fails_before_the_api_moves(
+    beta: Beta,
+) -> None:
+    # Never a migration without its snapshot: the deploy stops before `up -d` and puts the
+    # checkout and TAG back; the running api was never touched.
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
+    assert done.returncode == 1
+    assert "a migration is pending although the release carries no migration file" in done.stdout
+    assert "rolled-back" in beta.status()
+    calls = beta.calls()
+    assert "migrate --noinput" not in calls and "up -d api worker" not in calls
+    assert "stop api worker" not in calls
+    assert beta.head() == beta.v1 and f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+
+
+def test_always_stop_keeps_the_stop_and_snapshot_for_every_release(beta: Beta) -> None:
+    with beta.vars.open("a") as f:
+        f.write("export RM_CD_ALWAYS_STOP=1\n")
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    _order(beta.calls(), "stop api worker", "pg_dump", "up -d api worker", "smoke --local")
 
 
 def test_a_release_that_changes_the_agent_reinstalls_it_after_the_deploy(beta: Beta) -> None:
@@ -1123,7 +1217,7 @@ def test_a_deploy_prunes_old_images_and_node_modules_but_not_the_previous(beta: 
 def test_a_deployed_release_s_files_are_readable_by_the_containers(beta: Beta) -> None:
     """The pass runs under umask 077; the v0.8.1 deploy checked out an owner-only manage.py,
     which the migrate container could not read."""
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", "src/core/b.py": "y = 1\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", "src/core/b.py": "y = 1\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
     assert "deployed: v0.2.0" in beta.status(), done.stdout + done.stderr
     for name in ("src/core/a.py", "src/core/b.py"):
@@ -1179,7 +1273,8 @@ def test_a_code_release_runs_no_predraw(beta: Beta) -> None:
 
 def test_a_failed_smoke_test_after_a_migration_restores_the_snapshot(beta: Beta) -> None:
     beta.release(
-        "v0.2.0", {"src/core/a.py": "x = 2\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS}
+        "v0.2.0",
+        {"src/core/a.py": "x = 2\n", "scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS, **MIG},
     )
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
     assert done.returncode == 1
@@ -1477,6 +1572,12 @@ def test_the_runbook_documents_continuous_deployment() -> None:
         "git tag -a",
         "restore-dump",
         "OWNER-DECISIONS 431",
+        '"$A" rollback',
+        '"$A" rollback-map',
+        '"$A" ship-held',
+        "RM_CD_ALWAYS_STOP=1",
+        ".github/workflows/release.yml",
+        "Required reviewers",
     ):
         assert needle in section, needle
 
@@ -1750,7 +1851,7 @@ def test_a_new_lockfile_waits_even_when_the_old_one_has_node_modules(beta: Beta)
 
 def test_a_front_end_release_is_built_before_the_stop_and_installed(beta: Beta) -> None:
     beta.node_modules(b"{}\n")
-    sha = beta.release("v0.2.0", {"frontend/src/x.ts": "export {}\n"})
+    sha = beta.release("v0.2.0", {"frontend/src/x.ts": "export {}\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
@@ -1829,7 +1930,7 @@ def test_a_new_tag_on_the_deployed_commit_is_only_recorded(beta: Beta) -> None:
 
 
 def test_a_pass_stopped_mid_deploy_records_it_and_the_next_pass_rolls_it_back(beta: Beta) -> None:
-    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
     done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE="TERM", **run)
     assert done.returncode == 143, done.stdout + done.stderr
@@ -1856,7 +1957,7 @@ def test_a_pass_stopped_mid_deploy_records_it_and_the_next_pass_rolls_it_back(be
 
 
 def test_a_pass_killed_outright_mid_deploy_is_rolled_back_next_time(beta: Beta) -> None:
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
     done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE="KILL", **run)
     assert done.returncode == -9
@@ -2054,7 +2155,7 @@ def test_a_docs_only_release_whose_compose_gate_fails_is_not_recorded(beta: Beta
 
 
 def test_a_code_release_whose_compose_gate_fails_is_rolled_back(beta: Beta) -> None:
-    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_GATE_FAIL=sha[:12])
     assert done.returncode == 1, done.stdout + done.stderr
     assert "FAILED: the compose gate" in done.stdout
@@ -2070,7 +2171,7 @@ def test_a_code_release_whose_compose_gate_fails_is_rolled_back(beta: Beta) -> N
 
 @pytest.mark.parametrize(("sig", "rc"), [("TERM", 143), ("INT", 130), ("HUP", 129)])
 def test_each_stop_signal_leaves_an_interrupted_record(beta: Beta, sig: str, rc: int) -> None:
-    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
     run = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
     done = beta.agent("run", session=True, STUB_KILL_AT_MIGRATE=sig, **run)
     assert done.returncode == rc, done.stdout + done.stderr
@@ -2338,20 +2439,25 @@ def test_a_deploy_also_posts_the_releases_notes_for_riders(beta: Beta) -> None:
 
 
 # What a full code deploy needs from the stubs (as in the green code release test).
-DEPLOY = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
+DEPLOY = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis"}
 
 
 def test_a_deploy_refreshes_the_installed_alert_script_first(beta: Beta) -> None:
     _alert_stub(beta)
     _release_hook(beta)
     newer = STUB_ALERT.replace("printf '%s|'", "printf 'new|' >> \"$STUB_ALERTS\"; printf '%s|'")
-    beta.release("v0.2.0", {"scripts/beta/alert.sh": newer})
+    # A migration, so the api is stopped and riders are told (a release without one swaps in place).
+    beta.release("v0.2.0", {"scripts/beta/alert.sh": newer, **MIG})
     done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
     assert done.returncode == 0, done.stdout + done.stderr
     assert (beta.cd / "bin" / "alert.sh").read_text() == newer
     sent = _alerts(beta)
+    # The riders' "updating" goes out before the new copy is in, from the copy then installed.
+    assert sent[0] == "status|updating|"
+    sent = sent[1:]
     assert sent and all(line.startswith("new|") for line in sent)
     assert any(line.startswith("new|release-notes|v0.2.0|") for line in sent), sent
+    assert "new|status|done|" in sent
 
 
 def test_release_notes_are_retried_on_an_up_to_date_pass(beta: Beta) -> None:
@@ -2545,3 +2651,595 @@ def test_a_failing_bot_changelog_is_reported_and_retried(beta: Beta) -> None:
     beta.agent("run", **env)
     assert sum(" changelog " in line for line in _reports(beta)) == 2
     assert any(line.startswith("clear|release-notes|") for line in _alerts(beta))
+
+
+# --- rollback: the owner's one command (backlog 2026-11-12, area 09 item 10) ---
+
+UP = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis"}
+
+
+def test_rollback_puts_the_previous_release_back_and_holds_the_undone_one(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    assert beta.agent("run", **UP).returncode == 0
+    beta.log.unlink()
+    dry = beta.agent("rollback", "--dry-run", **UP)
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert "v0.1.0 would be put back over v0.2.0" in dry.stdout
+    assert "up -d" not in beta.calls() and (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.1.0" in beta.status() and "rolled back from v0.2.0" in beta.status()
+    assert beta.head() == beta.v1 and f"TAG={beta.v1[:12]}\n" in (beta.src / ".env").read_text()
+    calls = beta.calls()
+    # no migration either way: the api is swapped, never stopped, and the database left alone
+    assert "stop api worker" not in calls and "pg_restore" not in calls
+    _order(calls, "up -d api worker", "smoke --local")
+    assert (beta.cd / "hold" / "v0.2.0").exists()
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status()
+    assert beta.head() == beta.v1
+
+
+def test_rollback_needs_a_database_choice_when_the_release_carried_a_migration(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
+    assert beta.agent("run", **UP, STUB_PENDING="1").returncode == 0
+    snapshot = (beta.cd / "deployed-snapshot").read_text().strip()
+    assert Path(snapshot).is_file() and "pre-release-" in snapshot
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 1
+    assert "--keep-db" in beta.status() and "--restore-db" in beta.status()
+    assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    beta.log.unlink()
+    done = beta.agent("rollback", "--restore-db", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "everything changed since is LOST" in done.stdout
+    calls = beta.calls()
+    # the database as it is now is snapshotted first, then the one from before v0.2.0 goes back
+    _order(calls, "stop api worker", "pg_dump", "pg_restore", "up -d api worker", "smoke --local")
+    assert "predraw_stress_tiles" in calls
+    assert "deployed: v0.1.0" in beta.status() and beta.head() == beta.v1
+
+
+def test_rollback_keep_db_leaves_the_database_and_never_stops_the_api(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
+    assert beta.agent("run", **UP, STUB_PENDING="1").returncode == 0
+    beta.log.unlink()
+    done = beta.agent("rollback", "--keep-db", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    calls = beta.calls()
+    assert "stop api worker" not in calls and "pg_restore" not in calls
+    assert "deployed: v0.1.0" in beta.status()
+
+
+def test_a_rollback_that_fails_puts_the_deployed_release_back(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    assert beta.agent("run", **UP).returncode == 0
+    done = beta.agent("rollback", **UP, STUB_GATE_FAIL=beta.v1[:12])
+    assert done.returncode == 1
+    assert "the rollback to v0.1.0 failed, and v0.2.0 is running again" in beta.status()
+    assert beta.head() == sha and (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    assert not (beta.cd / "hold" / "v0.2.0").exists()
+
+
+def test_rollback_over_a_hand_shipped_map_release_needs_force(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"lua/tags.lua": "-- new\n"})
+    beta.agent("run")
+    assert "held: v0.2.0" in beta.status()
+    git(beta.src, "fetch", "-q", "--tags", "origin")
+    git(beta.src, "checkout", "-q", "--detach", "v0.2.0")
+    env = (beta.src / ".env").read_text().replace(f"TAG={beta.v1[:12]}", f"TAG={sha[:12]}")
+    (beta.src / ".env").write_text(env)
+    assert beta.agent("mark-deployed", "v0.2.0").returncode == 0
+    # mark-deployed records what ran before the hand ship, for rollback
+    assert (beta.cd / "previous-tag").read_text() == "v0.1.0\n"
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 1
+    assert "outside the code: lua/tags.lua" in done.stdout and "rollback-map" in beta.status()
+    done = beta.agent("rollback", "--force", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.1.0" in beta.status() and beta.head() == beta.v1
+
+
+def test_rollback_without_a_previous_release_or_with_both_db_flags_is_refused(beta: Beta) -> None:
+    done = beta.agent("rollback", **UP)
+    assert done.returncode == 1 and "no previous release recorded" in beta.status()
+    done = beta.agent("rollback", "--keep-db", "--restore-db")
+    assert done.returncode == 2 and "not both" in done.stderr
+
+
+# --- rollback-map: the owner's one command for the map (area 09 item 10) ---
+
+
+def _two_builds(beta: Beta, variant: str = "standard") -> Path:
+    d = beta.data / "tiles" / variant
+    for build in ("b1", "b2"):
+        (d / build).mkdir(parents=True)
+    (d / "current").symlink_to("b2")
+    (d / "previous").symlink_to("b1")
+    return d
+
+
+def test_rollback_map_trades_the_graphs_and_tables_and_a_second_run_undoes_it(beta: Beta) -> None:
+    std = _two_builds(beta)
+    mtb = _two_builds(beta, "mtb")
+    env = {**UP, "STUB_ROUTERS_UP": "1", "STUB_LIVE_OLD": "1"}
+    dry = beta.agent("rollback-map", "--dry-run", **env)
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert (
+        "graph standard: b2 now, back to b1" in dry.stdout and "live_old trade names" in dry.stdout
+    )
+    assert (std / "current").readlink() == Path("b2") and "RENAME" not in beta.calls()
+    done = beta.agent("rollback-map", **env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "map-rolled-back" in beta.status()
+    for d in (std, mtb):
+        assert (d / "current").readlink() == Path("b1") and (d / "previous").readlink() == Path(
+            "b2"
+        )
+    calls = beta.calls()
+    assert (
+        "ALTER SCHEMA live_old RENAME TO live" in calls
+        and "TRUNCATE public.stress_tile_cache" in calls
+    )
+    # links, then tables, then the rows, routers one at a time (the trail one too), pre-draw, smoke
+    _order(
+        calls,
+        "-v " + str(beta.data / "tiles") + ":/tiles",
+        "RENAME TO live_swap",
+        "sync_upstreams",
+        "restart valhalla-standard",
+        "restart valhalla-mtb",
+        "predraw_stress_tiles",
+        "smoke --local",
+    )
+    assert "restart valhalla-standard valhalla" not in calls
+    again = beta.agent("rollback-map", **env)
+    assert again.returncode == 0, again.stdout
+    assert (std / "current").readlink() == Path("b2")
+
+
+def test_rollback_map_without_live_old_or_with_graphs_only_leaves_the_tables(beta: Beta) -> None:
+    std = _two_builds(beta)
+    done = beta.agent("rollback-map", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "there is no live_old" in done.stdout and "RENAME" not in beta.calls()
+    assert (std / "current").readlink() == Path("b1")
+    assert "predraw_stress_tiles" not in beta.calls()
+    done = beta.agent("rollback-map", "--graphs-only", **UP, STUB_LIVE_OLD="1")
+    assert done.returncode == 0 and "RENAME" not in beta.calls()
+    assert (std / "current").readlink() == Path("b2")
+
+
+def test_rollback_map_with_nothing_to_go_back_to_changes_nothing(beta: Beta) -> None:
+    done = beta.agent("rollback-map", **UP)
+    assert done.returncode == 1 and "nothing to go back to" in beta.status()
+    assert "docker run" not in beta.calls()
+
+
+# --- the image the release workflow built (the owner, 2026-11-12) ---
+
+DIGEST = "ghcr.io/macrophage87/routemaker-api@sha256:" + "ab" * 32
+
+
+def test_the_tag_s_image_line_is_read_exactly() -> None:
+    assert cd_logic.tag_image(f"Release v0.2.0\n\napi-image: {DIGEST}\n") == DIGEST
+    assert cd_logic.tag_image("Release v0.2.0\n") is None
+    assert cd_logic.tag_image(f"api-image: {DIGEST}\napi-image: {DIGEST}\n") is None
+    other = "api-image: ghcr.io/someone/else@sha256:" + "ab" * 32
+    assert cd_logic.tag_image(other) is None
+    assert cd_logic.tag_image(f"api-image: {DIGEST[:-1]}\n") is None
+    assert cd_logic.tag_image(DIGEST.replace("@sha256:", ":") + "\n") is None
+
+
+@pytest.mark.parametrize(
+    "path", ["docker/api.Dockerfile", "docker/requirements.txt", "docker/api-entrypoint.sh"]
+)
+def test_an_image_file_change_deploys_only_with_the_workflow_s_image(path: str) -> None:
+    assert _gate({path: ("a", "b")})["verdict"] == "stop"
+    changes = [("M", path)]
+    result = cd_logic.gate(changes, lambda side, p: "x", "", ci_image=True)
+    assert result["verdict"] == "deploy" and any("pulled" in n for n in result["notes"])
+    # it never lets anything else through
+    lua = cd_logic.gate([("M", "lua/tags.lua")], lambda side, p: "x", "", ci_image=True)
+    assert lua["verdict"] == "stop"
+
+
+COMMIT = "c0" * 20
+SIGNER = "https://github.com/Macrophage87/RouteMaker/.github/workflows/release.yml@refs/heads/main"
+
+
+def _der(tag: int, body: bytes) -> bytes:
+    n = len(body)
+    if n < 0x80:
+        return bytes([tag, n]) + body
+    size = n.to_bytes((n.bit_length() + 7) // 8, "big")
+    return bytes([tag, 0x80 | len(size)]) + size + body
+
+
+def _fake_cert(signer: str = SIGNER, commit: str = COMMIT) -> bytes:
+    """A certificate-shaped DER: TBS with an extensions block holding Fulcio's two extensions."""
+
+    def ext(oid: str, text: str) -> bytes:
+        value = _der(0x04, _der(0x0C, text.encode()))
+        return _der(0x30, _der(0x06, cd_logic._der_oid(oid)) + value)
+
+    exts = ext(cd_logic.FULCIO_BUILD_SIGNER_URI, signer) + ext(
+        cd_logic.FULCIO_SOURCE_DIGEST, commit
+    )
+    tbs = _der(0x30, _der(0xA0, _der(0x02, b"\x02")) + _der(0xA3, _der(0x30, exts)))
+    return _der(0x30, tbs + _der(0x30, b"") + _der(0x03, b"\x00"))
+
+
+def _attestations(
+    digest: str = DIGEST,
+    ref: str = "refs/heads/main",
+    path: str = ".github/workflows/release.yml",
+    repo: str = "https://github.com/Macrophage87/RouteMaker",
+    commit: str = COMMIT,
+    cert: bytes | None = None,
+) -> dict:
+    statement = {
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [{"name": digest.split("@")[0], "digest": {"sha256": digest.split(":")[-1]}}],
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {
+            "buildDefinition": {
+                "externalParameters": {"workflow": {"ref": ref, "repository": repo, "path": path}},
+                "resolvedDependencies": [
+                    {"uri": f"git+{repo}@{ref}", "digest": {"gitCommit": commit}}
+                ],
+            }
+        },
+    }
+    payload = base64.b64encode(json.dumps(statement).encode()).decode()
+    raw = base64.b64encode(_fake_cert(commit=commit) if cert is None else cert).decode()
+    bundle = {
+        "dsseEnvelope": {"payload": payload},
+        "verificationMaterial": {"certificate": {"rawBytes": raw}},
+    }
+    return {"attestations": [{"bundle": bundle}]}
+
+
+def test_the_image_s_provenance_must_name_the_release_workflow_on_main() -> None:
+    repo = "Macrophage87/RouteMaker"
+    assert cd_logic.provenance_ok(_attestations(), DIGEST, repo, COMMIT)
+    assert not cd_logic.provenance_ok(_attestations(ref="refs/heads/other"), DIGEST, repo, COMMIT)
+    assert not cd_logic.provenance_ok(
+        _attestations(path=".github/workflows/x.yml"), DIGEST, repo, COMMIT
+    )
+    assert not cd_logic.provenance_ok(
+        _attestations(repo="https://github.com/someone/fork"), DIGEST, repo, COMMIT
+    )
+    other = DIGEST[:-2] + "cd"
+    assert not cd_logic.provenance_ok(_attestations(digest=other), DIGEST, repo, COMMIT)
+    assert not cd_logic.provenance_ok({"attestations": [{"bundle": {}}]}, DIGEST, repo, COMMIT)
+    assert not cd_logic.provenance_ok({}, DIGEST, repo, COMMIT)
+
+
+def test_the_image_must_be_built_from_the_tag_s_commit() -> None:
+    # Before: a genuine image from another commit passed. After: the statement's commit and the
+    # signing certificate's source digest must both be the tag's commit.
+    repo = "Macrophage87/RouteMaker"
+    elsewhere = "d1" * 20
+    assert not cd_logic.provenance_ok(_attestations(commit=elsewhere), DIGEST, repo, COMMIT)
+    mixed = _attestations(cert=_fake_cert(commit=elsewhere))
+    assert not cd_logic.provenance_ok(mixed, DIGEST, repo, COMMIT)
+
+
+def test_the_signing_certificate_must_be_the_release_workflow_s() -> None:
+    # Before: a statement claiming release.yml passed whoever signed it. After: the certificate's
+    # build signer must be release.yml on main; another workflow cannot sign for it.
+    repo = "Macrophage87/RouteMaker"
+    other = SIGNER.replace("release.yml", "other.yml")
+    assert not cd_logic.provenance_ok(
+        _attestations(cert=_fake_cert(signer=other)), DIGEST, repo, COMMIT
+    )
+    no_cert = _attestations()
+    del no_cert["attestations"][0]["bundle"]["verificationMaterial"]
+    assert not cd_logic.provenance_ok(no_cert, DIGEST, repo, COMMIT)
+    chain = _attestations()
+    raw = chain["attestations"][0]["bundle"]["verificationMaterial"].pop("certificate")
+    chain["attestations"][0]["bundle"]["verificationMaterial"]["x509CertificateChain"] = {
+        "certificates": [raw]
+    }
+    assert cd_logic.provenance_ok(chain, DIGEST, repo, COMMIT)
+    assert cd_logic.cert_extensions(b"\x30\xff garbage") == {}
+
+
+def _workflow_release(beta: Beta, files: dict[str, str]) -> str:
+    sha = commit(beta.origin, files)
+    git(beta.origin, "tag", "-a", "v0.2.0", "-m", f"Release v0.2.0\n\napi-image: {DIGEST}")
+    beta.sha = sha
+    beta.green()
+    return sha
+
+
+def test_a_workflow_tag_pulls_its_image_and_deploys_a_dockerfile_change(beta: Beta) -> None:
+    sha = _workflow_release(beta, {"docker/requirements.txt": "django==9\n"})
+    pulled = beta.tmp / "pulled"
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations(commit=sha)))
+    done = beta.agent(
+        "run", STUB_RUNNING="postgis", STUB_PULLED=str(pulled), STUB_ATTEST=str(attest)
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    calls = beta.calls()
+    assert f"docker pull {DIGEST}" in calls
+    assert f"docker tag {DIGEST} {API}:{sha[:12]}" in calls
+    assert "docker build -f" not in calls
+    assert f"docker image rm {DIGEST}" in calls  # the tag alone holds it, so pruning frees it
+    _order(calls, "/attestations/sha256:", "docker pull", "up -d api worker", "smoke --local")
+
+
+def test_an_image_without_the_workflow_s_provenance_is_held_and_never_pulled(beta: Beta) -> None:
+    _workflow_release(beta, {"docker/requirements.txt": "django==9\n"})
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations(ref="refs/heads/someone")))
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_ATTEST=str(attest))
+    assert "held: v0.2.0" in beta.status(), done.stdout
+    assert "docker pull" not in beta.calls() and "up -d" not in beta.calls()
+    beta.agent("retry", "v0.2.0")
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_ATTEST_CODE="404")
+    assert "held: v0.2.0" in beta.status() and "docker pull" not in beta.calls()
+
+
+def test_a_pull_that_fails_waits_and_touches_nothing(beta: Beta) -> None:
+    sha = _workflow_release(beta, {"src/core/a.py": "x = 2\n"})
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations(commit=sha)))
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_PULL_RC="1", STUB_ATTEST=str(attest))
+    assert done.returncode == 0, done.stdout
+    assert "waiting" in beta.status() and "could not check or pull" in beta.status()
+    calls = beta.calls()
+    assert "up -d" not in calls and "docker build -f" not in calls and beta.head() == beta.v1
+
+
+def test_a_hand_made_tag_still_holds_a_dockerfile_change(beta: Beta) -> None:
+    beta.release("v0.2.0", {"docker/api.Dockerfile": "FROM x\n"})
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status()
+    assert "docker pull" not in beta.calls()
+
+
+def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval() -> None:
+    import yaml
+
+    wf = yaml.safe_load((REPO / ".github" / "workflows" / "release.yml").read_text())
+    assert wf["permissions"] == {}
+    jobs = wf["jobs"]
+    # the one job that publishes waits for the `release` environment's reviewer, and the tag
+    # can only follow it
+    assert jobs["image"]["environment"] == "release"
+    assert jobs["image"]["permissions"] == {
+        "contents": "read",
+        "packages": "write",
+        "id-token": "write",
+        "attestations": "write",
+    }
+    assert any("attest-build-provenance" in st.get("uses", "") for st in jobs["image"]["steps"])
+    assert "image" in jobs["tag"]["needs"] and jobs["tag"]["permissions"] == {"contents": "write"}
+    for name, job in jobs.items():
+        if name != "image":
+            for scope in ("packages", "id-token", "attestations"):
+                assert scope not in job.get("permissions", {}), (name, scope)
+        if name != "tag":
+            assert job["permissions"].get("contents") == "read", name
+        for step in job["steps"]:
+            # pinned by commit, and no expression pasted into a script (inputs come in by env)
+            if "uses" in step:
+                assert re.search(r"@[0-9a-f]{40}$", step["uses"]), step["uses"]
+            assert "${{" not in step.get("run", ""), (name, step.get("name"))
+    # the tag line is the one the agent reads
+    assert "api-image: %s" in jobs["tag"]["steps"][0]["run"]
+    assert cd_logic.TAG_IMAGE.pattern.startswith("(?m)^api-image: ")
+
+
+# --- ship-held: a release that carries a map, by one command (area 09 item 2) ---
+
+STUB_IMPORT = """#!/bin/sh
+echo "import $*" >> "$STUB_LOG"
+case "$*" in *--swap*) exit "${STUB_SWAP_RC:-0}" ;; esac
+exit "${STUB_IMPORT_RC:-0}"
+"""
+RUN = "s3://bucket/rebuild-checkpoints/transfer/cloud-20261112a"
+
+
+def test_a_map_stop_is_a_map_reason_and_nginx_is_not() -> None:
+    lua = _gate({"lua/tags.lua": ("a", "b")})
+    assert lua["verdict"] == "stop" and lua["map_reasons"] == lua["reasons"]
+    nginx = _gate({"deploy/beta/401.html": ("a", "b")})
+    assert nginx["verdict"] == "stop" and nginx["map_reasons"] == []
+
+
+def _map_release(beta: Beta, extra: dict[str, str] | None = None) -> str:
+    sha = beta.release(
+        "v0.2.0",
+        {
+            "lua/tags.lua": "-- new\n",
+            "scripts/cloud/import-result.sh": STUB_IMPORT,
+            **(extra or {}),
+        },
+    )
+    (beta.origin / "scripts/cloud/import-result.sh").chmod(0o755)
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status()
+    return sha
+
+
+def test_ship_held_deploys_the_code_then_installs_and_swaps_the_map(beta: Beta) -> None:
+    sha = _map_release(beta)
+    dry = beta.agent("ship-held", "v0.2.0", "--map", RUN, "--dry-run", **UP)
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert (
+        "needs a map: lua/tags.lua" in dry.stdout and "then install and swap the map" in dry.stdout
+    )
+    assert beta.head() == beta.v1 and "import" not in beta.calls()
+    nomap = beta.agent("ship-held", "v0.2.0", **UP)
+    assert nomap.returncode == 1 and "give --map RUN_URL" in beta.status()
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, "--allow-sha-mismatch", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status() and "with the map from" in beta.status()
+    assert beta.head() == sha and (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    calls = beta.calls()
+    _order(
+        calls,
+        "up -d api worker",
+        "smoke --local",
+        f"import --beta --state {beta.state} --allow-sha-mismatch {RUN}",
+        f"import --beta --state {beta.state} --allow-sha-mismatch --swap {RUN}",
+    )
+    assert not (beta.cd / "hold" / "v0.2.0").exists() and not (beta.cd / "PAUSED").exists()
+    beta.agent("run", **UP)
+    assert "up-to-date: v0.2.0" in beta.status()
+
+
+def test_ship_held_keeps_a_pause_it_did_not_make(beta: Beta) -> None:
+    _map_release(beta)
+    beta.agent("pause", "by hand")
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "import" not in beta.calls() and (beta.cd / "PAUSED").exists()
+
+
+def test_a_failed_map_swap_leaves_the_code_live_and_the_agent_paused(beta: Beta) -> None:
+    _map_release(beta)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_SWAP_RC="1")
+    assert done.returncode == 1
+    assert "the map swap failed" in beta.status() and "rollback-map" in beta.status()
+    assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_a_map_that_does_not_download_never_reaches_the_swap(beta: Beta) -> None:
+    _map_release(beta)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_IMPORT_RC="1")
+    assert done.returncode == 1
+    assert "the map did not download or verify" in beta.status()
+    assert "--swap" not in beta.calls()
+    assert (beta.cd / "deployed-tag").read_text() == "v0.2.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_code_that_fails_rolls_back_and_installs_no_map(beta: Beta) -> None:
+    _map_release(beta, {"scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS})
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert done.returncode == 1
+    assert "rolled-back" in beta.status() and "no map was installed" in beta.status()
+    assert "import" not in beta.calls()
+    assert beta.head() == beta.v1 and (beta.cd / "deployed-tag").read_text() == "v0.1.0\n"
+    assert (beta.cd / "PAUSED").exists() and not (beta.cd / "BROKEN").exists()
+
+
+def test_ship_held_whose_rollback_fails_is_broken(beta: Beta) -> None:
+    _map_release(beta, {"scripts/beta/smoke-test.sh": STUB_SMOKE_FAILS})
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_GATE_FAIL=beta.v1[:12])
+    assert done.returncode == 1
+    assert "broken" in beta.status() and (beta.cd / "BROKEN").exists()
+    assert "import" not in beta.calls()
+    # and nothing else runs until the owner has looked
+    again = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert again.returncode == 1 and "a rollback failed earlier" in beta.status()
+
+
+def test_ship_held_whose_build_fails_leaves_the_old_release_untouched(beta: Beta) -> None:
+    _map_release(beta)
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", STUB_RUNNING="postgis", STUB_BUILD_RC="1")
+    assert done.returncode == 1
+    assert "could not be exported or built" in beta.status()
+    assert "up -d" not in beta.calls() and "stop api" not in beta.calls()
+    assert beta.head() == beta.v1 and (beta.cd / "deployed-tag").read_text() == "v0.1.0\n"
+    assert (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_tag_whose_ci_is_not_green(beta: Beta) -> None:
+    _map_release(beta)
+    beta.green(conclusion="failure")
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "not green" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_tag_off_main(beta: Beta) -> None:
+    git(beta.origin, "checkout", "-q", "-b", "side")
+    beta.release("v0.2.0", {"lua/tags.lua": "-- new\n"})
+    git(beta.origin, "checkout", "-q", "main")
+    beta.agent("run", **UP)
+    beta.log.unlink(missing_ok=True)
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "is not on main" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_refuses_a_release_that_needs_nginx_and_changes_nothing(beta: Beta) -> None:
+    beta.release("v0.2.0", {"deploy/beta/401.html": "<p>x</p>\n"})
+    beta.agent("run", **UP)
+    beta.log.unlink()
+    done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
+    assert done.returncode == 1 and "needs the owner by hand: deploy/beta/401.html" in done.stdout
+    assert "up -d" not in beta.calls() and beta.head() == beta.v1
+    assert not (beta.cd / "PAUSED").exists()
+
+
+def test_rollback_map_that_fails_part_way_marks_broken_with_what_moved(beta: Beta) -> None:
+    std = _two_builds(beta)  # "standard" sorts after "mtb", so mtb moves first
+    odd = beta.data / "tiles" / "mtb"
+    (odd / "b1").mkdir(parents=True)
+    (odd / "current").symlink_to("b1")
+    (odd / "previous").symlink_to("b@0")  # a name the move refuses
+    done = beta.agent("rollback-map", **UP)
+    assert done.returncode == 1
+    assert "stopped part-way" in beta.status() and (beta.cd / "BROKEN").exists()
+    assert (std / "current").readlink() == Path("b2")  # nothing after the failure moved
+    assert "restart valhalla" not in beta.calls()
+
+
+def test_ship_held_refuses_a_migration_that_reads_the_map_tables(beta: Beta) -> None:
+    beta.release(
+        "v0.2.0",
+        {
+            "lua/tags.lua": "-- new\n",
+            "src/core/migrations/0002_live.py": "# reads LIVE_SCHEMA\n",
+        },
+    )
+    beta.agent("run", **UP)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert done.returncode == 1 and "must run after the new map" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
+
+
+def test_riders_see_updating_from_the_stop_until_the_pass_ends(beta: Beta) -> None:
+    """A release with a migration stops the api; riders see "Updating" until the pass ends."""
+    _alert_stub(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
+    done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    sent = _alerts(beta)
+    assert sent.index("status|updating|") < sent.index("status|done|")
+    assert not (beta.cd / "rider-updating").exists()
+    # an idle pass after it says nothing to riders
+    (beta.tmp / "alerts.log").unlink()
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert not any(line.startswith("status|") for line in _alerts(beta))
+
+
+def test_a_release_swapped_in_place_tells_riders_nothing(beta: Beta) -> None:
+    _alert_stub(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not any(line.startswith("status|") for line in _alerts(beta))
+
+
+def test_a_genuine_image_built_from_another_commit_is_held(beta: Beta) -> None:
+    _workflow_release(beta, {"src/core/a.py": "x = 2\n"})
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations(commit=beta.v1)))  # built from the old release
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_ATTEST=str(attest))
+    assert "held: v0.2.0" in beta.status(), done.stdout
+    assert "from this commit" in beta.status()
+    assert "docker pull" not in beta.calls() and "up -d" not in beta.calls()

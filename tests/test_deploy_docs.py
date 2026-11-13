@@ -1920,3 +1920,44 @@ def test_the_package_version_is_one_number_in_both_places() -> None:
     lock = json.loads((root / "frontend/package-lock.json").read_text())
     shown = {package["version"], lock["version"], lock["packages"][""]["version"]}
     assert shown == {routemaker.__version__}
+    # The phone shell's package files and the connector's own version follow it too
+    # (scripts/bump_version.py sets them all).
+    phone = json.loads((root / "mobile/package.json").read_text())
+    phone_lock = json.loads((root / "mobile/package-lock.json").read_text())
+    assert {phone["version"], phone_lock["version"], phone_lock["packages"][""]["version"]} == {
+        routemaker.__version__
+    }
+    server = re.search(
+        r'(?m)^SERVER_VERSION = "([^"]+)"$', (root / "mcp/routemaker_mcp.py").read_text()
+    )
+    assert server and server.group(1) == routemaker.__version__
+
+
+def test_bump_version_sets_every_copy(tmp_path: Path) -> None:
+    """scripts/bump_version.py moves every copy the test above compares, and nothing else."""
+    import importlib.util
+    import shutil
+
+    root = Path(__file__).resolve().parents[1]
+    for name in (
+        "pyproject.toml",
+        "src/routemaker/__init__.py",
+        "mcp/routemaker_mcp.py",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "mobile/package.json",
+        "mobile/package-lock.json",
+    ):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(root / name, tmp_path / name)
+    spec = importlib.util.spec_from_file_location("bump_version", root / "scripts/bump_version.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.bump("9.8.7", tmp_path)
+    assert '\nversion = "9.8.7"\n' in (tmp_path / "pyproject.toml").read_text()
+    assert '__version__ = "9.8.7"' in (tmp_path / "src/routemaker/__init__.py").read_text()
+    assert 'SERVER_VERSION = "9.8.7"' in (tmp_path / "mcp/routemaker_mcp.py").read_text()
+    for folder in ("frontend", "mobile"):
+        lock = json.loads((tmp_path / folder / "package-lock.json").read_text())
+        assert json.loads((tmp_path / folder / "package.json").read_text())["version"] == "9.8.7"
+        assert lock["version"] == lock["packages"][""]["version"] == "9.8.7"

@@ -1,0 +1,155 @@
+# rock-creek-trail: Rock Creek Trail and Western Ridge Trail: forks along one trail, a crossing of Broad Branch Rd
+
+## The cues Ride made
+   103 m  #0 hazard Shoreham Dr NW: Busy crossing at Shoreham Drive Northwest, no signal.
+   511 m  #1 left Zoo Loop Trl: Left onto Zoo Loop Trail.
+  1306 m  #2 onto Rock Creek Trl: Continue onto Rock Creek Trail.
+  2500 m  #3 right Rock Creek Trl: Right to stay on Rock Creek Trail, then immediately left onto the path, then immediately right to stay on the path.
+  2594 m  #4 left Path (joined): Left onto the path, then immediately right to stay on the path.
+  2630 m  #5 right Path (joined): Right to stay on the path.
+  2763 m  #6 bear_left Path: Bear left onto the path beside Beach Drive Northwest.
+  2926 m  #7 onto Rock Creek Trl: Continue onto Rock Creek Trail.
+  3573 m  #8 bear_right Western Ridge Trl: Bear right onto Western Ridge Trail.
+  3899 m  #9 bear_right Western Ridge Trl: Bear right to stay on Western Ridge Trail.
+  4263 m  #10 bear_right Western Ridge Trl: Bear right to stay on Western Ridge Trail.
+  4280 m  #11 left Western Ridge Trl: Cross Broad Branch Road Northwest, then bear right onto Rock Creek Trail, then immediately right onto Beach Drive Northwest.
+  4299 m  #12 bear_right Rock Creek Trl (joined): Bear right onto Rock Creek Trail, then immediately right onto Beach Drive Northwest.
+  4333 m  #13 right Beach Dr NW (joined): Right onto Beach Drive Northwest.
+  4512 m  #14 busy Beach Dr NW: Busy road on Beach Drive Northwest.
+  4517 m  #15 end: The end of the route. Destination on your right.
+
+## rock-creek-trail at 8 mph, steady
+    0 s      0 m  #0 hazard Shoreham Dr NW advance: "In 350 feet, busy crossing at Shoreham Drive Northwest, no signal." -> said
+  102 s    365 m  #1 left Zoo Loop Trl advance: "In 500 feet, left onto Zoo Loop Trail." -> said
+  131 s    468 m  #1 left Zoo Loop Trl prepare: "In 140 feet, left onto Zoo Loop Trail." -> said
+  139 s    497 m  #1 left Zoo Loop Trl now (urgent): "Left now onto Zoo Loop Trail." -> said
+  324 s   1159 m  #2 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> said
+  658 s   2353 m  #3 right Rock Creek Trl advance: "In 500 feet, right to stay on Rock Creek Trail, then immediately left onto the path, then immediately right to stay on the path." -> said
+  687 s   2457 m  #3 right Rock Creek Trl prepare: "In 140 feet, right, then immediately left, then immediately right." -> said
+  695 s   2486 m  #3 right Rock Creek Trl now (urgent): "Right now." -> said
+  722 s   2582 m  #4 left Path now (urgent): "Left now onto the path." -> said
+  732 s   2618 m  #5 right Path now (urgent): "Right now." -> said
+  733 s   2621 m  #6 bear_left Path advance: "In 450 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  761 s   2722 m  #6 bear_left Path prepare: "In 140 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  769 s   2750 m  #6 bear_left Path now (urgent): "Bear left now onto the path beside Beach Drive Northwest." -> said
+  777 s   2779 m  #7 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> said
+  958 s   3426 m  #8 bear_right Western Ridge Trl advance: "In 500 feet, bear right onto Western Ridge Trail." -> said
+  987 s   3530 m  #8 bear_right Western Ridge Trl prepare: "In 140 feet, bear right onto Western Ridge Trail." -> said
+  995 s   3558 m  #8 bear_right Western Ridge Trl now (urgent): "Bear right now onto Western Ridge Trail." -> said
+ 1049 s   3752 m  #9 bear_right Western Ridge Trl advance: "In 500 feet, bear right to stay on Western Ridge Trail." -> said
+ 1078 s   3855 m  #9 bear_right Western Ridge Trl prepare: "In 140 feet, bear right to stay on Western Ridge Trail." -> said
+ 1087 s   3887 m  #9 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+ 1150 s   4113 m  #10 bear_right Western Ridge Trl advance: "In 500 feet, bear right to stay on Western Ridge Trail." -> said
+ 1180 s   4220 m  #10 bear_right Western Ridge Trl prepare: "In 140 feet, bear right to stay on Western Ridge Trail." -> said
+ 1188 s   4249 m  #10 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+ 1189 s   4252 m  #11 left Western Ridge Trl prepare: "In 90 feet, cross Broad Branch Road Northwest, then bear right onto Rock Creek Trail, then immediately right onto Beach Drive Northwest." -> held 0.4 s, cut 3.3 s in
+ 1193 s   4267 m  #11 left Western Ridge Trl now (urgent): "Cross Broad Branch Road Northwest now." -> said
+ 1199 s   4288 m  #12 bear_right Rock Creek Trl now (urgent): "Bear right now onto Rock Creek Trail." -> said
+ 1208 s   4320 m  #13 right Beach Dr NW now (urgent): "Right now onto Beach Drive Northwest." -> said
+ 1220 s   4363 m  #14 busy Beach Dr NW advance: "In 500 feet, busy road on Beach Drive Northwest." -> said
+ 1258 s   4499 m  #15 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! bend at 906 m: the line bends right 63 degrees with no cue within 40 m
+
+## rock-creek-trail at 12 mph, steady
+    0 s      0 m  #0 hazard Shoreham Dr NW advance: "In 350 feet, busy crossing at Shoreham Drive Northwest, no signal." -> said
+   68 s    365 m  #1 left Zoo Loop Trl advance: "In 500 feet, left onto Zoo Loop Trail." -> said
+   86 s    461 m  #1 left Zoo Loop Trl prepare: "In 160 feet, left onto Zoo Loop Trail." -> said
+   93 s    499 m  #1 left Zoo Loop Trl now (urgent): "Left now onto Zoo Loop Trail." -> said
+  216 s   1159 m  #2 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> said
+  439 s   2355 m  #3 right Rock Creek Trl advance: "In 450 feet, right to stay on Rock Creek Trail, then immediately left onto the path, then immediately right to stay on the path." -> said
+  456 s   2446 m  #3 right Rock Creek Trl prepare: "In 180 feet, right, then immediately left, then immediately right." -> said
+  464 s   2489 m  #3 right Rock Creek Trl now (urgent): "Right now." -> said
+  481 s   2580 m  #4 left Path now (urgent): "Left now onto the path." -> said
+  488 s   2618 m  #5 right Path now (urgent): "Right now." -> said
+  489 s   2623 m  #6 bear_left Path advance: "In 450 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  506 s   2714 m  #6 bear_left Path prepare: "In 160 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  513 s   2752 m  #6 bear_left Path now (urgent): "Bear left now onto the path beside Beach Drive Northwest." -> said
+  518 s   2779 m  #7 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> said
+  639 s   3428 m  #8 bear_right Western Ridge Trl advance: "In 500 feet, bear right onto Western Ridge Trail." -> said
+  657 s   3524 m  #8 bear_right Western Ridge Trl prepare: "In 160 feet, bear right onto Western Ridge Trail." -> said
+  664 s   3562 m  #8 bear_right Western Ridge Trl now (urgent): "Bear right now onto Western Ridge Trail." -> said
+  699 s   3750 m  #9 bear_right Western Ridge Trl advance: "In 500 feet, bear right to stay on Western Ridge Trail." -> said
+  717 s   3846 m  #9 bear_right Western Ridge Trl prepare: "In 170 feet, bear right to stay on Western Ridge Trail." -> said
+  725 s   3889 m  #9 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+  767 s   4115 m  #10 bear_right Western Ridge Trl advance: "In 500 feet, bear right to stay on Western Ridge Trail." -> said
+  785 s   4211 m  #10 bear_right Western Ridge Trl prepare: "In 170 feet, bear right to stay on Western Ridge Trail." -> said
+  792 s   4249 m  #10 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+  793 s   4254 m  #11 left Western Ridge Trl prepare: "In 90 feet, cross Broad Branch Road Northwest, then bear right onto Rock Creek Trail, then immediately right onto Beach Drive Northwest." -> held 0.4 s, cut 2.3 s in
+  796 s   4270 m  #11 left Western Ridge Trl now (urgent): "Cross Broad Branch Road Northwest now." -> said
+  799 s   4286 m  #12 bear_right Rock Creek Trl now (urgent): "Bear right now onto Rock Creek Trail." -> said
+  806 s   4324 m  #13 right Beach Dr NW now (urgent): "Right now onto Beach Drive Northwest." -> said
+  814 s   4367 m  #14 busy Beach Dr NW advance: "In 500 feet, busy road on Beach Drive Northwest." -> said
+  839 s   4501 m  #15 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! bend at 906 m: the line bends right 63 degrees with no cue within 40 m
+
+## rock-creek-trail at 18 mph, steady
+    0 s      0 m  #0 hazard Shoreham Dr NW advance: "In 350 feet, busy crossing at Shoreham Drive Northwest, no signal." -> said
+   37 s    298 m  #1 left Zoo Loop Trl advance: "In 700 feet, left onto Zoo Loop Trail." -> said
+   54 s    435 m  #1 left Zoo Loop Trl prepare: "In 250 feet, left onto Zoo Loop Trail." -> said
+   62 s    499 m  #1 left Zoo Loop Trl now (urgent): "Left now onto Zoo Loop Trail." -> said
+  136 s   1094 m  #2 onto Rock Creek Trl advance: "In 700 feet, continue onto Rock Creek Trail." -> said
+  284 s   2285 m  #3 right Rock Creek Trl advance: "In 700 feet, right to stay on Rock Creek Trail, then immediately left onto the path, then immediately right to stay on the path." -> said
+  301 s   2422 m  #3 right Rock Creek Trl prepare: "In 250 feet, right, then immediately left, then immediately right." -> said
+  309 s   2486 m  #3 right Rock Creek Trl now (urgent): "Right now." -> said
+  321 s   2583 m  #4 left Path now (urgent): "Left now onto the path." -> said
+  325 s   2615 m  #5 right Path now (urgent): "Right now." -> said
+  326 s   2623 m  #6 bear_left Path advance: "In 450 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  334 s   2688 m  #6 bear_left Path prepare: "In 250 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  342 s   2752 m  #6 bear_left Path now (urgent): "Bear left now onto the path beside Beach Drive Northwest." -> said
+  343 s   2760 m  #7 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> held 3.4 s
+  418 s   3364 m  #8 bear_right Western Ridge Trl advance: "In 700 feet, bear right onto Western Ridge Trail." -> said
+  435 s   3500 m  #8 bear_right Western Ridge Trl prepare: "In 250 feet, bear right onto Western Ridge Trail." -> said
+  443 s   3565 m  #8 bear_right Western Ridge Trl now (urgent): "Bear right now onto Western Ridge Trail." -> said
+  458 s   3685 m  #9 bear_right Western Ridge Trl advance: "In 700 feet, bear right to stay on Western Ridge Trail." -> said
+  475 s   3822 m  #9 bear_right Western Ridge Trl prepare: "In 250 feet, bear right to stay on Western Ridge Trail." -> said
+  483 s   3887 m  #9 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+  503 s   4048 m  #10 bear_right Western Ridge Trl advance: "In 700 feet, bear right to stay on Western Ridge Trail." -> said
+  520 s   4184 m  #10 bear_right Western Ridge Trl prepare: "In 250 feet, bear right to stay on Western Ridge Trail." -> said
+  528 s   4249 m  #10 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+  529 s   4257 m  #11 left Western Ridge Trl prepare: "In 80 feet, cross Broad Branch Road Northwest, then bear right onto Rock Creek Trail, then immediately right onto Beach Drive Northwest." -> held 0.4 s, cut 0.3 s in
+  530 s   4265 m  #11 left Western Ridge Trl now (urgent): "Cross Broad Branch Road Northwest now." -> said
+  533 s   4289 m  #12 bear_right Rock Creek Trl now (urgent): "Bear right now onto Rock Creek Trail." -> said
+  537 s   4321 m  #13 right Beach Dr NW now (urgent): "Right now onto Beach Drive Northwest." -> said
+  538 s   4329 m  #14 busy Beach Dr NW advance: "In 600 feet, busy road on Beach Drive Northwest." -> held 1.9 s
+  559 s   4498 m  #15 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! bend at 906 m: the line bends right 63 degrees with no cue within 40 m
+
+## rock-creek-trail at 12 mph, missed-turn
+    0 s      0 m  #0 hazard Shoreham Dr NW advance: "In 350 feet, busy crossing at Shoreham Drive Northwest, no signal." -> said
+   68 s    365 m  #1 left Zoo Loop Trl advance: "In 500 feet, left onto Zoo Loop Trail." -> said
+   86 s    461 m  #1 left Zoo Loop Trl prepare: "In 160 feet, left onto Zoo Loop Trail." -> said
+   93 s    499 m  #1 left Zoo Loop Trl now (urgent): "Left now onto Zoo Loop Trail." -> said
+  111 s    511 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 84 m past the missed turn
+
+## rock-creek-trail at 12 mph, weak-gps
+    0 s      0 m  #0 hazard Shoreham Dr NW advance: "In 350 feet, busy crossing at Shoreham Drive Northwest, no signal." -> said
+   68 s    365 m  #1 left Zoo Loop Trl advance: "In 500 feet, left onto Zoo Loop Trail." -> said
+   86 s    461 m  #1 left Zoo Loop Trl prepare: "In 160 feet, left onto Zoo Loop Trail." -> said
+   93 s    499 m  #1 left Zoo Loop Trl now (urgent): "Left now onto Zoo Loop Trail." -> said
+  216 s   1159 m  #2 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> said
+  433 s           note: "GPS is weak: turn cues paused."
+  452 s   2425 m  #3 right Rock Creek Trl advance: "In 250 feet, right to stay on Rock Creek Trail, then immediately left onto the path, then immediately right to stay on the path." -> said
+  456 s   2446 m  #3 right Rock Creek Trl prepare: "In 180 feet, right, then immediately left, then immediately right." -> held 5.4 s, cut 2.3 s in, as "In 120 feet, right, then immediately left, then immediately right."
+  464 s   2489 m  #3 right Rock Creek Trl now (urgent): "Right now." -> said
+  481 s   2580 m  #4 left Path now (urgent): "Left now onto the path." -> said
+  488 s   2618 m  #5 right Path now (urgent): "Right now." -> said
+  489 s   2623 m  #6 bear_left Path advance: "In 450 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  506 s   2714 m  #6 bear_left Path prepare: "In 160 feet, bear left onto the path beside Beach Drive Northwest." -> said
+  513 s   2752 m  #6 bear_left Path now (urgent): "Bear left now onto the path beside Beach Drive Northwest." -> said
+  518 s   2779 m  #7 onto Rock Creek Trl advance: "In 500 feet, continue onto Rock Creek Trail." -> said
+  639 s   3428 m  #8 bear_right Western Ridge Trl advance: "In 500 feet, bear right onto Western Ridge Trail." -> said
+  657 s   3524 m  #8 bear_right Western Ridge Trl prepare: "In 160 feet, bear right onto Western Ridge Trail." -> said
+  664 s   3562 m  #8 bear_right Western Ridge Trl now (urgent): "Bear right now onto Western Ridge Trail." -> said
+  699 s   3750 m  #9 bear_right Western Ridge Trl advance: "In 500 feet, bear right to stay on Western Ridge Trail." -> said
+  717 s   3846 m  #9 bear_right Western Ridge Trl prepare: "In 170 feet, bear right to stay on Western Ridge Trail." -> said
+  725 s   3889 m  #9 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+  767 s   4115 m  #10 bear_right Western Ridge Trl advance: "In 500 feet, bear right to stay on Western Ridge Trail." -> said
+  785 s   4211 m  #10 bear_right Western Ridge Trl prepare: "In 170 feet, bear right to stay on Western Ridge Trail." -> said
+  792 s   4249 m  #10 bear_right Western Ridge Trl now (urgent): "Keep right now." -> said
+  793 s   4254 m  #11 left Western Ridge Trl prepare: "In 90 feet, cross Broad Branch Road Northwest, then bear right onto Rock Creek Trail, then immediately right onto Beach Drive Northwest." -> held 0.4 s, cut 2.3 s in
+  796 s   4270 m  #11 left Western Ridge Trl now (urgent): "Cross Broad Branch Road Northwest now." -> said
+  799 s   4286 m  #12 bear_right Rock Creek Trl now (urgent): "Bear right now onto Rock Creek Trail." -> said
+  806 s   4324 m  #13 right Beach Dr NW now (urgent): "Right now onto Beach Drive Northwest." -> said
+  814 s   4367 m  #14 busy Beach Dr NW advance: "In 500 feet, busy road on Beach Drive Northwest." -> said
+  839 s   4501 m  #15 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said

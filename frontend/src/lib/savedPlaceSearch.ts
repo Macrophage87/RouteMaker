@@ -77,7 +77,17 @@ export interface SavedHits {
   exact: Place | null;
 }
 
-/** The saved places the box's words name (none for fewer than 2 letters). */
+/**
+ * How many favorites, after Home and Work, the empty box lists above the recent places (our default, unmeasured):
+ * enough for the usual few, few enough that the recents stay on a phone's first screen. The rest are a letter away.
+ */
+export const EMPTY_BOX_FAVORITES = 3;
+
+/**
+ * The saved places the box's words name (none for fewer than 2 letters). The empty box (the 2026-11-12 backlog, Go's
+ * first screen) lists Home, Work and the first favorites in the rider's own order, above the recent places, so the
+ * commonest trips are one tap from the box: signed in, Home was Favorites, Home, Start ride. Nothing is exact.
+ */
 export function savedPlacesFor(
   query: string,
   home: Home | null,
@@ -85,13 +95,14 @@ export function savedPlacesFor(
   lang: Language = language(),
 ): SavedHits {
   const said = plain(query);
-  // One Latin letter names nothing; one character of Chinese or Japanese may ("家", Home).
-  if ([...said].length < 2 && !/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(said)) return { places: [], exact: null };
   const work = favorites?.find((place) => place.work) ?? null;
   const asHome = home ? { name: t("Home"), label: homeName(home), lon: home.point[0], lat: home.point[1], kind: "home" } : null;
   const asWork = work ? { name: t("Work"), label: work.label, lon: work.point[0], lat: work.point[1], kind: "work" } : null;
   const others = (favorites ?? []).filter((place) => !place.work);
   const asFavorite = (place: FavoritePlace): Place => ({ name: place.label, label: place.label, lon: place.point[0], lat: place.point[1], kind: "favorite" });
+  if (said === "") return { places: oneEach([...(asHome ? [asHome] : []), ...(asWork ? [asWork] : []), ...others.slice(0, EMPTY_BOX_FAVORITES).map(asFavorite)]), exact: null };
+  // One Latin letter names nothing; one character of Chinese or Japanese may ("家", Home).
+  if ([...said].length < 2 && !/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(said)) return { places: [], exact: null };
   // A favorite's own name said whole comes first: a favorite named "Office" is that place, not Work.
   const named = others.find((place) => plain(place.label) === said || plain(place.label) === withoutLead(said));
   const kind = named ? null : namesKind(said, lang);
@@ -103,10 +114,14 @@ export function savedPlacesFor(
     ...(asWork && kind !== "work" && starts(asWork.label) ? [asWork] : []),
     ...others.filter((place) => starts(place.label)).map(asFavorite),
   ];
-  // One row per spot: Work at Home, or Home saved as a favorite too, is listed once (the first, exact one first).
+  return { places: oneEach(exact ? [exact, ...listed] : listed), exact };
+}
+
+/** One row per spot: Work at Home, or Home saved as a favorite too, is listed once (the first kept). */
+function oneEach(list: readonly Place[]): Place[] {
   const places: Place[] = [];
-  for (const place of exact ? [exact, ...listed] : listed) {
+  for (const place of list) {
     if (!places.some((p) => p.lon === place.lon && p.lat === place.lat)) places.push(place);
   }
-  return { places, exact };
+  return places;
 }

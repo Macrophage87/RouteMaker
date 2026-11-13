@@ -147,6 +147,12 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // unless a check sets `closures`; `closureRequests` counts the asks.
   page.closures = { service_day: "2026-10-12", stations: [] };
   page.closureRequests = 0;
+  // The road closures in force (GET /api/closures/stamp, POST /api/closures/check; core/api.py): not found, as
+  // before, unless a check sets `closureStamp` (the fingerprint a ride's watch asks for each minute) and
+  // `closureCheck` (the answer for any line); `closureChecks` counts the checks.
+  page.closureStamp = null;
+  page.closureCheck = null;
+  page.closureChecks = 0;
   // Favorite places (lib/favoritePlaces.ts; core/api.py favorite_places_read and _save): one place, no Work.
   page.favoritePlaces = { places: [{ lon: -76.9963, lat: 38.8843, label: "Eastern Market", work: false }] };
   page.favoriteRequests = [];
@@ -234,6 +240,15 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       type = "application/json";
       body = JSON.stringify(page.closures);
+    } else if (url.pathname === "/api/closures/stamp" && page.closureStamp !== null) {
+      status = 200;
+      type = "application/json";
+      body = JSON.stringify({ stamp: page.closureStamp });
+    } else if (url.pathname === "/api/closures/check" && request.method === "POST" && page.closureCheck !== null) {
+      page.closureChecks += 1;
+      status = 200;
+      type = "application/json";
+      body = JSON.stringify(page.closureCheck);
     } else if (url.pathname === "/api/transit/station-times") {
       status = 200;
       type = "application/json";

@@ -119,6 +119,14 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
  * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
  * hazard reports list.
  */
+/** Save & load, then its My routes button: the saved and kept routes' own popup (Stephen, 2026-11-12). */
+async function openMyRoutes(p) {
+  await openSheet(p, "Save & load");
+  await p.eval("document.querySelector('#sheet-gpx .my-routes-open button')?.click(); true");
+  await p.waitFor("!document.getElementById('sheet-routes')?.hidden", 8000);
+  await sleep(250);
+}
+
 async function openSheet(p, label = "Layers") {
   const name = label === "Map layers" ? "Layers" : label;
   const review = name === "Review" || name === "Review hazards";
@@ -2998,6 +3006,44 @@ if (mine()) {
   const speech = await p.eval("window.__speech.slice()");
   check("ride: the voice says the same cues", speech.some((t) => /^In .*left onto R Street Northwest/.test(t)) && speech.includes("Left now onto R Street Northwest."), JSON.stringify(speech));
   await p.shot(`${SHOTS}/ride_cue.png`);
+
+  // A closure that comes up ahead during the ride (SuddenClosureDialog; the v0.26.0 accessibility review): a modal
+  // named by the closure, the focus on Reroute around it, 44 px buttons, the ride's cues still heard while it is open
+  // (the modal makes the ride's own regions inert), Escape as Keep going, and the focus back where it was. The watch
+  // runs each minute; coming back to the page runs it at once, so a visibilitychange stands in for the minute. Its
+  // first answer only marks what is on the route already; the next, with a new stamp, brings the closure.
+  p.closureStamp = "s0";
+  p.closureCheck = { closures: [] };
+  await p.eval("document.dispatchEvent(new Event('visibilitychange')); true");
+  for (let i = 0; i < 40 && p.closureChecks < 1; i += 1) await sleep(100);
+  await sleep(300);
+  p.closureStamp = "s1";
+  p.closureCheck = { closures: [{ id: "alertdc:police:1", kind: "closed", road: "P St NW", from_m: 1200, to_m: 1500, end: null, source: "AlertDC", text: "", title: "Police activity: streets closed near 15th St & P St NW" }] };
+  const spokenBefore = (await p.eval("window.__speech.length")) | 0;
+  await p.eval("document.dispatchEvent(new Event('visibilitychange')); true");
+  const opened = await p.waitFor("!!document.querySelector('dialog.sudden-closure-dialog[open]')", 8000);
+  const sudden = await axNode(p, "dialog.sudden-closure-dialog");
+  const inDialog = await p.eval(`(() => { const d = document.querySelector('dialog.sudden-closure-dialog'); const b = [...d.querySelectorAll('.closure-choices button')].map((e) => ({ text: e.textContent.trim(), h: Math.round(e.getBoundingClientRect().height) })); return { focus: document.activeElement?.textContent?.trim(), inside: d.contains(document.activeElement), buttons: b, regions: d.querySelectorAll('[role=status], [role=alert]').length, alerts: window.__heard.filter((t) => t.startsWith('!Road closed ahead')).length, spoken: window.__speech.slice(${spokenBefore}) }; })()`);
+  check("ride: a closure come up ahead opens a modal dialog named by it, the focus on Reroute around it",
+    opened && sudden?.role === "dialog" && /^Road closed ahead · /.test(sudden?.name ?? "") && inDialog.inside && inDialog.focus === "Reroute around it", JSON.stringify({ sudden, inDialog }));
+  check("ride: the closure dialog's two buttons are at least 44 px tall", inDialog.buttons.length === 2 && inDialog.buttons.every((b) => b.h >= 44), JSON.stringify(inDialog.buttons));
+  check("ride: the closure is said once: aloud by the voice, and by the dialog's name, with no alert as well",
+    inDialog.alerts === 0 && inDialog.spoken.some((t) => /^Road closed ahead, .*: Police activity: streets closed near 15th St & P St NW$/.test(t)), JSON.stringify(inDialog));
+  // A cue while it is open: Where am I? is out of reach behind the modal, so a fix along the line moves the ride on.
+  const heardBefore = await p.eval("window.__heard.length");
+  await p.eval("(() => { window.__dialogHeard = []; const d = document.querySelector('dialog.sudden-closure-dialog'); new MutationObserver(() => { for (const e of d.querySelectorAll('[role=status], [role=alert]')) { const t = e.textContent.trim(); if (t && !window.__dialogHeard.includes(t)) window.__dialogHeard.push(t); } }).observe(d, { subtree: true, childList: true, characterData: true }); return true; })()");
+  for (let i = 0; i <= 6; i += 1) await goTo(lerp(RIDE_COORDS[10], RIDE_COORDS[11], i / 6));
+  const whileOpen = await p.eval(`({ open: !!document.querySelector('dialog.sudden-closure-dialog[open]'), dialogHeard: window.__dialogHeard.slice(), heard: window.__heard.slice(${heardBefore}) })`);
+  check("ride: with the closure dialog open, the ride's cues are still heard, from live regions inside the dialog",
+    inDialog.regions >= 1 && whileOpen.dialogHeard.length >= 1, JSON.stringify({ regions: inDialog.regions, whileOpen }));
+  await p.s("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await p.s("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await sleep(400);
+  const kept = await p.eval("({ open: !!document.querySelector('dialog.sudden-closure-dialog[open]'), focus: document.activeElement?.id })");
+  check("ride: Escape is Keep going: the dialog closes, the route is kept, and the focus is back where it was",
+    !kept.open && kept.focus === "ride-heading", JSON.stringify(kept));
+  p.closureStamp = null;
+  p.closureCheck = null;
   // Track-up (the default), the rider sits about two thirds of the way down the map, more of the road ahead
   // showing, and the marker is a little larger (v0.9.0, the owner, 2026-10-17).
   await sleep(600);
@@ -4316,20 +4362,21 @@ if (mine()) {
   check("offline: the top of the planner says so, and it is said once, politely",
     off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Save & load\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
 
-  // Save & load lists the kept route (in Settings until v0.9.0); Open (by keyboard) shows it with no signal, with the planner's notice.
-  await openSheet(p, "Save & load");
-  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-gpx .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
-    return { heading: s.querySelector('h4')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h4')?.id, list: s.querySelector('ul')?.tagName,
+  // My routes lists the kept route (in Settings until v0.9.0; in Save & load until 2026-11-12, now its own popup from there,
+  // Stephen: "Put the load rides in a popout"); Open (by keyboard) shows it with no signal, with the planner's notice.
+  await openMyRoutes(p);
+  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-routes .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
+    return { heading: s.querySelector('h3')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h3')?.id, list: s.querySelector('ul')?.tagName,
       rows: rows.map((r) => ({ title: r.querySelector('.kept-title')?.textContent, detail: r.querySelector('.kept-detail')?.textContent, buttons: [...r.querySelectorAll('button')].map((b) => ({ text: b.textContent, h: b.getBoundingClientRect().height, type: b.type })) })),
       note: s.querySelector('.setting-info')?.textContent, noteHidden: s.querySelector('.setting-info')?.hidden, tip: s.querySelector('.info-tip')?.textContent }; })()`);
   const row = list.rows[0];
-  check("kept routes: Save & load lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
+  check("kept routes: My routes lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
     list.heading === "Routes kept for offline" && list.labelled && list.list === "UL" && list.rows.length === 1 && / mi \([0-9.]+ km\)\. Kept [A-Z][a-z]{2} \d+\./.test(row?.detail ?? ""), JSON.stringify(list));
   check("kept routes: each row has Open and Remove, real buttons 44 px tall whose names include the route", row && row.buttons.length === 2 && row.buttons[0].text === `Open ${row.title}` && row.buttons[1].text === `Remove ${row.title}` && row.buttons.every((x) => x.h >= 44 && x.type === "button"), JSON.stringify(row));
   check("kept routes: behind the heading's (i) (\"About routes kept for offline\"), the list says they stay on this device and are never sent", /Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? "") && list.noteHidden === true && list.tip === "About routes kept for offline", JSON.stringify({ note: list.note, hidden: list.noteHidden, tip: list.tip }));
-  const openAx = await axNode(p, "#sheet-gpx .kept-route button");
+  const openAx = await axNode(p, "#sheet-routes .kept-route button");
   check("kept routes: Open's accessible name names the route and its description gives the details", openAx?.name === `Open ${row?.title}` && / mi \(/.test(openAx?.description ?? ""), JSON.stringify(openAx));
-  await p.eval("document.querySelector('#sheet-gpx .kept-route button').focus(); true");
+  await p.eval("document.querySelector('#sheet-routes .kept-route button').focus(); true");
   await p.enter();
   const shown = await p.waitFor("!!document.querySelector('.summary')", 20000);
   await sleep(1200);
@@ -4339,12 +4386,12 @@ if (mine()) {
   await p.shot(`${SHOTS}/kept_offline.png`);
 
   // Remove, by keyboard: said, and the focus goes to the heading when none is left.
-  await openSheet(p, "Save & load");
-  await p.eval("document.querySelectorAll('#sheet-gpx .kept-route button')[1].focus(); true");
+  await openMyRoutes(p);
+  await p.eval("document.querySelectorAll('#sheet-routes .kept-route button')[1].focus(); true");
   await p.enter();
-  await p.waitFor("document.querySelectorAll('#sheet-gpx .kept-route').length === 0", 10000);
+  await p.waitFor("document.querySelectorAll('#sheet-routes .kept-route').length === 0", 10000);
   await sleep(300);
-  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-gpx .kept-routes > p.hint:not(.setting-info):not([role=status])')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
+  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-routes .kept-routes > p.hint:not(.setting-info):not([role=status])')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
   check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
     removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
   // The freeing follows the removal once the kept routes' lock is free (no keep runs here: at once).
@@ -5173,9 +5220,21 @@ if (mine()) {
   const planned = await p.waitFor("!!document.querySelector('ol.transit-steps li')", 20000);
   // The route's sentence is said once it has stood a moment (lib/settle.ts ANNOUNCE_SETTLE_MS), after the steps show.
   await p.waitFor("!!document.querySelector('.status-line')?.textContent.trim()", 5000);
+  // Go's trip on one screen (Stephen 2026-11-12, #1185): the steps and the other trips each start folded shut under a
+  // summary; the rider opens them (a tap each), and the lists are checked open, as a rider and a screen reader meet them.
+  const folds = await p.eval(`(() => [...document.querySelectorAll('.go-summary .transit-go > details')].map((d) => ({ cls: d.className, open: d.open, summary: d.querySelector('summary')?.textContent.trim() })))()`);
+  check("transit (Go): the steps and the other trips start folded shut, under named summaries, with no second total under the time",
+    JSON.stringify(folds) === JSON.stringify([{ cls: "transit-steps-fold", open: false, summary: "Steps, in order" }, { cls: "transit-options-fold", open: false, summary: "Trips, best first, counting busy roads" }]) &&
+      (await p.eval("!document.querySelector('.go-summary .transit-total') && !document.querySelector('.go-summary .transit-fold')")),
+    JSON.stringify(folds));
+  await p.eval("[...document.querySelectorAll('.go-summary .transit-go > details > summary')].forEach((s) => s.click()); true");
+  await p.waitFor("[...document.querySelectorAll('.go-summary .transit-go > details')].every((d) => d.open)", 5000);
   const trip = await p.eval(`(() => ({
     steps: [...document.querySelectorAll('ol.transit-steps > li')].map((e) => e.textContent.trim()),
-    total: document.querySelector('.go-totals .total-time dd')?.textContent,
+    total: document.querySelector('.go-totals .total-time dd bdi')?.textContent,
+    // The arrival clock beside it (#1185): shown, and said as an estimate for leaving now.
+    arrive: document.querySelector('.go-totals .total-time .route-arrive [aria-hidden]')?.textContent,
+    arriveSaid: document.querySelector('.go-totals .total-time .route-arrive .visually-hidden')?.textContent,
     totalName: document.querySelector('.go-totals .total-time dt')?.textContent,
     heading: document.querySelector('.transit h3')?.textContent,
     compare: document.querySelector('.transit-compare')?.textContent,
@@ -5193,8 +5252,8 @@ if (mine()) {
       /* a ride step says its traffic stress in words since 8a7c1c1e ("Transit: colour every ride of the trip by traffic stress") */
       /^Ride 4 min to Eastern Market\. Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
-  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with riding the whole way beside it",
-    trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock and riding the whole way beside it",
+    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
     JSON.stringify(trip));
   check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
     trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",
@@ -5857,6 +5916,36 @@ if (mine()) {
   await forced.close();
 }
 
+// ---- My routes' popup, from Save & load (Stephen, 2026-11-12; the v0.26.0 a11y review) ----
+// On a phone, signed in: Tab stays in the popup, and Back to Save & load or Escape returns the focus to My routes.
+if (mine()) {
+  const p = await open({ width: 375, height: 812, mobile: true, ride: false, suggester: true });
+  const onButton = "document.activeElement?.matches('#sheet-gpx .my-routes-open button') && !document.getElementById('sheet-gpx').hidden && document.getElementById('sheet-routes').hidden";
+  await openMyRoutes(p);
+  // At its edges: Tab from the last control goes round to the first, Shift+Tab from the first to the last.
+  const ends = "(() => { const d = document.getElementById('sheet-routes'); const all = [...d.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter((e) => e.tabIndex >= 0 && e.getClientRects().length > 0); return all; })()";
+  await p.eval(`(() => { const all = ${ends}; all[all.length - 1].focus(); return true; })()`);
+  await p.tab();
+  const fromLast = await p.eval(`(() => { const all = ${ends}; return { count: all.length, first: document.activeElement === all[0] }; })()`);
+  await p.eval(`(() => { ${ends}[0].focus(); return true; })()`);
+  await p.tab(true);
+  const fromFirst = await p.eval(`(() => { const all = ${ends}; return document.activeElement === all[all.length - 1]; })()`);
+  check("my routes popup: on a phone, Tab from its last control goes to its first and Shift+Tab from its first to its last",
+    fromLast.count >= 2 && fromLast.first && fromFirst, JSON.stringify({ fromLast, fromFirst }));
+  const backText = await p.eval("document.querySelector('#sheet-routes .sheet-back')?.textContent.trim()");
+  await p.eval("document.querySelector('#sheet-routes .sheet-back').focus(); true");
+  await p.enter();
+  const viaBack = await p.waitFor(onButton, 3000);
+  check("my routes popup: \"Back to Save & load\" goes back to Save & load with the focus on My routes", backText === "Back to Save & load" && viaBack, JSON.stringify({ backText, focus: await focused(p) }));
+  await p.enter();
+  const reopened = await p.waitFor("!document.getElementById('sheet-routes')?.hidden", 8000);
+  await sleep(300);
+  await p.escape();
+  const viaEscape = await p.waitFor(onButton, 3000);
+  check("my routes popup: Enter on My routes opens it again, and Escape goes back to Save & load with the focus on My routes", reopened && viaEscape, await focused(p));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
@@ -5877,7 +5966,11 @@ const failed = results.filter((r) => !r.ok);
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
 // The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
-const EXPECTED = 712;
+// My routes' popup (the v0.26.0 a11y review) adds three: Tab inside, Back and Escape back to its button.
+// Go's transit trip on one screen (#1185) adds one: its steps and other trips start folded shut.
+// Ride's sudden-closure dialog (#1186, the v0.26.0 a11y review) adds five: its name, the focus on Reroute, Escape as
+// Keep going with the focus back, 44 px buttons, and a cue said while it is open.
+const EXPECTED = 721;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);

@@ -800,6 +800,10 @@ last one by any path it controls.
 
 ## Host requirements
 
+The beta does not run on this host: it runs on a shared 15 GiB host under `compose.beta.yaml`'s
+memory budget (about 8 GiB resident; the overlay's header comment has the sums), with map
+rebuilds done on a cloud box (docs/CLOUD-REBUILD-PLAN.md).
+
 PLAN:293's initial host: **8 vCPU, 32 GB RAM**, with storage split — a small
 root volume for the operating system, the Docker images and the checked-out
 code, and a **separate 200 GB gp3 data volume**, growable, mounted at
@@ -1159,7 +1163,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/favicon.ico /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && cp /dist/icons/share-card.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/about/route-example.webp /out/about/ && cp /dist/about/how-it-works.html /out/about/.how-it-works.html.new && mv /out/about/.how-it-works.html.new /out/about/how-it-works.html && cp /dist/about/using.html /out/about/.using.html.new && mv /out/about/.using.html.new /out/about/using.html && cp /dist/about/accessibility.html /out/about/.accessibility.html.new && mv /out/about/.accessibility.html.new /out/about/accessibility.html && cp /dist/about/routing.html /out/about/.routing.html.new && mv /out/about/.routing.html.new /out/about/routing.html && cp /dist/about/mass-ride.html /out/about/.mass-ride.html.new && mv /out/about/.mass-ride.html.new /out/about/mass-ride.html && cp /dist/about/trails.html /out/about/.trails.html.new && mv /out/about/.trails.html.new /out/about/trails.html && cp /dist/about/ride-types.html /out/about/.ride-types.html.new && mv /out/about/.ride-types.html.new /out/about/ride-types.html && cp /dist/about/architecture.html /out/about/.architecture.html.new && mv /out/about/.architecture.html.new /out/about/architecture.html && cp /dist/about/assistants.html /out/about/.assistants.html.new && mv /out/about/.assistants.html.new /out/about/assistants.html && cp /dist/about/acknowledgements.html /out/about/.acknowledgements.html.new && mv /out/about/.acknowledgements.html.new /out/about/acknowledgements.html && cp /dist/about/android-beta.html /out/about/.android-beta.html.new && mv /out/about/.android-beta.html.new /out/about/android-beta.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/post.js /out/.post.js.new && mv /out/.post.js.new /out/post.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/favicon.ico /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && cp /dist/icons/share-card.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/about/route-example.webp /out/about/ && cp /dist/about/how-it-works.html /out/about/.how-it-works.html.new && mv /out/about/.how-it-works.html.new /out/about/how-it-works.html && cp /dist/about/using.html /out/about/.using.html.new && mv /out/about/.using.html.new /out/about/using.html && cp /dist/about/accessibility.html /out/about/.accessibility.html.new && mv /out/about/.accessibility.html.new /out/about/accessibility.html && cp /dist/about/routing.html /out/about/.routing.html.new && mv /out/about/.routing.html.new /out/about/routing.html && cp /dist/about/mass-ride.html /out/about/.mass-ride.html.new && mv /out/about/.mass-ride.html.new /out/about/mass-ride.html && cp /dist/about/trails.html /out/about/.trails.html.new && mv /out/about/.trails.html.new /out/about/trails.html && cp /dist/about/ride-types.html /out/about/.ride-types.html.new && mv /out/about/.ride-types.html.new /out/about/ride-types.html && cp /dist/about/architecture.html /out/about/.architecture.html.new && mv /out/about/.architecture.html.new /out/about/architecture.html && cp /dist/about/assistants.html /out/about/.assistants.html.new && mv /out/about/.assistants.html.new /out/about/assistants.html && cp /dist/about/acknowledgements.html /out/about/.acknowledgements.html.new && mv /out/about/.acknowledgements.html.new /out/about/acknowledgements.html && cp /dist/about/android-beta.html /out/about/.android-beta.html.new && mv /out/about/.android-beta.html.new /out/about/android-beta.html && cp /dist/about/welcome.html /out/about/.welcome.html.new && mv /out/about/.welcome.html.new /out/about/welcome.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/post.js /out/.post.js.new && mv /out/.post.js.new /out/post.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
@@ -1229,7 +1233,8 @@ What the edge does with it (Caddyfile, `@frontend`):
   (the owner, 2026-10-19), served like the stress page and replaced by a rename
   like it; `/about/route-example.webp` is the routing page's example map. Settings links to the first,
   the map's credits to the last. `/about/android-beta.html` is the guide we send Android testers (the owner,
-  2026-10-31), outside the docs menu. A new page under `about/` has to be added to
+  2026-10-31), and `/about/welcome.html` the one-screen welcome we send every new tester, both outside the
+  docs menu. A new page under `about/` has to be added to
   `@frontend` and the publish command above (`tests/test_deploy_docs.py` and
   `tests/test_beta_overlay.py` check); the beta template's `/about/` location
   serves any `/about/<name>.html` or `.webp` the build has, so it needs no change.
@@ -1238,9 +1243,9 @@ What the edge does with it (Caddyfile, `@frontend`):
   `max-age=31536000, immutable` - only files that exist, so a 404 is not
   cached for a year. The favicon is cached for a day.
 - The app's responses are compressed (`encode zstd gzip`, in this block only):
-  MapLibre's chunk (`maplibre-*.js`) is about 1.1 MB raw and 300 KB gzipped,
-  App's about 1.0 MB and 310 KB, React's about 220 KB and 70 KB (measured at
-  v0.15.0). MapLibre and React are chunks of their own (`frontend/vite.config.ts`,
+  App's chunk is about 1.23 MB raw and 380 KB gzipped (gzip level 6),
+  MapLibre's (`maplibre-*.js`) about 1.12 MB and 300 KB, React's about 220 KB
+  and 70 KB (measured 2026-11-12 on release/v0.26.0). MapLibre and React are chunks of their own (`frontend/vite.config.ts`,
   `codeSplitting`), so their names, and a returning rider's copies, last across
   app releases; `index.html` preloads App's chunks while the language's catalog
   loads, and Spanish's catalog is a `lang-es-*.js` of its own. Nothing else on the

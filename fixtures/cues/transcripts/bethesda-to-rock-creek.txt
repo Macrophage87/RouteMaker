@@ -1,0 +1,317 @@
+# bethesda-to-rock-creek: Bethesda to Rock Creek Park: Georgetown Branch Trail, a Beach Dr crossing, 29 turns over 5 mi
+
+## The cues Ride made
+    23 m  #0 right Waverly St: Right onto Waverly Street.
+   149 m  #1 right Montgomery Ave Cycletrack: Right onto Montgomery Avenue Cycletrack.
+   270 m  #2 crossing Wisconsin Ave: Cross Wisconsin Avenue.
+   480 m  #3 left Woodmont Ave Cycletrack: Left onto Woodmont Avenue Cycletrack.
+   768 m  #4 bear_left Georgetown Branch Trl: Bear left onto Georgetown Branch Trail.
+   971 m  #5 crossing Wisconsin Ave: Cross Wisconsin Avenue.
+  1082 m  #6 onto Willow Ln: Continue onto Willow Lane.
+  1548 m  #7 right Oakridge Ave: Right onto Oakridge Avenue, then immediately left onto Leland Street.
+  1564 m  #8 left Leland St (joined): Left onto Leland Street.
+  1881 m  #9 bear_right Leland St: Bear right to stay on Leland Street.
+  2516 m  #10 hazard Connecticut Ave: Busy crossing at Connecticut Avenue, no signal.
+  3868 m  #11 bear_left Leland St: Bear left to stay on Leland Street.
+  4098 m  #12 bear_left Path: Cross Beach Drive, then right onto Rock Creek Trail.
+  4127 m  #13 right Rock Creek Trl (joined): Right onto Rock Creek Trail.
+  4563 m  #14 bear_right Rock Creek Trl: Bear right to stay on Rock Creek Trail, then immediately left to stay on Rock Creek Trail.
+  4602 m  #15 left Rock Creek Trl (joined): Left to stay on Rock Creek Trail.
+  4934 m  #16 bear_left Beach Dr: Bear left onto Beach Drive.
+  5914 m  #17 bear_left West Beach Dr NW: Bear left onto West Beach Drive Northwest.
+  6219 m  #18 right Kalmia Rd NW: Right onto Kalmia Road Northwest, then immediately left onto East Beach Drive Northwest, then immediately bear right onto Portal Drive Northwest.
+  6282 m  #19 left East Beach Dr NW (joined): Left onto East Beach Drive Northwest, then immediately bear right onto Portal Drive Northwest.
+  6368 m  #20 bear_right Portal Dr NW (joined): Bear right onto Portal Drive Northwest.
+  7266 m  #21 right High Park Ln: Right onto High Park Lane.
+  7517 m  #22 bear_right High Park Ln: Bear right to stay on High Park Lane, then immediately left onto Blair Mill Road.
+  7550 m  #23 left Blair Mill Rd (joined): Left onto Blair Mill Road.
+  7668 m  #24 left Svc Rd: Left onto the service road, then immediately bear left to stay on the service road.
+  7725 m  #25 bear_left Svc Rd (joined): Bear left to stay on the service road.
+  7859 m  #26 left Svc Rd: Left to stay on the service road, then immediately bear left to stay on the service road.
+  7930 m  #27 bear_left Svc Rd (joined): Bear left to stay on the service road.
+  8099 m  #28 right Svc Rd: Right to stay on the service road, then immediately right onto the parking aisle.
+  8135 m  #29 right parking aisle (joined): Right onto the parking aisle.
+  8173 m  #30 end: The end of the route. Destination on your right.
+
+## bethesda-to-rock-creek at 8 mph, steady
+    0 s      0 m  #0 right Waverly St prepare: "In 80 feet, right onto Waverly Street." -> said, cut 2.7 s in
+    3 s     11 m  #0 right Waverly St now (urgent): "Right now onto Waverly Street." -> said
+    4 s     14 m  #1 right Montgomery Ave Cycletrack advance: "In 450 feet, right onto Montgomery Avenue Cycletrack." -> held 4.0 s, as "In 400 feet, right onto Montgomery Avenue Cycletrack."
+   30 s    107 m  #1 right Montgomery Ave Cycletrack prepare: "In 140 feet, right onto Montgomery Avenue Cycletrack." -> said
+   38 s    136 m  #1 right Montgomery Ave Cycletrack now (urgent): "Right now onto Montgomery Avenue Cycletrack." -> said
+   63 s    225 m  #2 crossing Wisconsin Ave prepare: "In 150 feet, cross Wisconsin Avenue." -> said
+   93 s    333 m  #3 left Woodmont Ave Cycletrack advance: "In 500 feet, left onto Woodmont Avenue Cycletrack." -> said
+  122 s    436 m  #3 left Woodmont Ave Cycletrack prepare: "In 140 feet, left onto Woodmont Avenue Cycletrack." -> said
+  131 s    468 m  #3 left Woodmont Ave Cycletrack now (urgent): "Left now onto Woodmont Avenue Cycletrack." -> said
+  173 s    619 m  #4 bear_left Georgetown Branch Trl advance: "In 500 feet, bear left onto Georgetown Branch Trail." -> said
+  203 s    726 m  #4 bear_left Georgetown Branch Trl prepare: "In 140 feet, bear left onto Georgetown Branch Trail." -> said
+  211 s    755 m  #4 bear_left Georgetown Branch Trl now (urgent): "Bear left now onto Georgetown Branch Trail." -> said
+  259 s    926 m  #5 crossing Wisconsin Ave prepare: "In 150 feet, cross Wisconsin Avenue." -> said
+  261 s    933 m  #6 onto Willow Ln advance: "In 500 feet, continue onto Willow Lane." -> held 6.0 s, as "In 450 feet, continue onto Willow Lane."
+  392 s   1402 m  #7 right Oakridge Ave advance: "In 500 feet, right onto Oakridge Avenue, then immediately left onto Leland Street." -> said
+  421 s   1506 m  #7 right Oakridge Ave prepare: "In 140 feet, right, then immediately left." -> said
+  429 s   1534 m  #7 right Oakridge Ave now (urgent): "Right now onto Oakridge Avenue." -> said
+  434 s   1552 m  #8 left Leland St now (urgent): "Left now onto Leland Street." -> said
+  485 s   1735 m  #9 bear_right Leland St advance: "In 500 feet, bear right to stay on Leland Street." -> said
+  514 s   1838 m  #9 bear_right Leland St prepare: "In 140 feet, bear right to stay on Leland Street." -> said
+  522 s   1867 m  #9 bear_right Leland St now (urgent): "Keep right now." -> said
+  543 s   1942 m  #9 bear_right Leland St undefined: "Continue on Leland Street for 1.2 miles." -> said
+  662 s   2368 m  #10 hazard Connecticut Ave advance: "In 500 feet, busy crossing at Connecticut Avenue, no signal." -> said
+ 1040 s   3719 m  #11 bear_left Leland St advance: "In 500 feet, bear left to stay on Leland Street." -> said
+ 1069 s   3823 m  #11 bear_left Leland St prepare: "In 150 feet, bear left to stay on Leland Street." -> said
+ 1078 s   3855 m  #11 bear_left Leland St now (urgent): "Keep left now." -> said
+ 1104 s   3948 m  #12 bear_left Path advance: "In 500 feet, cross Beach Drive, then right onto Rock Creek Trail." -> said
+ 1134 s   4056 m  #12 bear_left Path prepare: "In 140 feet, cross Beach Drive, then right." -> said
+ 1142 s   4084 m  #12 bear_left Path now (urgent): "Cross Beach Drive now." -> said
+ 1150 s   4113 m  #13 right Rock Creek Trl now (urgent): "Right now onto Rock Creek Trail." -> said
+ 1234 s   4413 m  #14 bear_right Rock Creek Trl advance: "In 500 feet, bear right to stay on Rock Creek Trail, then immediately left to stay on Rock Creek Trail." -> said
+ 1264 s   4520 m  #14 bear_right Rock Creek Trl prepare: "In 140 feet, bear right, then immediately left." -> said
+ 1272 s   4549 m  #14 bear_right Rock Creek Trl now (urgent): "Keep right now." -> said
+ 1283 s   4588 m  #15 left Rock Creek Trl now (urgent): "Left now." -> said
+ 1338 s   4785 m  #16 bear_left Beach Dr advance: "In 500 feet, bear left onto Beach Drive." -> said
+ 1367 s   4889 m  #16 bear_left Beach Dr prepare: "In 150 feet, bear left onto Beach Drive." -> said
+ 1376 s   4921 m  #16 bear_left Beach Dr now (urgent): "Bear left now onto Beach Drive." -> said
+ 1612 s   5765 m  #17 bear_left West Beach Dr NW advance: "In 500 feet, bear left onto West Beach Drive Northwest." -> said
+ 1641 s   5869 m  #17 bear_left West Beach Dr NW prepare: "In 150 feet, bear left onto West Beach Drive Northwest." -> said
+ 1650 s   5901 m  #17 bear_left West Beach Dr NW now (urgent): "Bear left now onto West Beach Drive Northwest." -> said
+ 1698 s   6073 m  #18 right Kalmia Rd NW advance: "In 500 feet, right onto Kalmia Road Northwest, then immediately left onto East Beach Drive Northwest, then immediately bear right onto Portal Drive Northwest." -> said
+ 1727 s   6176 m  #18 right Kalmia Rd NW prepare: "In 140 feet, right, then immediately left, then immediately bear right." -> said
+ 1735 s   6205 m  #18 right Kalmia Rd NW now (urgent): "Right now onto Kalmia Road Northwest." -> said
+ 1753 s   6269 m  #19 left East Beach Dr NW now (urgent): "Left now onto East Beach Drive Northwest." -> said
+ 1777 s   6355 m  #20 bear_right Portal Dr NW now (urgent): "Bear right now onto Portal Drive Northwest." -> said
+ 1990 s   7117 m  #21 right High Park Ln advance: "In 500 feet, right onto High Park Lane." -> said
+ 2020 s   7224 m  #21 right High Park Ln prepare: "In 140 feet, right onto High Park Lane." -> said
+ 2028 s   7253 m  #21 right High Park Ln now (urgent): "Right now onto High Park Lane." -> said
+ 2060 s   7367 m  #22 bear_right High Park Ln advance: "In 500 feet, bear right to stay on High Park Lane, then immediately left onto Blair Mill Road." -> said
+ 2090 s   7475 m  #22 bear_right High Park Ln prepare: "In 140 feet, bear right, then immediately left." -> said
+ 2098 s   7503 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
+ 2107 s   7535 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
+ 2108 s   7539 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
+ 2132 s   7625 m  #24 left Svc Rd prepare: "In 140 feet, left, then immediately bear left." -> said
+ 2140 s   7653 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
+ 2156 s   7711 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
+ 2157 s   7714 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
+ 2185 s   7814 m  #26 left Svc Rd prepare: "In 150 feet, left, then immediately bear left." -> said
+ 2194 s   7846 m  #26 left Svc Rd now (urgent): "Left now." -> said
+ 2214 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said
+ 2223 s   7950 m  #28 right Svc Rd advance: "In 500 feet, right to stay on the service road, then immediately right onto the parking aisle." -> said
+ 2253 s   8057 m  #28 right Svc Rd prepare: "In 140 feet, right, then immediately right." -> said
+ 2261 s   8086 m  #28 right Svc Rd now (urgent): "Right now." -> said
+ 2271 s   8122 m  #29 right parking aisle now (urgent): "Right now onto the parking aisle." -> said
+ 2280 s   8154 m  #30 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! bend at 4448 m: the line bends right 61 degrees with no cue within 40 m
+
+## bethesda-to-rock-creek at 12 mph, steady
+    0 s      0 m  #0 right Waverly St prepare: "In 80 feet, right onto Waverly Street." -> said, cut 1.7 s in
+    2 s     11 m  #0 right Waverly St now (urgent): "Right now onto Waverly Street." -> said
+    3 s     16 m  #1 right Montgomery Ave Cycletrack advance: "In 450 feet, right onto Montgomery Avenue Cycletrack." -> held 5.0 s, as "In 350 feet, right onto Montgomery Avenue Cycletrack."
+   18 s     97 m  #1 right Montgomery Ave Cycletrack prepare: "In 170 feet, right onto Montgomery Avenue Cycletrack." -> said
+   25 s    134 m  #1 right Montgomery Ave Cycletrack now (urgent): "Right now onto Montgomery Avenue Cycletrack." -> said
+   41 s    220 m  #2 crossing Wisconsin Ave prepare: "In 160 feet, cross Wisconsin Avenue." -> said
+   62 s    333 m  #3 left Woodmont Ave Cycletrack advance: "In 500 feet, left onto Woodmont Avenue Cycletrack." -> said
+   80 s    429 m  #3 left Woodmont Ave Cycletrack prepare: "In 170 feet, left onto Woodmont Avenue Cycletrack." -> said
+   87 s    467 m  #3 left Woodmont Ave Cycletrack now (urgent): "Left now onto Woodmont Avenue Cycletrack." -> said
+  116 s    622 m  #4 bear_left Georgetown Branch Trl advance: "In 500 feet, bear left onto Georgetown Branch Trail." -> said
+  134 s    719 m  #4 bear_left Georgetown Branch Trl prepare: "In 160 feet, bear left onto Georgetown Branch Trail." -> said
+  141 s    756 m  #4 bear_left Georgetown Branch Trl now (urgent): "Bear left now onto Georgetown Branch Trail." -> said
+  171 s    917 m  #5 crossing Wisconsin Ave prepare: "In 180 feet, cross Wisconsin Avenue." -> said
+  174 s    933 m  #6 onto Willow Ln advance: "In 500 feet, continue onto Willow Lane." -> held 5.0 s, as "In 400 feet, continue onto Willow Lane."
+  261 s   1400 m  #7 right Oakridge Ave advance: "In 500 feet, right onto Oakridge Avenue, then immediately left onto Leland Street." -> said
+  279 s   1497 m  #7 right Oakridge Ave prepare: "In 170 feet, right, then immediately left." -> said
+  286 s   1534 m  #7 right Oakridge Ave now (urgent): "Right now onto Oakridge Avenue." -> said
+  289 s   1550 m  #8 left Leland St now (urgent): "Left now onto Leland Street." -> said
+  323 s   1733 m  #9 bear_right Leland St advance: "In 500 feet, bear right to stay on Leland Street." -> said
+  341 s   1829 m  #9 bear_right Leland St prepare: "In 170 feet, bear right to stay on Leland Street." -> said
+  348 s   1867 m  #9 bear_right Leland St now (urgent): "Keep right now." -> said
+  362 s   1942 m  #9 bear_right Leland St undefined: "Continue on Leland Street for 1.2 miles." -> said
+  442 s   2371 m  #10 hazard Connecticut Ave advance: "In 500 feet, busy crossing at Connecticut Avenue, no signal." -> said
+  694 s   3723 m  #11 bear_left Leland St advance: "In 500 feet, bear left to stay on Leland Street." -> said
+  712 s   3820 m  #11 bear_left Leland St prepare: "In 160 feet, bear left to stay on Leland Street." -> said
+  719 s   3857 m  #11 bear_left Leland St now (urgent): "Keep left now." -> said
+  736 s   3948 m  #12 bear_left Path advance: "In 500 feet, cross Beach Drive, then right onto Rock Creek Trail." -> said
+  754 s   4045 m  #12 bear_left Path prepare: "In 170 feet, cross Beach Drive, then right." -> said
+  762 s   4088 m  #12 bear_left Path now (urgent): "Cross Beach Drive now." -> said
+  767 s   4115 m  #13 right Rock Creek Trl now (urgent): "Right now onto Rock Creek Trail." -> said
+  823 s   4415 m  #14 bear_right Rock Creek Trl advance: "In 500 feet, bear right to stay on Rock Creek Trail, then immediately left to stay on Rock Creek Trail." -> said
+  841 s   4512 m  #14 bear_right Rock Creek Trl prepare: "In 170 feet, bear right, then immediately left." -> said
+  848 s   4549 m  #14 bear_right Rock Creek Trl now (urgent): "Keep right now." -> said
+  856 s   4592 m  #15 left Rock Creek Trl now (urgent): "Left now." -> said
+  892 s   4785 m  #16 bear_left Beach Dr advance: "In 500 feet, bear left onto Beach Drive." -> said
+  910 s   4882 m  #16 bear_left Beach Dr prepare: "In 170 feet, bear left onto Beach Drive." -> said
+  917 s   4919 m  #16 bear_left Beach Dr now (urgent): "Bear left now onto Beach Drive." -> said
+ 1075 s   5767 m  #17 bear_left West Beach Dr NW advance: "In 500 feet, bear left onto West Beach Drive Northwest." -> said
+ 1093 s   5863 m  #17 bear_left West Beach Dr NW prepare: "In 170 feet, bear left onto West Beach Drive Northwest." -> said
+ 1100 s   5901 m  #17 bear_left West Beach Dr NW now (urgent): "Bear left now onto West Beach Drive Northwest." -> said
+ 1132 s   6073 m  #18 right Kalmia Rd NW advance: "In 500 feet, right onto Kalmia Road Northwest, then immediately left onto East Beach Drive Northwest, then immediately bear right onto Portal Drive Northwest." -> said
+ 1150 s   6169 m  #18 right Kalmia Rd NW prepare: "In 160 feet, right, then immediately left, then immediately bear right." -> said
+ 1157 s   6207 m  #18 right Kalmia Rd NW now (urgent): "Right now onto Kalmia Road Northwest." -> said
+ 1169 s   6271 m  #19 left East Beach Dr NW now (urgent): "Left now onto East Beach Drive Northwest." -> said
+ 1185 s   6357 m  #20 bear_right Portal Dr NW now (urgent): "Bear right now onto Portal Drive Northwest." -> said
+ 1327 s   7119 m  #21 right High Park Ln advance: "In 500 feet, right onto High Park Lane." -> said
+ 1345 s   7215 m  #21 right High Park Ln prepare: "In 170 feet, right onto High Park Lane." -> said
+ 1352 s   7253 m  #21 right High Park Ln now (urgent): "Right now onto High Park Lane." -> said
+ 1374 s   7371 m  #22 bear_right High Park Ln advance: "In 500 feet, bear right to stay on High Park Lane, then immediately left onto Blair Mill Road." -> said
+ 1392 s   7467 m  #22 bear_right High Park Ln prepare: "In 160 feet, bear right, then immediately left." -> said
+ 1399 s   7505 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
+ 1405 s   7537 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
+ 1406 s   7542 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
+ 1420 s   7618 m  #24 left Svc Rd prepare: "In 160 feet, left, then immediately bear left." -> said
+ 1427 s   7655 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
+ 1438 s   7714 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
+ 1439 s   7719 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
+ 1455 s   7805 m  #26 left Svc Rd prepare: "In 170 feet, left, then immediately bear left." -> said
+ 1463 s   7848 m  #26 left Svc Rd now (urgent): "Left now." -> said
+ 1476 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said
+ 1482 s   7950 m  #28 right Svc Rd advance: "In 500 feet, right to stay on the service road, then immediately right onto the parking aisle." -> said
+ 1500 s   8047 m  #28 right Svc Rd prepare: "In 170 feet, right, then immediately right." -> said
+ 1508 s   8090 m  #28 right Svc Rd now (urgent): "Right now." -> said
+ 1514 s   8122 m  #29 right parking aisle now (urgent): "Right now onto the parking aisle." -> said
+ 1520 s   8154 m  #30 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! bend at 4448 m: the line bends right 61 degrees with no cue within 40 m
+
+## bethesda-to-rock-creek at 18 mph, steady
+    0 s      0 m  #0 right Waverly St prepare: "In 80 feet, right onto Waverly Street." -> said, cut 0.7 s in
+    1 s      8 m  #0 right Waverly St now (urgent): "Right now onto Waverly Street." -> said
+    2 s     16 m  #1 right Montgomery Ave Cycletrack advance: "In 450 feet, right onto Montgomery Avenue Cycletrack." -> held 6.0 s, as "In 300 feet, right onto Montgomery Avenue Cycletrack."
+    9 s     72 m  #1 right Montgomery Ave Cycletrack prepare: "In 250 feet, right onto Montgomery Avenue Cycletrack." -> held 7.0 s, cut 0.7 s in, as "In 90 feet, right onto Montgomery Avenue Cycletrack."
+   17 s    137 m  #1 right Montgomery Ave Cycletrack now (urgent): "Right now onto Montgomery Avenue Cycletrack." -> said
+   24 s    193 m  #2 crossing Wisconsin Ave prepare: "In 250 feet, cross Wisconsin Avenue." -> said
+   33 s    266 m  #3 left Woodmont Ave Cycletrack advance: "In 700 feet, left onto Woodmont Avenue Cycletrack." -> said
+   50 s    402 m  #3 left Woodmont Ave Cycletrack prepare: "In 250 feet, left onto Woodmont Avenue Cycletrack." -> said
+   58 s    467 m  #3 left Woodmont Ave Cycletrack now (urgent): "Left now onto Woodmont Avenue Cycletrack." -> said
+   69 s    555 m  #4 bear_left Georgetown Branch Trl advance: "In 700 feet, bear left onto Georgetown Branch Trail." -> said
+   86 s    692 m  #4 bear_left Georgetown Branch Trl prepare: "In 250 feet, bear left onto Georgetown Branch Trail." -> said
+   94 s    756 m  #4 bear_left Georgetown Branch Trl now (urgent): "Bear left now onto Georgetown Branch Trail." -> said
+  108 s    869 m  #6 onto Willow Ln advance: "In 700 feet, continue onto Willow Lane." -> said
+  111 s    893 m  #5 crossing Wisconsin Ave prepare: "In 250 feet, cross Wisconsin Avenue." -> held 5.0 s, as "In 150 feet, cross Wisconsin Avenue."
+  166 s   1336 m  #7 right Oakridge Ave advance: "In 700 feet, right onto Oakridge Avenue, then immediately left onto Leland Street." -> said
+  183 s   1473 m  #7 right Oakridge Ave prepare: "In 250 feet, right, then immediately left." -> said
+  191 s   1537 m  #7 right Oakridge Ave now (urgent): "Right now onto Oakridge Avenue." -> said
+  193 s   1553 m  #8 left Leland St now (urgent): "Left now onto Leland Street." -> held 0.5 s
+  207 s   1666 m  #9 bear_right Leland St advance: "In 700 feet, bear right to stay on Leland Street." -> said
+  224 s   1802 m  #9 bear_right Leland St prepare: "In 250 feet, bear right to stay on Leland Street." -> said
+  232 s   1867 m  #9 bear_right Leland St now (urgent): "Keep right now." -> said
+  242 s   1947 m  #9 bear_right Leland St undefined: "Continue on Leland Street for 1.2 miles." -> said
+  286 s   2301 m  #10 hazard Connecticut Ave advance: "In 700 feet, busy crossing at Connecticut Avenue, no signal." -> said
+  454 s   3653 m  #11 bear_left Leland St advance: "In 700 feet, bear left to stay on Leland Street." -> said
+  471 s   3790 m  #11 bear_left Leland St prepare: "In 250 feet, bear left to stay on Leland Street." -> said
+  479 s   3854 m  #11 bear_left Leland St now (urgent): "Keep left now." -> said
+  483 s   3887 m  #12 bear_left Path advance: "In 700 feet, cross Beach Drive, then right onto Rock Creek Trail." -> said
+  500 s   4023 m  #12 bear_left Path prepare: "In 250 feet, cross Beach Drive, then right." -> said
+  508 s   4088 m  #12 bear_left Path now (urgent): "Cross Beach Drive now." -> said
+  511 s   4112 m  #13 right Rock Creek Trl now (urgent): "Right now onto Rock Creek Trail." -> said
+  541 s   4353 m  #14 bear_right Rock Creek Trl advance: "In 700 feet, bear right to stay on Rock Creek Trail, then immediately left to stay on Rock Creek Trail." -> said
+  558 s   4490 m  #14 bear_right Rock Creek Trl prepare: "In 250 feet, bear right, then immediately left." -> said
+  566 s   4554 m  #14 bear_right Rock Creek Trl now (urgent): "Keep right now." -> said
+  570 s   4587 m  #15 left Rock Creek Trl now (urgent): "Left now." -> said
+  587 s   4723 m  #16 bear_left Beach Dr advance: "In 700 feet, bear left onto Beach Drive." -> said
+  604 s   4860 m  #16 bear_left Beach Dr prepare: "In 250 feet, bear left onto Beach Drive." -> said
+  612 s   4925 m  #16 bear_left Beach Dr now (urgent): "Bear left now onto Beach Drive." -> said
+  708 s   5697 m  #17 bear_left West Beach Dr NW advance: "In 700 feet, bear left onto West Beach Drive Northwest." -> said
+  725 s   5834 m  #17 bear_left West Beach Dr NW prepare: "In 250 feet, bear left onto West Beach Drive Northwest." -> said
+  733 s   5898 m  #17 bear_left West Beach Dr NW now (urgent): "Bear left now onto West Beach Drive Northwest." -> said
+  746 s   6003 m  #18 right Kalmia Rd NW advance: "In 700 feet, right onto Kalmia Road Northwest, then immediately left onto East Beach Drive Northwest, then immediately bear right onto Portal Drive Northwest." -> said
+  763 s   6140 m  #18 right Kalmia Rd NW prepare: "In 250 feet, right, then immediately left, then immediately bear right." -> said
+  771 s   6204 m  #18 right Kalmia Rd NW now (urgent): "Right now onto Kalmia Road Northwest." -> said
+  779 s   6268 m  #19 left East Beach Dr NW now (urgent): "Left now onto East Beach Drive Northwest." -> said
+  790 s   6357 m  #20 bear_right Portal Dr NW now (urgent): "Bear right now onto Portal Drive Northwest." -> said
+  877 s   7057 m  #21 right High Park Ln advance: "In 700 feet, right onto High Park Lane." -> said
+  894 s   7194 m  #21 right High Park Ln prepare: "In 250 feet, right onto High Park Lane." -> said
+  902 s   7258 m  #21 right High Park Ln now (urgent): "Right now onto High Park Lane." -> said
+  908 s   7306 m  #22 bear_right High Park Ln advance: "In 700 feet, bear right to stay on High Park Lane, then immediately left onto Blair Mill Road." -> said
+  925 s   7443 m  #22 bear_right High Park Ln prepare: "In 250 feet, bear right, then immediately left." -> said
+  933 s   7508 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
+  937 s   7540 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
+  938 s   7548 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
+  943 s   7588 m  #24 left Svc Rd prepare: "In 250 feet, left, then immediately bear left." -> held 3.6 s, as "In 200 feet, left, then immediately bear left."
+  951 s   7652 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
+  958 s   7709 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
+  959 s   7717 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
+  967 s   7781 m  #26 left Svc Rd prepare: "In 250 feet, left, then immediately bear left." -> said
+  975 s   7846 m  #26 left Svc Rd now (urgent): "Left now." -> said
+  984 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said
+  985 s   7926 m  #28 right Svc Rd advance: "In 600 feet, right to stay on the service road, then immediately right onto the parking aisle." -> held 0.3 s
+  997 s   8023 m  #28 right Svc Rd prepare: "In 250 feet, right, then immediately right." -> said
+ 1005 s   8087 m  #28 right Svc Rd now (urgent): "Right now." -> said
+ 1010 s   8127 m  #29 right parking aisle now (urgent): "Right now onto the parking aisle." -> said
+ 1014 s   8159 m  #30 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said
+  ! bend at 4448 m: the line bends right 61 degrees with no cue within 40 m
+
+## bethesda-to-rock-creek at 12 mph, missed-turn
+    0 s      0 m  #0 right Waverly St prepare: "In 80 feet, right onto Waverly Street." -> said, cut 1.7 s in
+    2 s     11 m  #0 right Waverly St now (urgent): "Right now onto Waverly Street." -> said
+    3 s     16 m  #1 right Montgomery Ave Cycletrack advance: "In 450 feet, right onto Montgomery Avenue Cycletrack." -> held 5.0 s, as "In 350 feet, right onto Montgomery Avenue Cycletrack."
+   18 s     97 m  #1 right Montgomery Ave Cycletrack prepare: "In 170 feet, right onto Montgomery Avenue Cycletrack." -> said
+   25 s    134 m  #1 right Montgomery Ave Cycletrack now (urgent): "Right now onto Montgomery Avenue Cycletrack." -> said
+   41 s    220 m  #2 crossing Wisconsin Ave prepare: "In 160 feet, cross Wisconsin Avenue." -> said
+   62 s    333 m  #3 left Woodmont Ave Cycletrack advance: "In 500 feet, left onto Woodmont Avenue Cycletrack." -> said
+   80 s    429 m  #3 left Woodmont Ave Cycletrack prepare: "In 170 feet, left onto Woodmont Avenue Cycletrack." -> said
+   87 s    467 m  #3 left Woodmont Ave Cycletrack now (urgent): "Left now onto Woodmont Avenue Cycletrack." -> said
+  104 s    480 m  off-route (urgent): "Off the planned route. Finding a new way." -> said
+  off route said 77 m past the missed turn
+
+## bethesda-to-rock-creek at 12 mph, weak-gps
+    0 s      0 m  #0 right Waverly St prepare: "In 80 feet, right onto Waverly Street." -> said, cut 1.7 s in
+    2 s     11 m  #0 right Waverly St now (urgent): "Right now onto Waverly Street." -> said
+    3 s     16 m  #1 right Montgomery Ave Cycletrack advance: "In 450 feet, right onto Montgomery Avenue Cycletrack." -> held 5.0 s, as "In 350 feet, right onto Montgomery Avenue Cycletrack."
+   18 s     97 m  #1 right Montgomery Ave Cycletrack prepare: "In 170 feet, right onto Montgomery Avenue Cycletrack." -> said
+   25 s    134 m  #1 right Montgomery Ave Cycletrack now (urgent): "Right now onto Montgomery Avenue Cycletrack." -> said
+   41 s    220 m  #2 crossing Wisconsin Ave prepare: "In 160 feet, cross Wisconsin Avenue." -> said
+   62 s    333 m  #3 left Woodmont Ave Cycletrack advance: "In 500 feet, left onto Woodmont Avenue Cycletrack." -> said
+   80 s    429 m  #3 left Woodmont Ave Cycletrack prepare: "In 170 feet, left onto Woodmont Avenue Cycletrack." -> said
+   87 s    467 m  #3 left Woodmont Ave Cycletrack now (urgent): "Left now onto Woodmont Avenue Cycletrack." -> said
+  116 s    622 m  #4 bear_left Georgetown Branch Trl advance: "In 500 feet, bear left onto Georgetown Branch Trail." -> said
+  134 s    719 m  #4 bear_left Georgetown Branch Trl prepare: "In 160 feet, bear left onto Georgetown Branch Trail." -> said
+  141 s    756 m  #4 bear_left Georgetown Branch Trl now (urgent): "Bear left now onto Georgetown Branch Trail." -> said
+  171 s    917 m  #5 crossing Wisconsin Ave prepare: "In 180 feet, cross Wisconsin Avenue." -> said
+  174 s    933 m  #6 onto Willow Ln advance: "In 500 feet, continue onto Willow Lane." -> held 5.0 s, as "In 400 feet, continue onto Willow Lane."
+  261 s   1400 m  #7 right Oakridge Ave advance: "In 500 feet, right onto Oakridge Avenue, then immediately left onto Leland Street." -> said
+  279 s   1497 m  #7 right Oakridge Ave prepare: "In 170 feet, right, then immediately left." -> said
+  286 s   1534 m  #7 right Oakridge Ave now (urgent): "Right now onto Oakridge Avenue." -> said
+  289 s   1550 m  #8 left Leland St now (urgent): "Left now onto Leland Street." -> said
+  323 s   1733 m  #9 bear_right Leland St advance: "In 500 feet, bear right to stay on Leland Street." -> said
+  341 s   1829 m  #9 bear_right Leland St prepare: "In 170 feet, bear right to stay on Leland Street." -> said
+  348 s   1867 m  #9 bear_right Leland St now (urgent): "Keep right now." -> said
+  362 s   1942 m  #9 bear_right Leland St undefined: "Continue on Leland Street for 1.2 miles." -> said
+  442 s   2371 m  #10 hazard Connecticut Ave advance: "In 500 feet, busy crossing at Connecticut Avenue, no signal." -> said
+  694 s   3723 m  #11 bear_left Leland St advance: "In 500 feet, bear left to stay on Leland Street." -> said
+  712 s   3820 m  #11 bear_left Leland St prepare: "In 160 feet, bear left to stay on Leland Street." -> said
+  719 s   3857 m  #11 bear_left Leland St now (urgent): "Keep left now." -> said
+  736 s   3948 m  #12 bear_left Path advance: "In 500 feet, cross Beach Drive, then right onto Rock Creek Trail." -> said
+  754 s   4045 m  #12 bear_left Path prepare: "In 170 feet, cross Beach Drive, then right." -> said
+  773 s           note: "GPS is weak: turn cues paused."
+  823 s   4415 m  #14 bear_right Rock Creek Trl advance: "In 500 feet, bear right to stay on Rock Creek Trail, then immediately left to stay on Rock Creek Trail." -> said
+  841 s   4512 m  #14 bear_right Rock Creek Trl prepare: "In 170 feet, bear right, then immediately left." -> said
+  848 s   4549 m  #14 bear_right Rock Creek Trl now (urgent): "Keep right now." -> said
+  856 s   4592 m  #15 left Rock Creek Trl now (urgent): "Left now." -> said
+  892 s   4785 m  #16 bear_left Beach Dr advance: "In 500 feet, bear left onto Beach Drive." -> said
+  910 s   4882 m  #16 bear_left Beach Dr prepare: "In 170 feet, bear left onto Beach Drive." -> said
+  917 s   4919 m  #16 bear_left Beach Dr now (urgent): "Bear left now onto Beach Drive." -> said
+ 1075 s   5767 m  #17 bear_left West Beach Dr NW advance: "In 500 feet, bear left onto West Beach Drive Northwest." -> said
+ 1093 s   5863 m  #17 bear_left West Beach Dr NW prepare: "In 170 feet, bear left onto West Beach Drive Northwest." -> said
+ 1100 s   5901 m  #17 bear_left West Beach Dr NW now (urgent): "Bear left now onto West Beach Drive Northwest." -> said
+ 1132 s   6073 m  #18 right Kalmia Rd NW advance: "In 500 feet, right onto Kalmia Road Northwest, then immediately left onto East Beach Drive Northwest, then immediately bear right onto Portal Drive Northwest." -> said
+ 1150 s   6169 m  #18 right Kalmia Rd NW prepare: "In 160 feet, right, then immediately left, then immediately bear right." -> said
+ 1157 s   6207 m  #18 right Kalmia Rd NW now (urgent): "Right now onto Kalmia Road Northwest." -> said
+ 1169 s   6271 m  #19 left East Beach Dr NW now (urgent): "Left now onto East Beach Drive Northwest." -> said
+ 1185 s   6357 m  #20 bear_right Portal Dr NW now (urgent): "Bear right now onto Portal Drive Northwest." -> said
+ 1327 s   7119 m  #21 right High Park Ln advance: "In 500 feet, right onto High Park Lane." -> said
+ 1345 s   7215 m  #21 right High Park Ln prepare: "In 170 feet, right onto High Park Lane." -> said
+ 1352 s   7253 m  #21 right High Park Ln now (urgent): "Right now onto High Park Lane." -> said
+ 1374 s   7371 m  #22 bear_right High Park Ln advance: "In 500 feet, bear right to stay on High Park Lane, then immediately left onto Blair Mill Road." -> said
+ 1392 s   7467 m  #22 bear_right High Park Ln prepare: "In 160 feet, bear right, then immediately left." -> said
+ 1399 s   7505 m  #22 bear_right High Park Ln now (urgent): "Keep right now." -> said
+ 1405 s   7537 m  #23 left Blair Mill Rd now (urgent): "Left now onto Blair Mill Road." -> said
+ 1406 s   7542 m  #24 left Svc Rd advance: "In 400 feet, left onto the service road, then immediately bear left to stay on the service road." -> held 1.4 s
+ 1420 s   7618 m  #24 left Svc Rd prepare: "In 160 feet, left, then immediately bear left." -> said
+ 1427 s   7655 m  #24 left Svc Rd now (urgent): "Left now onto the service road." -> said
+ 1438 s   7714 m  #25 bear_left Svc Rd now (urgent): "Keep left now." -> said
+ 1439 s   7719 m  #26 left Svc Rd advance: "In 450 feet, left to stay on the service road, then immediately bear left to stay on the service road." -> held 0.3 s
+ 1455 s   7805 m  #26 left Svc Rd prepare: "In 170 feet, left, then immediately bear left." -> said
+ 1463 s   7848 m  #26 left Svc Rd now (urgent): "Left now." -> said
+ 1476 s   7918 m  #27 bear_left Svc Rd now (urgent): "Keep left now." -> said
+ 1482 s   7950 m  #28 right Svc Rd advance: "In 500 feet, right to stay on the service road, then immediately right onto the parking aisle." -> said
+ 1500 s   8047 m  #28 right Svc Rd prepare: "In 170 feet, right, then immediately right." -> said
+ 1508 s   8090 m  #28 right Svc Rd now (urgent): "Right now." -> said
+ 1514 s   8122 m  #29 right parking aisle now (urgent): "Right now onto the parking aisle." -> said
+ 1520 s   8154 m  #30 end arrive (urgent): "You have arrived at the end of the route. Destination on your right." -> said

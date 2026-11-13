@@ -210,7 +210,8 @@ test("what is said within a moment is said together, never one message over anot
 });
 
 test("each list's map style is its own colour and its own line, from the colour-blind-safe palette", () => {
-  const okabeIto = new Set(["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000"]);
+  // Okabe-Ito's eight, and Paul Tol's wine (his muted scheme, also colour-blind-safe) for the ninth list.
+  const okabeIto = new Set(["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000", "#882255"]);
   const colours = QUEUES.map((q) => QUEUE_STYLE[q].colour);
   assert.equal(new Set(colours).size, QUEUES.length);
   assert.ok(colours.every((c) => okabeIto.has(c)));

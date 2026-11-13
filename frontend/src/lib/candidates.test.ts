@@ -112,6 +112,25 @@ test("the description has the figures in words, miles first, in plain words, and
   assert.equal(statsLine({ ...statsOf(body(), 1), lts4M: 50, lts3M: 0, red: 0, orange: 0, trailM: 0, climbM: 0, effortM: null }), "", "under 0.05 mi reads as 0.0 mi: left out");
 });
 
+test("each route's line says its turns, its wait at lights and stops, and its unpaved distance (the fewer-turns item)", () => {
+  const stretch = (movement: string) => ({ kind: "stretch", turn: { movement } });
+  const fiddly = body({
+    description: [stretch("left"), stretch("right"), stretch("left"), stretch("straight")] as never,
+    junction_delay_s: 300,
+    stress_spans: [{ from_m: 0, to_m: 1609, tier: 1, facility: "path", unpaved: true }],
+  });
+  const line = statsLine(statsOf(fiddly, 2));
+  assert.match(line, /3 turns, 5 min waiting at lights and stops, /);
+  assert.match(line, /on paths and protected lanes, 1\.0 mi \(1\.6 km\) unpaved, climb/);
+  const one = statsLine(statsOf(body({ description: [stretch("right")] as never, junction_delay_s: 10 }), 1));
+  assert.match(one, /1 turn(,|$)/);
+  assert.doesNotMatch(one, /waiting|unpaved/, "under half a minute and no unpaved: left out");
+  // An older API's body (no directions, no waits, no sections): nothing guessed.
+  const old = statsOf(body(), 1);
+  assert.deepEqual([old.turns, old.waitS, old.unpavedM], [null, null, null]);
+  assert.doesNotMatch(statsLine(old), /turn|waiting|unpaved/);
+});
+
 test("LTS 4 and Avoid count together, and trail is path plus protected", () => {
   const stats = statsOf(body(), 1);
   assert.equal(stats.lts4M, 420);

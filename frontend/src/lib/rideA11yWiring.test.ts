@@ -110,9 +110,9 @@ test("RIDE-5: the outcome of a re-plan the rider asked for is answered at every 
   // The page: Re-plan from here asks; the automatic re-plans do not.
   assert.match(ride, /async \(here: LonLat, via\?: LonLat, asked = false, turnRound = false, check = false, skip\?: number, done\?: ReadonlySet<number>\): Promise<boolean> => \{/);
   assert.match(ride, /const told = replanTold\(asked, prefsRef\.current\.verbosity, note\);/);
-  // Re-plan from here, Road closed (v0.8.2), a restart's picks (2026-10-24) and End mountain biking (2026-11-08); not the
-  // held U-turn's silent check (asked false, check true).
-  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true") && !call.includes("false, false, true")).length, 4);
+  // Re-plan from here, Road closed (v0.8.2), a restart's picks (2026-10-24), End mountain biking (2026-11-08) and Reroute
+  // around it on a closure ahead (2026-11-12); not the held U-turn's silent check (asked false, check true).
+  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true") && !call.includes("false, false, true")).length, 5);
 });
 
 test("a re-plan after Road closed turns round freely: both of its calls leave the heading out", () => {
@@ -144,4 +144,11 @@ test("a re-plan before the ride is placed counts from the rider's place on the l
   const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
   assert.match(replan, /const progressM = heldProgressM\(modelRef\.current, current, here\);/);
   assert.doesNotMatch(replan, /current\.progressM \?\? 0/);
+});
+
+test("Road closed while a re-plan is under way clears a Reroute around it waiting too: one re-plan, not two", () => {
+  const branch = ride.slice(ride.indexOf("if (!check && closedPending.current && !ended.current) {"), ride.indexOf("if (!check && (mtbDonePending.current || suddenPending.current)"));
+  assert.match(branch, /closedPending\.current = false;/);
+  assert.match(branch, /mtbDonePending\.current = false;/);
+  assert.match(branch, /suddenPending\.current = false;/);
 });

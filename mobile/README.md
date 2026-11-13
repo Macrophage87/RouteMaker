@@ -189,7 +189,11 @@ in the build environment):
   (the owner, 2026-11-01: battery audit). An older site, through `routemaker-compat.js`, still asks
   for every fix (no distance filter), since it has no such backup. Some makers' battery savers
   (Samsung, Xiaomi) still stop foreground services: if cues stop, set RouteMaker's battery use to
-  "Unrestricted".
+  "Unrestricted". Since v0.26.0 the app says so itself, once: at the first Start ride, on a phone
+  whose maker is on `BatteryPlugin.STRICT_MAKERS` (dontkillmyapp.com's list, our default) while
+  RouteMaker is battery-optimised, Ride shows one line with a button to RouteMaker's App info page
+  (`BatteryPlugin.java`, `frontend/src/lib/batteryNote.ts`). Needs an app build; an older app shows
+  nothing. To check: on such a phone, a fresh install, Start ride, and the line is there once.
 
 ## Screen readers (TalkBack)
 
@@ -239,7 +243,8 @@ Positions stay on the phone, as on the website: the plugin hands each fix to the
 it for the cues and forgets it, and nothing sends the rider's position to the server (a re-plan sends
 the route request, as today). No analytics, no crash reporting, no tracking SDK. The manifest asks for
 the network, location (fine and coarse, "while using the app"; never `ACCESS_BACKGROUND_LOCATION`),
-the location foreground service, and notifications; the local-notifications plugin's boot, exact-alarm
+the location foreground service, notifications, and vibration (a group ride's alert buzz, through
+the WebView's `navigator.vibrate`; a normal permission, never asked); the local-notifications plugin's boot, exact-alarm
 and wake-lock permissions are removed, and `allowBackup` is off and `dataExtractionRules`
 (`res/xml/data_extraction_rules.xml`) exclude everything, so the site's data in the app never goes to
 a cloud backup or, on Android 12+, to a new phone by device transfer. The plugin's location service is

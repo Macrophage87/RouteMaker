@@ -37,7 +37,8 @@ because every later item depends on the earlier ones. It writes a JSON and a Mar
   tests against them" has no runner in the repository; the canary route per variant stands in, and
   the rebuild's own VALIDATE_TILES stage (the transform loaded, no rule violations, the admin and timezone
   databases, elevation and a derived tag read back from the tiles) is the rest of the evidence. The
-  runner is a `handoff.md` §7 row.
+  route scorecard (docs/SCORECARD.md, `scripts/route_scorecard.py`) plans a fixed set of trips
+  and compares runs, outside this checklist; it reports and is not a gate.
 - **It does not sign in for you.** Discord's OAuth needs a browser and a real account; A3 tells you
   the four steps and checks their footprints afterwards.
 - **A6 leaves the deployment rolled back** by design. Run A4 once more to roll forward, or leave it
@@ -46,7 +47,7 @@ because every later item depends on the earlier ones. It writes a JSON and a Mar
 ## Recording a run
 
 Commit the Markdown report under `docs/review/acceptance/` (the first recorded run creates the
-folder: docs/PLAYBOOK.md, "Recording the run"; none is recorded yet as of 2026-10-29) with the
+folder: docs/PLAYBOOK.md, "Recording the run"; none is recorded yet, checked again 2026-11-12) with the
 commit it ran against, and put
 one line in `handoff.md`'s header: the date, the commit, the outcome, and which items were skipped.
 A FAIL is the next wave's only list. Under the retrospective's rule, phase 1 is accepted when a run

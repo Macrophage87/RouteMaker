@@ -38,7 +38,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time, timedelta
 
 from routemaker.lang import spanish, t
@@ -81,6 +81,8 @@ SOURCES = {
     "purple_line": "Purple Line construction update",
     # The Fairfax County Park Authority's Park Alerts, read by hand (v0.22.0; `routemaker.fcpa`).
     "fcpa": "Fairfax County Park Authority park alert",
+    # The park agencies' trail alerts, read by hand (v0.26.0; `routemaker.park_alerts`).
+    "park_alert": "Park agency trail alert",
     # Planned work that may close a road some day in its window (v0.17.0; Plan's Potential
     # closures layer only; `routemaker.planned_work`).
     "protrack": "DDOT capital projects (ProTrack+, CC BY 4.0)",
@@ -88,6 +90,8 @@ SOURCES = {
     "wssc": "WSSC Water water main construction",
     # Maryland's counties' and towns' closures (v0.17.0; `routemaker.md_closures`), routed round.
     "sha": "Maryland Road Closure Reporter (MDOT SHA)",
+    # Montgomery County DOT's own road closures (v0.26.0; `routemaker.md_closures`).
+    "moco": "Montgomery County DOT road closures",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -101,10 +105,14 @@ SOURCE_LINKS = {
     "ddot_advisory": "https://projects.ddot.dc.gov/",
     "purple_line": "https://purplelinemd.com/updates",
     "fcpa": "https://www.fairfaxcounty.gov/parks/park-alerts",
+    # Each park closure carries its own agency's page (`park-closures.json`'s `page`, required by
+    # tests/test_park_alerts.py); this is only a fallback.
+    "park_alert": "https://www.nps.gov/choh/planyourvisit/conditions.htm",
     "protrack": "https://opendata.dc.gov/",
     "dcwater": "https://www.dcwater.com/projects",
     "wssc": "https://www.wsscwater.com/what-we-do/constructionin-your-neighborhood-map",
     "sha": "https://data.imap.maryland.gov/datasets/maryland-road-closures",
+    "moco": "https://www.montgomerycountymd.gov/dot/",
 }
 
 DISCLAIMER = (
@@ -246,6 +254,19 @@ class Zone:
     # None: it holds the whole of its window (hunt K6, 2026-11-08: a week of nights was read
     # as one week-long closure, and daytime rides went round an open street).
     daily: tuple[int, int, int, int] | None = None
+    # An area, not a line (Stephen 2026-11-12: police activity is avoided "by a wide margin";
+    # a closure at one corner closes the junction): `line` is then the area's outline, a closed
+    # ring, already `margin_m` out from the closed corners or blocks (`dc_closures.area_ring`),
+    # and the router leaves out the whole ring (`polygon`), not a strip along a line.
+    margin_m: float = 0.0
+    # An area's closed corners and blocks themselves ([lon, lat]): where a rider is already in
+    # or by the wide area, a re-plan still leaves out `CORE_M` round these (review of #1175).
+    core: tuple[tuple[float, float], ...] = ()
+
+    @property
+    def area(self) -> bool:
+        """Whether the zone is an area (`margin_m`): its `line` is a closed ring."""
+        return self.margin_m > 0 and len(self.line) >= 4 and self.line[0] == self.line[-1]
 
     @property
     def firm_end(self) -> bool:
@@ -274,6 +295,8 @@ class Zone:
             "from_ends": self.from_ends,
             "on_foot": self.on_foot,
             "daily": None if self.daily is None else list(self.daily),
+            "margin_m": self.margin_m,
+            "core": [list(p) for p in self.core],
         }
 
     @classmethod
@@ -298,6 +321,8 @@ class Zone:
             from_ends=bool(row.get("from_ends")),
             on_foot=_on_foot(row.get("on_foot")),
             daily=_daily(row.get("daily")),
+            margin_m=_margin(row.get("margin_m")),
+            core=_core(row.get("core")),
         )
 
 
@@ -314,6 +339,23 @@ def _daily(value) -> tuple[int, int, int, int] | None:
     ):
         return None
     return hours  # type: ignore[return-value]
+
+
+def _margin(value) -> float:
+    """A stored `margin_m`: a number from 0 to 2 km, else 0 (a line)."""
+    try:
+        margin = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    return margin if 0.0 < margin <= 2000.0 else 0.0
+
+
+def _core(value) -> tuple[tuple[float, float], ...]:
+    """A stored `core`: [lon, lat] pairs, at most 200; anything else is none."""
+    try:
+        return tuple((float(p[0]), float(p[1])) for p in (value or ())[:200])
+    except (TypeError, ValueError, IndexError):
+        return ()
 
 
 def _on_foot(value) -> bool | None:
@@ -557,7 +599,10 @@ def _to_segment(p, a, b) -> float:
 def polygon(zone: Zone) -> list[list[float]] | None:
     """The strip the router is to leave out for a zone: its line trimmed at both
     ends, thinned, and widened `HALF_WIDTH_M` each side; a closed ring of [lon, lat]
-    pairs (Valhalla's `exclude_polygons` entry). None for a line under 1 m."""
+    pairs (Valhalla's `exclude_polygons` entry). None for a line under 1 m. An area's ring is
+    its outline itself (`Zone.area`)."""
+    if zone.area:
+        return [[float(p[0]), float(p[1])] for p in zone.line]
     return line_ring(zone.line, TRIM_M)
 
 
@@ -721,12 +766,93 @@ def line_rings(
     return rings
 
 
+# Round an area's closed corners and blocks themselves (`Zone.core`), what is still left out
+# where the rider is in or by the wide area: the junction, as a crash's is.
+CORE_M = 30.0
+
+
 def zone_rings(
     zone: Zone, points: Sequence[Sequence[float]] = (), crossings: Sequence[float] = ()
 ) -> list[list[list[float]]]:
     """A closure's strips (`line_rings`): its line trimmed `TRIM_M` at both ends, less the
-    stretches near the rider's `points`, cut at its `crossings`."""
+    stretches near the rider's `points`, cut at its `crossings`. An area is its one ring; where
+    one of `points` lies in it or within `NEAR_POINT_M` of it, the ring `CORE_M` round its
+    closed corners and blocks instead (a rider a block from a police cordon is still sent round
+    the closed junctions), or none where a point is by those too (warned of, not left out)."""
+    if zone.area:
+        if not any(near_area(zone, p) for p in points):
+            ring = polygon(zone)
+            return [] if ring is None else [ring]
+        core = area_ring(zone.core, CORE_M) if zone.core else None
+        if core is None:
+            return []
+        inner = replace(zone, line=core, margin_m=CORE_M, core=())
+        if any(near_area(inner, p) for p in points):
+            return []
+        return [[[p[0], p[1]] for p in core]]
     return line_rings(zone.line, TRIM_M, points, crossings)
+
+
+def area_ring(
+    points: Sequence[Sequence[float]], margin_m: float, sides: int = 16
+) -> tuple[tuple[float, float], ...] | None:
+    """The outline round `points` ([lon, lat]) at `margin_m`: the convex hull of a circle
+    of `sides` sides round each, a closed ring; None with no points."""
+    if not points or margin_m <= 0:
+        return None
+    lat0 = float(points[0][1])
+    # Out to the corners' circle, so the polygon's sides keep `margin_m` clear too.
+    reach = margin_m / math.cos(math.pi / sides)
+    around = []
+    for lon, lat in points:
+        x, y = _xy(float(lon), float(lat), lat0)
+        for k in range(sides):
+            turn = 2 * math.pi * k / sides
+            around.append((x + reach * math.cos(turn), y + reach * math.sin(turn)))
+    hull = _hull(around)
+    ring = [tuple(round(c, 7) for c in _lonlat(x, y, lat0)) for x, y in hull]
+    ring.append(ring[0])
+    return tuple((float(p[0]), float(p[1])) for p in ring)
+
+
+def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The convex hull, anticlockwise (Andrew's monotone chain)."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return pts
+
+    def turn(o, a, b) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    for p in pts:
+        while len(lower) >= 2 and turn(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper: list[tuple[float, float]] = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and turn(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def _in_ring(point: tuple[float, float], ring: Sequence[tuple[float, float]]) -> bool:
+    """Whether a point lies inside a closed ring (both on the same plane): even-odd rule."""
+    x, y = point
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring, ring[1:], strict=False):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+def near_area(zone: Zone, point: Sequence[float], near_m: float = NEAR_POINT_M) -> bool:
+    """Whether a [lon, lat] point lies in an area zone, or within `near_m` of its outline."""
+    lat0 = zone.line[0][1]
+    ring = [_xy(lon, lat, lat0) for lon, lat in zone.line]
+    at = _xy(point[0], point[1], lat0)
+    return _in_ring(at, ring) or _distance_to_line(at, ring) <= near_m
 
 
 def crossing_cuts(
@@ -922,6 +1048,11 @@ def along(
             continue
         if _length(points) < 1.0:
             continue
+        if zone.area:
+            inside = _through_area(route, cumulative, points)
+            if inside is not None:
+                found.append(Passage(zone, inside[0], inside[1]))
+            continue
         samples = _samples(_trim(points, TRIM_M))
         # Only the route's segments near the zone are measured against.
         zx = [x for x, _ in points]
@@ -967,6 +1098,52 @@ def along(
         if near and len(near) >= ALONG_SHARE * len(samples):
             found.append(Passage(zone, min(near), max(near)))
     return sorted(found, key=lambda p: (p.from_m, p.zone.zone_id))
+
+
+def _through_area(
+    route: Sequence[tuple[float, float]],
+    cumulative: Sequence[float],
+    ring: Sequence[tuple[float, float]],
+) -> tuple[float, float] | None:
+    """Where a route (on the plane, with its metres along) is inside an area's ring: the
+    first and last metres along it that are, counting where it crosses the outline; None
+    where it never enters. A route that only touches the outline from outside is not in it."""
+    marks: list[float] = []
+    xs = [p[0] for p in ring]
+    ys = [p[1] for p in ring]
+    box = (min(xs), min(ys), max(xs), max(ys))
+    for i, (a, b) in enumerate(zip(route, route[1:], strict=False)):
+        if max(a[0], b[0]) < box[0] or min(a[0], b[0]) > box[2]:
+            continue
+        if max(a[1], b[1]) < box[1] or min(a[1], b[1]) > box[3]:
+            continue
+        seg = cumulative[i + 1] - cumulative[i]
+        if _in_ring(a, ring):
+            marks.append(cumulative[i])
+        if _in_ring(b, ring):
+            marks.append(cumulative[i + 1])
+        for c, d in zip(ring, ring[1:], strict=False):
+            t = _cross_at(a, b, c, d)
+            if t is not None:
+                marks.append(cumulative[i] + t * seg)
+    if not marks:
+        return None
+    first, last = min(marks), max(marks)
+    if last - first < 1.0:
+        return None  # touched, not entered
+    return first, last
+
+
+def _cross_at(a, b, c, d) -> float | None:
+    """How far along a-b (0 to 1) it crosses c-d; None where it does not."""
+    rx, ry = b[0] - a[0], b[1] - a[1]
+    sx, sy = d[0] - c[0], d[1] - c[1]
+    den = rx * sy - ry * sx
+    if abs(den) < 1e-12:
+        return None
+    t = ((c[0] - a[0]) * sy - (c[1] - a[1]) * sx) / den
+    u = ((c[0] - a[0]) * ry - (c[1] - a[1]) * rx) / den
+    return t if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0 else None
 
 
 # --- Putting a line given by its ends on the road ---------------------------------
@@ -1418,7 +1595,8 @@ def for_plan(
             closures.append(zone)
         else:
             plan.passable.append(zone)
-    cuts = crossings(closures) if crossings is not None and closures else {}
+    lines = [z for z in closures if not z.area]  # an area is left out whole, never cut
+    cuts = crossings(lines) if crossings is not None and lines else {}
     pieces: dict[str, list[list[list[float]]]] = {}
     fitting = []
     stops = [list(p) for p in points[1:]]
@@ -1427,6 +1605,16 @@ def for_plan(
         # At a destination or via the rest of the strip would still meet the stop's edge, which
         # the router can never arrive on (Valhalla 3.9.1 `AvoidAsDestinationEdge`), so a closure
         # by one is warned of whole, as before (review of hunt K3, 2026-11-08).
+        # An area is looked at with every point: by any of them, only its core is left out
+        # (`zone_rings`), and only where no point is by that too.
+        if zone.area:
+            rings = zone_rings(zone, points)
+            if rings:
+                pieces[zone.zone_id] = rings
+                fitting.append(zone)
+            else:
+                plan.unexcluded.append(zone)
+            continue
         if stops and any(
             _distance_to_line(_xy(p[0], p[1], zone.line[0][1]), _zone_xy(zone)) <= NEAR_POINT_M
             for p in stops
@@ -1490,7 +1678,7 @@ def split_words(zone: Zone | None) -> str:
 DC_SOURCES = frozenset({"dc", "mpd", "alertdc", "ddot_advisory"})
 # The sources whose closed zones are said as a road closed, not a work zone: DC's, the
 # closures a reviewer confirmed, the Purple Line's (v0.13.0) and Fairfax's park alerts (v0.22.0).
-CLOSURE_SOURCES = DC_SOURCES | {"reviewer", "purple_line", "fcpa"}
+CLOSURE_SOURCES = DC_SOURCES | {"reviewer", "purple_line", "fcpa", "park_alert"}
 
 
 # --- The card's words (v0.7.0, "Closures on the map") ------------------------------
@@ -1541,7 +1729,9 @@ def cited_date(moment: datetime) -> str:
 # The sources whose windows are whole days: a reviewer's, a DDOT project advisory's
 # (`routemaker.ddot_advisories`), a Purple Line update's (`routemaker.purple_line`) and a
 # Fairfax park alert's (`routemaker.fcpa`).
-WHOLE_DAY_SOURCES = frozenset({"reviewer", "ddot_advisory", "purple_line", "fcpa", "dcwater"})
+WHOLE_DAY_SOURCES = frozenset(
+    {"reviewer", "ddot_advisory", "purple_line", "fcpa", "park_alert", "dcwater"}
+)
 
 
 def last_day(source: str, end: datetime) -> datetime | None:
@@ -1624,7 +1814,7 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
 
 
 # The sources the card dates by when they published it.
-DATED_SOURCES = frozenset({"mpd", "alertdc", "ddot_advisory", "purple_line", "fcpa"})
+DATED_SOURCES = frozenset({"mpd", "alertdc", "ddot_advisory", "purple_line", "fcpa", "park_alert"})
 
 
 def source_text(zone: Zone, now: datetime | None = None) -> str:

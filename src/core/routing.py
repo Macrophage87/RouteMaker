@@ -111,6 +111,7 @@ from routemaker import (
     mass_route,
     mdot_aadt,
     mtbmode,
+    restricted_sites,
     ridetime,
     steep_grades,
     time_marks,
@@ -134,6 +135,7 @@ from routemaker.measure import elevation_gain
 
 from . import (
     avoid_junctions,
+    barriers,
     beside_roads,
     easy_mtb,
     mass_hazards,
@@ -1783,6 +1785,11 @@ class Dials:
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
+    # The rider's "Fewer turns" and "All paved" (`presets.with_rider_choices`; the backlog's
+    # "fewer turns" item, 2026-11-12): a higher turn charge, and gravel avoided, on the ride
+    # type's own costing.
+    fewer_turns: bool = False
+    paved: bool = False
     # "Keep to roads, not trails" (trails off): plan on the no-trail graph, whatever the ride type
     # (`presets.variant_for_ride`). Mass Ride is always on it.
     trails_off: bool = False
@@ -4324,6 +4331,7 @@ def _fit_target(
     avoid_gravel: bool,
     variant: str,
     deadline: Deadline,
+    rider: tuple[bool, bool] = (False, False),
 ) -> tuple[tuple | None, list[tuple], bool]:
     """The first route for a rider's target distance (OWNER-DECISIONS 256, 271): the
     router's own route if it is within it, else the calmest route the router gives
@@ -4349,7 +4357,9 @@ def _fit_target(
         closures in the request, say), not the time running out: the next rung is still
         asked (hunt 2, P2-2; it stopped the whole ladder before)."""
         options = _same_pace(
-            presets.costing(preset_name, position, hills_dial, assist=assist),
+            presets.with_rider_choices(
+                presets.costing(preset_name, position, hills_dial, assist=assist), *rider
+            ),
             request,
         )
         asked = {k: v for k, v in request.items() if k != "alternates"} | {
@@ -4496,6 +4506,58 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
                 "routed": [round(target[0], 6), round(target[1], 6)],
                 "reason": "zoo_racks",
                 "note": ZOO_NOTE,
+            }
+        )
+    return out, moved
+
+
+# A trip point inside a closed site (a military area or a secured federal compound, whose roads
+# the rebuild closes to bicycles) goes to the site's nearest gate, and the answer says so (the
+# owner, 2026-11-12: "route them to the gate and they can figure it out themselves", then "That
+# works for me"; `routemaker.restricted_sites`). Short, as Ride and Go text is translated.
+RESTRICTED_NOTES = {
+    "start": "Restricted site. Route starts at the gate.",
+    "end": "Restricted site. Route ends at the gate.",
+    "stop": "Restricted site. Route goes to the gate.",
+}
+
+
+def restricted_note(index: int, last: int, loop: bool = False) -> str:
+    """What the answer says of a point moved to a gate, by where the point is in the trip: on a
+    loop the last point asked is a turnaround, not the end."""
+    which = "start" if index == 0 else "end" if index == last and not loop else "stop"
+    return t(RESTRICTED_NOTES[which])
+
+
+def move_restricted_points(
+    points: list[list[float]],
+    skip: set[int] | frozenset[int] = frozenset(),
+    loop: bool = False,
+) -> tuple[list[list[float]], list[dict]]:
+    """A trip point inside a closed site is moved to its nearest gate (`restricted_sites.redirect`).
+    `skip` are points not to move: one already moved, or a ride's re-plan's start (the rider).
+    Not moved either: a point that would land where the point before it is routed (two
+    buildings on one campus with one nearest gate), which would plan a trip of nothing; it is
+    routed as asked, as before. Returns the points and, for each one moved, what the answer
+    reports (`moved_points`)."""
+    out: list[list[float]] = []
+    moved: list[dict] = []
+    last = len(points) - 1
+    for index, point in enumerate(points):
+        lon, lat = point[0], point[1]
+        found = None if index in skip else restricted_sites.redirect(lon, lat)
+        gate = None if found is None else [found[1][0], found[1][1]]
+        if gate is None or (out and out[-1][:2] == gate):
+            out.append(list(point))
+            continue
+        out.append(gate)
+        moved.append(
+            {
+                "index": index,
+                "asked": [round(lon, 6), round(lat, 6)],
+                "routed": [round(gate[0], 6), round(gate[1], 6)],
+                "reason": "restricted_gate",
+                "note": restricted_note(index, last, loop),
             }
         )
     return out, moved
@@ -5465,6 +5527,15 @@ def _plan(
             moved_indices |= {m["index"] for m in rail_moved}
         if dials.mass_rails:
             rail_lines = mass_rails.lines_near(points)
+    # A point inside a closed site goes to its gate (`move_restricted_points`). Not a ride's
+    # re-plan's start, which is the rider, nor a point already moved, nor a line the rider drew
+    # or opened, which is ridden as it is.
+    if not fixed:
+        skip = set(moved_indices) | ({0} if dials.ride_replan else set())
+        points, gate_moved = move_restricted_points(points, skip=skip, loop=bool(dials.loop))
+        if gate_moved:
+            moved_points = sorted(moved_points + gate_moved, key=lambda m: m["index"])
+            moved_indices |= {m["index"] for m in gate_moved}
     # A loop is planned through its start again (OWNER-DECISIONS 266); a followed line is
     # already the whole ride.
     loop = not fixed and loop_wanted(points, dials.loop, preset_name)
@@ -5630,7 +5701,11 @@ def _plan(
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
-    costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
+    costing = presets.with_rider_choices(
+        presets.costing(preset_name, stress_dial, hills_dial, assist=assist),
+        dials.fewer_turns,
+        dials.paved,
+    )
     if dials.mtb_done and preset_name == mtb.PRESET:
         # After "End mountain biking", Mountain Bike's costing no longer seeks paths over roads
         # (its `use_roads` 0): Default's, so a calm road is as welcome as a path.
@@ -6023,7 +6098,11 @@ def _plan(
     # a wider road chosen for the group (OWNER-DECISIONS 125, 325).
     if avoiding and not quick and not fixed and capacity_choice is None:
         middle_costing = _same_pace(
-            presets.costing(preset_name, stress_dial, 0, assist=assist),
+            presets.with_rider_choices(
+                presets.costing(preset_name, stress_dial, 0, assist=assist),
+                dials.fewer_turns,
+                dials.paved,
+            ),
             request,
         )
         trip, kept_middle = no_busier_than_middle(
@@ -6066,7 +6145,7 @@ def _plan(
     if maxcalm and fitting:
         fit, past, fit_unfinished = _fit_target(
             trip, request, costing, trace_costing, target_m, preset_name, hills_dial, assist,
-            avoid_gravel, variant, deadline,
+            avoid_gravel, variant, deadline, (dials.fewer_turns, dials.paved),
         )  # fmt: skip
         if fit is not None:
             trip, request, costing, trace_costing, fitted_at = fit
@@ -6106,6 +6185,7 @@ def _plan(
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
+        fewer_turns=dials.fewer_turns,
         wait_weight=presets.wait_weight_for(preset_name),
         road_bike_buttons=presets.road_bike_buttons_for(preset_name),
         exposure=exposure,
@@ -6286,6 +6366,25 @@ def _plan(
         if trip is not winding_trip_before:
             mtb_replaced = True
             refine_context.candidates = refine_context.candidates[:1]
+    # Cargo and Tandem round the barriers they cannot pass (OWNER-DECISIONS 345; backlog
+    # 2026-11-12 item 12): a stile, kissing gate, turnstile, steps or a gap mapped under 1.0 m
+    # on the route is excluded and the router asked again, a few rounds (`core.barriers`).
+    # After the level rounds and before the red pass, which keeps the exclusions
+    # (`level_excludes`). Where none clears them the answer names the barrier in the way.
+    barrier_info = None
+    barrier_trip = trip
+    if barriers.applies(preset_name) and not quick and not fixed:
+        trip, barrier_info = barriers.settle(
+            trip, request, variant, deadline, points,
+            level_excludes=refine_context.level_excludes,
+            # Not held to the level rounds' guard (`refine.level_round_keeps`): a barrier a cargo
+            # bike or tandem cannot pass ends the trip, so a busier or longer way round it is
+            # still the way (the owner, 2026-11-12: "Exclude").
+        )  # fmt: skip
+        if trip is not barrier_trip:
+            mtb_replaced = True
+            refine_context.candidates = refine_context.candidates[:1]
+        barrier_trip = trip
     # Gravel and Mountain Goat ride the same mountain-bike class (`segment.mtb_only`) on the
     # off-road graph, and their answers time it at Mountain Bike's singletrack pace too, as
     # Easy MTB's do. Hunt 4 M4-5 asked "Should Gravel and Mountain Goat use 6 mph on MTB
@@ -6383,6 +6482,10 @@ def _plan(
             if again["over_level_m"] > 1.0 and limited is None:
                 limited = "no_way_round"
             mtb_info.update({**again, "limited": limited})
+    if barrier_info is not None and trip is not barrier_trip:
+        # A later pass changed the route the barrier round chose: what is in the way is read
+        # again from the route answered.
+        barriers.reread(trip, barrier_info)
     if easy_held and easy_info is not None and trip is not easy_trip:
         again = easy_mtb.reread(trip, variant, trace_costing, deadline, traces)
         if again is not None:
@@ -6842,6 +6945,9 @@ def _plan(
             "time_marks": time_marks.time_marks(router_at, waits, traced_m),
             "climb_m": round(climb, 1),
             "descent_m": round(descent, 1),
+            # Every barrier and flight of steps on the line, and whether its width is mapped
+            # (`core.barriers.reading`; backlog 2026-11-12 item 12).
+            "barriers": barriers.reading(coordinates),
             "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
             "facility_m": {key: round(metres, 1) for key, metres in facility.items()},
             "stress_adjustments": used_adjustments,
@@ -6854,6 +6960,8 @@ def _plan(
                 "carrying": presets.carrying_of(preset_name, dials.carrying),
                 "assist": assist,
                 "avoid_gravel": avoid_gravel,
+                "fewer_turns": dials.fewer_turns,
+                "paved": dials.paved,
                 # What was planned, not what was asked: Mass Ride is always trails-off.
                 "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
                 "easy_mtb": easy_asked,
@@ -6971,6 +7079,9 @@ def _plan(
     # What the winding-trail round did on Group Ride and Fast (`core.winding_round`); null
     # where it did not run. The answer cache reads its `limited`.
     body["winding"] = winding_info
+    # What Cargo's and Tandem's barrier round did (`core.barriers.settle`): the impassable
+    # barriers still in the way, and why. Null on other ride types.
+    body["barrier_round"] = barrier_info
     timing.mark("answer")
 
     def _with_mtb(

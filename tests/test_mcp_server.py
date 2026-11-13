@@ -213,14 +213,15 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "route_notes",
         "save_route",
         "my_drafts",
+        "archive_draft",
         "organize_route",
         "gpx_route",
     ]
-    # Only save_route and organize_route change anything (My routes, on the rider's word): the
-    # rest plan drafts.
+    # Only save_route and organize_route change My routes (on the rider's word); archive_draft
+    # only hides a draft; the rest plan drafts.
     tools_listed = rpc(tools, "tools/list")["result"]["tools"]
     writers = [t["name"] for t in tools_listed if not t["annotations"]["readOnlyHint"]]
-    assert writers == ["save_route", "organize_route"]
+    assert writers == ["save_route", "archive_draft", "organize_route"]
     assert rpc(tools, "nope")["error"]["code"] == -32601
     # An unknown tool is the caller's mistake in the request, not a tool's refusal.
     assert rpc(tools, "tools/call", {"name": "nope"})["error"]["code"] == -32602
@@ -1458,6 +1459,28 @@ def test_drafts_are_named_for_finding_and_listed_newest_revision_first(tools) ->
     assert listed[0]["days_left"] == 7
     tools.call("save_route", {"draft_id": revised["draft_id"], "name": "Kept loop"})
     assert [d["draft_id"] for d in tools.call("my_drafts", {})["drafts"]] == [trip["draft_id"]]
+
+
+def test_a_test_plan_and_an_archived_draft_stay_out_of_the_rider_s_list(tools) -> None:
+    """The owner, 2026-11-12: an agent's test routes "keep loading on my account": archived."""
+    trip = tools.call("plan_route", {"points": ["Union Market", "Takoma"], "name": "Tacos"})
+    check = tools.call("plan_route", {"points": ["Union Market", "Takoma"], "test": True})
+    # A revision of an archived route stays archived.
+    again = tools.call("revise_route", {"draft_id": check["draft_id"]})
+    listed = tools.call("my_drafts", {})["drafts"]
+    assert [d["draft_id"] for d in listed] == [trip["draft_id"]]
+    archived = tools.call("my_drafts", {"archived": True})["drafts"]
+    assert [d["draft_id"] for d in archived] == [again["draft_id"]]
+    # The test flag lasts only its own call.
+    later = tools.call("plan_route", {"points": ["Takoma", "Union Market"]})
+    assert tools.call("my_drafts", {})["drafts"][0]["draft_id"] == later["draft_id"]
+    # Archive when done, and restore.
+    assert tools.call("archive_draft", {"draft_id": trip["draft_id"]})["archived"] is True
+    assert [d["draft_id"] for d in tools.call("my_drafts", {})["drafts"]] == [later["draft_id"]]
+    tools.call("archive_draft", {"draft_id": trip["draft_id"], "archived": False})
+    assert trip["draft_id"] in [d["draft_id"] for d in tools.call("my_drafts", {})["drafts"]]
+    with pytest.raises(mcp.ToolError):
+        tools.call("archive_draft", {"draft_id": "dnope"})
 
 
 def test_a_link_still_comes_back_when_the_exact_route_is_not_kept(tools, monkeypatch) -> None:

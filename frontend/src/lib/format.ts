@@ -12,7 +12,7 @@
  * Ride's voice says metres and kilometres. `both` is the one place the order is chosen.
  */
 
-import { t } from "./i18n.ts";
+import { locale, t } from "./i18n.ts";
 import { metricFirst } from "./units.ts";
 
 const DASH = "–";
@@ -360,7 +360,39 @@ export function formatClimb(metres: number): string {
 export function formatMilesSpelled(metres: number): string {
   if (!usable(metres)) return DASH;
   const miles = (metres / METRES_PER_MILE).toFixed(1);
-  return both(`${miles} ${miles === "1.0" ? "mile" : "miles"}`, `${kmFigure(metres)} km`);
+  return both(spelledUnit(Number(miles), miles, "mile"), `${kmFigure(metres)} km`);
+}
+
+/**
+ * A figure with its unit spelled out in the language in force, singular or plural as that language has it ("2.1 miles",
+ * "2.1 millas", "5 segundos"), from the browser's own unit names (Intl), so no catalog holds them. The figure is ours as
+ * written (a point for decimals, Western digits), as everywhere else in the app; a language that says "one" by the word
+ * alone keeps its word. Was English only ("mile/miles" by hand; backlog 2026-11-12, languages).
+ */
+function spelledUnit(value: number, figure: string, unit: "mile" | "second"): string {
+  try {
+    const parts = new Intl.NumberFormat(locale(), {
+      style: "unit",
+      unit,
+      unitDisplay: "long",
+      numberingSystem: "latn",
+      // A whole figure ("1.0") takes the word of the whole number ("1.0 mile", the owner's example), not CLDR's "1.0 miles".
+      maximumFractionDigits: Number.isInteger(value) ? 0 : (figure.split(".")[1]?.length ?? 0),
+    }).formatToParts(value);
+    const isNumber = (type: string) => type === "integer" || type === "decimal" || type === "fraction" || type === "group";
+    let placed = false;
+    const out = parts
+      .map((part) => {
+        if (!isNumber(part.type)) return part.value;
+        if (placed) return "";
+        placed = true;
+        return figure;
+      })
+      .join("");
+    return out.trim() || `${figure} ${unit}s`;
+  } catch {
+    return `${figure} ${value === 1 ? unit : `${unit}s`}`;
+  }
 }
 
 /** A speed from km/h: "12 mph (19 km/h)". */
@@ -377,7 +409,7 @@ export function formatSpeedRange(lowMph: number, highMph: number): string {
 
 /** A whole number of seconds, for "trying again in ...": "1 second", "5 seconds". */
 export function formatSeconds(seconds: number): string {
-  return seconds === 1 ? "1 second" : `${seconds} seconds`;
+  return spelledUnit(seconds, String(seconds), "second");
 }
 
 /** The distance as said, one unit only (Ride mode, WEB-NAV-plan.md Q4): "50 feet", "300 feet", "700 feet", "0.4 miles", "1 mile".
