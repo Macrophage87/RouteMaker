@@ -1551,8 +1551,7 @@ FACT_USE = {
     "parking": "Parked cars beside a painted lane add door and pull-out risk.",
     "setting": "Inside a Census urban area the city tables apply; outside it, the rural "
     "table, with its own speeds and shoulders.",
-    "pavement": "Shown for riding comfort. It does not change the stress level; rough "
-    "pavement makes routes cost more (DC streets only so far).",
+    "pavement": "Shown for riding comfort. It does not change the stress level.",
 }
 # What a source-less estimate rests on, said behind its (i).
 ESTIMATE_DETAIL = (
