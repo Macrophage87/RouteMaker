@@ -92,11 +92,27 @@ def test_small_sites_and_the_pentagon_reservation_are_left_out():
     assert [mod.site_id(a) for _k, a in sites] == ["w1"]
 
 
-def test_an_unnamed_or_small_site_is_shaded_without_a_label():
+def test_a_small_named_site_is_labelled_small_and_an_unnamed_one_not_at_all():
     small = [(W, S), (W + 0.003, S), (W + 0.003, S + 0.003), (W, S + 0.003), (W, S)]
     found = mod.collection(areas(secured=[area(small, "w3", "Small Lab")]), [])
     assert [f["properties"]["site"] for f in by(found, "kind")] == ["w3"]
-    assert [f for f in by(found, "name") if "kind" not in f["properties"]] == []
+    (label,) = [f for f in by(found, "name") if "kind" not in f["properties"]]
+    assert label["properties"] == {"site": "w3", "name": "Small Lab", "small": True}
+    found = mod.collection(areas(secured=[area(small, "w4", "")]), [])
+    assert by(found, "name") == []
+
+
+def test_each_piece_of_a_site_is_labelled_where_it_is():
+    from shapely.geometry import MultiPolygon, box
+
+    big, exclave = box(W, S, E, N), box(-76.80, 39.00, -76.798, 39.002)
+    labels = mod.label_features("r1", "Test Base", MultiPolygon([big, exclave]))
+    assert [f["properties"] for f in labels] == [
+        {"site": "r1", "name": "Test Base"},
+        {"site": "r1", "name": "Test Base", "small": True},
+    ]
+    lon, lat = labels[1]["geometry"]["coordinates"]
+    assert -76.80 < lon < -76.798 and 39.00 < lat < 39.002
 
 
 def test_area_in_square_metres():
