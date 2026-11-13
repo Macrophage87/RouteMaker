@@ -7,7 +7,7 @@
  * closed areas drawn by hand with their source (Patuxent Research Refuge's closed area): restricted-data/
  * restricted-sites.json, by scripts/build_restricted_sites.py from the OSM extract. Each is washed grey and hatched,
  * with a dashed edge (a cue that is not colour alone), under the base map's labels and the stress lines; a named
- * site big enough (the build step's LABEL_MIN_M2, our default) carries its name and "No public access". A trip
+ * site's every piece carries its name and "No public access" (zoom rules below). A trip
  * point inside one is routed to its gate by the API (core.routing, move_restricted_points), which says so.
  *
  * These are functions of a small map interface so a test can run them against a stand-in (the real map needs WebGL).
@@ -23,9 +23,17 @@ export const RESTRICTED_LABEL_LAYER = "restricted-sites-label";
 export const RESTRICTED_HATCH_IMAGE = "restricted-hatch";
 export const RESTRICTED_HATCH_IMAGE_DARK = "restricted-hatch-dark";
 
-/** Our defaults: the wash from zoom 10, the names from zoom 11 (where the stress lines start to show streets). */
+/**
+ * Our defaults: the wash from zoom 10; the name from zoom 13 and "No public access" under it from zoom 14; a small
+ * piece's name and line from zoom 15. The owner, 2026-11-13, of the labels crowding a city-wide view (zoom 12) in Go:
+ * "The no public access words are seen way too high up on the zoom level." Zoomed out, the hatching alone says the
+ * area is closed; the words come when it is close. And of hatched blocks with no name: "some of the exclaves are
+ * unlabeled", so every piece of a named site carries a label (scripts/build_restricted_sites.py).
+ */
 export const RESTRICTED_MIN_ZOOM = 10;
-export const RESTRICTED_LABEL_MIN_ZOOM = 11;
+export const RESTRICTED_LABEL_MIN_ZOOM = 13;
+export const RESTRICTED_NO_ACCESS_MIN_ZOOM = 14;
+export const RESTRICTED_SMALL_MIN_ZOOM = 15;
 
 /** The label's second line. Short, as Go and Ride text is translated. */
 export const NO_PUBLIC_ACCESS = "No public access";
@@ -55,6 +63,9 @@ export function hatchImage(ink: readonly [number, number, number, number]): { wi
 /** The layers, on the light map or the dark. */
 export function restrictedLayers(dark = false, noAccess = t(NO_PUBLIC_ACCESS)): Record<string, unknown>[] {
   const s = dark ? RESTRICTED_STYLE.dark : RESTRICTED_STYLE.light;
+  const name = ["get", "name"];
+  const full = ["format", name, {}, "\n", {}, noAccess, { "font-scale": 0.82 }];
+  const small = ["==", ["get", "small"], true];
   return [
     {
       id: RESTRICTED_TINT_LAYER,
@@ -87,7 +98,17 @@ export function restrictedLayers(dark = false, noAccess = t(NO_PUBLIC_ACCESS)): 
       minzoom: RESTRICTED_LABEL_MIN_ZOOM,
       filter: isLabel,
       layout: {
-        "text-field": ["format", ["get", "name"], {}, "\n", {}, noAccess, { "font-scale": 0.82 }],
+        // A piece under the build step's LABEL_MIN_M2 (`small`: the Marine Barracks' blocks, a lab's annex) is named
+        // only from RESTRICTED_SMALL_MIN_ZOOM, where it is big enough on screen to carry its name.
+        "text-field": [
+          "step",
+          ["zoom"],
+          ["case", small, "", name],
+          RESTRICTED_NO_ACCESS_MIN_ZOOM,
+          ["case", small, "", full],
+          RESTRICTED_SMALL_MIN_ZOOM,
+          full,
+        ],
         "text-font": [MAP_LABEL_FONT],
         // Our default: the street names' size (ROAD_LABEL.size), the second line a little smaller.
         "text-size": 15,
