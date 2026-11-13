@@ -53,8 +53,10 @@ one-way streets.
 Full reference: Furth, P. G. (May 2022). *Level of Traffic Stress Criteria for Road
 Segments, version 2.2.* Northeastern University. Fetched and read 2026-11-13.
 - **Taken (2026-11-13):** version 2.2's "Bikes in mixed traffic" table and both bike-lane
-  tables, cell for cell, and note 4 under the lane tables ("Use mixed traffic criteria if
-  it would result in lower LTS"). Until then the code said "Furth 2017" but used the 2012
+  tables, cell for cell, note 4 under the lane tables ("Use mixed traffic criteria if
+  it would result in lower LTS"), and note 2 (a lane under 4 ft, or a reach beside parking
+  under 12 ft, is rated by the mixed-traffic table). Where OSM does not say whether cars
+  park beside a lane, both lane tables are read and the higher level is used. Until then the code said "Furth 2017" but used the 2012
   bands with local count steps on top ([classification.md](classification.md)).
 - **Differs:** the road class stands in for the centerline, which OSM seldom records; the
   posted or statutory limit stands in for prevailing speed; a narrow one-way is read as
@@ -118,10 +120,15 @@ bikeway framework (FHWA-FLH-19-004, 2019) finds lanes shared under about 1,200 a
 be suitable" even at 45+ mph.
 
 - **Taken:** the exhibit cell for cell, for rural two-lane roads at 45 mph or more, posted
-  or by statute; R2 as the lowest rural level; the class-for-count pairing for roads nobody
-  counted ([classification.md](classification.md), "Rural roads" and "Traffic counts").
+  or by statute, whatever class the map gives the road; "functional class if ADT is not
+  available" as the idea behind reading an uncounted road at its class's usual count (the
+  counts themselves are measured on this region's roads;
+  [classification.md](classification.md), "Rural roads" and "Traffic counts").
 - **Differs:** a rural road under 45 mph takes the lower of the ordinary table and this
-  one, so a lower limit never raises the level. A shoulder nobody mapped is read on the
+  one, so a lower limit never raises the level (our default). Under 45 mph a rural road
+  open to cars is also held at 2 at least, which is the owner's choice (2026-11-13) and
+  not Oregon's: Oregon's ordinary tables allow 1 there, and R2 is the lowest cell of this
+  exhibit only. A shoulder nobody mapped is read on the
   narrow column and reported as unknown. Oregon's notes that an R level is not the urban
   level of the same number, and that sharp curves raise stress, are not modelled.
 - **What it replaced:** from 2026-11-09 to 2026-11-13 the map used a reading with half
