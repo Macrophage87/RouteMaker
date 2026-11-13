@@ -169,6 +169,7 @@ import {
   type Verbosity,
   endWords,
   ARRIVED_SAID,
+  OFF_ROUTE_KEPT_SAID,
 } from "./lib/navigate.ts";
 import { statsPause, statsStart, statsStep, withClosedStretch, type RideStats } from "./lib/rideStats.ts";
 import {
@@ -195,7 +196,7 @@ import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type 
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideBuzz, rideGeoEnv, rideSpeech, rideWake, ridesHidden, showTurnCard, speaksAloud } from "./lib/nativeShell.ts";
-import { turnCard } from "./lib/turnCard.ts";
+import { cardAtM, noteCard, turnCard } from "./lib/turnCard.ts";
 import { cueMark } from "./lib/cueTone.ts";
 import { rideCueLog } from "./lib/cueRecorder.ts";
 import {
@@ -2146,7 +2147,7 @@ export function RideMode({
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       // Poor fixes since the last good one: the GPS is weak, not just quiet (estimateStep reckons only then).
       poorSeen.current = fix.accuracyM > POOR_FIX_M;
-      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current, weakNoteAfterMs(modelRef.current, rideRef.current, estimateGround()));
+      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current, weakNoteAfterMs(modelRef.current, rideRef.current, estimateGround(), prefsRef.current.verbosity));
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
       if (weighed.sayNow) rideCueLog.note("gps-weak", Date.now());
       if (weighed.sayNow && !gpsQuietRef.current) notify(GPS_WEAK_SAID);
@@ -3215,14 +3216,6 @@ export function RideMode({
   // Units switched during the ride (lib/units.ts switchUnitsInRide): the screen figured again at once, and the
   // server's words in the cue, turned at arrival, turned round now.
   const unitsNow = useSyncExternalStore(subscribeUnits, units);
-  // The lock screen's live turn card in the phone app (lib/turnCard.ts): its words change as the distance counts down
-  // (and with the units); the notice skips an update that changes nothing. Arrived, it goes (a walk or a train after the
-  // line has its own cues); End ride clears it with the watch.
-  const estNow = ride.estM;
-  useEffect(() => {
-    // Weak GPS: the card counts down from where the ride is reckoned to be (estimateStep), as the voice does.
-    showTurnCard(arrived ? null : turnCard(model, estNow ?? progress));
-  }, [model, progress, estNow, arrived, unitsNow]);
   const cueWords = cue?.card ?? cueParts(cue ? (cue.rideText ?? cue.text) : "");
   const cueShown = { ...cueWords, head: unitsFirst(cueWords.head), rest: unitsFirst(cueWords.rest) };
   // A detour row's place ahead on the route or behind the rider, where the rider is on it (detourRowShown). Where each
@@ -3623,6 +3616,18 @@ export function RideMode({
       }
     }
   }, [watched, watchAt, suddenAsk, showToast]);
+  // The lock screen's live turn card in the phone app (lib/turnCard.ts): its words change as the distance counts down
+  // (and with the units); the notice skips an update that changes nothing. Off route, or asked about a closure just
+  // ahead, it says so in place of a turn that no longer counts down. Arrived, it goes (a walk or a train after the line
+  // has its own cues); End ride clears it with the watch.
+  const estNow = ride.estM;
+  const offNote = ride.off ? OFF_ROUTE_KEPT_SAID : null;
+  const askNote = suddenAsk ? closedAheadSaid(suddenAsk.distance, suddenAsk.name) : null;
+  useEffect(() => {
+    const note = offNote ?? askNote;
+    // Weak GPS: the card counts down from where the ride is reckoned to be (estimateStep), as the voice does.
+    showTurnCard(arrived ? null : note ? noteCard(note) : turnCard(model, cardAtM(model, progress, estNow)));
+  }, [model, progress, estNow, arrived, unitsNow, offNote, askNote]);
   // Left unanswered while the rider rides on, it closes as Keep going (as Start first does, RESTART_AUTO_M): past the
   // closure, or that far from where it was asked (the v0.26.0 accessibility review).
   const fixNow = ride.goodFix ?? ride.fix;

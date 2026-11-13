@@ -10068,6 +10068,9 @@ added; every figure below is our default, unmeasured.
   `cardDistance`), to the nearest 50 ft or m, so it changes every few seconds. `CueNotice` skips an update that
   changes nothing; an older app without the plugin gets the old "Latest cue" with the turn and street only. It
   follows a units switch, and goes on arrival (a walk or train after the line has its own cues).
+  Off route it says "Off the planned route." and, while the closure question is open, the closure ahead, in place
+  of a turn that no longer counts down (`noteCard`). Under weak GPS it counts from the reckoned place (`cardAtM`),
+  held short of the next cue, so a reckoning that ran ahead never takes a turn off the card before a real fix.
   Android 16: `setRequestPromotedOngoing` (Live Update) where the phone allows it.
 - **Tone before a turn cue** (`lib/cueTone.ts`): `cueMark` gives a turn's cue a tone (its "now" also a buzz for
   its side) and off route its own tone; nothing else gets one. `Announcer` carries the mark, `Voice` puts it on

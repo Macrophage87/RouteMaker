@@ -157,7 +157,7 @@
   193 s   1035 m  #7 stop arrive (urgent): "You have reached stop 1. Destination on your right." -> held 0.2 s
   194 s   1041 m  #8 left 7th St SE prepare: "In 110 feet, left onto 7th Street Southeast." -> held 3.1 s, cut 0.6 s in
   198 s   1062 m  #8 left 7th St SE now (urgent): "Left now onto 7th Street Southeast." -> said
-  275 s           note: "GPS is weak: turn cues paused."
+  257 s           note: "GPS is weak: turn cues paused."
   304 s   1631 m  #9 right L St SE advance: "In 500 feet, right onto L Street Southeast." -> said
   322 s   1727 m  #9 right L St SE prepare: "In 160 feet, right onto L Street Southeast." -> said
   329 s   1765 m  #9 right L St SE now (urgent): "Right now onto L Street Southeast." -> said

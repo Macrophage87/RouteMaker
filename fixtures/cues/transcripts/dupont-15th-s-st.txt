@@ -69,7 +69,7 @@
    87 s    467 m  #1 left S St NW advance: "In 500 feet, left onto S Street Northwest." -> said
   105 s    563 m  #1 left S St NW prepare: "In 160 feet, left onto S Street Northwest." -> said
   112 s    601 m  #1 left S St NW now (urgent): "Left now onto S Street Northwest." -> said
-  180 s           note: "GPS is weak: turn cues paused."
+  162 s           note: "GPS is weak: turn cues paused."
   229 s   1228 m  #2 right 19th St NW advance: "In 500 feet, right onto 19th Street Northwest." -> said
   247 s   1325 m  #2 right 19th St NW prepare: "In 170 feet, right onto 19th Street Northwest." -> said
   254 s   1363 m  #2 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said

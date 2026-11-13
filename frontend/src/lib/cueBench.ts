@@ -348,7 +348,7 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
     // As RideMode: poor fixes since the last good one, and the last fix's own speed (estimateGround).
     lastSpeed = fix.speedMs;
     const ground = { poorSeen: fix.accuracyM > POOR_FIX_M, lastSpeedMs: lastSpeed, free: true };
-    const weighed = weighFix(weakness, fix.accuracyM, fix.at, weakNoteAfterMs(model, state, ground));
+    const weighed = weighFix(weakness, fix.accuracyM, fix.at, weakNoteAfterMs(model, state, ground, level));
     weakness = { goodAt: weighed.goodAt, weak: weighed.weak };
     if (weighed.sayNow) {
       log.note("gps-weak", fix.at);

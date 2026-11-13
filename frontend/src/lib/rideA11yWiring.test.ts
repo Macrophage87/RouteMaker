@@ -31,7 +31,7 @@ test("RIDE-1: hidden in the installed app, the ride's map so far goes to the las
 test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix clears it; no new control", () => {
   const onFix = ride.slice(ride.indexOf("const onFix = useCallback("), ride.indexOf("const onFixRef = useRef(onFix);"));
   // Later while the turns are estimated (lib/navigate.ts weakNoteAfterMs): never "paused" over them.
-  assert.match(onFix, /const weighed = weighFix\(gpsWeak\.current, fix\.accuracyM, lastFixAt\.current, weakNoteAfterMs\(modelRef\.current, rideRef\.current, estimateGround\(\)\)\);/);
+  assert.match(onFix, /const weighed = weighFix\(gpsWeak\.current, fix\.accuracyM, lastFixAt\.current, weakNoteAfterMs\(modelRef\.current, rideRef\.current, estimateGround\(\), prefsRef\.current\.verbosity\)\);/);
   // Never on a train or bus past the line (Stephen, 2026-11-04: "stop the GPS is weak notifications on metrorail").
   assert.match(onFix, /if \(weighed\.sayNow && !gpsQuietRef\.current\) notify\(GPS_WEAK_SAID\);/);
   assert.match(onFix, /setGps\(weighed\.weak && !gpsQuietRef\.current \? GPS_WEAK_SAID : ""\);/);

@@ -142,9 +142,25 @@ function estimates(model: RideModel, state: Pick<RideState, "progressM" | "off" 
   );
 }
 
-/** The weak-GPS note's delay: after the estimates where they can run, else GPS_WEAK_MS as before. */
-export function weakNoteAfterMs(model: RideModel, state: Pick<RideState, "progressM" | "off" | "arrived" | "alongside" | "speedMs">, ground: EstimateGround): number {
-  return estimates(model, state, ground) ? Math.max(GPS_WEAK_MS, ESTIMATE_MS) : GPS_WEAK_MS;
+/**
+ * The weak-GPS note's delay: after the estimates where one can be said in the window (the next turn's first warning is
+ * within reach at the reckoned speed), else GPS_WEAK_MS as before, so a turn far ahead never buys silence.
+ */
+export function weakNoteAfterMs(
+  model: RideModel,
+  state: Pick<RideState, "progressM" | "off" | "arrived" | "alongside" | "speedMs">,
+  ground: EstimateGround,
+  level: Verbosity = "full",
+): number {
+  if (state.progressM === null || !estimates(model, state, ground)) return GPS_WEAK_MS;
+  const progressM = state.progressM;
+  const cue = model.cues.find((c) => c.atM > progressM - PASSED_M && c.kind === "turn" && !c.joined);
+  if (!cue) return GPS_WEAK_MS;
+  const phases = phasesFor(level, cue, state.speedMs, model.onFoot);
+  if (!phases.length) return GPS_WEAK_MS;
+  const firstWarnM = Math.max(...phases.map((p) => p.withinM));
+  const reachM = (estimateSpeed(state, ground) * ESTIMATE_MS) / 1000;
+  return cue.atM - progressM - firstWarnM <= reachM ? Math.max(GPS_WEAK_MS, ESTIMATE_MS) : GPS_WEAK_MS;
 }
 
 /** An estimated turn's words: the same sentence, said as "about". */
@@ -162,7 +178,12 @@ export function estimatedSpoken(cue: Cue, phase: Phase, distanceM: number, first
  * guess. Progress, off route and the re-plan are left alone: a good fix decides those.
  */
 export function estimateStep(model: RideModel, state: RideState, gapMs: number, level: Verbosity, ground: EstimateGround): { state: RideState; events: RideEvent[] } {
-  if (gapMs < ESTIMATE_AFTER_MS || gapMs > ESTIMATE_MS || state.progressM === null || !estimates(model, state, ground)) return { state, events: [] };
+  if (gapMs < ESTIMATE_AFTER_MS || gapMs > ESTIMATE_MS || state.progressM === null || !estimates(model, state, ground)) {
+    // Nothing reckoned (past the window, stopped, off route): no reckoned place lingers for the lock-screen card.
+    if (state.estM === undefined) return { state, events: [] };
+    const { estM: _gone, ...rest } = state;
+    return { state: rest, events: [] };
+  }
   const speed = estimateSpeed(state, ground);
   const estM = Math.min(model.lengthM, state.progressM + (speed * gapMs) / 1000);
   const estSaid: Record<number, Phase[]> = { ...state.estSaid };

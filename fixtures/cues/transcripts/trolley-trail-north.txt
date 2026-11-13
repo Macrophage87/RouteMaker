@@ -201,7 +201,7 @@
   344 s   1845 m  #11 right Bethesda Trolley Trl advance: "In 500 feet, right to stay on Bethesda Trolley Trail." -> said
   362 s   1942 m  #11 right Bethesda Trolley Trl prepare: "In 170 feet, right to stay on Bethesda Trolley Trail." -> said
   369 s   1979 m  #11 right Bethesda Trolley Trl now (urgent): "Right now." -> said
-  404 s           note: "GPS is weak: turn cues paused."
+  386 s           note: "GPS is weak: turn cues paused."
   480 s   2575 m  #13 crossing Center Dr prepare: "In 170 feet, cross Center Drive." -> said
   517 s   2773 m  #14 crossing West Cedar Ln prepare: "In 160 feet, cross West Cedar Lane." -> said
   547 s   2934 m  #15 right Alta Vista Rd advance: "In 500 feet, right onto Alta Vista Road." -> said

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rideModel, type LonLat } from "./navigate.ts";
-import { turnCard } from "./turnCard.ts";
+import { cardAtM, noteCard, turnCard } from "./turnCard.ts";
 import { cardDistance } from "./format.ts";
 import { setUnitsForTest } from "./units.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -75,4 +75,23 @@ test("the card's distance: the rider's own unit alone, in steps that change ever
   assert.equal(cardDistance(152), "150 m");
   assert.equal(cardDistance(1609), "1.6 km");
   setUnitsForTest("us");
+});
+
+test("a reckoning that ran past a turn keeps the turn on the card until a real fix passes it", () => {
+  setUnitsForTest("us");
+  const model = rideModel(zRoute());
+  const turnAt = model.cues.find((c) => c.kind === "turn")!.atM;
+  // Weak GPS: reckoned 100 m past the left turn while the last good fix is 100 m before it.
+  const atM = cardAtM(model, turnAt - 100, turnAt + 100)!;
+  assert.ok(atM < turnAt && atM >= turnAt - 100);
+  assert.equal(turnCard(model, atM)?.arrow, "left");
+  assert.equal(cardAtM(model, 500, undefined), 500, "no reckoning: the ride's own place");
+  assert.equal(cardAtM(model, null, 700), null);
+});
+
+test("a note card says the sentence with no distance", () => {
+  const card = noteCard("Off the planned route.");
+  assert.equal(card.title, "Off the planned route.");
+  assert.equal(card.still, "Off the planned route.");
+  assert.equal(card.body, "");
 });

@@ -67,3 +67,20 @@ export function turnCard(model: RideModel, progressM: number | null): TurnCard |
     index: cue.index,
   };
 }
+
+/**
+ * Where the card counts from: the ride's place, or under weak GPS the reckoned one (estimateStep), held just short of the
+ * next cue the ride has not passed. A reckoning that ran ahead never takes a turn off the card before a real fix
+ * passes it (the voice still says the real "now" there too).
+ */
+export function cardAtM(model: RideModel, progressM: number | null, estM: number | undefined): number | null {
+  if (progressM === null || estM === undefined) return progressM;
+  const next = model.cues.find((c) => c.atM > progressM + 1);
+  const limit = next ? next.atM - 2 : model.lengthM;
+  return Math.max(progressM, Math.min(estM, limit));
+}
+
+/** A card with a sentence in place of the turn: off route, or a closure just ahead. No distance, so it is never stale. */
+export function noteCard(text: string): TurnCard {
+  return { title: text, body: "", still: text, arrow: "straight", index: -1 };
+}

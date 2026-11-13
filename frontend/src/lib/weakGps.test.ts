@@ -171,3 +171,18 @@ test("a reckoning that ran ahead: the real 'now' still comes at the turn on a go
   const all = [...at.events];
   assert.ok(all.some((e) => e.phase === "now" && /^Left now/.test(e.spoken)), JSON.stringify(all));
 });
+
+test("the weak-GPS note waits only where a turn's warning can be reached in the window", () => {
+  const model = rideModel(lRoute());
+  // 100 m in, the left turn's first warning is still far beyond 30 s at 5 m/s: the note is not held back.
+  assert.equal(weakNoteAfterMs(model, rideTo(model, 100), weak), GPS_WEAK_MS);
+  assert.equal(weakNoteAfterMs(model, rideTo(model, 800), weak), ESTIMATE_MS);
+});
+
+test("a reckoned place does not linger once nothing is reckoned", () => {
+  const model = rideModel(lRoute());
+  const reckoned = estimateStep(model, rideTo(model, 800), 10_000, "full", weak).state;
+  assert.notEqual(reckoned.estM, undefined);
+  assert.equal(estimateStep(model, reckoned, ESTIMATE_MS + 1_000, "full", weak).state.estM, undefined, "past the window");
+  assert.equal(estimateStep(model, reckoned, 10_000, "full", { ...weak, lastSpeedMs: 0.5 }).state.estM, undefined, "slowed to a stop");
+});
