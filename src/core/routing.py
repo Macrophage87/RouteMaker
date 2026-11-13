@@ -3461,6 +3461,7 @@ def junction_waits(
     stop_s_per_ft: float | None = None,
     button_cache: dict | None = None,
     when: str | None = None,
+    given_way: dict | None = None,
 ) -> list[junction_delay.Wait]:
     """A route's junction waits (`routemaker.junction_delay.waits`), read as `plan` and the
     calm search read them: stop signs taken as yields in the District, the beacons, and the
@@ -3468,7 +3469,9 @@ def junction_waits(
     waiting a foot of the junction model's cost is worth) its stop-sign prices, where there
     are `events`; suburban signals by `suburban_signal`, the map's beg buttons by
     `button_ways` (`button_cache`: its answers kept for the plan); a signal's time shown by
-    the ride-time setting `when` (None: not known)."""
+    the ride-time setting `when` (None: not known). `given_way`: the roads given way to as
+    the junction model read them (`refine.Context.given_way`), by which a junction with no
+    signal is priced and timed (`junction_delay.give_way_wait`); None: by class alone."""
     junctions = list(junctions)
     signals = intersections.signal_points(events)
     stop_extra = None
@@ -3488,6 +3491,7 @@ def junction_waits(
         buttons=button_ways(junctions, signals, button_cache),
         stop_extra_s=stop_extra,
         when=when,
+        given_way=given_way,
     )
 
 
@@ -6883,7 +6887,15 @@ def _plan(
         # (`routemaker.junction_delay`): part of the time shown.
         # Outside the major cities a signal across a big road waits longer (the owner,
         # 2026-11-08).
-        found_waits = junction_waits(raw_junctions, beacons, events, when=when)
+        found_waits = junction_waits(
+            raw_junctions,
+            beacons,
+            events,
+            when=when,
+            # Only with the events of this very route: the time shown must be read as the
+            # search read it.
+            given_way=refine_context.given_way if events is not None else None,
+        )
         waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
         route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)

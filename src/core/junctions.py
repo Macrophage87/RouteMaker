@@ -67,6 +67,7 @@ from pipeline.schema import (
     UNSMOOTHED_TIER_COLUMN,
     validate_schema_name,
 )
+from routemaker import junction_delay
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
     Beacon,
@@ -1221,6 +1222,7 @@ def events_of(
     ratings: Sequence[Rating] = (),
     beacons: Sequence[Beacon] = (),
     closure_when: str | None = None,
+    given_way: dict | None = None,
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
@@ -1235,7 +1237,10 @@ def events_of(
     `closure_when`: the ride time timed closures are read in (`routing.car_free_reading`),
     `when` where not given. `when` itself always times the junction costs (rush hour, night,
     weekend). Hunt X1 (2026-11-08, unreleased) briefly passed one value for both, so off the
-    weekend graphs a plan's junctions were priced with no ride time."""
+    weekend graphs a plan's junctions were priced with no ride time.
+    `given_way`: a dict this fills, by (lon, lat, way in, way out), with the road the rider
+    gives way to at each junction read (`junction_delay.road_given_way`), so the junction
+    waits read a road's traffic as this model does, not its class alone."""
     by_tier = busy_by_tier(
         [
             (position, raw.lon, raw.lat)
@@ -1262,6 +1267,11 @@ def events_of(
     closures = when if closure_when is None else closure_when
     roads = roads_by_way(list(asked.values()), closures, with_facility)
     built = build_junctions(raws, nodes, roads)
+    if given_way is not None:
+        for raw, junction in zip(raws, built, strict=True):
+            road = junction_delay.road_given_way(junction)
+            if road is not None:
+                given_way[(raw.lon, raw.lat, raw.in_way, raw.out_way)] = road
     if beacons:
         signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]
         built = with_beacons(built, beacons, signs)
