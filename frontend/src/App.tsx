@@ -1356,7 +1356,9 @@ export function App() {
         if (sharedRevoked && (revokedPlan ??= sentPlanKey(plan.points, plan.preset, plan.dials)) === sentPlanKey(plan.points, plan.preset, plan.dials))
           return { ok: false, error: SHARED_REVOKED_ERROR };
         const saved = savedShown.current;
-        if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
+        // Not with Plan's start time set (lib/startTime.ts): the saved line was planned for another moment, and the key
+        // does not hold the start, so it would come back unchanged.
+        if (saved && !plan.dials.startAt && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
           keptShown.current = null;
           return { ok: true, route: saved.answer };
         }
@@ -4327,7 +4329,8 @@ export function App() {
         ];
         // The detour's line alone is used: no routes to choose from (review speed-5).
         // The detours go round what the check found: on Start ride, only the closures known to be on.
-        const dials = pending.nowOnly ? { ...planDials, closuresNow: true } : planDials;
+        // A detour on Start ride is for now, never Plan's start time (lib/startTime.ts).
+        const dials = pending.nowOnly ? { ...planDials, closuresNow: true, startAt: undefined } : planDials;
         const result = await requestRoute(ends, rideRef.current.preset, { dials, routeOnly: true });
         return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
       }),

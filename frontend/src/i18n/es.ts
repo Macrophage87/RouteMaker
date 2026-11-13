@@ -2767,6 +2767,7 @@ export const ES: Readonly<Record<string, string>> = {
   // Plan's day and start time (lib/startTime.ts, 2026-11-13).
   "Leave at": "Salir a las",
   "Day and start time": "Día y hora de salida",
+  "Pick a time from now to a year ahead.": "Elija una hora entre ahora y dentro de un año.",
   "Leave at plans for that day and time: its closures, transit times and daylight.": "Salir a las planifica para ese día y esa hora: sus cierres, horarios de transporte y luz del día.",
   "leave {time}": "salida {time}",
   "arriving about {time} if you leave {start}": "llegada estimada {time} si sale el {start}",

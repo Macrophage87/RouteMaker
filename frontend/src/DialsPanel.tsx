@@ -302,6 +302,9 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   // The day and time last chosen, so Leave at picked again after Now comes back to it.
   const [lastStart, setLastStart] = useState<string | undefined>(dials.startAt);
   const startSet = Boolean(startTime && dials.startAt);
+  // A time typed that cannot be planned yet (past, or half typed): shown as typed, with its hint, until it can.
+  const [startDraft, setStartDraft] = useState<string | undefined>(undefined);
+  const startHintId = useId();
   const [trailsOffInfo, setTrailsOffInfo] = useState(false);
   const easyMtbHintId = useId();
   const easyMtbInfoId = useId();
@@ -534,15 +537,30 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
               type="datetime-local"
               step={300}
               {...startBounds(Date.now())}
-              value={dials.startAt}
+              value={startDraft ?? dials.startAt}
+              aria-invalid={startDraft !== undefined}
+              aria-describedby={startDraft !== undefined ? startHintId : undefined}
               onChange={(event) => {
-                // Only a whole, real time within the year ahead: a box half typed changes nothing.
-                const next = fitStart(event.currentTarget.value, Date.now());
-                if (!next || next === dials.startAt) return;
+                // What is typed shows as typed; only a whole, real time within the year ahead is planned, so a day
+                // changed before its time (passing through the past) is not put back.
+                const typed = event.currentTarget.value;
+                const next = fitStart(typed, Date.now());
+                if (!next) {
+                  setStartDraft(typed);
+                  return;
+                }
+                setStartDraft(undefined);
+                if (next === dials.startAt) return;
                 setLastStart(next);
                 onCommit({ ...dials, when: null, startAt: next });
               }}
+              onBlur={() => setStartDraft(undefined)}
             />
+            {startDraft !== undefined && (
+              <p id={startHintId} className="hint">
+                {t("Pick a time from now to a year ahead.")}
+              </p>
+            )}
           </div>
         )}
         {WHENS.map((option) => (

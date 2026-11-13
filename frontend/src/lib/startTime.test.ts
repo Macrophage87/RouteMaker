@@ -84,3 +84,18 @@ test("with a start set, a screen reader hears the arrival for leaving then, with
   assert.match(said, /^arriving about 8:45\s?AM if you leave Sun, Nov 15, 8:00\s?AM$/);
   assert.match(leaveNowArrival(starts, "en-US").said, /if you leave now$/);
 });
+
+test("a ride's own requests, saved routes and shared links never carry the start time", async () => {
+  const { rideNowDials, legDials } = await import("./rideTrip.ts");
+  const { withoutStart } = await import("./savedRoutes.ts");
+  const dials = { ...startDials("default"), startAt: "2026-11-15T08:00" };
+  assert.equal(rideNowDials(dials).startAt, undefined);
+  assert.equal(legDials(dials, "default").startAt, undefined);
+  assert.equal("startAt" in withoutStart(dials), false);
+  assert.equal(withoutStart(startDials("default")).stress, startDials("default").stress);
+  const saved = readFileSync(new URL("./savedRoutes.ts", import.meta.url), "utf8");
+  assert.equal((saved.match(/preset, dials: withoutStart\(dials\) \}/g) ?? []).length, 2, "planSave and gpxSave");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /if \(saved && !plan\.dials\.startAt && saved\.key === keptPlanKey/);
+  assert.match(app, /pending\.nowOnly \? \{ \.\.\.planDials, closuresNow: true, startAt: undefined \}/);
+});
