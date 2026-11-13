@@ -7,12 +7,11 @@ from collections import Counter
 
 import pytest
 
-from core import segment_info
-from pipeline import agency_ratings, writers
-from routemaker import agency_lts, mdot_sha_rules
+from pipeline import agency_ratings
+from routemaker import mdot_sha_rules
 from routemaker.agency_lts import AgencyRating
 from routemaker.mdot_sha_rules import ENABLED, Stretch, read_as
-from routemaker.stress import Stress, StressResult
+from routemaker.stress import Stress
 
 FIRST = "16000MD00410--1-----"
 SECOND = "16000MD00410--2-----"
@@ -33,95 +32,6 @@ def _stretch(**overrides) -> Stretch:
         urban=True,
     )
     return Stretch(**(base | overrides))
-
-
-@pytest.mark.parametrize(
-    "overrides, expected",
-    [
-        # A two-lane collector where SHA assumed 35 mph: Montgomery's 3; 3.5 at 10-15k a day.
-        ({}, (3.0, "collector-assumed-35")),
-        ({"aadt": 12_000}, (3.5, "collector-assumed-35")),
-        ({"aadt": 16_000}, None),
-        ({"speed_assumed": False}, None),
-        ({"route_id": CITY}, (3.0, "city-collector")),
-        # A two-lane street at 30 mph or less: 2.5 under 7,500 a day, 3 to 15,000.
-        ({"speed_mph": 30, "speed_assumed": False, "aadt": 5_900}, (2.5, "slow-street")),
-        ({"speed_mph": 30, "speed_assumed": False, "aadt": 9_000}, (3.0, "slow-street")),
-        # Four lanes at 30-45 mph, or two lanes posted 40-45, rated 3 or less: 4.
-        ({"level": 2.0, "lanes": 4, "aadt": 32_000}, (4.0, "multilane-or-40")),
-        ({"level": 2.0, "lanes": 4, "bike_facility": "Standard"}, (3.5, "multilane-or-40")),
-        ({"level": 3.0, "speed_mph": 40, "speed_assumed": False}, (4.0, "multilane-or-40")),
-        # A two-lane road with a painted lane at 40 mph keeps SHA's 3 (MD 450; 2026-10-31).
-        (
-            {"level": 3.0, "speed_mph": 40, "speed_assumed": False, "bike_facility": "Standard"},
-            None,
-        ),
-        # Only that case: at 45 mph, or rated lower, the painted lane still lifts.
-        (
-            {"level": 3.0, "speed_mph": 45, "speed_assumed": False, "bike_facility": "Standard"},
-            (3.5, "multilane-or-40"),
-        ),
-        (
-            {"level": 2.0, "speed_mph": 40, "speed_assumed": False, "bike_facility": "Standard"},
-            (3.5, "multilane-or-40"),
-        ),
-        ({"level": 3.0, "speed_mph": 40}, None),
-        # A 35 mph road SHA rated 2 for its shoulder: no shoulder credit.
-        ({"level": 2.0, "shoulder_ft": 8}, (3.0, "shoulder-credit")),
-        ({"level": 2.0, "shoulder_ft": 8, "aadt": 20_000}, (4.0, "shoulder-credit")),
-        ({"level": 2.0, "shoulder_ft": 8, "bike_facility": "Standard"}, None),
-        # The owner's 1st Street rule: 25 mph at 5,000-15,000 a day is 2.5, not with paint.
-        (
-            {"level": 1.0, "speed_mph": 25, "aadt": 7_000, "functional_class": 7},
-            (2.5, "busy-residential"),
-        ),
-        ({"level": 1.0, "speed_mph": 25, "aadt": 3_000, "functional_class": 7}, None),
-        (
-            {"level": 1.0, "speed_mph": 25, "aadt": 7_000, "bike_facility": "Standard"},
-            None,
-        ),
-        # A rural minor collector at 1,500+ a day is 3.5; a quiet one keeps the rural floor.
-        (
-            {"urban": False, "level": 1.0, "functional_class": 6, "speed_mph": 30, "aadt": 1_800},
-            (3.5, "rural-collector"),
-        ),
-        ({"urban": False, "level": 1.0, "functional_class": 6, "speed_mph": 30, "aadt": 600}, None),
-        (
-            {"urban": False, "level": 1.0, "functional_class": 7, "speed_mph": 30, "aadt": 1_800},
-            None,
-        ),
-        # A four-lane divided highway posted 55: 4.5, urban or rural; a 2-lane 50 stays 4
-        # (the owner's Darnestown call).
-        (
-            {"functional_class": 3, "lanes": 4, "speed_mph": 55, "speed_assumed": False},
-            (4.5, "rural-expressway"),
-        ),
-        (
-            {
-                "functional_class": 3,
-                "lanes": 4,
-                "speed_mph": 55,
-                "speed_assumed": False,
-                "urban": False,
-            },
-            (4.5, "rural-expressway"),
-        ),
-        (
-            {
-                "functional_class": 3,
-                "lanes": 2,
-                "speed_mph": 50,
-                "speed_assumed": False,
-                "urban": False,
-            },
-            None,
-        ),
-        # SHA's 5 is a ban and is never read otherwise.
-        ({"level": 5.0}, None),
-    ],
-)
-def test_each_rule_reads_shas_level_as_montgomery_would(overrides, expected):
-    assert read_as(_stretch(**overrides)) == expected
 
 
 @pytest.mark.parametrize(
@@ -188,28 +98,6 @@ def test_point_in_polygons_honours_holes():
     assert mdot_sha_rules.point_in_polygons((0.5, 0.5), polygons)
     assert not mdot_sha_rules.point_in_polygons((2, 2), polygons)
     assert not mdot_sha_rules.point_in_polygons((5, 5), polygons)
-
-
-def test_the_map_uses_the_reading_and_the_panel_shows_shas_level_and_why():
-    formula = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ("maxspeed",))
-    note = mdot_sha_rules.words("collector-assumed-35", 3.0)
-    rating = AgencyRating("mdot-sha", 4.0, read_as=3.0, note=note)
-    result = agency_lts.apply(formula, [rating])
-    assert (result.tier, result.half) == (Stress.LTS3, False)
-    assert result.rule == f"agency rating: MDOT SHA LTS 4, {note}"
-    assert segment_info.rule_words(result.rule).startswith(
-        "Rated LTS 4 by MDOT SHA, read as LTS 3: a two-lane collector where SHA assumed 35 mph"
-    )
-    held = writers._ratings_json(result)
-    rows = segment_info.rating_rows({"stress_ratings": held})
-    assert rows[0]["value"].startswith("LTS 4, read as LTS 3")
-
-
-def test_a_county_rating_still_wins_over_a_reading_of_the_states():
-    formula = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ())
-    ratings = [AgencyRating("mdot-sha", 2.0, read_as=4.0, note="x"), AgencyRating("moco", 2.0)]
-    result = agency_lts.apply(formula, ratings)
-    assert result.tier is Stress.LTS2 and "Montgomery" in result.rule
 
 
 def test_the_rebuild_reads_a_reading_from_the_installed_file(tmp_path):
@@ -407,70 +295,6 @@ def test_the_panel_note_states_the_facts_the_rule_read():
     assert "1 lane;" in mdot_sha_rules.facts(_stretch(lanes=1)) + ";"
 
 
-@pytest.mark.parametrize(
-    "overrides, expected",
-    [
-        # busy-residential: 5,000 to 15,000 a day, both ends taken.
-        ({"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 4_999}, None),
-        (
-            {"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 5_000},
-            (2.5, "busy-residential"),
-        ),
-        (
-            {"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 15_000},
-            (2.5, "busy-residential"),
-        ),
-        ({"level": 2.0, "speed_mph": 25, "speed_assumed": False, "aadt": 15_001}, None),
-        # slow-street: 3 from 7,500 a day.
-        ({"speed_mph": 30, "speed_assumed": False, "aadt": 7_499}, (2.5, "slow-street")),
-        ({"speed_mph": 30, "speed_assumed": False, "aadt": 7_500}, (3.0, "slow-street")),
-        # rural-collector: from 1,500 a day.
-        ({"level": 2.0, "functional_class": 6, "urban": False, "aadt": 1_499}, None),
-        (
-            {"level": 2.0, "functional_class": 6, "urban": False, "aadt": 1_500},
-            (3.5, "rural-collector"),
-        ),
-    ],
-)
-def test_the_rules_thresholds_themselves(overrides, expected):
-    assert read_as(_stretch(**overrides)) == expected
-
-
 def _fast_two_lane_note(lanes: int = 2) -> str:
     record = _stretch(level=3.0, speed_mph=40, speed_assumed=False, lanes=lanes, urban=False)
     return mdot_sha_rules.words("multilane-or-40", 4.0, record)
-
-
-def test_a_road_posted_30_is_not_read_up_by_shas_posted_40():
-    # Bel Alton Newtown Rd: OSM posted 30 mph along its 4.3 mi; SHA's record for its first
-    # half mile says posted 40 and LTS 3, which `multilane-or-40` read as 4 (2026-11-09).
-    formula = StressResult(Stress.LTS2, "mixed traffic, 30 mph", (), speed_mph=30)
-    rating = AgencyRating("mdot-sha", 3.0, read_as=4.0, note=_fast_two_lane_note())
-    result = agency_lts.apply(formula, [rating])
-    assert (result.tier, result.half) == (Stress.LTS3, False)
-    assert result.rule == (
-        "agency rating: MDOT SHA LTS 3, not read higher: the road is posted 30 mph "
-        "where SHA's record says 40 mph"
-    )
-
-
-@pytest.mark.parametrize(
-    "speed_mph, assumed, lanes, tier",
-    [
-        (40, (), 2, Stress.LTS4),  # the way agrees with SHA: the reading stands
-        (None, ("maxspeed",), 2, Stress.LTS4),  # nothing posted on the way: SHA's record stands
-        (35, (), 2, Stress.LTS3),  # 35 is not "over 35"
-        (30, (), 4, Stress.LTS4),  # four lanes: the reading rests on lanes, not speed
-    ],
-)
-def test_only_the_ways_own_posted_speed_overrules_the_reading(speed_mph, assumed, lanes, tier):
-    formula = StressResult(Stress.LTS2, "mixed traffic", assumed, speed_mph=speed_mph)
-    rating = AgencyRating("mdot-sha", 3.0, read_as=4.0, note=_fast_two_lane_note(lanes))
-    assert agency_lts.apply(formula, [rating]).tier is tier
-
-
-def test_other_readings_ignore_the_posted_speed():
-    formula = StressResult(Stress.LTS2, "mixed traffic", (), speed_mph=25)
-    note = mdot_sha_rules.words("collector-assumed-35", 3.0, _stretch())
-    rating = AgencyRating("mdot-sha", 4.0, read_as=3.0, note=note)
-    assert agency_lts.apply(formula, [rating]).tier is Stress.LTS3

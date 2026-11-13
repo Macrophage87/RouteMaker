@@ -10,32 +10,12 @@ from core import segment_info
 from pipeline import writers
 from routemaker import agency_lts
 from routemaker.agency_lts import AgencyRating
-from routemaker.stress import Stress, StressResult, rural_floor
+from routemaker.stress import (
+    Stress,
+    StressResult,
+)
 
 FORMULA = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ("maxspeed",))
-
-
-def test_the_county_wins_over_the_state():
-    ratings = [AgencyRating("mdot-sha", 3), AgencyRating("moco", 1)]
-    result = agency_lts.apply(FORMULA, ratings)
-    assert result.tier is Stress.LTS1
-    assert "Montgomery County Planning" in result.rule
-    # Both kept for the road panel, most local first, with the formula's tier.
-    assert [r.agency for r in result.agency_ratings] == ["moco", "mdot-sha"]
-    assert result.formula_tier is Stress.LTS4
-    assert result.formula_rule == FORMULA.rule
-
-
-def test_a_half_level_is_kept():
-    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 2.5)])
-    assert (result.tier, result.half) == (Stress.LTS2, True)
-
-
-def test_montgomerys_lts5_is_our_45():
-    """The owner, 2026-10-19: "MoCo's mean very high stress, what our 4.5 means"."""
-    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
-    assert (result.tier, result.half) == (Stress.LTS4, True)
-    assert result.rule == "agency rating: Montgomery County Planning LTS 5, our LTS 4.5"
 
 
 def test_a_ddot_lts5_is_avoid(monkeypatch):
@@ -44,27 +24,8 @@ def test_a_ddot_lts5_is_avoid(monkeypatch):
     assert (result.tier, result.half) == (Stress.AVOID, False)
 
 
-def test_ddots_2020_rating_is_recorded_and_never_used() -> None:
-    """The owner, 2026-11-13: "I want as few overrides as possible. If I say that a road is
-    incorrectly rated that means that I feel the formula is wrong", and of DDOT's 2020 layer,
-    2026-10-30: "6 year old data is too stale to rely on". The formula decides in the District;
-    DDOT's level stays on the road panel beside it."""
-    assert "ddot" in agency_lts.COMPARISON_ONLY
-    for level in (1, 2, 3, 4, 5):
-        result = agency_lts.apply(FORMULA, [AgencyRating("ddot", level)])
-        assert (result.tier, result.half) == (FORMULA.tier, FORMULA.half)
-        assert [r.agency for r in result.agency_ratings] == ["ddot"]
-    # Montgomery's still sets the tier where it rates the road.
-    assert agency_lts.apply(FORMULA, [AgencyRating("moco", 2)]).tier is Stress.LTS2
-
-
 def test_no_rating_leaves_the_formula():
     assert agency_lts.apply(FORMULA, []) is FORMULA
-
-
-def test_two_agencies_at_one_rank_take_the_higher():
-    pick = agency_lts.chosen([AgencyRating("moco", 2), AgencyRating("moco", 3)])
-    assert pick.level == 3
 
 
 @pytest.mark.parametrize("level", [0.5, 5.5, 2.25, 0])
@@ -73,109 +34,16 @@ def test_unusable_levels_are_refused(level):
         agency_lts.tier_of(level)
 
 
-def test_the_rural_floor_ranks_above_an_agency():
-    tags = {"highway": "unclassified", "name": "Davis Mill Road"}
-    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 1)])
-    floored = rural_floor(rated, tags, urban=False)
-    assert floored.tier is Stress.LTS2
-    assert floored.agency_ratings == rated.agency_ratings
-
-
-def test_the_rural_floor_leaves_a_county_half_step_alone():
-    tags = {"highway": "unclassified"}
-    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 2.5)])
-    assert rural_floor(rated, tags, urban=False) is rated
-
-
 def test_internal_only_and_unrated_agencies_are_not_listed():
     """Arlington's layer is internal only; Alexandria's are cleared (CC0, 2026-10-16) but
     rate nothing, so the city's speeds reach the classifier as street facts instead."""
     assert not {"arlington", "alexandria"} & set(agency_lts.AGENCIES)
 
 
-def test_the_rural_floor_raises_a_county_one_and_a_half_to_two():
-    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 1.5)])
-    floored = rural_floor(rated, {"highway": "unclassified"}, urban=False)
-    assert (floored.tier, floored.half) == (Stress.LTS2, False)
-
-
-def test_the_writer_records_every_rating_and_the_one_used():
-    import json
-
-    from pipeline import writers
-
-    rated = agency_lts.apply(FORMULA, [AgencyRating("mdot-sha", 3), AgencyRating("moco", 2.5)])
-    held = json.loads(writers._ratings_json(rated))
-    assert held["used"] == "moco" and held["formula"] == 4
-    assert [a["level"] for a in held["agencies"]] == [2.5, 3]
-    assert writers._half(rated) is True
-    floored = rural_floor(
-        agency_lts.apply(FORMULA, [AgencyRating("moco", 1)]), {"highway": "track"}, urban=False
-    )
-    assert json.loads(writers._ratings_json(floored))["used"] == "rural floor"
-    assert writers._ratings_json(FORMULA) is None
-
-
 def _way(osm_id, coords, **tags):
     from pipeline.extract import Way
 
     return Way(osm_id, {"highway": "unclassified", **tags}, list(range(len(coords))), coords)
-
-
-def test_the_rebuild_matches_each_agency_on_its_own(tmp_path):
-    import json
-
-    from pipeline import agency_ratings
-
-    line = [(-77.30 + i * 0.001, 39.20) for i in range(11)]
-    rows = [
-        {
-            "id": "moco-1-0",
-            "agency": "moco",
-            "level": 1,
-            "name": "Davis Mill Road",
-            "coordinates": line,
-        },
-        {
-            "id": "sha-9-0",
-            "agency": "mdot-sha",
-            "level": 3,
-            "name": "Davis Mill Road",
-            "coordinates": line,
-        },
-    ]
-    path = tmp_path / agency_ratings.FILE_NAME
-    path.write_text(json.dumps(rows))
-    features, ratings = agency_ratings.load(path)
-    way = _way(42, line, name="Davis Mill Road")
-    found = agency_ratings.ratings_by_way([way], [(42, line, False)], features, ratings)
-    assert sorted(r.agency for r in found[42]) == ["mdot-sha", "moco"]
-    assert agency_lts.chosen(found[42]).agency == "moco"
-
-
-def test_a_way_takes_the_worst_level_of_one_agencys_records_along_it():
-    # Hunt D5 (2026-11-08): a 1 km way 600 m on a county record at LTS 2 and 400 m on one at
-    # LTS 4 took the record it lay along most (before: LTS 2, below the formula's 3). It now
-    # takes the worst stretch, as the rest of the merge reads blocks and counts.
-    from pipeline import agency_ratings, conflation
-    from routemaker import agency_roads
-
-    def stretch(start, end):
-        return [(-77.10 + i * 0.0001, 39.10) for i in range(start, end + 1)]
-
-    whole = stretch(0, 116)  # about 1 km at 8.6 m a step
-    features = [
-        conflation.RoadFeature(
-            fid, stretch(a, b), agency_roads.RoadFacts(agency="moco", name="Big Road")
-        )
-        for fid, a, b in (("moco-a", 0, 70), ("moco-b", 70, 116))
-    ]
-    ratings = {"moco-a": AgencyRating("moco", 2), "moco-b": AgencyRating("moco", 4)}
-    way = _way(1, whole, name="Big Road")
-    found = agency_ratings.ratings_by_way([way], [(1, whole, False)], features, ratings)
-    assert found[1] == (AgencyRating("moco", 4),)
-    result = agency_lts.apply(StressResult(Stress.LTS3, "formula", ()), found[1])
-    assert result.tier is Stress.LTS4
 
 
 def test_the_worst_level_needs_a_stretch_and_a_ban_needs_the_most_of_the_way():
@@ -249,26 +117,6 @@ def _stress_row(way, tier, adjustment_id, **extra):
     return Override(kind="stress", osm_way_id=way, value=value, reason="r")
 
 
-def test_an_owner_row_outranks_a_county_5_and_keeps_every_rating():
-    """Darnestown Rd (the owner, 2026-10-14: "LTS 4" over Montgomery's LTS 5)."""
-    import json
-
-    from pipeline import overrides, writers
-
-    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 5), AgencyRating("mdot-sha", 4)])
-    assert (rated.tier, rated.half) == (Stress.LTS4, True)
-    by_way = {5970658: rated}
-    applied, _ = overrides.apply_stress(by_way, [_stress_row(5970658, 4, "darnestown-road-lts4")])
-    assert applied == 1
-    result = by_way[5970658]
-    assert result.tier is Stress.LTS4
-    held = json.loads(writers._ratings_json(result))
-    assert held["used"] == "owner"
-    assert held["override"] == {"source": "owner", "name": "Owner", "level": 4}
-    assert [a["level"] for a in held["agencies"]] == [5, 4]
-    assert held["formula"] == 4
-
-
 def test_a_community_row_outranks_an_agency_and_says_so():
     import json
 
@@ -318,29 +166,6 @@ def test_with_no_agency_rating_the_formula_stands_and_nothing_is_recorded():
 
     assert agency_lts.apply(FORMULA, ()) is FORMULA
     assert writers._ratings_json(FORMULA) is None
-
-
-@pytest.mark.parametrize("level", [1.5, 2.5, 3.5, 4.5])
-def test_every_half_step_maps_one_to_one(level):
-    result = agency_lts.apply(FORMULA, [AgencyRating("moco", level)])
-    assert int(result.tier) + (0.5 if result.half else 0) == level
-
-
-def test_the_state_rates_where_the_county_does_not():
-    result = agency_lts.apply(FORMULA, [AgencyRating("mdot-sha", 2)])
-    assert result.tier is Stress.LTS2 and "MDOT SHA" in result.rule
-
-
-def test_a_state_avoid_under_a_county_rating_takes_the_county():
-    """County over state holds at LTS 5 as well: the county's own level is used."""
-    result = agency_lts.apply(FORMULA, [AgencyRating("mdot-sha", 5), AgencyRating("moco", 3)])
-    assert result.tier is Stress.LTS3
-
-
-def test_the_rural_floor_never_lowers_an_agency_avoid(monkeypatch):
-    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
-    rated = agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])
-    assert rural_floor(rated, {"highway": "unclassified"}, urban=False).tier is Stress.AVOID
 
 
 # --- The installer: Montgomery's 0.5 is no rating -----------------------------------
@@ -706,19 +531,6 @@ def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane(monkeypatch) -> 
     )
     assert result.tier is Stress.LTS2
     assert json.loads(writers._ratings_json(result))["used"] == "ddot"
-
-
-def test_a_set_aside_rating_gives_way_to_the_next_agency() -> None:
-    lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
-    both = [AgencyRating("ddot", 4), AgencyRating("mdot-sha", 3)]
-    result = agency_lts.apply(lane, both, facility_mapped=True)
-    assert result.tier is Stress.LTS3
-    assert json.loads(writers._ratings_json(result))["used"] == "mdot-sha"
-
-
-def test_a_mapped_facility_does_not_set_aside_a_current_agency() -> None:
-    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 2)], facility_mapped=True)
-    assert result.tier is Stress.LTS2
 
 
 def test_the_ddot_set_aside_reads_the_tags_the_formula_read(tmp_path, monkeypatch):

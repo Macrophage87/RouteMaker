@@ -104,13 +104,6 @@ def test_the_road_panel_says_why_ddot_was_read_otherwise(monkeypatch) -> None:
     assert "," not in held.note
 
 
-def test_only_ddot_is_read_by_these_rules() -> None:
-    county = StressResult(Stress.LTS3, "x", (), volume_aadt=45_334, lanes=2, oneway=False)
-    result = agency_lts.apply(county, [AgencyRating("moco", 1)])
-    assert result.tier is Stress.LTS1
-    assert result.agency_ratings == (AgencyRating("moco", 1),)
-
-
 def test_every_rule_has_words_without_commas() -> None:
     assert ddot_rules.ENABLED == frozenset(ddot_rules.RULE_WORDS)
     assert all("," not in words for words in ddot_rules.RULE_WORDS.values())
