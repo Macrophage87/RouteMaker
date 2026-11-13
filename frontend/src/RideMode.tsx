@@ -2525,7 +2525,7 @@ export function RideMode({
   useEffect(() => {
     let current = true;
     if (offlineNet.current?.route !== route) {
-      void fetchOfflineNetwork(route.geometry.coordinates as LonLat[], { preset, stress: dialsRef.current.stress, carrying: dialsRef.current.carrying }).then((network) => {
+      void fetchOfflineNetwork(route.geometry.coordinates as LonLat[], { preset, stress: dialsRef.current.stress, carrying: dialsRef.current.carrying }, undefined, undefined, () => current && !ended.current).then((network) => {
         if (current && network && !ended.current) offlineNet.current = { route, network };
       });
     }

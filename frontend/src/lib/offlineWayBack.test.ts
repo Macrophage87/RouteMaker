@@ -98,7 +98,7 @@ test("the offline way back is said as found, also to the stoker", () => {
 
 test("Ride fetches the network with each route and uses it when a re-plan fails for no signal", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /fetchOfflineNetwork\(route\.geometry\.coordinates as LonLat\[\], \{ preset, stress: dialsRef\.current\.stress, carrying: dialsRef\.current\.carrying \}\)/);
+  assert.match(ride, /fetchOfflineNetwork\(route\.geometry\.coordinates as LonLat\[\], \{ preset, stress: dialsRef\.current\.stress, carrying: dialsRef\.current\.carrying \}, undefined, undefined, \(\) => current && !ended\.current\)/);
   assert.match(ride, /if \(!found && failed === "network" && !via && !check && !done && !voided\(\)\) \{/);
   assert.match(ride, /offlineWayBackRoute\(net\.network, routeRef\.current, here, Math\.max\(progressM, closed\), keptPoints\)/);
   assert.match(ride, /note = REPLAN_OFFLINE;/);
@@ -143,11 +143,28 @@ test("a busy server is asked again after its Retry-After; not built is not", asy
   let busy = 0;
   const alwaysBusy = (async () => {
     busy += 1;
-    return new Response("{}", { status: 429, headers: { "Retry-After": "60" } });
+    return new Response("{}", { status: 503, headers: { "Retry-After": "2" } });
   }) as unknown as typeof fetch;
   assert.equal(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, alwaysBusy, wait), null);
   assert.equal(busy, 1 + OFFLINE_RETRIES);
-  assert.equal(Math.max(...waits), OFFLINE_RETRY_MAX_S);
+  assert.ok(Math.max(...waits) <= OFFLINE_RETRY_MAX_S);
+  // The per-minute count's long wait, an empty header, or a ride ended meanwhile: not asked again.
+  for (const headers of [{ "Retry-After": "60" }, { "Retry-After": "" }]) {
+    let n = 0;
+    const once = (async () => {
+      n += 1;
+      return new Response("{}", { status: 429, headers });
+    }) as unknown as typeof fetch;
+    assert.equal(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, once, wait), null);
+    assert.equal(n, 1);
+  }
+  let ended = 0;
+  const busyAgain = (async () => {
+    ended += 1;
+    return new Response("{}", { status: 503, headers: { "Retry-After": "1" } });
+  }) as unknown as typeof fetch;
+  assert.equal(await fetchOfflineNetwork([at(0, 0), at(100, 0)], { preset: "default" }, busyAgain, wait, () => false), null);
+  assert.equal(ended, 1);
 });
 
 test("the way back never joins behind a road the rider marked closed", () => {

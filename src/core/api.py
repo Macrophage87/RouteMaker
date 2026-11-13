@@ -3906,6 +3906,23 @@ def route_cancel(request, body: CancelIn):
 # --- Off-grid riding: the road network around a route (the owner, 2026-11-12) ---------------
 
 
+def same_site(refusal: str):
+    """A view decorator: refuse a request the browser says a foreign page sent, before it is
+    counted, with `refusal`."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+            if site and site not in ("same-origin", "none"):
+                return _error(403, refusal)
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 class OfflineNetworkIn(Schema):
     line: list[tuple[float, float]] = Field(
         min_length=2,
@@ -3936,7 +3953,7 @@ class OfflineNetworkIn(Schema):
 
 @api.post(
     "/offline/network",
-    response={200: dict, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    response={200: dict, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
     summary="The road network within a mile of a route, for re-routing on the phone offline",
     description=(
         "Every way a bicycle may ride within about a mile of the line, cut at its junctions,"
@@ -3946,11 +3963,14 @@ class OfflineNetworkIn(Schema):
         " map rebuild that writes it."
     ),
 )
+# The last runs first, as on /api/route: the error guard, the site check, the content-type and
+# size check, the count, then the slot, so a refused request never holds a tile slot.
 @decorate_view(
+    ratelimit.in_flight_limited(ratelimit.OFFLINE_NETWORK_IN_FLIGHT),
     ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK),
     json_body_up_to(offline_network.MAX_BODY_BYTES),
+    same_site("the offline road network answers this site's own pages only"),
     errors_as_json,
-    ratelimit.in_flight_limited(ratelimit.OFFLINE_NETWORK_IN_FLIGHT),
 )
 def offline_network_view(request, body: OfflineNetworkIn):
     try:
@@ -6855,17 +6875,7 @@ class PlacesOut(Schema):
     attribution: list[str]
 
 
-def same_site_only(view):
-    """Refuse a request the browser says a foreign page sent, before it is counted."""
-
-    @wraps(view)
-    def wrapped(request, *args, **kwargs):
-        site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
-        if site and site not in ("same-origin", "none"):
-            return _error(403, "place search answers this site's own pages only")
-        return view(request, *args, **kwargs)
-
-    return wrapped
+same_site_only = same_site("place search answers this site's own pages only")
 
 
 GEOCODE_RESPONSES = {

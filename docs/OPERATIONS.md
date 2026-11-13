@@ -10326,7 +10326,8 @@ the signal returns, the server plans it again.
 - Rate limit 12 a minute per client (`OFFLINE_NETWORK`, our default), and one fetch at a time
   per client from the tile pool's slots (`OFFLINE_NETWORK_IN_FLIGHT`), so a burst never holds
   more workers than tile drawing may. A refusal is 429 or 503 with Retry-After; the phone asks
-  again twice at most.
+  again for about 10 seconds when the slot is busy (it shares the slot with the ride's own tile
+  draws at Start ride), never past the per-minute count.
 - The body may be up to 64 KB (the phone sends at most 1,500 points), and a line longer than
   about 250 miles (`MAX_LINE_M`, our default) is refused with a 400.
 - Privacy: the request carries the route's line only; nothing about the rider is logged or
