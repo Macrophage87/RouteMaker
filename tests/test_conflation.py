@@ -1135,3 +1135,43 @@ class TestThePreparedMeasureChangesTheCostAndNothingElse:
         result = conflate(ways, [feature("long", line)])
         assert len(result.matched) == 10
         assert computed.count(101) == 1
+
+
+class TestRawCountFixes:
+    """The owner, 2026-11-13: a misrated road means the formula or the raw data is wrong
+    ("If I say that a road is incorrectly rated that means that I feel the formula is
+    wrong", "Or the raw data"), so the counts are fixed where they are matched."""
+
+    def test_a_freeways_line_does_not_reach_the_street_under_it(self) -> None:
+        """Water Street NW under the Whitehurst Freeway took the freeway's 37,593."""
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90006), (-77.0095, 38.90006)]
+        line = feature(
+            "fwy", [(-77.0205, 38.90003), (-77.0095, 38.90003)], 37593, "locality", "ddot"
+        )
+        before = conflate([(1, street), (2, elevated)], [line])
+        after = conflate([(1, street), (2, elevated)], [line], freeway={2})
+        assert 1 in before.matched or 2 in before.matched
+        assert 1 not in after.matched
+        assert after.matched[2].aadt == 37593
+
+    def test_a_street_still_takes_its_own_line_beside_a_freeway(self) -> None:
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90015), (-77.0095, 38.90015)]
+        own = feature("st", [(-77.0200, 38.89999), (-77.0100, 38.89999)], 4000, "locality", "ddot")
+        fwy = feature(
+            "fwy", [(-77.0205, 38.90016), (-77.0095, 38.90016)], 37593, "locality", "ddot"
+        )
+        after = conflate([(1, street), (2, elevated)], [own, fwy], freeway={2})
+        assert after.matched[1].aadt == 4000
+
+    def test_a_way_past_several_block_lines_takes_a_count_from_any_agency(self) -> None:
+        """Kennedy Street NW east of Georgia Avenue: one way past several of DDOT's block
+        lines, none covering half of it, had kept no count (the pass read VDOT's only)."""
+        way = [(-77.030, 38.9560), (-77.016, 38.9560)]
+        blocks = [
+            feature(f"b{i}", [(x0, 38.95601), (x0 + 0.0035, 38.95601)], 6272, "locality", "ddot")
+            for i, x0 in enumerate((-77.030, -77.0265, -77.023, -77.0195))
+        ]
+        assert 1 not in conflate([(1, way)], blocks, along_agencies=("vdot",)).matched
+        assert conflate([(1, way)], blocks).matched[1].aadt == 6272

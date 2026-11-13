@@ -2660,7 +2660,11 @@ def build_handlers(
             for way in context.ways
             if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
         }
-        result = conflation.conflate(entries, reference.volume_features, name_required=nameless)
+        # A freeway's count line goes to the freeway only (`conflation.conflate`'s `freeway`).
+        freeway = {way.osm_id for way in context.ways if way.tags.get("highway") == "motorway"}
+        result = conflation.conflate(
+            entries, reference.volume_features, name_required=nameless, freeway=freeway
+        )
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
         # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy

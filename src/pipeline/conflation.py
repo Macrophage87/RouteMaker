@@ -57,6 +57,11 @@ BEARING_TOLERANCE_DEG = 25.0
 # count is being asked to describe. See `_overlap` for the other direction.
 MIN_OVERLAP_FRACTION = 0.5
 
+# A count line whose nearest candidate is a motorway way is the freeway's count, and only
+# freeway ways take it (`conflate`'s `freeway`): a surface street running under or beside an
+# elevated freeway lies within MAX_SEPARATION_M of its line, with the same bearing.
+FREEWAY_LINES_FREEWAY_ONLY = True
+
 # Beyond this the features are not the same road, whatever their bearing.
 MAX_SEPARATION_M = 20.0
 
@@ -526,8 +531,9 @@ def conflate(
     min_overlap: float = MIN_OVERLAP_FRACTION,
     max_separation_m: float = MAX_SEPARATION_M,
     along_counts: bool = True,
-    along_agencies: Collection[str] | None = ("vdot",),
+    along_agencies: Collection[str] | None = None,
     name_required: Collection[int] = (),
+    freeway: Collection[int] = (),
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
 
@@ -545,10 +551,23 @@ def conflate(
     on the line, is the nearer. The share that must reach `min_overlap` is still the whole
     way's, so a way that only touches the end of a line is no candidate.
 
+    `freeway` are the motorway ways (`highway=motorway`, not its links): a count line whose
+    nearest candidate is one of them is that freeway's count, and no other way takes it
+    (FREEWAY_LINES_FREEWAY_ONLY). Water Street NW ran under the Whitehurst Freeway, scored
+    1.00 against the freeway's 37,593-a-day line and was rated LTS 4 on it; the owner,
+    2026-11-13: "water street is definitely not a high stress road", then "If I say that a
+    road is incorrectly rated that means that I feel the formula is wrong. ... Or the raw
+    data".
+
     `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
     was a candidate for; it never changes or rejects a first-pass match, and lists a way it
     refuses for a claimed stretch in `rejected`, as the first pass does. It reads only
-    the lines of `along_agencies` (None: every line); the owner approved it for VDOT's counts.
+    the lines of `along_agencies` (None: every line). The owner approved it for VDOT's
+    counts (2026-10-31); since 2026-11-13 it reads every agency's, by his rule that a
+    misrated road means the raw data or the formula is wrong ("Don't use my calls as
+    one-offs but guides to inference"): Kennedy Street NW east of Georgia Avenue, one OSM
+    way past several of DDOT's block lines, took none of them and kept DDOT's 2020 LTS 4,
+    where the line it lies along carries 6,272 a day.
     Its ways are ranked before any claims, as the first pass's are, so the input order
     decides nothing.
 
@@ -629,6 +648,25 @@ def conflate(
                 continue
             candidates.append((overlap, way_id, feature, span, mean_distance, ranked))
 
+    # A freeway's count line goes to the freeway only (FREEWAY_LINES_FREEWAY_ONLY).
+    freeways = frozenset(freeway)
+    # A line is a freeway's where a freeway way is its nearest candidate: a street's own line
+    # beside a freeway stays the street's.
+    nearest: dict[str, tuple[float, bool]] = {}
+    for _o, way_id, feature, _span, mean_distance, _ranked in candidates:
+        mine = (mean_distance, way_id not in freeways)
+        if feature.feature_id not in nearest or mine < nearest[feature.feature_id]:
+            nearest[feature.feature_id] = mine
+    freeway_lines = (
+        {fid for fid, (_d, street) in nearest.items() if not street}
+        if FREEWAY_LINES_FREEWAY_ONLY and freeways
+        else set()
+    )
+    if freeway_lines:
+        candidates = [
+            c for c in candidates if c[1] in freeways or c[2].feature_id not in freeway_lines
+        ]
+
     # Best first: precedence, then overlap inside the line's ends (hunt D3), then how
     # close the way actually runs to the feature - geometry breaking the tie rather
     # than input order.
@@ -672,7 +710,8 @@ def conflate(
         matched[way_id] = match
         used_features.add(feature.feature_id)
 
-    # The ways no single count line was a candidate for at all (`_along_counts`).
+    # The ways no single count line was a candidate for at all (`_along_counts`). A street
+    # beside a freeway does not take the freeway's line this way either.
     contested = {way_id for _overlap, way_id, *_rest in candidates}
     found = []
     for entry in ways if along_counts else ():
@@ -688,6 +727,7 @@ def conflate(
             bearing_tolerance_deg,
             min_overlap,
             max_separation_m,
+            skip=frozenset() if way_id in freeways else freeway_lines,
         )
         if along is not None:
             found.append((way_id, *along))
@@ -757,6 +797,7 @@ def _along_counts(
     bearing_tolerance_deg: float,
     min_overlap: float,
     max_separation_m: float,
+    skip: Collection[str] = frozenset(),
 ) -> tuple[AgencyFeature, float, float, list[tuple[str, tuple[float, float]]]] | None:
     """The count a way left without a candidate would take from the lines it runs along:
     the line, how much of the way they cover, the mean probe distance, and each line's
@@ -764,7 +805,8 @@ def _along_counts(
     near = [
         position
         for position in index.near(coordinates)
-        if agencies is None or features[position].agency in agencies
+        if (agencies is None or features[position].agency in agencies)
+        and features[position].feature_id not in skip
     ]
     if not near:
         return None
