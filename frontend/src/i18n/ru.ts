@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Построение маршрутов сейчас не работает.",
   "Some ride types are not working right now.": "Некоторые типы поездок сейчас не работают.",
   "Place search is down right now.": "Поиск мест сейчас не работает.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "Карта на случай без связи",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "Без связи поездка находит путь обратно к маршруту на этом телефоне: рядом с маршрутом всегда, а в скачанной здесь области — везде. Одна область за раз; она обновляется вместе с картой.",
+  "Downloading…": "Скачивается…",
+  "Kept on this phone.": "Сохранено на этом телефоне.",
+  "Could not download it. Try again with a signal.": "Не удалось скачать. Попробуйте снова, когда будет связь.",
+  "Not enough room on this phone.": "На этом телефоне недостаточно места.",
+  "Needs a signal to list the maps.": "Чтобы увидеть карты, нужна связь.",
+  "Inside the Beltway": "Внутри кольцевой (Beltway)",
+  "Northern Virginia": "Северная Вирджиния",
+  "Northwest exurbs": "Северо-западные пригороды",
+  "Baltimore and suburbs": "Балтимор и пригороды",
+  "The rest of the map": "Остальная карта",
+  "It is on {street}.": "Он проходит по {street}.",
 };

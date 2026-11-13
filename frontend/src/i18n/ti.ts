@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "ምድላው መገዲ ሕጂ ኣይሰርሕን።",
   "Some ride types are not working right now.": "ገለ ዓይነታት ጉዕዞ ሕጂ ኣይሰርሑን።",
   "Place search is down right now.": "ምድላይ ቦታ ሕጂ ኣይሰርሕን።",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "ሲግናል ዘይብሉ ካርታ",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "ሲግናል ኣብ ዘይብሉ፣ ጉዕዞ ኣብዚ ስልኪ ናብ መንገዲ ዝምለሰሉ መገዲ ይረክብ፦ ኩሉ ግዜ ኣብ ጥቓ መንገዲ፣ ከምኡ'ውን ኣብዚ ዝወረደ ከባቢ ኣብ ዝኾነ ቦታ። ሓደ ከባቢ ብሓደ ግዜ፤ ካርታ ምስ ዝሕደስ ይሕደስ።",
+  "Downloading…": "ይወርድ ኣሎ…",
+  "Kept on this phone.": "ኣብዚ ስልኪ ተቐሚጡ።",
+  "Could not download it. Try again with a signal.": "ክወርድ ኣይከኣለን። ሲግናል ምስ ዝህሉ እንደገና ፈትኑ።",
+  "Not enough room on this phone.": "ኣብዚ ስልኪ እኹል ቦታ የለን።",
+  "Needs a signal to list the maps.": "ካርታታት ንምርኣይ ሲግናል የድሊ።",
+  "Inside the Beltway": "ኣብ ውሽጢ ቤልትዌይ",
+  "Northern Virginia": "ሰሜን ቨርጂንያ",
+  "Northwest exurbs": "ሰሜን ምዕራብ ወሰናት",
+  "Baltimore and suburbs": "ባልቲሞርን ከባቢኣን",
+  "The rest of the map": "ዝተረፈ ካርታ",
+  "It is on {street}.": "ኣብ {street} እዩ።",
 };

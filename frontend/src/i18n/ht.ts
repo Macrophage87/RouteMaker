@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Planifikasyon wout pa mache kounye a.",
   "Some ride types are not working right now.": "Kèk kalite woulib pa mache kounye a.",
   "Place search is down right now.": "Rechèch kote pa mache kounye a.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "Kat pou lè pa gen siyal",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "San siyal, telefòn sa a jwenn chemen pou retounen sou wout la: toujou toupre wout la, epi nenpòt kote nan zòn ou telechaje isit la. Yon zòn alafwa; li mete l ajou lè kat la chanje.",
+  "Downloading…": "Ap telechaje…",
+  "Kept on this phone.": "Kenbe sou telefòn sa a.",
+  "Could not download it. Try again with a signal.": "Pa t ka telechaje l. Eseye ankò ak siyal.",
+  "Not enough room on this phone.": "Pa gen ase plas sou telefòn sa a.",
+  "Needs a signal to list the maps.": "Bezwen siyal pou wè kat yo.",
+  "Inside the Beltway": "Anndan Beltway la",
+  "Northern Virginia": "Nò Vijini",
+  "Northwest exurbs": "Savann nòdwès",
+  "Baltimore and suburbs": "Baltimore ak alantou",
+  "The rest of the map": "Rès kat la",
+  "It is on {street}.": "Li sou {street}.",
 };

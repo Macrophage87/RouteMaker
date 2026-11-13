@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "রুট পরিকল্পনা এখন কাজ করছে না।",
   "Some ride types are not working right now.": "কিছু সফরের ধরন এখন কাজ করছে না।",
   "Place search is down right now.": "জায়গা খোঁজা এখন কাজ করছে না।",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "সিগন্যাল না থাকলে মানচিত্র",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "সিগন্যাল না থাকলে, রাইড এই ফোনেই রুটে ফেরার পথ খুঁজে নেয়: রুটের কাছে সবসময়, আর এখানে ডাউনলোড করা এলাকার যেকোনো জায়গায়। একবারে একটি এলাকা; মানচিত্র হালনাগাদ হলে এটিও হয়।",
+  "Downloading…": "ডাউনলোড হচ্ছে…",
+  "Kept on this phone.": "এই ফোনে রাখা আছে।",
+  "Could not download it. Try again with a signal.": "ডাউনলোড করা যায়নি। সিগন্যাল পেলে আবার চেষ্টা করুন।",
+  "Not enough room on this phone.": "এই ফোনে যথেষ্ট জায়গা নেই।",
+  "Needs a signal to list the maps.": "মানচিত্রগুলো দেখতে সিগন্যাল দরকার।",
+  "Inside the Beltway": "বেল্টওয়ের ভেতরে",
+  "Northern Virginia": "উত্তর ভার্জিনিয়া",
+  "Northwest exurbs": "উত্তর-পশ্চিম শহরতলি",
+  "Baltimore and suburbs": "বাল্টিমোর ও শহরতলি",
+  "The rest of the map": "মানচিত্রের বাকি অংশ",
+  "It is on {street}.": "এটি {street}-এ।",
 };

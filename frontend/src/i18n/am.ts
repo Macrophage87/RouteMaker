@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "የመንገድ ዕቅድ አሁን አይሰራም።",
   "Some ride types are not working right now.": "አንዳንድ የጉዞ ዓይነቶች አሁን አይሰሩም።",
   "Place search is down right now.": "የቦታ ፍለጋ አሁን አይሰራም።",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "ምልክት ለሌለበት ካርታ",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "ምልክት በሌለበት ጊዜ ጉዞው በዚህ ስልክ ወደ መንገዱ የሚመለስበትን ያገኛል፦ ሁልጊዜ በመንገዱ አቅራቢያ፣ እና እዚህ በወረደው አካባቢ በየትኛውም ቦታ። አንድ አካባቢ በአንድ ጊዜ፤ ካርታው ሲዘመን ይዘመናል።",
+  "Downloading…": "በማውረድ ላይ…",
+  "Kept on this phone.": "በዚህ ስልክ ላይ ተቀምጧል።",
+  "Could not download it. Try again with a signal.": "ማውረድ አልተቻለም። ምልክት ሲኖር እንደገና ይሞክሩ።",
+  "Not enough room on this phone.": "በዚህ ስልክ ላይ በቂ ቦታ የለም።",
+  "Needs a signal to list the maps.": "ካርታዎቹን ለማየት ምልክት ያስፈልጋል።",
+  "Inside the Beltway": "በቤልትዌይ ውስጥ",
+  "Northern Virginia": "ሰሜን ቨርጂኒያ",
+  "Northwest exurbs": "ሰሜን ምዕራብ ዳርቻዎች",
+  "Baltimore and suburbs": "ባልቲሞር እና አካባቢው",
+  "The rest of the map": "የቀረው ካርታ",
+  "It is on {street}.": "በ{street} ላይ ነው።",
 };

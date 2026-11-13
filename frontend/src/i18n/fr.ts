@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Le calcul d'itinéraire est en panne pour le moment.",
   "Some ride types are not working right now.": "Certains types de sortie ne marchent pas pour le moment.",
   "Place search is down right now.": "La recherche de lieux est en panne pour le moment.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "Carte sans réseau",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "Sans réseau, le trajet retrouve le chemin vers l'itinéraire sur ce téléphone : toujours près de l'itinéraire, et partout dans la zone téléchargée ici. Une zone à la fois ; elle se met à jour avec la carte.",
+  "Downloading…": "Téléchargement…",
+  "Kept on this phone.": "Gardée sur ce téléphone.",
+  "Could not download it. Try again with a signal.": "Téléchargement impossible. Réessayez avec du réseau.",
+  "Not enough room on this phone.": "Pas assez de place sur ce téléphone.",
+  "Needs a signal to list the maps.": "Il faut du réseau pour voir les cartes.",
+  "Inside the Beltway": "Dans le Beltway",
+  "Northern Virginia": "Virginie du Nord",
+  "Northwest exurbs": "Banlieue nord-ouest",
+  "Baltimore and suburbs": "Baltimore et sa banlieue",
+  "The rest of the map": "Le reste de la carte",
+  "It is on {street}.": "Il passe par {street}.",
 };

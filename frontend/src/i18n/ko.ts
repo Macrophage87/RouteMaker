@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "지금은 경로 계획을 쓸 수 없습니다.",
   "Some ride types are not working right now.": "지금은 일부 라이드 유형이 작동하지 않습니다.",
   "Place search is down right now.": "지금은 장소 검색을 쓸 수 없습니다.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "신호 없을 때 쓸 지도",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "신호가 없어도 이 휴대폰에서 경로로 돌아가는 길을 찾습니다. 경로 근처에서는 항상, 여기서 내려받은 지역에서는 어디서나. 한 번에 한 지역이며, 지도가 업데이트되면 함께 업데이트됩니다.",
+  "Downloading…": "다운로드 중…",
+  "Kept on this phone.": "이 휴대폰에 저장했습니다.",
+  "Could not download it. Try again with a signal.": "다운로드하지 못했습니다. 신호가 있을 때 다시 시도하세요.",
+  "Not enough room on this phone.": "이 휴대폰에 공간이 부족합니다.",
+  "Needs a signal to list the maps.": "지도 목록을 보려면 신호가 필요합니다.",
+  "Inside the Beltway": "벨트웨이 안쪽",
+  "Northern Virginia": "북부 버지니아",
+  "Northwest exurbs": "북서부 교외",
+  "Baltimore and suburbs": "볼티모어와 교외",
+  "The rest of the map": "지도의 나머지 지역",
+  "It is on {street}.": "{street}에 있습니다.",
 };

@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "रूट प्लानिंग अभी काम नहीं कर रही है।",
   "Some ride types are not working right now.": "कुछ सवारी प्रकार अभी काम नहीं कर रहे हैं।",
   "Place search is down right now.": "जगह की खोज अभी काम नहीं कर रही है।",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "बिना सिग्नल के लिए नक्शा",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "सिग्नल न होने पर, सवारी इसी फ़ोन पर रूट पर लौटने का रास्ता ढूँढ लेती है: रूट के पास हमेशा, और यहाँ डाउनलोड किए गए इलाके में कहीं भी। एक बार में एक इलाका; नक्शा बदलने पर यह भी अपडेट होता है।",
+  "Downloading…": "डाउनलोड हो रहा है…",
+  "Kept on this phone.": "इस फ़ोन पर रखा है।",
+  "Could not download it. Try again with a signal.": "डाउनलोड नहीं हो सका। सिग्नल मिलने पर फिर कोशिश करें।",
+  "Not enough room on this phone.": "इस फ़ोन पर पर्याप्त जगह नहीं है।",
+  "Needs a signal to list the maps.": "नक्शे देखने के लिए सिग्नल चाहिए।",
+  "Inside the Beltway": "बेल्टवे के अंदर",
+  "Northern Virginia": "उत्तरी वर्जीनिया",
+  "Northwest exurbs": "उत्तर-पश्चिमी बाहरी इलाके",
+  "Baltimore and suburbs": "बाल्टीमोर और उपनगर",
+  "The rest of the map": "नक्शे का बाकी हिस्सा",
+  "It is on {street}.": "यह {street} पर है।",
 };

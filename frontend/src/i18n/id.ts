@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Perencanaan rute sedang tidak berfungsi.",
   "Some ride types are not working right now.": "Beberapa jenis perjalanan sedang tidak berfungsi.",
   "Place search is down right now.": "Pencarian tempat sedang tidak berfungsi.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "Peta tanpa sinyal",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "Tanpa sinyal, perjalanan menemukan jalan kembali ke rute di ponsel ini: selalu di dekat rute, dan di mana saja di area yang diunduh di sini. Satu area dalam satu waktu; diperbarui saat petanya diperbarui.",
+  "Downloading…": "Mengunduh…",
+  "Kept on this phone.": "Disimpan di ponsel ini.",
+  "Could not download it. Try again with a signal.": "Gagal mengunduh. Coba lagi saat ada sinyal.",
+  "Not enough room on this phone.": "Ruang di ponsel ini tidak cukup.",
+  "Needs a signal to list the maps.": "Perlu sinyal untuk melihat daftar peta.",
+  "Inside the Beltway": "Di dalam Beltway",
+  "Northern Virginia": "Virginia Utara",
+  "Northwest exurbs": "Pinggiran barat laut",
+  "Baltimore and suburbs": "Baltimore dan sekitarnya",
+  "The rest of the map": "Sisa peta",
+  "It is on {street}.": "Rutenya ada di {street}.",
 };

@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "O planejamento de rotas está fora do ar agora.",
   "Some ride types are not working right now.": "Alguns tipos de pedal não estão funcionando agora.",
   "Place search is down right now.": "A busca de lugares está fora do ar agora.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "Mapa para sem sinal",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "Sem sinal, o passeio encontra o caminho de volta à rota neste telefone: sempre perto da rota, e em qualquer lugar da área baixada aqui. Uma área de cada vez; ela é atualizada quando o mapa é.",
+  "Downloading…": "Baixando…",
+  "Kept on this phone.": "Guardado neste telefone.",
+  "Could not download it. Try again with a signal.": "Não foi possível baixar. Tente de novo com sinal.",
+  "Not enough room on this phone.": "Não há espaço suficiente neste telefone.",
+  "Needs a signal to list the maps.": "Precisa de sinal para ver os mapas.",
+  "Inside the Beltway": "Dentro do Beltway",
+  "Northern Virginia": "Norte da Virgínia",
+  "Northwest exurbs": "Subúrbios do noroeste",
+  "Baltimore and suburbs": "Baltimore e arredores",
+  "The rest of the map": "O resto do mapa",
+  "It is on {street}.": "Ela passa por {street}.",
 };

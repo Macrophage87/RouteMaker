@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Lập lộ trình hiện đang không hoạt động.",
   "Some ride types are not working right now.": "Một số kiểu chuyến đi hiện không hoạt động.",
   "Place search is down right now.": "Tìm địa điểm hiện đang không hoạt động.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "Bản đồ khi không có sóng",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "Khi không có sóng, chuyến đi tìm đường quay lại lộ trình ngay trên điện thoại này: luôn ở gần lộ trình, và ở bất kỳ đâu trong khu vực tải về tại đây. Mỗi lần một khu vực; nó được cập nhật khi bản đồ cập nhật.",
+  "Downloading…": "Đang tải về…",
+  "Kept on this phone.": "Đã lưu trên điện thoại này.",
+  "Could not download it. Try again with a signal.": "Không tải về được. Hãy thử lại khi có sóng.",
+  "Not enough room on this phone.": "Điện thoại này không đủ chỗ trống.",
+  "Needs a signal to list the maps.": "Cần có sóng để xem danh sách bản đồ.",
+  "Inside the Beltway": "Bên trong Beltway",
+  "Northern Virginia": "Bắc Virginia",
+  "Northwest exurbs": "Vùng ngoại ô tây bắc",
+  "Baltimore and suburbs": "Baltimore và vùng ngoại ô",
+  "The rest of the map": "Phần còn lại của bản đồ",
+  "It is on {street}.": "Tuyến nằm trên {street}.",
 };

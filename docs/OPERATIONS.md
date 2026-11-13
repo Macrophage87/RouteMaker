@@ -10407,3 +10407,16 @@ borders are our draft, approximate; each pack also takes the roads within a mile
   `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
   then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
   settings.COVERAGE_BBOX)`.
+- **On the phone** (`frontend/src/lib/regionPack.ts`, `RegionPackSetting.tsx`): Settings >
+  Riding, "Map for no signal", one picker: None or an area (with its size). Choosing one
+  downloads it, checks its SHA-256 against the list, and keeps it compressed in IndexedDB
+  (`routemaker-region-pack`), one area at a time; the one kept before stays until the new one
+  is checked and stored. None removes it. While Settings is open with a signal, a kept area
+  whose checksum the list no longer gives (the map was rebuilt) is downloaded again.
+- **In a ride**: when a re-plan fails for no signal, the way back is looked for first on the
+  ride's own mile-wide network, then, only if that finds none, on the kept area: unzipped the
+  first time it is needed in the ride and held until the ride ends, priced with the ride's own
+  level prices where they were fetched, else the Default ride type's kept with the pack.
+- **Where neither finds a way**, Ride says the no-signal line with where the planned route is
+  and, where it has a name, its street ("The planned route is 400 feet to the northeast. It
+  is on Beach Drive."), and draws the way back to it on the map.

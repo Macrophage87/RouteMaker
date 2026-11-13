@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "د لارې پلان جوړول اوس کار نه کوي.",
   "Some ride types are not working right now.": "د سفر ځینې ډولونه اوس کار نه کوي.",
   "Place search is down right now.": "د ځای لټون اوس کار نه کوي.",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "د سیګنال نه شتون لپاره نقشه",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "پرته له سیګنال، سفر په همدې تلیفون کې بیرته لارې ته د راتګ لار پیدا کوي: تل د لارې سره نږدې، او دلته د ښکته شوې سیمې په هر ځای کې. په یو وخت کې یوه سیمه؛ کله چې نقشه تازه شي، دا هم تازه کیږي.",
+  "Downloading…": "ښکته کیږي…",
+  "Kept on this phone.": "په دې تلیفون کې ساتل شوې.",
+  "Could not download it. Try again with a signal.": "ښکته نه شوه. د سیګنال سره بیا هڅه وکړئ.",
+  "Not enough room on this phone.": "په دې تلیفون کې کافي ځای نشته.",
+  "Needs a signal to list the maps.": "د نقشو لیدلو لپاره سیګنال ته اړتیا ده.",
+  "Inside the Beltway": "د بیلټ‌وې دننه",
+  "Northern Virginia": "شمالي ویرجینیا",
+  "Northwest exurbs": "شمال لویدیځ ښارګوټي",
+  "Baltimore and suburbs": "بالتیمور او شاوخوا",
+  "The rest of the map": "د نقشې پاتې برخه",
+  "It is on {street}.": "په {street} کې ده.",
 };

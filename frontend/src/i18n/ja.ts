@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "ルート計画は現在使えません。",
   "Some ride types are not working right now.": "一部のライドタイプは現在使えません。",
   "Place search is down right now.": "場所の検索は現在使えません。",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "圏外用の地図",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "圏外でも、このスマホでルートへの戻り道を見つけます。ルートの近くでは常に、ここでダウンロードした地域ではどこでも。一度に一地域です。地図が更新されると更新されます。",
+  "Downloading…": "ダウンロード中…",
+  "Kept on this phone.": "このスマホに保存しました。",
+  "Could not download it. Try again with a signal.": "ダウンロードできませんでした。電波のある所でもう一度お試しください。",
+  "Not enough room on this phone.": "このスマホの空き容量が足りません。",
+  "Needs a signal to list the maps.": "地図の一覧には電波が必要です。",
+  "Inside the Beltway": "ベルトウェイの内側",
+  "Northern Virginia": "北バージニア",
+  "Northwest exurbs": "北西部の郊外",
+  "Baltimore and suburbs": "ボルチモアと郊外",
+  "The rest of the map": "地図のその他の地域",
+  "It is on {street}.": "{street}を通っています。",
 };

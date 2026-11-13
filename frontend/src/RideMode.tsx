@@ -44,6 +44,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { rejoinsFirst, startsWayBack, steadyPoint, toStartRoute, wayBackRoute, wayBackShown } from "./lib/rejoin.ts";
 import { fetchOfflineNetwork, offlineWayBackRoute, type OfflineNetwork } from "./lib/offlineWayBack.ts";
+import { keptPack, openPack } from "./lib/regionPack.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -862,8 +863,10 @@ export function RideSettingsFields({
 /** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
 export const FIXED_SAID = t("This ride stays on its route, never re-routed.");
 
-function wayBackSaid(back: { metres: number; direction: string }): string {
-  return t("The planned route is {distance} to the {direction}.", { distance: spokenDistance(back.metres), direction: back.direction });
+function wayBackSaid(back: { metres: number; direction: string; street?: string | null }): string {
+  const where = t("The planned route is {distance} to the {direction}.", { distance: spokenDistance(back.metres), direction: back.direction });
+  // Its street where it has a name (backlog 2026-11-12, area 08 item 1), so a rider with no signal knows what to look for.
+  return back.street ? `${where} ${t("It is on {street}.", { street: back.street })}` : where;
 }
 
 /**
@@ -871,7 +874,7 @@ function wayBackSaid(back: { metres: number; direction: string }): string {
  * route is still shown. The planned route is 400 feet to the northeast."), from what is on the phone: the rider is
  * not left with only the first half (backlog 2026-11-12, area 06 item 4a). The screen shows the way back on its own.
  */
-function noSignalSaid(back: { metres: number; direction: string } | null): string {
+function noSignalSaid(back: { metres: number; direction: string; street?: string | null } | null): string {
   return back ? `${REPLAN_NO_SIGNAL} ${wayBackSaid(back)}` : REPLAN_NO_SIGNAL;
 }
 
@@ -1750,7 +1753,24 @@ export function RideMode({
         // The last network fetched, even for an earlier route of this ride (a new one is fetched only with a signal): it
         // covers the planned line this ride set out on, which a way back or a re-plan mostly keeps to.
         // Never back onto a road the rider marked closed: joined past it, as the server's way back is.
-        const offline = net ? offlineWayBackRoute(net.network, routeRef.current, here, Math.max(progressM, closed), keptPoints) : null;
+        const joinFrom = Math.max(progressM, closed);
+        let offline = net ? offlineWayBackRoute(net.network, routeRef.current, here, joinFrom, keptPoints) : null;
+        // Off that network (or none was fetched): the region pack downloaded in Settings, if one is kept (lib/regionPack.ts),
+        // opened the first time it is needed and held for the rest of the ride, priced as the ride is when its own
+        // prices were fetched.
+        if (!offline && keptPack() && !voided()) {
+          regionPackRef.current ??= openPack();
+          const pack = await regionPackRef.current;
+          if (pack && !voided()) {
+            offline = offlineWayBackRoute(
+              { graph: pack.graph, levelFactor: net?.network.levelFactor ?? pack.levelFactor },
+              routeRef.current,
+              here,
+              joinFrom,
+              keptPoints,
+            );
+          }
+        }
         if (offline) {
           found = offline;
           rough = true;
@@ -2522,6 +2542,8 @@ export function RideMode({
   // with the kept map for each route ridden, kept in memory for the ride: with no signal, a failed re-plan finds the way
   // back to the line on the phone. None where it could not be fetched (no signal at the start, a map built before it).
   const offlineNet = useRef<{ route: RouteResponse; network: OfflineNetwork } | null>(null);
+  // The kept region pack, opened for this ride when a way back first needs it (null: none, or unreadable).
+  const regionPackRef = useRef<Promise<OfflineNetwork | null> | null>(null);
   useEffect(() => {
     let current = true;
     if (offlineNet.current?.route !== route) {

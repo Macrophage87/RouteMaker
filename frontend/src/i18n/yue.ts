@@ -2208,4 +2208,18 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "路線規劃而家用唔到。",
   "Some ride types are not working right now.": "部分踩車類型而家用唔到。",
   "Place search is down right now.": "地點搜尋而家用唔到。",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "Map for no signal": "冇訊號用嘅地圖",
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "冇訊號嘅時候，呢部電話都搵到返去路線嘅路：喺路線附近一定得，喺呢度下載咗嘅地區任何地方都得。每次一個地區；地圖更新嘅時候佢都會更新。",
+  "Downloading…": "下載緊…",
+  "Kept on this phone.": "已經保存喺呢部電話。",
+  "Could not download it. Try again with a signal.": "下載唔到。有訊號嘅時候再試。",
+  "Not enough room on this phone.": "呢部電話冇足夠空間。",
+  "Needs a signal to list the maps.": "要有訊號先睇到地圖清單。",
+  "Inside the Beltway": "環城公路（Beltway）以內",
+  "Northern Virginia": "北維珍尼亞",
+  "Northwest exurbs": "西北郊區",
+  "Baltimore and suburbs": "巴爾的摩同郊區",
+  "The rest of the map": "地圖其餘部分",
+  "It is on {street}.": "喺{street}。",
 };

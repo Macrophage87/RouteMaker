@@ -100,7 +100,11 @@ test("Ride fetches the network with each route and uses it when a re-plan fails 
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /fetchOfflineNetwork\(route\.geometry\.coordinates as LonLat\[\], \{ preset, stress: dialsRef\.current\.stress, carrying: dialsRef\.current\.carrying \}, undefined, undefined, \(\) => current && !ended\.current\)/);
   assert.match(ride, /if \(!found && failed === "network" && !via && !check && !done && !voided\(\)\) \{/);
-  assert.match(ride, /offlineWayBackRoute\(net\.network, routeRef\.current, here, Math\.max\(progressM, closed\), keptPoints\)/);
+  assert.match(ride, /const joinFrom = Math\.max\(progressM, closed\);/);
+  assert.match(ride, /offlineWayBackRoute\(net\.network, routeRef\.current, here, joinFrom, keptPoints\)/);
+  // Off that network: the region pack kept in Settings, opened once for the ride, priced as the ride is where it can be.
+  assert.match(ride, /if \(!offline && keptPack\(\) && !voided\(\)\) \{\s+regionPackRef\.current \?\?= openPack\(\);/);
+  assert.match(ride, /levelFactor: net\?\.network\.levelFactor \?\? pack\.levelFactor/);
   assert.match(ride, /note = REPLAN_OFFLINE;/);
   // Ridden only until the signal is back: then planned again on the server.
   assert.match(ride, /offlineRoute\.current = rough \? found : null;/);
