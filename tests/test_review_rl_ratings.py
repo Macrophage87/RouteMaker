@@ -105,7 +105,10 @@ class TestAPaintedLaneOnAWideTwoWayStreet:
         assert not painted_lane_multilane({**SIX_LANE, **LANE}, lanes=1)
         assert not painted_lane_multilane({"highway": "cycleway", "lanes": "4", **LANE})
 
-    def test_an_agency_still_wins_and_the_rural_floor_stays(self) -> None:
+    def test_an_agency_still_wins_and_the_rural_floor_stays(self, monkeypatch) -> None:
+        # DDOT's 2020 layer is comparison-only (`agency_lts.COMPARISON_ONLY`); this reads
+        # how an agency that decides still wins.
+        monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
         formula = classify({**SIX_LANE, **LANE})
         rated = agency_lts.apply(formula, [AgencyRating("ddot", 2)])
         assert rated.tier is Stress.LTS2 and rated.formula_tier is Stress.LTS3
@@ -120,7 +123,8 @@ def result_for(ratings=()) -> object:
 
 
 class TestTheFlagList:
-    def test_a_ddot_and_a_montgomery_row(self) -> None:
+    def test_a_ddot_and_a_montgomery_row(self, monkeypatch) -> None:
+        monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
         row = agency_lts.painted_lane_row(1, "K St", "DC", result_for([AgencyRating("ddot", 2)]))
         assert row is not None
         assert (row["scope"], row["agency"], row["agency_level"]) == ("DC", "ddot", "2")

@@ -38,9 +38,24 @@ def test_montgomerys_lts5_is_our_45():
     assert result.rule == "agency rating: Montgomery County Planning LTS 5, our LTS 4.5"
 
 
-def test_a_ddot_lts5_is_avoid():
+def test_a_ddot_lts5_is_avoid(monkeypatch):
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     result = agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])
     assert (result.tier, result.half) == (Stress.AVOID, False)
+
+
+def test_ddots_2020_rating_is_recorded_and_never_used() -> None:
+    """The owner, 2026-11-13: "I want as few overrides as possible. If I say that a road is
+    incorrectly rated that means that I feel the formula is wrong", and of DDOT's 2020 layer,
+    2026-10-30: "6 year old data is too stale to rely on". The formula decides in the District;
+    DDOT's level stays on the road panel beside it."""
+    assert "ddot" in agency_lts.COMPARISON_ONLY
+    for level in (1, 2, 3, 4, 5):
+        result = agency_lts.apply(FORMULA, [AgencyRating("ddot", level)])
+        assert (result.tier, result.half) == (FORMULA.tier, FORMULA.half)
+        assert [r.agency for r in result.agency_ratings] == ["ddot"]
+    # Montgomery's still sets the tier where it rates the road.
+    assert agency_lts.apply(FORMULA, [AgencyRating("moco", 2)]).tier is Stress.LTS2
 
 
 def test_no_rating_leaves_the_formula():
@@ -322,7 +337,8 @@ def test_a_state_avoid_under_a_county_rating_takes_the_county():
     assert result.tier is Stress.LTS3
 
 
-def test_the_rural_floor_never_lowers_an_agency_avoid():
+def test_the_rural_floor_never_lowers_an_agency_avoid(monkeypatch):
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     rated = agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])
     assert rural_floor(rated, {"highway": "unclassified"}, urban=False).tier is Stress.AVOID
 
@@ -622,10 +638,11 @@ def test_the_ddot_level_field_is_found_on_any_record_not_only_the_first(tmp_path
     assert "LTS_SCORE" not in module.DDOT_LEVEL_FIELDS, "MDOT's preliminary score's name"
 
 
-def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
+def test_a_mapped_facility_sets_ddots_2020_rating_aside(monkeypatch) -> None:
     """The owner, 2026-10-21, of 14th Street NW, choosing "Formula wins where newer": DDOT's 2020
     layer predates lanes built since, so where a bike facility is mapped the formula's tier stands;
     the rating is still recorded for the road panel."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
     result = agency_lts.apply(lane, [AgencyRating("ddot", 4)], facility_mapped=True)
     assert result.tier is Stress.LTS2
@@ -642,10 +659,13 @@ def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
     assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
 
 
-def test_a_painted_lane_on_a_road_ddot_rated_higher_takes_the_level_its_traffic_gives() -> None:
+def test_a_painted_lane_on_a_road_ddot_rated_higher_takes_the_level_its_traffic_gives(
+    monkeypatch,
+) -> None:
     """The owner, 2026-10-30, of R Street's painted blocks: "I think formula wins on most of
     them, but make the higher cars/day ones, 2.5"; and 2026-10-31 of the DC review's rules
     (`ddot_rules.painted_lane_level`): "I agree with these"."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     # Thomas Circle NW, 14th St to M St: three lanes one way beside the lane.
     busy = StressResult(
         Stress.LTS1, "bike lane, 25 mph", (), volume_aadt=24_499, lanes=3, oneway=True
@@ -676,9 +696,10 @@ def test_a_painted_lane_on_a_road_ddot_rated_higher_takes_the_level_its_traffic_
     assert (kept.tier, kept.half) == (Stress.LTS1, False)
 
 
-def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane() -> None:
+def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane(monkeypatch) -> None:
     """Only a rating above the formula's is set aside: a lane built since makes a road calmer,
     and on a painted multilane street DDOT's calmer level stands (RL-3, 2026-10-16)."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     multilane = StressResult(Stress.LTS3, "bike lane, two-way floor", ())
     result = agency_lts.apply(
         multilane, [AgencyRating("ddot", 2)], facility_mapped=True, painted_lane=True
