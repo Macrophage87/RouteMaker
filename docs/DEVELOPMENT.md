@@ -27,6 +27,7 @@ Contents:
 - [The final-fix round (2026-10-03)](#the-final-fix-round-2026-10-03)
 - [The ride layer and surface-unknown paths (OWNER-DECISIONS 376, 391, 402a, 403)](#the-ride-layer-and-surface-unknown-paths-owner-decisions-376-391-402a-403)
 - [Long calm trips, the target distance and the routes to choose from (FOLLOWUP-LONG-CALM, items 256 to 271)](#long-calm-trips-the-target-distance-and-the-routes-to-choose-from-followup-long-calm-items-256-to-271)
+- [Long rides get the calm search (backlog 2026-11-12, v0.27.0)](#long-rides-get-the-calm-search-backlog-2026-11-12-v0270)
 - [No dodging through side streets (FOLLOWUP-DEDODGE, items 272, 273)](#no-dodging-through-side-streets-followup-dedodge-items-272-273)
 - [The rider and bike weight (OWNER-DECISIONS 313-318, 337-340, 352)](#the-rider-and-bike-weight-owner-decisions-313-318-337-340-352)
 - [Reversible lanes and the reference LTS 4 road (OWNER-DECISIONS 405, 408, 409, 411-414, 416, 419, 425)](#reversible-lanes-and-the-reference-lts-4-road-owner-decisions-405-408-409-411-414-416-419-425)
