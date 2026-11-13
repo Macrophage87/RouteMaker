@@ -1172,6 +1172,32 @@ CORNER_MARGIN_M = 30.0
 POLICE_MAX_AGE = timedelta(hours=3)
 
 
+# A protest's road closures (Stephen 2026-11-13: "Sometimes police activity closures are due
+# to a protest (possibly the one we'd be riding on). That obviously needs a lot less caution
+# than an active shooter"). An item that names a protest and no violence is an ordinary
+# closure: its streets are avoided as listed, with no wide area round them. "Police activity"
+# and "barricades" alone are not violence here, as AlertDC uses both of crowd control.
+PROTEST_WORDS = re.compile(
+    r"\b(?:protest\w*|demonstrat(?:ion|ions|ors?)|first amendment|rall(?:y|ies)|vigils?"
+    r"|marchers)\b",
+    re.I,
+)
+VIOLENCE_WORDS = re.compile(
+    r"\b(?:shoot\w*|shots?|stab\w*|robber\w*|homicide|murder|suspect\w*|missing|crime"
+    r"|burglar\w*|assault\w*|lookout|armed|weapon\w*|gun\w*|shelter in place|arrest\w*"
+    r"|carjack\w*|sexual|abduct\w*|amber alert|endangered|wanted|bomb\w*|explosi\w*"
+    r"|suspicious|injur\w*|fire)\b",
+    re.I,
+)
+
+
+def is_peaceful_protest(*texts: str) -> bool:
+    """Whether an AlertDC item names a protest and, anywhere in it, no violence."""
+    return any(PROTEST_WORDS.search(t) for t in texts) and not any(
+        VIOLENCE_WORDS.search(t) for t in texts
+    )
+
+
 def alertdc_kind(title: str, categories: Sequence[str]) -> str | None:
     """ "traffic" for a traffic or road item (`is_traffic`), "police" for a road closure whose
     title also has a crime word (read for its closures only), None for anything else."""
@@ -1369,6 +1395,8 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
         if kind is None:
             continue
         police = kind == "police" or bool(NOT_TRAFFIC.search(item["description"]))
+        if police and is_peaceful_protest(item["title"], item["description"], *item["categories"]):
+            police = False  # a protest's closures: ordinary closures, no wide area
         # A police item whose title says only that roads reopened is read for that alone.
         reopen_only = police and not ROAD_CLOSURE_TITLE.search(item["title"])
         if reopen_only and not _REOPENED.search(item["title"]):

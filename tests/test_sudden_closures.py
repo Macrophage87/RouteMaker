@@ -351,3 +351,38 @@ def test_the_stamp_changes_when_an_area_grows(monkeypatch) -> None:
     snaps = iter([workzones.Snapshot(zones=[zone]), workzones.Snapshot(zones=[bigger])])
     monkeypatch.setattr(workzones, "snapshot", lambda: next(snaps))
     assert workzones.closures_stamp(NOW) != workzones.closures_stamp(NOW)
+
+
+# --- Protests (Stephen 2026-11-13) ----------------------------------------------------
+
+PROTEST_PAGE = (
+    PAGE.replace(
+        "Road Closures / Police Activity - Shooting Investigation",
+        "Road Closures / Police Activity",
+    )
+    .replace(
+        "Due to a shooting investigation, MPD reports",
+        "Due to a First Amendment demonstration, MPD reports",
+    )
+    .replace(" Suspect described as armed.", "")
+)
+
+
+def test_a_protest_closure_is_an_ordinary_closure_not_a_wide_area() -> None:
+    protest = {a.advisory_id: a for a in dc.parse_alertdc(PROTEST_PAGE, NOW)}["alertdc-91001"]
+    assert not protest.police
+    assert [(c.a, c.b) for c in protest.corners] == [
+        ("15th Street NW", "P Street NW"),
+        ("14th Street NW", "P Street NW"),
+        ("15th Street NW", "Q Street NW"),
+    ]
+    # Before: the same item with a shooting in it is still a police area.
+    assert advisories()["alertdc-91001"].police
+
+
+def test_a_protest_with_any_violence_word_is_still_a_police_area() -> None:
+    page = PROTEST_PAGE.replace("Please use alternate", "Several arrests. Please use alternate")
+    assert {a.advisory_id: a for a in dc.parse_alertdc(page, NOW)}["alertdc-91001"].police
+    assert dc.is_peaceful_protest("Road Closures / Police Activity (vigil)", "Barricades on K St")
+    assert not dc.is_peaceful_protest("Police Activity (rally)", "Shots fired near the rally")
+    assert not dc.is_peaceful_protest("Road Closures / Police Activity", "Closed until March 3")
