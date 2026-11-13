@@ -183,13 +183,14 @@ def test_the_android_guide_keeps_its_three_steps_on_the_first_screen() -> None:
 
 
 def test_the_welcome_page_gives_each_device_its_block_and_no_email() -> None:
-    """The welcome we send every new tester (backlog 2026-11-12): no docs menu, a block per device
-    reached from the first screen (no script, so it cannot pick one), and no e-mail address, whose
-    domain is the beta's."""
+    """The welcome we send every new tester (backlog 2026-11-12): no docs menu, a closed fold per
+    device on the first screen (no script, so it cannot pick one; the owner, 2026-11-13: "Have each
+    expandable"), the browser first, and no e-mail address, whose domain is the beta's."""
     page = read("welcome")
     assert '<nav class="docs"' not in page
-    for anchor in ("android", "iphone", "computer"):
-        assert f'href="#{anchor}"' in page and f'id="{anchor}"' in page, anchor
+    for block in ("android", "iphone", "computer", "everyone"):
+        assert f'<details class="more" id="{block}">' in page, block
+    assert page.index("No download needed") < page.index('<details class="more"')
     assert "mailto:" not in page and "@" not in re.sub(r"<style>.*?</style>", "", page, flags=re.S)
     assert 'href="/about/accessibility.html"' in page
     assert "Send feedback" in page and "Set battery to Unrestricted" in page
