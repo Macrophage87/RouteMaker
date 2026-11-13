@@ -190,7 +190,12 @@ class TestAnswer:
             "Bike lane: Painted (OpenStreetMap)",
         ]
         assert body["evidence"]["words"] == "Strong evidence: 4 of 4 from records"
-        assert body["plain"] == "Two lanes each way at 30 mph, about 18,400 vehicles a day."
+        # The narrative says the lanes, speed and traffic, so the plain sentence is left out.
+        assert body["narrative"] == (
+            "Bikes share the lane with two lanes of traffic each way at 30 mph and about "
+            "18,400 vehicles a day."
+        )
+        assert body["plain"] is None
         assert [r["id"] for r in body["summary"]][-1] == "mass"
         # Street View opens on the way itself (OWNER-DECISIONS 441o): the spot is on it here.
         assert body["on_way"] == [round(SPOT[0], 6), round(SPOT[1], 6)]

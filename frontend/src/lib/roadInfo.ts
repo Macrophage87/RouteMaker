@@ -412,7 +412,8 @@ export function levelWords(info: SegmentInfo): string | null {
   const line = info.summary?.find((r) => r.id === "stress")?.value;
   if (!line) return null;
   const parts = valueParts(line);
-  return parts.length > 1 ? parts.slice(1).join(" · ") : parts[0];
+  // Avoid's line is the level alone: the badge says it, so no words beside it.
+  return parts.length > 1 ? parts.slice(1).join(", ") : null;
 }
 
 /** The big level's text: "LTS 3", "LTS 3.5", or "Avoid". */

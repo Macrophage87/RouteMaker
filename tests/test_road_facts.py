@@ -248,10 +248,13 @@ def test_the_narrative_says_why_from_the_rule_and_the_facts():
     thin = road(
         stress_rule="mixed traffic, 55 mph", stress_assumed=json.dumps(["maxspeed", "lanes"])
     )
-    assert said(thin).startswith("Bikes share the lane with one lane of traffic each way at 55 mph")
+    # Estimates are not said as facts: the rule's words stand in.
+    assert said(thin).startswith("55 mph (89 km/h), mixed traffic.")
     assert said(thin).endswith("best guess until the road is counted or mapped.")
     # A path, and an owner's row with its own note.
-    assert said(road(is_trail_class=True)).startswith("A path away from traffic")
+    assert said(
+        road(is_trail_class=True, stress_rule="trail-class way (cycleway, open to bicycles)")
+    ).startswith("A path away from traffic")
     noted = {
         **CITY,
         "stress_adjustment_id": "2026-11-12-owner:1",
@@ -259,3 +262,31 @@ def test_the_narrative_says_why_from_the_rule_and_the_facts():
         "stress_adjustment_display": "map",
     }
     assert said(noted) == "Underpass with fast merging traffic."
+
+
+def test_the_narrative_on_side_paths_and_avoid():
+    def said(row):
+        facts = si.road_facts(row)
+        return si.narrative(row, facts, si.evidence_of(facts, row))
+
+    side = road(
+        is_trail_class=True,
+        stress_rule="path beside a busy road, road at LTS 4, crossings score 30 a mile",
+    )
+    assert said(side).startswith("Path beside a busy road (LTS 4)")
+    avoid = road(stress_tier=5, stress_rule="legal but avoid, 55 mph")
+    assert said(avoid).startswith("Avoid: highway-like road")
+    assert "Avoid: avoid" not in said(avoid)
+    noted = road(
+        stress_tier=5,
+        stress_rule="override: stress adjustment 2026-11-01-owner:3",
+        stress_adjustment_id="2026-11-01-owner:3",
+        stress_adjustment_note="Blind curve with no shoulder",
+        stress_adjustment_display="map",
+    )
+    assert said(noted) == "Blind curve with no shoulder."
+
+
+def test_the_plain_sentence_is_left_out_where_the_narrative_says_it():
+    assert si.narrative_says_details(CITY, si.road_facts(CITY)) is True
+    assert si.narrative_says_details(COUNTRY, si.road_facts(COUNTRY)) is False

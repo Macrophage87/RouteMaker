@@ -45,10 +45,16 @@ export function LevelBox({ tier, half, badge, words, narrative }: { tier: number
   return (
     <div className="road-level">
       <p className="road-level-head">
+        <span className="visually-hidden">{t("Traffic stress:")} </span>
         <span className="road-level-badge" style={{ background: look.color, borderColor: look.halo, color: inkOn(look.color) }}>
           {badge}
         </span>
-        {words && <span className="road-level-words">{words}</span>}
+        {words && (
+          <>
+            <span className="visually-hidden">, </span>
+            <span className="road-level-words">{words}</span>
+          </>
+        )}
       </p>
       <p className="road-level-why">{narrative}</p>
     </div>

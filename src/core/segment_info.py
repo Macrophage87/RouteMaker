@@ -1880,7 +1880,8 @@ def _traffic_words(fact: dict | None) -> str | None:
 
 
 def _lane_words(fact: dict | None, row: dict) -> str | None:
-    if fact is None:
+    # Only a record is said as a fact; an estimate is left to the facts and the best-guess line.
+    if fact is None or fact["kind"] != RECORD:
         return None
     count, _, rest = fact["value"].partition(" ")
     n = int(count) if count.isdigit() else None
@@ -1895,7 +1896,9 @@ def _road_details(facts: list[dict], row: dict) -> str:
     by = {f["id"]: f for f in facts}
     lanes = _lane_words(by.get("lanes"), row)
     speed_fact = by.get("speed")
-    mph = _SPEED.search(speed_fact["value"]) if speed_fact else None
+    mph = (
+        _SPEED.search(speed_fact["value"]) if speed_fact and speed_fact["kind"] == RECORD else None
+    )
     speed = f"at {mph.group(1)} mph" if mph else None
     traffic = _traffic_words(by.get("traffic"))
     head = " ".join(p for p in (lanes, speed) if p)
@@ -1909,21 +1912,23 @@ def narrative(row: dict, facts: list[dict], evidence: dict | None) -> str | None
     tier = int(row["stress_tier"])
     rule = str(row.get("stress_rule") or "")
     note = override_note(row)
-    if tier == 5:
-        return f"Avoid: {rule_words(rule)[:1].lower()}{rule_words(rule)[1:]}."
+    details = _road_details(facts, row)
     if note:
+        # A rating row's own public note, on any level, Avoid included (the review of 24a31628).
         reason = note.rstrip(".")
+    elif tier == 5:
+        words = rule_words(rule)
+        reason = words if words.lower().startswith("avoid") else f"Avoid: {words}"
     elif row.get("stress_adjustment_id") is not None:
         reason = rule_words(rule)
-    elif row.get("is_trail_class"):
+    elif rule.startswith("trail-class way") and not rule.startswith(BESIDE_BUSY_ROAD_RULE):
         reason = "A path away from traffic: no cars to share it with"
-    elif rule.startswith("mixed traffic"):
-        details = _road_details(facts, row)
-        reason = "Bikes share the lane with " + (details or "traffic")
-    elif rule.startswith("bike lane"):
-        details = _road_details(facts, row)
-        reason = "A painted bike lane beside " + (details or "traffic")
+    elif rule.startswith("mixed traffic") and details:
+        reason = "Bikes share the lane with " + details
+    elif rule.startswith("bike lane") and details:
+        reason = "A painted bike lane beside " + details
     else:
+        # Every other rule, and a road whose facts are too thin to say more: the rule's words.
         reason = rule_words(rule)
     text = reason[:1].upper() + reason[1:] + "."
     if evidence and evidence["strength"] == "thin":
@@ -1931,7 +1936,22 @@ def narrative(row: dict, facts: list[dict], evidence: dict | None) -> str | None
             " Most of this is estimated, so the level is a best guess until the road is"
             " counted or mapped."
         )
+    elif evidence and evidence["strength"] == "some":
+        text += " Some of this is estimated."
     return text
+
+
+def narrative_says_details(row: dict, facts: list[dict]) -> bool:
+    """Whether the narrative already says the road's lanes, speed and traffic, so the plain
+    sentence would repeat it."""
+    rule = str(row.get("stress_rule") or "")
+    return (
+        override_note(row) is None
+        and row.get("stress_adjustment_id") is None
+        and int(row["stress_tier"]) < 5
+        and rule.startswith(("mixed traffic", "bike lane"))
+        and bool(_road_details(facts, row))
+    )
 
 
 def describe(row: dict, router: dict) -> dict:
@@ -2001,7 +2021,8 @@ def describe(row: dict, router: dict) -> dict:
         # The facts behind the level and how much rests on records (`road_facts`).
         "facts": facts,
         "evidence": evidence,
-        "plain": plain_sentence(facts),
+        # The plain sentence where the narrative does not already say it.
+        "plain": None if narrative_says_details(row, facts) else plain_sentence(facts),
         "narrative": narrative(row, facts, evidence),
         "sections": sections,
         "more": more_link(row, router),

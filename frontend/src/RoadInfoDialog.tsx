@@ -755,7 +755,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         )}
         {/* The facts behind the level, after the level and its why (the owner, 2026-11-13; RoadFacts.tsx). */}
         {ready && (
-          <RoadFacts facts={shownFacts(ready)} evidence={ready.evidence ?? null} plain={leadsWithLevel(ready) ? null : (ready.plain ?? null)} uid={id("facts").replace(/[^A-Za-z0-9_-]/g, "")} />
+          <RoadFacts facts={shownFacts(ready)} evidence={ready.evidence ?? null} plain={ready.plain ?? null} uid={id("facts").replace(/[^A-Za-z0-9_-]/g, "")} />
         )}
         {summary.some((row) => !LEAD_LINES.has(row.id)) && (
           <ul className="road-info-summary" aria-label={t("More about this road")}>
