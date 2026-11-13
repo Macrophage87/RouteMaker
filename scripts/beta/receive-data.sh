@@ -326,7 +326,7 @@ if [ "$command_name" = files ]; then
 		chmod 644 "$data_root/tiles/offline-packs/.manifest.json.new"
 		mv -f "$data_root/tiles/offline-packs/.manifest.json.new" "$data_root/tiles/offline-packs/manifest.json"
 		packs_now=$(sed -n 's/^ *"dir": *"\(packs-[^"]*\)".*/\1/p' "$data_root/tiles/offline-packs/manifest.json" | head -n 1)
-		(cd "$data_root/tiles/offline-packs" && find . -maxdepth 1 -mindepth 1 -type d -name 'packs-*' ! -name '*.part' -printf '%f\n' | sort -r | grep -vxF -- "$packs_now" | tail -n +2) | while IFS= read -r old; do
+		(cd "$data_root/tiles/offline-packs" && find . -maxdepth 1 -mindepth 1 -type d -name 'packs-*' ! -name '*.part' -printf '%f\n' | sort -r | { grep -vxF -- "$packs_now" || true; } | tail -n +2) | while IFS= read -r old; do
 			rm -rf -- "$data_root/tiles/offline-packs/$old"
 		done
 		note "region packs installed: $packs_now"
