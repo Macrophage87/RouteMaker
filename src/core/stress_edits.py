@@ -981,10 +981,12 @@ def _level_of(state: dict, way_id: int) -> float | None:
 # edit made in the last minute reaching the ranking's graph-gap price a minute late is no
 # worse than the plan that was already running. Our default, unmeasured.
 PENDING_TTL_S = 60.0
-# The most edits read (the newest): a table that never said when its rebuild read the
-# overrides counts every edit as pending, and a plan must not read thousands of rows.
+# The most edits read (the newest), so a plan never reads thousands of rows. Our default,
+# unmeasured: far more than are made between two weekly rebuilds.
 PENDING_MAX_EDITS = 2000
-_pending_cache: tuple[float, dict] | None = None
+# (when read, the live table it was read for, the answer).
+_pending_cache: tuple[float, int | None, dict] | None = None
+_pending_warned: set[int] = set()
 
 
 def pending_levels(now_s: float | None = None) -> dict[int, tuple[float, float]]:
@@ -993,21 +995,36 @@ def pending_levels(now_s: float | None = None) -> dict[int, tuple[float, float]]
     and is not back at the built level (`routing_pending`, for all ways at once). The
     ranking prices the difference on the ways a route rides (`refine.graph_gap_m`), so a
     road just raised is not ridden as cheaply as the graph still has it while the ranking
-    already avoids crossing it. Empty with no live table. Kept `PENDING_TTL_S` a worker."""
+    already avoids crossing it. Empty with no live table, and where the table's rebuild never
+    said when it read the overrides (`after_promotion(None)`): then nothing says which edits
+    the graph already holds, and charging every edit ever made a second time would be worse
+    than charging none (logged once a table). Kept `PENDING_TTL_S` a worker, for the live
+    table it was read for: a newly promoted table is read afresh.
+
+    A way's level is the highest of its rows (`_level_of`), and the gap is charged on all of
+    the way that is ridden, as the graph will price it after the rebuild: the graph carries
+    one level a way, and an edit sets whole ways (`apply` takes way ids)."""
     global _pending_cache
     import time
 
     clock = time.monotonic() if now_s is None else now_s
-    if _pending_cache is not None and clock - _pending_cache[0] < PENDING_TTL_S:
-        return _pending_cache[1]
-    found: dict[int, tuple[float, float]] = {}
     oid = live_oid(live_schema())
-    if oid is not None:
-        generation = LiveEditGeneration.objects.filter(table_oid=oid).first()
-        read_at = getattr(generation, "overrides_read_at", None)
-        edits = StressEdit.objects.all()
-        if read_at is not None:
-            edits = edits.filter(at__gt=read_at)
+    cached = _pending_cache
+    if cached is not None and cached[1] == oid and clock - cached[0] < PENDING_TTL_S:
+        return cached[2]
+    found: dict[int, tuple[float, float]] = {}
+    generation = (
+        LiveEditGeneration.objects.filter(table_oid=oid).first() if oid is not None else None
+    )
+    read_at = getattr(generation, "overrides_read_at", None)
+    if oid is not None and read_at is None and oid not in _pending_warned:
+        _pending_warned.add(oid)
+        logger.warning(
+            "the live segment table does not say when its rebuild read the overrides, so no"
+            " stress edit is priced as pending in route ranking (run reapply_stress_edits)"
+        )
+    if read_at is not None:
+        edits = StressEdit.objects.filter(at__gt=read_at)
         newest = list(edits.order_by("-id")[:PENDING_MAX_EDITS])
         first: dict[int, float | None] = {}
         last: dict[int, float | None] = {}
@@ -1021,7 +1038,7 @@ def pending_levels(now_s: float | None = None) -> dict[int, tuple[float, float]]
             live = last.get(way)
             if built is not None and live is not None and built != live:
                 found[way] = (built, live)
-    _pending_cache = (clock, found)
+    _pending_cache = (clock, oid, found)
     return found
 
 

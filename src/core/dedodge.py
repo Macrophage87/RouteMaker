@@ -26,8 +26,8 @@ before it is answered (`core.routing.plan`):
    `Analysis.second_m`). On every ride type, Default included, the dodge is kept
    if it avoids more than the second level's tie step (`refine.MAXCALM_STEPS[1]`,
    50 m; OWNER-DECISIONS 298(1), "Same as Trailmaxxing (Recommended)", which amended
-   272's quarter mile), plus each turn the main road saves, at the one turn price the
-   router and the ranking share (`turn_lts3_m`, `refine.turn_price_s`; item 254's
+   272's quarter mile), plus each turn the main road saves, at the ranking's turn
+   price (`turn_lts3_m`, `refine.turn_price_s`; item 254's
    every-preset turn cost, the owner's "Every setting", 2026-11-12); a dodge that avoids
    nothing (Konterra) is removed everywhere. (272's first rule, a quarter of a mile plus
    260 ft a turn past two, was switched off by 298(1) and its code removed 2026-11-13.)
@@ -76,7 +76,6 @@ MIN_DODGE_M = 50.0
 # service road or a split at a junction, not a side street (review r0, fuller report).
 MIN_UNNAMED_DODGE_M = 60.0
 # A turn: the one definition, `refine.turns_in` (a change of heading of this many degrees).
-TURN_DEGREES = refine.TURN_DEGREES
 # How far a dodge may go before it rejoins (metres): about a mile.
 DODGE_MAX_M = 1609.344
 # A road a dodge leaves and rejoins is at least this long on each side (metres), so
@@ -302,7 +301,7 @@ def find_dodges(edges: list[Edge], shape: list) -> list[Dodge]:
 
 def turn_count(pieces: list) -> int:
     """The turns on a route: the planner's one definition (`refine.turns_in`)."""
-    return refine.turn_count(pieces)
+    return refine.turns_in(pieces)
 
 
 # --- The rule ---------------------------------------------------------------
@@ -334,9 +333,9 @@ def avoided_m(dodge: refine.Analysis, direct: refine.Analysis) -> float:
 
 def turn_lts3_m(ctx: refine.Context) -> float:
     """One turn as metres of LTS 3 avoided, at the plan's own prices: the one turn price
-    (`refine.turn_price_s`: what the request tells the router to charge, 15 cost seconds, 30
-    with "Fewer turns" or on a ride type that plans for fewer) as quiet metres, over what a
-    metre of LTS 3 adds at its `use_roads` (`refine.lts3_added_m`). About 10 m at Default.
+    (`refine.turn_price_s`: 222 ft of quiet riding, 391 ft with "Fewer turns" or on a ride
+    type that plans for fewer) as quiet metres, over what a metre of LTS 3 adds at its
+    `use_roads` (`refine.lts3_added_m`). About 20 m (67 ft) at Default.
     Where LTS 3 adds nothing in the router (the direct end of the slider), the turn's own
     quiet metres, one for one."""
     if ctx.quiet_cost <= 0:

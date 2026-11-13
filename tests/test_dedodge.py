@@ -542,10 +542,10 @@ class TestTurns:
             )
             return dedodge.turn_count([a, b])
 
-        assert turned(dedodge.TURN_DEGREES - 1) == 0
-        assert turned(dedodge.TURN_DEGREES) == 1
-        assert turned(360 - dedodge.TURN_DEGREES) == 1
-        assert turned(360 - dedodge.TURN_DEGREES + 1) == 0
+        assert turned(refine.TURN_DEGREES - 1) == 0
+        assert turned(refine.TURN_DEGREES) == 1
+        assert turned(360 - refine.TURN_DEGREES) == 1
+        assert turned(360 - refine.TURN_DEGREES + 1) == 0
 
     def test_without_headings_each_change_of_street_is_a_turn(self) -> None:
         a = routing.Piece(1, LON0, LAT0, 100.0, names=("A",))
@@ -566,9 +566,9 @@ class TestWhatItMustAvoid:
         assert not hasattr(dedodge, "MIN_AVOIDED_M") and not hasattr(dedodge, "TURN_CHARGE_M")
 
     def test_a_turn_is_counted_by_the_planners_one_definition(self) -> None:
-        assert dedodge.TURN_DEGREES == refine.TURN_DEGREES
+        assert not hasattr(dedodge, "TURN_DEGREES")
         pieces = chain(1000.0, 3)
-        assert dedodge.turn_count(pieces) == refine.turn_count(pieces) == 3
+        assert dedodge.turn_count(pieces) == refine.turns_in(pieces) == 3
 
     def test_the_stress_avoided_is_the_figures_the_main_road_has_more_of(self) -> None:
         dodge = read(lts3=100.0, lts4=10.0)
@@ -1578,7 +1578,7 @@ class TestPinnedBounds:
         assert rejoin(100) == [] and rejoin(140) == []
 
     def test_a_turn_is_40_degrees(self) -> None:
-        assert dedodge.TURN_DEGREES == 40.0
+        assert refine.TURN_DEGREES == 40.0
 
         def turned(degrees):
             a = routing.Piece(1, LON0, LAT0, 100.0, names=("A",), heading_in=0.0, heading_out=0.0)
@@ -1902,7 +1902,11 @@ class TestTheRidersFewerTurns:
         assert got.needed_m == pytest.approx(50.0 + 4 * dedodge.turn_lts3_m(CTX))
 
     def test_a_ride_type_that_charges_more_is_priced_at_its_own_charge(self) -> None:
-        own = dataclasses.replace(CTX, costing={"bicycle": {"maneuver_penalty": 30}})
+        # A request that tells the router the fewer-turns charge (30 cost seconds) is a
+        # fewer-turns ride: its turns are priced at `presets.FEWER_TURNS_FT` here.
+        own = dataclasses.replace(
+            CTX, costing={"bicycle": {"maneuver_penalty": presets.ROUTER_FEWER_TURNS_S}}
+        )
         assert dedodge.turn_lts3_m(own) == pytest.approx(
-            dedodge.turn_lts3_m(CTX) * 30 / refine.turn_price_s(CTX)
+            dedodge.turn_lts3_m(CTX) * presets.FEWER_TURNS_FT / presets.TURN_FT, rel=3e-3
         )

@@ -173,7 +173,7 @@ def test_tandem_keeps_out_of_narrow_gaps_turns_less_and_climbs_gently() -> None:
     assert _gate_charge(presets.TANDEM) == _gate_charge("cargo") >= 600
     assert tandem["gate_cost"] <= 30
     assert presets.PRESETS[presets.TANDEM].fewer_turns
-    assert tandem["maneuver_penalty"] == presets.turn_cost_s(tandem, fewer_turns=True)
+    assert tandem["maneuver_penalty"] == presets.ROUTER_FEWER_TURNS_S
     assert tandem["use_hills"] < options("default")["use_hills"]
     assert tandem["avoid_bad_surfaces"] > options("default")["avoid_bad_surfaces"]
     # Faster on the flat than Default's hybrid: two riders, one bike's drag.
@@ -602,7 +602,7 @@ def test_road_bike_rides_a_road_bicycle_on_its_own_graph_with_fewer_turns() -> N
     assert presets.VALHALLA_DEFAULT_SPEED_KMH["Road"] > presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
     # Steeply priced, never the hard exclusion at 1.0 (a ride starting on gravel still plans).
     assert bicycle["avoid_bad_surfaces"] == presets.ROAD_BIKE_SURFACES == 0.9
-    assert bicycle["maneuver_penalty"] == presets.turn_cost_s(bicycle, fewer_turns=True)
+    assert bicycle["maneuver_penalty"] == presets.ROUTER_FEWER_TURNS_S
     assert bicycle["maneuver_penalty"] > options("default")["maneuver_penalty"]
     assert road.stress == presets.ROAD_BIKE_STRESS == 40
     # Its weekend twin at the weekend (the owner, 2026-11-08: "Road bikes absolutely use those
@@ -811,23 +811,34 @@ def _quiet_ft(cost_s: float, bicycle: dict) -> float:
     return metres / presets.METRES_PER_FOOT
 
 
-def test_a_turn_costs_one_distance_at_every_position_and_on_every_ride_type() -> None:
-    # Before 2026-11-13: 15 cost seconds (30 on five ride types), which was 81 ft of quiet
-    # riding on Bikeshare, 112 ft on Default and 155 ft on Road Bike (310 ft at its 30).
-    # After: 222 ft (Broach, Dill and Gliebe 2012, commute), 391 ft (their non-commute value)
-    # on the ride types that plan for fewer turns, the same feet at every speed.
-    assert (presets.TURN_FT, presets.FEWER_TURNS_FT) == (222.0, 391.0)
-    for stress in (0, 40, 70, presets.STRESS_TODAYS_TOP, 90, presets.STRESS_MAX):
+def test_the_router_is_told_what_it_was_told_before_at_every_position() -> None:
+    # The router's search cannot be guarded against a turn saving that buys a busier road
+    # (it prices a road by class, not level), and at slider 80 and below nothing re-ranks its
+    # answer. So its own charge stays where it was measured: 15 cost seconds, 30 on the five
+    # ride types that plan for fewer turns (the scorecard, 2026-11-12). The published price
+    # is charged in the ranking, where the guard is.
+    assert (presets.ROUTER_TURN_S, presets.ROUTER_FEWER_TURNS_S) == (15, 30)
+    for stress in (0, 25, 40, 70, presets.STRESS_TODAYS_TOP, 90, presets.STRESS_MAX):
         got = presets.costing("default", stress)["bicycle"]["maneuver_penalty"]
-        assert got == 29.8, stress
+        assert got == 15, stress
     fewer = set()
     for name, preset in presets.PRESETS.items():
         bicycle = presets.costing(name)["bicycle"]
-        want = presets.FEWER_TURNS_FT if preset.fewer_turns else presets.TURN_FT
-        assert _quiet_ft(bicycle["maneuver_penalty"], bicycle) == pytest.approx(want, abs=0.5)
+        assert bicycle["maneuver_penalty"] == (30 if preset.fewer_turns else 15), name
         if preset.fewer_turns:
             fewer.add(name)
     assert len(fewer) == 5 and {presets.ROAD_BIKE, presets.TANDEM} <= fewer
+
+
+def test_the_ranking_turn_price_is_one_distance_on_every_ride_type() -> None:
+    # 222 ft (Broach, Dill and Gliebe 2012, commute), 391 ft (their non-commute value) on
+    # the ride types that plan for fewer turns, the same feet at every speed.
+    assert (presets.TURN_FT, presets.FEWER_TURNS_FT) == (222.0, 391.0)
+    for name, preset in presets.PRESETS.items():
+        bicycle = presets.costing(name)["bicycle"]
+        price = presets.turn_cost_s(bicycle, fewer_turns=preset.fewer_turns)
+        want = presets.FEWER_TURNS_FT if preset.fewer_turns else presets.TURN_FT
+        assert _quiet_ft(price, bicycle) == pytest.approx(want, abs=0.5), name
 
 
 def test_the_avoid_entry_is_one_distance_on_every_ride_type() -> None:
@@ -845,11 +856,14 @@ def test_a_change_of_speed_keeps_the_distances() -> None:
     presets.set_speed(block, 25.0)
     bicycle = block["bicycle"]
     assert bicycle["cycling_speed"] == 25.0
-    assert _quiet_ft(bicycle["maneuver_penalty"], bicycle) == pytest.approx(222.0, abs=0.5)
     assert _quiet_ft(bicycle["alley_penalty"], bicycle) == pytest.approx(13422, abs=5)
-    # The rider's "Fewer turns" at the block's own speed.
+    # The router's turn charge is cost seconds, the same at every speed; the ranking's price
+    # is the distance.
+    assert bicycle["maneuver_penalty"] == presets.ROUTER_TURN_S
+    assert _quiet_ft(presets.turn_cost_s(bicycle), bicycle) == pytest.approx(222.0, abs=0.5)
+    # The rider's "Fewer turns".
     asked = presets.with_rider_choices(block, fewer_turns=True)["bicycle"]
-    assert _quiet_ft(asked["maneuver_penalty"], asked) == pytest.approx(391.0, abs=0.5)
+    assert asked["maneuver_penalty"] == presets.ROUTER_FEWER_TURNS_S
 
 
 def test_the_quiet_cost_factor_is_the_rankings() -> None:

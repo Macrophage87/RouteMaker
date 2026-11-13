@@ -41,7 +41,7 @@ flowchart LR
   every way (`segments` table) and the junction model (`routemaker.intersections`,
   [intersections.md](intersections.md)).
 - **Where the candidates come from** (`refine.refine`): the router's first route; up to 3 of
-  its own alternatives (`ROUTER_ALTERNATES`, asked with turns free, see "Turns"); routes found
+  its own alternatives (`ROUTER_ALTERNATES`); routes found
   by excluding the worst of the last candidate (`_search`: LTS 4 and Avoid stretches first, then
   LTS 3, and red junctions each round); on Trailmaxxing the trail seek (`_seek`).
 - **Known limit (audit 2026-11-13, areas/09 3.1).** Junction cost is not in the search at all.
@@ -248,10 +248,11 @@ flowchart LR
   2026-10-03, typed: "It's putting me on dangerous roads just for a little more trails"); LTS 2
   weighed at a quarter of LTS 3 on Trailmaxxing, Novice, Tandem and Cargo with passengers; Road Bike's 3x on
   waits; gate charges on Cargo and Tandem.
-- **Everything else is the same distance on every ride type** since 2026-11-13: the turn price
-  and the Avoid entry are set in feet and sent at the ride's own speed (`presets.turn_cost_s`,
-  `presets.avoid_entry_cost_s`, `presets.set_speed`). Before, 15 cost seconds a turn was 81 ft
-  on Bikeshare and 149 ft on E-bike.
+- **The same distance on every ride type** since 2026-11-13: the ranking's turn price
+  (`presets.turn_cost_s`) and the Avoid entry, which is sent to the router at the ride's own
+  speed (`presets.avoid_entry_cost_s`, `presets.set_speed`). The router's own turn charge is
+  still 15 (or 30) cost seconds on every ride type, which is 81 ft on Bikeshare and 149 ft on
+  E-bike; why it was left there is under "Turns".
 - **Still in seconds, so still speed-dependent:** junction waits (real time, rightly). The
   red surcharge (`refine.RED_DETOUR_S`, 600 s of riding for each red junction) is deleted
   since 2026-11-13: a red junction costs its own price in feet, capped at two calm miles
@@ -266,29 +267,33 @@ flowchart LR
 The purpose, in the owner's words: "to remove a large amount of cognitive load on a cyclist for
 meaningless differences in time and comfort." So a route never gains a turn for a gain too
 small to matter, and a turn saved never puts the rider on a meaningfully busier road. A turn is
-a decision point: a place where the rider must act on a cue, not a bend in the road. Each one
-costs 222 ft of quiet riding, the same in the search and the ranking, on every ride type and at
-every slider setting.
+a decision point: a place where the rider must act on a cue, not a bend in the road. In the
+ranking each one costs 222 ft of quiet riding, on every ride type and at every slider setting.
+The router's own search is told what it was told before (15 cost seconds, 112 ft at Default):
+its charge was not raised, because nothing can stop the router's search from buying a busier
+road with a turn saved.
 
 ```mermaid
 flowchart TD
   A["Heading changes 40 degrees or more"] --> B{"Onto another street?"}
-  B -- yes --> T["A turn: 222 ft"]
+  B -- yes --> T["A turn: 222 ft in the ranking"]
   B -- "no, same name" --> C{"Another way leaves here?"}
   C -- yes --> T
   C -- no --> N["A bend: free"]
-  T --> G{"Is one route meaningfully busier?"}
+  T --> G{"Is the route with fewer turns meaningfully busier?"}
   G -- yes --> H["Turns left out of the comparison"]
   G -- no --> I["Turns count"]
 ```
 
 | | Before 2026-11-13 | Now |
 |---|---|---|
-| Search, Default | 15 cost seconds = 112 ft | 222 ft (29.8 cost seconds) |
-| Ranking, Default | 15 s of riding = 246 ft, only at the top and in the dodge pass | 222 ft, in the score too |
-| Same-name turn (a trail's zig-zag) | free in the search, uncounted in the score | 222 ft in the ranking |
-| Bikeshare / E-bike | 81 ft / 149 ft | 222 ft / 222 ft |
-| Fewer-turns ride types and the rider's "Fewer turns" | 30 cost seconds = 224 ft at Default | 391 ft |
+| Search (the router), Default | 15 cost seconds = 112 ft, on a change of street name | the same, unchanged |
+| Search, fewer-turns ride types and the rider's "Fewer turns" | 30 cost seconds = 224 ft at Default | the same, unchanged |
+| Ranking below the top of the slider | no turn term in the score | 222 ft a turn (391 ft with fewer turns), less what the router charged |
+| Ranking at the top, and the dodge pass | 15 s of riding = 246 ft | 222 ft (391 ft) |
+| Same-name turn (a trail's zig-zag), turn between unnamed paths | free in the search, uncounted in the score | 222 ft in the ranking |
+| Straight on through a change of street name | 15 cost seconds in the search, kept in the score | charged by the router, taken out again by the ranking |
+| Bikeshare / E-bike, ranking | not charged | 222 ft / 222 ft |
 
 <details>
 <summary>Full reasoning and citations (for review)</summary>
@@ -296,46 +301,71 @@ flowchart TD
 - **One definition:** `refine.turns_in`, `refine.TURN_DEGREES` (40; our default, unmeasured).
   Read from the traced pieces; `routing.Piece.choice` says whether another rideable way leaves
   the node. The dodge pass uses the same function (`dedodge.turn_count`).
-- **One price:** `presets.TURN_FT` 222 ft. **Literature:** Broach, Dill and Gliebe (2012),
-  "Where do cyclists ride? A route choice model developed with revealed preference GPS data",
-  Transportation Research Part A 46(10), 1730-1740, doi:10.1016/j.tra.2012.07.005, Table 3: a
-  turn is worth 4.2% of a mile on a commute (222 ft) and 7.4% on other trips (391 ft). Other
-  opened studies are higher: Hood, Sall and Charlton (2011), Transportation Letters 3(1),
-  63-75, doi:10.3328/TL.2011.03.01.63-75: 558 ft; Zimmermann, Mai and Frejinger (2017),
-  Transportation Research Part C 75, 183-196, doi:10.1016/j.trc.2016.12.009: 484 to 609 ft.
-  `presets.FEWER_TURNS_FT` 391 ft is Broach's non-commute value; which ride types take it is
-  our default.
-- **How it reaches the router:** `maneuver_penalty` = the feet as cost seconds at the ride's
-  speed (`presets.cost_s_of_quiet_ft`; a quiet metre costs the router 2.2 times its time,
-  `QUIET_COST_FACTOR`, measured on our data: median of the live standard router, range 1.8 to
-  2.9). Valhalla charges it where the street name changes, at any angle; that is its definition
-  and cannot be changed from here, so the two stages agree on the price and on most turns, not
-  on every one. The ranking reads the request's own number back (`refine.turn_price_s`) and
-  adds it for the turns the router missed (`Analysis.unpriced_turns`).
-- **What a turn may never buy:** `refine.turns_count_between`, used by `refine.better`. Two
-  candidates are compared with their turns left out (`refine.turn_free_score`) when one is
-  busier than the other by more than the Traffic-wins margin (2% and 164 ft of weighted
-  exposure, with red and Avoid-rated junctions at their cost; our default, unmeasured). And
-  the search's ask for alternatives is made with no turn charge (`refine._alternates_request`),
-  so the route the router would give with turns free is among the candidates at no extra ask.
-  Why: the router prices a road by class, not level, so a turn charge can buy LTS 4 it cannot
-  see. Measured on our data (scorecard, 2026-11-12, 38 Default trips): raising the charge from
-  5 to 15 cost seconds at slider 25 cut turns 7% and added 1.7 mi of LTS 4, on two trips; at
-  70, turns fell 4% with LTS 4 flat.
+- **One price in the ranking:** `presets.TURN_FT` 222 ft. **Literature:** Broach, Dill and
+  Gliebe (2012), "Where do cyclists ride? A route choice model developed with revealed
+  preference GPS data", Transportation Research Part A 46(10), 1730-1740,
+  doi:10.1016/j.tra.2012.07.005, Table 3: a turn is worth 4.2% of a mile on a commute (222 ft)
+  and 7.4% on other trips (391 ft). Other opened studies are higher: Hood, Sall and Charlton
+  (2011), Transportation Letters 3(1), 63-75, doi:10.3328/TL.2011.03.01.63-75: 558 ft;
+  Zimmermann, Mai and Frejinger (2017), Transportation Research Part C 75, 183-196,
+  doi:10.1016/j.trc.2016.12.009: 484 to 609 ft. `presets.FEWER_TURNS_FT` 391 ft is Broach's
+  non-commute value; which ride types take it is our default. In cost seconds at the ride's
+  speed: `presets.turn_cost_s`, `refine.turn_price_s` (a quiet metre costs the router 2.2 times
+  its time, `calm.QUIET_FACTOR`, measured on our data: median of the live standard router,
+  range 1.8 to 2.9).
+- **What the router is sent, and why it is less:** `maneuver_penalty` 15 cost seconds
+  (`presets.ROUTER_TURN_S`; 30, `ROUTER_FEWER_TURNS_S`, on the five fewer-turns ride types and
+  with the rider's "Fewer turns"). Both are our defaults, unmeasured, and are what was sent
+  before 2026-11-13. The first cut of this change sent the whole 222 ft (29.8 cost seconds at
+  Default) and that is withdrawn: the router prices a road by its class, not its level, so its
+  search can save a turn by taking an LTS 4 road it cannot see as busy, and at slider 80 and
+  below nothing re-ranks the router's answer (the alternatives round needs a calm rate above 0
+  or a ride that weighs waits). Measured on our data (scorecard, 2026-11-12, 38 Default trips):
+  raising the charge from 5 to 15 cost seconds at slider 25 cut turns 7% and added 1.7 mi of
+  LTS 4, on two trips; at 70, turns fell 4% with LTS 4 flat. A doubling with no guard at 25
+  and 70 is that experiment again. So where the router's first route is all there is, turns
+  are priced as they were before; the published price acts wherever candidates are compared.
+- **The router's own definition** (Valhalla 3.9.1, read from the upstream source at that tag;
+  the repository vendors only its build config): `maneuver_penalty` is added at every edge
+  entered that is not a link (ramp, turn channel) and whose name is not consistent with the
+  edge before, at any angle (`sif/dynamiccost.h`, `base_transition_cost`); two edges are
+  consistent where they share a base name, and where neither has a name
+  (`mjolnir/graphenhancer.cc`, `ConsistentNames`). So it charges a straight-through change of
+  name and charges nothing for a turn that keeps its name or one between two unnamed paths.
+  That cannot be changed from here.
+- **Each turn paid once** (`Analysis.turn_charge_s`): the score starts from the router's cost,
+  so it takes out what the router charged (`refine.router_turn_s` x `Analysis.router_turns`,
+  counted from the traced edges by the router's rule, `refine.router_turns_in`) and puts in the
+  price for each turn of our definition, the way it does for hills. Known limit: we compare
+  whole street names, Valhalla base names ("N Main St" onto "Main St"), so a few of its
+  charges are miscounted by 15 cost seconds each.
+- **What a turn may never buy** (`refine.turn_saving_buys_traffic`, used by `refine.better`):
+  where one of two candidates is meaningfully busier than the other AND has fewer turns, the
+  two are compared with their turns left out (`refine.turn_free_score`), so the busier one
+  cannot win on its turn saving. One-sided: a calmer route with fewer turns keeps its
+  advantage. "Meaningfully busier" is the Traffic-wins guard's own measure and margin
+  (`refine.busier_than` and `_busier` share `_over_margin`: 2% and 164 ft (50 m) of weighted
+  exposure, red and Avoid-rated junctions at their cost outside the 2%; our default,
+  unmeasured). It does not depend on the slider, so it holds wherever `better` compares two
+  routes. Not a total order: it is a pairwise test against a margin, as Traffic wins is, so
+  with three candidates near the margin the answer can depend on the order they are read in.
+  At the top of the slider turns already rank below both stress figures (`Analysis.key`).
 - **The owner's choices:** decision 254 (2026-10-03, typed): "Turns should also carry a penalty
-  as they do add some cognitive load"; 2026-11-10 (typed, of a commute): "Trailmaxxing seems to
-  cause a lot of fiddly turns when there's an easy road nearby"; 2026-11-12 card pick "Every
-  setting"; 2026-11-13 the purpose quoted above. The 15 seconds was our default; the rule (a
-  price at every setting) is kept and the number is now the published one.
+  as they do add some cognitive load"; 2026-11-10 (typed): "Trailmaxxing seems to cause a lot
+  of fiddly turns when there's an easy road nearby"; 2026-11-12 card pick "Every setting";
+  2026-11-13 the purpose quoted above. The 15 seconds was our default; the rule (a price at
+  every setting) is kept, and in the ranking the number is now the published one.
 - **The dodge pass** (`core.dedodge`): a weave onto side streets is kept only where it avoids
   more than 164 ft (50 m, `TIE_STEP_M`; card pick 2026-10-04) of LTS 3 plus each turn it adds
-  at the same price (`dedodge.turn_lts3_m`). The older quarter-mile rule and its fixed 80 m
-  turn charge were dead and are removed.
-- **Not yet checked on routes.** The router's charge at Default doubles. The scorecard rerun
-  in the audit notes (both slider 25 and 70, rush and off-peak) must be read before this
-  ships: turns per mile should fall and LTS 4 miles must not rise.
+  at the ranking's price (`dedodge.turn_lts3_m`). The older quarter-mile rule and its fixed
+  80 m turn charge were dead and are removed.
+- **Not checked on routes.** The ranking's new turn term and the guard are tested on built
+  candidates only; no live route has been planned with them. The scorecard rerun in the audit
+  notes (slider 25 and 70, rush and off-peak) must be read before this ships: turns per mile
+  should fall or hold, and LTS 4 miles must not rise.
 - **What would change it:** the owner's logged rides give turns per mile ridden against turns
-  per mile on the shortest path; that is a direct local measurement of the same quantity.
+  per mile on the shortest path; that is a direct local measurement of the same quantity. And
+  a router that prices by level (a costing fork) could be sent the whole price.
 
 </details>
 
@@ -354,10 +384,12 @@ flowchart LR
 <details>
 <summary>Full reasoning and citations (for review)</summary>
 
-- `presets.AVOID_ENTRY_FT` 13,422 ft, sent as `alley_penalty` at the ride's speed
-  (`presets.avoid_entry_cost_s`): 1,800 cost seconds on Default, as before. Before 2026-11-13
-  every ride type sent 1,800, which was 1.4 mi on Mass Ride, 1.8 mi on Bikeshare and 3.5 mi on
-  Road Bike.
+- One number, `calm.AVOID_ENTRY_M` (4,091 m, 13,422 ft, `presets.AVOID_ENTRY_FT`): 1,800 cost
+  seconds (`calm.AVOID_ENTRY_S`) at the 18 km/h reference. It is sent as `alley_penalty` at
+  the ride's speed (`presets.avoid_entry_cost_s`; 1,800 on Default, as before), and the route's
+  stress number counts the same distance for each entry (`calm.avoid_entry_m`,
+  [stress-number.md](stress-number.md)). Before 2026-11-13 every ride type sent 1,800, which
+  was 1.4 mi on Mass Ride, 1.8 mi on Bikeshare and 3.5 mi on Road Bike.
 - **The owner's choice:** 30 minutes (2026-09-27; decision 308, "Probably a 30 minute
   penalty"). **Our default, unmeasured:** there is no published value for an "avoid" road.
 - **Known limit** (audit areas/09 3.4): the charge is per entry, not per mile, so a 100 ft
@@ -458,7 +490,7 @@ flowchart LR
 
 Below the top of the slider every candidate gets one number, in feet of quiet riding, and the
 lowest wins. The number is the router's own cost plus what the router could not see: the
-junctions, the waits, the turns it missed, the hill model, and (above 80) a charge for each
+junctions, the waits, the turns at their full price, the hill model, and (above 80) a charge for each
 busy mile. At the top of the slider the order is strict instead: least LTS 4, then least
 LTS 3, then distance, and a longer route must save enough stress to be worth its miles.
 
@@ -466,7 +498,7 @@ LTS 3, then distance, and a longer route must save enough stress to be worth its
 flowchart TD
   A["Candidate route"] --> B["Router cost"]
   A --> C["Junction feet and waits"]
-  A --> D["Missed turns, hills, busy miles above 80"]
+  A --> D["Turns, hills, busy miles above 80"]
   B --> S["Sum, in feet of quiet riding"]
   C --> S
   D --> S
@@ -481,7 +513,7 @@ flowchart TD
 | `junctions` | feet | yes |
 | `junction_cap` (negative) | feet | yes: what one junction's stress and wait together would take past its dearer one, or past two calm miles ([intersections.md](intersections.md)) |
 | `hills`, `lts2`, `graph_gap` | distance | yes |
-| `turns` | feet (222) | yes, since 2026-11-13 |
+| `turns` | feet (222 a turn), less the router's own charge in cost seconds | the price yes, since 2026-11-13; the router's share no |
 | `waits` | seconds of real waiting | no, and rightly: time |
 | `avoid_junctions` | 1,800 cost seconds a pass | no (list empty as shipped) |
 
@@ -495,8 +527,8 @@ flowchart TD
 - **The score as coded** (`Analysis.score`, router cost seconds):
   `cost_s + quiet_cost x (rate x (exposure - hill share) + max(rate, 1) x hill share +
   weight x junction metres + hill_m - router_climb_m + LTS 2 term + graph_gap_m) +
-  avoid-junction penalties + 2.2 x wait_weight x ranked waits + 2.2 x 600 x weight x reds +
-  turn price x unpriced turns`.
+  avoid-junction penalties + 2.2 x wait_weight x ranked waits - quiet_cost x junction_over_cap_m +
+  turn price x turns - router turn charge x router turns`.
 - **Replacing the best** (`refine.better`): by more than `IMPROVEMENT_EPS_S` (10 cost seconds,
   our default); a longer route must also pass `worth_it` where the calm rate is above 0.
 - **The top of the slider:** `Analysis.key` = (LTS 4 and Avoid metres plus red junction cost,
@@ -538,8 +570,18 @@ flowchart LR
   2,000 edits, both operational limits), `calm.level_gap`, `refine.graph_gap_m` (in the score
   as `graph_gap`), `refine.pending_targets` (exclusion points on ways raised to LTS 3 or more).
 - **Known limit:** a road that was lowered cannot be offered by the router until the rebuild;
-  the ranking only stops over-charging it when it is ridden. The answer says how much of the
-  route rides an edited way (`calm_search.pending_edit_m`).
+  the ranking only stops over-charging it when it is ridden. The answer does not say that a
+  route rides an edited way.
+- **Known limit:** a road raised to Avoid is priced here as LTS 4 a metre with no entry
+  charge (`calm.level_gap`); the graph marks it for the entry only at the rebuild. It is
+  excluded from the search like any road raised to LTS 3 or more.
+- A way's level is the highest of its rows, and the gap is charged on all of the way that is
+  ridden. An edit sets every row of each way it names (`stress_edits.apply`) and the graph
+  carries one level a way, so this is what the rebuilt graph will charge; where a way's rows
+  differed before the edit, the lower ones are priced from the way's highest.
+- A live table whose rebuild never recorded when it read the overrides has no pending edits
+  (nothing says which the graph already holds); that is logged once a table. The 60 s cache is
+  kept for the live table it was read for.
 - Audit areas/09 3.5.
 
 </details>

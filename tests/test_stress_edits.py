@@ -1410,10 +1410,20 @@ class TestPendingLevels:
     router's graph the built one. `pending_levels` is what the ranking prices the gap from
     (`refine.graph_gap_m`): each way edited since the rebuild, as (built, live)."""
 
+    @staticmethod
+    def built(schema, monkeypatch) -> None:
+        """The live table's rebuild read the overrides an hour ago; nothing is cached."""
+        monkeypatch.setattr(stress_edits, "_pending_cache", None)
+        monkeypatch.setattr(stress_edits, "_pending_warned", set())
+        LiveEditGeneration.objects.update_or_create(
+            table_oid=stress_edits.live_oid(schema),
+            defaults={"overrides_read_at": timezone.now() - timedelta(hours=1)},
+        )
+
     def test_an_edited_way_is_pending_with_its_built_and_live_levels(
         self, live, monkeypatch
     ) -> None:
-        monkeypatch.setattr(stress_edits, "_pending_cache", None)
+        self.built(live, monkeypatch)
         assert stress_edits.pending_levels(now_s=0.0) == {}
         edit(live, make_user(), 4)
         # Kept a minute a worker: the same answer inside the minute, the edit after it.
@@ -1422,8 +1432,40 @@ class TestPendingLevels:
             WAY: (3.0, 4.0)
         }
 
-    def test_a_way_edited_back_to_its_built_level_is_not_pending(self, live, monkeypatch) -> None:
+    def test_an_edit_the_rebuild_already_read_is_not_pending(self, live, monkeypatch) -> None:
+        self.built(live, monkeypatch)
+        edit(live, make_user(), 4)
+        LiveEditGeneration.objects.update(overrides_read_at=timezone.now() + timedelta(hours=1))
+        assert stress_edits.pending_levels(now_s=0.0) == {}
+
+    def test_a_table_that_never_said_when_it_read_the_overrides_has_none_pending(
+        self, live, monkeypatch, caplog
+    ) -> None:
+        # The review's F7.1. Before: every edit ever made was pending (the graph already
+        # holds them), so each edited way was charged its gap a second time and each one
+        # raised to LTS 3 or more was excluded from the search. After: none, said once.
         monkeypatch.setattr(stress_edits, "_pending_cache", None)
+        monkeypatch.setattr(stress_edits, "_pending_warned", set())
+        edit(live, make_user(), 4)
+        LiveEditGeneration.objects.update(overrides_read_at=None)
+        with caplog.at_level("WARNING", logger=stress_edits.logger.name):
+            assert stress_edits.pending_levels(now_s=0.0) == {}
+            assert stress_edits.pending_levels(now_s=stress_edits.PENDING_TTL_S + 1) == {}
+        said = [r for r in caplog.records if "priced as pending" in r.getMessage()]
+        assert len(said) == 1
+
+    def test_the_answer_is_kept_for_the_live_table_it_was_read_for(self, live, monkeypatch) -> None:
+        # The review's F7 "also": before, a promotion inside the minute left the old table's
+        # pending ways charged against the new graph.
+        self.built(live, monkeypatch)
+        edit(live, make_user(), 4)
+        assert stress_edits.pending_levels(now_s=0.0) == {WAY: (3.0, 4.0)}
+        oid = stress_edits.live_oid(live)
+        monkeypatch.setattr(stress_edits, "live_oid", lambda _schema: oid + 1)
+        assert stress_edits.pending_levels(now_s=1.0) == {}
+
+    def test_a_way_edited_back_to_its_built_level_is_not_pending(self, live, monkeypatch) -> None:
+        self.built(live, monkeypatch)
         admin = make_user()
         edit(live, admin, 4)
         edit(live, admin, 3)

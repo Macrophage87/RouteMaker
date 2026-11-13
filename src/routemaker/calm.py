@@ -64,12 +64,17 @@ import bisect
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from routemaker.geo import METRES_PER_FOOT
+
 # 461e: "a reasonable roll, maybe a mile or so". One setting, so it can be tuned.
 WINDOW_M = 1609.344
-METRES_PER_FOOT = 0.3048
-# A quiet metre's cost over its time (refine.QUIET_COST_FACTOR; restated, as this package
-# does not import core).
+# A quiet metre's cost to the router over its time: measured on our data (median 2.2, range
+# 1.8 to 2.9, on the live standard router). The one home of the number: `core.presets` and
+# `core.refine` read it from here (this package does not import core).
 QUIET_FACTOR = 2.2
+# The speed a price in feet is quoted at where a speed is needed: Default's planning speed
+# (Valhalla's Hybrid default, 11.2 mph). Our choice of reference, not a measurement.
+REFERENCE_SPEED_KMH = 18.0
 # A quiet street's roadway stress term in Valhalla's `time x (1 + accommodation x stress)`:
 # the quiet metre's 2.2 less its time.
 QUIET_STRESS = QUIET_FACTOR - 1.0
@@ -94,8 +99,13 @@ WORTH_DEFAULT = 5.0
 WORTH_UP_TO_TARGET = 10.0
 WORTH_WEIGHTS = {3: 1.0, 4: 2.0, 5: 3.0}
 
-# Avoid's entry charge (presets.AVOID_ENTRY_PENALTY_S), cost seconds.
+# Avoid's entry charge: 1,800 router cost seconds at the reference speed (the owner's choice,
+# 2026-09-27, "Probably a 30 minute penalty"; no published value), and the distance of quiet
+# riding that is, 4,091 m (2.54 mi), which is what every ride type is charged: the router is
+# sent it at the ride's own speed (`core.presets.avoid_entry_cost_s`) and the stress number
+# counts it (`avoid_entry_m`). The one home of the number.
 AVOID_ENTRY_S = 1800.0
+AVOID_ENTRY_M = AVOID_ENTRY_S * REFERENCE_SPEED_KMH / 3.6 / QUIET_FACTOR
 
 
 @dataclass(frozen=True)
@@ -535,8 +545,9 @@ def road_multiplier(
 
 
 def avoid_entry_m(pricing: Pricing) -> float:
-    """Avoid's entry charge as quiet metres at this ride's speed."""
-    return AVOID_ENTRY_S / pricing.quiet_cost_s if pricing.quiet_cost_s > 0 else 0.0
+    """Avoid's entry charge as quiet metres: one distance on every ride type, the one the
+    router is sent (`AVOID_ENTRY_M`); nothing where the ride prices no quiet metre."""
+    return AVOID_ENTRY_M if pricing.quiet_cost_s > 0 else 0.0
 
 
 def junction_m(cost_ft: float, severity: str | None, flagged: bool, pricing: Pricing) -> float:

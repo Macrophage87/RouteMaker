@@ -60,6 +60,8 @@ from types import MappingProxyType
 from typing import Any
 
 from pipeline.variants import Variant
+from routemaker import calm
+from routemaker.geo import METRES_PER_FOOT
 from routemaker.ridetime import WEEKEND
 
 # Valhalla's bicycle defaults, stated so that "high" below reads against them.
@@ -183,36 +185,34 @@ EBIKE_HILLS = 50
 # Where Fast's hills slider starts: a strong rider's LT1 grade, about 11% (the owner,
 # 2026-10-23: "More for fast, less for cargo").
 FAST_HILLS = 40
-# --- One unit for fixed charges: feet of quiet riding -----------------------------------
+# --- Fixed charges, in feet of quiet riding -----------------------------------------------
 #
 # Valhalla takes a turn charge and the Avoid entry charge in "cost seconds". A quiet street
-# costs the router QUIET_COST_FACTOR (2.2) cost seconds for each second ridden, so the same
-# number of cost seconds is a different distance on each ride type: 15 cost seconds was 81 ft
-# on Bikeshare (8.1 mph) and 155 ft on Road Bike (15.5 mph). A turn or an Avoid road is not
-# less of a nuisance on a slow bike, so each charge is set here ONCE, in feet of quiet riding,
-# and sent to the router as the cost seconds that distance is worth at the ride's own speed
-# (`cost_s_of_quiet_ft`). The ranking reads the number the request carries
-# (`refine.turn_price_s`), so the router and the ranking charge one price.
+# costs the router `QUIET_COST_FACTOR` cost seconds for each second ridden, so one number of
+# cost seconds is a different distance on each ride type (1,800 was 1.4 mi on Mass Ride and
+# 3.5 mi on Road Bike). A price that is meant as a distance is therefore set ONCE, in feet of
+# quiet riding, and turned into cost seconds at the ride's own speed (`cost_s_of_quiet_ft`).
 #
-# The measured 2.2 (median, 1.8 to 2.9, on the live standard router; `refine.QUIET_COST_FACTOR`,
-# held equal by tests) and the reference speed the feet are quoted at where a speed is needed
-# (Default's 18 km/h, 11.2 mph; our choice of reference).
-QUIET_COST_FACTOR = 2.2
-REFERENCE_SPEED_KMH = 18.0
-METRES_PER_FOOT = 0.3048
+# The numbers live in `routemaker.calm` (which this module may import and which may not
+# import this one): the measured 2.2 and the reference speed.
+QUIET_COST_FACTOR = calm.QUIET_FACTOR
+REFERENCE_SPEED_KMH = calm.REFERENCE_SPEED_KMH
 # Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
 # Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
 # names none.
-VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
+VALHALLA_DEFAULT_SPEED_KMH = {
+    "Road": 25.0,
+    "Cross": 20.0,
+    "Hybrid": REFERENCE_SPEED_KMH,
+    "Mountain": 16.0,
+}
 
 
 def speed_kmh_of(options: dict) -> float:
     """The flat speed a bicycle costing block is routed at: its `cycling_speed`, else
     Valhalla's default for its bicycle type."""
-    return float(
-        options.get("cycling_speed")
-        or VALHALLA_DEFAULT_SPEED_KMH.get(options.get("bicycle_type", "Hybrid"), 18.0)
-    )
+    by_type = VALHALLA_DEFAULT_SPEED_KMH.get(options.get("bicycle_type", "Hybrid"))
+    return float(options.get("cycling_speed") or by_type or REFERENCE_SPEED_KMH)
 
 
 def cost_s_of_quiet_ft(feet: float, kmh: float) -> float:
@@ -220,42 +220,58 @@ def cost_s_of_quiet_ft(feet: float, kmh: float) -> float:
     return round(feet * METRES_PER_FOOT * QUIET_COST_FACTOR * 3.6 / kmh, 1)
 
 
-# THE TURN PRICE: 222 ft (68 m) of quiet riding for each turn, on every ride type and at every
-# slider setting, in the router and in the ranking. Literature: Broach, Dill and Gliebe (2012),
-# "Where do cyclists ride? A route choice model developed with revealed preference GPS data",
-# Transportation Research Part A 46(10), 1730-1740, doi:10.1016/j.tra.2012.07.005, Table 3: a
-# turn is worth 4.2% of a mile (222 ft) on a commute and 7.4% (391 ft) on other trips; left
-# and right the same. Other opened studies are higher (Hood, Sall and Charlton 2011: 558 ft;
-# Zimmermann, Mai and Frejinger 2017: 484 to 609 ft), so 222 ft is the low end of the
-# published US range (docs/stress/routing-costs.md, "Turns"). At the 11.2 mph reference it is
-# 29.8 cost seconds, or 13.5 s of riding.
+# THE TURN PRICE, and why the router is told less than all of it.
 #
-# History, and what this replaces. The owner, 2026-10-03 (decision 254): "Turns should also
-# carry a penalty as they do add some cognitive load ... on every preset"; 2026-11-10, after a
-# commute on the Bethesda Trolley Trail: "Trailmaxxing seems to cause a lot of fiddly turns
-# when there's an easy road nearby"; 2026-11-12 he picked "Every setting" for a charge of 15
-# cost seconds (our default then, not measured). The 2026-11-13 audit found that 15 cost
-# seconds is 112 ft at Default, half the lowest published US value, while the ranking charged
-# 15 seconds of riding (246 ft): two prices. The owner, 2026-11-13: "Skeptically review every
-# one of my calls ... If there's a better call go with that." His rule (a turn costs
-# something at every setting) stays; the number is now the published one, said in feet.
-# NOT YET CHECKED ON ROUTES: the router's charge at Default doubles (15 to 29.8 cost
-# seconds). The scorecard's 5 to 15 step cut turns 4% at Default with LTS 4 flat, and at
-# slider 25 cut turns 7% and added 1.7 mi of LTS 4 over 38 trips (two trips); the rerun in
-# docs/stress/routing-costs.md must be read before this ships.
+# The purpose, in the owner's words (2026-11-13): "to remove a large amount of cognitive load
+# on a cyclist for meaningless differences in time and comfort". So a turn costs something
+# everywhere, and a turn saved must never put the rider on a busier road.
+#
+# THE PRICE: `TURN_FT`, 222 ft (68 m) of quiet riding for each turn, on every ride type and
+# at every slider setting. Literature: Broach, Dill and Gliebe (2012), "Where do cyclists
+# ride? A route choice model developed with revealed preference GPS data", Transportation
+# Research Part A 46(10), 1730-1740, doi:10.1016/j.tra.2012.07.005, Table 3: a turn is worth
+# 4.2% of a mile (222 ft) on a commute and 7.4% (391 ft) on other trips. Other opened studies
+# are higher (Hood, Sall and Charlton 2011: 558 ft; Zimmermann, Mai and Frejinger 2017: 484 to
+# 609 ft). The RANKING charges it for every turn it counts (`refine.turn_price_s`,
+# `Analysis.score`), under a guard: a turn saving is left out wherever it would buy a
+# meaningfully busier road (`refine.better`).
+#
+# WHAT THE ROUTER IS SENT: `ROUTER_TURN_S`, 15 cost seconds a change of street name (112 ft
+# at the 11.2 mph reference), as before 2026-11-13. Not the whole price, on purpose. The
+# router prices a road by its class, not its level, so its turn charge can buy a stretch of
+# LTS 4 it cannot see, and nothing can guard the router's own search: below 81 on the slider
+# the calm search asks for no alternatives, and plans with stops, loops, long plans, transit
+# and bikeshare legs are not ranked at all. Measured on our data (scorecard, 2026-11-12, 38
+# Default trips): raising this charge from 5 to 15 at slider 25 cut turns 7% and added 1.7 mi
+# of LTS 4, on two trips. A first version of the 2026-11-13 change sent the router the whole
+# 222 ft (29.8 cost seconds); the review found that doubling unguarded exactly there, so the
+# router's share is back where it was until a scorecard run at 25 and 70 says more is safe.
+# The ranking takes the router's share out of the router's cost and charges its own count at
+# the whole price (`Analysis.router_turns`), so where a route is ranked a turn costs 222 ft
+# once, not 112 + 222. The 15 is our default, unmeasured (the owner's card pick "Every
+# setting", 2026-11-12, was for it at every position); decision 254, 2026-10-03: "Turns should
+# also carry a penalty as they do add some cognitive load ... on every preset".
 TURN_FT = 222.0
+ROUTER_TURN_S = 15
 # The ride types that plan for fewer turns (Group Ride, Road Bike, Fast, Mass Ride, Tandem:
 # a group or a fast bike loses more at each turn) and a rider's "Fewer turns" (`Dials.
 # fewer_turns`, the API's `fewer_turns`, Go's and Plan's option): Broach's value for trips
-# that are not commutes, 391 ft (119 m). Before 2026-11-13: 30 cost seconds, 224 ft at
-# Default. Literature (same table); which ride types take it is our default.
+# that are not commutes, 391 ft (119 m), in the ranking (literature, same table; which ride
+# types take it is our default), and 30 cost seconds in the router as before (our default,
+# unmeasured).
 FEWER_TURNS_FT = 391.0
+ROUTER_FEWER_TURNS_S = 30
 
 
 def turn_cost_s(options: dict, fewer_turns: bool = False) -> float:
-    """The `maneuver_penalty` a bicycle costing block is sent: the turn price in cost seconds
-    at the block's own speed."""
+    """The turn price (`TURN_FT`, or `FEWER_TURNS_FT`) in router cost seconds at a bicycle
+    costing block's own speed: what the ranking charges a turn."""
     return cost_s_of_quiet_ft(FEWER_TURNS_FT if fewer_turns else TURN_FT, speed_kmh_of(options))
+
+
+def router_turn_s(fewer_turns: bool = False) -> float:
+    """The `maneuver_penalty` a request is sent: the router's share of the turn price."""
+    return float(ROUTER_FEWER_TURNS_S if fewer_turns else ROUTER_TURN_S)
 
 
 # A rider's "All paved" (`Dials.paved`, the API's `paved`): Valhalla's `avoid_bad_surfaces`
@@ -271,7 +287,7 @@ def with_rider_choices(costing_block: dict, fewer_turns: bool = False, paved: bo
     options = costing_block["bicycle"]
     if fewer_turns:
         options["maneuver_penalty"] = max(
-            options.get("maneuver_penalty", 0.0), turn_cost_s(options, fewer_turns=True)
+            options.get("maneuver_penalty", 0.0), router_turn_s(fewer_turns=True)
         )
     if paved:
         options["avoid_bad_surfaces"] = max(
@@ -303,18 +319,17 @@ _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_pena
 # alleys are service roads in the graph, and `destination_only_penalty` is not
 # sent, so OSM's destination-only and private-for-cars ways pay Valhalla's
 # own 600 s exactly as before.
-AVOID_ENTRY_PENALTY_S = 1800
+AVOID_ENTRY_PENALTY_S = calm.AVOID_ENTRY_S
 # The same charge as a distance, so it is the same on every ride type: what 1,800 cost seconds
-# buys at the 11.2 mph reference, 13,422 ft (2.54 mi) of quiet riding. Each preset sends the
+# buys at the 11.2 mph reference, 13,422 ft (2.54 mi) of quiet riding (`calm.AVOID_ENTRY_M`,
+# which the route's stress number counts too). Each preset sends the
 # cost seconds that distance is worth at its own speed (`avoid_entry_cost_s`): 1,800 on
 # Default as before; before 2026-11-13 every ride type sent 1,800, which was 1.8 mi on
 # Bikeshare, 1.4 mi on Mass Ride and 3.5 mi on Road Bike. The 30 minutes is the owner's
 # (2026-09-27, and decision 308's "Probably a 30 minute penalty"); reading it as one distance
 # rather than one cost figure is the 2026-11-13 unit fix. No published value exists for an
 # "avoid" road: our default, unmeasured.
-AVOID_ENTRY_FT = round(
-    AVOID_ENTRY_PENALTY_S * REFERENCE_SPEED_KMH / 3.6 / QUIET_COST_FACTOR / METRES_PER_FOOT
-)
+AVOID_ENTRY_FT = round(calm.AVOID_ENTRY_M / METRES_PER_FOOT)
 
 
 def avoid_entry_cost_s(options: dict) -> float:
@@ -325,15 +340,13 @@ def avoid_entry_cost_s(options: dict) -> float:
 
 def set_speed(costing_block: dict, kmh: float) -> dict:
     """`costing_block` (`{"bicycle": {...}}`) at another flat speed, in place: `cycling_speed`
-    set, and the two charges that are distances (the turn price, the Avoid entry) re-said in
-    cost seconds at the new speed, so they stay the same feet. Every place that changes a
-    request's speed after `costing` built it goes through here."""
+    set, and the charge that is a distance (the Avoid entry) re-said in cost seconds at the
+    new speed, so it stays the same feet. Every place that changes a request's speed after
+    `costing` built it goes through here."""
     options = costing_block["bicycle"]
-    old = speed_kmh_of(options)
     options["cycling_speed"] = kmh
-    for key in ("maneuver_penalty", "alley_penalty"):
-        if key in options and kmh > 0:
-            options[key] = round(options[key] * old / kmh, 2)
+    if "alley_penalty" in options and kmh > 0:
+        options["alley_penalty"] = avoid_entry_cost_s(options)
     return costing_block
 
 
@@ -1027,7 +1040,7 @@ def _preset(
                 "use_roads": use_roads_for(stress),
                 "use_hills": use_hills_for(hills),
                 # The two fixed charges that are distances, at this ride type's speed.
-                "maneuver_penalty": turn_cost_s(options, fewer_turns),
+                "maneuver_penalty": router_turn_s(fewer_turns),
                 "alley_penalty": avoid_entry_cost_s(options),
                 # Valhalla's own 450 s at a gate or bollard flagged private, stated so no
                 # preset leaves it to the release's default. The transform clears the flag

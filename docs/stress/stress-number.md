@@ -60,28 +60,31 @@ no road details. It is computed from today's code, in three parts.
   2026-10-10, filed under 435; not yet in OWNER-DECISIONS), so the multiplier there is `1 + 10 x w_std(L)`. The rolling chart uses that
   price wherever a target is set (section 4).
 
-Avoid also pays an **entry charge** of 1,800 s on each entry (`presets.py`). It is
-shown as quiet-street distance at the preset's planning speed
-(`1800 / (2.2 x 3.6 / km/h)` meters).
+Avoid also pays an **entry charge** on each entry: one distance, 2.54 mi [4.09 km] of quiet
+street, on every ride type since 2026-11-13 (`calm.AVOID_ENTRY_M`; it is the 1,800 router cost
+seconds of before at the 18 km/h reference, `1800 / (2.2 x 3.6 / 18)` meters). The router is
+sent that distance at the ride's own speed (`presets.avoid_entry_cost_s`) and the stress
+number counts the same distance (`calm.avoid_entry_m`). Before, both used 1,800 s at the
+ride's speed: 1.4 mi on Mass Ride, 3.4 mi on E-bike.
 
 ### Today, whole levels, at each preset's starting position
 
 | Preset (position) | LTS 1-2 | LTS 3 | LTS 4 | Avoid per meter | Avoid entry |
 |---|---|---|---|---|---|
-| Mass Ride (0, locked, no-trail graph) | 1 | 1 | 1 (not graded) | 1 | 1.4 mi [2.2 km] |
+| Mass Ride (0, locked, no-trail graph) | 1 | 1 | 1 (not graded) | 1 | 2.5 mi [4.1 km] |
 | Any ride at 0 on the standard graph | 1 | 1 | 1.37-1.52 | as LTS 4 | as the preset |
 | Fast (10) | 1 | 1.22-1.36 | 2.11-2.34 | as LTS 4 | 2.5 mi [4.1 km] |
-| Group Ride, Mountain Goat, Gravel (40) | 1 | 1.93-2.85 | 5.38-6.25 | as LTS 4 | 2.8 mi [4.5 km] |
+| Group Ride, Mountain Goat, Gravel (40) | 1 | 1.93-2.85 | 5.38-6.25 | as LTS 4 | 2.5 mi [4.1 km] |
 | Default (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
-| E-bike (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 3.4 mi [5.5 km] |
-| Cargo Bike, carrying cargo (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
-| Cargo Bike, with passengers (80) | 1 (LTS 2: about 2.0) | 3.16-6.84 | 15.61-19.42 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
+| E-bike (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
+| Cargo Bike, carrying cargo (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
+| Cargo Bike, with passengers (80) | 1 (LTS 2: about 2.0) | 3.16-6.84 | 15.61-19.42 | as LTS 4 | 2.5 mi [4.1 km] |
 | Slider at 85, standard / stress-averse weights | 1 | 3.74-7.42 | 16.78-20.59 / 20.29-24.10 | 17.36-21.17 / 24.97-28.78 | as the preset |
 | Slider at 90, standard / stress-averse | 1 | 4.98-8.66 | 19.26-23.07 / 30.20-34.01 | 21.08-24.89 / 44.79-48.60 | as the preset |
 | Slider at 95, standard / stress-averse | 1 | 7.61-11.28 | 24.50-28.31 / 51.19-54.99 | 28.95-32.76 / 86.76-90.57 | as the preset |
-| Trailmaxxing (100), no target | 1 (LTS 2: 2.25) | 6 | 11, and LTS 4 always ranks first | 16 | 2.8 mi [4.5 km] in Valhalla's candidates |
+| Trailmaxxing (100), no target | 1 (LTS 2: 2.25) | 6 | 11, and LTS 4 always ranks first | 16 | 2.5 mi [4.1 km] in Valhalla's candidates |
 | Trailmaxxing (100), past a target | 1 (LTS 2: 1.625) | 3.5 | 6, and LTS 4 always ranks first | 8.5 | as above |
-| Riding with kids (100), no target | 1 (LTS 2: 3.5) | 6 | 11, and LTS 4 always ranks first | 16 | 1.4 mi [2.3 km] in Valhalla's candidates |
+| Riding with kids (100), no target | 1 (LTS 2: 3.5) | 6 | 11, and LTS 4 always ranks first | 16 | 2.5 mi [4.1 km] in Valhalla's candidates |
 | Riding with kids (100), past a target | 1 (LTS 2: 2.25) | 3.5 | 6, and LTS 4 always ranks first | 8.5 | as above |
 
 Notes:
@@ -432,8 +435,9 @@ length `w` centered on the point at distance `x`:
   the weight, on `wip/isect-costs-c`). The two agree from 70 up. Where the route's
   junctions could not be read, none are counted, and the summary says so
   (`junctions_counted`).
-- Avoid's **entry charge** (1,800 s) counts as quiet meters at the ride's speed
-  (`avoid_entry_m`), at the point the route enters an Avoid stretch.
+- Avoid's **entry charge** counts as 2.54 mi [4.09 km] of quiet meters on every ride type
+  (`avoid_entry_m`, the distance the router is sent), at the point the route enters an Avoid
+  stretch.
 - The scale matches the multiplier. **1.0 is the local quiet street** (the reference
   road above), and higher is more
   stress. Quiet meters per meter, or calm miles per mile.
