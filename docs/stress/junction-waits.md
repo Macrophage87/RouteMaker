@@ -128,8 +128,12 @@ reading everywhere.
 
 **Which junctions.** The model cannot see stop signs on the route's trace. It reads who
 gives way from the roads' classes: going straight across a street as busy as the rider's
-own, turning onto one, or leaving a path (`delay_at`). An all-way stop on a bigger street,
-or a side street with priority, is misread.
+own, turning onto one, or leaving a path (`delay_at`). Where the junction model has read
+the junction and says the rider goes straight across with the right of way (the cross
+traffic has the stop sign, or nothing is mapped and the rider's road is clearly the bigger
+by its traffic; a side path takes the road it runs beside), that answer stands and no
+stop is timed (`has_right_of_way`), so the time and the junction's price agree. An all-way
+stop on a bigger street is still misread.
 
 **What would change it.** A count of stopped and slowed time at stop signs for more than
 one rider; hours on the ride data.
@@ -276,8 +280,11 @@ choice, so no weight rests on it.
 
 **Known limits.**
 
-- Whether the rider gives way at all is still read from road classes (`delay_at`), not
-  from the mapped stop signs the junction model has.
+- Whether the rider gives way is read from road classes (`delay_at`), except where the
+  junction model says the rider crosses straight over with the right of way
+  (`has_right_of_way`, since 2026-11-13). The other direction is not joined: a stop sign
+  the junction model sees on the rider's side, at a road the classes call no busier, is
+  still timed as no stop, and turns are read by class alone.
 - The formula assumes random arrivals and no driver yielding. Near signals it gets the
   split between stopping and waiting wrong (above). The report measured driver yielding
   of 7 to 75% at refuge islands and 17 to 61% at marked crosswalks.

@@ -126,8 +126,12 @@ separate dislike price, no hour factor and no District rule in it.
 How busy that road is comes from its count where it has one; else from its traffic level
 where the junction model has read it (`road_given_way`), the same reading
 `routemaker.intersections` prices the junction's stress by; else from its Valhalla class.
-`delay_at` still decides, by class, WHETHER the rider gives way, and its seconds are now
-only that reading (and the signal figures' "stop sign across the same road").
+`delay_at` reads, by class, whether the rider gives way, and its seconds are now only that
+reading (and the signal figures' "stop sign across the same road"). Where the junction
+model has read the junction and says the rider goes straight across with the right of way
+(`has_right_of_way`: the cross traffic has the stop sign, or nothing is mapped and the
+rider's road is clearly the bigger by its traffic, `intersections.has_priority`), that
+answer stands and no stop is timed: one reading of who stops, for the price and the time.
 """
 
 from __future__ import annotations
@@ -137,12 +141,14 @@ from dataclasses import dataclass, replace
 
 from .intersections import (
     MERGE_WITHIN_M,
+    Control,
     Junction,
     Movement,
     Road,
     by_traffic,
     crossing_level,
     gap_delay_s,
+    has_priority,
 )
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
 
@@ -409,6 +415,24 @@ def road_given_way(junction: Junction) -> Road | None:
     return max(known, key=lambda road: (road.level, road.aadt or 0))
 
 
+def has_right_of_way(junction: Junction) -> bool:
+    """Whether the junction model reads the rider as going straight across every busy road
+    here without stopping: the cross traffic has the stop or yield sign, or nothing is
+    mapped and the rider's road is clearly the bigger one (`intersections.has_priority`,
+    the same answer its price is read by, a side path beside a road included). False where
+    the rider turns, where no busy road is crossed, at a signal or a sign on the rider's
+    side, and where the model does not know: `delay_at`'s reading by class stands there."""
+    read = by_traffic(junction)
+    if read.movement is not Movement.STRAIGHT:
+        return False
+    busy = [road for road in read.crossed if road.busy]
+    if not busy:
+        return False
+    if read.control is Control.CROSS_STOP:
+        return True
+    return read.control is Control.NONE and all(has_priority(read, road) for road in busy)
+
+
 def gap_wait_s(road: Road, when: str | None = None) -> float:
     """The seconds a rider is expected to wait for a gap in `road`'s traffic where no
     signal stops it, as a time: the junction model's wait (`intersections.gap_delay_s`),
@@ -619,7 +643,7 @@ def waits(
     stop_extra_s: Mapping[tuple[float, float], float] | None = None,
     when: str | None = None,
     own_big: Collection[tuple[float, float]] = (),
-    given_way: Mapping[tuple[float, float, int, int], Road] | None = None,
+    given_way: Mapping[tuple[float, float, int, int], Road | None] | None = None,
 ) -> list[Wait]:
     """Each run's wait: each junction's `delay_at`, the costing junctions within MERGE_M of
     the first of a run counted once, at the dearest or, where one of them is a signal, at
@@ -642,7 +666,9 @@ def waits(
     A junction with no signal is timed by `give_way_wait`, the same for the time shown and
     the ranking. `given_way`: by (lon, lat, way in, way out), the road given way to there
     as the junction model reads it (`road_given_way`); without it the roads' classes alone
-    are read, and a busy road is timed as the typical road of its class. `rolls` no longer
+    are read, and a busy road is timed as the typical road of its class. A key held with
+    None says the model reads the rider as crossing with the right of way there
+    (`has_right_of_way`): no stop is timed, whatever the classes say. `rolls` no longer
     changes a wait (STOP_SIGN_S is the same everywhere) and is not asked."""
     out: list[Wait] = []
     run: Wait | None = None
@@ -686,7 +712,11 @@ def waits(
             )
         button_at = (junction.m, *here) if signal is not None and signal.button else None
         if signal is None:
-            crossed = (given_way or {}).get((*here, junction.in_way, junction.out_way))
+            key = (*here, junction.in_way, junction.out_way)
+            crossed = (given_way or {}).get(key)
+            if crossed is None and key in (given_way or {}):
+                # The junction model's answer: the rider has the right of way here.
+                continue
             cost = give_way_wait(cost, crossed, when)
         if run is not None and (
             junction.m - run.m <= MERGE_M

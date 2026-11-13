@@ -1268,3 +1268,61 @@ class TestTimeOfDay:
         for when in ("night", "weekday_rush"):
             (run,) = d.waits([junction(*CROSS_STREET)], when=when)
             assert run.ranked_s == run.seconds == d.STOP_SIGN_S
+
+
+class TestTheRiderWithTheRightOfWayIsNotTimedAStop:
+    """One reading of who stops (the merge of the delay and junction parts, 2026-11-13):
+    where the junction model prices the rider's pass as the priority side's
+    (`intersections.has_priority`, or the cross traffic's stop sign), the time shown has
+    no stop either, whatever the roads' classes say."""
+
+    AT = {"m": 0.0, "lon": -77.0, "lat": 38.9, "movement": Movement.STRAIGHT}
+    BIG = Road(4, speed_mph=40.0, lanes=2, oneway=False, aadt=20_000)
+    SIDE = Road(2, speed_mph=30.0, lanes=1, oneway=False, aadt=8_000)
+
+    def across(self, own: Road, crossed: Road, control: Control, **more) -> Junction:
+        return Junction(incoming=own, outgoing=own, crossed=(crossed,), control=control, **self.AT)
+
+    def test_the_cross_traffics_stop_sign_gives_the_rider_the_way(self) -> None:
+        assert d.has_right_of_way(self.across(self.SIDE, self.BIG, Control.CROSS_STOP))
+        assert not d.has_right_of_way(self.across(self.SIDE, self.BIG, Control.STOP))
+        assert not d.has_right_of_way(self.across(self.SIDE, self.BIG, Control.ALL_STOP))
+        assert not d.has_right_of_way(self.across(self.SIDE, self.BIG, Control.SIGNAL))
+
+    def test_with_nothing_mapped_it_is_the_junction_models_priority_answer(self) -> None:
+        on_big = self.across(self.BIG, self.SIDE, Control.NONE)
+        on_side = self.across(self.SIDE, self.BIG, Control.NONE)
+        for junction_ in (on_big, on_side):
+            read = m.by_traffic(junction_)
+            assert d.has_right_of_way(junction_) == m.has_priority(read, read.crossed[0])
+        assert d.has_right_of_way(on_big)
+        assert not d.has_right_of_way(on_side)
+
+    def test_a_side_path_has_the_way_of_the_road_it_runs_beside(self) -> None:
+        path = Road(1)
+        alone = Junction(incoming=path, outgoing=path, crossed=(self.SIDE,), **self.AT)
+        beside = Junction(
+            incoming=path, outgoing=path, crossed=(self.SIDE,), beside=self.BIG, **self.AT
+        )
+        assert not d.has_right_of_way(alone)
+        assert d.has_right_of_way(beside)
+
+    def test_a_turn_or_a_quiet_crossing_is_left_to_the_classes(self) -> None:
+        turning = Junction(
+            incoming=self.BIG, outgoing=self.SIDE, crossed=(self.SIDE,),
+            **{**self.AT, "movement": Movement.LEFT},
+        )  # fmt: skip
+        assert not d.has_right_of_way(turning)
+        assert not d.has_right_of_way(self.across(self.SIDE, Road(1), Control.CROSS_STOP))
+
+    def test_no_stop_is_timed_there(self) -> None:
+        """Two primaries crossing: by class the rider gives way (30 s read, 13.8 s timed).
+        The model's answer, held as None, times nothing; no answer leaves the classes."""
+        assert d.waits([junction(*BUSY)])[0].seconds > d.STOP_SIGN_S
+        assert d.waits([junction(*BUSY)], given_way={HERE: None}) == []
+        elsewhere = {(-77.5, 38.9, 1, 1): None}
+        assert d.waits([junction(*BUSY)], given_way=elsewhere) == d.waits([junction(*BUSY)])
+
+    def test_a_signal_is_still_timed(self) -> None:
+        lit = junction(*BUSY, signal=True)
+        assert d.waits([lit], given_way={HERE: None}) == d.waits([lit])

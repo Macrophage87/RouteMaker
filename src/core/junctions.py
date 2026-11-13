@@ -1348,7 +1348,9 @@ def events_of(
     weekend graphs a plan's junctions were priced with no ride time.
     `given_way`: a dict this fills, by (lon, lat, way in, way out), with the road the rider
     gives way to at each junction read (`junction_delay.road_given_way`), so the junction
-    waits read a road's traffic as this model does, not its class alone."""
+    waits read a road's traffic as this model does, not its class alone; None where the
+    rider crosses with the right of way (`junction_delay.has_right_of_way`), so no stop is
+    timed where none is priced."""
     by_tier = busy_by_tier(
         [
             (position, raw.lon, raw.lat)
@@ -1380,9 +1382,13 @@ def events_of(
     built = build_junctions(raws, nodes, roads, beside)
     if given_way is not None:
         for raw, junction in zip(raws, built, strict=True):
+            key = (raw.lon, raw.lat, raw.in_way, raw.out_way)
             road = junction_delay.road_given_way(junction)
-            if road is not None:
-                given_way[(raw.lon, raw.lat, raw.in_way, raw.out_way)] = road
+            if junction_delay.has_right_of_way(junction):
+                # None: the rider crosses with the right of way, and no stop is timed.
+                given_way[key] = None
+            elif road is not None:
+                given_way[key] = road
     if beacons:
         signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]
         built = with_beacons(built, beacons, signs)

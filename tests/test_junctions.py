@@ -1744,6 +1744,23 @@ class TestEvents:
         assert (road.level, road.speed_mph) == (4.0, 40.0)
 
     @db
+    def test_where_the_cross_traffic_stops_the_waits_are_told_the_rider_does_not(
+        self, grid
+    ) -> None:
+        """The same crossing with the stop signs on the crossed road: the junction model
+        prices the priority side's pass, and the junction waits are handed None, "no stop
+        here" (`junction_delay.has_right_of_way`), so the time and the price agree."""
+        found: dict = {}
+        junctions.events_of(
+            [raw()],
+            "weekend",
+            False,
+            self.locate_with(crossroads(north={"stop": True}, south={"stop": True})),
+            given_way=found,
+        )
+        assert found == {(raw().lon, raw().lat, raw().in_way, raw().out_way): None}
+
+    @db
     def test_the_event_carries_the_crossed_roads_mapped_name(self, grid) -> None:
         renamed = crossroads(**{"in": {"stop": True}})
         for e in renamed["edges"]:
