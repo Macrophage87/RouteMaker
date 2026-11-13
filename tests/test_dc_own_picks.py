@@ -6,6 +6,7 @@ approval each: same level as the map, calmer, busier, and big moves."""
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 
 import pytest
@@ -56,3 +57,29 @@ def test_every_way_shows_our_reasoning_on_the_map(path) -> None:
         if "DDOT" in note:
             assert "Agrees with DDOT's 2020 rating." in note or "DDOT's 2020 rating says" in note
         assert 1 <= step_of(value) <= 5
+
+
+LEVEL = re.compile(
+    r"(?<![\d.,\-])([1-5](?:\.5)?)(?![\d,]|\.\d|\s*(?:-?lanes?|-?lane\b|mph|mi\b|ft|%|percent|-?way|"
+    r"cars|blocks?|signals?|times|st\b|nd\b|rd\b|th\b))",
+    re.I,
+)
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)
+def test_the_why_line_names_no_level_but_the_rows_own(path) -> None:
+    """A skeptic, a hold or an owner call that changes the level also changes the Why line
+    (the rebuild readiness check, 2026-11-13, found notes still naming the rater's level)."""
+    for group in json.loads(path.read_text())["groups"]:
+        level = step_of(group["value"])
+        ours = group["value"]["public_note"].split(" DDOT's")[0].split(" Agrees")[0]
+        assert all(float(m.group(1)) == level for m in LEVEL.finditer(ours)), group["value"]
+
+
+def test_whole_street_owner_calls_hold() -> None:
+    """16th St NW and Canal Rd NW at 4 (OWNER-DECISIONS 179, 197; fixtures/known-roads)."""
+    for path in FILES:
+        for group in json.loads(path.read_text())["groups"]:
+            names = {f.get("name") for f in (group.get("fingerprints") or {}).values()}
+            if names & {"16th Street Northwest", "Canal Road Northwest"}:
+                assert step_of(group["value"]) == 4, group["value"]["adjustment_id"]
