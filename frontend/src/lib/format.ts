@@ -443,3 +443,15 @@ export function areaText(sqMi: number, km2: number): string {
   const fixed = (n: number) => (n >= 10 ? n.toFixed(0) : n.toFixed(1));
   return both(`${fixed(sqMi)} sq mi`, `${fixed(km2)} km²`);
 }
+
+/**
+ * A distance in the rider's own unit alone, as the lock screen's turn card shows it (lib/turnCard.ts): "450 ft",
+ * "0.3 mi", "150 m", "1.2 km". Short distances to the nearest 50 (10 below 200), as the voice says them, so the card
+ * changes every few seconds, not on every fix.
+ */
+export function cardDistance(metres: number): string {
+  const m = Math.max(0, Number.isFinite(metres) ? metres : 0);
+  const step = (v: number) => (v >= 200 ? Math.round(v / 50) * 50 : Math.max(10, Math.round(v / 10) * 10));
+  if (metricFirst()) return m < 950 ? `${step(m)} m` : `${kmFigure(m)} km`;
+  return m < FEET_BELOW_M ? `${step(m * FEET_PER_METRE)} ft` : `${milesFigure(m)} mi`;
+}

@@ -754,7 +754,7 @@ test("a polite cue carries its sentence from where the rider is when it is said 
   assert.equal(advance.respoken(cue.atM), null, "at the turn: its now says it");
   assert.ok(events.filter((e) => e.urgent).every((e) => !e.respoken), "urgent cues are said at once");
   const src = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(src, /announcer\.current\?\.say\(event\.spoken, event\.urgent, event\.after, again\);/);
+  assert.match(src, /announcer\.current\?\.say\(event\.spoken, event\.urgent, event\.after, again, cueMark\(event\)\);/);
 });
 
 test("a loop's start is not its end: arrival comes only at the end of the line", () => {

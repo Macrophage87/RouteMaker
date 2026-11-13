@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The live turn card's arrow (RideCuePlugin.java): bear left. One colour on transparent, as the status bar needs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14,21h-2v-7.17c0,-0.53 -0.21,-1.04 -0.59,-1.41L7.41,8.41V12H5.41V5h7v2H8.83l4,4c0.75,0.75 1.17,1.77 1.17,2.83z" />
+</vector>

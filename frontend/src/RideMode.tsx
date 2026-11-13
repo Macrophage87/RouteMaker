@@ -174,6 +174,7 @@ import {
   RIDE_TEXT_BUTTON,
   ScreenWake,
   Voice,
+  chimeOf,
   phoneKind,
   toScreenReader,
   readRideIconsOnly,
@@ -190,7 +191,9 @@ import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
-import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
+import { rideBuzz, rideGeoEnv, rideSpeech, rideWake, ridesHidden, showTurnCard, speaksAloud } from "./lib/nativeShell.ts";
+import { turnCard } from "./lib/turnCard.ts";
+import { cueMark } from "./lib/cueTone.ts";
 import { rideCueLog } from "./lib/cueRecorder.ts";
 import {
   DETOUR_BUSY,
@@ -1513,9 +1516,10 @@ export function RideMode({
     // A jog's next turn (`after`) in the polite region, so it is read after the turn before rather than in place of it.
     if (toScreenReader(output)) (said.urgent && !said.after ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
     // The voice as chosen; in the phone app also "my screen reader" while the page is hidden (nativeShell.ts).
-    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent, said.after);
-    // The phone app's cue notification on Android (nothing in a browser).
-    showCue(said.text);
+    // A turn cue's tone goes with the voice (lib/cueTone.ts): a rider with the voice off hears neither.
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent, said.after, chimeOf(said.mark));
+    // A turn's "now" buzzes for its side with any output but Neither (Stephen 2026-11-13: no new switches).
+    if (output !== "neither" && (said.mark === "left" || said.mark === "right")) rideBuzz(said.mark);
   }, []);
   const announcer = useRef<Announcer | null>(null);
   if (announcer.current === null) {
@@ -1544,7 +1548,7 @@ export function RideMode({
           if (text) rideCueLog.alias(text, event.spoken);
           return text;
         });
-      announcer.current?.say(event.spoken, event.urgent, event.after, again);
+      announcer.current?.say(event.spoken, event.urgent, event.after, again, cueMark(event));
     }
   }, []);
   // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
@@ -3169,6 +3173,12 @@ export function RideMode({
 
   const progress = ride.progressM;
   const cue = progress === null ? null : nextAction(model, progress);
+  // The lock screen's live turn card in the phone app (lib/turnCard.ts): its words change as the distance counts down;
+  // the notice itself skips an update that changes nothing, and is cleared with the watch at End ride.
+  useEffect(() => {
+    if (arrived) return;
+    showTurnCard(turnCard(model, progress));
+  }, [model, progress, arrived]);
   // The time to go at the rider's own pace against the plan's (lib/arrival.ts), and the clock it ends at.
   const togo = progress === null ? null : atPace(toGo(model, progress), paceFactor(paceRef.current));
   // A tick every 30 s keeps the clock times current while no fix comes (paused, in a tunnel); a fix renders sooner.
@@ -3579,7 +3589,6 @@ export function RideMode({
         // The voice only: a screen reader hears the dialog itself as the focus moves into it, named by the closure
         // (the v0.26.0 accessibility review: an alert as well said it twice).
         if (speaksAloud(prefsRef.current.output, document.visibilityState === "hidden")) rideVoice.speak(said, true);
-        showCue(said);
         // Only a good fix now: an old one could already be RESTART_AUTO_M away, closing it unheard (none: the next good one).
         const fix = rideRef.current.fix;
         const at = fix && fix.accuracyM <= POOR_FIX_M ? fix.point : null;
