@@ -314,6 +314,9 @@ import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type Hom
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import { CHECK_NOT_PUT, spliceAt, usedSaid, type Planner, type WorstStretch } from "./lib/worstStretches.ts";
+
+import { CheckRoute } from "./CheckRoute.tsx";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
@@ -357,6 +360,9 @@ import { findShell } from "./lib/nativeShell.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
+
+/** Check a route's calmer way round a stretch: the route alone, no routes to choose from (review speed-5). */
+const planCalmer: Planner = (ends, ridePreset, calmDials) => requestRoute(ends, ridePreset, { dials: calmDials, routeOnly: true });
 
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -4345,6 +4351,42 @@ export function App() {
     commit(kept, { ...rideRef.current, imported: next });
     pending.afterGpx?.(track);
   };
+  // Check a route's Use this way (CheckRoute.tsx, the owner's pick 2026-11-13): the calmer way goes into the file's
+  // full line in place of the stretch, as a closure's detour does (closureReroute), and the plan follows that line. One
+  // edit, so Undo takes it out; the download is then the line with it (its text is gone, as after a detour).
+  const takeCalmerWay = (stretch: WorstStretch, way: LonLat[]) => {
+    const file = rideRef.current.imported;
+    const route = shown;
+    if (!file?.verbatim || !route) return;
+    const line = file.verbatim.track;
+    const cut = spliceAt(line, way, route.distance_m > 0 ? stretch.fromM / route.distance_m : 0);
+    if (!cut) {
+      announce(CHECK_NOT_PUT);
+      return;
+    }
+    const track = spliceDetours(line, [cut], [way]).map((v) => [...v]) as NonNullable<ImportedPlan["verbatim"]>["track"];
+    // The plan's own points inside the stretch go; the rest stay where the file put them.
+    const inside = (p: LonLat) => {
+      let best = 0;
+      let bestD = Infinity;
+      line.forEach((v, i) => {
+        const d = (v[0] - p[0]) ** 2 + (v[1] - p[1]) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      });
+      return best > cut.before && best < cut.after;
+    };
+    const kept = pointsRef.current.filter((p, i, all) => i === 0 || i === all.length - 1 || !inside(p));
+    // A snapped line (lib/gpxMatch.ts) was of the line before: it goes with it.
+    const { matched: _snapped, ...unsnapped } = file;
+    const next: ImportedPlan = { ...unsnapped, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
+    commit(kept, { ...rideRef.current, imported: next });
+    // Planned at once, as an opened file is (openImported): one press, no Update route after it.
+    setRouteAsk((n) => n + 1);
+    announce(usedSaid(stretch.street));
+  };
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
   const downloadRoute = (said?: (line: string) => void) => {
@@ -6705,6 +6747,11 @@ export function App() {
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
+        // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
+        check:
+          mode === "plan" && imported && fileShown()?.follows_file ? (
+            <CheckRoute route={shown as RouteResponse} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={imported.verbatim ? takeCalmerWay : undefined} />
+          ) : null,
       }}
     />
   );

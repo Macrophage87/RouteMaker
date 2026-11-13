@@ -2764,4 +2764,20 @@ export const ES: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "La planificación de rutas no funciona ahora mismo.",
   "Some ride types are not working right now.": "Algunos tipos de recorrido no funcionan ahora mismo.",
   "Place search is down right now.": "La búsqueda de lugares no funciona ahora mismo.",
+  // ---- Check a route (lib/worstStretches.ts, CheckRoute.tsx; Plan) ----
+  "Busiest stretches": "Tramos con más tráfico",
+  "busiest stretches": "tramos con más tráfico",
+  "Nothing on this route is busier than LTS 2.5.": "Nada en esta ruta tiene más tráfico que LTS 2.5.",
+  "Looking for a calmer way round…": "Buscando un camino más tranquilo…",
+  "No calmer way round nearby.": "No hay un camino más tranquilo cerca.",
+  "Could not look for a calmer way round just now.": "No se pudo buscar un camino más tranquilo ahora mismo.",
+  "Use this way": "Usar este camino",
+  "Could not put the calmer way into the route.": "No se pudo poner el camino más tranquilo en la ruta.",
+  "The route now takes the calmer way round {street}.": "La ruta ahora toma el camino más tranquilo para evitar {street}.",
+  "an unnamed way": "un camino sin nombre",
+  "{street}: {distance}, {level} at worst": "{street}: {distance}, {level} en lo peor",
+  "Calmer way: about as long, {level} at worst.": "Camino más tranquilo: casi igual de largo, {level} en lo peor.",
+  "Calmer way: {extra} longer, {level} at worst.": "Camino más tranquilo: {extra} más largo, {level} en lo peor.",
+  "The file's busiest stretches by our ratings, worst first: busier and longer counts more. Each calmer way is planned on your ride type at the calmest traffic setting, between points just outside the stretch. Use this way puts it into the route, and a download is then the route with it; Undo takes it out.":
+    "Los tramos del archivo con más tráfico según nuestras calificaciones, el peor primero: cuenta más el que tiene más tráfico y es más largo. Cada camino más tranquilo se planifica con su tipo de recorrido en el ajuste de tráfico más tranquilo, entre puntos justo fuera del tramo. Usar este camino lo pone en la ruta, y al descargar se obtiene la ruta con él; Deshacer lo quita.",
 };
