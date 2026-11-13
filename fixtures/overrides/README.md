@@ -786,3 +786,17 @@ in the database still names it: delete that row in the admin when loading the fi
   It retires the 2026-11-01 Maryland review's row on 454980545 and the own-picks row
   (`md-own-g00149-1`) on the other three. Load like the others; takes effect on the next
   rebuild.
+
+- `2026-11-13-owner-borrowed-counts.json` (8 ways, 2.9 mi, 8 retired): the Bucklodge Road
+  principle applied to other roads (the owner, 2026-11-13: "Don't use my calls as one-offs but
+  guides to inference"). Each was rated from an MDOT SHA section count that is not its own
+  traffic, and is rated again from its own traffic by our rural rule. Burkittsville Road (MD 17,
+  Burkittsville to Middletown, 1.9 mi) took 5,142 a day counted in Middletown past Franklin
+  Street (3,172); about 2,000 remain, and MDOT counts MD 17 further south at 1,190 and 1,764: 3.
+  New Windsor Road (MD 31 south of New Windsor, 1.7 mi) took 5,795 a day from a station on MD 75
+  near MD 84, another route; MDOT counts MD 31 next door at 2,492: 3. Aquasco Road (MD 381 near
+  Baden-Westwood Road, 0.4 mi) took 3,900 a day counted near MD 382, before Horsehead Road
+  (2,955) turns off; about 950 remain: 2.5. The estimates are ours, not counts. Only rural
+  two-lane roads with one such junction or a station on another route are here; the rest of the
+  audit waits for review. It retires each way's own-picks or 2026-11-01 review row. Load like
+  the others; takes effect on the next rebuild.

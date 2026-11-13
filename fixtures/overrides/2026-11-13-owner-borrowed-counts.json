@@ -1,0 +1,306 @@
+{
+ "version": 1,
+ "decided": "2026-11-13",
+ "decided_by": "the deployment owner",
+ "status": "Proposed 2026-11-13 from the owner's Bucklodge Road call, applied as a guide; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
+ "annotations": "Roads rated from a traffic count that belongs to another stretch: MDOT SHA counts a whole section at one station, which can sit past a junction where a busier road joins, or on another route. Same principle as 2026-11-13-owner-bucklodge-road.json: rate the road from its own traffic (the same route counted next door, or the section count less the joining road, an estimate) by our rural rule. Only rural two-lane roads with one junction or a named station on another route are here; the audit is reports/borrowed-counts in the project files.",
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 11559491,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00486-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural secondary road, 50 mph posted, about 5,100 cars/day, no bike facility: rural two-lane above 3,000 a day at 50 mph with no shoulder, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (Burkittsville Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1198043006,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00486-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural secondary road, 50 mph posted, about 5,100 cars/day, no bike facility: rural two-lane above 3,000 a day at 50 mph with no shoulder, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (Burkittsville Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1198043007,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02567-3",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural two-lane road, posted 50 mph, about 5,100 cars a day, no shoulder: our rural table puts over 3,000 a day at 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (Burkittsville Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1198043008,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02567-3",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural two-lane road, posted 50 mph, about 5,100 cars a day, no shoulder: our rural table puts over 3,000 a day at 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (Burkittsville Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 11548666,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00486-4",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural secondary road, 50 mph posted, about 5,800 cars/day, no bike facility: rural two-lane above 3,000 a day at 50 mph with no shoulder, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (New Windsor Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1296534074,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02567-4",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural two-lane road, posted 50 mph, about 5,800 cars a day, no shoulder: our rural table puts over 3,000 a day at 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (New Windsor Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1564800167,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p021509-3",
+    "category": "other",
+    "annotation_status": "approved",
+    "half": true,
+    "public_note": "MDOT SHA's LTS layer says 4, but our review: rural main road, 40 mph posted, one lane each way, about 5,800 cars a day, no bike lane, so LTS 3.5.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (New Windsor Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 579393838,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p003501-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "half": true,
+    "public_note": "MDOT SHA's LTS layer says 4, but this is a 2-lane road, posted 40 mph, about 3,900 cars a day, no bike lane, so 3.5.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Replaced 2026-11-13: rated from a count measured past a junction or on another route (Aquasco Road); the Bucklodge Road principle (the owner, 2026-11-13)."
+  }
+ ],
+ "groups": [
+  {
+   "kind": "stress",
+   "value": {
+    "tier": 3,
+    "adjustment_id": "burkittsville-road-borrowed-count",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "MD 17 between Burkittsville and Middletown, 50 mph, no shoulder. Its 5,142 a day is counted in Middletown past Franklin St; this stretch carries about 2,000: 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "LTS 3: The owner, 2026-11-13: \"Bucklodge to 3 + audit others\", and \"Don't use my calls as one-offs but guides to inference\": the Bucklodge Road principle (rate a road from its own traffic, not a count measured past a junction or on another route). Rural two-lane road, no shoulder, own traffic in the 1,500-2,999 a day band: our rural rule (ODOT with half steps).",
+   "evidence": "MDOT SHA AADT layer read 2026-11-13: MD 17 section 'MD 383 TO US 40AL' (station 'MD17-.10 MI S OF US40AL', 5,142), Franklin St (MU 40) 3,172 joining in Middletown; MD 17 counted at 1,190 (Picnic Woods Rd to MD 383) and 1,764 (US 340 to Picnic Woods Rd). Estimate 5,142 - 3,172 = about 1,970.",
+   "facts": {
+    "highway": "secondary",
+    "urban": false,
+    "speed_mph": 50,
+    "speed_source": "posted",
+    "lanes": null,
+    "oneway": false,
+    "count_band": [
+     1500,
+     2999
+    ],
+    "facility": "none"
+   },
+   "ways": [
+    11559491,
+    1198043006,
+    1198043007,
+    1198043008
+   ],
+   "fingerprints": {
+    "11559491": {
+     "name": "Burkittsville Road",
+     "highway": "secondary",
+     "length_m": 2189.3,
+     "line": "-77.577393,39.417899 -77.577052,39.418091 -77.576709,39.418263 -77.576385,39.418403 -77.575983,39.418549 -77.573043,39.419467 -77.571630,39.419928 -77.570563,39.420296 -77.569564,39.420646 -77.568603,39.421042 -77.568133,39.421199 -77.565658,39.422126 -77.562980,39.422992 -77.561126,39.423690 -77.559661,39.424446 -77.558258,39.425529 -77.557769,39.426048 -77.556169,39.427986"
+    },
+    "1198043006": {
+     "name": "Burkittsville Road",
+     "highway": "secondary",
+     "length_m": 289.2,
+     "line": "-77.580889,39.413058 -77.580657,39.413321 -77.580432,39.413651 -77.580329,39.413835 -77.580143,39.414224 -77.579632,39.415456"
+    },
+    "1198043007": {
+     "name": "Burkittsville Road",
+     "highway": "secondary",
+     "length_m": 337.4,
+     "line": "-77.579632,39.415456 -77.579483,39.415757 -77.579322,39.416030 -77.579154,39.416288 -77.578791,39.416753 -77.578384,39.417164 -77.578118,39.417385 -77.577393,39.417899"
+    },
+    "1198043008": {
+     "name": "Burkittsville Road",
+     "highway": "secondary",
+     "length_m": 194.9,
+     "line": "-77.582566,39.411897 -77.581983,39.412193 -77.581708,39.412363 -77.581413,39.412576 -77.581132,39.412812 -77.580889,39.413058"
+    }
+   }
+  },
+  {
+   "kind": "stress",
+   "value": {
+    "tier": 3,
+    "adjustment_id": "new-windsor-road-borrowed-count",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "MD 31 south of New Windsor, 50 mph, no shoulder. Its 5,795 a day is MD 75's count near MD 84; MDOT counts MD 31 next door at 2,492: 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "LTS 3: The owner, 2026-11-13: \"Bucklodge to 3 + audit others\", and \"Don't use my calls as one-offs but guides to inference\": the Bucklodge Road principle (rate a road from its own traffic, not a count measured past a junction or on another route). Rural two-lane road, no shoulder, own traffic in the 1,500-2,999 a day band: our rural rule (ODOT with half steps).",
+   "evidence": "MDOT SHA AADT layer read 2026-11-13: MD 31 section 'MD 407 to MD 831J / Union Bridge Road' takes station 'MD75-.10 MI S OF MD84' (5,795), on MD 75, another route; MD 31 'Frederick CO/L to MD 407' counted at 2,492 (station 'MD31-.10 MI W OF MD407').",
+   "facts": {
+    "highway": "secondary",
+    "urban": false,
+    "speed_mph": 50,
+    "speed_source": "posted",
+    "lanes": null,
+    "oneway": false,
+    "count_band": [
+     1500,
+     2999
+    ],
+    "facility": "none"
+   },
+   "ways": [
+    11548666,
+    1296534074
+   ],
+   "fingerprints": {
+    "11548666": {
+     "name": "New Windsor Road",
+     "highway": "secondary",
+     "length_m": 1694.2,
+     "line": "-77.102156,39.530843 -77.101882,39.530050 -77.101802,39.529756 -77.101761,39.529383 -77.101771,39.529137 -77.101845,39.528725 -77.101980,39.528265 -77.102290,39.527270 -77.102392,39.526988 -77.102523,39.526696 -77.102778,39.526247 -77.108859,39.516862"
+    },
+    "1296534074": {
+     "name": "New Windsor Road",
+     "highway": "secondary",
+     "length_m": 66.5,
+     "line": "-77.108859,39.516862 -77.109203,39.516326"
+    }
+   }
+  },
+  {
+   "kind": "stress",
+   "value": {
+    "tier": 3,
+    "adjustment_id": "new-windsor-road-borrowed-count-40",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "MD 31 south of New Windsor, 40 mph, no shoulder. Its 5,795 a day is MD 75's count near MD 84; MDOT counts MD 31 next door at 2,492: 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "LTS 3: The owner, 2026-11-13: \"Bucklodge to 3 + audit others\", and \"Don't use my calls as one-offs but guides to inference\": the Bucklodge Road principle (rate a road from its own traffic, not a count measured past a junction or on another route). Rural two-lane road, no shoulder, own traffic in the 1,500-2,999 a day band: our rural rule (ODOT with half steps).",
+   "evidence": "MDOT SHA AADT layer read 2026-11-13: MD 31 section 'MD 407 to MD 831J / Union Bridge Road' takes station 'MD75-.10 MI S OF MD84' (5,795), on MD 75, another route; MD 31 'Frederick CO/L to MD 407' counted at 2,492 (station 'MD31-.10 MI W OF MD407').",
+   "facts": {
+    "highway": "secondary",
+    "urban": false,
+    "speed_mph": 40,
+    "speed_source": "posted",
+    "lanes": null,
+    "oneway": false,
+    "count_band": [
+     1500,
+     2999
+    ],
+    "facility": "none"
+   },
+   "ways": [
+    1564800167
+   ],
+   "fingerprints": {
+    "1564800167": {
+     "name": "New Windsor Road",
+     "highway": "secondary",
+     "length_m": 935.9,
+     "line": "-77.104995,39.538858 -77.104795,39.538646 -77.104639,39.538410 -77.103436,39.536227 -77.103297,39.535943 -77.103189,39.535658 -77.103110,39.535236 -77.103102,39.534916 -77.103124,39.534037 -77.103115,39.533756 -77.103084,39.533503 -77.102937,39.532989 -77.102156,39.530843"
+    }
+   }
+  },
+  {
+   "kind": "stress",
+   "value": {
+    "tier": 2,
+    "adjustment_id": "aquasco-road-borrowed-count",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "MD 381 near Baden-Westwood Rd, 40 mph, no shoulder. Its 3,900 a day is counted near MD 382, before Horsehead Rd (2,955) turns off; about 900 remain: 2.5.",
+    "visibility": "public",
+    "display": "map",
+    "half": true
+   },
+   "reason": "LTS 2.5: The owner, 2026-11-13: \"Bucklodge to 3 + audit others\", and \"Don't use my calls as one-offs but guides to inference\": the Bucklodge Road principle (rate a road from its own traffic, not a count measured past a junction or on another route). Rural two-lane road, no shoulder, own traffic in the 400-1,499 a day band: our rural rule (ODOT with half steps).",
+   "evidence": "MDOT SHA AADT layer read 2026-11-13: MD 381 section 'MD 382 TO BADEN-WESTWOOD RD' (station 'MD381-.10 MI N OF MD382', 3,900); Horsehead Rd (CO 4855) 2,955 meets it between the station and this stretch. Estimate 3,900 - 2,955 = about 950.",
+   "facts": {
+    "highway": "secondary",
+    "urban": false,
+    "speed_mph": 40,
+    "speed_source": "posted",
+    "lanes": null,
+    "oneway": false,
+    "count_band": [
+     400,
+     1499
+    ],
+    "facility": "none"
+   },
+   "ways": [
+    579393838
+   ],
+   "fingerprints": {
+    "579393838": {
+     "name": "Aquasco Road",
+     "highway": "secondary",
+     "length_m": 652.5,
+     "line": "-76.773330,38.654789 -76.774457,38.656540 -76.774723,38.656877 -76.775169,38.657274 -76.775765,38.657751 -76.776341,38.658279 -76.776757,38.658724 -76.777524,38.659613"
+    }
+   }
+  }
+ ]
+}
