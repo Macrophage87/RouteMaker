@@ -771,10 +771,10 @@ in the database still names it: delete that row in the admin when loading the fi
   "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
 
-- `2026-11-13-owner-water-street-nw.json` (DRAFT, not approved; do not load until the owner
-  confirms the levels): Water Street NW's last 0.09 mi before the Capital Crescent Trail, ways
+- `2026-11-13-owner-water-street-nw.json` (levels confirmed by the owner 2026-11-13; load
+  after his go): Water Street NW's last 0.09 mi before the Capital Crescent Trail, ways
   137952735 and 1000673731, rated LTS 4 from the Whitehurst Freeway's count (37,593 a day) and
   35 mph, which these ways inherit from the freeway block overhead. The owner, 2026-11-13: "water
-  street is definitely not a high stress road and it connects to the CCT". Proposed from the
+  street is definitely not a high stress road and it connects to the CCT". Rated from the
   street's own facts (two lanes, ends at the trail): LTS 1 beside the separated track, LTS 2 on
-  the painted-lane piece. Public Why notes. Found by matching the owner's rides to the map.
+  the painted-lane piece (owner: "1 by the track, 2 by the lanes"). Public Why notes. Found by matching the owner's rides to the map.
