@@ -3209,6 +3209,21 @@ button.secondary,
   font-weight: 700;
 }
 
+/* Plan's Leave at: its day and time box on a row of its own, under the chip (lib/startTime.ts) */
+.dials fieldset.when .start-time {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0 0 4px;
+}
+
+.dials fieldset.when .start-time input {
+  min-height: 36px;
+  font: inherit;
+}
+
 .dials fieldset.when .hint,
 .dials fieldset.when .dial-head,
 .dials fieldset.when .dial-info {
@@ -8979,6 +8994,27 @@ details.fold > summary .icon {
   z-index: 3;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
+/* A barrier's mark as a button (lib/barriers.ts): clear, over the layer's octagon, ringed when focused. */
+.barrier-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  z-index: 3;
+}
+.barrier-button:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .barrier-button:focus-visible {
+    outline: 3px solid CanvasText;
+  }
+}
 .closure-marker.closure-bypassed {
   width: 18px;
   height: 18px;
@@ -11596,6 +11632,30 @@ button.route-note:focus-visible {
 
 .road-level-why {
   margin: 8px 0 0;
+}
+
+/* Check a route (CheckRoute.tsx): an opened file's busiest stretches, each with its calmer way and Use this way. */
+.check-route {
+  margin: 0.75rem 0;
+}
+.check-route h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.check-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.check-route .check-stretch {
+  display: block;
+  padding: 0;
+  text-align: start;
+}
+.check-route .check-way {
+  margin: 0.15rem 0 0.35rem;
 }
 
 /* Plan's Keep to compare (lib/compareRoutes.ts): the kept route and the route now, side by side. */

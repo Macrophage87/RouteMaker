@@ -1643,6 +1643,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.confirmLong ? { confirm_long: true } : {}),
     // "Route through anyway" and Go's closures in force (lib/dials.ts closureFields).
     ...(options.dials ? closureFields(options.dials) : {}),
+    // Cargo and Tandem's "Go around" on a barrier's mark (lib/barriers.ts): this plan's only, never in a link.
+    ...(options.dials?.barrierAvoid?.length ? { barrier_avoid: options.dials.barrierAvoid.map((p) => [p[0], p[1]]) } : {}),
     // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
     ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.

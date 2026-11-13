@@ -4,8 +4,10 @@ OWNER-DECISIONS 256 (FOLLOWUP-LONG-CALM): the calm search is worth running at an
 length, but it is bounded in what it can do in one piece. Its exclusions are
 capped (`refine.MAX_EXCLUDES`, 60 ways a round), a round's router call and trace
 grow with the route, and past 19 mi (30 km) of straight line a cold /route took
-33 s. So a trip is cut into legs of about LEG_TARGET_SPAN_M of straight line, each
-searched on its own (`refine.refine_long`) and the legs put back together.
+33 s (in September; other ride types are now searched in one piece up to
+`refine.REFINE_MAX_SPAN_M`, and a Trailmaxxing plan still goes leg by leg past
+`refine.LONG_CALM_SPAN_M`). So a trip is cut into legs of about LEG_TARGET_SPAN_M of
+straight line, each searched on its own (`refine.refine_long`) and the legs put back together.
 
 The cuts are points on the router's own route, so each leg's first route is, to
 the router, the stretch of the whole route it already chose. They are placed

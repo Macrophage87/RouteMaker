@@ -86,7 +86,8 @@ export async function requestStopOrder(
         // the weight leaves the device only for the plan that uses it). The riding speed and the closure
         // choices are sent: the legs are timed and routed as the plan's. The roads marked closed with Go round
         // (`blocked_lines`) belong to a ride's re-plans alone, and Best order is never offered during a ride.
-        ...dialFields({ ...dials, systemWeightKg: undefined }),
+        // Not Plan's start time (lib/startTime.ts): the order is worked out for now, as the API's stop-order plans.
+        ...dialFields({ ...dials, systemWeightKg: undefined, startAt: undefined }),
         ...closureFields(dials),
       }),
     });

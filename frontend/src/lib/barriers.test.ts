@@ -12,6 +12,12 @@ import {
   barrierIconName,
   barrierList,
   barrierNote,
+  barrierAvoidFor,
+  barrierAvoidPoints,
+  barrierCard,
+  barrierMarkName,
+  barrierMarks,
+  toggleBarrierAvoid,
 } from "./barriers.ts";
 import { setCatalogForTest, setLanguageForTest } from "./i18n.ts";
 import { CATALOG as FR } from "../i18n/fr.ts";
@@ -163,6 +169,7 @@ test("the map marks each barrier on a Cargo or Tandem route, red where it cannot
   assert.deepEqual(BARRIER_LEVELS.map(barrierIconName), [
     "barrier-blocked",
     "barrier-noted",
+    "barrier-avoided",
   ]);
 });
 
@@ -191,4 +198,71 @@ test("the mark is an octagon with a bar: transparent corners, the bar's colour a
     [0xf5, 0x9e, 0x0b],
     "amber where the bar would be",
   );
+});
+
+// "Go around" (the owner, 2026-11-13: "Put the bollard on the map, and offer them a go around.").
+
+test("a mark's card offers Go around, except where the barrier is planned round already", () => {
+  const bollard = item("bollard", { width_mapped: false });
+  assert.deepEqual(barrierCard(bollard, false, true), {
+    heading: "bollard (width not mapped)",
+    text: "Width not mapped: it may be too narrow for your bike.",
+    action: { label: "Go around", avoid: true },
+  });
+  assert.equal(barrierCard(item("gate"), false, true).text, "Check it fits your bike.");
+  // A stile is planned round for a cargo bike or tandem anyway: no button.
+  assert.equal(barrierCard(item("stile", { impassable: true }), false, true).action, null);
+  // Gone round: Undo, saying whether a way round was found.
+  assert.deepEqual(barrierCard(bollard, true, false), {
+    heading: "bollard (width not mapped)",
+    text: "Your route goes around it.",
+    action: { label: "Undo: go through it", avoid: false },
+  });
+  assert.equal(barrierCard(bollard, true, true).text, "No way round found.");
+  assert.equal(barrierMarkName(bollard), "Barrier: bollard (width not mapped)");
+});
+
+test("going around is this plan's only, one entry a barrier, and Undo takes it out", () => {
+  const a = item("bollard", { lon: -77.000001, lat: 38.9 });
+  const b = item("cycle_barrier", { lon: -77.01, lat: 38.91 });
+  let avoid = toggleBarrierAvoid(null, "plan-1", a, true);
+  avoid = toggleBarrierAvoid(avoid, "plan-1", b, true);
+  avoid = toggleBarrierAvoid(avoid, "plan-1", a, true);
+  assert.deepEqual(barrierAvoidPoints(barrierAvoidFor(avoid, "plan-1")), [
+    [-77.01, 38.91],
+    [-77.000001, 38.9],
+  ]);
+  // A new start or end forgets them, with the same empty list each time.
+  assert.equal(barrierAvoidFor(avoid, "plan-2").length, 0);
+  assert.equal(barrierAvoidFor(avoid, "plan-2"), barrierAvoidFor(null, "plan-1"));
+  avoid = toggleBarrierAvoid(avoid, "plan-1", a, false);
+  assert.deepEqual(barrierAvoidPoints(barrierAvoidFor(avoid, "plan-1")), [[-77.01, 38.91]]);
+});
+
+test("a gone-round barrier: hollow off the route, red where no way round was found, and the line says so", () => {
+  const bollard = item("bollard", { width_mapped: false });
+  const gone = item("cycle_barrier", { lon: -77.01, lat: 38.91 });
+  const route = { preset: "cargo" as const, barriers: reading([bollard, item("gate", { lon: -77.02 })]) };
+  assert.deepEqual(
+    barrierMarks(route, [bollard, gone]).map((m) => [m.item.word, m.level, m.avoided, m.onRoute]),
+    [
+      ["bollard", "blocked", true, true],
+      ["gate", "noted", false, true],
+      ["cycle_barrier", "avoided", true, false],
+    ],
+  );
+  // Never on another ride type.
+  assert.deepEqual(barrierMarks({ preset: "default", barriers: route.barriers }, [gone]), []);
+  // The route's line counts the one still in the way as in the way.
+  const note = barrierNote(route, [bollard]);
+  assert.equal(note?.warn, true);
+  assert.match(note?.text ?? "", /^bollard \(width not mapped\) on this route/);
+});
+
+test("the gone-round mark is hollow: white inside a dark rim", () => {
+  const icon = barrierIcon("avoided", 1, 22);
+  const px = (x: number, y: number) =>
+    Array.from(icon.data.slice((y * icon.width + x) * 4, (y * icon.width + x) * 4 + 3));
+  assert.deepEqual(px(11, 11), [255, 255, 255], "white at the centre");
+  assert.deepEqual(px(11, 2), [0x37, 0x41, 0x51], "the dark rim");
 });
