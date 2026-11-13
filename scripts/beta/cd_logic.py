@@ -12,7 +12,8 @@ functions the tests call directly (tests/test_beta_cd.py):
               by itself, or needs the owner (data from home, sudo, nginx); and which optional
               steps the deploy needs (front end, router restart, services to recreate)
   tag-image   the api image a release tag's message names by digest (the release workflow's)
-  provenance  whether GitHub's attestations say the release workflow on main built that image
+  provenance  whether GitHub's attestations tie that image to the release workflow on main and
+              to the tag's commit
   rollback    which undo steps a failed deploy needs, from the steps it got through
 
 Standard library only, Python 3.8 or newer: it runs on the server with whatever python3 is
@@ -300,23 +301,97 @@ def tag_image(message: str) -> Optional[str]:
 RELEASE_WORKFLOW = ".github/workflows/release.yml"
 
 
-def provenance_ok(payload: dict, digest: str, repo: str) -> bool:
+# Fulcio's certificate extensions (OID 1.3.6.1.4.1.57264.1.*), each a DER UTF8String: who signed an
+# attestation (the workflow file and ref that ran) and the commit it ran at.
+FULCIO_BUILD_SIGNER_URI = "1.3.6.1.4.1.57264.1.9"
+FULCIO_SOURCE_DIGEST = "1.3.6.1.4.1.57264.1.13"
+
+
+def _der_oid(dotted: str) -> bytes:
+    parts = [int(p) for p in dotted.split(".")]
+    out = bytearray([40 * parts[0] + parts[1]])
+    for n in parts[2:]:
+        chunk = [n & 0x7F]
+        n >>= 7
+        while n:
+            chunk.append(0x80 | (n & 0x7F))
+            n >>= 7
+        out.extend(reversed(chunk))
+    return bytes(out)
+
+
+def _der_items(data: bytes):
+    """(tag, contents) for each DER element in `data`, at this level only; stops at bad input."""
+    i = 0
+    while i + 2 <= len(data):
+        tag, length = data[i], data[i + 1]
+        i += 2
+        if length & 0x80:
+            n = length & 0x7F
+            if n == 0 or n > 4 or i + n > len(data):
+                return
+            length = int.from_bytes(data[i : i + n], "big")
+            i += n
+        if i + length > len(data):
+            return
+        yield tag, data[i : i + length]
+        i += length
+
+
+def cert_extensions(der: bytes) -> dict:
+    """{dotted OID: text} for the certificate's extensions whose value is a DER UTF8String (as
+    Fulcio's are), found anywhere in the structure. Only reads; signatures are not checked."""
+    wanted = {_der_oid(o): o for o in (FULCIO_BUILD_SIGNER_URI, FULCIO_SOURCE_DIGEST)}
+    found: dict = {}
+
+    def walk(data: bytes, depth: int) -> None:
+        if depth > 12:
+            return
+        for tag, body in _der_items(data):
+            if tag in (0x30, 0x31, 0xA0, 0xA3):  # SEQUENCE, SET, [0], [3]: look inside
+                kids = list(_der_items(body))
+                if kids and kids[0][0] == 0x06 and kids[0][1] in wanted and kids[-1][0] == 0x04:
+                    inner = list(_der_items(kids[-1][1]))
+                    if len(inner) == 1 and inner[0][0] == 0x0C:
+                        found[wanted[kids[0][1]]] = inner[0][1].decode("utf-8", "replace")
+                walk(body, depth + 1)
+
+    walk(der, 0)
+    return found
+
+
+def _bundle_cert(bundle: dict) -> Optional[bytes]:
+    material = bundle.get("verificationMaterial") or {}
+    raw = (material.get("certificate") or {}).get("rawBytes")
+    if raw is None:
+        chain = (material.get("x509CertificateChain") or {}).get("certificates") or []
+        raw = chain[0].get("rawBytes") if chain and isinstance(chain[0], dict) else None
+    try:
+        return base64.b64decode(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
+def provenance_ok(payload: dict, digest: str, repo: str, commit: str) -> bool:
     """Whether GitHub's attestations for an image (GET /repos/{repo}/attestations/sha256:{hex})
-    include build provenance that names this digest and this repository's release workflow on
-    main (.github/workflows/release.yml at refs/heads/main): the image was built by the run the
-    owner approved, not by a copy of the workflow on another branch. GitHub keeps only the
-    attestations this repository's own workflows made; this reads their statements (the
-    signatures are GitHub's to check when it stores them)."""
+    tie it to this repository's release workflow on main AND to the tag's commit: the statement
+    names the digest, the workflow (.github/workflows/release.yml at refs/heads/main) and the
+    commit it ran at; the signing certificate's own identity (Fulcio's build signer URI and source
+    digest) says the same workflow, ref and commit, so another workflow cannot sign for this one.
+    The workflow builds only the commit it runs at (main's newest), so that commit is the image's.
+    Signatures are GitHub's to check when it stores an attestation; this reads what it stored."""
     want = digest.split("sha256:", 1)[-1].lower()
-    if not re.fullmatch(r"[0-9a-f]{64}", want):
+    if not re.fullmatch(r"[0-9a-f]{64}", want) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         return False
+    repo_url = f"https://github.com/{repo}".lower()
+    signer = f"{repo_url}/{RELEASE_WORKFLOW}@refs/heads/main"
     for item in payload.get("attestations") or []:
         try:
-            envelope = item["bundle"]["dsseEnvelope"]
-            statement = json.loads(base64.b64decode(envelope["payload"]))
+            bundle = item["bundle"]
+            statement = json.loads(base64.b64decode(bundle["dsseEnvelope"]["payload"]))
         except (KeyError, TypeError, ValueError):
             continue
-        if not isinstance(statement, dict):
+        if not isinstance(statement, dict) or not isinstance(bundle, dict):
             continue
         subjects = statement.get("subject") or []
         if not any(
@@ -325,10 +400,24 @@ def provenance_ok(payload: dict, digest: str, repo: str) -> bool:
             continue
         build = (statement.get("predicate") or {}).get("buildDefinition") or {}
         workflow = (build.get("externalParameters") or {}).get("workflow") or {}
-        if (
-            str(workflow.get("repository", "")).lower() == f"https://github.com/{repo}".lower()
+        if not (
+            str(workflow.get("repository", "")).lower() == repo_url
             and workflow.get("path") == RELEASE_WORKFLOW
             and workflow.get("ref") == "refs/heads/main"
+        ):
+            continue
+        commits = {
+            str((dep.get("digest") or {}).get("gitCommit", "")).lower()
+            for dep in build.get("resolvedDependencies") or []
+            if isinstance(dep, dict)
+        }
+        if commit not in commits:
+            continue
+        der = _bundle_cert(bundle)
+        ext = cert_extensions(der) if der else {}
+        if (
+            ext.get(FULCIO_BUILD_SIGNER_URI, "").lower() == signer
+            and ext.get(FULCIO_SOURCE_DIGEST, "").lower() == commit
         ):
             return True
     return False
@@ -581,6 +670,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     pv = sub.add_parser("provenance")
     pv.add_argument("--digest", required=True)
     pv.add_argument("--repo", required=True)
+    pv.add_argument("--commit", required=True)
     sub.add_parser("rollback").add_argument("--done", default="")
     args = parser.parse_args(argv)
 
@@ -633,7 +723,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload = json.loads(sys.stdin.read() or "{}")
         except ValueError:
             payload = {}
-        ok = isinstance(payload, dict) and provenance_ok(payload, args.digest, args.repo)
+        ok = isinstance(payload, dict) and provenance_ok(
+            payload, args.digest, args.repo, args.commit
+        )
         print("ok" if ok else "no")
         return 0
     if args.command == "rollback":

@@ -1178,7 +1178,8 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    ("The release workflow", below) names the api image it built, by digest, in its message
    (`api-image: ghcr.io/macrophage87/routemaker-api@sha256:...`): the agent first reads GitHub's
    build provenance for that digest, which must name this repository's release workflow on `main`
-   (if not, the tag is held), then pulls the image and tags it with the release's `TAG` instead of
+   and the tag's own commit, in both the statement and its signing certificate (if not, the tag is
+   held), then pulls the image and tags it with the release's `TAG` instead of
    building one (GitHub or the registry not answering waits for the next pass). Workflow tags are not
    signed, so `RM_CD_REQUIRE_SIGNED_TAGS=1` holds every one of them.
 5. The gate, over `git diff <deployed>..<new>` (only a code release deploys by itself):
@@ -1458,7 +1459,8 @@ paused, and the report says what to run next.
 `.github/workflows/release.yml` (the owner, 2026-11-12: a workflow he approves may make the tag and
 build the image). Once the release branch has merged into main and CI is green there: GitHub,
 Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`; `docs/releases/vX.Y.Z.md`
-must be in the commit) and, optionally, the commit (main's newest by default). It checks the
+must be in the commit). It releases main's newest commit, the one the run starts at, and no
+other, so the image's provenance names the tag's commit. It checks the
 version (strict, newer than every tag, not taken), the commit (on main), the notes, and that `test`
 and `a11y` are green on that commit, then **waits for the owner's approval** (the `release`
 environment). Approved, it builds the api image from that commit, checks that it starts, records

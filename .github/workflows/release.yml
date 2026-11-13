@@ -15,11 +15,6 @@ on:
         description: "The release, as vX.Y.Z (docs/releases/vX.Y.Z.md must exist at the commit)"
         required: true
         type: string
-      commit:
-        description: "The full commit id on main to release (empty: main's newest commit)"
-        required: false
-        type: string
-        default: ""
 
 # Nothing by default; each job asks for what it needs.
 permissions: {}
@@ -49,7 +44,9 @@ jobs:
         name: Check the version, the commit and its CI
         env:
           VERSION: ${{ inputs.version }}
-          COMMIT: ${{ inputs.commit }}
+          # The commit this run started at, main's newest: the only one it builds and tags, so the
+          # image's provenance (which names the commit the workflow ran at) names the tag's commit.
+          COMMIT: ${{ github.sha }}
           REF: ${{ github.ref }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -65,7 +62,7 @@ jobs:
           if [ -n "$highest" ] && [ "$(printf '%s\n%s\n' "$highest" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
             echo "::error::$VERSION is not newer than the highest release tag, $highest"; exit 1
           fi
-          sha=${COMMIT:-$(git rev-parse origin/main)}
+          sha=$COMMIT
           [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the commit must be a full 40-character id"; exit 1; }
           git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha is not on main"; exit 1; }
           git cat-file -e "$sha:docs/releases/$VERSION.md" 2>/dev/null ||
