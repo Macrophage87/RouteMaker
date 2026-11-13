@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} di jalur sepeda",
   "{distance} on protected lanes": "{distance} di lajur terlindung",
   "busy road for {distance}": "jalan ramai sejauh {distance}",
+  "{distance} gravel": "{distance} kerikil",
+  "{distance} dirt": "{distance} tanah",
+  "{distance} unpaved": "{distance} tidak beraspal",
   "Traffic-free paths: {distance}, {percent} percent": "Jalur bebas lalu lintas: {distance}, {percent} persen",
   "Protected bike lanes: {distance}, {percent} percent": "Lajur sepeda terlindung: {distance}, {percent} persen",
   "Bikeshare plus walk, train or bus": "Sepeda sewa plus jalan kaki, kereta, atau bus",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Perencanaan rute sedang tidak berfungsi.",
   "Some ride types are not working right now.": "Beberapa jenis perjalanan sedang tidak berfungsi.",
   "Place search is down right now.": "Pencarian tempat sedang tidak berfungsi.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "Di iPhone, Mulai perjalanan untuk perjalanan hingga {distance}. Untuk perjalanan lebih jauh, simpan gambar petunjuk layar kunci atau Unduh GPX untuk komputer sepeda.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "Di iPhone, biarkan layar menyala dan halaman ini di depan, untuk perjalanan hingga {distance}. Untuk perjalanan lebih jauh atau ponsel terkunci, gunakan gambar petunjuk layar kunci atau GPX.",
 };

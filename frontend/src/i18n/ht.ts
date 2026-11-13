@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} sou chemen",
   "{distance} on protected lanes": "{distance} sou liy pwoteje",
   "busy road for {distance}": "wout ki gen anpil sikilasyon pou {distance}",
+  "{distance} gravel": "{distance} gravye",
+  "{distance} dirt": "{distance} tè",
+  "{distance} unpaved": "{distance} san asfalt",
   "Traffic-free paths: {distance}, {percent} percent": "Chemen san sikilasyon: {distance}, {percent} pousan",
   "Protected bike lanes: {distance}, {percent} percent": "Liy bisiklèt pwoteje: {distance}, {percent} pousan",
   "Bikeshare plus walk, train or bus": "Bisiklèt pataje plis mache, tren oswa bis",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "Planifikasyon wout pa mache kounye a.",
   "Some ride types are not working right now.": "Kèk kalite woulib pa mache kounye a.",
   "Place search is down right now.": "Rechèch kote pa mache kounye a.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "Sou iPhone, Kòmanse woulib se pou woulib jiska {distance}. Pou yon woulib pi long, anrejistre imaj endikasyon pou ekran fèmen an oswa Telechaje GPX pou yon òdinatè bisiklèt.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "Sou iPhone, kenbe ekran an limen ak paj sa a devan, pou woulib jiska {distance}. Pou woulib pi long oswa yon telefòn ki fèmen, sèvi ak imaj endikasyon pou ekran fèmen an oswa GPX.",
 };

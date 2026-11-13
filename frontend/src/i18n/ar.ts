@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} على ممرات",
   "{distance} on protected lanes": "{distance} على مسارات محمية",
   "busy road for {distance}": "طريق مزدحم لمسافة {distance}",
+  "{distance} gravel": "{distance} حصى",
+  "{distance} dirt": "{distance} تراب",
+  "{distance} unpaved": "{distance} غير معبّد",
   "Traffic-free paths: {distance}, {percent} percent": "ممرات خالية من السيارات: {distance}، {percent} بالمئة",
   "Protected bike lanes: {distance}, {percent} percent": "مسارات دراجات محمية: {distance}، {percent} بالمئة",
   "Bikeshare plus walk, train or bus": "دراجة مشتركة مع المشي أو القطار أو الحافلة",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "تخطيط المسارات متوقف الآن.",
   "Some ride types are not working right now.": "بعض أنواع الرحلات لا تعمل الآن.",
   "Place search is down right now.": "البحث عن الأماكن متوقف الآن.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "على iPhone، «ابدأ الرحلة» مخصص للرحلات حتى {distance}. لرحلة أطول، احفظ صور الإرشادات لشاشة القفل أو «تنزيل GPX» لعداد الدراجة.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "على iPhone، أبقِ الشاشة مضاءة وهذه الصفحة في المقدمة، للرحلات حتى {distance}. للرحلات الأطول أو مع قفل الهاتف، استخدم صور الإرشادات لشاشة القفل أو GPX.",
 };

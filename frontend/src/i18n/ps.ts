@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} په لارو",
   "{distance} on protected lanes": "{distance} په ساتل شویو لاینونو",
   "busy road for {distance}": "ګڼ سړک د {distance} لپاره",
+  "{distance} gravel": "{distance} جغل",
+  "{distance} dirt": "{distance} خاوري",
+  "{distance} unpaved": "{distance} نا پخه",
   "Traffic-free paths: {distance}, {percent} percent": "بې موټره لارې: {distance}، {percent} سلنه",
   "Protected bike lanes: {distance}, {percent} percent": "ساتل شوي د بایسکل لاینونه: {distance}، {percent} سلنه",
   "Bikeshare plus walk, train or bus": "شریک بایسکل جمع پلی، اورګاډی یا بس",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "د لارې پلان جوړول اوس کار نه کوي.",
   "Some ride types are not working right now.": "د سفر ځینې ډولونه اوس کار نه کوي.",
   "Place search is down right now.": "د ځای لټون اوس کار نه کوي.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "په iPhone کې «سفر پیلول» تر {distance} پورې سفرونو لپاره دی. د اوږد سفر لپاره د قلف پردې لارښود انځورونه خوندي کړئ، یا د بایسکل کمپیوټر لپاره «GPX ښکته کول».",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "په iPhone کې تر {distance} پورې سفرونو لپاره پرده روښانه او دا پاڼه مخې ته وساتئ. د اوږدو سفرونو یا قلف شوي ټلیفون لپاره د قلف پردې لارښود انځورونه یا GPX وکاروئ.",
 };

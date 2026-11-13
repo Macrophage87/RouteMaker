@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "{distance} em ciclovias",
   "{distance} on protected lanes": "{distance} em faixas protegidas",
   "busy road for {distance}": "rua movimentada por {distance}",
+  "{distance} gravel": "{distance} de cascalho",
+  "{distance} dirt": "{distance} de terra",
+  "{distance} unpaved": "{distance} sem pavimento",
   "Traffic-free paths: {distance}, {percent} percent": "Ciclovias sem trânsito: {distance}, {percent} por cento",
   "Protected bike lanes: {distance}, {percent} percent": "Ciclofaixas protegidas: {distance}, {percent} por cento",
   "Bikeshare plus walk, train or bus": "Bicicleta compartilhada mais caminhada, trem ou ônibus",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "O planejamento de rotas está fora do ar agora.",
   "Some ride types are not working right now.": "Alguns tipos de pedal não estão funcionando agora.",
   "Place search is down right now.": "A busca de lugares está fora do ar agora.",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "No iPhone, Iniciar pedal é para pedais de até {distance}. Para um pedal mais longo, salve as imagens de instruções para a tela de bloqueio ou Baixar GPX para um ciclocomputador.",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "No iPhone, mantenha a tela ligada e esta página na frente, para pedais de até {distance}. Para pedais mais longos ou com o celular bloqueado, use as imagens de instruções para a tela de bloqueio ou o GPX.",
 };

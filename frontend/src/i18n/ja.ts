@@ -894,6 +894,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{distance} on paths": "道で{distance}",
   "{distance} on protected lanes": "保護レーンで{distance}",
   "busy road for {distance}": "交通量の多い道 {distance}",
+  "{distance} gravel": "砂利道 {distance}",
+  "{distance} dirt": "土の道 {distance}",
+  "{distance} unpaved": "未舗装 {distance}",
   "Traffic-free paths: {distance}, {percent} percent": "車の通らない道：{distance}、{percent}パーセント",
   "Protected bike lanes: {distance}, {percent} percent": "保護された自転車レーン：{distance}、{percent}パーセント",
   "Bikeshare plus walk, train or bus": "シェアサイクルと徒歩・電車・バス",
@@ -2209,4 +2212,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Route planning is down right now.": "ルート計画は現在使えません。",
   "Some ride types are not working right now.": "一部のライドタイプは現在使えません。",
   "Place search is down right now.": "場所の検索は現在使えません。",
+  "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "iPhoneでの「ライドを開始」は{distance}までのライド向けです。長いライドでは、ロック画面用の案内画像を保存するか、サイクルコンピューター用に「GPXをダウンロード」してください。",
+  "On iPhone: keep the screen on, rides up to {distance}. Longer, or phone locked: lock-screen cue images or GPX.": "iPhoneでは{distance}までのライドで、画面をつけたまま、このページを前面にしてください。長いライドや画面ロック時は、ロック画面用の案内画像かGPXを使ってください。",
 };

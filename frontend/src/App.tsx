@@ -309,7 +309,8 @@ import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
 import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, legDials, restClosedSaid, restRequest, rideLegOf, rideNowDials, shareBikeOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
-import { RIDE_TOO_LONG } from "./lib/navigate.ts";
+import { rideTooLong } from "./lib/navigate.ts";
+import { installState } from "./lib/installOffer.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
@@ -4642,7 +4643,7 @@ export function App() {
     const result = await requestRoute(asked.points, asked.preset, { dials: restDials, routeOnly: true });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
-    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    if (!rideableRoute(result.route)) return rideTooLong(installState().ios);
     const line = result.route.geometry.coordinates;
     const go = () => {
       if (stillOn()) beginRide(ridePrefs, false, { route: result.route, points: asked.points });
@@ -4673,7 +4674,7 @@ export function App() {
     const result = await requestRoute(points, left.preset, { dials: rideNowDials(legDials) });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
-    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    if (!rideableRoute(result.route)) return rideTooLong(installState().ios);
     // The last leg has no stops after it: none left once it starts (beginRide keeps them only for a trip with stops).
     tripStopsLeft.current = null;
     beginRide(ridePrefs, false, { route: result.route, points });
@@ -5333,7 +5334,7 @@ export function App() {
     const result = await requestRoute(asked, plain ? "default" : preset, { dials: detourDials, routeOnly: true });
     if (!roamingNow.current) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
-    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    if (!rideableRoute(result.route)) return rideTooLong(installState().ios);
     setRoaming(false);
     setRoamRider(null);
     beginRide(ridePrefs, false, { route: result.route, points: asked, roam: true });
