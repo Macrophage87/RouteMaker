@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -580,29 +581,69 @@ def test_a_scorecard_run_that_saw_a_map_swap_is_kept_as_mixed_and_says_nothing(b
     assert "findings" not in (box.tmp / "scorecard.log").read_text()
 
 
+def _hold_lock(lock: Path, release: Path) -> subprocess.Popen[bytes]:
+    """Start a child that holds ``lock`` until ``release`` exists; return once it holds it."""
+    wait_for_release = 'while [ ! -e "$1" ]; do sleep 0.05; done'
+    command = ["flock", str(lock), "sh", "-c", wait_for_release, "sh", str(release)]
+    holder = subprocess.Popen(command)
+    deadline = time.monotonic() + 30
+    try:
+        while subprocess.run(["flock", "-n", str(lock), "true"]).returncode == 0:
+            assert holder.poll() is None, "the lock holder exited before taking the lock"
+            assert time.monotonic() < deadline, "the lock holder never took the lock"
+            time.sleep(0.05)
+    except BaseException:
+        holder.kill()
+        holder.wait()
+        raise
+    return holder
+
+
 def test_the_scorecard_waits_for_the_lock_and_skips_a_long_deploy(box: Box) -> None:
     env = scorecard_box(box)
     cd = box.state / "cd"
     cd.mkdir()
-    (cd / "lock").write_text("")
-    # A watch pass holding the lock briefly: the scorecard waits, then runs.
-    holder = subprocess.Popen(["flock", str(cd / "lock"), "sleep", "2"])
+    lock = cd / "lock"
+    lock.write_text("")
+    log = box.tmp / "scorecard.log"
+    # A watch pass holding the lock: the scorecard waits for it, then runs.
+    release = box.tmp / "release-1"
+    holder = _hold_lock(lock, release)
+    result: list[subprocess.CompletedProcess] = []
+
+    def run_scorecard() -> None:
+        result.append(box.run("scorecard", RM_SCORECARD_LOCK_WAIT_S="30", **env))
+
+    runner = threading.Thread(target=run_scorecard)
     try:
-        time.sleep(0.3)
-        done = box.run("scorecard", RM_SCORECARD_LOCK_WAIT_S="30", **env)
+        runner.start()
+        runner.join(1.5)
+        # Still waiting while the lock is held, and nothing planned yet.
+        assert runner.is_alive(), "the scorecard did not wait for the lock"
+        assert not log.exists()
+        release.write_text("")
+        runner.join(30)
+        assert not runner.is_alive()
     finally:
+        release.write_text("")
         holder.kill()
-    assert "nightly" in (box.tmp / "scorecard.log").read_text()
+        holder.wait()
+        runner.join(30)
+    assert result and result[0].returncode == 0
+    assert "nightly" in log.read_text()
     # A deploy holding it past the wait: the night is skipped.
-    (box.tmp / "scorecard.log").unlink()
-    holder = subprocess.Popen(["flock", str(cd / "lock"), "sleep", "10"])
+    log.unlink()
+    release = box.tmp / "release-2"
+    holder = _hold_lock(lock, release)
     try:
-        time.sleep(0.3)
         done = box.run("scorecard", RM_SCORECARD_LOCK_WAIT_S="1", **env)
+        assert holder.poll() is None, "the lock was let go during the wait"
     finally:
+        release.write_text("")
         holder.kill()
+        holder.wait()
     assert "scorecard skipped tonight" in done.stdout
-    assert not (box.tmp / "scorecard.log").exists()
+    assert not log.exists()
 
 
 def test_a_scorecard_run_that_fails_is_posted_once_a_day(box: Box) -> None:
