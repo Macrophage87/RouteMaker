@@ -56,11 +56,19 @@ def test_the_county_5_beats_the_states_lower_level_and_reads_as_45():
     assert result.rule.endswith(f", {agency_lts.READ_AS_REASON}")
 
 
-def test_ddot_5_stays_avoid_and_wins_a_tie_with_the_county_5():
+def test_ddot_5_stays_avoid_and_wins_a_tie_with_the_county_5(monkeypatch):
+    # With DDOT's level in use (`agency_lts.COMPARISON_ONLY` off; since 2026-11-13 it is
+    # recorded only, and the county's 4.5 is used).
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
     assert _step(agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])) == 5
     # Two local agencies at one line: the higher level as the map uses it, DDOT's Avoid.
     pick = agency_lts.chosen([AgencyRating("moco", 5), AgencyRating("ddot", 5)])
     assert pick.agency == "ddot"
+
+
+def test_with_ddot_recorded_only_the_county_5_is_used():
+    pick = agency_lts.chosen([AgencyRating("moco", 5), AgencyRating("ddot", 5)])
+    assert pick.agency == "moco"
 
 
 def test_mdot_5_still_closes_the_way():

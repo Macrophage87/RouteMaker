@@ -212,7 +212,9 @@ def test_a_street_either_side_of_a_quadrant_line_is_one_street() -> None:
         way(2, SOUTH, name="South Capitol Street Southeast"),
     ]
     assert divided.carriageway_pairs(pair) == {1, 2}
-    assert divided.carriageways(pair) == set()
+    # The stress reading too, since 2026-11-13: North Capitol Street's carriageways are
+    # "Northeast" on one side and "Northwest" on the other, and are one divided road.
+    assert divided.carriageways(pair) == {1, 2}
 
 
 def test_the_c4_band_is_wider_and_has_its_limit() -> None:

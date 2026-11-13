@@ -10,7 +10,10 @@ computed the same way everywhere from the same tables. Since v0.7.0 an agency's
 own rating takes the place of this one where the agency rates the road (the
 owner, 2026-10-13: "Ratings from the local government win over a formula"),
 county over state; that is done by the rebuild after classification
-(`routemaker.agency_lts`), on this scale, and never inside this module. An approved
+(`routemaker.agency_lts`), on this scale, and never inside this module. DDOT's 2020
+layer is the exception since 2026-11-13: recorded beside this tier, never used
+(`agency_lts.COMPARISON_ONLY`; the owner: "If I say that a road is incorrectly
+rated that means that I feel the formula is wrong"). An approved
 stress override row (`pipeline.overrides`; since 2026-11-09 our own reasoned level
 on every road, the "own picks") outranks both the agency's rating and this one.
 
@@ -432,6 +435,28 @@ ARTERIAL_HIGHWAY = frozenset(
 )
 # The road classes OWNER-DECISIONS 176 floors at LTS 2 without a facility.
 COLLECTOR_HIGHWAY = frozenset({"tertiary", "tertiary_link"})
+
+# Quiet residential streets (the owner, 2026-11-13: "If I say that a road is incorrectly
+# rated that means that I feel the formula is wrong"; his DC calls put uncounted residential
+# streets at 20-25 mph at LTS 1). Furth's v2.2 mixed-traffic table reads an unlaned two-way
+# street the same below 23.5 mph and from 23.5 to 28.5 mph: LTS 1 up to 1,500 a day. The
+# single-lane row here split the two bands, so a District residential street the city's
+# street layer records at 25 mph was LTS 2 and the same street at 20 was LTS 1. A residential
+# street with no count is read as the quiet street its class says it is; a count, where there
+# is one, decides as before. The District only for now (our default): the 2026-11-09 card
+# kept Maryland's and Virginia's uncounted urban streets at 2.
+QUIET_RESIDENTIAL_HIGHWAY = frozenset({"residential", "living_street"})
+QUIET_RESIDENTIAL_MAX_MPH = 28.5
+QUIET_RESIDENTIAL_JURISDICTIONS = frozenset({"DC"})
+QUIET_RESIDENTIAL_RULE = "quiet residential street, read on Furth's unlaned row"
+
+# A counted two-lane arterial (the owner's Aspen Street NW call, 2026-11-13: a minor arterial
+# carrying a few thousand a day at 25 mph is LTS 2.5, "not a 4"). OWNER-DECISIONS 141's
+# arterial floor of LTS 3 was set for arterials the District's 20 mph read at LTS 1 with no
+# count; where a count shows a two-lane arterial carries less than VOLUME_BUSY, the floor is
+# 2.5, and the count's own steps still apply above it. Urban only: outside urban areas the
+# speed table already puts such roads at 3 or more.
+COUNTED_ARTERIAL_RULE = "counted two-lane arterial floor"
 
 # Surfaces a road bike will not hold a line on. Surface never sets the tier on
 # its own: gravel here is usually a low-traffic choice rather than a hazard, and
@@ -1664,8 +1689,8 @@ def _classify(
             # more through lanes each way on a two-way street stays LTS 3; the
             # urban single-lane row above is mixed traffic's relief, not the
             # lane's. A one-way of three lanes or more likewise, as it keeps
-            # the floor in mixed traffic (review 2026-10-29). Where DDOT or
-            # Montgomery rate the road, theirs wins (`agency_lts`), and the
+            # the floor in mixed traffic (review 2026-10-29). Where
+            # Montgomery rates the road, theirs wins (`agency_lts`), and the
             # rebuild lists both for the owner.
             tier, rule = Stress.LTS3, rule + f", {floor}"
         if (
@@ -1684,6 +1709,16 @@ def _classify(
         if urban_multilane and not oneway_relief:
             kind = "wide one-way" if oneway else "two-way"
             tier, rule = urban_two_way_floor(tier, rule, speed_mph, aadt, kind)
+        if (
+            urban
+            and jurisdiction in QUIET_RESIDENTIAL_JURISDICTIONS
+            and highway in QUIET_RESIDENTIAL_HIGHWAY
+            and aadt is None
+            and not urban_multilane
+            and speed_mph <= QUIET_RESIDENTIAL_MAX_MPH
+            and tier is Stress.LTS2
+        ):
+            tier, rule = Stress.LTS1, rule + f", {QUIET_RESIDENTIAL_RULE}"
         # A rideable paved shoulder is scored on the *bike-lane* table, not by
         # subtracting a tier from mixed traffic.
         #
@@ -1895,6 +1930,18 @@ def _classify(
         if highway in COLLECTOR_HIGHWAY
         else None
     )
+    counted_arterial_half = False
+    if (
+        floor is not None
+        and floor[0] is Stress.LTS3
+        and urban
+        and aadt is not None
+        and aadt < VOLUME_BUSY
+        and not urban_multilane
+        and tier < Stress.LTS3
+        and not (has_facility or separate_facility)
+    ):
+        floor, counted_arterial_half = (Stress.LTS2, COUNTED_ARTERIAL_RULE), tier <= Stress.LTS2
     if floor is not None and tier < floor[0] and not (has_facility or separate_facility):
         if rideable_shoulder and shoulder_table_tier is not None:
             # A rideable shoulder is bike infrastructure (item 145), whether or
@@ -1951,8 +1998,10 @@ def _classify(
     # BUSY_STREET_MIN_AADT or more is 2.5 (with no upper bound: a 20 mph street the
     # high-volume step leaves at LTS 2 stays 2.5 past VOLUME_BUSY). And a painted lane
     # does not make a street of BUSY_PAINTED_LANE_AADT or more calmer than 2.5.
-    half = False
-    if aadt is not None and tier <= Stress.LTS2 and not separate_facility:
+    half = counted_arterial_half and tier is Stress.LTS2
+    if half and COUNTED_ARTERIAL_RULE not in rule:
+        rule = rule + f", {COUNTED_ARTERIAL_RULE}"
+    if aadt is not None and tier <= Stress.LTS2 and not separate_facility and not half:
         painted = bool(cycleways & PAINTED_CYCLEWAY) and not (cycleways & SEPARATED_CYCLEWAY)
         # A shoulder the lane table credited is read as the lane it stands for.
         if (painted or shoulder_credited) and aadt >= BUSY_PAINTED_LANE_AADT:

@@ -12,6 +12,7 @@ import pytest
 
 from routemaker import facility
 from routemaker.stress import (
+    COUNTED_ARTERIAL_RULE,
     DEFAULT_LANES_PER_DIRECTION,
     DEFAULT_MAXSPEED_MPH_RURAL,
     DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL,
@@ -20,6 +21,7 @@ from routemaker.stress import (
     FURTH_LANE_ALONE_M,
     FURTH_LANE_BESIDE_PARKING_M,
     PAINTED_CYCLEWAY,
+    QUIET_RESIDENTIAL_RULE,
     RIDEABLE_SHOULDER_M,
     SEPARATED_CYCLEWAY,
     UNPAVED_RURAL_DEFAULT_MPH,
@@ -30,6 +32,7 @@ from routemaker.stress import (
     classify,
     is_rough,
     is_unpaved,
+    level_of,
 )
 from routemaker.tags import (
     IMPLICIT_MAXSPEED_MPH,
@@ -2920,3 +2923,38 @@ class TestATwoWayFacilityOnOneSide:
         """A bare `cycleway:oneway=no` qualifies only the bare key."""
         tags = {**self.road, "cycleway:right": "track", "cycleway:oneway": "no"}
         assert classify(tags).tier is Stress.LTS3
+
+
+# --- The District's quiet residential streets and counted two-lane arterials (2026-11-13) ---
+
+
+def test_a_quiet_dc_residential_street_at_25_mph_is_lts1() -> None:
+    """Furth v2.2 reads an unlaned street the same below 23.5 mph and from 23.5 to 28.5: LTS 1
+    up to 1,500 a day. An uncounted District residential street at 25 mph is LTS 1, as at 20."""
+    street = {"highway": "residential", "maxspeed": "25 mph"}
+    result = classify(street, jurisdiction="DC")
+    assert level_of(result) == 1
+    assert QUIET_RESIDENTIAL_RULE in result.rule
+    assert level_of(classify({**street, "maxspeed": "20 mph"}, jurisdiction="DC")) == 1
+    # A count decides where there is one.
+    assert level_of(classify(street, aadt=3_000, jurisdiction="DC")) == 2
+    # Not at 30 mph, not on a collector, and not yet outside the District (our default).
+    assert level_of(classify({**street, "maxspeed": "30 mph"}, jurisdiction="DC")) == 3
+    assert level_of(classify({**street, "highway": "tertiary"}, jurisdiction="DC")) == 2
+    assert level_of(classify(street, jurisdiction="MD")) == 2
+
+
+def test_a_counted_two_lane_arterial_is_25_not_3() -> None:
+    """The owner's Aspen Street NW call (2026-11-13): a minor arterial carrying a few thousand
+    a day at 25 mph is LTS 2.5. A count under VOLUME_BUSY lowers the arterial floor to 2.5."""
+    aspen = {"highway": "secondary", "maxspeed": "25 mph"}
+    result = classify(aspen, aadt=4_000, jurisdiction="DC")
+    assert level_of(result) == 2.5
+    assert COUNTED_ARTERIAL_RULE in result.rule
+    assert level_of(classify(aspen, aadt=6_300, jurisdiction="DC")) == 2.5
+    # From VOLUME_BUSY the count's own step: LTS 3.
+    assert level_of(classify(aspen, aadt=VOLUME_BUSY, jurisdiction="DC")) == 3
+    # No count: the arterial floor of 3 stands (OWNER-DECISIONS 141).
+    assert level_of(classify(aspen, jurisdiction="DC")) == 3
+    # A four-lane arterial keeps its two-way floor.
+    assert level_of(classify({**aspen, "lanes": "4"}, aadt=4_000, jurisdiction="DC")) == 3
