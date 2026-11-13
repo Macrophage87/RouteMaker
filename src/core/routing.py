@@ -1887,6 +1887,9 @@ class Dials:
     # Set by `plan` alone, for the weekend plan it makes beside a ride's own (`_plan_twice`):
     # such a plan never falls back to another graph (it is given up instead).
     graph: str | None = None
+    # Plan's "Out and back" (Stephen 2026-11-13): with `loop`, come back the same way: the way
+    # back is planned as any leg is, not pushed off the way out (`refine.make_loop`). Appended.
+    out_and_back: bool = False
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -6229,7 +6232,11 @@ def _plan(
     # so a round does not swap it back for the router's own (the third routing hunt, C3-1).
     asked_trip = trip
     loop_info = None
-    if loop:
+    if loop and dials.out_and_back:
+        # Out and back on purpose: the router's own way back, which on one destination is the
+        # way out ridden back; nothing is excluded and nothing is held off it.
+        loop_info = {"same_way": True}
+    elif loop:
         # The way back by a different way, before the search, which then keeps it so.
         trip, loop_info = refine.make_loop(trip, refine_context)
         # A loop whose ways back ran out of time keeps the router's own way back, which the
@@ -6241,9 +6248,10 @@ def _plan(
             and (loop_info["fallback"] is None or overlap < refine.LOOP_OUT_AND_BACK * 100.0)
         ):
             refine_context.loop_overlap = overlap / 100.0
-    if len(trip.get("legs") or []) > 1 and not quick and not fixed:
+    if len(trip.get("legs") or []) > 1 and not quick and not fixed and not (loop and dials.out_and_back):
         # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
-        # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`).
+        # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`). Not on an
+        # out and back, which rides its way twice on purpose.
         trip, repeat_info = refine.fewer_repeats(trip, refine_context)
         logger.info("fewer repeats: %s", repeat_info)
     refined = None
@@ -6968,6 +6976,7 @@ def _plan(
                 "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,
+                "out_and_back": bool(loop and dials.out_and_back),
             },
             "hills_seek": hills_seek,
             "hills_avoid": hills_avoid,

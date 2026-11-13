@@ -182,6 +182,8 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
     assert hello["result"]["capabilities"] == {
         "tools": {"listChanged": False},
         "resources": {"listChanged": False},
+        # Ready-made asks a person can pick (tests/test_mcp_connector_guidance.py).
+        "prompts": {"listChanged": False},
         # The route view (the owner, 2026-11-10), for an assistant app that shows MCP Apps.
         "extensions": {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}},
     }

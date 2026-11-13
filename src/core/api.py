@@ -64,7 +64,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import partial, wraps
 from typing import Annotated, Literal
 
@@ -511,6 +511,15 @@ class RouteIn(Schema):
             " start by a different way. A ride whose last point is its first is a loop whether"
             " or not this is set. The way back prefers roads the way out did not use, and the"
             " answer's `loop` says how much it shares. Not on Mass Ride."
+        ),
+    )
+    out_and_back: StrictBool = Field(
+        default=False,
+        description=(
+            "On a loop (`loop`, or a ride ending where it starts): come back the same way (Plan's"
+            " Out and back; Stephen 2026-11-13). The way back is planned as any leg is, with no"
+            " push off the way out and no price on riding a way twice, so on one destination it"
+            " is the way out ridden back. Ignored on a ride that is not a loop."
         ),
     )
     mtb_level: StrictInt | None = Field(
@@ -1074,6 +1083,9 @@ class DialsOut(Schema):
         description="The rider total system weight the effort was weighed with, if set.",
     )
     loop: bool = Field(default=False, description="Whether the route was planned as a loop.")
+    out_and_back: bool = Field(
+        default=False, description="Whether the loop was planned to come back the same way."
+    )
 
 
 class HillClimbOut(Schema):
@@ -3024,6 +3036,10 @@ class LoopOut(Schema):
     return_m: float | None = None
     excluded: int = Field(default=0, description="Points along the way out the way back avoided.")
     tried: int = Field(default=0, description="Routes asked for the way back.")
+    same_way: bool = Field(
+        default=False,
+        description="The rider asked to come back the same way (`out_and_back`): nothing was avoided.",
+    )
     fallback: str | None = Field(
         default=None,
         description=(
@@ -6064,6 +6080,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         system_weight_kg=body.system_weight_kg,
         cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
         loop=body.loop,
+        out_and_back=body.out_and_back,
         debug_junctions=body.debug_junctions,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
@@ -6311,6 +6328,7 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
         loop=body.loop,
+        out_and_back=body.out_and_back,
     )
     started = getattr(request, "routing_started", None)
     try:
@@ -6825,11 +6843,31 @@ def coverage_ring() -> list[list[float]]:
 @decorate_view(ratelimit.rate_limited(ratelimit.COVERAGE), errors_as_json)
 def coverage(request, response: HttpResponse):
     response["Cache-Control"] = f"public, max-age={COVERAGE_MAX_AGE_S}"
+    built = map_data_date()
     return {
         "type": "Feature",
         "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
-        "properties": {},
+        # The live map's date, for Settings' About line ("Map data from Nov 10, 2026"; backlog item
+        # "Data that says how old it is", 2026-11-13). Left out before a first build.
+        "properties": {"map_data": built.isoformat()} if built else {},
     }
+
+
+def map_data_date() -> date | None:
+    """The day the map being served was built: the date part of the standard graph's build id
+    (`20261110T170245Z`, `pipeline.run.new_build_id`), which `sync_upstreams` writes on a server
+    that receives its map rather than building it. The OpenStreetMap extract it was built from is
+    at most `SOURCE_EXTRACT_MAX_AGE` (six days) older. None with no promoted build, or an id that
+    is not a date, or when the row cannot be read: the coverage answer never fails
+    for want of a date."""
+    from core.models import ValhallaUpstream
+
+    try:
+        rows = ValhallaUpstream.objects.filter(variant="standard")
+        build_id = rows.values_list("build_id", flat=True).first()
+        return datetime.strptime((build_id or "")[:8], "%Y%m%d").date()
+    except Exception:  # noqa: BLE001 - a date is a nicety; the coverage mask must not fail over it
+        return None
 
 
 # --- Place search and place names ---------------------------------------------
