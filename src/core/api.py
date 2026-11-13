@@ -4024,7 +4024,7 @@ def offline_packs_view(request, params: Query[OfflinePacksIn]):
             "name": pack["name"],
             "bytes": pack["bytes"],
             "sha256": pack["sha256"],
-            "url": f"/offline-packs/{build}/{pack['file']}",
+            "url": f"/offline-packs/{found['dir']}/{pack['file']}",
         }
         for pack in found["packs"]
     ]

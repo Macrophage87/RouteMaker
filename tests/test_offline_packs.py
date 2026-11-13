@@ -58,7 +58,8 @@ def ways():
         1: ("K Street", (-77.03, 38.90)),
         2: ("Wilson Boulevard", (-77.10, 38.88)),
         3: ("Charles Street", (-76.615, 39.30)),
-        4: ("Charles Street", (-76.98, 38.53)),
+        4: ("La Plata Road", (-76.98, 38.53)),
+        5: ("River Road", (-77.18, 39.00)),
     }
     for way_id, (name, (lon, lat)) in places.items():
         points = [_at(lon, lat), _at(lon, lat, east_m=200)]
@@ -93,17 +94,18 @@ def test_each_pack_holds_its_regions_ways_and_current_names_the_build(
     by_id = {p["id"]: p for p in found["packs"]}
 
     def names(region: str) -> set[str]:
-        graph = json.loads(gzip.decompress((out / "current" / by_id[region]["file"]).read_bytes()))
+        build = out / found["dir"]
+        graph = json.loads(gzip.decompress((build / by_id[region]["file"]).read_bytes()))
         assert graph["v"] == 1
         return set(graph["names"])
 
     assert names("beltway") == {"K Street", "Wilson Boulevard"}
     assert names("nova") == set(), "Arlington is inside the Beltway, not cut twice"
     assert names("baltimore") == {"Charles Street"}
-    assert names("rest") == {"Charles Street"}, "La Plata is in the rest of the map"
-    assert names("nw-exurbs") == set()
+    assert names("rest") == {"La Plata Road"}, "La Plata is in the rest of the map"
+    assert names("nw-exurbs") == {"River Road"}, "Potomac, Maryland is not left to the rest"
     assert all(p["bytes"] > 0 and len(p["sha256"]) == 64 for p in found["packs"])
-    assert (out / "current").is_symlink() and (out / "current").resolve().name == found["build_id"]
+    assert found["dir"] == "packs-20261113T030000Z"
     assert offline_packs.manifest()["build_id"] == "20261113T030000Z"
     # The same map gives the same bytes.
     again = builder.build_packs(SCHEMA, out, "20261113T040000Z", settings.COVERAGE_BBOX)
@@ -113,11 +115,42 @@ def test_each_pack_holds_its_regions_ways_and_current_names_the_build(
 @db
 def test_two_builds_are_kept_and_a_half_written_one_never_served(ways, tmp_path, settings) -> None:
     out = tmp_path / "offline-packs"
-    (out / "20261101T000000Z.part").mkdir(parents=True)
+    import os
+
+    stale = out / "packs-20261101T000000Z.part"
+    stale.mkdir(parents=True)
+    os.utime(stale, (0, 0))
     for build in ("20261110T000000Z", "20261111T000000Z", "20261112T000000Z"):
         builder.build_packs(SCHEMA, out, build, settings.COVERAGE_BBOX)
     kept = sorted(p.name for p in out.iterdir())
-    assert kept == ["20261111T000000Z", "20261112T000000Z", "current"]
+    # A half-written build from more than a day ago goes; the manifest names the newest.
+    assert kept == ["manifest.json", "packs-20261111T000000Z", "packs-20261112T000000Z"]
+    assert json.loads((out / "manifest.json").read_text())["dir"] == "packs-20261112T000000Z"
+
+
+@db
+def test_a_retry_with_the_same_build_keeps_its_packs_and_the_tile_pruning_never_touches_them(
+    ways, tmp_path, settings
+) -> None:
+    from pipeline import retention
+
+    tiles = tmp_path / "tiles"
+    out = tiles / "offline-packs"
+    first = builder.build_packs(SCHEMA, out, "20261113T030000Z", settings.COVERAGE_BBOX)
+    written = (out / first["dir"] / "beltway.json.gz").stat().st_mtime_ns
+    again = builder.build_packs(SCHEMA, out, "20261113T030000Z", settings.COVERAGE_BBOX)
+    assert again["packs"] == first["packs"]
+    assert (out / first["dir"] / "beltway.json.gz").stat().st_mtime_ns == written
+    # The worker's prune after every rebuild walks every folder under tiles as a router's.
+    retention.prune_tile_builds(tiles, keep=0, protect=["20261113T030000Z"])
+    assert (out / first["dir"] / "beltway.json.gz").is_file()
+
+
+def test_a_manifest_of_another_version_lists_nothing(tmp_path, settings) -> None:
+    settings.TILES_DIR = tmp_path
+    (tmp_path / "offline-packs").mkdir()
+    (tmp_path / "offline-packs" / "manifest.json").write_text('{"v": 99, "dir": "packs-x"}')
+    assert offline_packs.manifest() is None
 
 
 @db
@@ -134,7 +167,7 @@ def test_the_list_names_each_pack_and_its_address(ways, tmp_path, settings, clie
     body = answer.json()
     assert body["build_id"] == "20261113T030000Z"
     assert [p["id"] for p in body["packs"]] == [r.id for r in offline_packs.REGIONS]
-    assert body["packs"][0]["url"] == "/offline-packs/20261113T030000Z/beltway.json.gz"
+    assert body["packs"][0]["url"] == "/offline-packs/packs-20261113T030000Z/beltway.json.gz"
     assert len(body["level_factor"]) == 11
     foreign = client.get("/api/offline/packs", HTTP_SEC_FETCH_SITE="cross-site", **headers)
     assert foreign.status_code == 403
@@ -149,11 +182,14 @@ def test_both_web_servers_serve_only_pack_files_to_this_site() -> None:
     caddy = (repo / "Caddyfile").read_text()
     block = caddy[caddy.index("handle /offline-packs/* {") :]
     block = block[: block.index("\n\t}\n")]
-    assert r"path_regexp ^/offline-packs/[0-9A-Za-z_-]+/[a-z-]+\.json\.gz$" in block
+    assert r"path_regexp ^/offline-packs/packs-[0-9]+T[0-9]+Z(-[0-9]+)?/[a-z-]+\.json\.gz$" in block
+    # The day-long header has a path matcher, so the refusal's no-store runs after it.
+    assert 'header /offline-packs/* Cache-Control "private, max-age=86400"' in block
+    assert 'header @foreign Cache-Control "no-store"' in block
     assert "respond @foreign 403" in block and "root * /srv/tiles" in block
     nginx = (repo / "deploy" / "beta" / "nginx-routemaker.conf.template").read_text()
     location = nginx[nginx.index("location ~ ^/offline-packs/") :]
     location = location[: location.index("\n    }\n")]
-    assert r"([0-9A-Za-z_-]+/[a-z-]+\.json\.gz)$" in location
+    assert r"(packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$" in location
     assert "$rmbeta_basemap_foreign" in location
     assert "alias @DATA_ROOT@/tiles/offline-packs/$1;" in location
