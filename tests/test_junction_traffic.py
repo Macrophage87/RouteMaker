@@ -22,10 +22,16 @@ COUNTS = (None, 500, 1_000, 1_001, 1_500, 1_501, 3_000, 8_000, 20_000)
     list(itertools.product(SPEEDS, COUNTS, (False, True), (True,))),
 )
 def test_the_single_lane_reading_is_the_classifiers(speed, aadt, oneway, urban) -> None:
-    # A collector in town: Furth's centerline row, which is the row the junction reads for
-    # every road (the segment table keeps no class). Outside the urban areas the classifier
-    # reads Oregon's rural table at 45 mph or more, which the junction does not.
-    tags = {"highway": "tertiary", "maxspeed": f"{speed} mph", "surface": "asphalt"}
+    # A minor through street with a centerline, in town: Furth's centerline row, which is
+    # the row the junction reads for every road (the segment table keeps no class), and with
+    # no count the same class figure. Outside the urban areas the classifier reads Oregon's
+    # rural table at 45 mph or more, which the junction does not.
+    tags = {
+        "highway": "unclassified",
+        "lane_markings": "yes",
+        "maxspeed": f"{speed} mph",
+        "surface": "asphalt",
+    }
     tags |= {"oneway": "yes", "lanes": "1"} if oneway else {"lanes": "2"}
     result = classify(tags, aadt=aadt, urban=urban)
     assert single_lane_traffic_level(speed, oneway, aadt, urban) == (result.tier, result.half)

@@ -1559,6 +1559,11 @@ VOLUME_GATES = tuple(
 )
 
 
+# What a junction reads a crossed road with no count as carrying: Oregon's "Local /
+# Collector" band, since the segment table keeps no class.
+JUNCTION_UNCOUNTED_AADT = CLASS_AADT["unclassified"]
+
+
 def tier_and_half(level: float) -> tuple[Stress, bool]:
     """A level (1, 1.5, ... 4.5, 5) as the stored tier and its half-step flag."""
     return Stress(int(level)), level % 1 != 0
@@ -1574,11 +1579,12 @@ def single_lane_traffic_level(
     provision, from the facts the segment table keeps, at a posted speed: Furth's centerline
     row (`mixed_traffic_level`). What a junction reads such a road by (the owner, 2026-10-31:
     "a protected bike lane on a busy road is just as hard to cross";
-    `intersections.traffic_level`). The road class is not kept there, so a road with no count
-    is read as an arterial (`ARTERIAL_CLASS_AADT`, the higher-stress reading) and a local
-    street on its centerline row; the rural table is not read (`oneway` and `urban` are
-    accepted for the callers that pass them and not read)."""
-    level, _ = mixed_traffic_level(speed_mph, ARTERIAL_CLASS_AADT if aadt is None else aadt)
+    `intersections.traffic_level`). The road class is not kept there, so every road is read
+    on the centerline row, and a road with no count is read between a local street and a
+    collector (`JUNCTION_UNCOUNTED_AADT`; our default, unmeasured, for the junction package
+    to settle). The rural table is not read (`oneway` and `urban` are accepted for the
+    callers that pass them and not read)."""
+    level, _ = mixed_traffic_level(speed_mph, JUNCTION_UNCOUNTED_AADT if aadt is None else aadt)
     return tier_and_half(level)
 
 

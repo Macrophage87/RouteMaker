@@ -350,17 +350,18 @@ class TestByTraffic:
     @pytest.mark.parametrize(
         ("road", "level"),
         [
-            # One lane each way: the classifier's single-lane reading, counts included.
-            (replace(PINEY_BRANCH, lanes=1), (3, False)),  # 30 mph
-            (replace(PINEY_BRANCH, lanes=1, speed_mph=35), (4, False)),
+            # One lane each way: Furth's centerline row (`stress.single_lane_traffic_level`),
+            # a road with no count read between a local street and a collector.
+            (replace(PINEY_BRANCH, lanes=1), (2, False)),  # 30 mph
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=35), (3, False)),
             (replace(PINEY_BRANCH, lanes=1, speed_mph=25), (2, False)),
-            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=6_000), (2, True)),  # busy street
-            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=9_000), (3, False)),  # high volume
-            (replace(PINEY_BRANCH, lanes=1, aadt=14_000, urban=True), (4, False)),
-            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=13_000, urban=True), (3, True)),
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=6_000), (3, False)),
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=9_000), (3, False)),
+            (replace(PINEY_BRANCH, lanes=1, aadt=14_000, urban=True), (3, False)),
+            (replace(PINEY_BRANCH, lanes=1, speed_mph=25, aadt=13_000, urban=True), (3, False)),
             # A two-lane one-way (or carriageway) is crossed in one gap: the single-lane row.
-            (replace(PINEY_BRANCH, lanes=2, oneway=True), (3, False)),
-            (replace(PINEY_BRANCH, lanes=None), (3, False)),  # lanes not known: one
+            (replace(PINEY_BRANCH, lanes=2, oneway=True), (2, False)),
+            (replace(PINEY_BRANCH, lanes=None), (2, False)),  # lanes not known: one
         ],
     )
     def test_a_narrower_road_is_read_as_the_classifier_reads_mixed_traffic(
@@ -370,8 +371,8 @@ class TestByTraffic:
 
     def test_a_protected_lane_does_not_make_a_busy_road_easier_to_cross(self) -> None:
         # The owner, 2026-10-31: "a protected bike lane on a busy road is just as hard to
-        # cross". A 35 mph road, one lane each way, 15,000 a day, LTS 1 on the map.
-        protected = Road(1, speed_mph=35, lanes=1, oneway=False, aadt=15_000, urban=True)
+        # cross". A 40 mph road, one lane each way, 15,000 a day, LTS 1 on the map.
+        protected = Road(1, speed_mph=40, lanes=1, oneway=False, aadt=15_000, urban=True)
         plain = replace(protected, tier=4)
         for control in (Control.STOP, Control.NONE, Control.SIGNAL):
             for when in (None, ridetime.WEEKDAY_RUSH):
@@ -388,7 +389,7 @@ class TestByTraffic:
         # map, 3 by its traffic). Both are read the same way, the map's: the rider's road is
         # the busier, and has the right of way, as before traffic reading.
         rider = Road(3, lanes=1, oneway=False, default_speed_mph=30.0)
-        side = Road(2, speed_mph=30, lanes=1, oneway=False)
+        side = Road(2, speed_mph=30, lanes=1, oneway=False, aadt=2_000)
         j = junction(incoming=rider, outgoing=rider, crossed=(side,), control=Control.NONE)
         assert m.cost_of(m.by_traffic(j))[0] == m.PRIORITY_SIDE_FT
         # But an unposted street never outranks a busy road its bike lane made calm on the
@@ -433,10 +434,10 @@ class TestByTraffic:
         assert m.cost_of(m.by_traffic(self.crossing(control=control)))[0] == feet
 
     def test_a_rider_whose_road_carries_more_traffic_has_the_right_of_way(self) -> None:
-        # Nothing mapped: a rider on a 35 mph road with a protected lane (LTS 1 on the map,
+        # Nothing mapped: a rider on a 45 mph road with a protected lane (LTS 1 on the map,
         # LTS 4 by its traffic) crossing a 25 mph four-lane road (LTS 3) is on the busier
         # road, and does not wait for its gaps (`crossing_ft`).
-        rider = Road(1, speed_mph=35, lanes=1, oneway=False)
+        rider = Road(1, speed_mph=45, lanes=1, oneway=False)
         j = self.crossing(replace(self.PINEY_BRANCH, speed_mph=25), incoming=rider)
         event = m.assess(replace(j, control=Control.NONE))
         assert event.cost_ft == m.PRIORITY_SIDE_FT
