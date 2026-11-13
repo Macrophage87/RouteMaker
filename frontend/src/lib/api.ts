@@ -20,15 +20,7 @@ import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
 import { language, t } from "./i18n.ts";
 import { OFFLINE_SAID } from "./appWorker.ts";
 import type { WithClosures } from "./closureMap.ts";
-import {
-  closureFields,
-  dialFields,
-  type Bike,
-  type Carrying,
-  type Dials,
-  type Ending,
-  type When,
-} from "./dials.ts";
+import { closureFields, dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
  * One coloured section of the route, in whole metres along its traced length
@@ -172,19 +164,9 @@ export interface ProfileCalm {
   /** At each of `profile.m`; null where the window holds nothing rated. */
   ratio: (number | null)[];
   /** Each stretch at its own multiplier: the faint step line. */
-  steps: {
-    from_m: number;
-    to_m: number;
-    ratio: number | null;
-    tier: number | null;
-  }[];
+  steps: { from_m: number; to_m: number; ratio: number | null; tier: number | null }[];
   /** Calm metres counted at one place: a junction's own cost, or Avoid's entry charge. */
-  points: {
-    m: number;
-    calm_m: number;
-    kind: "junction" | "avoid_entry";
-    severity: "orange" | "red" | null;
-  }[];
+  points: { m: number; calm_m: number; kind: "junction" | "avoid_entry"; severity: "orange" | "red" | null }[];
   total_calm_m: number;
   rated_m: number;
   /** False where the junctions could not be read, so none are counted. */
@@ -289,15 +271,7 @@ export interface DescriptionEntry {
    * seek ran (FOLLOWUP-HILL-SEEK). "hazard": a known road hazard the route rides (v0.10.0;
    * core/route_hazards.py): cobblestones or rails in the road.
    */
-  kind:
-    | "stretch"
-    | "junction"
-    | "via"
-    | "walk"
-    | "avoid"
-    | "workzone"
-    | "climb"
-    | "hazard";
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone" | "climb" | "hazard";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -311,14 +285,7 @@ export interface DescriptionEntry {
   turn: {
     /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
     /** "uturn": back the way the route came on the same way, at a dead end (describe.UTURN_DEG, round-3 audit D31). */
-    movement:
-      | "left"
-      | "straight"
-      | "right"
-      | "bear_left"
-      | "bear_right"
-      | "uturn"
-      | null;
+    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | "uturn" | null;
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
@@ -328,12 +295,7 @@ export interface DescriptionEntry {
      * An unusual junction's ways (v0.10.0, describe.junction_shape), in degrees from straight ahead, clockwise
      * positive: the ride card draws them in place of the plain arrow. Absent or null at a plain crossroads or T.
      */
-    shape?: {
-      out: number;
-      others: number[];
-      main?: "before" | "after" | null;
-      ring?: "right" | "left" | null;
-    } | null;
+    shape?: { out: number; others: number[]; main?: "before" | "after" | null; ring?: "right" | "left" | null } | null;
     /** The way off a circle (v0.10.0, describe.circle_exit): "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest". */
     exit?: { number: number; circle: string | null } | null;
     /**
@@ -462,13 +424,7 @@ export interface CalmSearch {
   /** Where the router's own route was past the target: the traffic position the first route that fits was found at. */
   fitted_at?: number | null;
   /** A trip past the working span, planned leg by leg. */
-  long?: {
-    legs: number;
-    searched: number;
-    skipped: number;
-    stops: number[];
-    answered?: string | null;
-  } | null;
+  long?: { legs: number; searched: number; skipped: number; stops: number[]; answered?: string | null } | null;
 }
 
 /** How much longer the route is than the most direct legal one (core.api.DetourOut). */
@@ -581,12 +537,7 @@ export interface BikeshareEnding {
   kind: Ending;
   offered: boolean;
   chosen: boolean;
-  reason:
-    | "no_zone_data"
-    | "zones_unreadable"
-    | "no_parking_zone"
-    | "classic_bikes_end_at_docks"
-    | null;
+  reason: "no_zone_data" | "zones_unreadable" | "no_parking_zone" | "classic_bikes_end_at_docks" | null;
   reason_text: string | null;
   fee: BikeshareFee | null;
   fee_text: string | null;
@@ -601,18 +552,7 @@ export interface BikeshareEnding {
 /** One step of a transit plan (core.transit, POST /api/route's `transit.steps`). */
 export interface TransitStep {
   /** A transit leg's mode is its system's: `metro` (WMATA), `rail` (MARC), `light-rail`, `subway`, `bus`. */
-  mode:
-    | "ride"
-    | "take"
-    | "bikeshare"
-    | "walk"
-    | "enter"
-    | "exit"
-    | "metro"
-    | "rail"
-    | "light-rail"
-    | "subway"
-    | "bus";
+  mode: "ride" | "take" | "bikeshare" | "walk" | "enter" | "exit" | "metro" | "rail" | "light-rail" | "subway" | "bus";
   /** The step in one sentence, US units first, as it is read aloud. */
   text: string;
   seconds: number;
@@ -764,14 +704,7 @@ export interface StationLineTime {
 export interface StationLive {
   station: string;
   /** The next trains by line and way: minutes (0 arriving), and in words ("3 min, 11 min"; "arriving"). */
-  trains: {
-    line: string;
-    toward: string;
-    end?: [number, number] | null;
-    track?: string | null;
-    minutes: number[];
-    when: string;
-  }[];
+  trains: { line: string; toward: string; end?: [number, number] | null; track?: string | null; minutes: number[]; when: string }[];
   /** "Elevator out at Gallery Place: carry your bike on the stairs." */
   elevators: { words: string; where: string }[];
   /** WMATA's rail incidents on the station's lines. */
@@ -1024,13 +957,7 @@ export interface NoviceNote {
    * The longest named run of them, or null; `from` and `to` (v0.11.0) are where it begins and ends, sent as
    * `novice_hop` so the transit trips offered can hop past it.
    */
-  busiest: {
-    name: string | null;
-    metres: number;
-    level: number;
-    from?: LonLat;
-    to?: LonLat;
-  } | null;
+  busiest: { name: string | null; metres: number; level: number; from?: LonLat; to?: LonLat } | null;
   /** The calm search hit its 1.4 times ceiling. */
   over_ceiling: boolean;
   /** Only a busy road connects: offer transit or bikeshare. */
@@ -1066,16 +993,7 @@ export interface RunInfo {
 /** One barrier or flight of steps on a route (core/barriers.py `reading`). */
 export interface BarrierItem {
   kind: string;
-  word:
-    | "stile"
-    | "kissing_gate"
-    | "turnstile"
-    | "steps"
-    | "narrow_gap"
-    | "bollard"
-    | "cycle_barrier"
-    | "gate"
-    | "other";
+  word: "stile" | "kissing_gate" | "turnstile" | "steps" | "narrow_gap" | "bollard" | "cycle_barrier" | "gate" | "other";
   lon: number;
   lat: number;
   width_m: number | null;
@@ -1100,19 +1018,8 @@ export interface BarrierReading {
 export interface BarrierRound {
   rounds: number;
   impassable: number;
-  limited:
-    | "time"
-    | "no_way_round"
-    | "at_stop"
-    | "no_data"
-    | "excludes_full"
-    | null;
-  in_the_way: {
-    kind: string;
-    word: BarrierItem["word"];
-    lon: number;
-    lat: number;
-  }[];
+  limited: "time" | "no_way_round" | "at_stop" | "no_data" | "excludes_full" | null;
+  in_the_way: { kind: string; word: BarrierItem["word"]; lon: number; lat: number }[];
 }
 
 /** An Easy MTB trails plan's reading of its route (core.api.EasyMtbOut). */
@@ -1131,13 +1038,7 @@ export interface RouteResponse {
    * the map and their cards' words, and the "Check before you go" notices (lib/closureMap.ts). Null or absent where
    * none is running.
    */
-  work_zones?:
-    | (NonNullable<WithClosures["work_zones"]> & {
-        ride_at?: string | null;
-        disclaimer?: string;
-        sources?: string[];
-      })
-    | null;
+  work_zones?: (NonNullable<WithClosures["work_zones"]> & { ride_at?: string | null; disclaimer?: string; sources?: string[] }) | null;
   /**
    * Novice and Nervous only (v0.7.0; core.routing novice_note): the busy riding left on the route and its longest
    * named busy stretch, and whether transit or bikeshare should be offered; null or absent elsewhere.
@@ -1175,20 +1076,12 @@ export interface RouteResponse {
   /** On the answer: what the plan did about them; null where the route passed none. */
   avoid_search?: AvoidSearch | null;
   /** On the answer: the best route round them, however much longer (335); null otherwise. */
-  avoid_alternate?:
-    | (RouteResponse & { extra_distance_m: number; extra_duration_s: number })
-    | null;
+  avoid_alternate?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number }) | null;
   /**
    * On the answer (v0.8.2): the standard way through the closures it goes round, since a closure marked may not
    * really be closed (the owner, 2026-10-17). Drawn beside the route; Ride follows it where the rider takes it.
    */
-  closure_through?:
-    | (RouteResponse & {
-        extra_distance_m: number;
-        extra_duration_s: number;
-        closure_ids: string[];
-      })
-    | null;
+  closure_through?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number; closure_ids: string[] }) | null;
   /** Bikeshare only: the walks, docks, availability, fee and notes around this ride leg; null elsewhere. */
   bikeshare?: BikesharePlan | null;
   /** The transit ride types only (core.transit): the whole trip in steps around this body, its first ride leg. */
@@ -1220,27 +1113,13 @@ export interface RouteResponse {
    */
   neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
-  variant:
-    | "standard"
-    | "no-trail"
-    | "ebike"
-    | "weekend"
-    | "offroad"
-    | "mtb"
-    | "paved"
-    | "paved-weekend";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb" | "paved" | "paved-weekend";
   /** A ride type that skips dirt trails rides one here (a point on one opened it, core/trail_touch.py). A ride then opens them all to its re-plans. */
   dirt_trails?: boolean;
   /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */
   dirt_closed?: boolean;
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks; a Mass Ride's point on a street with rails in it goes to the nearest cross street (core/mass_rails.py). */
-  moved_points?: {
-    index: number;
-    asked: LonLat;
-    routed: LonLat;
-    reason: "zoo_racks" | "rail_street" | "restricted_gate";
-    note: string;
-  }[];
+  moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks" | "rail_street" | "restricted_gate"; note: string }[];
   /**
    * Notes on a stop or the end (core.api.PointNoteOut; the owner, 2026-10-29): one on a road not open to the public,
    * which the route still goes to. Shown and said as the moved points are (lib/summary.ts movedPointsNote).
@@ -1322,12 +1201,7 @@ export interface RouteResponse {
      * it did not run. "no_climbs": the server has no Climbs layer file, so only the router's own routes
      * were compared.
      */
-    climb_seek?: {
-      near: number;
-      asked: number;
-      found: number;
-      limited: "no_climbs" | "time" | null;
-    } | null;
+    climb_seek?: { near: number; asked: number; found: number; limited: "no_climbs" | "time" | null } | null;
   } | null;
   /**
    * Present when the hills slider was past its middle on a ride type where that means "fine with
@@ -1445,23 +1319,13 @@ export const NO_BIKESHARE = "no_bikeshare";
 export const NO_TRANSIT = "no_transit";
 export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
-export type RouteResult =
-  | { ok: true; route: RouteResponse }
-  | { ok: false; error: RouteError };
+export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
 /** The API's sentence for a plan no route joins (core/api.py _router_refusal), before any explanation it adds. */
 const NO_ROUTE_SAID = "No route joins these points on this preset.";
 
 /** The error kinds a Try again can help: the planner busy or out of reach, or a refusal the rider may change. */
-const RETRIED: readonly ErrorKind[] = [
-  "bad-input",
-  "router-down",
-  "timed-out",
-  "bikeshare-unavailable",
-  "server",
-  "network",
-  "rate-limited",
-];
+const RETRIED: readonly ErrorKind[] = ["bad-input", "router-down", "timed-out", "bikeshare-unavailable", "server", "network", "rate-limited"];
 
 /** A route error as the Route section shows it: its title (none where the message says it all), message and Try again. */
 export interface ErrorShown {
@@ -1476,23 +1340,11 @@ export interface ErrorShown {
  * `goPlace`: Go's destination's name, or null (Plan, or a loop back to the start). `offline`: the page is offline, and
  * the planner out of reach is said as that, where kept routes open, the one offline message (lib/appWorker.ts offlineLine).
  */
-export function routeErrorShown(
-  error: RouteError,
-  goPlace: string | null,
-  offline = false,
-): ErrorShown {
+export function routeErrorShown(error: RouteError, goPlace: string | null, offline = false): ErrorShown {
   const retry = RETRIED.includes(error.kind);
-  if (error.kind === "network" && offline)
-    return { title: null, message: OFFLINE_SAID, retry };
+  if (error.kind === "network" && offline) return { title: null, message: OFFLINE_SAID, retry };
   if (error.joins && goPlace !== null) {
-    const message = [
-      t("No route to {place} with this ride type. Try another ride type.", {
-        place: goPlace,
-      }),
-      error.joins.detail,
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const message = [t("No route to {place} with this ride type. Try another ride type.", { place: goPlace }), error.joins.detail].filter(Boolean).join(" ");
     return { title: null, message, retry };
   }
   return { title: error.title, message: error.message, retry };
@@ -1501,27 +1353,17 @@ export function routeErrorShown(
 /** Go's "More direct" (two notches more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
 /** Go's More direct and Calmer, and the named options at the rider's own setting (the backlog's "fewer turns" item). */
 export type NeighbourKind = "direct" | "calmer" | "fewer_turns" | "paved";
-const NEIGHBOUR_KINDS: readonly NeighbourKind[] = [
-  "direct",
-  "calmer",
-  "fewer_turns",
-  "paved",
-];
+const NEIGHBOUR_KINDS: readonly NeighbourKind[] = ["direct", "calmer", "fewer_turns", "paved"];
 export interface NeighbourOption {
   kind: NeighbourKind;
   stress: number;
   route: RouteResponse;
 }
 /** POST /api/route/neighbours: the options, or a refusal (its Retry-After still holds for the next request). */
-export type NeighboursResult =
-  | { ok: true; options: NeighbourOption[] }
-  | { ok: false; error: RouteError };
+export type NeighboursResult = { ok: true; options: NeighbourOption[] } | { ok: false; error: RouteError };
 
 /** Retry-After as seconds from now: either delta-seconds or an HTTP date. */
-export function parseRetryAfter(
-  header: string | null | undefined,
-  now: number = Date.now(),
-): number | undefined {
+export function parseRetryAfter(header: string | null | undefined, now: number = Date.now()): number | undefined {
   if (header == null) return undefined;
   const text = header.trim();
   if (/^\d+$/.test(text)) return Number(text);
@@ -1564,25 +1406,13 @@ export function friendlyInput(said: string | undefined): string {
 function inputRefusal(said: string | undefined): [string, boolean] {
   if (!said) return [t("The planner could not use these points."), false];
   if (/outside the area/i.test(said)) {
-    return [
-      t(
-        "One of the points is outside the area this map covers. Move it back inside.",
-      ),
-      true,
-    ];
+    return [t("One of the points is outside the area this map covers. Move it back inside."), true];
   }
-  if (/at least 2|too short|min_length/i.test(said))
-    return [t("Set a start and an end first."), true];
-  if (/at most|too long|max_length/i.test(said))
-    return [t("That is more points than one route can take."), true];
+  if (/at least 2|too short|min_length/i.test(said)) return [t("Set a start and an end first."), true];
+  if (/at most|too long|max_length/i.test(said)) return [t("That is more points than one route can take."), true];
   // The validator's own reason stays as the API words it.
   const reason = withoutValidatorPrefix(said.split(";")[0]);
-  return [
-    reason
-      ? t("The planner could not use these points: {reason}.", { reason })
-      : t("The planner could not use these points."),
-    false,
-  ];
+  return [reason ? t("The planner could not use these points: {reason}.", { reason }) : t("The planner could not use these points."), false];
 }
 
 /**
@@ -1601,31 +1431,20 @@ function asSentence(said: string): string {
 
 function wait(retryAfterS: number | undefined, fallback: string): string {
   if (retryAfterS === undefined) return fallback;
-  return retryAfterS <= 1
-    ? t("Try again in a moment.")
-    : t("Try again in {seconds} seconds.", { seconds: retryAfterS });
+  return retryAfterS <= 1 ? t("Try again in a moment.") : t("Try again in {seconds} seconds.", { seconds: retryAfterS });
 }
 
 /** core.routing.mass_ride_outside_dc's refusal: a Mass Ride's start, stop or end outside DC. */
 export const MASS_OUTSIDE_DC_CODE = "mass_ride_outside_dc";
-export const MASS_OUTSIDE_DC_SAID =
-  "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.";
+export const MASS_OUTSIDE_DC_SAID = "Mass Ride is calibrated to road data only available inside DC, so its start, stops and end must be in the District. To ride outside DC, switch to Group Ride with trails off.";
 /** Its one action (RouteErrorBox). */
 export const GROUP_RIDE_NO_TRAILS = "Switch to Group Ride, trails off";
 
-export function describeError(
-  status: number,
-  body: unknown,
-  retryAfter: string | null,
-): RouteError {
+export function describeError(status: number, body: unknown, retryAfter: string | null): RouteError {
   const said = serverSentence(body);
   const parsed = parseRetryAfter(retryAfter);
-  const retryAfterS =
-    parsed === undefined ? undefined : Math.min(parsed, RETRY_AFTER_CAP_S);
-  const base = {
-    status,
-    ...(retryAfterS === undefined ? {} : { retryAfterS }),
-  };
+  const retryAfterS = parsed === undefined ? undefined : Math.min(parsed, RETRY_AFTER_CAP_S);
+  const base = { status, ...(retryAfterS === undefined ? {} : { retryAfterS }) };
   if (status === 400 && said && /too long/i.test(said)) {
     return {
       ...base,
@@ -1635,41 +1454,22 @@ export function describeError(
       message: asSentence(withoutValidatorPrefix(said)),
     };
   }
-  const refusal =
-    body && typeof body === "object"
-      ? (body as { code?: unknown }).code
-      : undefined;
+  const refusal = body && typeof body === "object" ? (body as { code?: unknown }).code : undefined;
   if (status === 400 && refusal === MASS_OUTSIDE_DC_CODE) {
     // The owner, 2026-10-29: "Don't leave DC on a mass ride", then: "Offer to switch to a no trail group ride if they
     // want to go outside DC. Mostly focus on the fact that it's calibrated to data that's only available inside DC."
-    return {
-      ...base,
-      kind: "mass-outside-dc",
-      title: t("Mass Ride stays in DC"),
-      message: t(MASS_OUTSIDE_DC_SAID),
-    };
+    return { ...base, kind: "mass-outside-dc", title: t("Mass Ride stays in DC"), message: t(MASS_OUTSIDE_DC_SAID) };
   }
   if (status === 400) {
     const [message, ownStep] = inputRefusal(said);
     // A refusal that names no step of its own says the next one (P11), beside its Try again.
     const next = ownStep ? "" : ` ${t("Try another start or destination.")}`;
-    return {
-      ...base,
-      kind: "bad-input",
-      title: t("Can't plan that"),
-      message: `${message}${next}`,
-    };
+    return { ...base, kind: "bad-input", title: t("Can't plan that"), message: `${message}${next}` };
   }
-  const code =
-    body && typeof body === "object"
-      ? (body as { code?: unknown }).code
-      : undefined;
+  const code = body && typeof body === "object" ? (body as { code?: unknown }).code : undefined;
   if (status === 409 && code === "confirm_long") {
     const span = (body as { span_km?: unknown }).span_km;
-    const spanKm =
-      typeof span === "number" && Number.isFinite(span) && span > 0
-        ? Math.round(span)
-        : undefined;
+    const spanKm = typeof span === "number" && Number.isFinite(span) && span > 0 ? Math.round(span) : undefined;
     return {
       ...base,
       kind: "confirm-long",
@@ -1677,10 +1477,7 @@ export function describeError(
       message:
         spanKm === undefined
           ? t("This is a long ride. Planning it may take a little longer.")
-          : t(
-              "This is a long ride: about {distance} in straight lines. Planning it may take a little longer.",
-              { distance: formatRoughDistance(spanKm * 1000) },
-            ),
+          : t("This is a long ride: about {distance} in straight lines. Planning it may take a little longer.", { distance: formatRoughDistance(spanKm * 1000) }),
       ...(spanKm === undefined ? {} : { spanKm }),
     };
   }
@@ -1689,9 +1486,7 @@ export function describeError(
       ...base,
       kind: "no-route",
       title: t("No bikeshare plan"),
-      message: said
-        ? asSentence(said)
-        : t("No dock can be used for this plan. Try the other bike type."),
+      message: said ? asSentence(said) : t("No dock can be used for this plan. Try the other bike type."),
     };
   }
   if (status === 422 && code === NO_TRANSIT) {
@@ -1699,11 +1494,7 @@ export function describeError(
       ...base,
       kind: "no-route",
       title: t("No transit plan"),
-      message: said
-        ? asSentence(said)
-        : t(
-            "No Metro or bus combination can be planned here. Try riding the whole way.",
-          ),
+      message: said ? asSentence(said) : t("No Metro or bus combination can be planned here. Try riding the whole way."),
     };
   }
   if (status === 404 || status === 422) {
@@ -1715,16 +1506,7 @@ export function describeError(
       ...base,
       kind: "no-route",
       title: t("No route found"),
-      message: plain
-        ? [
-            t(
-              "No route joins these points. Try moving a point or another ride type.",
-            ),
-            detail,
-          ]
-            .filter(Boolean)
-            .join(" ")
-        : (said ?? ""),
+      message: plain ? [t("No route joins these points. Try moving a point or another ride type."), detail].filter(Boolean).join(" ") : (said ?? ""),
       ...(plain ? { joins: { detail } } : {}),
     };
   }
@@ -1741,9 +1523,7 @@ export function describeError(
       ...base,
       kind: "router-down",
       title: t("Router unavailable"),
-      message: t(
-        "The routing engine is not answering right now. Try again shortly.",
-      ),
+      message: t("The routing engine is not answering right now. Try again shortly."),
     };
   }
   if (status === 503 && code === BIKESHARE_UNAVAILABLE) {
@@ -1759,9 +1539,7 @@ export function describeError(
       ...base,
       kind: "timed-out",
       title: t("Transit times unavailable"),
-      message: said
-        ? asSentence(said)
-        : `${t("Transit times are not available right now.")} ${wait(retryAfterS, t("Try again shortly."))}`,
+      message: said ? asSentence(said) : `${t("Transit times are not available right now.")} ${wait(retryAfterS, t("Try again shortly."))}`,
       noAutoResend: true,
     };
   }
@@ -1770,9 +1548,7 @@ export function describeError(
       ...base,
       kind: "timed-out",
       title: t("Long ride not planned"),
-      message:
-        said ??
-        `${t("Planning this long ride ran out of time.")} ${wait(retryAfterS, t("Try again shortly."))}`,
+      message: said ?? `${t("Planning this long ride ran out of time.")} ${wait(retryAfterS, t("Try again shortly."))}`,
       noAutoResend: true,
     };
   }
@@ -1789,9 +1565,7 @@ export function describeError(
     ...base,
     kind: "server",
     title: t("Something went wrong"),
-    message: t(
-      "The planner hit an unexpected problem. Try again, or try a different route.",
-    ),
+    message: t("The planner hit an unexpected problem. Try again, or try a different route."),
   };
 }
 
@@ -1850,11 +1624,7 @@ export interface RouteRequestOptions {
 export const FOLLOW_MAX_POINTS = 5000;
 
 /** POST /api/route's body as JSON text: the same text for the same plan, so it also keys Go's early start. */
-export function routeRequestBody(
-  points: readonly LonLat[],
-  preset: PresetId,
-  options: RouteRequestOptions = {},
-): string {
+export function routeRequestBody(points: readonly LonLat[], preset: PresetId, options: RouteRequestOptions = {}): string {
   // confirm_long only when the rider said yes to a long plan (LONG-RIDE
   // contract); the API asks anonymous riders first with a 409.
   return JSON.stringify({
@@ -1866,68 +1636,36 @@ export function routeRequestBody(
     // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
     // its API refuses one, so a loop kept from another ride type is not sent.
     ...(options.dials
-      ? dialFields(
-          preset === "mass-ride" || twoPointsOnly(preset)
-            ? { ...options.dials, loop: false }
-            : options.dials,
-        )
+      ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
       : {}),
     ...(options.confirmLong ? { confirm_long: true } : {}),
     // "Route through anyway" and Go's closures in force (lib/dials.ts closureFields).
     ...(options.dials ? closureFields(options.dials) : {}),
     // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
-    ...(options.vias?.length && !twoPointsOnly(preset)
-      ? { via_points: [...options.vias] }
-      : {}),
+    ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
     ...(options.quick ? { quick: true } : {}),
     // A ride's re-plan takes the first route only, so the API does not look for others to choose from.
     ...(options.routeOnly ? { candidates: false } : {}),
     // An opened file's line, followed rather than planned through its points.
     ...(options.follow && options.follow.length >= 2 && !twoPointsOnly(preset)
-      ? {
-          follow: encodePolyline6(options.follow),
-          ...(options.followExact ? { follow_exact: true } : {}),
-        }
+      ? { follow: encodePolyline6(options.follow), ...(options.followExact ? { follow_exact: true } : {}) }
       : {}),
     // The legs drawn in Plan's manual mode, straight between their points. Never on a two-point ride type.
-    ...(options.straight?.length && !twoPointsOnly(preset)
-      ? { straight_legs: [...options.straight] }
-      : {}),
+    ...(options.straight?.length && !twoPointsOnly(preset) ? { straight_legs: [...options.straight] } : {}),
     // The roads the rider marked closed on this ride (Ride's Road closed): sent with its re-plans only.
-    ...(options.blocked?.length
-      ? {
-          blocked_lines: options.blocked.map((line) =>
-            line.map((p) => [p[0], p[1]]),
-          ),
-        }
-      : {}),
+    ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
     // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
-    ...(options.heading != null && Number.isFinite(options.heading)
-      ? {
-          heading: ((options.heading % 360) + 360) % 360,
-          ...(options.aheadOnly ? { ahead_only: true } : {}),
-        }
-      : {}),
+    ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360, ...(options.aheadOnly ? { ahead_only: true } : {}) } : {}),
     // A ride's re-plan starts at the rider: a dirt trail there, or one ridden earlier, opens them all.
     ...(options.rideReplan
-      ? {
-          ride_replan: true,
-          ...(options.dirtRidden ? { dirt_ridden: true } : {}),
-          ...(options.dirtClosed ? { dirt_closed: true } : {}),
-          ...(options.mtbDone ? { mtb_done: true } : {}),
-        }
+      ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}), ...(options.mtbDone ? { mtb_done: true } : {}) }
       : {}),
     // Avoid stairs (Settings): the trip's walks keep off flights of steps. Only the ride types that walk on their own
     // send it; a walk beside the rider's own bike always keeps off them.
-    ...((twoPointsOnly(preset) || runs(preset)) &&
-    (options.avoidStairs ?? readAvoidStairs())
-      ? { avoid_stairs: true }
-      : {}),
+    ...((twoPointsOnly(preset) || runs(preset)) && (options.avoidStairs ?? readAvoidStairs()) ? { avoid_stairs: true } : {}),
     // Run's pace (lib/runPace.ts), kept on this device and sent with Run alone.
-    ...(runs(preset)
-      ? { run_pace_kmh: paceKmh(options.runPaceMph ?? readRunPace()) }
-      : {}),
+    ...(runs(preset) ? { run_pace_kmh: paceKmh(options.runPaceMph ?? readRunPace()) } : {}),
     // The language of the answer's sentences (lib/i18n.ts); English, the API's own, is not sent.
     ...(language() !== "en" ? { lang: language() } : {}),
   });
@@ -1948,8 +1686,7 @@ export async function requestRoute(
   // slot (routeScheduler.ts); a full plan replaced is cancelled by its id instead.
   options: RouteRequestOptions & PlanIds & { fetchImpl?: FetchLike } = {},
 ): Promise<RouteResult> {
-  const fetchImpl: FetchLike =
-    options.fetchImpl ?? ((url, init) => fetch(url, init));
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
   try {
     response = await fetchImpl("/api/route", {
@@ -1969,9 +1706,7 @@ export async function requestRoute(
         kind: "network",
         status: 0,
         title: t("Can't reach the planner"),
-        message: t(
-          "The request did not get through. Check your connection and try again.",
-        ),
+        message: t("The request did not get through. Check your connection and try again."),
       },
     };
   }
@@ -1985,31 +1720,18 @@ export async function requestRoute(
     // The server's sentences in the rider's units order (metric mode, lib/units.ts).
     const route = unitsFirstDeep(body);
     // A departure's countdown runs from this moment by the phone's clock, not the server's (review TB-6).
-    if (route.transit?.departure)
-      noteArrived(route.transit.departure, Date.now());
+    if (route.transit?.departure) noteArrived(route.transit.departure, Date.now());
     return { ok: true, route };
   }
   const status = response.ok ? 500 : response.status;
-  const error = describeError(
-    status,
-    body,
-    response.headers.get("Retry-After"),
-  );
+  const error = describeError(status, body, response.headers.get("Retry-After"));
   // A confirmed long plan can be refused because a long ride is already
   // being planned (one per client, one per deployment: LONG-RIDE contract).
   // The API's sentence says so; "too many requests" would not.
   const said = serverSentence(body);
   // A long ride that ran out of time already has its own title and words.
-  if (
-    options.confirmLong &&
-    (status === 429 || status === 503) &&
-    said &&
-    !error.noAutoResend
-  ) {
-    return {
-      ok: false,
-      error: { ...error, title: t("Planner busy"), message: said },
-    };
+  if (options.confirmLong && (status === 429 || status === 503) && said && !error.noAutoResend) {
+    return { ok: false, error: { ...error, title: t("Planner busy"), message: said } };
   }
   return { ok: false, error };
 }
@@ -2019,19 +1741,12 @@ export async function requestRoute(
  * approved by the owner 2026-10-27). Fire and forget: nothing waits for it, and a cancel that fails only leaves the
  * old plan to run out, as before. `keepalive`, so it still goes when the page is closing.
  */
-export function cancelRoute(
-  planId: string,
-  options: { fetchImpl?: FetchLike } = {},
-): void {
-  const fetchImpl: FetchLike =
-    options.fetchImpl ?? ((url, init) => fetch(url, init));
+export function cancelRoute(planId: string, options: { fetchImpl?: FetchLike } = {}): void {
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   try {
     fetchImpl("/api/route/cancel", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ plan_id: planId }),
       keepalive: true,
     }).catch(() => {});
@@ -2041,10 +1756,7 @@ export function cancelRoute(
 }
 
 /** The request body with the options asked for (`options`, in order of want), or as it is: the API's default, direct and calmer. */
-function withOptions(
-  body: string,
-  kinds: readonly NeighbourKind[] | undefined,
-): string {
+function withOptions(body: string, kinds: readonly NeighbourKind[] | undefined): string {
   if (!kinds) return body;
   return JSON.stringify({ ...(JSON.parse(body) as object), options: kinds });
 }
@@ -2056,74 +1768,39 @@ function withOptions(
 export async function requestNeighbours(
   points: readonly LonLat[],
   preset: PresetId,
-  options: Pick<RouteRequestOptions, "dials" | "vias"> & {
-    fetchImpl?: FetchLike;
-    kinds?: readonly NeighbourKind[];
-  } = {},
+  options: Pick<RouteRequestOptions, "dials" | "vias"> & { fetchImpl?: FetchLike; kinds?: readonly NeighbourKind[] } = {},
 ): Promise<NeighboursResult> {
-  const fetchImpl: FetchLike =
-    options.fetchImpl ?? ((url, init) => fetch(url, init));
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   try {
     const response = await fetchImpl("/api/route/neighbours", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: withOptions(
-        routeRequestBody(points, preset, {
-          dials: options.dials,
-          vias: options.vias,
-        }),
-        options.kinds,
-      ),
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: withOptions(routeRequestBody(points, preset, { dials: options.dials, vias: options.vias }), options.kinds),
     });
     const body: unknown = await response.json().catch(() => null);
     const list = (body as { options?: unknown } | null)?.options;
     if (response.ok && Array.isArray(list)) {
       const kept = list.filter(
         (o): o is NeighbourOption =>
-          !!o &&
-          NEIGHBOUR_KINDS.includes(o.kind) &&
-          typeof o.stress === "number" &&
-          looksLikeRoute(o.route),
+          !!o && NEIGHBOUR_KINDS.includes(o.kind) && typeof o.stress === "number" && looksLikeRoute(o.route),
       );
       return { ok: true, options: unitsFirstDeep(kept) };
     }
-    return {
-      ok: false,
-      error: describeError(
-        response.ok ? 500 : response.status,
-        body,
-        response.headers.get("Retry-After"),
-      ),
-    };
+    return { ok: false, error: describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After")) };
   } catch {
-    return {
-      ok: false,
-      error: {
-        kind: "network",
-        status: 0,
-        title: t("Can't reach the planner"),
-        message: "",
-      },
-    };
+    return { ok: false, error: { kind: "network", status: 0, title: t("Can't reach the planner"), message: "" } };
   }
 }
 
 /** The nearest-stations list's answer, or a sentence for the rider (OWNER-DECISIONS 466a). */
-export type StationsResult =
-  | { ok: true; answer: NearbyStationsAnswer }
-  | { ok: false; message: string };
+export type StationsResult = { ok: true; answer: NearbyStationsAnswer } | { ok: false; message: string };
 
 function looksLikeStations(body: unknown): body is NearbyStationsAnswer {
   if (typeof body !== "object" || body === null) return false;
   const r = body as Record<string, unknown>;
   return (
     (r.action === "pickup" || r.action === "dropoff") &&
-    (r.availability === "live" ||
-      r.availability === "stale" ||
-      r.availability === "unknown") &&
+    (r.availability === "live" || r.availability === "stale" || r.availability === "unknown") &&
     Array.isArray(r.stations)
   );
 }
@@ -2137,37 +1814,20 @@ function looksLikeStations(body: unknown): body is NearbyStationsAnswer {
 export async function requestStations(
   point: LonLat,
   action: StationAction,
-  options: {
-    fetchImpl?: FetchLike;
-    signal?: AbortSignal;
-    toward?: LonLat | null;
-  } = {},
+  options: { fetchImpl?: FetchLike; signal?: AbortSignal; toward?: LonLat | null } = {},
 ): Promise<StationsResult> {
-  const fetchImpl: FetchLike =
-    options.fetchImpl ?? ((url, init) => fetch(url, init));
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
   try {
     response = await fetchImpl("/api/bikeshare/stations", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       // `toward`, the trip's other end, puts the stations on the rider's way first.
-      body: JSON.stringify(
-        options.toward
-          ? { point, action, toward: options.toward }
-          : { point, action },
-      ),
+      body: JSON.stringify(options.toward ? { point, action, toward: options.toward } : { point, action }),
       signal: options.signal,
     });
   } catch {
-    return {
-      ok: false,
-      message: t(
-        "The station list did not load. Check your connection and try again.",
-      ),
-    };
+    return { ok: false, message: t("The station list did not load. Check your connection and try again.") };
   }
   let body: unknown = null;
   try {
@@ -2176,21 +1836,9 @@ export async function requestStations(
     body = null;
   }
   if (response.ok && looksLikeStations(body)) return { ok: true, answer: body };
-  if (response.status === 429)
-    return {
-      ok: false,
-      message: t("Too many requests just now. Try again in a minute."),
-    };
+  if (response.status === 429) return { ok: false, message: t("Too many requests just now. Try again in a minute.") };
   if (response.status === 503) {
-    return {
-      ok: false,
-      message: t(
-        "Station availability is not available right now. Try again shortly.",
-      ),
-    };
+    return { ok: false, message: t("Station availability is not available right now. Try again shortly.") };
   }
-  return {
-    ok: false,
-    message: t("The station list is not available right now."),
-  };
+  return { ok: false, message: t("The station list is not available right now.") };
 }
