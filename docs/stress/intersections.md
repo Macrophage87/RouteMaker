@@ -122,9 +122,10 @@ flowchart TD
 
 When the rider has the stop sign and the busy road does not, the price is the larger of
 two things: the published price for a road of that crossing level, and twice the time a
-rider can expect to wait for a gap at that hour. On most roads the first is larger. On a
-wide road with heavy traffic at rush hour the wait runs to minutes, and the price rises
-to the most any junction can cost, 2 calm miles.
+rider can expect to wait for a gap at that hour. The wait counted is the wait the rider
+is shown, 30 seconds at most, so twice it is never more than 984 ft. On any road busy
+enough to make a rider wait, the published price is the larger: the wait is inside it,
+not added to it.
 
 ```mermaid
 flowchart LR
@@ -133,7 +134,9 @@ flowchart LR
   D --> E["x 2"]
   B --> F["The larger"]
   E --> F
-  F --> G["At most 10,560 ft (2 mi)"]
+  D --> H["At most 30 s"]
+  H --> E
+  F --> G["One crossing: 3,260 ft at most"]
 ```
 
 | Road crossed, stop sign | Off-peak | Weekday rush |
@@ -142,7 +145,7 @@ flowchart LR
 | 2 lanes, 30 mph, 15,000 a day | 550 ft | 550 ft |
 | 4 lanes, 30 mph, no count | 380 ft | 380 ft |
 | 4 lanes, 30 mph, 25,000 a day | 3,260 ft | 3,260 ft |
-| 6 lanes, 35 mph, 38,000 a day | 3,825 ft | 10,560 ft |
+| 6 lanes, 35 mph, 38,000 a day | 3,260 ft | 3,260 ft |
 
 <details>
 <summary>Full reasoning and citations (for review)</summary>
@@ -158,8 +161,21 @@ flowchart LR
   gap tc = L / S + ts, delay d = (e^(v tc) - v tc - 1) / v. 12 ft lanes and 3 s start-up
   are the report's; above 35 mph the flow is divided by 0.7 (its worksheet 2). The
   crossing speed is the Default ride's 11.2 mph (16.4 ft/s) in place of a walker's: our
-  choice of input. The same formula and figures time the wait shown to the rider
-  (`routemaker.junction_delay`).
+  choice of input.
+- **The wait priced is the wait shown (one number).** `wait_s` is that formula capped at
+  `GAP_WAIT_MAX_S`, 30 s (literature for the threshold: the report's Table 8, above 30 s
+  the likelihood of risk-taking is "high"; using it as a cap is our default). The price
+  weighs it (`gap_ft`) and the junction waits show it (`routemaker.junction_delay`).
+  Until 2026-11-13 only the time was capped: the six-lane road in the table was priced
+  on a 599 s wait (10,560 ft) and shown 33 s. A right turn onto a two-way road waits for
+  the near direction only (`near_lanes`); a left off a busy two-way road for the
+  oncoming direction only (`left_from_ft`; it was all the road's lanes).
+- **Owner-linked numbers this limits.** With the cap, `WAIT_PAIN` adds at most 984 ft and
+  decides the price only on roads under about 4,000 a day (tens of feet); the 2 mile top
+  (`MAX_CROSSING_FT`, decision 467) is no longer reached by one crossing, only by
+  junctions merged or stacked. The other reading of "one number" is to cap neither below
+  the formula's own limit, which prices that six-lane road at 2 miles and shows the
+  rider a wait of minutes. The owner's to choose.
 - **Twice the wait (the owner's choice).** `WAIT_PAIN` = 2. The owner, 2026-10-23, of two
   stop-sign crossings of six-lane commuter roads at rush hour: "essentially impassable";
   "Most people would rather bike 10 minutes than wait 5 minutes at a busy crossing for an
@@ -176,7 +192,10 @@ flowchart LR
 - **Removed, with nothing in their place:** the speed, lane and volume factors, the rural
   x1.25, the "severe tier", the 45 mph stopgap for an unposted LTS 4 road.
 - **Limits.** The formula takes random arrivals and no driver yielding, so it overstates
-  where signals upstream bunch the traffic. Broach's riders are Portland's.
+  where signals upstream bunch the traffic. Broach's riders are Portland's. The 0.7
+  divisor above 35 mph is a step, as published: the same road posted 40 mph has a wait
+  1.6 to 2.1 times as long as at 35 mph (below the cap). The report gives one threshold
+  and no gradation, so it is not smoothed.
 - **What would change it:** hourly counts; a revealed-preference study in this region.
 
 </details>
@@ -302,7 +321,7 @@ flowchart LR
 - **Slip lane: 1,000 ft** (`SLIP_LANE_FT`; x0.5 at a signal, `SIGNALISED_SLIP_FACTOR`).
   **Our default, unmeasured.** The rule is the owner's (decision 169, typed: "Sliplanes
   should get a penalty too"; 195: only where the route crosses it). No source we opened
-  prices a slip lane. A commute of his crosses six by choice, so the figure may be high.
+  prices a slip lane. Riders do cross them by choice, so the figure may be high.
 - **Right hook: SLIP_LANE_FT / 4** (`RIGHT_HOOK_FT`). Not a number of its own. The owner,
   2026-11-13, typed, of a painted lane: "Right hook chances"; "Add the risks to the
   junctions, rather than the road"; "It's not as bad as a slip lane, but it's still a
@@ -328,6 +347,9 @@ A divided road is crossed one half at a time, with somewhere to wait in the midd
 two carriageways count as **one** crossing. How much the refuge helps depends on the
 road: nothing on a road of up to three lanes or at 35 mph and above on four or five
 lanes, and a lot on a slow, wide road. The wait is for one direction's traffic at a time.
+The two carriageways are found from the route itself (two one-way roads of one name
+crossed in turn), not from how far apart they are, so a wide median does not turn one
+road into two.
 
 ```mermaid
 flowchart TD
@@ -358,6 +380,16 @@ flowchart TD
   where Furth gives none and too little on slow wide ones. The real fix in that decision,
   counting a divided road once (185: "Divided-road crossings count once"), is kept
   (`merge_nearby`, `_one_road`).
+- **One reading for the price, the wait and the merge** (`divided_pairs`, since
+  2026-11-13). The pair is two consecutive crossings, straight on, of one-way roads that
+  share a name and no way. The price merges them (`Event.pair`), the wait is the
+  two-stage one counted at the first carriageway (`give_ways`), and neither asks the
+  distance. Before, the price merged within 45 m and the wait within 35 m, so a median a
+  metre wider priced and timed the halves as two whole roads. The table has no
+  "divided" column; a divided road mapped as one way with a median tag is not read.
+  Limit: across a median wider than 45 m the wait sits at the first carriageway and the
+  merged price between the two, and the ranking's "larger of price and wait" pairs them
+  only within 45 m (`core.refine.junction_over_cap_m`), so there they add.
 - 196's stated aim was to keep an unsignalised crossing of one six-lane divided road
   red. No floor is kept for it: at 35 mph or more the table gives no credit and such a
   crossing is red; at 30 mph with no count it is level 3, 550 ft, unmarked. See "Owner
@@ -380,7 +412,9 @@ road's right of way where the path crosses a side street.
 
 ```mermaid
 flowchart TD
-  A["Nothing mapped"] --> B{"Rider's road half a level or more above the other?"}
+  A["Nothing mapped"] --> U{"Both roads read by speed and lanes?"}
+  U -- "no" --> D
+  U -- "yes" --> B{"Rider's road half a level or more above the other?"}
   B -- "yes" --> P["Rider has priority: 25 ft"]
   B -- "no" --> C{"Below the other road?"}
   C -- "yes" --> S["Rider stops: stopped-side price"]
@@ -395,14 +429,31 @@ flowchart TD
 - `has_priority`: priority at `PRIORITY_MARGIN` = 0.5 crossing levels or more (our
   default, the smallest step the map makes); on a tie in traffic, a bigger road class
   (`Junction.class_edge`, from the router's classes, `CLASS_RANK`) decides.
+- **Like with like** (`priority_level`, since 2026-11-13). Both roads are put on the
+  crossing scale: Furth's crossing table by lanes and speed, and the count. A road with
+  no speed on the table (so no crossing level) is read by its lanes at the slowest
+  column, and where either road is unread the road class decides if it says anything.
+  Before, an unread rider's road kept its MAP level against the other's CROSSING level:
+  a lane the map rates 3 with nothing posted "outranked" a 35 mph road carrying 9,000 a
+  day (crossing level 2.4), was priced 25 ft and timed 0 s where the rider gives way.
+- **One answer for the price and the time** (`has_way`, `give_way`): a stop sign mapped
+  on the rider's side stops the rider in both; the cross traffic's stop sign, or
+  priority as above, stops them in neither.
 - **What was wrong.** The audit found the rider priced as the stopped side on every tie:
   a rural main road paid about 4,080 ft at each unmapped crossroad of an equal road. The
   owner's rule (decision 169) is that the free-flowing side pays little.
 - **Side paths.** `Junction.beside` is the road a path or protected lane runs beside,
-  found at run time by `core.junctions.beside_roads` (the busiest non-trail segment
-  within 20 m and within 30 degrees of parallel). The rider's level for priority is then
-  that road's. Before, a rider on a side path paid the stopped-side price at every side
-  street.
+  found at run time by `core.junctions.beside_roads`. One "beside a road" test: the
+  rebuild's (`facility.side_streets`). Only a path the rebuild itself marked a side path
+  asks (its level rule, or the street name it was given), the reach and the angle are
+  `facility.SIDE_STREET_M` and `SIDE_STREET_ANGLE` (not restated), and the road is the
+  nearest one the rebuild could have chosen: drawn as a road on the map (so no motorway
+  and no named trail), not a service road. It was the busiest non-trail segment within
+  reach of any path. The rider's level for priority is then that road's, and the rider
+  is timed no stop at a mouth it has priority over, a quiet one too. Limits: the rebuild
+  also asks that the street has a name, which the segment table does not keep; a NAMED
+  side path the level rule left at LTS 1 carries neither mark and is read as a path on
+  its own.
 - **Limits.** Class is OpenStreetMap's and varies by mapper. A true tie stays cautious,
   so two equal roads with a missing all-way stop are over-priced.
 
@@ -411,7 +462,8 @@ flowchart TD
 ## Time of day
 
 There are no time-of-day multipliers. The hour matters only through traffic. At rush
-hour the wait for a gap on a busy wide road becomes long, and the price follows it. At
+hour the wait for a gap grows, but on a road with a price it stays inside that price
+(see "Crossing a busy road from the stopped side"), so rush hour moves almost nothing. At
 the weekend and at night the road's count is read in proportion to the hour's traffic,
 so a busy two-lane street is cheap to cross at 11 PM. The lanes and the speed do not
 change with the hour, so a six-lane road stays a level 4 crossing at 5 AM.
@@ -452,8 +504,12 @@ flowchart LR
 - **A difference from the owner's "about half" at night.** A count-driven crossing now
   falls by more than half at night (a two-lane 30 mph street with 20,000 a day: 3,260 ft
   by day, 69 ft at night), while a crossing held by its lanes and speed does not fall at
-  all. Whether a commuter road at 5 to 7 AM is "night" is an open question; with this
-  rule a six-lane road stays red then, which the old x0.5 did not ensure.
+  all. **Open, the owner's to settle** (left as it is on 2026-11-13): two lanes, 30 mph,
+  20,000 a day is 3,260 ft on a weekday, 2,275 ft at the weekend and 69 ft at night;
+  four lanes, 35 mph, 5,000 a day is 550 ft at every hour; four lanes, 30 mph, 25,000 a
+  day is 3,260 ft by day and 380 ft at night. Whether 5 to 7 AM is "night" for a road
+  that fills early is part of the same question; with this rule a six-lane road stays
+  red then, which the old x0.5 did not ensure.
 - `Event.time_band` still names the hour where it moved the cost by a foot or more;
   `Event.time_factor` is the cost over the cost with no ride time.
 - `intersections.is_urban` (the Census urban area flag) is no longer used by this model.
@@ -491,6 +547,15 @@ flowchart LR
   marked; of a 20,000-a-day road (3,260 ft) red. A slip lane (1,000 ft) is orange. The
   116-route sample was not re-run (no live router in this work), so the mix of marks on
   real routes is unmeasured.
+- **How many junctions are red (measured on made-up roads, 2026-11-13).** The red line
+  fell from 3,100 to 1,476 ft, and each red is one more ask of the router
+  (`core.red_crossings`). Counted on a grid of 9,720 junctions (a quiet street meeting a
+  road of 2, 4 or 6 lanes, 25 to 45 mph, no count or 3,000 to 30,000 a day; straight,
+  left and right; stop sign, nothing mapped, signal; the four ride times), before and
+  after: 2,980 red before (31%), 2,592 now (27%). The prices fell with the line: a red
+  now needs crossing level 3.4 or more, and rush hour no longer makes one. Only the
+  weekend rose (166 to 174 of 270 stopped crossings). The grid is not weighted by how
+  common each road is, so the share on real routes is still unmeasured.
 - **Trail crossings** with no signal mapped are no longer capped at orange (decision 185,
   a card pick). Their price is the stopped-side price times the share of drivers who do
   not yield at a marked crossing, 39% at 25 mph and 83% at 35 mph or more
@@ -510,7 +575,8 @@ A route's score adds up its junction prices, weighted by the ride type. One junc
 charged **once**: with no signal, its price already contains the wait, so the larger of
 the price and the ranked wait counts, not both. At a signal the price is only what the
 wait does not cover (a left's box turn), so the two add. And no junction, everything
-included, counts for more than 2 calm miles.
+included, counts for more than 2 calm miles. A signal's wait is held below what a stop
+sign across the same road would cost (see [junction-waits.md](junction-waits.md)).
 
 ```mermaid
 flowchart TD
@@ -565,13 +631,13 @@ from running the code on a road of the stated class.
 
 | His observation (typed) | Road class | Before | After | Reproduced? |
 |---|---|---|---|---|
-| "essentially impassable" at rush hour; "rather bike 10 minutes than wait 5" | 6 lanes, 35 mph, 38,000 a day, stop sign | 10,560 ft + 9,840 ft for the red + the wait, at rush hour | 10,560 ft at rush, 3,825 ft off-peak, 3,260 ft at night, charged once | yes |
+| "essentially impassable" at rush hour; "rather bike 10 minutes than wait 5" | 6 lanes, 35 mph, 38,000 a day, stop sign | 10,560 ft + 9,840 ft for the red + the wait, at rush hour | 3,260 ft at every hour, red, charged once (10,560 ft at rush while the priced wait was uncapped) | red, yes; "2 miles", no longer |
 | "a busy 2 lane each way road ... this intersection should be weighted much more highly" | 4 lanes, 30 mph, bike lane | 4,500 ft, red (9,840 ft at rush) | by its count: 380 ft uncounted, 550 ft at 15,000 a day, 3,260 ft from 20,000 | yes if its count is 20,000 or more; not known to us |
 | "2 one way lanes aren't nearly as bad as 2 two way lanes each direction" | one-way, 2 lanes, 30 mph against 4 lanes two-way | lower | level 1 (0 ft) against level 2 (380 ft) | yes |
 | "Much lower penalty for traffic signals" | any, at a signal | 150 / 600 ft + wait | 0 ft + wait | yes |
 | "a right turn might be close to 0" | right onto a busy road | 160 / 400 ft | at most 354 ft | yes |
 | "Don't overpenalize neighborhood roads with stop signs" | quiet meets quiet | 10 ft | 10 ft | yes |
-| "intersections that I'd detour 2 miles to avoid, though rare" | the worst | every red 2.4 mi or more | only where the wait runs to minutes | yes |
+| "intersections that I'd detour 2 miles to avoid, though rare" | the worst | every red 2.4 mi or more | one crossing 3,260 ft at most; 2 miles only for junctions merged or stacked | no: see the next table |
 
 **Owner calls the formula does not reproduce**
 
@@ -579,4 +645,5 @@ from running the code on a road of the stated class.
 |---|---|---|---|---|
 | A divided six-lane road crossed with no signal "stays red" (decision 196) | 6 lanes divided, 30 mph, no count | level 3, 550 ft, no mark | red | the count (red from about 33,000 a day on the whole road) or a prevailing speed above the posted 30 |
 | Night "reduced to about half" (469c) | count-driven crossings | far below half | about half | hourly counts; whether 5-7 AM is night |
+| "I'd detour 2 miles to avoid" (467), "rather bike 10 minutes than wait 5" | 6 lanes, 35 mph, 38,000 a day at rush hour | 3,260 ft (0.6 mi) | 2 miles | the wait is capped at the 30 s the rider is shown; uncapped, the formula gives minutes and the price 2 miles |
 | A four-lane 30 mph road crossed from a stop is hard, whatever its count | 4 lanes, 30 mph, no count on the segment | 380 ft, no mark | "weighted much more highly" | a count for the road; Furth rates it LTS 2 to cross |

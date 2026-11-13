@@ -27,7 +27,7 @@ Written by the thread that owns PR #1240 (the signal split and the measured ride
 factor). It describes the signal code as that PR leaves it; until it merges, this branch
 still runs the release's signal figures.
 
-At a traffic light we keep two numbers. The first is the time a route shows you: the average wait per pass, counting the times the light was green. The second is what the route planner weighs when it compares routes: the wait at a red. In the cities both come from the owner's own rides through the District's signals. Crossing a big road from a side street, he stopped at about 4 passes in 10, and a stop lasted about half a minute. Riding along the big road, he stopped at about 2 in 10, and a stop lasted about 25 seconds. So a route that rides along a main road through its lights shows less waiting than one that crosses it at every light. The waits are shorter at night, about two thirds of the usual. Outside the cities, lights are longer (45 seconds across a big road, 30 at others), and the planner counts those reds twice, because long suburban lights are a real pain.
+At a traffic light we keep two numbers. The first is the time a route shows you: the average wait per pass, counting the times the light was green. The second is what the route planner weighs when it compares routes: the wait at a red. In the cities both are measured on recorded rides through the District's signals. Crossing a big road from a side street, the rider stopped at about 4 passes in 10, and a stop lasted about half a minute. Riding along the big road, the rider stopped at about 2 in 10, and a stop lasted about 25 seconds. So a route that rides along a main road through its lights shows less waiting than one that crosses it at every light. The waits are shorter at night, about two thirds of the usual. Outside the cities, lights are longer (45 seconds across a big road, 30 at others), and the planner counts those reds twice, because long suburban lights are a real pain.
 
 ```mermaid
 flowchart TD
@@ -42,8 +42,8 @@ flowchart TD
 
 <details><summary>Full reasoning and citations (for review)</summary>
 
-- Code: `routemaker.junction_delay.signal_wait`, `city_red_s`, `city_pass_s`; constants `CITY_RED_S`, `CITY_PASS_S`, `CITY_HOUR_FACTOR`, `SUBURBAN_BIG_SIGNAL_S`, `SUBURBAN_SIGNAL_S`, `SUBURBAN_PASS_S`, `SUBURBAN_SIGNAL_WEIGHT`, `STOP_DELAY_S`.
-- Evidence (city): the owner's rides, pulled 2026-11-13 from his Garmin account (2,330 rides; GPS tracks deleted after; only aggregates kept). 92,843 junction passes; 34,156 straight through a DC signal. A pass "stopped" if the rider stood still more than 3 s within 40 m of the junction; stops over 4 minutes left out as breaks. "Busiest road": OSM class at the junction (trunk/primary, secondary, other). Table by ride-time setting: reports/ride-check/junction-test/junction-waits-by-band.csv (project files); scripts: reports/ride-check/code/junction_nodes.py, junction_passes.py, junction_waits_table.py, pull_with_band.py.
+- Code on this branch: `routemaker.junction_delay.signal_wait`; constants `CITY_BIG_SIGNAL_S`, `CITY_SECONDARY_SIGNAL_S`, `CITY_SIGNAL_S`, `CITY_PASS_S` (by ride-time setting), `SUBURBAN_BIG_SIGNAL_S`, `SUBURBAN_SIGNAL_S`, `SUBURBAN_PASS_S`, `SUBURBAN_SIGNAL_WEIGHT`, `STOP_DELAY_S`. The along/crossing split and the single ride-time factor in the table and chart here are draft PR #1240's and have no symbols on this branch until it merges (this line named four that do not exist: `city_red_s`, `city_pass_s`, `CITY_RED_S`, `CITY_HOUR_FACTOR`).
+- Evidence (city): measured on recorded rides in this region (2,330 rides; GPS tracks deleted after; only aggregates kept). 92,843 junction passes; 34,156 straight through a DC signal. A pass "stopped" if the rider stood still more than 3 s within 40 m of the junction; stops over 4 minutes left out as breaks. "Busiest road": OSM class at the junction (trunk/primary, secondary, other). Table by ride-time setting: reports/ride-check/junction-test/junction-waits-by-band.csv (project files); scripts: reports/ride-check/code/junction_nodes.py, junction_passes.py, junction_waits_table.py, pull_with_band.py.
 
 | City signal | Passes | Signals | Stopped | Median stop (IQR) | Time shown |
 |---|---|---|---|---|---|
@@ -58,7 +58,7 @@ flowchart TD
 - Ride-time factor: the same signals' time per pass by setting over the average of all settings, the mix held fixed: night (21:00-07:00) 0.68, weekday rush 1.14, weekday off-peak 1.15, weekend 1.01. One factor for every city signal and for both numbers.
 - Owner decisions: "Averages for time, reds for choice" (2026-11-08); suburban reds 45 s and 30 s, counted twice ("There's a 'pain' factor to waiting at busy roads", 2026-11-08); "Split signals, keep give-way" and "make sure to add a time of day penalty like we had earlier" (2026-11-13).
 - Changed 2026-11-13 after the methodology audit (area 07): the red is no longer multiplied by the stop-rate split (it had given 41.4 s and 19.2 s, which no red measured); the hour factor is the measured one, not the stress model's 0.5 / 1.25 / 0.85; the pass count is stated from the table (the earlier "about 85,000" was wrong; the first table summed to 66,511 before ride times were added).
-- Known limits: one rider, mostly early-morning commutes; DC's signals only, applied to Baltimore City, Alexandria and Arlington too; straight-through passes only, so a left turn at a signal is priced as a crossing or riding along by road rank; the suburban figures are from the 2026-11-08 study (718 passes) and take no ride-time factor; the class of a road, not its traffic, decides "busiest" (the audit, area 07, 2.10, is with the junction work).
+- Known limits: the time shown counts a stop at `STOP_DELAY_S` (8 s) for the share of passes that stopped, while a stop sign is now timed at `STOP_SIGN_S` (3 s): the pass tables are measured figures and are left as they were, so a signal's time shown carries 5 s more per stop than a stop sign's does: the stopped share (16 to 43%) times 5 s, about 1 to 2 s a pass; one rider, a skewed mix of hours; DC's signals only, applied to Baltimore City, Alexandria and Arlington too; straight-through passes only, so a left turn at a signal is priced as a crossing or riding along by road rank; the suburban figures are from the 2026-11-08 study (718 passes) and take no ride-time factor; the class of a road, not its traffic, decides "busiest" (the audit, area 07, 2.10, is with the junction work).
 
 </details>
 
@@ -100,7 +100,7 @@ agree with it:
   in the two studies that split it. Most passes are a roll.
 - A roll by kinematics: slowing from about 12 to 5 mph and back loses about 1.7 s
   (1.5 m/s/s braking, 0.8 m/s/s pick-up; our arithmetic).
-- **Measured on our data:** on the owner's DC rides the stopped time at quiet junctions
+- **Measured on our data:** on recorded rides in DC the stopped time at quiet junctions
   was 0.7 to 1.3 s a pass (29,473 passes; slowing without stopping was not counted). Add
   the 1.7 s roll and it is 2.4 to 3.0 s.
 
@@ -119,21 +119,20 @@ because the 3 s already describes a roll and the field counts show riders roll u
 kinds of law. The law is still a fact; it no longer changes a number. The 4 s was our
 default, unmeasured.
 
-**Owner's calls reviewed.** 2026-10-20, typed: a grid route "took 11 minutes longer" than
-the router said, and stops should count in "Both" the time shown and the route chosen.
-Kept: they count in both. His example was one ride over a hilly grid; it does not size a
-stop. The same day, typed: "in low stress neighborhood roads in DC, bikes aren't required
+**Owner's calls reviewed.** 2026-10-20, typed: stops should count in "Both" the time
+shown and the route chosen. Kept: they count in both. The same day, typed: "in low stress neighborhood roads in DC, bikes aren't required
 to stop at stop signs if there's no cross traffic". True (law), and now the model's
 reading everywhere.
 
-**Which junctions.** The model cannot see stop signs on the route's trace. It reads who
-gives way from the roads' classes: going straight across a street as busy as the rider's
-own, turning onto one, or leaving a path (`delay_at`). Where the junction model has read
-the junction and says the rider goes straight across with the right of way (the cross
-traffic has the stop sign, or nothing is mapped and the rider's road is clearly the bigger
-by its traffic; a side path takes the road it runs beside), that answer stands and no
-stop is timed (`has_right_of_way`), so the time and the junction's price agree. An all-way
-stop on a bigger street is still misread.
+**Which junctions.** One answer with the junction's price, in both directions
+(`intersections.give_way`, since 2026-11-13): a stop sign mapped on the rider's side is a
+timed stop whatever the roads' classes say, and a rider with the right of way (the cross
+traffic has the stop sign, or nothing is mapped and the rider's road is clearly the
+bigger by its traffic; a side path takes the road it runs beside, at a quiet mouth too)
+is timed none. Where the junction model has no reading (it asks the router only about
+some junctions, and has no answer where two quiet streets meet with nothing mapped), who
+gives way is read from the roads' classes: going straight across a street as busy as the
+rider's own, turning onto one, or leaving a path (`delay_at`).
 
 **What would change it.** A count of stopped and slowed time at stop signs for more than
 one rider; hours on the ride data.
@@ -185,10 +184,15 @@ Code: the one formula is `intersections.gap_delay_s` in
 `src/routemaker/intersections.py` (constants `GAP_LANE_FT`, `GAP_STARTUP_S`,
 `GAP_SPEED_FTS`, `GAP_HIGH_SPEED_MPH`, `GAP_HIGH_SPEED_FLOW`, `HOUR_SHARE`; lanes by
 `lanes_crossed`), which also prices the junction's stress. In
-`src/routemaker/junction_delay.py`: `gap_wait_s` (that wait capped at `GAP_WAIT_MAX_S`),
-`give_way_wait`, `road_given_way`; constants `BIG_ROAD_LEVEL`, `TYPICAL_BIG_ROAD`,
-`TYPICAL_BUSY_ROAD`. Across a divided road the wait is two waits, one for each
-direction's traffic.
+`intersections.wait_s` is that wait capped at `GAP_WAIT_MAX_S`: the one number the price
+weighs (`gap_ft`) and the time shows. `intersections.give_way` and `give_ways` say who
+waits and for which traffic; `junction_delay.read_wait` adds the stop sign;
+`junction_delay.give_way_wait` is the class fallback. Constants `BIG_ROAD_LEVEL`,
+`TYPICAL_BIG_ROAD`, `TYPICAL_BUSY_ROAD` (all in `intersections.py`). Across a divided road
+the wait is two waits, one for each direction's traffic, counted once at the first
+carriageway (`intersections.divided_pairs`). A right turn onto a two-way road waits for
+its near direction only (`near_lanes`); a left off a busy two-way road waits for its
+oncoming direction, with no stop sign's 3 s.
 
 **The formula (literature).** Fitzpatrick et al. (2006), TCRP Report 112 / NCHRP Report
 562, Appendix A, worksheets 1 and 2, step 4, which reprints the Highway Capacity Manual
@@ -215,12 +219,12 @@ wait d  = (e^(v tc) - v tc - 1) / v          average delay, capped at 30 s
 With the report's own walking speed of 4 ft/s the function returns the report's own
 critical gaps (9 s for two lanes, 15 s for four; its Table 11). A test checks that.
 
-**Checked against the owner's rides, not fitted to them (measured on our data).** 2,882
+**Checked against recorded rides, not fitted to them (measured on our data).** 2,882
 passes straight across a busier road with no signal, all in DC
 (`/mnt/project-files/reports/ride-check/junction-test/junction-waits-from-rides.csv`,
 rows "no signal: crossing a busier road"). The file gives passes, the share that stopped
 and the mean wait per pass, by road class. It has no hour and no road facts, so the check
-assumes the night hour (the rides are mostly early) and a road for each class. Those
+assumes the night hour and a road for each class. Those
 assumptions are ours and are used only for this table.
 
 | Crossing, no signal | Passes | Measured, s a pass | Old model | New model | Road assumed for the check |
@@ -233,8 +237,8 @@ assumptions are ours and are used only for this table.
 passes that stopped. The new model column is the same measure from the formula: its wait
 (1.7 / 0.4 / 0.2 s) plus 8 s for the share of arrivals that find no gap (39% / 17% / 7%,
 which is `1 - e^(-v tc)` under the formula's own random-arrival assumption; our
-derivation). The parts differ from the measured parts: he stopped less often (21% / 6% /
-2%) and waited longer when he did (about 26 s a stop). Signals up the road release cars
+derivation). The parts differ from the measured parts: the rider stopped less often (21% / 6% /
+2%) and waited longer when stopped (about 26 s a stop). Signals up the road release cars
 in bunches, which gives fewer, longer waits than random arrivals do; the totals agree.
 What the model actually charges at those three, with the 3 s, is 4.7 / 3.4 / 3.2 s.
 
@@ -272,7 +276,7 @@ better founded: (1) the dislike of such a crossing is already charged by the jun
 stress model, in feet (a stopped crossing of a level-4 road is about 4,000 ft before
 multipliers, against 490 ft for the 30 s), and Broach's revealed costs for unsignalled
 crossings by cross-traffic volume are what that model is being fitted to; charging it
-here too counted it twice; (2) his own rides show 7.4 / 1.7 / 0.7 s; (3) Broach's riders
+here too counted it twice; (2) the recorded rides show 7.4 / 1.7 / 0.7 s; (3) Broach's riders
 weighed a stop sign and a signal at about their clock time, so there is no evidence for a
 general multiplier on waiting. A survey in Enschede found riders feel a signal wait as
 about five times its length (Fioreze et al. 2019); that is stated feeling, not route
@@ -280,20 +284,27 @@ choice, so no weight rests on it.
 
 **Known limits.**
 
-- Whether the rider gives way is read from road classes (`delay_at`), except where the
-  junction model says the rider crosses straight over with the right of way
-  (`has_right_of_way`, since 2026-11-13). The other direction is not joined: a stop sign
-  the junction model sees on the rider's side, at a road the classes call no busier, is
-  still timed as no stop, and turns are read by class alone.
+- Whether the rider gives way is the junction model's answer wherever it has one
+  (`intersections.give_way`, both directions, turns included, since 2026-11-13); only
+  junctions it did not read are still read from road classes (`delay_at`).
+- The 0.7 high-speed divisor is a step, as published (worksheet 2: above 35 mph): a road
+  posted 40 mph is timed with 1.43 times the flow of the same road at 35 mph, so its wait
+  is 1.6 to 2.1 times as long (two and four lanes, 8,000 to 20,000 a day) until both reach the 30 s cap. The report gives the
+  one threshold and no gradation, so it is not smoothed here.
+- The wait is capped at 30 s in the price as in the time (one number). Before 2026-11-13
+  only the time shown was capped: a six-lane road at rush hour was priced on a 599 s wait
+  and shown 33 s.
 - The formula assumes random arrivals and no driver yielding. Near signals it gets the
   split between stopping and waiting wrong (above). The report measured driver yielding
   of 7 to 75% at refuge islands and 17 to 61% at marked crosswalks.
 - A median refuge is not read. The report says to count only the direction being crossed
   where one exists.
-- A divided road's two carriageways are one stop, at the dearer of the two; each is timed
-  with its own lanes and the count on its row, which may be the whole road's.
+- A divided road's two carriageways are one stop with one two-stage wait, read from the
+  route itself (two one-way roads of one name crossed in turn), however wide the median.
+  Each stage uses half the count on the first carriageway's row; whether that row holds
+  one direction's count or the whole road's is not checked.
 - Heavy vehicles are not an input.
-- The check is one rider, DC only, perhaps a few dozen junctions, mostly early hours.
+- The check is one rider, DC only, perhaps a few dozen junctions, a skewed mix of hours.
 
 **What would change it.** The hour and the junction of each pass in the ride file;
 daytime passes; a second rider; hourly counts; a published critical gap for cyclists.
@@ -337,7 +348,7 @@ and `refine.Analysis.score` adds it at the ride type's wait weight
 
 **Why one number.** The audit (section 3.5) found 30 / 20 / 12 s shown against 7.4 /
 1.7 / 0.7 s measured per pass. Ten unsignalled crossings of secondary roads added 3.3
-minutes of ride time where the owner's rides showed 17 seconds. The first fix was to
+minutes of ride time where recorded rides showed 17 seconds. The first fix was to
 split the two figures and keep the high prices in the ranking only. The owner then asked
 (2026-11-13) for each of his calls to be reviewed and replaced where the evidence gave a
 better rule, and for rules that would carry to other cities. The review is under
@@ -347,7 +358,7 @@ stress model alone carries the dislike.
 **No multiplier on waiting.** If one were justified it would be a single stated weight
 on real time. Route-choice evidence does not support one above 1: Broach's riders weighed
 a signal at 3.6% of a mile (about 11 s; the measured average wait at signals is about 11 s
-in Fioreze et al. 2019 and 6 to 14 s on the owner's rides) and a stop sign at about 3 s.
+in Fioreze et al. 2019 and 6 to 14 s on recorded rides here) and a stop sign at about 3 s.
 The ride types keep their own weights (Road Bike 3: the owner, 2026-11-08, typed, "People
 prefer free flow on road bikes"); those are a ride type's preference, not a claim about
 all riders, and are our default, unmeasured, in size.
@@ -363,10 +374,26 @@ in the suburbs: the owner's choice, 2026-11-08), 2.5 to 8 times its expected wai
 same reasoning a signal should rank at its expected wait. That belongs with draft PR
 #1240, which rewrites the signal figures.
 
-**Leftovers in the code.** `STOP_DELAY_S`, `YIELD_DELAY_S` and `GIVE_WAY_DELAY_S` remain
-as `delay_at`'s reading of who gives way to what class of road, and the signal code still
-reads them for "the stop sign across the same road". They are no longer shown or ranked
-at a junction without a signal. They can go when the signal code is next rewritten.
+**A signal never ranks dearer than a stop sign across the same road (literature for the
+order).** Broach, Dill and Gliebe (2012), Table 3, put a signal at 2.1 to 3.6% of a mile
+and an unsignalised crossing at 7.2% and up; Furth calls a signalised crossing "not
+usually a barrier". So a signal's ranked wait is held 1 s below what a stop sign across
+the same road would cost the ranking, at every wait weight (`junction_delay.ranked_s`,
+`Wait.stop_s`). That stop sign is the junction model's own price for the road with a
+stop sign in the signal's place (`intersections.stop_extra_ft`, with the signal's own
+price, `signal_own_ft`), or its expected wait where that is more (`read_wait` of
+`intersections.give_ways`' reading). Until 2026-11-13 the hold applied only above a wait
+weight of 1 and was set against the retired class figures (30, 20 or 12 s), so at the
+Default setting a suburban signal across a 9,000-a-day two-lane road ranked 60 s and the
+stop sign a block away 23 s. **An owner-set number limited:** the suburban 2x
+(2026-11-08) now stands only up to that stop sign's price. A test checks the order over
+a grid of roads, slider settings, hours and wait weights
+(`tests/test_junction_one_reading.py`).
+
+**Leftovers in the code.** `STOP_DELAY_S` and `GIVE_WAY_DELAY_S` remain as `delay_at`'s
+reading of who gives way to what class of road, used only where the junction model has
+no reading. They are never shown or ranked. `YIELD_DELAY_S` and the District test
+(`rolls`) are gone.
 
 </details>
 
@@ -404,8 +431,8 @@ choices about junction **stress** (decisions 468a, 469c to 469e), reused; they a
 measured waits. With the formula the request is met by the traffic itself, and the effect
 is larger where it should be: x1.1 at a 4,000-a-day street and x1.9 at a 20,000-a-day
 four-lane road from off-peak to rush. So that factor is not needed for junctions without
-a signal. #1240's `hour_factor` is by now used only by `_give_way_ranked`; both should be
-deleted when the two branches meet.
+a signal. Neither `_give_way_ranked` nor `hour_factor` exists on this branch; if #1240
+still carries them when the two meet, both should be deleted.
 
 **One definition of urban.** The stress model halves a busy junction's cost at night
 where the crossed road lies in a Census urban area (`intersections.Road.urban`, the
@@ -434,4 +461,4 @@ For `literature.md` to absorb. Each was opened and read for this work unless it 
 | Fajans, J., and Curry, M. (2001). "Why Bicyclists Hate Stop Signs." *ACCESS* 18, 28-31. https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs (read in full at https://bikepgh.org/2006/01/24/why-bicyclists-hate-stop-signs/) | 10.9 mph at a stop every 530 ft against 14.2 mph at one every 2,800 ft: 9.5 s per extra full stop | Not used as the stop-sign figure: riders mostly do not make a full stop. The code said 7.6 s until 2026-11-13 (an arithmetic slip) |
 | Jackson, S., Barlow, A., Kryschtal, P., and Benson, A. (2024). *Bicyclist Stop-as-Yield Law Analysis.* NHTSA Report DOT HS 813 641. https://www.pedbikeinfo.org/downloads/dot_78925_DS1.pdf | DC's law (Safer Streets Amendment Act of 2022, B24-0673) and the absence of one in Maryland and Virginia; full stops by riders 2% to 57% (Table 2: 2% and 3% with nothing coming) | None |
 | Fioreze, T., Groenewolt, B., Koolwaaij, J., and Geurs, K. (2019). "Perceived Versus Actual Waiting Time: A Case Study Among Cyclists in Enschede, the Netherlands." *Findings.* doi:10.32866/9636 (audit) | About 31,000 signal passes: 42% waited, 26 s on average; perceived wait about five times the measured | Stated feeling, not route choice: no constant rests on it |
-| The owner's rides (measured on our data): `/mnt/project-files/reports/ride-check/junction-test/junction-waits-from-rides.csv`, 66,511 straight-through passes at DC junctions | A check on the formula: per-pass waits by road class with no signal | No hour, no junction count, no spread; the script that made it is not in the reports folder. Nothing is fitted to it |
+| Recorded rides in this region (measured on our data): `/mnt/project-files/reports/ride-check/junction-test/junction-waits-from-rides.csv`, 66,511 straight-through passes at DC junctions | A check on the formula: per-pass waits by road class with no signal | No hour, no junction count, no spread; the script that made it is not in the reports folder. Nothing is fitted to it |

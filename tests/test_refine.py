@@ -613,43 +613,6 @@ class TestAfterARatingEdit:
         assert refine.pending_targets(read, raised) == []
 
 
-class TestCappedTrailCrossings:
-    """The 2026-11-08 hunt, J1: an unsignalised trail crossing of an arterial is drawn orange
-    (item 185, "cap at orange ... 'signal not mapped'"), but "The cost still counts in full
-    where a route is chosen": every pass that keys on red reads it at its cost."""
-
-    @staticmethod
-    def capped(m: float = 1500.0, cost_ft: float = 5280.0) -> Event:
-        return dataclasses.replace(
-            event(m, cost_ft), severity=model.ORANGE, max_severity=model.ORANGE
-        )
-
-    def test_a_capped_crossing_that_costs_a_red_counts_as_one(self) -> None:
-        # Before: red_count 0, red_m 0, its cost in the second figure with LTS 3.
-        read = analysis("t", events=[self.capped()])
-        assert refine.red_count(read) == 1
-        assert read.red_m == pytest.approx(5280.0 / model.FEET_PER_METRE)
-        assert read.orange_m == 0.0
-        assert read.top_m == pytest.approx(read.lts4_m + 5280.0 / model.FEET_PER_METRE)
-        assert refine.top_by_leg(read) == pytest.approx([5280.0 / model.FEET_PER_METRE])
-        # The colour the rider is shown is the map's.
-        assert read.events[0].severity == model.ORANGE
-
-    def test_an_orange_that_costs_an_orange_stays_orange(self) -> None:
-        cheap = self.capped(cost_ft=1400.0)
-        plain_orange = dataclasses.replace(event(1500.0, 3300.0), severity=model.ORANGE)
-        assert refine.avoidance_severity(cheap) == model.ORANGE
-        # Orange for another reason than the cap (a rider's rating): not the cap's to undo.
-        assert refine.avoidance_severity(plain_orange) == model.ORANGE
-        assert refine.red_count(analysis("t", events=[cheap, plain_orange])) == 0
-
-    def test_the_score_prices_it_as_a_red(self) -> None:
-        ctx = context()
-        capped = analysis("t", events=[self.capped()])
-        red = analysis("t", events=[event(1500.0, 5280.0)])
-        assert capped.score(ctx) == pytest.approx(red.score(ctx))
-
-
 class TestCrossingAvoidance:
     def test_the_worst_crossings_approaches_are_excluded_and_a_better_route_kept(
         self, monkeypatch

@@ -18,8 +18,7 @@ So after the search, on every plan where it did not run over the whole route wit
 least one round (`searched` false), the answer is read (`refine.analyse`, which the answer
 then reuses), and each red crossing is asked round, the worst first (`reds_of`), those
 near its ends and stops too (routing hunt 4, J4-1). A red is
-what the map draws red, and a trail crossing drawn orange only because no signal is mapped
-whose cost is red-level (`refine.avoidance_severity`, the 2026-11-08 hunt, J1).
+what the map draws red (`refine.avoidance_severity`).
 
 How each is asked round (the 2026-11-08 hunt, S1, P1 and R1/H4). The first version asked
 once, from the plan's own request with every red excluded together. One red with no way
@@ -96,8 +95,8 @@ CLIMB_KEPT = 0.9
 
 
 def reds_of(read: refine.Analysis) -> list:
-    """The route's red crossings, the worst first: as the map draws them, and the capped
-    trail crossings that cost as much (`refine.avoidance_severity`). One near the start, the
+    """The route's red crossings, the worst first, as the map draws them
+    (`refine.avoidance_severity`). One near the start, the
     end or a stop is asked round as any other (routing hunt 4, J4-1: within
     `refine.ENDPOINT_CLEARANCE_M` of them it was left, often the arterial crossing nearest
     the rider's home, even where the way round cost nothing); its exclusion takes out only

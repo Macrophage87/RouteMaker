@@ -110,12 +110,24 @@ class TestWaitForAGap:
         assert model.gap_delay_s(road(1, 30, 8_000), ridetime.WEEKDAY_RUSH) == pytest.approx(want)
         assert model.gap_delay_s(road(1, 30)) == 0.0
 
-    def test_a_six_lane_commuter_road_is_the_top_at_rush_hour_and_less_at_midday(self) -> None:
-        # The owner's Connecticut Ave at Decatur Ave class of crossing. Before: 10,560 ft
-        # plus 9,840 ft for the red plus the give-way wait, 3 to 4 miles in all.
+    def test_a_six_lane_commuter_road_is_the_level_4_price_at_every_daytime_hour(self) -> None:
+        # A six-lane commuter road at a stop sign. Before the audit: 10,560 ft plus
+        # 9,840 ft for the red plus the give-way wait, 3 to 4 miles in all. Then 10,560 ft
+        # at rush hour on a 599 s wait the rider was shown as 33 s. Now the wait priced is
+        # the wait shown, 30 s at most, and the published price carries the rest.
         wide = crossing(road(3, 35, 38_000))
-        assert cost(wide, ridetime.WEEKDAY_RUSH) == model.MAX_CROSSING_FT
-        assert 3260 <= cost(wide, ridetime.WEEKDAY_OFFPEAK) < 5000
+        assert cost(wide, ridetime.WEEKDAY_RUSH) == cost(wide, ridetime.WEEKDAY_OFFPEAK) == 3260
+        assert model.wait_s(road(3, 35, 38_000), ridetime.WEEKDAY_RUSH) == model.GAP_WAIT_MAX_S
+
+    def test_the_capped_wait_is_inside_the_published_price_on_any_road_with_one(self) -> None:
+        # The wait for a gap, weighed at WAIT_PAIN, is at most 984 ft (30 s), and the
+        # published price of a road busy enough to make a rider wait is more: a crossing
+        # costs the larger, never the two added. Two lanes each way at 30 mph, 14,000 a
+        # day: 527 ft by its count at every hour's wait.
+        middling = crossing(road(2, 30, 14_000))
+        assert cost(middling) == pytest.approx(527, abs=1)
+        assert cost(middling, ridetime.WEEKDAY_RUSH) >= cost(middling)
+        assert model.gap_ft(road(2, 30, 14_000), ridetime.WEEKDAY_RUSH) < cost(middling)
 
     def test_rush_hour_does_nothing_where_there_are_gaps(self) -> None:
         # Before: x1.25 on every busy junction, x2 on every LTS 4 one.
@@ -281,3 +293,83 @@ class TestRightHook:
 def test_urban_has_one_definition() -> None:
     assert model.is_urban(Road(3, urban=True)) is True
     assert model.is_urban(Road(3)) is None and model.is_urban(None) is None
+
+
+class TestTheIndependentReviewsSurvivors:
+    """The eight mutants the independent review of 2026-11-13 found alive, and the two
+    of the audit's that the capped wait let go."""
+
+    def test_a_left_off_a_road_prices_a_gap_in_the_oncoming_lanes_only(self) -> None:
+        # One lane each way, 25 mph, 8,000 a day at rush hour: the wait for the oncoming
+        # lane is worth 23 ft, less than the left's own 57 ft; a gap in both lanes would
+        # be 77 ft, which is what it was priced by.
+        busy = model._by_traffic(road(1, 25, 8_000))
+        rush = ridetime.WEEKDAY_RUSH
+        assert model.gap_ft(busy, rush, lanes=1) < 57 < model.gap_ft(busy, rush)
+        assert model.left_from_ft(busy, Control.NONE, rush) == pytest.approx(57, abs=0.5)
+        # Where the oncoming wait is the larger, it is the price: a road too quiet to
+        # have one of its own.
+        thin = model._by_traffic(road(1, 25, 1_000))
+        assert model.left_from_ft(thin, Control.NONE) == model.gap_ft(thin, lanes=1) > 0
+
+    def test_each_stage_of_a_divided_road_crosses_one_carriageways_lanes(self) -> None:
+        import math
+
+        divided = road(2, 30, 20_000, divided=True)
+        flow = 20_000 * 0.055 / 3600 / 2
+        x = flow * (3 + 2 * 12 / 16.4)
+        assert model.gap_delay_s(divided) == pytest.approx(2 * (math.exp(x) - x - 1) / flow)
+
+    def test_priority_takes_half_a_level_and_the_class_does_not_overrule_the_traffic(
+        self,
+    ) -> None:
+        # The rider on a two-lane 40 mph road (level 3) crossing a two-lane 35 mph one
+        # (level 2), nothing mapped: a level clear, so the rider has the way, whatever
+        # the classes say of two roads both read by their traffic.
+        own, crossed = road(1, 40), road(1, 35)
+        for edge in (None, 1, -1):
+            passing = crossing(crossed, Control.NONE, own, class_edge=edge)
+            assert cost(passing) == model.PRIORITY_SIDE_FT, edge
+        assert model.PRIORITY_MARGIN == 0.5
+
+    def test_a_cost_read_from_the_statutory_speed_says_so(self) -> None:
+        unposted = Road(3, lanes=2, oneway=False, default_speed_mph=30.0)
+        assert assess(crossing(unposted)).assumed_speed
+        assert not assess(crossing(road(2, 30))).assumed_speed
+        # At a signal the speed prices nothing, so nothing was assumed.
+        assert not assess(crossing(unposted, Control.SIGNAL)).assumed_speed
+
+    def test_with_the_lanes_unknown_none_is_merged_across_below_level_4(self) -> None:
+        def unknown(speed: float, aadt: int | None = None) -> Road:
+            return model._by_traffic(Road(3, speed_mph=speed, oneway=False, aadt=aadt))
+
+        assert model.merge_ft(unknown(35.0)) == model.merge_ft(unknown(40.0)) == 0.0
+        assert model.merge_ft(unknown(45.0, 30_000)) == model.MERGE_FT_PER_LANE[4]
+
+    def test_a_slip_lane_at_a_signal_is_half_one(self) -> None:
+        big = road(2, 40)
+        off = Junction(0.0, -77.0, 39.0, Movement.RIGHT, big, QUIET, (), slip_lane=True)
+        assert cost(off) == model.SLIP_LANE_FT == 1000
+        assert cost(replace(off, control=Control.SIGNAL)) == 500
+
+    def test_the_refuge_credit_is_priced_at_the_ride_time(self) -> None:
+        # One carriageway of a divided road, one lane at 25 mph carrying 25,000 a day:
+        # read as the whole road, 493 ft by day and 25 ft at night.
+        half = Road(4, speed_mph=25.0, lanes=1, oneway=True, aadt=25_000)
+        day, night = (assess(crossing(half), when=when) for when in (None, ridetime.NIGHT))
+        assert day.refuge_ft == pytest.approx(493, abs=1)
+        assert night.refuge_ft == pytest.approx(25, abs=1)
+        assert night.refuge_untimed_ft == pytest.approx(day.refuge_ft)
+
+    def test_the_wait_is_the_price_where_it_is_the_larger_and_counts_twice_its_seconds(
+        self,
+    ) -> None:
+        # Only on a road with no published price: 4,000 a day at rush hour, 1 s of
+        # waiting, 33 ft. With a price the wait is inside it (`TestWaitForAGap`).
+        thin = model._by_traffic(road(1, 25, 4_000))
+        rush = ridetime.WEEKDAY_RUSH
+        wait = model.wait_s(thin, rush)
+        assert model.crossing_ft(thin, Control.STOP, when=rush) == pytest.approx(
+            model.WAIT_PAIN * wait * model.QUIET_FT_PER_S
+        )
+        assert model.crossing_ft(thin, Control.STOP, when=rush) > 30

@@ -26,7 +26,10 @@ The model was "option C" of reports/INTERSECTION-COSTS-options.md (OWNER-DECISIO
 function (`crossing_ft`): the stopped side pays the larger of the published price of the
 road's crossing level (Broach, Dill and Gliebe 2012, Table 3, by its count; Mekuria, Furth
 and Nixon 2012, Tables 7 and 8, by its lanes, speed and refuge) and twice the wait for a
-gap at the ride's hour (NCHRP Report 562's formula), up to 2 calm miles. It replaces a
+gap at the ride's hour (NCHRP Report 562's formula; `wait_s`, the wait the rider is shown,
+30 s at most). The same function says who stops and for how long for the junction waits
+(`give_way`, `has_way`, `wait_s`; `routemaker.junction_delay`), so the price and the time
+read one junction one way. It replaces a
 riding-along level times speed, lane, volume, rural and time-of-day factors, a steeper
 "severe tier", a rush-hour floor and a surcharge on every red. The owner's statements about
 junctions are data the function is checked against, not rules beside it (2026-11-13: "Own
@@ -46,9 +49,9 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from . import ridetime
-from .geo import Point, haversine
+from .geo import METRES_PER_FOOT, Point, haversine
 
-FEET_PER_METRE = 3.28084
+FEET_PER_METRE = 1.0 / METRES_PER_FOOT
 KMH_PER_MPH = 1.609344
 FEET_PER_MILE = 5280.0
 KM_PER_MILE = 1.609344
@@ -72,7 +75,8 @@ BUSY_TIER = 3
 #      crossing level), and
 #   2. the wait for a gap at the ride's hour, weighed at WAIT_PAIN (`gap_delay_s`),
 #
-# never more than MAX_CROSSING_FT. Nothing else multiplies it: no speed, lane, volume,
+# the same wait the rider is shown, capped as it is shown (`wait_s`). Nothing else
+# multiplies it: no speed, lane, volume,
 # rural or "severe" factor, no time-of-day factor, no rush-hour floor (all removed
 # 2026-11-13; the audit of that day, section 3.4, found speed, lanes and volume each used
 # twice and whole-level cliffs such as 1,368 to 3,420 ft between 7,999 and 8,000 a day).
@@ -90,9 +94,10 @@ BUSY_TIER = 3
 STOPPED_CROSSING_FT = {2: 380.0, 3: 550.0, 4: 3260.0}
 # The most any one junction costs, 2.00 calm mi: the owner's choice (OWNER-DECISIONS 467,
 # typed: "There's definitely intersections that I'd detour 2 miles to avoid, though
-# rare."). Above anything published (Broach's top is 0.62 mi), kept as the top for the rare
-# worst, which only the wait for a gap reaches. `core.refine` holds the junction's stress
-# price and its ranked wait TOGETHER to it.
+# rare."). Above anything published (Broach's top is 0.62 mi). `core.refine` holds the
+# junction's stress price and its ranked wait TOGETHER to it. Since the wait that is
+# priced became the wait that is shown (GAP_WAIT_MAX_S), ONE crossing tops out at Broach's
+# 3,260 ft, and only a junction of several conflicts (`merge_nearby`) can reach this.
 MAX_CROSSING_FT = 10560.0
 
 # The crossing level from the road's count: LITERATURE, Broach's bins above, each closed
@@ -138,15 +143,24 @@ MAP_LEVEL_MAX = 4.0
 # v the conflicting flow in vehicles a second; with a median refuge v is one direction's
 # flow and each half is crossed on its own. 12 ft lanes and a 3 s start-up are the
 # report's; the crossing speed is the Default ride's 11.2 mph (16.4 ft/s) in place of a
-# walker's; above 35 mph the flow is divided by 0.7 (worksheet 2). ONE definition: the
-# wait shown to the rider is this function too (`routemaker.junction_delay.gap_wait_s`,
-# which caps it at 30 s as a time; here it is not capped, since "rarely openings" is the
-# point).
+# walker's; above 35 mph the flow is divided by 0.7 (worksheet 2: a step, as published, so
+# a 40 mph road waits about 1.4 to 1.8 times a 35 mph one below the cap; a known limit).
+# ONE definition and ONE number: the wait the price weighs and the wait the rider is shown
+# are both `wait_s`, this formula capped at GAP_WAIT_MAX_S.
 GAP_LANE_FT = 12.0
 GAP_STARTUP_S = 3.0
 GAP_SPEED_FTS = 16.4
 GAP_HIGH_SPEED_MPH = 35.0
 GAP_HIGH_SPEED_FLOW = 0.7
+# The longest wait for a gap, priced and shown. The formula takes cars arriving at random
+# and no driver yielding, so on a wide busy road it runs to minutes; above 30 s of delay
+# the report's own table rates the likelihood of taking a short gap "high" (NCHRP 562,
+# Table 8, levels of service E and F): riders do not wait longer, they take a worse gap,
+# and that risk is what the level's published price is (STOPPED_CROSSING_FT). The
+# threshold is LITERATURE; using it as the cap is OUR DEFAULT, unmeasured. Until
+# 2026-11-13 the price weighed the formula's wait uncapped (to MAX_CROSSING_FT, 322 s)
+# while the time shown stopped at 30 s: two numbers for one wait.
+GAP_WAIT_MAX_S = 30.0
 # The share of a day's traffic in one hour of each ride-time setting (`routemaker.ridetime`;
 # an unknown setting reads as weekday off-peak). OUR DEFAULT, unmeasured: a typical urban
 # day; hourly counts would replace it. The hour reaches a junction's price through this
@@ -168,7 +182,9 @@ HOUR_SHARE = {
 # for an opening. There are rarely openings." Ten for five is 2. (Also his 2026-11-08 "2x
 # penalty ... There's a 'pain' factor to waiting at busy roads".) The owner's choice; the
 # formula above then says which crossings have "rarely openings", in place of a x2, a
-# floor and a 600 s surcharge that each charged the same sentence.
+# floor and a 600 s surcharge that each charged the same sentence. With the wait capped at
+# GAP_WAIT_MAX_S the most this adds is 984 ft; those two crossings cost the level 4 price,
+# 3,260 ft, at every hour (they were 2 mi at rush hour while the wait was uncapped).
 WAIT_PAIN = 2.0
 QUIET_FT_PER_S = GAP_SPEED_FTS
 
@@ -212,8 +228,8 @@ MARKED_YIELD_SHARE = ((25.0, 0.61), (35.0, 0.17))
 #
 # A road's map level is the stress of riding along it, and a bike lane, protected or painted,
 # lowers it. A rider crossing the road, turning onto it or turning left across it gets
-# nothing from that lane: only gaps in its through traffic. The owner, 2026-10-26, of
-# Sheridan St NW across Piney Branch Rd NW (DC): "a busy 2 lane each way road. It's only
+# nothing from that lane: only gaps in its through traffic. The owner, 2026-10-26, of a
+# stop-sign crossing of a four-lane street with bike lanes: "a busy 2 lane each way road. It's only
 # LTS2 because it also has a bike lane. Given that there's a stop sign and no cross stop,
 # this intersection should be weighted much more highly." Then 2026-10-31: "a protected
 # bike lane on a busy road is just as hard to cross. Would it make more sense to just
@@ -319,7 +335,8 @@ def gap_delay_s(road: Road, when: str | None = None, lanes: int | None = None) -
     (the formula and figures above), at the ride-time setting `when`. 0 where the road has
     no count. Across a divided road it is two waits, each for one direction's traffic over
     that carriageway's lanes. `lanes`: wait for a gap in ONE direction's traffic over this
-    many lanes (a left turn off the road across its oncoming lanes)."""
+    many lanes (a left turn off the road across its oncoming lanes, a right turn onto it
+    into the near ones). Not capped: `wait_s` is the wait that is priced and shown."""
     if road.aadt is None or road.car_free:
         return 0.0
     hourly = road.aadt * hour_share(when)
@@ -342,9 +359,29 @@ def gap_delay_s(road: Road, when: str | None = None, lanes: int | None = None) -
     return stages * (math.exp(exposure) - exposure - 1.0) / flow
 
 
+def wait_s(road: Road, when: str | None = None, lanes: int | None = None) -> float:
+    """THE wait for a gap in `road`'s traffic where no signal stops it, in seconds: what
+    the rider is shown (`routemaker.junction_delay`) and what the price weighs (`gap_ft`),
+    one number. `gap_delay_s`, at most GAP_WAIT_MAX_S. A road with no count is read as the
+    typical big or busy road (TYPICAL_BIG_ROAD, TYPICAL_BUSY_ROAD) by its crossing level,
+    with its own divided reading; a road with no price to cross has no wait. `lanes`: as
+    `gap_delay_s`."""
+    if road.car_free:
+        return 0.0
+    # Read by its traffic whoever asks (a road already read is left as it is).
+    road = _by_traffic(road)
+    traffic = road
+    if not road.aadt:
+        if road.tier is None or not road.busy:
+            return 0.0
+        typical = TYPICAL_BIG_ROAD if crossing_level(road) >= BIG_ROAD_LEVEL else TYPICAL_BUSY_ROAD
+        traffic = replace(typical, divided=road.divided)
+    return min(gap_delay_s(traffic, when, lanes), GAP_WAIT_MAX_S)
+
+
 def gap_ft(road: Road, when: str | None = None, lanes: int | None = None) -> float:
-    """The wait for a gap as feet of quiet riding, at WAIT_PAIN, at most MAX_CROSSING_FT."""
-    return min(WAIT_PAIN * gap_delay_s(road, when, lanes) * QUIET_FT_PER_S, MAX_CROSSING_FT)
+    """The wait for a gap (`wait_s`) as feet of quiet riding, at WAIT_PAIN."""
+    return WAIT_PAIN * wait_s(road, when, lanes) * QUIET_FT_PER_S
 
 
 def is_urban(road: Road | None) -> bool | None:
@@ -523,9 +560,9 @@ class Rating:
 
 # --- Flashing beacons mapped as signals ----------------------------------------
 #
-# The owner, 2026-10-20, at Connecticut Ave (MD 185) and Baltimore St, Kensington: "a
-# traffic light that's a blinking red against free flowing traffic. It wasn't
-# passable." OSM maps the junction with a signal; MDOT SHA lists the device there as a
+# The owner, 2026-10-20, of a junction on a state highway: "a traffic light that's a
+# blinking red against free flowing traffic. It wasn't passable." OSM maps such a
+# junction with a signal; the state's device list has the device there as a
 # Warning Beacon, not a Traffic Control Signal. A beacon stops nobody on the main road
 # (flashing yellow) and tells the side street to stop (flashing red): the junction is a
 # two-way stop. So a junction priced as signalised whose node is within BEACON_MATCH_M
@@ -723,6 +760,13 @@ class Junction:
     beside: Road | None = None
 
 
+# The road read where its count is not known: a big road (crossing level 4) and any other
+# road with a price to cross (`Road.busy`). OUR DEFAULT, unmeasured; a count replaces it
+# wherever one reaches the road.
+BIG_ROAD_LEVEL = 4.0
+TYPICAL_BIG_ROAD = Road(tier=4, lanes=2, aadt=20_000)
+TYPICAL_BUSY_ROAD = Road(tier=3, lanes=1, aadt=8_000)
+
 # Valhalla's road classes, biggest first, for `Junction.class_edge`.
 CLASS_RANK = {
     "motorway": 7,
@@ -769,9 +813,6 @@ class Event:
     # The same names as mapped ("MacArthur Boulevard"), in the router's order:
     # for saying, where `road_names` are lower-case keys for matching.
     road_display: tuple[str, ...] = field(default=(), compare=False)
-    # The most this event may be drawn as, whatever its cost (a marked
-    # crossing with no signal mapped: orange, item 185).
-    max_severity: str | None = None
     # The road's ways at the junction and whether it is one-way there: a
     # divided road's two carriageways are two one-way roads of different ways
     # with a name in common (`merge_nearby`).
@@ -832,6 +873,10 @@ class Event:
     # needing a beg button is held below a stop sign across the same road (the owner,
     # 2026-11-08: "still not as bad as a stop sign across the same road").
     stop_extra: tuple[tuple[tuple[float, float], float], ...] = field(default=(), compare=False)
+    # By point of `signals`, what the junction costs with its signal (`signal_own_ft`): the
+    # part of the stop sign's whole price that `stop_extra` leaves out, which the junction
+    # waits need to set the stop sign's expected wait against the same whole.
+    signal_own: tuple[tuple[tuple[float, float], float], ...] = field(default=(), compare=False)
     # A crossing of a one-way road: what it costs read as one carriageway of a divided
     # road, both carriageways' lanes with the median refuge's credit, at the ride time and
     # with none (`_as_divided`). `merge_nearby` takes these where the two carriageways'
@@ -841,6 +886,10 @@ class Event:
     # Whether the road the event is about lies in a Census urban area (`is_urban`); None
     # where the table does not say.
     urban: bool | None = field(default=None, compare=False)
+    # The crossing is of one carriageway of a divided road whose other carriageway the
+    # route crosses next or crossed last (`divided_pairs`): the two share this number and
+    # are one junction however wide the median (`merge_nearby`). None: not such a crossing.
+    pair: int | None = field(default=None, compare=False)
 
 
 def _untimed(event: Event) -> float:
@@ -884,7 +933,11 @@ def _fade(road: Road) -> float:
 
 
 def crossing_ft(
-    road: Road, control: Control, priority: bool = False, when: str | None = None
+    road: Road,
+    control: Control,
+    priority: bool = False,
+    when: str | None = None,
+    lanes: int | None = None,
 ) -> float:
     """Straight across `road` (busy) from the rider's road: THE crossing function.
 
@@ -892,17 +945,29 @@ def crossing_ft(
     of its crossing level and the wait for a gap at the hour (`gap_ft`). A signal costs
     nothing here (its wait is the cost, `routemaker.junction_delay`); on the free-flowing
     road, through a junction where the cross traffic stops, it is small (items 165 and
-    169). `priority`: with nothing mapped, the rider's road is clearly the bigger one
-    (`has_priority`)."""
+    169). `priority`: the rider passes without stopping for it (`has_way`: the cross
+    traffic has the sign, or nothing is mapped and the rider's road is clearly the bigger
+    one), the answer the junction waits time by too. `lanes`: the wait is for a gap in
+    one direction's traffic over this many lanes (a right turn onto the road,
+    `near_lanes`)."""
     if control is Control.SIGNAL:
         return 0.0
     if control is Control.ALL_STOP:
         return ALL_WAY_STOP_FT * _fade(road)
     # The rider's own road has priority: the cross traffic is the one facing the
     # sign, or nothing is mapped and the rider's road is the bigger one.
-    if control is Control.CROSS_STOP or (control is Control.NONE and priority):
+    if control is Control.CROSS_STOP or priority:
         return PRIORITY_SIDE_FT * _fade(road)
-    return min(max(_at_level(STOPPED_CROSSING_FT, road, when), gap_ft(road, when)), MAX_CROSSING_FT)
+    return max(_at_level(STOPPED_CROSSING_FT, road, when), gap_ft(road, when, lanes))
+
+
+def near_lanes(road: Road, movement: Movement) -> int | None:
+    """The lanes a rider turning RIGHT onto `road` waits for a gap in: the near
+    direction's alone on a two-way road (`gap_delay_s`'s `lanes`). None for any other
+    movement and on a one-way road, where the whole road's traffic is the one waited for."""
+    if movement is not Movement.RIGHT or road.oneway:
+        return None
+    return road.lanes or 1
 
 
 def merge_ft(road: Road, control: Control = Control.NONE) -> float:
@@ -932,7 +997,7 @@ def left_from_ft(road: Road, control: Control, when: str | None = None) -> float
     total = min(oncoming + merge_ft(road), LEFT_ACROSS_ONCOMING_FT[4])
     if not road.oneway:
         total = max(total, gap_ft(road, when, lanes=road.lanes or 1))
-    return min(total, MAX_CROSSING_FT)
+    return total
 
 
 def onto_ft(base: float, movement: Movement) -> float:
@@ -945,40 +1010,80 @@ def slip_ft(control: Control) -> float:
     return SLIP_LANE_FT * (SIGNALISED_SLIP_FACTOR if control is Control.SIGNAL else 1.0)
 
 
+def priority_level(road: Road) -> float:
+    """The level two roads are compared at for who has the right of way
+    (`has_priority`), always on the crossing scale: the road's crossing level where its
+    traffic can be read (`traffic_level`); where it cannot (no posted speed on a narrow
+    road), its lanes on Furth's table at the table's lowest speed, and its count where it
+    has one. Never the map's level for riding ALONG it, which runs higher by design (a
+    35 mph two-lane road is 2 to cross and 3 to ride) and so handed an unposted lane the
+    way over a posted road (the independent review of 2026-11-13, finding 4)."""
+    if road.cross is not None:
+        return road.cross
+    level = traffic_level(road)
+    if level is not None:
+        return level
+    level = _by_lanes(lanes_crossed(road), CROSSING_LTS, CROSSING_SPEEDS_MPH[0])
+    if road.aadt is not None and not road.car_free:
+        level = max(level, _at(float(road.aadt), COUNT_LEVELS))
+    return level
+
+
+def _unread(road: Road) -> bool:
+    return road.cross is None and traffic_level(road) is None
+
+
 def has_priority(junction: Junction, road: Road) -> bool:
     """With no control mapped on either road, whether the rider's road is clearly the
-    bigger one, so `road`'s traffic is the side that stops.
+    bigger one, so `road`'s traffic is the side that stops. THE one answer: the price
+    (`crossing_ft`) and the time (`give_way`) both read it.
 
-    The rider's road is read at its crossing level; a rider on a side path or a protected
-    lane at the level of the road it runs beside, where that is higher (`Junction.beside`:
-    the path crosses a side street's mouth with the main road's right of way). Clearly
-    bigger is PRIORITY_MARGIN levels or more above `road` by traffic; or not below it by
-    traffic and a bigger road by class (`Junction.class_edge`). A true tie, the same
-    traffic and no bigger class, keeps the cautious reading: the rider stops. Where the
-    rider's road cannot be read by its traffic (no posted speed on a narrow road), a tie
-    with a road only its traffic raised above the map's level goes to the rider, as the map
-    has it (v0.16.0 release review)."""
+    Both roads are read on one scale (`priority_level`); a rider on a side path or a
+    protected lane at the level of the road it runs beside, where that is higher
+    (`Junction.beside`: the path crosses a side street's mouth with the main road's right
+    of way). Where either road's traffic cannot be read and the roads' classes are known
+    to differ (`Junction.class_edge`), the class decides. Otherwise clearly bigger is
+    PRIORITY_MARGIN levels or more above `road`; or not below it and a bigger road by
+    class. A true tie, the same level and no bigger class, keeps the cautious reading: the
+    rider stops."""
     own = junction.incoming
     if own.tier is None:
         return False
-    rider = crossing_level(own)
+    rider, unread = priority_level(own), _unread(own) or _unread(road)
     if junction.beside is not None and junction.beside.tier is not None:
-        rider = max(rider, crossing_level(junction.beside))
-    margin = rider - crossing_level(road)
+        beside = priority_level(junction.beside)
+        if beside > rider:
+            rider, unread = beside, _unread(junction.beside) or _unread(road)
+    edge = junction.class_edge or 0
+    if unread and edge:
+        return edge >= 1
+    margin = rider - priority_level(road)
     if margin >= PRIORITY_MARGIN:
         return True
-    if margin < 0:
-        return False
-    if (junction.class_edge or 0) >= 1:
+    return margin >= 0 and edge >= 1
+
+
+def has_way(junction: Junction, road: Road) -> bool:
+    """Whether the rider passes `road` without stopping for it: its traffic has the stop
+    or yield sign (`Control.CROSS_STOP`), or nothing is mapped and the rider's road is
+    the bigger one (`has_priority`). False at a sign on the rider's side and at an all-way
+    stop; a signal is not this function's."""
+    if junction.control is Control.CROSS_STOP:
         return True
-    on_map = road.level if road.map_tier is None else _map_level(road)
-    return own.cross is None and rider > on_map
+    return junction.control is Control.NONE and has_priority(junction, road)
 
 
-def _map_level(road: Road) -> float:
-    """The level the map gives a road the junction read by its traffic (`by_traffic`)."""
-    tier = road.map_tier or 0
-    return tier + (0.5 if road.map_half and tier < 5 else 0.0)
+def _enters(j: Junction) -> bool:
+    """Whether the rider enters the road they leave on from the stopped side: from a
+    quieter road, or turning off one busy road onto a busier one or with a stop or yield
+    sign on their approach (review r1, B3). One test for the price (`cost_of`) and for
+    who waits (`give_way`)."""
+    turning_from_busy_onto = (
+        j.incoming.busy
+        and j.movement is not Movement.STRAIGHT
+        and (j.outgoing.level > j.incoming.level or j.control is Control.STOP)
+    )
+    return not j.continues and (not j.incoming.busy or turning_from_busy_onto)
 
 
 def cost_of(junction: Junction, when: str | None = None) -> tuple[float, str, Road | None]:
@@ -1010,15 +1115,16 @@ def cost_of(junction: Junction, when: str | None = None) -> tuple[float, str, Ro
     # busier road, or with a stop or yield sign on the rider's approach (review
     # r1, B3: Flanders Ave, LTS 3 with a stop, left onto Strathmore Ave, LTS 3,
     # is the stopped side's left, 1,800 ft, not the free-flowing side's 600).
-    turning_from_busy_onto = (
-        j.incoming.busy
-        and j.movement is not Movement.STRAIGHT
-        and (j.outgoing.level > j.incoming.level or j.control is Control.STOP)
-    )
-    if j.outgoing.busy and not j.continues and (not j.incoming.busy or turning_from_busy_onto):
+    if j.outgoing.busy and _enters(j):
         # Entering a busy road from a quieter one, or from the stopped side:
         # the stopped side's crossing cost, by the movement.
-        base = crossing_ft(j.outgoing, j.control, has_priority(j, j.outgoing), when)
+        base = crossing_ft(
+            j.outgoing,
+            j.control,
+            has_way(j, j.outgoing),
+            when,
+            near_lanes(j.outgoing, j.movement),
+        )
         take(onto_ft(base, j.movement), f"{j.movement.value}_onto", j.outgoing)
     if j.ring_movement is not None and j.outgoing.busy:
         # Round a busy roundabout from its entry (`ROUNDABOUT_FACTOR_ONTO`).
@@ -1027,7 +1133,7 @@ def cost_of(junction: Junction, when: str | None = None) -> tuple[float, str, Ro
         take(min(value, MAX_CROSSING_FT), f"{j.ring_movement.value}_onto", j.outgoing)
     for road in (r for r in j.crossed if r.busy):
         if j.movement is Movement.STRAIGHT:
-            value = crossing_ft(road, j.control, has_priority(j, road), when)
+            value = crossing_ft(road, j.control, has_way(j, road), when)
             if marked_unsignalised(j):
                 # A marked crosswalk: the share of drivers who do not yield.
                 speed = crossing_speed(road)
@@ -1042,7 +1148,7 @@ def cost_of(junction: Junction, when: str | None = None) -> tuple[float, str, Ro
             )
         elif j.movement is Movement.LEFT and not j.incoming.busy and not j.outgoing.busy:
             # A left from a quiet street across one busy road to a quiet one beyond.
-            take(crossing_ft(road, j.control, has_priority(j, road), when), "left_across", road)
+            take(crossing_ft(road, j.control, has_way(j, road), when), "left_across", road)
     if j.slip_lane:
         # About the busiest road the channel leaves or joins.
         roads = [r for r in (j.incoming, j.outgoing, *j.crossed, *j.links) if r.busy]
@@ -1065,6 +1171,89 @@ def cost_of(junction: Junction, when: str | None = None) -> tuple[float, str, Ro
         # "rolls through when safe", priced near zero.
         cost = NEIGHBOURHOOD_STOP_FT if j.control in {Control.STOP, Control.ALL_STOP} else 0.0
     return cost, kind, about
+
+
+# --- Who stops, and for how long: the time's reading of the same junction -------
+#
+# The price above and the time the rider is shown (`routemaker.junction_delay`) read one
+# junction one way: who stops is `has_way` for both, and the wait is `wait_s` for both.
+
+
+@dataclass(frozen=True)
+class GiveWay:
+    """What the rider does at one junction with no signal, as this model reads it
+    (`give_way`), for the junction waits: whether they give way at all, the seconds they
+    are expected to wait for a gap (`wait_s`, at the ride's hour), and whether they stop
+    as at a stop sign first (False: a left off a road across its oncoming traffic, which
+    only waits)."""
+
+    stops: bool
+    wait_s: float = 0.0
+    stop_sign: bool = True
+    # The junction has a signal, and this is the reading of a stop sign in its place
+    # (`give_ways`): what a signal's ranked wait is held below, never a time shown.
+    at_signal: bool = False
+
+
+def _conflicts(j: Junction) -> list[tuple[Road, int | None]]:
+    """The roads a rider's movement crosses or enters, each with the lanes waited for
+    where that is one direction's (`near_lanes`): what `cost_of` prices a crossing or a
+    turn onto by."""
+    known = [r for r in j.crossed if r.tier is not None]
+    quiet_left = j.movement is Movement.LEFT and not j.incoming.busy and not j.outgoing.busy
+    found: list[tuple[Road, int | None]] = []
+    if j.movement is Movement.STRAIGHT or quiet_left:
+        found += [(road, None) for road in known]
+    if _enters(j) and j.outgoing.tier is not None and j.ring_movement is None:
+        found.append((j.outgoing, near_lanes(j.outgoing, j.movement)))
+    return found
+
+
+def give_way(junction: Junction, when: str | None = None) -> GiveWay | None:
+    """Whether the rider gives way at `junction`, and the wait, by the same reading its
+    price is made from (`cost_of`): in both directions, so a stop sign mapped on the
+    rider's side is a timed stop whatever the roads' classes, and a rider with the right
+    of way (`has_way`) is timed none, at a quiet mouth too.
+
+    None where this model has no answer and the junction waits read the roads' classes
+    and the junction's shape instead: at a signal (timed as a signal), where the rider's
+    road is not known, and where nothing is mapped, no road met has a price to cross and
+    the rider's road is not clearly the bigger (two quiet streets: the map does not say
+    who has the stop sign).
+
+    The wait is for the road crossed or entered (a right turn onto a two-way road waits
+    for its near direction only), and for a left off a busy two-way road its oncoming
+    direction, the longer of them. An all-way stop has no wait for a gap."""
+    j = by_traffic(junction)
+    if not j.located or j.control is Control.SIGNAL or j.incoming.tier is None:
+        return None
+    oncoming = None
+    if (
+        j.movement is Movement.LEFT
+        and j.incoming.busy
+        and not j.incoming.oneway
+        and j.control is not Control.ALL_STOP
+    ):
+        # A left off a busy road: a gap in its oncoming traffic, with or without a sign.
+        oncoming = wait_s(j.incoming, when, lanes=j.incoming.lanes or 1)
+    conflicts = _conflicts(j)
+
+    def longest(roads: list[tuple[Road, int | None]]) -> float:
+        return max([wait_s(road, when, lanes) for road, lanes in roads] + [oncoming or 0.0])
+
+    if j.control is Control.ALL_STOP:
+        return GiveWay(True)
+    if j.control is Control.STOP:
+        return GiveWay(True, longest(conflicts))
+    stopped = [(road, lanes) for road, lanes in conflicts if not has_way(j, road)]
+    if not stopped:
+        if oncoming is not None:
+            return GiveWay(True, oncoming, stop_sign=False)
+        return GiveWay(False) if conflicts else None
+    if any(road.busy for road, _lanes in stopped):
+        return GiveWay(True, longest(stopped))
+    # Quiet roads with nothing mapped: no answer of this model's.
+    return None if oncoming is None else GiveWay(True, oncoming, stop_sign=False)
 
 
 def marked_unsignalised(junction: Junction) -> bool:
@@ -1097,12 +1286,6 @@ def severity_of(cost_ft: float) -> str | None:
 
 # Severities in order, for "no more than" and "the worst of".
 _RANK = {None: 0, ORANGE: 1, RED: 2}
-
-
-def _at_most(severity: str | None, cap: str | None) -> str | None:
-    if cap is None or _RANK[severity] <= _RANK[cap]:
-        return severity
-    return cap
 
 
 def _worst(severities) -> str | None:
@@ -1516,8 +1699,7 @@ def _one_road(events: list[Event]) -> list[Event]:
         cost, untimed = worst.cost_ft, _untimed(worst)
     severity = worst.severity
     if not worst.group_severity:
-        # A trail crossing's cap holds through it.
-        severity = _at_most(severity_of(cost), worst.max_severity)
+        severity = severity_of(cost)
     # The corkers' per-lane rule reads the busier carriageway's lanes (PLAN item 139).
     lanes = [e.road_lanes for e in crossings if e.road_lanes is not None]
     refuge = replace(
@@ -1594,12 +1776,14 @@ def merge_nearby(events: list[Event]) -> list[Event]:
                 big_signals=tuple(dict.fromkeys(p for e in group for p in e.big_signals)),
                 own_big_signals=tuple(dict.fromkeys(p for e in group for p in e.own_big_signals)),
                 stop_extra=tuple(dict(pair for e in group for pair in e.stop_extra).items()),
+                signal_own=tuple(dict(pair for e in group for pair in e.signal_own).items()),
             )
         )
         group.clear()
 
     for event in events:
-        if group and event.m - group[-1].m > MERGE_WITHIN_M:
+        carriageways = event.pair is not None and any(e.pair == event.pair for e in group)
+        if group and event.m - group[-1].m > MERGE_WITHIN_M and not carriageways:
             close()
         group.append(event)
     close()
@@ -1832,12 +2016,68 @@ def assess_route(
     the signalized crossings that run together are numbered (`number_groups`),
     never across a stop (`stops`, where each leg ends). `when` is the ride time
     (`HOUR_SHARE`)."""
+    shared = share_controls(junctions)
+    paired = {i: first for first, second in divided_pairs(shared).items() for i in (first, second)}
     events = (
-        _with_signal(assess(junction, group, when), junction, group, when)
-        for junction in share_controls(junctions)
+        _paired(_with_signal(assess(junction, group, when), junction, group, when), paired.get(i))
+        for i, junction in enumerate(shared)
     )
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
     return number_groups(merged, stops) if group else merged
+
+
+def _paired(event: Event | None, pair: int | None) -> Event | None:
+    return event if event is None or pair is None else replace(event, pair=pair)
+
+
+def divided_pairs(junctions: Sequence[Junction]) -> dict[int, int]:
+    """The crossings of a divided road's two carriageways, as {first: second} places in
+    `junctions`: two junctions the route rides straight through, with no other crossing
+    between them, each crossing a one-way road, the two roads of ways of their own with a
+    name in common. THE test for "one divided road", for the price (`merge_nearby`, the
+    refuge's credit) and for the wait (`give_ways`, one two-stage wait) alike, and it does
+    not ask how wide the median is: it was a 45 m limit for the price and a 35 m one for
+    the wait, so a median a metre wider priced the two halves as two whole roads (the
+    independent review of 2026-11-13, finding 6)."""
+    order = sorted(range(len(junctions)), key=lambda i: junctions[i].m)
+    crossing = [i for i in order if junctions[i].crossed]
+    pairs: dict[int, int] = {}
+    taken: set[int] = set()
+    for first, second in zip(crossing, crossing[1:], strict=False):
+        if first in taken:
+            continue
+        a, b = junctions[first], junctions[second]
+        if a.movement is not Movement.STRAIGHT or b.movement is not Movement.STRAIGHT:
+            continue
+        if any(
+            ra.oneway and rb.oneway and ra.ways and rb.ways
+            and ra.names & rb.names and not ra.ways & rb.ways
+            for ra in a.crossed
+            for rb in b.crossed
+        ):  # fmt: skip
+            pairs[first] = second
+            taken.add(second)
+    return pairs
+
+
+def give_ways(junctions: Sequence[Junction], when: str | None = None) -> list[GiveWay | None]:
+    """Each junction's `give_way`, in the order given, read as `assess_route` prices them:
+    the nodes of one junction sharing its strongest control (`share_controls`), and a
+    divided road's two carriageways (`divided_pairs`) one crossing, whose wait is the
+    two-stage one, counted at the first carriageway and not again at the second."""
+    shared = share_controls(list(junctions))
+    found = [give_way(junction, when) for junction in shared]
+    for place, junction in enumerate(shared):
+        if junction.control is Control.SIGNAL:
+            # A stop sign across the same road, for the signal's hold below it.
+            stopped = give_way(replace(junction, control=Control.STOP), when)
+            found[place] = None if stopped is None else replace(stopped, at_signal=True)
+    for first, second in divided_pairs(shared).items():
+        whole = give_way(_as_divided(shared[first]), when)
+        after = found[second]
+        if whole is not None and whole.stops and after is not None and not after.at_signal:
+            found[first], found[second] = whole, GiveWay(False)
+    return found
 
 
 def _with_signal(
@@ -1872,6 +2112,7 @@ def _with_signal(
         big_signals=(here,) if big else (),
         own_big_signals=(here,) if own_big else (),
         stop_extra=((here, extra),),
+        signal_own=((here, signalled.cost_ft if signalled is not None else 0.0),),
     )
 
 
@@ -1916,6 +2157,11 @@ def stop_extra_ft(events: Sequence[Event] | None) -> dict[tuple[float, float], f
     """By signalised point, the feet more a stop sign there would cost (`Event.stop_extra`),
     for holding a beg-button crossing below it (`routemaker.junction_delay.signal_wait`)."""
     return {point: ft for event in events or () for point, ft in event.stop_extra}
+
+
+def signal_own_ft(events: Sequence[Event] | None) -> dict[tuple[float, float], float]:
+    """By signalised point, the feet the junction costs with its signal (`Event.signal_own`)."""
+    return {point: ft for event in events or () for point, ft in event.signal_own}
 
 
 def penalty_m(events: list[Event]) -> float:

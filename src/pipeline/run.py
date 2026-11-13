@@ -2056,6 +2056,32 @@ def apply_beside_busy_road(
     return moved
 
 
+def junction_road(stress):
+    """A way's `StressResult` as the junction model's road at route time
+    (`routemaker.intersections.Road`): the same facts `write_segments` puts on the segment
+    table and `core.junctions.roads_by_way` reads back (the greater of the tier and the
+    tier before smoothing, the half step, the agency's count, the posted speed, the lanes a
+    direction, the direction, the statutory default speed). None where the way has no
+    level. So the rebuild and the route read one mouth one way (`facility.crossed_road`)."""
+    from routemaker.intersections import Road
+
+    if stress is None or stress.tier is None:
+        return None
+    raw = getattr(stress, "unsmoothed_tier", None)
+    tier = max(int(stress.tier), int(raw)) if raw is not None else int(stress.tier)
+    speed = _smallint(getattr(stress, "speed_mph", None))
+    default = _smallint(getattr(stress, "default_speed_mph", None))
+    return Road(
+        tier=tier,
+        speed_mph=None if speed is None else float(speed),
+        lanes=_smallint(getattr(stress, "lanes", None)),
+        oneway=getattr(stress, "graph_oneway", None),
+        aadt=getattr(stress, "volume_aadt", None),
+        default_speed_mph=None if default is None else float(default),
+        half=bool(getattr(stress, "half", False)) and tier == int(stress.tier) and tier < 5,
+    )
+
+
 def rate_side_paths(
     ways,
     stress_by_way: dict,
@@ -2088,12 +2114,8 @@ def rate_side_paths(
     crossings = facility.side_path_crossings(
         [(way.osm_id, way.tags, getattr(way, "node_ids", ()), way.coordinates) for way in ways],
         {**side_streets, **tracks},
-        lambda osm_id: (
-            level_of(stress_by_way[osm_id])
-            if osm_id in stress_by_way and stress_by_way[osm_id].tier is not None
-            else None
-        ),
-        control_nodes,
+        control_at=control_nodes,
+        road_of=lambda osm_id: junction_road(stress_by_way.get(osm_id)),
     )
     moved = apply_beside_busy_road(stress_by_way, side_streets, crossings)
     moved += apply_beside_busy_road(stress_by_way, tracks, crossings, bare_level)

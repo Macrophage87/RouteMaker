@@ -995,24 +995,16 @@ def charged_m(read: Analysis, ctx: Context) -> float:
 
 
 def avoidance_severity(event) -> str | None:
-    """The severity the planner's avoidance passes read an event at: the map's colour. Until
-    2026-11-13 a trail crossing with no signal mapped was capped at orange on the map (item
-    185) and this read it as the red it cost; the junction model no longer caps it
-    (`intersections.MARKED_YIELD_SHARE`), so no event carries a `max_severity` now and this
-    is the colour itself. Kept for an event made before the change (a saved answer)."""
-    severity = event.severity
-    if (
-        severity == model.ORANGE
-        and getattr(event, "max_severity", None) == model.ORANGE
-        and model.severity_of(event.cost_ft) == model.RED
-    ):
-        return model.RED
-    return severity
+    """The severity the planner's avoidance passes read an event at: the map's colour.
+    Until 2026-11-13 a trail crossing with no signal mapped was capped at orange on the map
+    (item 185) and this read it as the red it cost; the junction model no longer caps any
+    event (`intersections.MARKED_YIELD_SHARE`), so the colour and the cost agree."""
+    return event.severity
 
 
 def junction_cost_m(events: list | None, severity: str, shift: int = 0) -> float:
     """The summed cost of the events of one severity (read `shift` levels up), in metres;
-    each at its `avoidance_severity`, so a capped trail crossing counts with the reds."""
+    each at its `avoidance_severity`."""
     if not events:
         return 0.0
     return (

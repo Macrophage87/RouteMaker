@@ -63,11 +63,12 @@ from django.conf import settings
 from pipeline.schema import (
     ROAD_COST_COLUMNS,
     ROAD_TRAIT_COLUMNS,
+    SIDEPATH_NAME_COLUMN,
     STRESS_HALF_COLUMN,
     UNSMOOTHED_TIER_COLUMN,
     validate_schema_name,
 )
-from routemaker import junction_delay
+from routemaker import facility
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
     Beacon,
@@ -82,12 +83,14 @@ from routemaker.intersections import (
     beacon_at,
     beacons_near,
     class_edge,
+    give_ways,
     major_crossings,
     majors_of_events,
     rating_at,
     with_beacons,
     with_ratings,
 )
+from routemaker.stress import BESIDE_BUSY_ROAD_RULE, SERVICE_ROAD_RULE
 from routemaker.trace_junctions import (
     APPROACH_M,
     NOT_A_ROAD_USES,
@@ -261,21 +264,32 @@ def busy_by_tier(points: Sequence[tuple[int, float, float]]) -> set[int]:
 # street's traffic stops for the main road and for the path alike. The junction model read
 # the path as the quiet way it is, so with the side street's stop sign not on the map the
 # rider was priced as the one who stops (720 to 800 ft a mouth, against 25 ft with the
-# sign mapped; the audit of 2026-11-13, section 3.7). So for a junction the route rides
-# straight through on a path, the busiest road within BESIDE_M of the node that runs
-# within BESIDE_ANGLE_DEG of parallel to the rider, and is not one of the roads met at the
-# node, is the road the path runs beside (`Junction.beside`, `intersections.has_priority`).
-# The distance and the angle are `routemaker.facility`'s own for naming a side path's
-# street (SIDE_STREET_M, SIDE_STREET_ANGLE); a default, unmeasured.
-BESIDE_M = 20.0
-BESIDE_ANGLE_DEG = 30.0
+# sign mapped; the audit of 2026-11-13, section 3.7).
+#
+# ONE test for "a path beside a road", the rebuild's (`routemaker.facility.side_streets`):
+# - WHETHER the rider's way is a side path is the rebuild's answer, read off the segment
+#   table: a trail-class way it named for its street (`sidepath_name`) or rated by the
+#   side-path rule (`stress.BESIDE_BUSY_ROAD_RULE`). A named trail the rebuild judged as a
+#   whole not to be a side path is not one here either, however near a road passes.
+# - WHICH road at a node is the nearest one within the rebuild's own distance and angle
+#   (`facility.SIDE_STREET_M`, `SIDE_STREET_ANGLE`: not restated here) that is a street by
+#   its rule: not a road barred to bicycles (a motorway), not an alley or a hidden way
+#   (`map_class`), not a service road, not one of the roads met at the node. It was the
+#   busiest road in reach of any path, a motorway included (the independent review of
+#   2026-11-13, finding 10).
+# Not shared: the rebuild also asks that the street has a name, which this table does not
+# keep; and a NAMED side path the rule left at LTS 1 carries neither mark, so it is read
+# as a path on its own.
+BESIDE_M = facility.SIDE_STREET_M
+BESIDE_ANGLE_DEG = facility.SIDE_STREET_ANGLE
 # BESIDE_M as degrees, as `TIER_NEAR_DEG` is (a degree of longitude is shorter here, so
 # east to west it reaches about 16 m).
 BESIDE_DEG = BESIDE_M / 111_000.0
 
 _BESIDE_ROAD = """
 SELECT j.idx, best.way
-FROM unnest(%s::int[], %s::float8[], %s::float8[], %s::float8[]) AS j(idx, lon, lat, heading)
+FROM unnest(%s::int[], %s::float8[], %s::float8[], %s::float8[], %s::bigint[])
+     AS j(idx, lon, lat, heading, own)
 CROSS JOIN LATERAL (
     SELECT s.osm_way_id AS way
     FROM {schema}.segment AS s
@@ -290,12 +304,17 @@ CROSS JOIN LATERAL (
     ) AS along
     WHERE ST_DWithin(s.geometry, ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326), %s)
       AND NOT s.is_trail_class
+      AND s.map_class = 'road'
+      AND s.stress_rule NOT LIKE %s
       AND s.osm_way_id <> ALL(%s::bigint[])
       AND abs(mod((along.bearing - j.heading + 720 + 90)::numeric, 180) - 90) <= %s
-    ORDER BY s.stress_tier DESC NULLS LAST,
-             s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
+    ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
     LIMIT 1
 ) AS best
+WHERE EXISTS (
+    SELECT 1 FROM {schema}.segment AS p
+    WHERE p.osm_way_id = j.own AND p.is_trail_class AND ({side_path})
+)
 """
 
 
@@ -315,7 +334,7 @@ def beside_roads(raws: Sequence[RawJunction], nodes: dict[int, Node]) -> dict[in
     (`_BESIDE_ROAD`), one query for the route. A table that cannot be read reads none: the
     rider is then priced as before, and the plan answered all the same."""
     asked = [
-        (position, raw.lon, raw.lat, float(raw.in_heading or 0.0))
+        (position, raw.lon, raw.lat, float(raw.in_heading or 0.0), int(raw.in_way or 0))
         for position, raw in enumerate(raws)
         if rides_a_path_through(raw)
     ]
@@ -326,7 +345,7 @@ def beside_roads(raws: Sequence[RawJunction], nodes: dict[int, Node]) -> dict[in
     from .routing import plan_cursor
 
     met: set[int] = set()
-    for position, _lon, _lat, _heading in asked:
+    for position, *_rest in asked:
         raw = raws[position]
         met |= {raw.in_way, raw.out_way}
         node = nodes.get(position)
@@ -334,11 +353,22 @@ def beside_roads(raws: Sequence[RawJunction], nodes: dict[int, Node]) -> dict[in
             met |= {arm.way_id for arm in node.arms}
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     arrays = [list(column) for column in zip(*asked, strict=True)]
+    # The rebuild's own marks of a side path (see the note above).
+    side_path = "p.stress_rule LIKE %s"
+    if segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN):
+        side_path += f" OR p.{SIDEPATH_NAME_COLUMN} IS NOT NULL"
     try:
         with plan_cursor() as cursor:
             cursor.execute(
-                _BESIDE_ROAD.format(schema=schema),
-                [*arrays, BESIDE_DEG, sorted(met), BESIDE_ANGLE_DEG],
+                _BESIDE_ROAD.format(schema=schema, side_path=side_path),
+                [
+                    *arrays,
+                    BESIDE_DEG,
+                    f"%{SERVICE_ROAD_RULE}%",
+                    sorted(met),
+                    BESIDE_ANGLE_DEG,
+                    f"{BESIDE_BUSY_ROAD_RULE}%",
+                ],
             )
             return {int(idx): int(way) for idx, way in cursor.fetchall()}
     except DatabaseError:
@@ -1346,11 +1376,10 @@ def events_of(
     `when` where not given. `when` itself always times the junction costs (rush hour, night,
     weekend). Hunt X1 (2026-11-08, unreleased) briefly passed one value for both, so off the
     weekend graphs a plan's junctions were priced with no ride time.
-    `given_way`: a dict this fills, by (lon, lat, way in, way out), with the road the rider
-    gives way to at each junction read (`junction_delay.road_given_way`), so the junction
-    waits read a road's traffic as this model does, not its class alone; None where the
-    rider crosses with the right of way (`junction_delay.has_right_of_way`), so no stop is
-    timed where none is priced."""
+    `given_way`: a dict this fills, by (lon, lat, way in, way out), with this model's
+    reading of who gives way at each junction read and for how long
+    (`intersections.give_ways`), so the junction waits time a stop exactly where the price
+    has one, and the same wait."""
     by_tier = busy_by_tier(
         [
             (position, raw.lon, raw.lat)
@@ -1380,19 +1409,16 @@ def events_of(
     closures = when if closure_when is None else closure_when
     roads = roads_by_way(list(asked.values()), closures, with_facility)
     built = build_junctions(raws, nodes, roads, beside)
-    if given_way is not None:
-        for raw, junction in zip(raws, built, strict=True):
-            key = (raw.lon, raw.lat, raw.in_way, raw.out_way)
-            road = junction_delay.road_given_way(junction)
-            if junction_delay.has_right_of_way(junction):
-                # None: the rider crosses with the right of way, and no stop is timed.
-                given_way[key] = None
-            elif road is not None:
-                given_way[key] = road
     if beacons:
         signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]
         built = with_beacons(built, beacons, signs)
     built = with_ratings(built, ratings)
+    if given_way is not None:
+        # The same junctions the events are made from (their beacons read, the nodes of
+        # one junction sharing its control), so the time and the price have one answer.
+        for raw, reading in zip(raws, give_ways(built, when), strict=True):
+            if reading is not None:
+                given_way[(raw.lon, raw.lat, raw.in_way, raw.out_way)] = reading
     events = assess_route(built, group, when=when)
     if not group:
         return events

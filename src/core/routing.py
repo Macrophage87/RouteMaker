@@ -3389,17 +3389,6 @@ STRETCH_UNTRACED = "untraced"
 STRETCH_OUTSIDE_DC = "outside_dc"
 
 
-def stop_as_yield(lon: float, lat: float) -> bool:
-    """Whether a rider may take a stop sign at this point as a yield sign: inside the
-    District, its border roads not included (`routemaker.junction_delay`)."""
-    from .mass_tiles import dc_boundary, inside_dc
-
-    west, south, east, north = dc_boundary()[1]
-    if not (west <= lon <= east and south <= lat <= north):
-        return False
-    return inside_dc(lon, lat, tolerance_m=0.0)
-
-
 def suburban_signal(lon: float, lat: float) -> bool:
     """Whether a signal at this point is timed as a suburban one: outside the District,
     Baltimore City, Alexandria and Arlington (`core.city_limits`, `routemaker.junction_delay`;
@@ -3478,24 +3467,27 @@ def junction_waits(
     given_way: dict | None = None,
 ) -> list[junction_delay.Wait]:
     """A route's junction waits (`routemaker.junction_delay.waits`), read as `plan` and the
-    calm search read them: stop signs taken as yields in the District, the beacons, and the
+    calm search read them: the beacons, and the
     junction model's signals, big roads and (with `stop_s_per_ft`, the ranking's seconds of
     waiting a foot of the junction model's cost is worth) its stop-sign prices, where there
     are `events`; suburban signals by `suburban_signal`, the map's beg buttons by
     `button_ways` (`button_cache`: its answers kept for the plan); a signal's time shown by
-    the ride-time setting `when` (None: not known). `given_way`: the roads given way to as
-    the junction model read them (`refine.Context.given_way`), by which a junction with no
-    signal is priced and timed (`junction_delay.give_way_wait`); None: by class alone."""
+    the ride-time setting `when` (None: not known). `given_way`: who gives way at
+    each junction as the junction model read it (`refine.Context.given_way`,
+    `intersections.give_ways`), by which a junction with no signal is timed; None: by the
+    roads' classes alone."""
     junctions = list(junctions)
     signals = intersections.signal_points(events)
-    stop_extra = None
+    stop_extra = signal_own = None
     if events is not None and stop_s_per_ft is not None:
         stop_extra = {
             point: ft * stop_s_per_ft for point, ft in intersections.stop_extra_ft(events).items()
         }
+        signal_own = {
+            point: ft * stop_s_per_ft for point, ft in intersections.signal_own_ft(events).items()
+        }
     return junction_delay.waits(
         junctions,
-        stop_as_yield,
         lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
         # The junction model's signals, up the roads' arms too (hunt J5).
         signals,
@@ -3504,6 +3496,7 @@ def junction_waits(
         own_big=intersections.own_big_signal_points(events),
         buttons=button_ways(junctions, signals, button_cache),
         stop_extra_s=stop_extra,
+        signal_own_s=signal_own,
         when=when,
         given_way=given_way,
     )

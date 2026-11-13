@@ -1195,16 +1195,22 @@ def without_bike_facility(tags: dict[str, str]) -> dict[str, str]:
 # - the end of the run, where the path stops at a street and goes no further.
 #
 # Each crossing is priced ONCE (the owner, 2026-10-03, decision 303: "our routing is a sum of
-# intersection stress and route stress, we don't want to double count"):
-# - a street at LTS 2.5 or more and a slip lane are junctions the junction model prices when
-#   a route rides through them (`routemaker.intersections`: signals, right of way, the
-#   crossed road's speed and width). They are NOT in the path's level.
-# - a driveway or a quiet street's mouth (below LTS 2.5) is nothing to the junction model
-#   (`intersections.Road.busy`). Those are in the path's level, here: feet of quiet riding on
-#   the junction model's scale (`crossing_point_ft`), summed over the run of side path along
-#   one street (its ways joined end to end, so a path split at every driveway is read as
-#   one) and read as feet a mile. A run under CROSSING_RUN_MIN_M is too short to read a rate
-#   from.
+# intersection stress and route stress, we don't want to double count"), and one test says
+# where: the junction model's own (`junction_priced`, `intersections.Road.busy` of the
+# crossed way read by its traffic as that model reads it at route time).
+# - A way with a price to cross (a crossing level above 1 by its lanes, speed and count;
+#   where those cannot be read, a map level of 2.5 or more) and a slip lane are junctions
+#   the junction model prices when a route rides through them. They are NOT in the path's
+#   level.
+# - Every other mouth is in the path's level, here, at the junction model's own price for
+#   passing it at its crossing level (`crossing_point_ft`): nothing at crossing level 1,
+#   which is what that model charges for it too. The feet are summed over the run of side
+#   path along one street (its ways joined end to end, so a path split at every driveway
+#   is read as one) and read as feet a mile. A run under CROSSING_RUN_MIN_M is too short
+#   to read a rate from.
+# Until 2026-11-13 the split was by the MAP level (2.5) on this side and by the crossing
+# level on the other, so a two-lane 35 mph street the map rates 2 was charged in both and
+# a two-lane 30 mph street the map rates 3 in neither (the independent review, finding 3).
 
 # The ways cars use that a side path can cross: streets, service roads and driveways, links.
 CROSSING_HIGHWAY = frozenset(
@@ -1287,19 +1293,16 @@ def _signalised(tags: dict[str, str]) -> bool:
 
 
 def crossing_point_ft(level: float, signal: bool = False) -> float:
-    """What the mouth of a driveway or quiet street (below LTS 2.5) costs a rider on a side
-    path, in feet of quiet riding: the junction model's own price for that movement
-    (`intersections.cost_of`), asked of it here, so there is one source and no figure of
-    this module's. The movement is straight on along a path beside a road, past a mouth
-    whose crossing level is the crossed way's map level, the rider holding the road's
-    right of way (`intersections.has_priority`, `Junction.beside`): the priority side's
-    pass, times the share of drivers who do not yield at a marked crossing, plus the right
-    hook, both fading in from nothing at level 1 to whole at level 2. Today 271 ft at an
-    LTS 2 street, 135 ft at a driveway (1.5), nothing at an LTS 1 street; at a signal the
-    pass costs nothing and the hook stays (250 and 125 ft).
-
-    The junction model charges nothing at these mouths when a route rides through them
-    (`intersections.Road.busy`), so the level holds them and nothing is counted twice."""
+    """What a mouth the junction model does not price at route time (`junction_priced`)
+    costs a rider on a side path, in feet of quiet riding, at the crossed way's CROSSING
+    level (`intersections.crossing_level`): the junction model's own price for that
+    movement (`intersections.cost_of`), asked of it here, so there is one source and no
+    figure of this module's. The movement is straight on along a path beside a road, past
+    the mouth, the rider holding the road's right of way (`intersections.has_priority`,
+    `Junction.beside`): the priority side's pass, times the share of drivers who do not
+    yield at a marked crossing, plus the right hook, both fading in from nothing at level
+    1 to whole at level 2. Today 271 ft at level 2, 135 ft at 1.5 (a driveway), nothing
+    at level 1; at a signal the pass costs nothing and the hook stays (250 and 125 ft)."""
     # Imported here: `intersections` reads `stress`, which reads this module.
     from . import intersections as ix
 
@@ -1315,19 +1318,38 @@ def crossing_point_ft(level: float, signal: bool = False) -> float:
     return ix.cost_of(passing)[0]
 
 
-def junction_priced(level: float, highway: str) -> bool:
-    """Whether crossing a way is a junction the junction model prices at route time: a slip
-    lane, or a way at LTS 2.5 or more (`intersections.Road.busy`). Such a crossing is not in
-    a side path's level."""
-    from . import intersections
+def road_at_level(level: float):
+    """A crossed way of which only its map level is known, as the junction model's road
+    (`intersections.Road`): it cannot be read by its traffic, so that level stands."""
+    from . import intersections as ix
 
-    return highway in SLIP_LANE_HIGHWAY or level >= intersections.BUSY_TIER - 0.5
+    tier = int(level)
+    return ix.Road(tier, half=level > tier)
+
+
+def crossed_road(road, highway: str) -> tuple[bool, float]:
+    """A crossed way as the junction model reads it at route time (`road`: its
+    `intersections.Road`, from the same facts the segment table keeps): whether crossing
+    it is a junction that model prices when a route rides through (a slip lane, or a way
+    with a price to cross, `Road.busy` read by its traffic), and its crossing level. THE
+    one test both sides share: a mouth it prices is not in a side path's level, and every
+    other mouth is, at that level."""
+    from . import intersections as ix
+
+    read = ix._by_traffic(road)
+    return highway in SLIP_LANE_HIGHWAY or read.busy, ix.crossing_level(read)
+
+
+def junction_priced(road, highway: str) -> bool:
+    """Whether crossing a way is a junction the junction model prices at route time
+    (`crossed_road`). Such a crossing is not in a side path's level."""
+    return crossed_road(road, highway)[0]
 
 
 class _Crossed(NamedTuple):
-    """One road at a node: its way, its name's key, its level, whether the junction model
-    prices crossing it (`junction_priced`), whether a signal is mapped within reach, whether
-    the way ends at the node, and the next point along it from there."""
+    """One road at a node: its way, its name's key, its crossing level, whether the
+    junction model prices crossing it (`crossed_road`), whether a signal is mapped within
+    reach, whether the way ends at the node, and the next point along it from there."""
 
     way: int
     key: str
@@ -1348,15 +1370,19 @@ def side_path_crossings(
     level_of: Callable[[int], float | None] | None = None,
     control_at: Mapping[int, str] | None = None,
     points: dict[int, dict] | None = None,
+    road_of: Callable[[int], object | None] | None = None,
 ) -> dict[int, SidePathCrossings]:
     """For each side path in `side` (`side_streets`, `on_road_tracks`), what a rider
     following it crosses, by osm id.
 
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]) for every way; `level_of` gives a
     crossed way's level by osm id (None where it has none); `control_at` gives the nodes
-    tagged as a signal (SIGNAL_NODE). What counts as a crossing point, and what does not, is
-    in the note above (a street at LTS 2.5 or more and a slip lane are the junction model's,
-    not counted here); what each costs is `crossing_point_ft`. The two carriageways of one
+    tagged as a signal (SIGNAL_NODE); `road_of` gives a crossed way as the junction model
+    has it at route time (an `intersections.Road` with the speed, lanes, direction and
+    count the segment table keeps), without which only its map level is known
+    (`road_at_level`). What counts as a crossing point, and what does not, is in the note
+    above (a way the junction model prices and a slip lane are that model's, not counted
+    here); what each costs is `crossing_point_ft`. The two carriageways of one
     named street are one point. A run is
     the side paths along one street joined at shared end nodes or through a crossing the
     rider rides. Only the road nodes near a side path are held, so the region's road
@@ -1405,9 +1431,11 @@ def side_path_crossings(
         hits = [index for index, node in enumerate(nodes) if node in wanted]
         if not hits:
             continue
-        level = level_of(osm_id) if level_of is not None else None
-        if level is None:
-            level = UNRATED_CROSSING_LEVEL
+        road = road_of(osm_id) if road_of is not None else None
+        if road is None:
+            level = level_of(osm_id) if level_of is not None else None
+            road = road_at_level(UNRATED_CROSSING_LEVEL if level is None else level)
+        priced_at_route_time, level = crossed_road(road, highway)
         key = _name_key(tags.get("name")) or f"way {osm_id}"
         located = coords if len(coords) == len(nodes) else None
         last = len(nodes) - 1
@@ -1422,7 +1450,7 @@ def side_path_crossings(
                     osm_id,
                     key,
                     level,
-                    junction_priced(level, highway),
+                    priced_at_route_time,
                     any(control_at.get(node) == SIGNAL_NODE for node in reach),
                     ends,
                     toward,

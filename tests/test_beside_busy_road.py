@@ -14,6 +14,7 @@ from pipeline.run import apply_beside_busy_road
 from routemaker import facility
 from routemaker.stress import (
     BESIDE_BUSY_ROAD_RULE,
+    CROSSING_FT_PER_HALF_STEP,
     Stress,
     StressAdjustment,
     StressResult,
@@ -53,12 +54,12 @@ def test_a_path_beside_a_calm_street_or_none_stays_at_1(road):
 
 
 def test_beside_a_road_at_2_5_only_the_crossings_count():
-    """No step for the road itself, but a calm mile of crossings a mile is half a level, up
+    """No step for the road itself, but a half step of crossings a mile is half a level, up
     to the road's own 2.5: so a lane does not fall from 3 to 1 where its street dips from 3
     to 2.5 (the audit's 17th St NW), and a two-way track with driveways on a collector can
     be 1.5 (the owner's Woodglen Drive)."""
-    assert beside_busy_road_step(PATH, 2.5, crossing_ft_per_mile=5000.0) is PATH
-    one = beside_busy_road_step(PATH, 2.5, crossing_ft_per_mile=6000.0)
+    assert beside_busy_road_step(PATH, 2.5, crossing_ft_per_mile=0.95 * STEP) is PATH
+    one = beside_busy_road_step(PATH, 2.5, crossing_ft_per_mile=1.1 * STEP)
     assert (one.tier, one.half) == (Stress.LTS1, True)
     many = beside_busy_road_step(PATH, 2.5, crossing_ft_per_mile=90000.0)
     assert (many.tier, many.half) == (Stress.LTS2, True)
@@ -209,27 +210,38 @@ def test_the_road_panel_says_why_in_words():
 # especially sliplanes it could get an even larger bump") -----------------------------------
 
 
-MILE = 5280.0
+STEP = CROSSING_FT_PER_HALF_STEP
+MILE = STEP
 
 
-def test_a_calm_mile_of_crossings_a_mile_adds_half_a_level():
-    busy = beside_busy_road_step(PATH, 4.0, crossing_ft_per_mile=1.2 * MILE)
+def test_a_half_step_of_crossings_a_mile_adds_half_a_level():
+    busy = beside_busy_road_step(PATH, 4.0, crossing_ft_per_mile=1.2 * STEP)
     assert (busy.tier, busy.half) == (Stress.LTS2, True)
-    assert "crossings cost 6336 ft a mile" in busy.rule
-    few = beside_busy_road_step(PATH, 4.0, crossing_ft_per_mile=0.4 * MILE)
+    assert f"crossings cost {1.2 * STEP:.0f} ft a mile" in busy.rule
+    few = beside_busy_road_step(PATH, 4.0, crossing_ft_per_mile=0.4 * STEP)
     assert (few.tier, few.half) == (Stress.LTS2, False)
     # Beside a calm street, crossings alone do not step a path.
     assert beside_busy_road_step(PATH, 2.0, crossing_ft_per_mile=9 * MILE) is PATH
 
 
-def test_a_half_step_is_a_calm_mile_of_mouths_a_mile():
-    """`CROSSING_FT_PER_HALF_STEP` is a mile, and a mouth is whatever the junction model
-    says it is: today twenty LTS 2 side streets a mile are half a level and nineteen are
-    not (it was ten, fitted to a retired points rule)."""
-    from routemaker.stress import CROSSING_FT_PER_HALF_STEP
+def test_a_half_step_is_what_the_costing_charges_a_mile_for_one():
+    """`CROSSING_FT_PER_HALF_STEP` is not a number of its own: it is what the ranking
+    charges for a mile ridden half a level higher, 2 to 2.5, at the Default setting
+    (`calm.multiplier`; docs/stress/routing-costs.md, "One unit"), so a mile of mouths
+    that cost that much is worth the half level it adds. Until 2026-11-13 it was a mile,
+    5,280 ft, an unfitted leftover (the independent review, finding 5)."""
+    from core import presets
+    from routemaker import calm, stress
 
-    assert CROSSING_FT_PER_HALF_STEP == MILE
-    assert 19 * facility.crossing_point_ft(2.0) < MILE <= 20 * facility.crossing_point_ft(2.0)
+    assert stress.CROSSING_STEP_USE_ROADS == presets.use_roads_for(presets.DEFAULT_STRESS)
+    pricing = calm.Pricing(stress.CROSSING_STEP_USE_ROADS)
+    dearer = calm.multiplier(2, None, pricing, half=True) - calm.multiplier(2, None, pricing)
+    assert CROSSING_FT_PER_HALF_STEP == pytest.approx(dearer * 5280.0, abs=1.0)
+    assert CROSSING_FT_PER_HALF_STEP == 8802.0
+    # A mouth is whatever the junction model says it is: today 33 LTS 2 side streets a
+    # mile are half a level and 32 are not.
+    mouth = facility.crossing_point_ft(2.0)
+    assert 32 * mouth < CROSSING_FT_PER_HALF_STEP <= 33 * mouth
 
 
 def test_a_quiet_crossing_point_is_the_junction_models_own_price():
@@ -261,17 +273,104 @@ def test_a_quiet_crossing_point_is_the_junction_models_own_price():
 
 def test_a_busy_street_or_a_slip_lane_is_the_junction_models_not_the_levels():
     """Each crossing is priced once (the owner, decision 303: "we don't want to double
-    count"): the junction model prices a crossing of a road at LTS 2.5 or more and a slip
+    count"): the junction model prices a crossing of a road it reads as busy and a slip
     lane when a route rides it, so neither is in the path's level."""
-    from routemaker import intersections
-
-    assert not facility.junction_priced(2.0, "residential")
-    assert not facility.junction_priced(1.5, "service")
-    assert facility.junction_priced(2.5, "tertiary")
-    assert facility.junction_priced(1.5, "primary_link")
+    at = facility.road_at_level
+    assert not facility.junction_priced(at(2.0), "residential")
+    assert not facility.junction_priced(at(1.5), "service")
+    assert facility.junction_priced(at(2.5), "tertiary")
+    assert facility.junction_priced(at(1.5), "primary_link")
     for level in (1.0, 1.5, 2.0, 2.5, 3.0, 4.0):
-        road = intersections.Road(tier=int(level), half=level % 1 == 0.5)
-        assert facility.junction_priced(level, "residential") is road.busy
+        assert facility.junction_priced(at(level), "residential") is at(level).busy
+
+
+def _mouth_at_route_time(road):
+    """What a route riding a path beside a big road pays at the mouth of `road`, with
+    nothing mapped there (`intersections.cost_of`)."""
+    from routemaker import intersections as ix
+
+    path = ix.Road(1)
+    main = ix.Road(4, speed_mph=40.0, lanes=2)
+    passing = ix.Junction(
+        0.0, -77.0, 38.9, ix.Movement.STRAIGHT, path, path, (road,),
+        path_crossing=True, beside=main,
+    )  # fmt: skip
+    return ix.cost_of(ix.by_traffic(passing))[0]
+
+
+@pytest.mark.parametrize(
+    ("case", "road", "in_level"),
+    [
+        # The independent review's two cases (2026-11-13, finding 3). (a) A two-lane 35 mph
+        # street the map rates 2 (a bike lane, say): level 3 to cross. It was charged twice,
+        # in the path's level by its map level and at route time by its traffic.
+        ("mapped calm, busy to cross", {"tier": 2, "speed_mph": 35.0, "lanes": 1}, False),
+        # (b) A two-lane 30 mph street the map rates 3, no count: level 1 to cross. It was
+        # charged nowhere: left out of the level as busy, and free at route time.
+        ("mapped busy, calm to cross", {"tier": 3, "speed_mph": 30.0, "lanes": 1}, True),
+        ("a counted street", {"tier": 2, "speed_mph": 25.0, "lanes": 1, "aadt": 6000}, False),
+        ("an ordinary side street", {"tier": 2, "speed_mph": 25.0, "lanes": 1}, True),
+        ("a street the table cannot read", {"tier": 2}, True),
+        ("a driveway", {"tier": 1, "half": True}, True),
+        ("a four-lane road", {"tier": 4, "speed_mph": 40.0, "lanes": 2}, False),
+        ("an unread busy road", {"tier": 3}, False),
+    ],
+)
+def test_a_mouth_is_charged_in_exactly_one_place(case, road, in_level):
+    """One reading, the crossing level (`intersections.by_traffic`), decides where a mouth
+    is charged: in the path's level where the junction model does not read the road as
+    busy, at route time where it does. Never both, never neither."""
+    from routemaker import intersections as ix
+
+    road = ix.Road(**road)
+    at_route_time, level = facility.crossed_road(road, "residential")
+    assert at_route_time is not in_level, case
+    assert facility.junction_priced(road, "residential") is at_route_time
+    in_the_level = 0.0 if at_route_time else facility.crossing_point_ft(level)
+    route = _mouth_at_route_time(road)
+    # Never both.
+    assert in_the_level == 0.0 or route == 0.0, case
+    if at_route_time:
+        assert route > 0.0, case
+    else:
+        # Never neither: free in both only where the same function says the mouth is free
+        # (crossing level 1), and then the route would have paid the same nothing.
+        assert route == 0.0, case
+        assert (in_the_level == 0.0) is (level == 1.0), case
+
+
+def test_the_reviews_second_mouth_costs_nothing_in_either_place():
+    """Case (b) above is level 1 to cross by Furth's crossing table (two lanes, 30 mph),
+    so its mouth is free in the level and at route time alike: one answer, the model's."""
+    from routemaker import intersections as ix
+
+    road = ix.Road(3, speed_mph=30.0, lanes=1)
+    assert facility.crossed_road(road, "residential") == (False, 1.0)
+    assert facility.crossing_point_ft(1.0) == _mouth_at_route_time(road) == 0.0
+
+
+def test_a_side_paths_level_counts_a_mouth_by_the_roads_crossing_level():
+    """`side_path_crossings` reads each crossed road through `road_of` (the same
+    `intersections.Road` the route-time price is given), not by its map level."""
+    from routemaker import intersections as ix
+
+    ways = [
+        (10, {"highway": "cycleway"}, [100, 101, 102, 103], _line(39.0, 4)),
+        (21, {"highway": "residential"}, [102, 901], []),
+    ]
+
+    def feet(road):
+        found = facility.side_path_crossings(ways, _side(10), {21: 2.0}.get, road_of={21: road}.get)
+        return found[10].ft_per_mile
+
+    miles = facility._length_m(_line(39.0, 4)) / 1609.344
+    # Not read at route time (no speed or lanes on the table): its map level, 271 ft.
+    assert round(feet(None) * miles) == round(feet(ix.Road(2)) * miles) == 271
+    # Two lanes at 25 mph is level 1 to cross (Furth's crossing table): free, as it is for
+    # a route passing it.
+    assert feet(ix.Road(2, speed_mph=25.0, lanes=1)) == 0.0
+    # The same street at 35 mph is the junction model's to price: out of the level.
+    assert feet(ix.Road(2, speed_mph=35.0, lanes=1)) == 0.0
 
 
 def test_a_path_is_never_rated_above_the_road_beside_it():

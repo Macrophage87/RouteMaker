@@ -19,9 +19,8 @@ loop) passes it twice and pays twice.
 
 The penalty. 308: "Probably a 30 minute penalty like Avoid." An Avoid road pays
 `presets.AVOID_ENTRY_PENALTY_S` (1,800 cost seconds) on entry; an Avoid junction pays
-the same, `AVOID_JUNCTION_PENALTY_S`, once for each pass. This package does not import
-`core`, so the figure is restated here and `tests/test_avoid_junctions.py` holds the
-two equal.
+the same, `AVOID_JUNCTION_PENALTY_S`, once for each pass: one figure, the costing's
+`calm.AVOID_ENTRY_S`, read from there.
 """
 
 from __future__ import annotations
@@ -30,10 +29,12 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from routemaker.calm import AVOID_ENTRY_S
 from routemaker.lang import t
 
-# 308: the junction equivalent of an Avoid road's entry charge, cost seconds (30 minutes).
-AVOID_JUNCTION_PENALTY_S = 1800.0
+# 308: the junction equivalent of an Avoid road's entry charge, cost seconds (30 minutes):
+# the same number, not a copy of it.
+AVOID_JUNCTION_PENALTY_S = AVOID_ENTRY_S
 # A route passes a junction where its line comes this close to the junction's point
 # (metres). A junction node is where the roads' centre lines meet; 15 m (49 ft) takes in
 # a wide junction's own box and a route that turns through it, and stays short of the

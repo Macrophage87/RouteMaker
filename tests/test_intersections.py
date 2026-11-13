@@ -192,7 +192,9 @@ class TestMovementCosts:
         # And a left from a quiet street across it to a quiet one.
         across = junction(movement=Movement.LEFT, crossed=(wild,))
         assert m.cost_of(across)[1] == "left_across"
-        assert m.cost_of(across)[0] == m.MAX_CROSSING_FT
+        # One crossing tops out at the published level 4 price: the wait it weighs is the
+        # wait shown, capped (`GAP_WAIT_MAX_S`), so it never passes that price.
+        assert m.cost_of(across)[0] == m.STOPPED_CROSSING_FT[4]
 
     def test_straight_along_a_busy_road_costs_nothing_by_itself(self) -> None:
         """Riding on along a busy road with nothing crossed: no turn off it."""
@@ -1094,17 +1096,14 @@ class TestOptionC:
 
         assert refine.REFINE_MIN_EVENT_FT == m.RED_MIN_FT
 
-    def test_a_left_off_an_unsignalised_lts4_road_costs_as_much_as_crossing_it_from_a_stop(
-        self,
-    ) -> None:
-        road = Road(4, speed_mph=30, lanes=1)
-        left_off = m.left_from_ft(road, Control.NONE)
-        stopped = m.crossing_ft(road, Control.NONE, 1)
-        assert left_off == pytest.approx(stopped)
-
     def test_the_worst_junction_is_about_two_calm_miles(self) -> None:
+        """The top any junction is held to (467). One crossing alone is Broach's level 4
+        price at most since the priced wait became the wait shown; the wait at its cap
+        (30 s at `WAIT_PAIN`) is 984 ft."""
         wild = Road(5, speed_mph=60, lanes=4, aadt=60_000)
-        assert cost(movement=Movement.LEFT, outgoing=wild) == m.MAX_CROSSING_FT
+        assert cost(movement=Movement.LEFT, outgoing=wild) == m.STOPPED_CROSSING_FT[4]
+        assert m.gap_ft(wild) == pytest.approx(984.0)
+        assert m.gap_ft(wild) == m.WAIT_PAIN * m.GAP_WAIT_MAX_S * m.QUIET_FT_PER_S
         assert m.calm_miles(m.MAX_CROSSING_FT) == 2.0
 
     def test_the_worst_junctions_are_no_longer_all_the_same(self) -> None:
@@ -1199,3 +1198,31 @@ class TestRightHook:
         )
         event = m.assess(j)
         assert event is None or not event.flagged
+
+
+class TestEnteringABusyRoadFromAnother:
+    """`_enters`: a turn off one busy road onto another is the stopped side's turn onto
+    it where the road entered is busier, or the rider has the stop sign; else it is only
+    the turn off. One test for the price and for who waits (`give_way`)."""
+
+    SAME = {"speed_mph": 35.0, "lanes": 1, "oneway": False, "aadt": 12_000}
+    OWN = Road(3, **SAME)
+    EQUAL = Road(3, names=frozenset({"the other"}), **SAME)
+    BUSIER = Road(4, speed_mph=40.0, lanes=2, oneway=False, aadt=30_000)
+
+    def right(self, onto: Road, control: Control) -> Junction:
+        return Junction(0.0, -77.0, 38.9, Movement.RIGHT, self.OWN, onto, (onto,), control)
+
+    def test_onto_an_equal_road_only_with_a_stop_sign(self) -> None:
+        stopped = m.assess(self.right(self.EQUAL, Control.STOP))
+        free = m.assess(self.right(self.EQUAL, Control.NONE))
+        assert (stopped.kind, stopped.cost_ft) == ("right_onto", m.RIGHT_ONTO_MAX_FT)
+        assert (free.kind, free.cost_ft) == ("right_from", m.RIGHT_FROM_BUSY_FT)
+        assert m.give_way(self.right(self.EQUAL, Control.STOP)).stops
+        assert m.give_way(self.right(self.EQUAL, Control.NONE)) is None
+
+    def test_onto_a_busier_road_with_or_without_one(self) -> None:
+        for control in (Control.NONE, Control.STOP):
+            event = m.assess(self.right(self.BUSIER, control))
+            assert (event.kind, event.cost_ft) == ("right_onto", m.RIGHT_ONTO_MAX_FT)
+            assert m.give_way(self.right(self.BUSIER, control)).stops

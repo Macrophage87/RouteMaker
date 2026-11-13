@@ -23,8 +23,10 @@ import pytest
 from django.db import connection
 
 from core import junctions, segment_info
+from routemaker import facility
 from routemaker import intersections as model
 from routemaker.intersections import Control, Movement, Road
+from routemaker.stress import BESIDE_BUSY_ROAD_RULE, SERVICE_ROAD_RULE
 from routemaker.trace_junctions import RawJunction
 
 db = pytest.mark.django_db(transaction=True)
@@ -1739,17 +1741,21 @@ class TestEvents:
             self.locate_with(crossroads(**{"in": {"stop": True}})),
             given_way=found,
         )
-        ((key, road),) = found.items()
+        ((key, reading),) = found.items()
         assert key == (raw().lon, raw().lat, raw().in_way, raw().out_way)
-        assert (road.level, road.speed_mph) == (4.0, 40.0)
+        # Four lanes at 40 mph, 22,000 a day, on a weekend: the rider stops, and waits the
+        # seconds the price weighs (`intersections.wait_s`).
+        road = model.Road(4, speed_mph=40.0, lanes=2, oneway=False, aadt=22000)
+        assert reading == model.GiveWay(True, model.wait_s(road, "weekend"))
+        assert 0.0 < reading.wait_s <= model.GAP_WAIT_MAX_S
 
     @db
     def test_where_the_cross_traffic_stops_the_waits_are_told_the_rider_does_not(
         self, grid
     ) -> None:
         """The same crossing with the stop signs on the crossed road: the junction model
-        prices the priority side's pass, and the junction waits are handed None, "no stop
-        here" (`junction_delay.has_right_of_way`), so the time and the price agree."""
+        prices the priority side's pass, and the junction waits are handed "no stop here"
+        (`intersections.give_way`), so the time and the price agree."""
         found: dict = {}
         junctions.events_of(
             [raw()],
@@ -1758,7 +1764,8 @@ class TestEvents:
             self.locate_with(crossroads(north={"stop": True}, south={"stop": True})),
             given_way=found,
         )
-        assert found == {(raw().lon, raw().lat, raw().in_way, raw().out_way): None}
+        key = (raw().lon, raw().lat, raw().in_way, raw().out_way)
+        assert found == {key: model.GiveWay(False)}
 
     @db
     def test_the_event_carries_the_crossed_roads_mapped_name(self, grid) -> None:
@@ -1980,14 +1987,37 @@ class TestTheRoadASidePathRunsBeside:
             (70, 4, line((east - 0.002, LAT + 0.00009), (east + 0.002, LAT + 0.00009))),
             # The side street the path crosses, north-south.
             (71, 2, line((east, LAT - 0.002), (east, LAT + 0.002))),
+            # A motorway 5 m south of the path, a service road 3 m north of it, and a
+            # named trail 2 m south: none is a road a side path takes its priority from.
+            (72, 5, line((east - 0.002, LAT - 0.00005), (east + 0.002, LAT - 0.00005))),
+            (73, 2, line((east - 0.002, LAT + 0.00003), (east + 0.002, LAT + 0.00003))),
+            (74, 1, line((east - 0.002, LAT - 0.00002), (east + 0.002, LAT - 0.00002))),
+            # The rider's own path, which the rebuild rated as a path beside a busy road
+            # (99), one it only named for its street (98), and a trail on its own (97).
+            (99, 1, line((east - 0.002, LAT), (east + 0.002, LAT))),
+            (98, 1, line((east - 0.002, LAT), (east + 0.002, LAT))),
+            (97, 1, line((east - 0.002, LAT), (east + 0.002, LAT))),
         ]
+        marks = {
+            72: {"map_class": "barred"},
+            73: {"stress_rule": f"mixed traffic, {SERVICE_ROAD_RULE}"},
+            74: {"is_trail_class": True},
+            99: {"is_trail_class": True, "stress_rule": f"{BESIDE_BUSY_ROAD_RULE} (road at LTS 4)"},
+            98: {"is_trail_class": True, "sidepath_name": "Main Road"},
+            97: {"is_trail_class": True},
+        }
         with connection.cursor() as cursor:
             for way, tier, wkt in rows:
+                row = {"is_trail_class": False, "map_class": "road", "stress_rule": "test"}
+                row |= {"sidepath_name": None} | marks.get(way, {})
                 cursor.execute(
                     f"INSERT INTO {grid}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-                    "stress_rule) VALUES (%s, 0, ST_GeomFromText(%s, 4326), %s, 'test')",
-                    [way, wkt, tier],
-                )
+                    "stress_rule, is_trail_class, map_class, sidepath_name) "
+                    "VALUES (%s, 0, ST_GeomFromText(%s, 4326), %s, %s, %s, %s, %s)",
+                    [way, wkt, tier, row["stress_rule"], row["is_trail_class"],
+                     row["map_class"], row["sidepath_name"]],
+                )  # fmt: skip
+        segment_info.forget_columns()
         return east
 
     def path(self, east: float, **fields) -> RawJunction:
@@ -2002,6 +2032,18 @@ class TestTheRoadASidePathRunsBeside:
         # Heading north the main road is the one crossed; the side street is parallel.
         north = self.path(beside, in_heading=0.0, out_heading=0.0)
         assert junctions.beside_roads([north], {}) == {0: 71}
+
+    def test_the_rebuilds_verdict_decides_which_path_is_a_side_path(self, beside) -> None:
+        """One "beside a road" test (the independent review of 2026-11-13, finding 10): the
+        rebuild's (`facility.side_streets`), read here from the marks it leaves on the
+        path. A trail it did not call a side path has no road's priority, however near a
+        road runs; a motorway, a service road and another trail are never the road."""
+        assert junctions.beside_roads([self.path(beside, in_way=98, out_way=98)], {}) == {0: 70}
+        assert junctions.beside_roads([self.path(beside, in_way=97, out_way=97)], {}) == {}
+
+    def test_the_reach_and_the_angle_are_the_rebuilds(self) -> None:
+        assert junctions.BESIDE_M is facility.SIDE_STREET_M
+        assert junctions.BESIDE_ANGLE_DEG is facility.SIDE_STREET_ANGLE
 
     def test_only_a_path_ridden_straight_through_asks(self, beside) -> None:
         on_a_road = raw(lon=beside)
