@@ -1871,6 +1871,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Front rack": "ናይ ቅድሚት መቐመጢ",
   "Arriving": "ይበጽሕ ኣሎ",
   "{min} min": "{min} ደቒቕ",
+  "{a} or {b}": "{a} ወይ {b}",
   "Get off here: {name}.": "ኣብዚ ውረዱ፦ {name}።",
   "Next stop: {name}. Get off there.": "ዝቕጽል መዓርፎ፦ {name}። ኣብኡ ውረዱ።",
   "Next stop: {name}. Press the stop button to get off there.": "ዝቕጽል መዓርፎ፦ {name}። ኣብኡ ንምውራድ ናይ መዓርፎ መጠወቒ ጠውቑ።",

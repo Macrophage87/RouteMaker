@@ -1871,6 +1871,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Front rack": "Pòt-bisiklèt devan",
   "Arriving": "Ap rive",
   "{min} min": "{min} min",
+  "{a} or {b}": "{a} oswa {b}",
   "Get off here: {name}.": "Desann isit la: {name}.",
   "Next stop: {name}. Get off there.": "Pwochen arè: {name}. Desann la.",
   "Next stop: {name}. Press the stop button to get off there.": "Pwochen arè: {name}. Peze bouton arè a pou desann la.",
