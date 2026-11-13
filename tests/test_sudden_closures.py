@@ -385,4 +385,48 @@ def test_a_protest_with_any_violence_word_is_still_a_police_area() -> None:
     assert {a.advisory_id: a for a in dc.parse_alertdc(page, NOW)}["alertdc-91001"].police
     assert dc.is_peaceful_protest("Road Closures / Police Activity (vigil)", "Barricades on K St")
     assert not dc.is_peaceful_protest("Police Activity (rally)", "Shots fired near the rally")
-    assert not dc.is_peaceful_protest("Road Closures / Police Activity", "Closed until March 3")
+    assert not dc.is_peaceful_protest("Police Activity (protest)", "A riot; one person killed")
+    assert not dc.is_peaceful_protest("Police Activity", "Closed until March 3")  # the month
+    assert dc.is_peaceful_protest("Rally closures until March 3", "")
+    assert dc.is_peaceful_protest("Police Activity", "Streets closed for a march")
+    assert dc.is_peaceful_protest("Police Activity", "Cease-fire rally on K St")
+    # A violence word in a category alone keeps the police area.
+    assert not dc.is_peaceful_protest("Road Closures / Police Activity (rally)", "", "Shooting")
+
+
+@pytest.mark.parametrize(
+    "title, text",
+    [
+        (
+            "Final Update: Road Closures / Police Activity (15th and P Streets, NW)",
+            "All roads have reopened.",
+        ),
+        (
+            "Update: Police Activity (15th and P Streets, NW) - Roads Reopened",
+            "All roads have reopened following the police investigation.",
+        ),
+    ],
+)
+def test_a_protest_closure_ends_at_its_reopening_or_the_police_age(title, text) -> None:
+    page = PROTEST_PAGE
+    assert "alertdc-91001" not in {
+        a.advisory_id for a in dc.parse_alertdc(page, NOW + dc.POLICE_MAX_AGE)
+    }
+    reopened = page.replace(
+        "<tbody>",
+        f"""<tbody><tr><td class="head">11/12/2026 9:00 AM</td><td class="head"><b>
+        <a href="/NRss/RssFeed/AlertDetails/91006">[AlertDC] {title}</a></b><br />
+        [AlertDC] {text}</td></tr>""",
+        1,
+    )
+    found = {a.advisory_id for a in dc.parse_alertdc(reopened, NOW)}
+    assert "alertdc-91001" not in found and "alertdc-91006" not in found
+
+
+def test_a_protest_with_no_closure_that_reads_is_dropped_as_a_police_item_is() -> None:
+    page = (
+        PROTEST_PAGE.replace("15th and P Street NW (Eastbound)", "nearby streets")
+        .replace("14th and P Street NW (Westbound)", "and others")
+        .replace("15th and Q Street NW", "as needed")
+    )
+    assert "alertdc-91001" not in {a.advisory_id for a in dc.parse_alertdc(page, NOW)}

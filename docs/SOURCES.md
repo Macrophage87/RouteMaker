@@ -763,7 +763,9 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
   words. A closure that names a protest (protest, demonstration, First Amendment, rally, vigil,
   marchers) and no violence word anywhere in it is an ordinary closure instead: its streets are
   avoided as listed, with no wide area (Stephen 2026-11-13: a protest "needs a lot less caution
-  than an active shooter").
+  than an active shooter"). "Police activity" and barricades alone are not violence here; its
+  reopening still ends it, and with no end of its own it drops off after 3 hours, as a police
+  closure does.
 - Publisher: DC Homeland Security and Emergency Management Agency.
 - Terms: public government alerts (inferred public). Not legal advice.
 
