@@ -99,15 +99,23 @@ COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # 50 s) after a wait for its one long slot.
 ROUTE_TIMEOUT_S = 120
 
-# How long one place search or other lookup waits, in all, for the site's busy answers (429, or a
-# 503 "busy") to clear before it gives up with `Busy`: an assistant that sends three calls at once
+# How long one tools/call waits, in all its lookups, for the site's busy answers (429, or a 503
+# "busy") to clear before it gives up with `Busy`: an assistant that sends three calls at once
 # shares the rider's one place search slot (core.ratelimit GEOCODE_IN_FLIGHT) and its five a
-# second (GEOCODE_BURST), so the second and third wait their turn instead of being refused. Our
-# default, unmeasured; well inside the site's 55 s call budget.
-LOOKUP_WAIT_S = 8.0
-# The longest single pause between tries, whatever the Retry-After says, and the shortest.
-LOOKUP_PAUSE_MAX_S = 2.0
+# second (GEOCODE_BURST), so the second and third wait their turn instead of being refused. Kept
+# short, since on the site a waiting call holds its web worker asleep (the site keeps workers
+# free within about a second; three calls at once wait about one search each). Our default,
+# unmeasured.
+LOOKUP_WAIT_S = 4.0
+# The longest single pause between tries, whatever the Retry-After says, the shortest, and the
+# most added at random so calls sent together do not knock together again. Our defaults,
+# unmeasured.
+LOOKUP_PAUSE_MAX_S = 1.0
 LOOKUP_PAUSE_MIN_S = 0.2
+LOOKUP_JITTER_MS = 200
+# The tools/call running in this thread (Server.call), so lookups share one wait and stop at its
+# deadline or cancellation.
+CURRENT_CALL: contextvars.ContextVar = contextvars.ContextVar("CURRENT_CALL", default=None)
 # How much longer a planned loop is than its ring in straight lines, for a first guess at the
 # ring's radius; the loop is then rescaled by what the router answered. Calmer settings wind
 # more: a 100 mi loop at stress 80 came out about 2.0 times its ring (tester, 2026-10-19).
@@ -464,28 +472,46 @@ def metro_check(line: list[list[float]], limit_mi: float, stations: list[Station
 # --- The site's API -------------------------------------------------------------------------
 
 
-def patient_request(api, method: str, path: str, body=None, what: str = "the site", **kw):
+def retry_after(headers, default: float = 1.0) -> float:
+    """A busy answer's Retry-After in seconds (urllib's headers, a dict or Django's response)."""
+    try:
+        return float((headers.get("Retry-After") if headers is not None else None) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def patient_request(
+    api, method: str, path: str, body=None, what: str = "the site", fresh_kw=None, **kw
+):
     """`api._request`, trying again while the site answers busy (429, or 503 other than a long
-    ride out of time) for up to LOOKUP_WAIT_S in all, each pause its Retry-After (clamped to
-    LOOKUP_PAUSE_MIN_S..LOOKUP_PAUSE_MAX_S, with a little jitter so parallel calls do not knock
-    together again). Raises `Busy` when the wait would run past that. A plain function, not an
-    `Api` method, so the site's in-process api (core.connector.InProcessApi) uses it too."""
-    waited = 0.0
+    ride out of time), each pause its Retry-After (clamped to LOOKUP_PAUSE_MIN_S..
+    LOOKUP_PAUSE_MAX_S, plus up to LOOKUP_JITTER_MS). The call's lookups share LOOKUP_WAIT_S in
+    all, and none waits past the call's deadline or after it is cancelled. Raises `Busy` when
+    the wait would run past that. `fresh_kw`: a function giving keyword arguments worked out
+    again for each try (the site's own budget, counted from when it is asked). A plain function,
+    not an `Api` method, so the site's in-process api (core.connector.InProcessApi) uses it too."""
+    call = CURRENT_CALL.get()
+    waited = [0.0] if call is None else call.lookup_waited
     while True:
-        status, payload, headers = api._request(method, path, body, **kw)
+        extra = fresh_kw() if fresh_kw else {}
+        status, payload, headers = api._request(method, path, body, **kw, **extra)
         code = payload.get("code") if isinstance(payload, dict) else None
         if not (status == 429 or (status == 503 and code != "long_ride_timed_out")):
             return status, payload, headers
-        try:
-            asked = float((headers.get("Retry-After") if headers is not None else None) or 1)
-        except (TypeError, ValueError):
-            asked = 1.0
+        asked = retry_after(headers)
         pause = min(LOOKUP_PAUSE_MAX_S, max(LOOKUP_PAUSE_MIN_S, asked))
-        pause += secrets.randbelow(200) / 1000  # 0-0.2 s
-        if asked > LOOKUP_WAIT_S or waited + pause > LOOKUP_WAIT_S:
+        pause += secrets.randbelow(LOOKUP_JITTER_MS) / 1000
+        late = call is not None and call.deadline is not None
+        if (
+            asked > LOOKUP_WAIT_S
+            or waited[0] + pause > LOOKUP_WAIT_S
+            or (late and time.monotonic() + pause > call.deadline)
+        ):
             raise Busy(what, math.ceil(asked))
         time.sleep(pause)
-        waited += pause
+        waited[0] += pause
+        if call is not None:
+            call.check()
 
 
 class Api:
@@ -568,7 +594,7 @@ class Api:
                     " points, a lower stress setting, or plan it in two halves."
                 )
             raise ToolError(refusal(status, message or payload))
-        raise Busy("The route planner", 5)
+        raise Busy("The route planner", math.ceil(retry_after(headers, 5.0)))
 
     def geocode(self, query: str, near: tuple[float, float] | None = None) -> list[dict]:
         params = {"q": query, "limit": 5}
@@ -3835,14 +3861,16 @@ WHY_PRESETS = (
 )
 WHY_MAX_MI = 25.0
 # A busy road on the direct route is said as one this route leaves when it carries at least this
-# many miles at LTS 3 and up there (our default, unmeasured), the largest WHY_MAX_LEAVES of them.
+# many miles at LTS 3 and up there, the largest WHY_MAX_LEAVES of them (both our defaults,
+# unmeasured).
 WHY_MIN_BUSY_MI = 0.25
 WHY_MAX_LEAVES = 3
 KM_PER_MILE = METRES_PER_MILE / 1000
 
 
 def _busy_mi(row: dict) -> float:
-    """A road row's miles at LTS 3 and up (road_list gives them apart only on a calmer road)."""
+    """A road row's miles at LTS 3 and up. road_list gives them apart only on a road mostly
+    calmer; one mostly LTS 3 or up counts whole, which can overstate it a little."""
     if (row.get("lts") or 0) >= 3:
         return float(row.get("miles") or 0.0)
     return float(row.get("miles_lts_3_up") or 0.0)
@@ -3915,8 +3943,15 @@ def why_this_way(ours: dict, direct: dict) -> dict:
             lon, lat = point_at_mile(direct_line, middle * direct_scale)
             along_m, _off, _ = line_nearest(line, lon, lat)
             instead = _row_at(our_rows, along_m / METRES_PER_MILE / ours_scale)
+            unnamed = instead is not None and (
+                instead["road"] in NAMELESS or " short links" in instead["road"]
+            )
+            if instead is not None and unnamed and instead.get("facility") in ("path", "trail"):
+                item["for"] = f"a {instead['facility']}"
+            elif instead is not None and unnamed:
+                instead = None  # nothing to name
             if instead is not None:
-                item["for"] = instead["road"]
+                item.setdefault("for", instead["road"])
                 if instead.get("lts") is not None:
                     item["for_lts"] = instead["lts"]
                 if instead.get("facility"):
@@ -6266,6 +6301,8 @@ class Call:
         # (the result's _meta, never the model's) and pictures (image content).
         self.meta: dict = {}
         self.images: list[dict] = []
+        # Seconds this call's lookups have waited for busy answers (patient_request).
+        self.lookup_waited: list[float] = [0.0]
 
     def timed_plan(self, seconds: float) -> None:
         """Note how long one plan took, for `time_for_another_plan`."""
@@ -8597,6 +8634,7 @@ class Server:
         call = call or Call()
         # A test call's drafts are archived as they are made (TEST_CALL).
         testing = TEST_CALL.set(name in TEST_TOOLS and bool((args or {}).get("test")))
+        current = CURRENT_CALL.set(call)
         try:
             out = handler(args or {}, call)
         except KeyError as missing:
@@ -8604,6 +8642,7 @@ class Server:
         except (TypeError, ValueError, OverflowError) as wrong:
             raise ToolError(f"an argument is not in the expected form: {wrong}") from None
         finally:
+            CURRENT_CALL.reset(current)
             TEST_CALL.reset(testing)
         if isinstance(out, dict):
             view = out.pop(VIEW_PRIVATE, None)
@@ -8631,6 +8670,10 @@ def _better(plan: Plan, best: Plan, target: float) -> bool:
 # lists for the person to pick, each turned into one ask that names the tools and settings that
 # fit, so the answer does not hang on the model finding them in the tool list. Kept to four
 # (Stephen, 2026-11-12: "simplicity is often more useful"); each answer is asked to stay short.
+# Their numbers are our defaults, unmeasured: stress 80 for a commute and a loop (the tools'
+# own "low stress"), a loop within 10% of its length, its via points about a quarter of the
+# length out (a ring of radius r is about 2 pi r = 6.3 r round in straight lines, and roads add
+# about 30%, ROAD_FACTOR, so 4 r is close to the length asked).
 SAY_IT_SHORT = (
     " Answer in a few short lines: miles first (km in brackets), minutes, the busy parts, any"
     " closure or notice, then the link, whole."
@@ -8719,6 +8762,8 @@ def prompt_text(name: str, arguments: dict) -> dict:
     prompt = PROMPT_BY_NAME.get(name)
     if prompt is None:
         raise ToolError(f"no prompt named {name}")
+    if not isinstance(arguments, dict):
+        raise ToolError("arguments: an object of the prompt's arguments")
     given = {
         str(k): " ".join(str(v).split())[:200]
         for k, v in (arguments or {}).items()
@@ -8757,20 +8802,14 @@ def prompt_text(name: str, arguments: dict) -> dict:
 # calls, kept short (the tool descriptions hold the detail).
 PLAYBOOK = (
     "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1 calmest to"
-    " 4, plus Avoid). Pick the ride type and settings that fit the ask: default for everyday"
-    " riding, stress 80 for 'low stress', trailmaxxing for the calmest, novice for children or a"
-    " new rider, road-bike, gravel, mountain-bike, ebike, cargo or tandem for that bike,"
-    " group-ride for a club, bike-transit for bike plus Metro or bus. Pass names as points: no"
-    " find_place first unless the rider must choose between places. After a plan, say the busy"
-    " parts, any closure and notice, and why it goes this way (`why`) when it is much longer or"
-    " the rider asks; call ride_conditions when the ride has a time. Ask back only when the start"
-    " or end is unclear. Give distances in miles first, km in brackets. Share the link so the"
-    " rider can open the route in the app, whole with its # part: after a week only that part can"
-    " plan the route again. Save to My routes only when asked. Planning only to test or check"
-    " RouteMaker, not for the rider: pass test: true, or archive_draft each draft when done, so it"
-    " stays out of the rider's Load route. Calls may be sent together: a place search busy with"
-    " another waits its turn, and an answer that says retry_after_s asks for the same call again"
-    " after that many seconds."
+    " 4, plus Avoid). Pick the ride type that fits: stress 80 for 'low stress', trailmaxxing for"
+    " the calmest, novice for children or a new rider, bike-transit for bike plus Metro, else the"
+    " one named for the bike or ride. Pass place names as points. After a plan, say the busy"
+    " parts, any closure and notice, and `why` when the route is much longer or the rider asks."
+    " Give distances in miles first, km in brackets. Share the link whole, with its # part: after"
+    " a week only that part can plan the route again. Save to My routes only when asked. Planning"
+    " only to test RouteMaker: pass test: true, or archive_draft each draft when done. Calls may"
+    " be sent together; an answer with retry_after_s asks for the same call again after that."
 )
 
 

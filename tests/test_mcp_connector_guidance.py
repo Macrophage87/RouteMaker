@@ -96,6 +96,38 @@ def test_the_wait_has_a_ceiling(pauses):
     assert len(api.asked) <= 1 + mcp.LOOKUP_WAIT_S / mcp.LOOKUP_PAUSE_MAX_S + 1
 
 
+def test_the_sites_own_response_gives_the_retry_after_too(pauses):
+    """On the site the api answers with Django's response as the headers (InProcessApi)."""
+    from django.http import JsonResponse
+
+    refused = JsonResponse({"error": "busy"}, status=429)
+    refused["Retry-After"] = "1"
+    api = Scripted([(429, {"error": "busy"}, refused), FOUND])
+    assert mcp.Api.geocode(api, "Dupont Circle")[0]["label"] == "Dupont Circle"
+    assert len(pauses) == 1 and 1.0 <= pauses[0] <= 1.2
+
+
+def test_a_calls_lookups_share_one_wait_and_stop_at_its_deadline(pauses):
+    call = mcp.Call()
+    token = mcp.CURRENT_CALL.set(call)
+    try:
+        # Each lookup waits 1 s once: four fit in the call's 4 s, the fifth is refused.
+        answered = 0
+        with pytest.raises(mcp.Busy):
+            for _ in range(10):
+                mcp.Api.geocode(Scripted([busy("0.8"), FOUND]), "x")
+                answered += 1
+        assert 3 <= answered <= 4 and sum(pauses) <= mcp.LOOKUP_WAIT_S
+        # A call whose answer is due in half a second waits for nothing.
+        pauses.clear()
+        mcp.CURRENT_CALL.set(mcp.Call(deadline=time.monotonic() + 0.5))
+        with pytest.raises(mcp.Busy):
+            mcp.Api.geocode(Scripted([busy("1"), FOUND]), "x")
+        assert pauses == []
+    finally:
+        mcp.CURRENT_CALL.reset(token)
+
+
 def test_a_long_ride_out_of_time_is_not_taken_for_busy(pauses):
     api = Scripted([(503, {"error": "too long", "code": "long_ride_timed_out"}, {})])
     status, _, _ = mcp.patient_request(api, "POST", "/api/reach", {})
@@ -266,6 +298,10 @@ def test_a_family_ride_with_no_end_comes_back_and_one_with_an_end_does_not():
 
 
 def test_a_prompt_without_its_place_or_by_another_name_is_refused():
+    assert (
+        rpc("prompts/get", {"name": "plan_commute", "arguments": ["Takoma"]})["error"]["code"]
+        == -32602
+    )
     assert (
         rpc("prompts/get", {"name": "plan_commute", "arguments": {"start": "x"}})["error"]["code"]
         == -32602

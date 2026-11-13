@@ -123,8 +123,14 @@ def _no_why_plans(request, monkeypatch):
     last one, so it is left out unless a test is marked `why_plans`
     (tests/test_mcp_connector_guidance.py tests it)."""
     if request.node.get_closest_marker("why_plans") is None:
-        # A test file may load its own copy of the module (its global `mcp`).
-        for module in (sys.modules.get("routemaker_mcp"), getattr(request.module, "mcp", None)):
+        # A test file may load its own copy of the module (its global `mcp`), and the site's
+        # connector keeps one of its own (core.connector.mcp_module, loaded once).
+        copies = [sys.modules.get("routemaker_mcp"), getattr(request.module, "mcp", None)]
+        if "core.connector" in sys.modules or "test_connector" in request.module.__name__:
+            from core import connector
+
+            copies.append(connector.mcp_module())
+        for module in copies:
             if module is not None and hasattr(module, "WHY_PRESETS"):
                 monkeypatch.setattr(module, "WHY_PRESETS", ())
     yield

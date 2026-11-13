@@ -47,7 +47,8 @@ century".
 unmeasured): the route against the most direct one between the same points (the Fast ride
 type's, planned once more), in our own ratings: how many miles and minutes longer, how many
 fewer busy miles (LTS 3 and up), and up to three busy roads it leaves with what it rides instead
-("leaves Georgia Avenue (LTS 4) for the Metropolitan Branch Trail"). It is left out on a loop, a
+("leaves Georgia Avenue (LTS 4) for the Metropolitan Branch Trail"; a road counts when it has
+at least 0.25 mi at LTS 3 and up, our default, unmeasured). It is left out on a loop, a
 followed line, Fast, Mass Ride and the transit, bikeshare, walk and run trips, and when the call
 has no time left for one more plan.
 
@@ -63,8 +64,10 @@ them: which ride type for which ask, and what to say after a plan.
 ### Calls sent together
 
 Assistants often send several calls at once. Each rider has one place search running at a time
-on the site, so a search that finds another running waits its turn (the Retry-After, up to 8 s in
-all, our default, unmeasured) instead of being refused. Past that, the answer says
+on the site, so a lookup (place search, and the scenic road, climb, closure, reach and riding
+time searches) that finds the site busy waits and tries again: each pause the Retry-After, at
+most 1 s, and at most 4 s for all of one call's lookups (our defaults, unmeasured; a waiting call
+holds its web worker). Past that, or when the site asks for a longer wait, the answer says
 `retry_after_s` and that nothing is wrong with the request.
 
 ### The route view: a map and graphs in the chat
