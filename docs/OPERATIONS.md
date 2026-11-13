@@ -773,7 +773,7 @@ Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 anywhere on it (near its ends too since routing hunt 4, J4-1) asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
 are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
-the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
+the crossing search did not cover (legs adding up past 37 mi [60 km], a long Trailmaxxing
 plan searched leg by leg, a search cut short, a climb seek, a loop, a route Mountain Bike's
 choice swapped in) asks round each red after it (`core.red_crossings`; an owner report of
 the GW Parkway at Tulane Dr on a long Mount Vernon ride): a plain one-leg plan first asks
@@ -7065,9 +7065,9 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   before.
 - **Loops (item 266)** ask for the way back up to 4 more times (every point, then every 2nd, 4th and 8th),
   each a /route, its reading and the whole loop's reading, inside 14 s (`refine.LOOP_BUDGET_S`); the
-  search then runs as for any plan up to 19 mi (30 km) of straight line in all, and not at all past it.
-  A loop is never a long calm plan, and its straight line counts the way back too, so a Trailmaxxing
-  loop with a 9.5 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
+  search then runs as for any plan up to 37 mi (60 km) of straight line in all (19 mi (30 km) until
+  v0.27.0), and not at all past it. A loop is never a long calm plan, and its straight line counts the
+  way back too, so a Trailmaxxing loop with an 18.6 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
   fault. Such a loop still has its red crossings asked round, each by its own stretch so the way
   back stays as made (`core.red_crossings`), and at the top of the slider its target distance and
   ceiling still hold (`_fit_target`; the 2026-11-08 hunt, R1: before, a loop past the span lost
