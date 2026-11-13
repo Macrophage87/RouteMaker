@@ -463,6 +463,7 @@ test("Go and Ride's named phrases are worded in the language in force as their m
     assert.equal(shared.SHARED_OPENING, "Abriendo el enlace compartido…");
     const nav = await fresh<typeof import("./navigate.ts")>("./navigate.ts");
     assert.match(nav.RIDE_TOO_LONG, /^Iniciar recorrido en un navegador es para recorridos de hasta 30 mi/);
+    assert.match(nav.IPHONE_RIDE_LINE, /^En iPhone, mantén la pantalla encendida/);
   } finally {
     setLanguageForTest("en");
   }

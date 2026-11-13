@@ -37,7 +37,8 @@ import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
-import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { IPHONE_RIDE_LINE, rideTooLong } from "../lib/navigate.ts";
+import { installState } from "../lib/installOffer.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
 import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine, walksLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
@@ -311,6 +312,8 @@ export interface RouteSectionProps {
   weather: WeatherReport | null;
   /** The planner out of reach while the page is offline: the error box says offline, the one message (P11). */
   offline?: boolean;
+  /** Plan's Check a route (CheckRoute.tsx) on a route that follows an opened file; null otherwise. */
+  check?: ReactNode;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -414,6 +417,7 @@ export function RouteSection(props: RouteSectionProps) {
           arriveMs={arriveMs}
           startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
+          check={props.check ?? null}
         />
       )}
     </section>
@@ -827,6 +831,7 @@ export function RouteSummary({
   arriveMs = null,
   startsMs = null,
   weather = null,
+  check = null,
 }: {
   route: RouteResponse;
   answer: RouteResponse | null;
@@ -865,6 +870,8 @@ export function RouteSummary({
   startsMs?: number | null;
   /** Weather along the route (lib/weather.ts): the NWS alerts and rain coming, with the warnings. */
   weather?: WeatherReport | null;
+  /** Plan's Check a route on an opened file (CheckRoute.tsx), under the warnings; null otherwise. */
+  check?: ReactNode;
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -947,16 +954,27 @@ export function RouteSummary({
       )}
     </>
   ) : null;
+  // An iPhone or iPad has no RouteMaker app yet (Stephen 2026-11-13: after Android), so a ride there stops when the screen
+  // locks: said in one shown line under Start, with the long-ride answer (backlog 2026-11-12, ride item 14).
+  const iphone = !ridesHidden() && installState().ios;
   const startHint = rideable ? (
-    // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
-    // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
-    <p id="start-ride-hint" className="visually-hidden start-ride-hint">
-      {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
-    </p>
+    iphone ? (
+      // Shown on iPhone, and said with Start as the hint is elsewhere.
+      <p id="start-ride-hint" className="hint start-ride-hint iphone-ride-line">
+        <span className="visually-hidden">{t("Turn-by-turn directions on this phone, said as you chose.")} </span>
+        {IPHONE_RIDE_LINE}
+      </p>
+    ) : (
+      // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
+      // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
+      <p id="start-ride-hint" className="visually-hidden start-ride-hint">
+        {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
+      </p>
+    )
   ) : noBike ? (
     <p className="hint no-bike-line">{noBike}</p>
   ) : !ridesLine(route) ? null : (
-    <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
+    <p className="hint start-ride-long">{rideTooLong(iphone)}</p>
   );
   const alerts = (
     <>
@@ -1252,12 +1270,14 @@ export function RouteSummary({
       <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
       {segments.length > 0 && <StressFigure segments={segments} surface={surfaceGlanceParts(route.stress_spans)} />}
       {alerts}
+      {/* Check a route (the 2026-11-13 backlog, item 3): an opened file's busiest stretches, under its warnings. */}
+      {check}
       {noteList}
       {actions.savedNote}
       <div className="actions start-ride">
         <RouteActions {...actions} start={start} />
         {/* Plan streamline (Stephen 2026-10-17): the how-to is Start's description, out of sight; the too-long line shows. */}
-        {rideable ? <div className="visually-hidden">{startHint}</div> : startHint}
+        {rideable && !iphone ? <div className="visually-hidden">{startHint}</div> : startHint}
       </div>
       {(profile || climbs) && (
         <Fold

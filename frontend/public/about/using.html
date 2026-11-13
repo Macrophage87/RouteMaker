@@ -376,7 +376,8 @@ shown for a bikeshare trip, or when the <strong>When</strong> chosen isn't the t
 kept at its bottom edge however far the sheet is pulled up; it is Go's only Start ride. From the top, it shows the
 time and distance, the stress bar, any warnings, the route card with <strong>Add a stop</strong> and the bike rack
 button on one row under it, then the ride types. A plain line says how the
-route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy road for 0.2 mi", over a bar of its
+route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy road for 0.2 mi", with the gravel
+and dirt miles added where it has 0.05 mi [80 m] or more of unpaved riding (Plan's line too), over a bar of its
 stress levels, half steps ridden in their own colors, and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
 Traffic stress key, and a screen reader hears every level's share, half steps included. A National Weather Service alert is one line under
 the totals, red for a Severe or Extreme one. <strong>Details</strong> has the rest, with the sources behind
@@ -583,7 +584,9 @@ remove it. Notes travel in the route's link.</li>
 rides best, weighing riding time, traffic stress and hills as the route does; the start and the finish stay where they are.</li>
 <li>On most ride types, Plan starts as a <strong>loop</strong>: the first point, in the box that reads <strong>Start and finish
 (loop)</strong>, is the start and finish, each later tap is a
-stop, and the ride comes back. Untick <strong>Loop</strong> for a ride that ends somewhere else, or
+stop, and the ride comes back. Three choices say how the ride ends: <strong>One way</strong>,
+<strong>Loop</strong> (back a different way where there is one) and <strong>Out and back</strong> (back the same way;
+not on Run). Choose One way for a ride that ends somewhere else, or
 right-click the map (press and hold on a phone) and choose <strong>Set as end</strong>, choose
 <strong>Make this the destination</strong> on a search result, or <strong>End here</strong> on a station's card.
 Each ends the ride there and turns the loop off.
@@ -635,9 +638,16 @@ lanes on LTS 4 and Avoid roads and counts them in the route's totals. Off unless
 you to confirm before it is planned.</li>
 </ul>
 <h3>Reading the route</h3>
+<p><strong>Keep to compare</strong> keeps the route on the map, dashed. Change the plan and route again, and a table
+sets the kept route beside the new one: time, distance, climb, busy roads, heavy traffic, stressful junctions,
+turns, waiting at lights, unpaved, and paths and protected lanes (a row that is zero on both is left out), with
+the better side marked. <strong>Use kept route</strong> brings it
+back and keeps the other to compare; <strong>Stop comparing</strong> drops it. Nothing is sent: the kept route stays
+on your device.</p>
 <p><strong>Stress and facilities</strong> also gives the route's <strong>Turns</strong>, its <strong>Waiting at
-lights and stops</strong> (part of the moving time) and, from 0.05 mi [80 m], <strong>Unpaved</strong>. These
-figures and Other routes' lines are in English for now.</p>
+lights and stops</strong> (part of the moving time) and its <strong>Surface</strong>: "All paved", or the paved,
+gravel and dirt miles, from 0.05 mi [80 m] of unpaved riding, and the miles whose surface isn't mapped where they are
+a tenth or more of the route (our defaults). These figures and Other routes' lines are in English for now.</p>
 <p>Under the route are its folds: <strong>Elevation and climbs</strong> (its key behind <strong>Key</strong>), <strong>Stress and
 facilities</strong>, <strong>Directions</strong> (with <strong>Full detail</strong>, and a copy or
 download as text, and the route's notices in one closed line before step 1, such as "8 alerts on this
@@ -1143,9 +1153,9 @@ once it ends. DDOT's permits and planned work by DDOT, DC Water and WSSC Water s
 Potential closures on, as a dashed line marked by a barrier on a dashed ring with a question mark. More:
 <a href="/about/routing.html#closures">Closures</a>.</li>
 <li><strong>Closed sites</strong>, such as military bases, secured federal compounds and the closed part of the
-Patuxent Research Refuge, are shaded grey with a hatch, and the bigger ones are named with "No public access". A
-start, stop or end inside one goes to its nearest gate ("Restricted site. Route ends at the gate."). Big parks, such as
-Rock Creek Park and Greenbelt Park, are named on the map.</li>
+Patuxent Research Refuge, are shaded grey with a hatch and, zoomed in, named with "No public access". A
+start, stop or end inside one goes to its nearest gate ("Restricted site. Route ends at the gate."). Every named green place is named on
+the map: big parks such as Rock Creek Park from further out, cemeteries, smaller parks and golf courses close in.</li>
 </ul>
 <h3>Finding things on the map</h3>
 <ul>
@@ -1182,9 +1192,20 @@ panel and in Where am I?.</li>
 </ul>
 <h3>The road panel</h3>
 <ul>
-<li><strong>Road info</strong>: the road's name, its stress level and why, in words, its speed and whether
-bikes may ride it.</li>
-<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or <strong>Set as end</strong>, or <strong>Set as Home</strong> and, signed in, <strong>Save to Favorites</strong>.</li>
+<li><strong>The level</strong> leads, large and in the map's own color ("LTS 3, For experienced cyclists"), with
+why in plain words under it, such as "Bikes share the lane with two lanes of traffic each way at 25 mph and about
+24,100 vehicles a day."</li>
+<li><strong>How sure it is:</strong> "Strong evidence: 4 of 5 from records", or Some or Thin evidence, with a filled
+mark for each fact from a record and a hollow one for each estimate (our defaults, unmeasured).</li>
+<li><strong>What the level rests on:</strong> one line per fact, each with its source (and year, where the record has
+one) and an (i) note: speed
+limit, traffic, through lanes, bike lane, shoulder, bike lane width, parking beside the lane, and the setting, such
+as "Suburban: about 1,600 people and about 390 jobs within half a mile of a spot here" (from the 2020 Census and the
+Census Bureau's job counts, once loaded). The band is a label only; whether the road is urban or rural, from Census
+urban areas, is what the level reads, and until the counts are loaded the line says just Urban or Rural. In DC, pavement from DDOT's survey
+shows too, from the next map rebuild; it does not change the level either. Paths and trails have no facts.</li>
+<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or
+<strong>Set as end</strong> and, signed in, <strong>Save to Favorites</strong>. Home is set from the Home sheet.</li>
 <li><strong>Street View</strong>, the newest Mapillary photo facing along the road where there is one, and <strong>Edit in
 OSM</strong> to fix the map itself.</li>
 <li><strong>Suggest a change…</strong>: a road's level, a junction, or a hazard on a Mass Ride.</li>
@@ -1404,6 +1425,9 @@ new version is ready, a line says so with Reload; it never interrupts a ride.</l
 <li><strong>When something is down,</strong> a line at the top of Go and Plan says so, such as "Updating. Back in a
 few minutes." or "Route planning is down right now." It is checked when the app opens or comes back to the front, or a
 plan fails, and every minute while it shows (our default). It is not shown while you are offline.</li>
+<li><strong>About</strong> also says how old the data is, such as "Map data from Nov 10, 2026. Places and racks from
+Oct 9, 2026." The places, water, food and mapped racks are refreshed after each map rebuild and reach the app with its
+next update; the date is the oldest of them.</li>
 <li><strong>Send feedback</strong> (under About, and in the Beta note): say what happened, in 3 to 2,000 characters,
 with no account needed. It goes to the owner on Discord with the app version, browser, ride type, language, Go or
 Plan, and web or Android app ("Sent with the app version, browser and ride type. Never where you are."); RouteMaker's server keeps no copy.</li>
@@ -1582,7 +1606,7 @@ default).</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.26.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.27.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
