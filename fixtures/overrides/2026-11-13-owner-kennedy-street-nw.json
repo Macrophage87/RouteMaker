@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "decided": "2026-11-13",
+  "decided_by": "the deployment owner",
+  "status": "DRAFT, not approved: level proposed by Claude from the evidence, awaiting the owner's confirmation. Do not load until he confirms; then load with load_overrides (dry run first); takes effect on the next rebuild.",
+  "annotations": "Kennedy Street NW, Georgia Avenue NW to about 3rd Street NW, Washington DC: 1 way, 0.64 mi, rated LTS 4 from DDOT's 2020 layer alone (formula 2). Proposed LTS 2.5, the level of the Kennedy St blocks either side on the same facts.",
+  "rows": [
+    {
+      "kind": "stress",
+      "osm_way_id": 130908107,
+      "value": {
+        "tier": 2,
+        "half": true,
+        "adjustment_id": "kennedy-street-nw-lts2-5",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Kennedy St NW, Georgia Ave to 3rd St: 2 lanes, 25 mph, sharrows only, about 6,300 cars a day on the blocks either side, so 2.5, as they are. DDOT's 2020 layer says 4."
+      },
+      "reason": "The owner, 2026-11-13: \"Kennedy street has more signal priority and is probably overrated.\" Our level from the street's own facts: a two-lane (one each way) tertiary collector, posted 25 mph, shared-lane markings only, no count on this block; DC's count on the Kennedy St blocks either side is about 6,272 a day, and those blocks are rated 2.5 on the same facts (2 lanes, 25 mph, sharrows, about 6,300 a day). Our formula alone gives 2; the 4 on the map came only from DDOT's 2020 layer, with no reviewed row of ours. So 2.5, the street's level either side, which DDOT's 4 differs from.",
+      "evidence": "OSM, 2026-11-07 extract: way 130908107 (Kennedy Street Northwest, highway=tertiary, HFCS Collector, lanes=2, maxspeed=25 mph, cycleway=shared_lane), 0.64 mi, Georgia Ave NW to about 3rd St NW. 2026-11-11 map: LTS 4, rated_by 'reviewed; agrees with DDOT', formula LTS 2, no count; neighbouring Kennedy St ways 132601123, 996627037, 581122737 carry 6,272 a day (DDOT) at LTS 2.5. Found by matching the owner's rides to the map (reports/ride-check, project files).",
+      "fingerprint": {
+        "name": "Kennedy Street Northwest",
+        "highway": "tertiary",
+        "length_m": 1030.9,
+        "line": "-77.016119,38.956556 -77.016258,38.956552 -77.016578,38.956543 -77.016617,38.956542 -77.017272,38.956523 -77.017301,38.956522 -77.017732,38.956510 -77.017815,38.956507 -77.017898,38.956505 -77.018345,38.956492 -77.019355,38.956462 -77.019804,38.956449 -77.019872,38.956447 -77.019980,38.956444 -77.021323,38.956405 -77.021831,38.956390 -77.022224,38.956378 -77.022310,38.956376 -77.022397,38.956373 -77.022803,38.956362 -77.023111,38.956353 -77.023535,38.956340 -77.023960,38.956328 -77.024033,38.956326 -77.024123,38.956323 -77.024514,38.956312 -77.024526,38.956311 -77.025228,38.956291 -77.025676,38.956278 -77.025755,38.956275 -77.025841,38.956273 -77.026277,38.956260 -77.026683,38.956249 -77.027037,38.956239 -77.027319,38.956231 -77.027442,38.956227 -77.027558,38.956225 -77.027897,38.956218 -77.028029,38.956216"
+      }
+    }
+  ]
+}
