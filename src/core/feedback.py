@@ -55,9 +55,10 @@ def clean_details(details: object) -> dict[str, str]:
     return kept
 
 
-# Markdown that could pass for the app's own words in the forum: a masked link's brackets, and a
+# Markdown that could pass for the app's own words in the forum: a masked link's brackets (and the
+# backslash, so a rider's own escapes cannot undo ours), and a
 # line starting with Discord's small-text mark (the footer below uses it) or a heading.
-_LINK_MARKS = re.compile(r"([\[\]()<>])")
+_LINK_MARKS = re.compile(r"([\\\[\]()<>])")
 _LINE_MARK = re.compile(r"^(\s*)(-#|#{1,3}\s|>)", re.M)
 
 

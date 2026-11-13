@@ -156,3 +156,10 @@ def test_the_words_cannot_pass_for_the_apps_own_or_carry_contact_details(discord
     assert "202-555-0143" not in body["content"] and "me@example.org" not in body["content"]
     assert "me@example.org" not in body["thread_name"]
     assert footer == " version: 0.26.0"
+
+
+def test_a_riders_own_backslashes_cannot_undo_the_escaping(discord) -> None:
+    sent, _ = discord
+    feedback.send("\\[here\\](https://example.org/)", {})
+    words = sent[0]["content"].split("\n\n-# ")[0]
+    assert words == "\\\\\\[here\\\\\\]\\(https://example.org/\\)"

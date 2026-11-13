@@ -5359,7 +5359,7 @@ export function App() {
   const detailsForFeedback = () =>
     feedbackDetails({ userAgent: navigator.userAgent, rideType: preset, language: language(), mode, nativeApp: findShell() !== null });
   // The server's own line while something is down (lib/serverStatus.ts): asked again when a plan fails.
-  const serverLine = useServerStatusLine(status.kind === "error", announce);
+  const serverLine = useServerStatusLine(status.kind === "error", announce, appStatus.offline);
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
   // opensIntoRide): a route's broadcast starts its ride as Start's press does (no closure check: the leader's, Stephen
   // 2026-10-26); a Roam broadcast starts Roam. Judged
