@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "decided": "2026-11-13",
+  "decided_by": "the deployment owner",
+  "status": "DRAFT, not approved: levels proposed by Claude from the evidence, awaiting the owner's confirmation. Do not load until he confirms; then load with load_overrides (dry run first); takes effect on the next rebuild.",
+  "annotations": "Water Street NW, the last 0.09 mi before the Capital Crescent Trail, Georgetown, Washington DC: 2 ways rated LTS 4 from the Whitehurst Freeway's count and speed. Proposed: LTS 1 beside the separated track, LTS 2 on the painted-lane piece (our levels, by the side-street and painted-lane rules).",
+  "rows": [
+    {
+      "kind": "stress",
+      "osm_way_id": 137952735,
+      "value": {
+        "tier": 1,
+        "adjustment_id": "water-street-nw-cct-lts1",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Water St NW at the Capital Crescent Trail: a separated track alongside, on a two-lane street that ends at the trail, so 1. DDOT's 2020 layer says 4."
+      },
+      "reason": "The owner, 2026-11-13: \"water street is definitely not a high stress road and it connects to the CCT\". Our level from the street's own facts; The 37,593 cars a day (DDOT, 2024) and the 35 mph on these ways belong to the Whitehurst Freeway block overhead (the ways carry its TIGER names, K St / Whitehurst Fwy / US 29), not to Water St, a two-lane street that ends at the Capital Crescent Trail.",
+      "evidence": "OSM, 2026-11-07 extract: way 137952735 (Water Street Northwest, highway=unclassified, lanes=2, cycleway:left=track, bicycle=yes, no maxspeed), 0.06 mi. Rated LTS 4 on the 2026-11-11 map (rated_by 'reviewed; agrees with DDOT'). Found by matching the owner's rides to the map (reports/ride-check, project files).",
+      "fingerprint": {
+        "name": "Water Street Northwest",
+        "highway": "unclassified",
+        "length_m": 175.1,
+        "line": "-77.067803,38.903885 -77.068829,38.904097 -77.069542,38.904265 -77.069751,38.904314"
+      }
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1000673731,
+      "value": {
+        "tier": 2,
+        "adjustment_id": "water-street-nw-cct-lts2",
+        "category": "other",
+        "visibility": "public",
+        "annotation_status": "approved",
+        "display": "map",
+        "public_note": "Water St NW at the Capital Crescent Trail: painted lanes both sides on a two-lane street that ends at the trail, so 2. DDOT's 2020 layer says 4."
+      },
+      "reason": "The owner, 2026-11-13: \"water street is definitely not a high stress road and it connects to the CCT\". Our level from the street's own facts; The 37,593 cars a day (DDOT, 2024) and the 35 mph on these ways belong to the Whitehurst Freeway block overhead (the ways carry its TIGER names, K St / Whitehurst Fwy / US 29), not to Water St, a two-lane street that ends at the Capital Crescent Trail.",
+      "evidence": "OSM, 2026-11-07 extract: way 1000673731 (Water Street Northwest, highway=unclassified, lanes=2, cycleway:both=lane, bicycle=yes, no maxspeed), 0.03 mi. Rated LTS 4 on the 2026-11-11 map (rated_by 'reviewed; agrees with DDOT'). Found by matching the owner's rides to the map (reports/ride-check, project files).",
+      "fingerprint": {
+        "name": "Water Street Northwest",
+        "highway": "unclassified",
+        "length_m": 49.6,
+        "line": "-77.069751,38.904314 -77.069859,38.904336 -77.07011,38.904374 -77.070224,38.904383 -77.070316,38.904385"
+      }
+    }
+  ]
+}
