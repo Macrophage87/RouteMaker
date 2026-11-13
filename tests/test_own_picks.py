@@ -60,7 +60,7 @@ def test_no_way_is_also_named_by_another_file() -> None:
     # The 2026-11-13 re-rate of every road with one brief retires each row whose level it changes.
     rerate = {
         int(row["osm_way_id"])
-        for path in OVERRIDES.glob("2026-11-13-owner-*-rerate.json")
+        for path in OVERRIDES.glob("2026-11-13-owner-*-rerate*.json")
         for row in json.loads(path.read_text())["retire"]
     }
     # It replaces the North Bethesda row on Woodglen Drive too (the owner: "Ignore my own calls").
