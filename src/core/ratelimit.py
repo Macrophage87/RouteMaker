@@ -113,6 +113,9 @@ ROUTING = Limit(scope="route", requests=60, window_s=60)
 # /api/offline/network; off-grid riding, 2026-11-12): fetched once at Start ride and once per new
 # route, so a few a minute is plenty. Our default, unmeasured.
 OFFLINE_NETWORK = Limit(scope="offline-network", requests=12, window_s=60)
+# The region packs' list (GET /api/offline/packs): a small file read, asked when Settings opens
+# the packs and before a download. Our default, unmeasured.
+OFFLINE_PACKS = Limit(scope="offline-packs", requests=30, window_s=60)
 
 # Reach (POST /api/reach): counted apart from ROUTING, so a rider trying Reach's settings never
 # spends the budget Go's plans and a ride's re-routes need; the routing slots are shared all
@@ -276,6 +279,9 @@ CLOSURES_STAMP = Limit(scope="closures-stamp", requests=20, window_s=60)
 # Weather along a route (POST /api/weather/check, core.weather): asked when a route shows, on Start
 # and every 5 minutes in a ride, so 20 a minute is a cap on a script.
 WEATHER_CHECK = Limit(scope="weather-check", requests=20, window_s=60)
+# POST /api/usage (core.usage): a ride, walk or run started; a rider starts a few a
+# day. Our default, unmeasured.
+USAGE = Limit(scope="usage", requests=10, window_s=60)
 # A report sent to DC 311 from Ride mode (POST /api/report311, core.dc311; v0.7.0 "Go riding
 # fixes" item 3): a rider reports a pothole or two on a ride, so 10 an hour is a cap on a script.
 REPORT_311 = Limit(scope="report-311", requests=10, window_s=3600)

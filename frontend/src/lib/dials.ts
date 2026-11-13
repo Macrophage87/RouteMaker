@@ -10,7 +10,7 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { LonLat } from "./geo.ts";
-import { isTransit, onFoot, usesBikeshare, type PresetId } from "./presets.ts";
+import { isTransit, onFoot, runs, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 import { t } from "./i18n.ts";
 import { offersStartTime } from "./startTime.ts";
@@ -78,6 +78,11 @@ export interface Dials {
   ridingSpeedKmh?: number;
   /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
   loop?: boolean;
+  /**
+   * Plan's "Out and back" (Stephen 2026-11-13, his pick of the Loop control as One way / Loop / Out and back): on a
+   * loop, come back the same way rather than by a different way (lib/loop.ts loopWay). In the link; absent is off.
+   */
+  outAndBack?: boolean;
   /**
    * Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level, 1 (green) to 4 (red).
    * Absent is the default, level 2 (lib/mtbMode.ts DEFAULT_MTB_LEVEL).
@@ -444,6 +449,8 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.loop === true ? { loop: true } : {}),
     // A start time stays with the plan through a change of ride type, except onto one planned from the docks now.
     ...(typeof dials.startAt === "string" && offersStartTime(preset) ? { startAt: dials.startAt } : {}),
+    // Not on Run (lib/loop.ts loopWays).
+    ...(dials.outAndBack === true && !runs(preset) ? { outAndBack: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
@@ -480,6 +487,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.loop) fields.loop = true;
   // Plan's start time (lib/startTime.ts): Washington's wall clock, which the API reads as such.
   if (dials.startAt) fields.depart_at = dials.startAt;
+  if (dials.outAndBack) fields.out_and_back = true;
   // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
   const level = fitMtbLevel(dials.mtbLevel);
   if (level !== undefined) fields.mtb_level = level;

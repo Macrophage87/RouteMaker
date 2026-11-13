@@ -842,15 +842,6 @@ progress.planning {
   min-height: 24px;
 }
 
-/* "Make it a loop" by the search (OWNER-DECISIONS 388): a 44 px row, its hint under it. */
-.loop-toggle {
-  margin: 8px 0;
-}
-
-.loop-toggle .toggle {
-  min-height: 44px;
-}
-
 /* The loop toggle when the ride is a loop already: in the Tab order, but not changeable. */
 .toggle input[aria-disabled="true"] {
   opacity: 0.6;
@@ -11620,4 +11611,84 @@ button.route-note:focus-visible {
 
 .road-level-why {
   margin: 8px 0 0;
+}
+
+/* Plan's Keep to compare (lib/compareRoutes.ts): the kept route and the route now, side by side. */
+.plan-compare {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-keep {
+  justify-self: start;
+  min-height: 44px;
+}
+
+.plan-compare-table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-compare-table th,
+.plan-compare-table td {
+  padding: 4px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border, #d1d5db);
+}
+
+.plan-compare-table td {
+  white-space: nowrap;
+}
+
+.plan-compare-table th[scope="row"] {
+  text-align: left;
+  font-weight: 400;
+}
+
+.plan-compare-better {
+  font-weight: 700;
+}
+
+.plan-compare-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-compare-actions button {
+  min-height: 44px;
+}
+
+/* How the ride ends (2026-11-13): One way, Loop, Out and back, a row of three by the search. */
+.loop-ways {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.loop-way {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.loop-way + .loop-way {
+  border-left: 1px solid var(--swatch-border);
+}
+
+.loop-way.chosen {
+  background: var(--bg-soft);
+  font-weight: 700;
+}
+
+.loop-way input[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

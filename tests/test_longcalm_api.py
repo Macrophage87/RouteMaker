@@ -632,6 +632,31 @@ class TestMakeItALoop:
         assert loop["fallback"] == "out_and_back"
         assert loop["overlap_pct"] == 100.0 and loop["shared_m"] == loop["return_m"]
 
+    def test_out_and_back_comes_back_the_same_way_on_purpose(self, client, segments, router) -> None:
+        # Plan's Out and back (Stephen 2026-11-13): one request for the whole plan, no ways
+        # back asked with the way out excluded, and the answer says it was asked for.
+        fake = router(self.loop_router())
+        body = post(client, self.body(loop=True, out_and_back=True)).json()
+        routes = [call for call in fake.calls if call[0].rstrip("/").endswith("route")]
+        assert not any(call[1].get("exclude_locations") for call in routes)
+        assert body["dials"]["loop"] is True and body["dials"]["out_and_back"] is True
+        assert body["loop"]["same_way"] is True and body["loop"]["fallback"] is None
+        assert body["loop"]["overlap_pct"] == 100.0
+
+    def test_out_and_back_without_a_loop_is_ignored(self, client, segments, router) -> None:
+        router(standard_router())
+        body = post(client, self.body(out_and_back=True)).json()
+        assert body["loop"] is None and body["dials"]["out_and_back"] is False
+
+    def test_a_loop_without_out_and_back_still_avoids_the_way_out(
+        self, client, segments, router
+    ) -> None:
+        fake = router(self.loop_router())
+        body = post(client, self.body(loop=True)).json()
+        routes = [call for call in fake.calls if call[0].rstrip("/").endswith("route")]
+        assert any(call[1].get("exclude_locations") for call in routes)
+        assert body["dials"]["out_and_back"] is False and not body["loop"].get("same_way")
+
     def test_the_whole_loops_span_counts_toward_the_limit(self, client) -> None:
         a = [-77.3, 38.9]
         far = [

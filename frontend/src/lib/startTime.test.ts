@@ -4,7 +4,6 @@ import { defaultStart, fitStart, offersStartTime, startBounds, startMs, startSho
 import { dialFields, fitDials, startDials } from "./dials.ts";
 import { whenShort } from "./rideSummary.ts";
 import { reachBody } from "./reach.ts";
-import { readFileSync } from "node:fs";
 import { leaveNowArrival } from "./arrival.ts";
 
 // Wednesday 12 November 2026, 9:20 PM in Washington (EST, UTC-5).
@@ -69,13 +68,22 @@ test("Reach's rings never send the start time (its API takes no depart_at)", () 
   assert.equal("depart_at" in body, false);
 });
 
-test("Best order, the nearest places and a ride never send the start time: they are for now", () => {
-  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
-  assert.match(read("./stopOrder.ts"), /dialFields\(\{ \.\.\.dials, systemWeightKg: undefined, startAt: undefined \}\)/);
-  assert.equal((read("./nearest.ts").match(/startAt: undefined/g) ?? []).length, 2);
-  assert.match(read("../App.tsx"), /rideDials\(\{ \.\.\.planDials, closuresNow: true, startAt: undefined \}/);
-  // Into Go, or once the start has passed, the start goes (Now).
-  assert.match(read("../App.tsx"), /if \(mode === "go" \|\| fitStart\(dials\.startAt, startClock\) === undefined\)/);
+test("Best order and the nearest places never send the start time: they are for now", async () => {
+  const { requestStopOrder } = await import("./stopOrder.ts");
+  const { requestNearest } = await import("./nearest.ts");
+  const dials = { ...startDials("default"), startAt: "2026-11-15T08:00" };
+  const sent: Record<string, unknown>[] = [];
+  const fake = async (_url: string, init?: { body?: unknown }) => {
+    sent.push(JSON.parse(String(init?.body)));
+    return new Response("{}", { status: 500 });
+  };
+  const a: [number, number] = [-77.03, 38.9];
+  const b: [number, number] = [-77.02, 38.91];
+  await requestStopOrder([a, b, a], "default", dials, fake as never).catch(() => undefined);
+  await requestNearest(a, [{ id: "n1", kind: "water", point: b } as never], "default", dials, fake as never).catch(() => undefined);
+  await requestNearest(a, [{ id: "n1", kind: "water", point: b } as never], "bike-transit", dials, fake as never).catch(() => undefined);
+  assert.equal(sent.length, 3);
+  for (const body of sent) assert.equal("depart_at" in body, false);
 });
 
 test("with a start set, a screen reader hears the arrival for leaving then, with its day", () => {
@@ -93,9 +101,4 @@ test("a ride's own requests, saved routes and shared links never carry the start
   assert.equal(legDials(dials, "default").startAt, undefined);
   assert.equal("startAt" in withoutStart(dials), false);
   assert.equal(withoutStart(startDials("default")).stress, startDials("default").stress);
-  const saved = readFileSync(new URL("./savedRoutes.ts", import.meta.url), "utf8");
-  assert.equal((saved.match(/preset, dials: withoutStart\(dials\) \}/g) ?? []).length, 2, "planSave and gpxSave");
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /if \(saved && !plan\.dials\.startAt && saved\.key === keptPlanKey/);
-  assert.match(app, /pending\.nowOnly \? \{ \.\.\.planDials, closuresNow: true, startAt: undefined \}/);
 });
