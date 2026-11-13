@@ -37,8 +37,8 @@ MARKERS = ["src/lib/intersectionMarkers.test.ts"]
 SUMMARY = ["src/lib/summary.test.ts"]
 SETTLE = ["src/lib/settle.test.ts"]
 SKIP = ["src/lib/skipLink.test.ts"]
-FIXES = ["src/a11yFixes.test.ts"]
-STYLES = ["src/stylesAccessibility.test.ts", "src/a11yFixes.test.ts"]
+FIXES = ["src/a11yStyleRules.test.ts"]
+STYLES = ["src/stylesAccessibility.test.ts", "src/a11yStyleRules.test.ts"]
 DIALS = ["src/lib/dialsPanel.test.ts"]
 TARGET = ["src/lib/targetDistance.test.ts"]
 LOOP = ["src/lib/loop.test.ts"]
@@ -198,36 +198,36 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "announcement drops the reds",
         SU,
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
         SUMMARY,
     ),
     (
         "announcement drops the detour",
         SU,
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
         SUMMARY,
     ),
     (
         "announcement drops the target",
         SU,
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
         SUMMARY + TARGET,
     ),
     (
         "announcement drops the loop note",
         SU,
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
         SUMMARY + LOOP,
     ),
     (
         "announcement drops the other routes",
         SU,
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]",
-        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route)]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route), others]",
+        "[figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, barrierNote(route)?.text ?? null, roadBikeNote(route)]",
         SUMMARY + CANDS,
     ),
     (

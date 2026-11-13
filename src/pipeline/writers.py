@@ -363,6 +363,61 @@ def _json_list(values: Iterable[str]) -> str:
     return json.dumps(list(values))
 
 
+class OfflineWayWriter:
+    """Streams `pipeline.offline_network.OfflineWay`s into `{schema}.offline_way` in batches, so the
+    rebuild never
+    holds the region's ways twice (off-grid riding, 2026-11-12). `add` each, then `close`;
+    returns the rows written."""
+
+    BATCH = 5000
+
+    def __init__(self, schema: str) -> None:
+        validate_schema_name(schema)
+        refuse_live_schema(schema)
+        self.schema = schema
+        self.pending: list = []
+        self.written = 0
+
+    def add(self, way) -> None:
+        self.pending.append(way)
+        if len(self.pending) >= self.BATCH:
+            self.flush()
+
+    def flush(self) -> None:
+        if not self.pending:
+            return
+        with connection.cursor() as cursor:
+            args = ",".join(
+                cursor.mogrify(
+                    "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s,%s)",
+                    (
+                        way.osm_id,
+                        list(way.node_ids),
+                        "LINESTRING("
+                        + ",".join(f"{lon} {lat}" for lon, lat in way.coordinates)
+                        + ")",
+                        way.level2,
+                        way.flags,
+                        way.direction,
+                        way.name,
+                    ),
+                )
+                for way in self.pending
+            )
+            cursor.execute(
+                f"""INSERT INTO {self.schema}.offline_way
+                    (osm_way_id, node_ids, geometry, level2, flags, direction, name)
+                    VALUES {args} ON CONFLICT (osm_way_id) DO NOTHING"""
+            )
+            # Rows written, not offered: a way met twice (ON CONFLICT) is one row.
+            self.written += max(cursor.rowcount, 0)
+        self.pending = []
+
+    def close(self) -> int:
+        self.flush()
+        return self.written
+
+
 def write_border_crossings(schema: str, nodes: Sequence) -> int:
     """Record what each synthetic border node means, into the staging schema.
 

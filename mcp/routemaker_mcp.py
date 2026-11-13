@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import bisect
+import contextvars
 import dataclasses
 import itertools
 import json
@@ -44,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.26.0"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
@@ -67,6 +68,22 @@ DRAFT_NAME_SCHEMA = {
         " end, else a revision keeps its draft's name."
     ),
 }
+# A call that only tests or checks RouteMaker, not one for the rider (the owner, 2026-11-12:
+# "When a test route is made from an agent, it somehow keeps loading on my account in beta.
+# Archive them when done."): its drafts are archived as they are made, never listed in the app's
+# Load route or my_drafts, and go after a week as every draft does.
+TEST_SCHEMA = {
+    "type": "boolean",
+    "description": (
+        "true when this plan only tests or checks RouteMaker and is not a route the rider asked"
+        " for: the draft is archived at once (kept out of the rider's Load route and my_drafts,"
+        " gone in a week). Default false."
+    ),
+}
+# Set while a call with `test` runs (Server.call): the draft stores archive what they keep.
+TEST_CALL: contextvars.ContextVar[bool] = contextvars.ContextVar("TEST_CALL", default=False)
+# The tools that take `test` (a revision of an archived route stays archived on its own).
+TEST_TOOLS = ("plan_route", "plan_metro_loop", "open_link")
 PLAN_BUDGET_S = 48  # the longest one plan can take: the site's long-plan budget, and a little
 # Another plan starts while one more as long as the longest timed so far, by this factor and
 # these seconds over, still fits before the call's deadline (as _best_order always has; the
@@ -1636,6 +1653,59 @@ def easy_mtb_said(info: object) -> str | None:
     return None
 
 
+# The ride types whose summary names the barriers on the route (core/barriers.py PRESETS;
+# the owner, 2026-11-12: "Exclude; line on Cargo+Tandem").
+BARRIER_PRESETS = frozenset({"cargo", "tandem"})
+BARRIER_WORDS = {
+    "stile": "stile",
+    "kissing_gate": "kissing gate",
+    "turnstile": "turnstile",
+    "steps": "steps",
+    "narrow_gap": "narrow gap",
+    "bollard": "bollard",
+    "cycle_barrier": "cycle barrier",
+    "gate": "gate",
+}
+
+
+def barriers_said(answer: dict) -> str | None:
+    """What a Cargo or Tandem answer says of the barriers on its route, as the page's line
+    (frontend/src/lib/barriers.ts): the impassable ones no way round was found for, else every
+    barrier, a gap with no width mapped said as unmapped. None where there are none, or where
+    no barrier list is loaded (never "none")."""
+    if answer.get("preset") not in BARRIER_PRESETS:
+        return None
+    reading = answer.get("barriers")
+    if not isinstance(reading, dict) or not reading.get("data"):
+        return None
+    items = [i for i in reading.get("items") or [] if isinstance(i, dict)]
+    blocking = [i for i in items if i.get("impassable")]
+    if not items:
+        return None
+    groups: dict[tuple[str, bool], int] = {}
+    for item in blocking or items:
+        key = (str(item.get("word")), item.get("width_mapped") is False)
+        groups[key] = groups.get(key, 0) + 1
+    parts = [
+        BARRIER_WORDS.get(word, "other barrier")
+        + (f" x{n}" if n > 1 else "")
+        + (" (width not mapped)" if unmapped else "")
+        for (word, unmapped), n in groups.items()
+    ]
+    if blocking:
+        # "No way round found" only where the barrier round looked and found none.
+        limited = (answer.get("barrier_round") or {}).get("limited")
+        listed = ", ".join(parts)
+        if limited == "no_way_round":
+            where = f"no way round found: {listed} on this route"
+        elif limited == "at_stop":
+            where = f"{listed} by the start, a stop or the end"
+        else:
+            where = f"{listed} on this route"
+        return f"{where}; a cargo bike or tandem may not get through"
+    return ", ".join(parts)
+
+
 # A Mountain Bike reading's figure below this many metres is not said: the page's
 # `mtbMode.SAY_FROM_M` (a crossing, a driveway).
 MTB_SAY_FROM_M = 20.0
@@ -1843,6 +1913,9 @@ def summary(answer: dict) -> dict:
     unpaved = _unpaved_mi(answer)
     if unpaved >= 0.05:
         out["unpaved"] = miles_text(unpaved * METRES_PER_MILE)
+    turns = turn_count(answer)
+    if turns is not None:
+        out["turns"] = turns
     waits = (answer.get("junction_delay_s") or 0.0) / 60
     if waits >= 0.5:
         # The time the route spends at signals and stop signs, inside moving_time.
@@ -1856,6 +1929,9 @@ def summary(answer: dict) -> dict:
     easy = easy_mtb_said(answer.get("easy_mtb"))
     if easy:
         out["easy_mtb"] = easy
+    barriers = barriers_said(answer)
+    if barriers:
+        out["barriers"] = barriers
     road_bike = road_bike_said(answer)
     if road_bike:
         out["road_bike_map"] = road_bike
@@ -3231,7 +3307,17 @@ def _route_span(flat_route: list, cum: list, cells: dict, flat, pts: list):
     return (min(near), max(near)) if near else None
 
 
-PIECED_SOURCES = ("reviewer", "ddot_advisory", "purple_line", "fcpa", "protrack", "wssc", "sha")
+PIECED_SOURCES = (
+    "reviewer",
+    "ddot_advisory",
+    "purple_line",
+    "fcpa",
+    "park_alert",
+    "protrack",
+    "wssc",
+    "sha",
+    "moco",
+)
 
 
 def _closure_id(row: dict) -> str:
@@ -3621,10 +3707,32 @@ def _unpaved_mi(answer: dict) -> float:
     return total
 
 
+# The movements that are turns, as the app counts them (frontend lib/quickFigures.ts
+# turnTotal): left, right, bear and U-turns; not "continue" or straight on at a junction.
+TURN_MOVEMENTS = frozenset({"left", "right", "bear_left", "bear_right", "uturn"})
+
+
+def turn_count(answer: dict) -> int | None:
+    """The turns in the route's directions, as the app's summary counts them; None where the
+    answer has no directions (an older API), so 0 is never guessed."""
+    entries = answer.get("description")
+    if entries is None:
+        return None
+    return sum(
+        1
+        for entry in entries
+        if entry.get("kind") == "stretch"
+        and (entry.get("turn") or {}).get("movement") in TURN_MOVEMENTS
+    )
+
+
 def figures(answer: dict) -> dict:
-    """The route in the numbers a rider weighs one plan against another by."""
+    """The route in the numbers a rider weighs one plan against another by: its turns among
+    them (the backlog's "fewer turns" item, 2026-11-12), so "the same but fewer turns" can be
+    compared like "calmer"."""
     stress = answer.get("stress_m") or {}
     found = answer.get("intersections") or []
+    turns = turn_count(answer)
     return {
         "miles": round((answer.get("distance_m") or 0.0) / METRES_PER_MILE, 2),
         "minutes": round((answer.get("duration_s") or 0.0) / 60, 1),
@@ -3639,6 +3747,7 @@ def figures(answer: dict) -> dict:
         "very_high_junctions": sum(1 for j in found if j.get("severity") == "red"),
         "higher_junctions": sum(1 for j in found if j.get("severity") == "orange"),
         "junction_wait_minutes": round((answer.get("junction_delay_s") or 0.0) / 60, 1),
+        **({} if turns is None else {"turns": turns}),
     }
 
 
@@ -4717,6 +4826,23 @@ RIDE_OPTIONS = {
         "default": False,
         "description": "Keep to roads: no paths or trails.",
     },
+    "fewer_turns": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "Bike ride types: the same ride type and settings with turns charged more (Group"
+            " Ride's and Road Bike's price), for \"the same but fewer turns\". Compare"
+            " summary.turns before and after."
+        ),
+    },
+    "paved": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "Bike ride types: the same ride type and settings with gravel and dirt avoided"
+            " wherever pavement runs near (never closed). Compare summary.unpaved."
+        ),
+    },
     "easy_mtb": {
         "type": "boolean",
         "default": False,
@@ -4881,6 +5007,8 @@ PASSED_OPTIONS = (
     "carrying",
     "assist",
     "trails_off",
+    "fewer_turns",
+    "paved",
     "easy_mtb",
     "mtb_level",
     "mtb_preferred",
@@ -4991,9 +5119,32 @@ CUE_CARDS_TOOL = {
     "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
 }
 
+# scenic_roads_near's max_lts: a road is kept when at least this share of its miles in reach is
+# at the level asked or calmer (our default, unmeasured).
+SCENIC_CALM_SHARE = 0.5
+
+
+def _calm_share(road: dict, most: float) -> float:
+    """The share of a scenic road's miles (`lts_miles`: "LTS 2", "Avoid") at `most` or calmer."""
+    by_level = road.get("lts_miles") or {}
+    total = sum(by_level.values())
+    if total <= 0:
+        return 0.0
+    calm = 0.0
+    for label, miles in by_level.items():
+        try:
+            level = 5.0 if label == "Avoid" else float(str(label).removeprefix("LTS "))
+        except ValueError:
+            continue
+        if level <= most:
+            calm += miles
+    return calm / total
+
+
 TOOLS = [
     {
         "name": "find_place",
+        "title": "Find a place",
         "description": (
             "Search RouteMaker's place search (DC to Baltimore) for a place, address or street;"
             " returns up to five matches with [lon, lat]. Give near (a point of the route) to"
@@ -5008,6 +5159,7 @@ TOOLS = [
     },
     {
         "name": "metro_stations",
+        "title": "Metro stations",
         "description": (
             "List Metrorail stations (all 98, or those within a distance of a point), with lines,"
             " [lon, lat], the [lon, lat] of its bike entrance (route to that, not the station"
@@ -5024,6 +5176,7 @@ TOOLS = [
     },
     {
         "name": "scenic_roads_near",
+        "title": "Scenic roads near a place",
         "description": (
             "List the designated scenic roads near a point (nearest first, up to 25):"
             " Montgomery County Rustic and Exceptional Rustic Roads, Maryland Scenic Byways,"
@@ -5047,6 +5200,15 @@ TOOLS = [
                     "type": "string",
                     "description": "Only these, by a word of the designation: 'rustic', 'byway'.",
                 },
+                "max_lts": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 4.5,
+                    "description": (
+                        "Only roads with at least half their miles in reach at this traffic-stress"
+                        " level or calmer (half is our default, unmeasured). Absent: every road."
+                    ),
+                },
             },
             "required": ["near"],
         },
@@ -5054,6 +5216,7 @@ TOOLS = [
     },
     {
         "name": "climbs_near",
+        "title": "Climbs near a place",
         "description": (
             "List the categorised climbs near a point (Cat 5 to HC, from the Climbs map"
             " layer): name, miles, gain, average grade, surface, its foot and summit and"
@@ -5088,6 +5251,7 @@ TOOLS = [
     },
     {
         "name": "closures_near",
+        "title": "Closures near a place",
         "description": (
             "List the closures and construction in force now near a point, nearest first: trail"
             " and road closures from Maryland SHA, NPS, MPD and RouteMaker's reviewers (Lake"
@@ -5116,6 +5280,7 @@ TOOLS = [
     },
     {
         "name": "plan_route",
+        "title": "Plan a route",
         "description": (
             "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
             " end) and summarise it: distance, time, climbing, the share on each traffic-stress"
@@ -5159,6 +5324,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "name": DRAFT_NAME_SCHEMA,
+                "test": TEST_SCHEMA,
                 "points": {
                     "type": "array",
                     "items": POINT_SCHEMA,
@@ -5223,6 +5389,7 @@ TOOLS = [
     },
     {
         "name": "reach",
+        "title": "How far you can ride",
         "description": (
             "Where a rider can be in 15, 30, 45 and 60 minutes (reach rings, isochrones) from one"
             " to five points, by any bike ride type (its graph, pace and traffic setting), on"
@@ -5264,6 +5431,7 @@ TOOLS = [
     },
     {
         "name": "compare_places",
+        "title": "Compare places by ride",
         "description": (
             "Compare 2 to 6 places to start from (a home, a hotel, an office)"
             " against 1 to 3 places the rider goes, each with an optional minute limit: one row"
@@ -5300,6 +5468,7 @@ TOOLS = [
     },
     {
         "name": "plan_metro_loop",
+        "title": "Plan a Metro loop",
         "description": (
             "Plan a loop of about target_miles around a centre (DC by default) that stays within"
             " max_miles_from_metro of a Metrorail station: waypoints are picked at Metro stations"
@@ -5313,6 +5482,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "name": DRAFT_NAME_SCHEMA,
+                "test": TEST_SCHEMA,
                 "target_miles": {
                     "type": "number",
                     "minimum": 5,
@@ -5346,6 +5516,7 @@ TOOLS = [
     },
     {
         "name": "open_link",
+        "title": "Open a RouteMaker link",
         "description": (
             "Start a draft from a RouteMaker link the rider pastes: the address of the page"
             " showing a route (after changing it in the app, or opening one of their saved"
@@ -5358,6 +5529,7 @@ TOOLS = [
             "properties": {
                 "link": {"type": "string", "minLength": 3},
                 "max_miles_from_metro": RIDE_OPTIONS["max_miles_from_metro"],
+                "test": TEST_SCHEMA,
             },
             "required": ["link"],
         },
@@ -5365,6 +5537,7 @@ TOOLS = [
     },
     {
         "name": "revise_route",
+        "title": "Revise a route",
         "description": (
             "Change a draft the rider has looked at and plan it again, as a new draft (the old"
             " one stays, to go back to). Send only what changes: points to add, move or remove,"
@@ -5469,6 +5642,7 @@ TOOLS = [
     },
     {
         "name": "route_segments",
+        "title": "Route segments",
         "description": (
             "Read a draft stretch by stretch, for optimizing it: each stretch's miles, road,"
             " LTS (1 calmest to 4, 5 Avoid), facility (path, trail: a mountain-bike trail,"
@@ -5498,6 +5672,7 @@ TOOLS = [
     },
     {
         "name": "ride_conditions",
+        "title": "Ride conditions",
         "description": (
             "Light and weather for riding a draft at a time: whether it is dark at the start"
             " and the finish (civil dawn and dusk, as the app's Dawn and Dusk), the arrival"
@@ -5523,6 +5698,7 @@ TOOLS = [
     },
     {
         "name": "my_routes",
+        "title": "My routes",
         "description": (
             "The rider's saved routes (My routes), on RouteMaker's own connector: with no"
             " route_id or name, their names, miles, ride types and tags (archived ones only"
@@ -5612,6 +5788,7 @@ TOOLS = [
     },
     {
         "name": "save_route",
+        "title": "Save a route",
         "description": (
             "Keep a draft once the rider has said to, under a name: on the site's own connector,"
             " in their My routes, with tags if given; on the rider's own computer, as a GPX"
@@ -5644,6 +5821,7 @@ TOOLS = [
     },
     {
         "name": "my_drafts",
+        "title": "My drafts",
         "description": (
             "The routes planned through this app and not saved (drafts), newest revision of"
             " each, newest first: name, miles, ride type, when made, days left and link. Drafts"
@@ -5660,12 +5838,41 @@ TOOLS = [
                     "maxLength": 120,
                     "description": "Words each draft's name must hold.",
                 },
+                "archived": {
+                    "type": "boolean",
+                    "description": "true: list the archived drafts instead. Default false.",
+                },
             },
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "archive_draft",
+        "title": "Archive a draft",
+        "description": (
+            "Archive a draft (every revision of its route): it leaves the rider's Load route and"
+            " my_drafts, and still goes a week after it was made. For a draft that only tested"
+            " or checked RouteMaker: archive it as soon as you are done with it (or plan with"
+            " test: true). archived false restores it. Never touches My routes."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {"type": "string"},
+                "archived": {"type": "boolean", "description": "Default true."},
+            },
+            "required": ["draft_id"],
+        },
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    },
+    {
         "name": "organize_route",
+        "title": "Organize a route",
         "description": (
             "Tag, archive or restore one of the rider's saved routes (a route_id from"
             " my_routes), on RouteMaker's own connector. tags replaces its tags; add_tags and"
@@ -5688,6 +5895,7 @@ TOOLS = [
     },
     {
         "name": "gpx_route",
+        "title": "Route as a GPX file",
         "description": (
             "A draft as a GPX track for a bike computer or another app: on the rider's own"
             " computer a .gpx file, on the site a download link (for the rider who made the"
@@ -5706,6 +5914,7 @@ TOOLS = [
     },
     {
         "name": "draft_route_post",
+        "title": "Draft a route post",
         "description": (
             "Write a Featured routes post (a page at /routes/<slug> around one exact route) as a"
             " DRAFT, for the site's admin to read and publish in the admin. Offered only to an"
@@ -5922,6 +6131,8 @@ class MemoryDrafts:
         # Each draft's first draft (the route it revises, or itself), when it was made, and
         # whether it was saved (my_drafts).
         self._made: dict[str, tuple[str, datetime, bool]] = {}
+        # The routes archived, by their first draft (archive_draft, or a `test` call's).
+        self._archived: set[str] = set()
         self._lock = threading.Lock()
 
     def get(self, draft_id: str) -> Draft | None:
@@ -5935,19 +6146,25 @@ class MemoryDrafts:
             before = self._made.get(draft.revises or "")
             root = before[0] if before else draft_id
             self._made[draft_id] = (root, datetime.now(UTC), False)
+            if TEST_CALL.get():
+                self._archived.add(root)
             while len(self._drafts) > MAX_DRAFTS:  # the oldest go first
                 oldest = next(iter(self._drafts))
                 del self._drafts[oldest]
                 self._made.pop(oldest, None)
         return draft_id
 
-    def listing(self) -> list[dict]:
+    def listing(self, archived: bool = False) -> list[dict]:
         """Each route's newest draft not saved, newest first (my_drafts): `draft_id`, `draft`,
-        `made` (UTC) and `route_id` (its link's, or None)."""
+        `made` (UTC) and `route_id` (its link's, or None). The archived ones instead with
+        `archived`."""
         with self._lock:
             newest: dict[str, dict] = {}
             for draft_id, draft in self._drafts.items():
                 root, made, saved = self._made.get(draft_id, (draft_id, None, False))
+                if (root in self._archived) != archived:
+                    newest.pop(root, None)
+                    continue
                 newest[root] = {
                     "draft_id": draft_id,
                     "draft": draft,
@@ -5969,6 +6186,18 @@ class MemoryDrafts:
             for key, (root, made, _saved) in list(self._made.items()):
                 if root == found[0] and made <= found[1]:
                     self._made[key] = (root, made, True)
+
+    def archive(self, draft_id: str, archived: bool = True) -> bool:
+        """Archive the draft's route, every revision (or restore it); whether it was found."""
+        with self._lock:
+            found = self._made.get(draft_id)
+            if found is None:
+                return False
+            if archived:
+                self._archived.add(found[0])
+            else:
+                self._archived.discard(found[0])
+        return True
 
     def shared(self, draft_id: str, route_id: str) -> None:
         """The draft's link was kept under `route_id`. Nothing to tie here: on the site's own
@@ -6404,6 +6633,12 @@ class Server:
         except (TypeError, ValueError):
             raise ToolError("within_miles is a number") from None
         roads = self.api.scenic_roads(near, miles, str(args.get("designation") or "").strip())
+        if args.get("max_lts") is not None:
+            try:
+                most = float(args["max_lts"])
+            except (TypeError, ValueError):
+                raise ToolError("max_lts is a number from 1 to 4.5") from None
+            roads = [road for road in roads if _calm_share(road, most) >= SCENIC_CALM_SHARE]
         return {
             "roads": roads,
             "source": "Montgomery County Planning (Rustic Roads), MDOT SHA (Scenic Byways),"
@@ -6638,6 +6873,8 @@ class Server:
                 k: answered.get(k)
                 for k in (
                     "trails_off",
+                    "fewer_turns",
+                    "paved",
                     "easy_mtb",
                     "target_distance_m",
                     "loop",
@@ -6747,6 +6984,9 @@ class Server:
             for key, what in (
                 ("blocked_lines", "the roads avoided"),
                 ("follow", "the line followed"),
+                # The app has no control for these (its named options set them for a ride).
+                ("fewer_turns", "Fewer turns"),
+                ("paved", "All paved"),
             )
             if plan.sent.get(key)
         ]
@@ -7034,7 +7274,8 @@ class Server:
     def my_drafts(self, args: dict, call: Call) -> dict:
         now = datetime.now(UTC)
         rows = []
-        for found in self.drafts.listing():
+        archived = bool(args.get("archived"))
+        for found in self.drafts.listing(archived=archived):
             draft: Draft = found["draft"]
             plan = draft.plan
             row = {
@@ -7055,14 +7296,26 @@ class Server:
         words = str(args.get("search") or "").casefold().split()
         if words:
             rows = [r for r in rows if all(w in str(r["name"]).casefold() for w in words)]
-        return {
-            "drafts": rows,
-            "note": (
+        if archived:
+            note = (
+                "the drafts archived (archive_draft, or planned with test), newest first: kept out"
+                " of the rider's Load route, each still going a week after it was made"
+            )
+        else:
+            note = (
                 "the routes planned here and not saved, newest revision of each, newest first;"
                 " each goes on its own a week after it was made (our default). Revise one with"
                 " revise_route, or keep it with save_route on the rider's word"
-            ),
-        }
+            )
+        return {"drafts": rows, "note": note}
+
+    # archive_draft
+    def archive_draft(self, args: dict, call: Call) -> dict:
+        draft_id = str(args["draft_id"])
+        archived = args.get("archived", True) is not False
+        if not self.drafts.archive(draft_id, archived):
+            raise ToolError(f"no draft {draft_id}: drafts go a week after they are made")
+        return {"draft_id": draft_id, "archived": archived}
 
     def _draft_link(self, draft: Draft, route_id: str) -> str:
         """The draft's link, as `_draft` gave it: its exact line and its plan's inputs."""
@@ -7483,6 +7736,9 @@ class Server:
                 "follow_alternative",
                 "blocked_lines",
                 "trails_off",
+                # The rider's choices, as Keep to roads.
+                "fewer_turns",
+                "paved",
             )
             if preset != "run":
                 # A riding speed is no running pace: the run starts at Run's own.
@@ -7984,7 +8240,6 @@ class Server:
         out: dict = {
             "ride_type": answer.get("preset", preset),
             "direction": direction,
-            "combine": combine if len(points) > 1 else None,
             "stress_used": answer.get("stress_used"),
             "groups": rings(answer.get("groups") or []),
             "link": self._reach_link(points, preset, dials, direction, combine, calm, minutes),
@@ -7994,6 +8249,9 @@ class Server:
         app_rings = [m for m in minutes if m in (15, 30, 45, 60)] or [15, 30, 45, 60]
         if app_rings != minutes:
             out["link_rings"] = app_rings
+        if len(points) > 1:
+            # Only where there is something to combine: one point's answer leaves the key out.
+            out["combine"] = combine
         if answer.get("calm"):
             out["calm"] = {
                 "stress": answer["calm"]["stress"],
@@ -8127,6 +8385,7 @@ class Server:
             "ride_conditions": self.ride_conditions,
             "my_routes": self.my_routes,
             "my_drafts": self.my_drafts,
+            "archive_draft": self.archive_draft,
             "organize_route": self.organize_route,
             "reach": self.reach,
             "compare_places": self.compare_places,
@@ -8137,12 +8396,16 @@ class Server:
         if handler is None:
             raise ToolError(f"no tool named {name}")
         call = call or Call()
+        # A test call's drafts are archived as they are made (TEST_CALL).
+        testing = TEST_CALL.set(name in TEST_TOOLS and bool((args or {}).get("test")))
         try:
             out = handler(args or {}, call)
         except KeyError as missing:
             raise ToolError(f"missing argument {missing}") from None
         except (TypeError, ValueError, OverflowError) as wrong:
             raise ToolError(f"an argument is not in the expected form: {wrong}") from None
+        finally:
+            TEST_CALL.reset(testing)
         if isinstance(out, dict):
             view = out.pop(VIEW_PRIVATE, None)
             if view is not None and name in VIEW_TOOLS:
@@ -8218,7 +8481,11 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                 " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."
                 " Give distances in miles first, km in brackets. Share the link so the rider can"
                 " open the route in the app, whole with its # part: after a week only that part"
-                " can plan the route again. Save to My routes only when asked."
+                " can plan the route again. Save to My routes only when asked. Planning only to"
+                " test or check RouteMaker, not for the rider: pass test: true, or archive_draft"
+                " each draft when done, so it stays out of the rider's Load route. Send calls that"
+                " look up places by name (find_place, compare_places, a named place anywhere) one"
+                " at a time: place search refuses a second one while the first is running."
             ),
         }
     elif method == "ping":
@@ -8264,7 +8531,8 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
             result = {
                 "content": [
                     *call.images,
-                    {"type": "text", "text": json.dumps(payload, indent=1)},
+                    # Compact: indenting only spends the model's context.
+                    {"type": "text", "text": json.dumps(payload, separators=(",", ":"))},
                 ],
                 "structuredContent": payload,
                 "isError": False,

@@ -714,7 +714,7 @@ test("go warm look-up: Where to? focused or an early start fired refreshes a loc
   assert.match(early, /goEarlyTimer\.current = window\.setTimeout\(\(\) => \{\s*goWarmFix\(\);/);
   assert.match(app, /onTopPlace=\{goEarlyToPlace\}\s*onWhereToFocus=\{goWarmFix\}/);
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
-  assert.match(go, /<PlaceSearch variant="go"[^\n]*onFocusBox=\{onWhereToFocus\} \/>/);
+  assert.match(go, /<PlaceSearch variant="go"[^\n]*onFocusBox=\{onWhereToFocus\} typed=\{whereToTyped\} onTyped=\{onWhereToTyped\} \/>/);
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
   assert.match(search, /onFocus=\{\(event\) => \{\s*onFocusBox\?\.\(\);/);
 });

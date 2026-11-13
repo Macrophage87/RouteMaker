@@ -29,6 +29,16 @@ is built but off until volume grows).
 
 Privacy: no account, address, location trail or device id is stored with a suggestion; the spot
 kept is the nearest point on the road (`core.suggestions.snap`), never the one clicked.
+
+From the ride summary (`from_ride`; frontend lib/rideFeedback.ts, the 2026-11-12 backlog item 7): a
+send there says where the rider just was, so it keeps less (the owner's rule: nothing identifying
+stays on the server longer than two minutes). The suggestion keeps the day, never the time
+(`created_at` is midnight, Washington's day, as the 311 log keeps it); the per-device count row
+is dated by the day too and keeps the road only as a one-way code mixed with the device's
+(`ride_road_code`), so the row names no road, yet one-a-road still holds, whichever form sent it
+(a ride's retry, or Keep riding and End ride again, is refused as "already sent", not counted
+twice); and the audit row names no suggestion and is dated by the day. Rows of each kind are
+made one a send, in step, so a row's exact time would otherwise date the suggestion.
 """
 
 from __future__ import annotations
@@ -36,7 +46,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core import signing
@@ -65,7 +76,10 @@ KEEP = timedelta(hours=24)
 TICKET_SALT = "routemaker/signed-out-suggestion/v1"
 TICKET_MAX_AGE_S = 2 * 3600
 DEVICE_SALT = b"routemaker/signed-out-device/v1"
+RIDE_ROAD_SALT = b"routemaker/signed-out-ride-road/v1"
 REMOVED = "[removed]"
+# A ride's send keeps the day in Washington's time (core.report_log.DAY_ZONE, the 311 log's).
+DAY_ZONE = ZoneInfo("America/New_York")
 
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 # A phone number: 7 or more digits, with the usual separators between them ("2019-2021" is two
@@ -114,7 +128,8 @@ def ticket_ok(value: str | None, way_id: int) -> bool:
 def device_hash(address: str, day=None) -> str:
     """A salted hash of the address and the day: one device for a day, never reversible, and
     not matchable across days. The key is derived from the server's secret."""
-    day = day or timezone.now().date()
+    # Washington's day, the one a ride's rows are dated by: the code changes when they lapse.
+    day = day or timezone.now().astimezone(DAY_ZONE).date()
     key = hmac.new(settings.SECRET_KEY.encode(), DEVICE_SALT, hashlib.sha256).digest()
     return hmac.new(key, f"{day.isoformat()}|{address}".encode(), hashlib.sha256).hexdigest()
 
@@ -146,8 +161,12 @@ def create(
     other: str,
     ticket_value: str | None,
     honeypot: str,
+    from_ride: bool = False,
 ) -> StressSuggestion:
-    """Record a signed-out suggestion, or refuse it (EditRefused) or drop it (Dropped)."""
+    """Record a signed-out suggestion, or refuse it (EditRefused) or drop it (Dropped).
+
+    `from_ride`: sent from the ride summary; kept with the day only, and no road beside the device.
+    """
     if honeypot.strip():
         raise Dropped
     if not ticket_ok(ticket_value, way_id):
@@ -185,12 +204,20 @@ def create(
                 device=device, created_at__gte=now - KEEP
             )
         )
-        if any(s.osm_way_id == way_id for s in sends):
+        code = ride_road_code(device, way_id)
+        road = code if from_ride else way_id
+        # One a road whichever form sent it: the road panel's (the road) or a ride's (its code).
+        if any(s.osm_way_id in (way_id, code) for s in sends):
             raise Again("You've sent a suggestion for this road today. Thank you.")
         if len(sends) >= DAILY_MAX:
             raise Limited(f"That's {DAILY_MAX} suggestions today. Thank you; try again tomorrow.")
-        SignedOutSend.objects.create(device=device, osm_way_id=way_id, created_at=now)
+        # A ride's count row is dated by the day too: rows and suggestions are made one each per
+        # send, in step, so a row's time would date the suggestion it was made with.
+        SignedOutSend.objects.create(
+            device=device, osm_way_id=road, created_at=ride_day(now) if from_ride else now
+        )
         suggestion = StressSuggestion.objects.create(
+            created_at=ride_day(now) if from_ride else now,
             suggester=None,
             suggester_user_id=None,
             signed_out=True,
@@ -206,8 +233,27 @@ def create(
             reasons=chosen,
             reason=reason_words(chosen, other),
         )
-    audit.record(
-        None, "stress_suggest_signed_out", "stress_suggestion", suggestion.pk,
-        AuditLogEntry.Outcome.ALLOWED,
-    )  # fmt: skip
+    # A ride's send: the audit row's time would be the send's, so it names no suggestion.
+    with transaction.atomic():
+        entry = audit.record(
+            None, "stress_suggest_signed_out", "stress_suggestion",
+            "" if from_ride else suggestion.pk, AuditLogEntry.Outcome.ALLOWED,
+        )  # fmt: skip
+        if from_ride and entry is not None:
+            # Its audit row too: one a send, in step with the suggestions, so dated by the day; in
+            # the same transaction, so the exact time is never committed.
+            AuditLogEntry.objects.filter(pk=entry.pk).update(at=ride_day(now))
     return suggestion
+
+
+def ride_road_code(device: str, way_id: int) -> int:
+    """A ride's road as its count row keeps it: a one-way code of the device's code and the road,
+    negative so it never equals a road id. It says only "this device sent this code today"."""
+    key = hmac.new(settings.SECRET_KEY.encode(), RIDE_ROAD_SALT, hashlib.sha256).digest()
+    digest = hmac.new(key, f"{device}|{int(way_id)}".encode(), hashlib.sha256).digest()
+    return -(int.from_bytes(digest[:8], "big") >> 2) - 1
+
+
+def ride_day(now: datetime) -> datetime:
+    """Midnight of `now`'s day in Washington: what a ride's send keeps instead of its time."""
+    return datetime.combine(now.astimezone(DAY_ZONE).date(), time.min, tzinfo=DAY_ZONE)

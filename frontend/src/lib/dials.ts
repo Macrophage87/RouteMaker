@@ -38,6 +38,12 @@ export interface Dials {
    */
   trailsOff?: boolean;
   /**
+   * "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): set only by choosing that named option
+   * among the routes (lib/neighbours.ts rideDials), so a ride's re-plans keep to it; never a control, a link or a default.
+   */
+  fewerTurns?: boolean;
+  paved?: boolean;
+  /**
    * "Easy MTB trails" (the owner, 2026-11-08), Default and Trailmaxxing only (`offersEasyMtb`): also ride the
    * mountain-bike trails rated 0 or 1, or unrated (grass and dirt), on the off-road graph as Gravel does, steering off
    * those rated 2 or harder (core/easy_mtb.py). Absent is off. In the link and a saved route; dropped on other ride types.
@@ -453,6 +459,8 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
   if (dials.trailsOff) fields.trails_off = true;
+  if (dials.fewerTurns) fields.fewer_turns = true;
+  if (dials.paved) fields.paved = true;
   // "Easy MTB trails" (fitDials keeps it on Default and Trailmaxxing alone); absent is off.
   if (dials.easyMtb) fields.easy_mtb = true;
   const target = fitTarget(dials.targetDistanceM);

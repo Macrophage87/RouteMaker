@@ -19,6 +19,21 @@ with one exception: above 80 (`STRESS_TODAYS_TOP`) the turn charge (`maneuver_pe
 to 15 s (`CALM_MANEUVER_PENALTY_S`, our default, not measured), and the calm search's ranking
 adds each turn at that price (`refine.turn_m`). A ride type that already charges more keeps its own.
 
+Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
+
+- **Every setting** (the owner's yes, 2026-11-12). `presets.TURN_CHARGE_EVERY_SETTING` (True) builds owner
+  decision 254's "every preset": 15 s at every position, Default's 70 included; `turn_m` at every position
+  (it counts a turn that stays on a trail's name too, which Valhalla's charge skips); and the side-street
+  dodge pass asks a dodge to avoid its 50 m tie step plus each turn it adds, at the router's own price in
+  metres of LTS 3 (`dedodge.turn_lts3_m`, about 22 m a turn at 70). The route scorecard's before/after
+  (38 trips): at 70, 4% fewer turns with LTS 4 flat; at 25 (Go's More direct), 7% fewer turns but 1.7 mi
+  more LTS 4 in all (Germantown to Poolesville, Old Town Bowie). The owner chose every setting anyway.
+- **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
+  options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
+  Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
+  to 0.9 (`PAVED_SURFACE_AVOIDANCE`). Both our defaults, not measured. Plan and Go offer them as routes to
+  choose from only where they do what their name says (frontend `lib/neighbours.ts`).
+
 ## 1. Valhalla: graph tags (`lua/routemaker_remap.lua`)
 
 The tier reaches the transform as `rm:stress_tier` (`src/pipeline/run.py:2681`, read at

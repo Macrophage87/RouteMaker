@@ -42,7 +42,15 @@ def test_no_way_is_also_named_by_another_file() -> None:
         if row["kind"] == "stress"
     }
     assert not (set(ours) - retired) & set(others)
-    assert set(ours) & retired == {553709201}
+    # The 2026-11-12 recheck (the owner: "Drop the bump, through streets checked", and the
+    # Arlington comfort index cited in every Arlington Why line) retires each row it replaces.
+    recheck = {
+        int(row["osm_way_id"])
+        for row in json.loads(
+            (OVERRIDES / "2026-11-12-owner-side-streets-and-arlington-index.json").read_text()
+        )["retire"]
+    }
+    assert set(ours) & retired - recheck == {553709201}
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)

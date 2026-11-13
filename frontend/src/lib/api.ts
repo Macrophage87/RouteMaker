@@ -990,6 +990,38 @@ export interface RunInfo {
   fits?: boolean | null;
 }
 
+/** One barrier or flight of steps on a route (core/barriers.py `reading`). */
+export interface BarrierItem {
+  kind: string;
+  word: "stile" | "kissing_gate" | "turnstile" | "steps" | "narrow_gap" | "bollard" | "cycle_barrier" | "gate" | "other";
+  lon: number;
+  lat: number;
+  width_m: number | null;
+  /** False for a bollard or cycle barrier whose gap no one has mapped: said as unmapped, never as clear. */
+  width_mapped: boolean;
+  /** A cargo bike or tandem cannot pass: lifted over or squeezed through, steps, or a gap mapped under 1.0 m. */
+  impassable: boolean;
+  at_m: number;
+}
+
+/** The barriers on a route (core/barriers.py `reading`). `data` false: no barrier list is loaded, so nothing is said. */
+export interface BarrierReading {
+  data: boolean;
+  built?: string | null;
+  counts: Record<string, number>;
+  impassable: number;
+  unmapped_width: number;
+  items: BarrierItem[];
+}
+
+/** Cargo's and Tandem's round off impassable barriers (core/barriers.py `settle`); null on other ride types. */
+export interface BarrierRound {
+  rounds: number;
+  impassable: number;
+  limited: "time" | "no_way_round" | "at_stop" | "no_data" | "excludes_full" | null;
+  in_the_way: { kind: string; word: BarrierItem["word"]; lon: number; lat: number }[];
+}
+
 /** An Easy MTB trails plan's reading of its route (core.api.EasyMtbOut). */
 export interface EasyMtbReading {
   /** The hardest level counted easy (1). */
@@ -1087,7 +1119,7 @@ export interface RouteResponse {
   /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */
   dirt_closed?: boolean;
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks; a Mass Ride's point on a street with rails in it goes to the nearest cross street (core/mass_rails.py). */
-  moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks" | "rail_street"; note: string }[];
+  moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks" | "rail_street" | "restricted_gate"; note: string }[];
   /**
    * Notes on a stop or the end (core.api.PointNoteOut; the owner, 2026-10-29): one on a road not open to the public,
    * which the route still goes to. Shown and said as the moved points are (lib/summary.ts movedPointsNote).
@@ -1106,6 +1138,10 @@ export interface RouteResponse {
    * (routemaker.time_marks), for a ride's arrival times (lib/navigate.ts secondsAt). Null or absent: spread evenly.
    */
   time_marks?: number[][] | null;
+  /** Every barrier and flight of steps on the line (core/barriers.py); absent from an older answer. */
+  barriers?: BarrierReading | null;
+  /** Cargo's and Tandem's round off impassable barriers; null on other ride types. */
+  barrier_round?: BarrierRound | null;
   climb_m: number;
   descent_m: number;
   stress_m: StressMetres;
@@ -1135,6 +1171,9 @@ export interface RouteResponse {
     carrying: Carrying | null;
     assist?: boolean;
     avoid_gravel?: boolean;
+    /** "Fewer turns" and "All paved" (a named option chosen, then its ride's re-plans); absent from an older API. */
+    fewer_turns?: boolean;
+    paved?: boolean;
     trails_off?: boolean;
     easy_mtb?: boolean;
     target_distance_m?: number | null;
@@ -1225,6 +1264,8 @@ export interface RouteResponse {
   intersections?: JunctionWarning[] | null;
   /** A Mass Ride's groups of signalized crossings; empty or null elsewhere, absent from an older API. */
   intersection_groups?: JunctionGroupSummary[] | null;
+  /** The seconds the route waits at signals and stop signs (`routemaker.junction_delay`), inside `duration_s`; absent from an older API. */
+  junction_delay_s?: number | null;
   /** The route in words, stretch by stretch; null where it could not be built, absent from an older API. */
   description?: DescriptionEntry[] | null;
   /** The same route with stretches under a quarter of a mile merged (OWNER-DECISIONS 226); null where unbuilt. */
@@ -1310,7 +1351,9 @@ export function routeErrorShown(error: RouteError, goPlace: string | null, offli
 }
 
 /** Go's "More direct" (two notches more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
-export type NeighbourKind = "direct" | "calmer";
+/** Go's More direct and Calmer, and the named options at the rider's own setting (the backlog's "fewer turns" item). */
+export type NeighbourKind = "direct" | "calmer" | "fewer_turns" | "paved";
+const NEIGHBOUR_KINDS: readonly NeighbourKind[] = ["direct", "calmer", "fewer_turns", "paved"];
 export interface NeighbourOption {
   kind: NeighbourKind;
   stress: number;
@@ -1712,6 +1755,12 @@ export function cancelRoute(planId: string, options: { fetchImpl?: FetchLike } =
   }
 }
 
+/** The request body with the options asked for (`options`, in order of want), or as it is: the API's default, direct and calmer. */
+function withOptions(body: string, kinds: readonly NeighbourKind[] | undefined): string {
+  if (!kinds) return body;
+  return JSON.stringify({ ...(JSON.parse(body) as object), options: kinds });
+}
+
 /**
  * Go's "More direct" and "Calmer" for a plan (POST /api/route/neighbours): the same body as the plan's full request,
  * one request for both, and one count of the routing limit. Nothing is said on a failure: the options are left out.
@@ -1719,21 +1768,21 @@ export function cancelRoute(planId: string, options: { fetchImpl?: FetchLike } =
 export async function requestNeighbours(
   points: readonly LonLat[],
   preset: PresetId,
-  options: Pick<RouteRequestOptions, "dials" | "vias"> & { fetchImpl?: FetchLike } = {},
+  options: Pick<RouteRequestOptions, "dials" | "vias"> & { fetchImpl?: FetchLike; kinds?: readonly NeighbourKind[] } = {},
 ): Promise<NeighboursResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   try {
     const response = await fetchImpl("/api/route/neighbours", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: routeRequestBody(points, preset, { dials: options.dials, vias: options.vias }),
+      body: withOptions(routeRequestBody(points, preset, { dials: options.dials, vias: options.vias }), options.kinds),
     });
     const body: unknown = await response.json().catch(() => null);
     const list = (body as { options?: unknown } | null)?.options;
     if (response.ok && Array.isArray(list)) {
       const kept = list.filter(
         (o): o is NeighbourOption =>
-          !!o && (o.kind === "direct" || o.kind === "calmer") && typeof o.stress === "number" && looksLikeRoute(o.route),
+          !!o && NEIGHBOUR_KINDS.includes(o.kind) && typeof o.stress === "number" && looksLikeRoute(o.route),
       );
       return { ok: true, options: unitsFirstDeep(kept) };
     }

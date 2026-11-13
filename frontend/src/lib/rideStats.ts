@@ -12,10 +12,13 @@
  * - Traffic stress: the metres ridden along the route on each tier of the stretch the rider was on, a half step on its own.
  * - Elevation (the owner, 2026-10-20: "Show elevation too!"): the profile's height where the rider was on the route,
  *   every ELEVATION_STEP_M of the ride's distance, for the summary's chart.
+ * - Stretches ridden (lib/rideFeedback.ts): each street and level ridden along the route, its metres and one point on
+ *   the route line (never a fix), so the summary can ask "Anything feel different from its rating?".
+ * - Road closed presses (lib/roadClosed.ts): the stretches marked, so the summary can offer to send them for review.
  */
 import { formatClimb, formatDistance, formatDuration, formatSpeed } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { POOR_FIX_M, onHalfStep, stretchAt, type RideFix, type RideModel, type RideState } from "./navigate.ts";
+import { POOR_FIX_M, isUnnamed, onHalfStep, pointAt, stretchAt, wayRidden, type RideFix, type RideModel, type RideState } from "./navigate.ts";
 import type { RouteProfile } from "./api.ts";
 import type { BarKey, BarMetres } from "./stressBar.ts";
 
@@ -33,6 +36,22 @@ export const ELEVATION_STEP_M = 30;
 const ELEVATION_MAX = 1000;
 /** Along-route progress moving further than this past the straight-line step is a jump, not riding. */
 const ALONG_SLACK_M = 60;
+/** At most this many stretches ridden are kept; past it the shortest goes. */
+export const RIDDEN_MOST = 60;
+
+/** One street at one level, ridden along the route (consecutive steps on the same street and level are one). */
+export interface RiddenStretch {
+  /** The street as Ride says it ("Connecticut Ave", "a path"); null where the route gives none. */
+  street: string | null;
+  /** Whether it has its own name: "a path" or "an unnamed road" is never added to another one of the same words. */
+  named?: boolean;
+  /** Its level, 1 to 5 by halves (5 is Avoid). */
+  tier: number;
+  /** Metres ridden on it. */
+  m: number;
+  /** A point on the route line where it was first ridden: the road is looked up there, never the rider's own fix. */
+  point: LonLat;
+}
 
 export interface RideStats {
   startedAt: number;
@@ -45,6 +64,10 @@ export interface RideStats {
   elevation: { atM: number; m: number }[];
   /** The last counted fix: where, when, and where along which route. */
   last: { point: LonLat; at: number; accuracyM: number; progressM: number | null; model: RideModel | null } | null;
+  /** The streets and levels ridden along the route, in the order ridden; absent on figures from before they were kept. */
+  ridden?: RiddenStretch[];
+  /** The stretches marked by Road closed this ride ([lon, lat] lines), oldest first; absent where none were. */
+  closed?: LonLat[][];
 }
 
 export function statsStart(now: number): RideStats {
@@ -115,15 +138,34 @@ export function statsStep(
     if (along > 0 && along <= stepM + ALONG_SLACK_M) {
       next.climbM = stats.climbM + profileGain(profile, last.progressM, progressM);
       const mid = (last.progressM + progressM) / 2;
-      const tier = stretchAt(model, mid)?.tier ?? null;
+      const stretch = stretchAt(model, mid);
+      const tier = stretch?.tier ?? null;
       const level = tier !== null && tier >= 1 && tier <= 5 ? Math.round(tier) : null;
       // A half step's own key where the route's sections put one here, as the line draws it.
       const key = (level === null ? "unknown" : level < 5 && onHalfStep(model, mid, level) ? `${level}h` : String(level)) as BarKey;
       next.stressM = { ...stats.stressM, [key]: (stats.stressM[key] ?? 0) + stepM };
+      if (stretch && level !== null) next.ridden = withRidden(stats.ridden ?? [], wayRidden(stretch), key.endsWith("h") ? level + 0.5 : level, stepM, pointAt(model, mid), !isUnnamed(stretch.street));
     }
   }
   if (progressM !== null) next.elevation = withHeight(stats.elevation, next.distanceM, profileAt(profile, progressM));
   return next;
+}
+
+/** The stretches ridden with one more step: added to the last where it is the same street and level, else a new one. */
+export function withRidden(ridden: readonly RiddenStretch[], street: string | null, tier: number, m: number, point: LonLat, named = street !== null): RiddenStretch[] {
+  const last = ridden[ridden.length - 1];
+  if (last && last.street === street && last.tier === tier) return [...ridden.slice(0, -1), { ...last, m: last.m + m }];
+  const next = [...ridden, { street, named, tier, m, point }];
+  if (next.length <= RIDDEN_MOST) return next;
+  // The shortest goes, never the one being ridden.
+  let drop = 0;
+  for (let i = 1; i < next.length - 1; i++) if (next[i].m < next[drop].m) drop = i;
+  return next.filter((_, i) => i !== drop);
+}
+
+/** The ride's figures with one more Road closed stretch (RideMode's press). */
+export function withClosedStretch(stats: RideStats, line: LonLat[]): RideStats {
+  return { ...stats, closed: [...(stats.closed ?? []), line] };
 }
 
 /** The heights with one more where it is ELEVATION_STEP_M (or the thinned step) past the last; thinned past ELEVATION_MAX. */

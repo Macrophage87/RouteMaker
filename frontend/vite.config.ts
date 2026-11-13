@@ -50,9 +50,9 @@ export default defineConfig({
     outDir: "dist",
     assetsDir: "assets",
     sourcemap: false,
-    // MapLibre's chunk, the largest, is about 1.1 MB minified and App's about 1.0 MB (docs/DEPLOYMENT.md): a chunk
-    // past this has grown.
-    chunkSizeWarningLimit: 1200,
+    // App's chunk, the largest, is about 1.23 MB minified and MapLibre's about 1.12 MB (measured 2026-11-12 on
+    // release/v0.26.0; docs/DEPLOYMENT.md): a chunk past this has grown.
+    chunkSizeWarningLimit: 1300,
     // The bundled packages' licences, which MIT, ISC and BSD-3-Clause all ask
     // to travel with redistributed copies; served at /licenses.txt and linked
     // from the map's credits. Completed by licenceNotices above: the text for

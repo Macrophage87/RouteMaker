@@ -90,6 +90,7 @@ from routemaker.geo import Point, haversine
 
 from . import (
     audit,
+    bike_loop,
     bikeshare,
     climbprofile,
     climbs_near,
@@ -99,6 +100,7 @@ from . import (
     map_match,
     micromobility,
     nearest,
+    offline_network,
     parallel,
     plan_cancel,
     presets,
@@ -308,6 +310,32 @@ class RouteIn(Schema):
         description=(
             "Retired: the box became the Road Bike ride type. Ticked on a rider's own-bike"
             " ride type it plans as `road-bike`; elsewhere it is ignored."
+        ),
+    )
+    fewer_turns: StrictBool = Field(
+        default=False,
+        description=(
+            '"Fewer turns": the ride type as it is, with turns charged at Group Ride\'s and Road'
+            " Bike's higher price, so a route with fewer turns wins where one is near. Bike"
+            " ride types only; ignored on Run and the transit and Bikeshare ride types."
+        ),
+    )
+    paved: StrictBool = Field(
+        default=False,
+        description=(
+            '"All paved": the ride type as it is, with gravel and dirt avoided wherever'
+            " pavement runs near (not closed: a trip with no paved way still plans). Bike ride"
+            " types only; ignored on Run and the transit and Bikeshare ride types."
+        ),
+    )
+    options: list[Literal["direct", "calmer", "fewer_turns", "paved"]] | None = Field(
+        default=None,
+        max_length=4,
+        description=(
+            "POST /api/route/neighbours only: which options to plan beside the rider's route."
+            " null: direct and calmer (Go's More direct and Trailmaxxed). fewer_turns and"
+            " paved are the same setting with `fewer_turns` or `paved` on. Ignored by"
+            " POST /api/route."
         ),
     )
     trails_off: StrictBool = Field(
@@ -1030,6 +1058,8 @@ class DialsOut(Schema):
     carrying: CarryingName | None
     assist: bool
     avoid_gravel: bool = False
+    fewer_turns: bool = Field(default=False, description='Whether "Fewer turns" was on.')
+    paved: bool = Field(default=False, description='Whether "All paved" was on.')
     trails_off: bool = False
     easy_mtb: bool = Field(
         default=False, description="Whether the ride was planned with Easy MTB trails on."
@@ -1771,7 +1801,7 @@ class MovedPointOut(Schema):
     index: int = Field(description="The point's place in `points`, from 0.")
     asked: list[float] = Field(description="[lon, lat] as asked.")
     routed: list[float] = Field(description="[lon, lat] as routed.")
-    reason: Literal["zoo_racks", "rail_street"]
+    reason: Literal["zoo_racks", "rail_street", "restricted_gate"]
     note: str = Field(description="One plain sentence to show the rider.")
 
 
@@ -2454,6 +2484,74 @@ class MtbOut(Schema):
     )
 
 
+class BarrierItemOut(Schema):
+    """One barrier or flight of steps on a route (`core.barriers.reading`)."""
+
+    kind: str = Field(description="The OSM barrier value (`stile`, `bollard`, ...), or `steps`.")
+    word: str = Field(
+        description=(
+            "Its group for the route's line: `stile`, `kissing_gate`, `turnstile`, `steps`,"
+            " `narrow_gap` (a gap mapped under 1.0 m), `bollard`, `cycle_barrier`, `gate` or"
+            " `other`."
+        )
+    )
+    lon: float
+    lat: float
+    width_m: float | None = Field(default=None, description="The mapped gap, where mapped.")
+    width_mapped: bool = Field(
+        description="False for a bollard or cycle barrier whose gap no one has mapped."
+    )
+    impassable: bool = Field(
+        description=(
+            "A cargo bike or tandem cannot pass (OWNER-DECISIONS 345): lifted over or squeezed"
+            " through, steps, or a gap mapped under 1.0 m."
+        )
+    )
+    at_m: float = Field(description="Metres along the route.")
+
+
+class BarriersOut(Schema):
+    """The barriers on a route (`core.barriers.reading`; backlog 2026-11-12 item 12)."""
+
+    data: bool = Field(
+        description=(
+            "Whether a barrier list is loaded; false means nothing is known, never that there"
+            " are none."
+        )
+    )
+    built: str | None = Field(default=None, description="The extract date of the list.")
+    counts: dict[str, int] = Field(default_factory=dict, description="Barriers by `word`.")
+    impassable: int = 0
+    unmapped_width: int = Field(
+        default=0, description="Bollards and cycle barriers whose gap is not mapped."
+    )
+    items: list[BarrierItemOut] = Field(default_factory=list)
+
+
+class BarrierInTheWayOut(Schema):
+    kind: str
+    word: str
+    lon: float
+    lat: float
+
+
+class BarrierRoundOut(Schema):
+    """Cargo's and Tandem's round off impassable barriers (`core.barriers.settle`)."""
+
+    rounds: int = Field(default=0, description="Rounds of asking again round them.")
+    impassable: int = Field(default=0, description="Impassable barriers still on the route.")
+    limited: Literal["time", "no_way_round", "at_stop", "no_data", "excludes_full"] | None = Field(
+        default=None,
+        description=(
+            "Why some are still on the route: `time`, `no_way_round` (no route without them"
+            " was found), `at_stop` (beside one of the plan's own points, so not excluded) or"
+            " `no_data` (no barrier list loaded) or `excludes_full` (the request's own"
+            " exclusions fill the router's limit, so none could be added)."
+        ),
+    )
+    in_the_way: list[BarrierInTheWayOut] = Field(default_factory=list)
+
+
 class EasyMtbOut(Schema):
     """An Easy MTB trails plan's reading of its route (`core.easy_mtb`)."""
 
@@ -2504,10 +2602,12 @@ class WorkZoneOut(Schema):
         "ddot_advisory",
         "purple_line",
         "fcpa",
+        "park_alert",
         "protrack",
         "dcwater",
         "wssc",
         "sha",
+        "moco",
     ]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
@@ -2537,10 +2637,12 @@ class ClosureOut(Schema):
         "ddot_advisory",
         "purple_line",
         "fcpa",
+        "park_alert",
         "protrack",
         "dcwater",
         "wssc",
         "sha",
+        "moco",
     ]
     source_name: str = Field(
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'
@@ -2771,6 +2873,12 @@ class RouteBody(Schema):
     mtb: MtbOut | None = None
     # The Easy MTB trails switch's reading (2026-11-08). Additive: null with it off.
     easy_mtb: EasyMtbOut | None = None
+    # The barriers and steps on the line (backlog 2026-11-12 item 12). Additive: null from
+    # an older answer; `data` false where no barrier list is loaded.
+    barriers: BarriersOut | None = None
+    # Cargo's and Tandem's round off impassable barriers (`core.barriers.settle`). Additive:
+    # null on every other ride type.
+    barrier_round: BarrierRoundOut | None = None
     # Live work zones (FOLLOWUP-WORKZONES, 341-349). Additive: null where work zones are
     # not running (no refresh stored yet).
     work_zones: WorkZonesOut | None = None
@@ -3796,6 +3904,86 @@ def route_cancel(request, body: CancelIn):
     return Status(204, None)
 
 
+# --- Off-grid riding: the road network around a route (the owner, 2026-11-12) ---------------
+
+
+def same_site(refusal: str):
+    """A view decorator: refuse a request the browser says a foreign page sent, before it is
+    counted, with `refusal`."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+            if site and site not in ("same-origin", "none"):
+                return _error(403, refusal)
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+class OfflineNetworkIn(Schema):
+    line: list[tuple[float, float]] = Field(
+        min_length=2,
+        max_length=offline_network.MAX_LINE_POINTS,
+        description="The route's line, [lon, lat] pairs, as the route answer gave it.",
+    )
+    preset: str = Field(
+        default="default", max_length=40, description="The ride type, for the levels' prices."
+    )
+    stress: int | None = Field(
+        default=None, ge=0, le=100, description="The stress slider; none: the ride type's own."
+    )
+    carrying: str | None = Field(
+        default=None, max_length=20, description="Cargo Bike's load, as the route was asked."
+    )
+
+    @field_validator("line")
+    @classmethod
+    def line_inside_coverage(cls, line: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        west, south, east, north = settings.COVERAGE_BBOX
+        for lon, lat in line:
+            if not (west <= lon <= east and south <= lat <= north):
+                raise ValueError("the line must be inside the area this map covers")
+        if offline_network.line_length_m(line) > offline_network.MAX_LINE_M:
+            raise ValueError("the line is longer than the offline network is fetched for")
+        return line
+
+
+@api.post(
+    "/offline/network",
+    response={200: dict, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="The road network within a mile of a route, for re-routing on the phone offline",
+    description=(
+        "Every way a bicycle may ride within about a mile of the line, cut at its junctions,"
+        " with its stress level, one-way, walk and unpaved flags and name (format v1,"
+        " frontend lib/offlineRouter.ts), and `level_factor`, the ride type's price of each"
+        " level. Map data for an area: the line is not kept. 503 `not_built` until the first"
+        " map rebuild that writes it."
+    ),
+)
+# The last runs first, as on /api/route: the error guard, the site check, the content-type and
+# size check, the count, then the slot, so a refused request never holds a tile slot.
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.OFFLINE_NETWORK_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK),
+    json_body_up_to(offline_network.MAX_BODY_BYTES),
+    same_site("the offline road network answers this site's own pages only"),
+    errors_as_json,
+)
+def offline_network_view(request, body: OfflineNetworkIn):
+    try:
+        graph = offline_network.corridor_graph(body.line)
+    except offline_network.NotBuilt:
+        return Status(503, {"error": "not_built"})
+    except offline_network.TooSlow:
+        return Status(503, {"error": "too_slow"})
+    factors = offline_network.level_factors(body.preset, body.stress, body.carrying)
+    return {**graph, "level_factor": factors}
+
+
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
 #
 # POST /api/route/neighbours plans the rider's trip a step more traffic tolerant and a step
@@ -3817,15 +4005,21 @@ def route_cancel(request, body: CancelIn):
 # 25 since the calmer option became the trailmaxxed route (2026-10-19): the top of the slider
 # runs the calm search at its full rate, which took longer than the old notch's one call.
 NEIGHBOURS_BUDGET_S = 25
-# What the request counts against the routing limit: one for each plan.
+# What the request counts against the routing limit up front: one for each of Go's two plans;
+# each plan asked past two is counted in the view (`route_neighbours`).
 NEIGHBOURS_COST = 2
+# What a loop's shapes (POST /api/route/loop-shapes) count against the routing limit, as three
+# plans (our default): six to eighteen /route calls and up to nine traces, all held to one plan's
+# budget.
+LOOP_SHAPES_COST = 3
 
 
 class NeighbourOut(Schema):
-    kind: Literal["direct", "calmer"] = Field(
+    kind: Literal["direct", "calmer", "fewer_turns", "paved"] = Field(
         description=(
             "`direct`: two notches more traffic tolerant. `calmer`: the top of the slider"
-            " (Go's Trailmaxxed)."
+            " (Go's Trailmaxxed). `fewer_turns`, `paved`: the rider's own setting with"
+            " `fewer_turns` or `paved` on (asked for with `options`)."
         )
     )
     stress: int = Field(description="The traffic slider's position it was planned at.")
@@ -3836,8 +4030,9 @@ class NeighboursOut(Schema):
     stress: int = Field(description="The rider's own position, as the notches were read from.")
     options: list[NeighbourOut] = Field(
         description=(
-            "Up to two, the more direct first; empty on a ride type that offers neither (Rebalance"
-            " Ride, the transit ride types, Mass Ride), at both ends of a ride type's limits, on"
+            "Those asked for in `options` (by default direct and calmer), in that order; empty"
+            " on a ride type that offers none (Rebalance Ride, the transit ride types, Mass"
+            " Ride), at both ends of a ride type's limits, on"
             " a long ride, and on a Bikeshare request that does not name its docks"
             " (`pickup_station`, and `dropoff_station` unless it ends outside a dock): a"
             " Bikeshare option keeps those docks and changes only the ride between them."
@@ -3879,22 +4074,61 @@ def route_neighbours(request, body: RouteIn):
     if body.preset == presets.BIKESHARE and not _same_docks(body):
         return Status(200, {"stress": stress, "options": []})
     direct, calmer = presets.stress_notches(body.preset, stress)
+    # "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): the rider's
+    # own setting with the one choice on; not where the body already has it, nor on Bikeshare
+    # (its ride between the docks is the option there), Mass Ride, Run or a transit ride type.
+    # Planned in the order asked, so the page puts the one it wants most first, and one the
+    # budget leaves no time for is the last.
+    same = (
+        None
+        if body.preset in (presets.BIKESHARE, "mass-ride", presets.RUN)
+        or body.preset in presets.TRANSIT_PRESETS
+        else stress
+    )
+    at = {
+        "direct": direct,
+        "calmer": calmer,
+        # Nor where the ride type already charges a turn that much (Group Ride, Road Bike).
+        "fewer_turns": None
+        if body.fewer_turns
+        or presets.costing(body.preset)["bicycle"].get("maneuver_penalty", 0)
+        >= presets.FEWER_TURNS_PENALTY_S
+        else same,
+        "paved": None if body.paved or body.preset == presets.ROAD_BIKE else same,
+    }
     wanted = [
-        (kind, notch)
-        for kind, notch in (("direct", direct), ("calmer", calmer))
-        if notch is not None
+        (kind, at[kind])
+        for kind in dict.fromkeys(body.options or ("direct", "calmer"))
+        if at[kind] is not None
         # A long calm plan takes the long ride's slot and budget: not offered as an option.
         and (
             loop
             or not routing.long_calm_for(
-                body.preset, body.points, notch, long_ride=False, trails_off=body.trails_off
+                body.preset, body.points, at[kind], long_ride=False, trails_off=body.trails_off
             )
         )
     ]
+    # Each plan past the two the decorator counted is counted too (Go's More direct and
+    # Trailmaxxed, then Fewer turns and All paved): where the client has not the room, the
+    # last ones are left out, never the request refused, and nothing is counted for them
+    # (`ratelimit.take`), so the client's next plan is not refused for options it never got.
+    extra = len(wanted) - NEIGHBOURS_COST
+    if extra > 0:
+        client = ratelimit.client_key(ratelimit.client_address(request))
+        if not ratelimit.take(ratelimit.ROUTING, client, extra).allowed:
+            wanted = wanted[:NEIGHBOURS_COST]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
     bodies = {
-        kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
+        kind: body.model_copy(
+            update={
+                "stress": notch,
+                "quick": False,
+                "candidates": False,
+                "options": None,
+                **({kind: True} if kind in ("fewer_turns", "paved") else {}),
+            }
+        )
         for kind, notch in wanted
     }
     with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
@@ -3905,6 +4139,167 @@ def route_neighbours(request, body: RouteIn):
         if answered.get(kind) is not None
     ]
     return Status(200, {"stress": stress, "options": options})
+
+
+class LoopShapesIn(Schema):
+    """A loop from a start and a distance (`core.bike_loop`): where it starts, its length, and
+    the ride type and dials a plan of it would take."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start: LonLat = Field(description="[lon, lat]: where the loop starts and ends.")
+    target_distance_m: float = Field(
+        ge=bike_loop.TARGET_MIN_M,
+        le=bike_loop.TARGET_MAX_M,
+        description="The loop's length, metres: 3 mi to 100 mi (our default).",
+    )
+    preset: PresetName = Field(
+        description=(
+            "A bike ride type that plans loops: not Mass Ride, Bikeshare, Rebalance Ride, the"
+            " transit ride types or Run (whose start-alone loop is POST /api/route's)."
+        )
+    )
+    stress: StrictInt | None = Field(
+        default=None, ge=presets.STRESS_MIN, le=presets.STRESS_MAX, description="As a plan's."
+    )
+    hills: StrictInt | None = Field(
+        default=None, ge=presets.HILLS_MIN, le=presets.HILLS_MAX, description="As a plan's."
+    )
+    when: WhenName | None = Field(default=None, description="As a plan's.")
+    carrying: CarryingName | None = Field(default=None, description="As a plan's.")
+    assist: StrictBool = Field(default=False, description="As a plan's.")
+    trails_off: StrictBool = Field(default=False, description="As a plan's.")
+    easy_mtb: StrictBool = Field(default=False, description="As a plan's.")
+    cycling_speed_kmh: float | None = Field(
+        default=None,
+        ge=presets.RIDER_SPEED_MIN_KMH,
+        le=presets.RIDER_SPEED_MAX_KMH,
+        description="As a plan's.",
+    )
+    closure_bypass: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=50, description="As a plan's."
+    )
+    closures_now: StrictBool = Field(default=False, description="As a plan's.")
+    blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description="Roads the rider marked closed, as a plan's: left out of every shape.",
+    )
+
+    @field_validator("start")
+    @classmethod
+    def start_inside(cls, start: list[float]) -> list[float]:
+        if not geocode.inside(start[0], start[1]):
+            raise ValueError("the start is outside the area this map covers")
+        return start
+
+    @model_validator(mode="after")
+    def a_loop_ride_type(self):
+        if not bike_loop.offered(self.preset):
+            raise ValueError(f"{self.preset} does not plan a loop from a start and a distance")
+        return self
+
+
+class LoopShapeOut(Schema):
+    points: list[list[float]] = Field(
+        description=(
+            "Plan it through these (POST /api/route with `via_points` and `loop`): the start, two"
+            " corners on the roads ridden, and the start again."
+        )
+    )
+    via_points: list[int] = Field(description="The corners' indices: [1, 2].")
+    heading_deg: int = Field(description="The way the loop goes out, degrees from north.")
+    distance_m: float = Field(description="About how long, metres: the router's own way round.")
+    climb_m: float = Field(description="About how much climbing, metres.")
+    quiet_pct: int | None = Field(
+        description="About what share is LTS 1 and 2, percent; null where it could not be read."
+    )
+    busy_m: float | None = Field(description="About how much is LTS 3 or more, metres.")
+    near_target: bool = Field(description="Within 12% of the target (our default).")
+    spur_pct: int = Field(description="The share ridden twice, as an out-and-back spur, percent.")
+    geometry: dict = Field(description="The router's own way round, a GeoJSON LineString.")
+
+
+class LoopShapesOut(Schema):
+    target_distance_m: float
+    preset: str
+    shapes: list[LoopShapeOut] = Field(
+        description=(
+            "One to three shapes, best first: near the target, fewest spurs, most quiet riding."
+            " Their figures are the router's own way round, not yet the full plan's search."
+        )
+    )
+    tried: int = Field(description="Triangles ridden.")
+    ran_short: bool = Field(description="The search stopped early for want of time.")
+
+
+@api.post(
+    "/route/loop-shapes",
+    response={
+        200: LoopShapesOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        502: ErrorOut,
+        503: BusyOut,
+    },
+    summary="Shapes for a loop of about a distance from a start (a bike ride type)",
+    description=(
+        "Triangles from the start in six directions, sized to the distance on the ride type's"
+        " own graph and dials, and the best one to three of them with their miles, climb and"
+        " share of quiet riding. Pick one and plan it with POST /api/route. Optional headers as"
+        " POST /api/route's (`X-Plan-Id`, `X-Plan-Replaces`). Nothing is stored."
+    ),
+    by_alias=True,
+)
+# As /api/route's (innermost first): the error guard, the content-type check, the count, a
+# replaced request's cancel, the slots. It counts as three plans on the routing limit: it
+# makes about a dozen router calls.
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT, wait_for=_replacing_wait_s),
+    _records_replaced_plan,
+    ratelimit.rate_limited(ratelimit.ROUTING, cost=LOOP_SHAPES_COST),
+    json_body_only,
+    errors_as_json,
+)
+def route_loop_shapes(request, body: LoopShapesIn):
+    watch = plan_cancel.watch_for(request)
+    watching = routing.watch_cancel(watch)
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        carrying=body.carrying,
+        assist=body.assist,
+        trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
+        avoid_gravel=body.preset == presets.ROAD_BIKE,
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=tuple(tuple((p[0], p[1]) for p in line) for line in body.blocked_lines),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
+        loop=True,
+    )
+    started = getattr(request, "routing_started", None)
+    try:
+        answered = Status(
+            200,
+            bike_loop.loop_shapes(body.start, body.target_distance_m, body.preset, dials, started),
+        )
+    except bike_loop.NoLoop as refusal:
+        answered = JsonResponse({"error": str(refusal), "code": "no_loop"}, status=422)
+    except routing.PlanCancelled:
+        answered = None
+    except routing.RouterUnavailable:
+        answered = _error(503, "The router is not answering; try again shortly.")
+        answered["Retry-After"] = str(DEADLINE_RETRY_S)
+    finally:
+        routing.unwatch_cancel(watching)
+    # Whatever the search made of its last moments, a cancelled request is answered as one.
+    if answered is None or (watch is not None and watch.cancelled):
+        return plan_cancel.cancelled_answer()
+    return answered
 
 
 def _same_docks(body: RouteIn) -> bool:
@@ -5607,6 +6002,8 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        fewer_turns=body.fewer_turns,
+        paved=body.paved,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,
@@ -6486,17 +6883,7 @@ class PlacesOut(Schema):
     attribution: list[str]
 
 
-def same_site_only(view):
-    """Refuse a request the browser says a foreign page sent, before it is counted."""
-
-    @wraps(view)
-    def wrapped(request, *args, **kwargs):
-        site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
-        if site and site not in ("same-origin", "none"):
-            return _error(403, "place search answers this site's own pages only")
-        return view(request, *args, **kwargs)
-
-    return wrapped
+same_site_only = same_site("place search answers this site's own pages only")
 
 
 GEOCODE_RESPONSES = {
@@ -8955,6 +9342,28 @@ def closures_map(request, params: Query[AreaClosuresIn], response: HttpResponse)
     return Status(200, {"closures": work_zones.area_rows(box, permits=params.permits)})
 
 
+class ClosuresStampOut(Schema):
+    stamp: str = Field(
+        description="A fingerprint of the closures in force now; it changes when they do."
+    )
+
+
+# GET /api/closures/stamp (Stephen 2026-11-12, sudden closures): a ride asks each minute whether
+# the closures in force changed, and checks its line (POST /api/closures/check) only when they
+# did. Nothing of the rider's is sent.
+@api.get(
+    "/closures/stamp",
+    response={200: ClosuresStampOut, 429: ErrorOut, 500: ErrorOut},
+    summary="A fingerprint of the closures in force now, which changes when they do",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.CLOSURES_STAMP), errors_as_json)
+def closures_stamp(request, response: HttpResponse):
+    from . import workzones as work_zones
+
+    response["Cache-Control"] = "no-store"
+    return Status(200, {"stamp": work_zones.closures_stamp()})
+
+
 CLOSURE_LINE_MAX_POINTS = 10_000
 CLOSURE_BODY_MAX_BYTES = 512 * 1024
 CLOSURE_BYPASS_MAX = 50
@@ -9072,6 +9481,54 @@ def report311_status(request):
     )
     response["Cache-Control"] = "no-store"
     return response
+
+
+FEEDBACK_BODY_MAX_BYTES = 12_288
+
+
+@api.get("/feedback", summary="Whether riders' feedback can be sent from here")
+@decorate_view(ratelimit.rate_limited(ratelimit.FEEDBACK_STATUS), same_site_only, errors_as_json)
+def feedback_status(request):
+    from . import feedback
+
+    response = JsonResponse({"enabled": feedback.enabled()})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api.post("/feedback", summary="Send a rider's feedback to the owner (nothing is kept here)")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.FEEDBACK),
+    errors_as_json,
+)
+def feedback_send(request):
+    """The words and the place-free details go to the owner's Discord forum (core.feedback);
+    nothing is stored, and the words never reach a log."""
+    from . import feedback
+
+    if not feedback.enabled():
+        return _report311_refused(503, "Feedback is not set up here.", "off")
+    body, refusal = _json_body(request, FEEDBACK_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    body = body if isinstance(body, dict) else {}
+    text = body.get("text")
+    if not isinstance(text, str) or not (
+        feedback.TEXT_MIN <= len(text.strip()) <= feedback.TEXT_MAX
+    ):
+        return _error(
+            400, f"text is {feedback.TEXT_MIN} to {feedback.TEXT_MAX} characters of feedback."
+        )
+    if not ratelimit.hit(ratelimit.FEEDBACK_ALL, "all").allowed:
+        return _report311_refused(429, "Feedback from the app is paused for now.", "busy")
+    try:
+        feedback.send(text, feedback.clean_details(body.get("details")))
+    except feedback.NotSent:
+        return _report311_refused(502, "It could not be sent. Try again later.", "not_sent")
+    out = JsonResponse({"sent": True})
+    out["Cache-Control"] = "no-store"
+    return out
 
 
 @api.post("/report311/where", summary="Which 311 website takes a problem at a point")
@@ -9768,6 +10225,10 @@ class SignedOutSuggestionIn(Schema):
     other: str = Field(default="", max_length=1000, description="Other's words, at most 200.")
     ticket: str = Field(max_length=500)
     website: str = Field(default="", max_length=200, description="Left empty (a honeypot).")
+    from_ride: StrictBool = Field(
+        default=False,
+        description="Sent from the ride summary: the day is kept, never the time.",
+    )
 
 
 SIGNED_OUT_THANKS = (
@@ -9822,6 +10283,7 @@ def stress_suggestion_signed_out(request, body: SignedOutSuggestionIn, response:
             body.other,
             body.ticket,
             body.website,
+            from_ride=body.from_ride,
         )
     except quick.Dropped:
         return Status(200, {"id": 0, "message": SIGNED_OUT_THANKS})
@@ -10726,6 +11188,7 @@ REVIEW_QUEUES = Literal[
     "rematch",
     "painted_lane",
     "dc_no_bike",
+    "facts_changed",
 ]
 
 

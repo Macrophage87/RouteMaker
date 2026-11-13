@@ -20,6 +20,12 @@ RouteMaker beta: how to get in
 RouteMaker plans bike routes for the DC region and Baltimore. This is a test version, so
 some things may be rough or change; nothing asks for a password.
 
+What to try first:
+
+- In Go, type a place in "Where to?", pick it, and look at the route: its colours show how calm each street is.
+- Tap a ride type (Gravel, Cargo, Bike + transit and others) and see how the route changes.
+- Press "Start ride" and ride it: Ride gives each turn as you go.
+
 
 1. Open it in a real browser
 ----------------------------
@@ -122,8 +128,10 @@ Wait about 20 minutes and try again. Report it only if it lasts more than half a
 5. Ride mode: directions while you ride
 ---------------------------------------
 
-For short rides, up to 30 miles (48 km), on a phone with the screen on and the page in front.
-For longer rides, use Download GPX with a bike computer, which keeps going with the screen off.
+In a browser: for short rides, up to 30 miles (48 km), on a phone with the screen on and the page
+in front. In the Android app (if you are testing it): any length, with the screen locked. For
+longer rides in a browser, use Download GPX with a bike computer, which keeps going with the screen
+off.
 You stay responsible for riding safely; the route can be wrong.
 
 - Plan a route, then press "Start ride", on the bar at the top of the map (once you've picked a
@@ -151,13 +159,16 @@ You stay responsible for riding safely; the route can be wrong.
   the same 30 seconds, unless you are typing in one or accessibility mode is on.
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
   have arrived it is a filled Done button under "Arrived: ..." with the destination's name. End ride and Go round
-  share the top row; Go round (for a road that is closed ahead: it finds a way round and reports nothing)
+  share the top row; Go round (for a road that is closed ahead: it finds a way round; nothing is sent unless you choose to at the ride's end)
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
   sunset and dawn or dusk (civil twilight: the sun 6 degrees below the horizon) times and the minutes till each.
 - After End ride you get the ride's summary: where you went, how far and how long first, then distance, moving time,
   average speed, total time and climbing; the elevation chart and the traffic stress you rode are under Details. Done
   leaves Go empty for your next trip (in Plan the plan stays to adjust); Keep riding carries on with the same ride.
-  Nothing about the ride is saved.
+  Nothing about the ride is saved. Two optional lines under the figures: "Anything feel different from its rating?"
+  lists the streets you rode, longest first, and opens the short suggestion form for the one you pick; and if you
+  pressed Go round, "Send for review" sends those closed roads to the review list. Either sends only the road and the
+  day, never the time or your path, and only when you press Send.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
@@ -236,7 +247,8 @@ method" have the same groups. Typing "transit",
   plus transit lists the best first: time to get there, with time on busy roads and waiting at
   junctions counting against a trip, so each trip says how far it rides on busy roads ("0.4 mi
   (0.6 km) busy"), which explains a list out of time order. "Ride the whole way" is always one of
-  them. Press a trip to put it on the map and in the steps.
+  them. Press a trip to put it on the map and in the steps. In Go the trips are folded shut under
+  the trip; open them to pick another.
 - A transit trip lists its legs with their minutes: "🚶 4 min · 🚲 12 min · 🔴 18 min". 🚶 is a
   walk and 🚲 a bike. Metro shows its line's colour (🔴 Red, 🟠 Orange, 🔵 Blue, 🟢 Green, 🟡
   Yellow, ⚪ Silver), a bus its route ("🚌C53"), MARC and VRE their line ("🚆Penn",
@@ -273,7 +285,8 @@ method" have the same groups. Typing "transit",
   says so; a trip you picked is changed too. The ride screen starts again with the new trip, so its
   time and distance count from the change. A delay on your trip is said with the new arrival time.
 - The steps show each ride, walk and train or bus in order, with the total door to door. They say
-  how riding the whole way compares.
+  how riding the whole way compares. In Go the trip shows its time, arrival clock and legs first,
+  with the steps folded shut under "Steps, in order"; Plan shows them open.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
   is a walk.
 - In the steps, a train or bus step has its stops ("5 transit stops") and a walk its turns ("3 turns"),
@@ -337,7 +350,8 @@ the route goes to its top by way of its bottom.
   their own pace.
 - Favorites (signed in): Go's Home button becomes Favorites, with Home and Work first and then
   your other places, in the order you set with Edit's Move up and Move down. One tap rides there.
-  They are kept with your account only.
+  Tapping the empty Where to? box lists Home, Work and your first 3 favorites above your recent
+  places. They are kept with your account only.
 - Share live (it was called Broadcast): beside Start ride. Send the link and start riding.
   Whoever opens it sees your dot and the path you take, and can download your route as a GPX
   file or, if they connected one, send it to Garmin or Wahoo. Following needs no account. The

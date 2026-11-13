@@ -94,6 +94,12 @@ test("a fixed route says so in its row (the owner, 2026-11-10)", () => {
   assert.doesNotMatch(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "plan", fixed: false }), /Fixed/);
 });
 
+test("a saved plan's row names its ride type; a file's does not (backlog 2026-11-12)", () => {
+  assert.match(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "plan", preset: "gravel" }), /^4\.7 mi \(7\.6 km\) · Gravel · Saved Oct 15, 2026$/);
+  assert.doesNotMatch(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "gpx", preset: "default" }), /Default/);
+  assert.match(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "plan", preset: "kids" }), / · Novice and Nervous · /);
+});
+
 test("a fixed route: the Save form's box, never compared with today's map, and ridden without re-routing (the owner, 2026-11-10)", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const save = read("../SaveRoute.tsx");
@@ -308,19 +314,25 @@ test("the check is a POST of the line, and a failure never holds the route up", 
   assert.equal(await checkClosures("https://x.test", LINE, offline), null);
 });
 
-test("Save route sits beside Share; My routes is in Save and load, in Plan and Go, with the routes kept for offline", () => {
+test("Save route sits beside Share; My routes is a popup from Save and load, in Plan and Go, with the routes kept for offline", () => {
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /SAVE_ROUTE/);
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   // The owner, 2026-10-18: "the files tab (maybe call it save or load) is where we should save the routes and search for them".
   assert.doesNotMatch(sheets, /<MyRoutes |<KeptRoutes /);
-  assert.match(sheets, /\{shareControls\}\s*\{routes\}\s*<GpxPanel/);
+  // Stephen, 2026-11-12: "Put the load rides in a popout and have save load be mostly about saving and exporting":
+  // Save and Share, then the one button that opens My routes (above the export: no scroll to reach it), then the files.
+  assert.match(sheets, /\{shareControls\}\s*\{onMyRoutes && \([\s\S]*?\)\}\s*<GpxPanel/);
+  assert.match(sheets, /onClick=\{\(event\) => onMyRoutes\(event\.currentTarget\)\}/);
+  assert.match(sheets, /<SheetFrame id="sheet-routes" title=\{SHEET_TITLES\.routes\} open=\{nav\.view === "routes"\}[^>]*popup>\s*\{routes\}/);
   const your = readFileSync(new URL("../YourRoutes.tsx", import.meta.url), "utf8");
   assert.match(your, /<MyRoutes \{\.\.\.myRoutes\} filter=\{filter\} \/>/);
   assert.match(your, /<KeptRoutes [^>]*filter=\{filter\}/);
   assert.match(your, /type="search"/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /<YourRoutes\s/);
+  assert.match(app, /<RoutesSheet\s+nav=\{sheetNav\}\s+routes=\{\s*<YourRoutes\s/);
+  // Opened a step in, so Back returns to Save & load; listed only while there is something to list.
+  assert.match(app, /onMyRoutes: myGoControls\.signedIn \|\| keepShown \|\| anyKept\(\) \? \(opener: HTMLElement\) => openView\("routes", opener, true\) : null,/);
 });
 
 test("Settings' Account has Sign out under 'Signed in with Discord.': a form POST to /auth/logout with the CSRF token", () => {

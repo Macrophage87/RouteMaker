@@ -186,8 +186,6 @@ export interface DetourFound {
   kind: DetourKind | "search";
   heading: string;
   items: Nearby[];
-  /** The place search's credit, when its answers are in the list (shown under it, as Where to?'s). */
-  attribution?: string[];
 }
 
 export interface DetourOutcome {
@@ -296,9 +294,8 @@ export async function findDetour(deps: DetourDeps, ask: DetourAsk): Promise<Deto
   const places = mergeCandidates(foodMatches, found);
   // Neither answered: say why the place search did not, rather than that nothing matches.
   if (places.length === 0 && !searched.ok) return { said: geocodeFailed(searched) };
-  const outcome = await rank(deps, "search", places, query);
-  const credited = searched.ok && searched.attribution.length > 0 && outcome.found?.items.some((i) => i.place.id.startsWith("geo-"));
-  return credited && outcome.found ? { ...outcome, found: { ...outcome.found, attribution: searched.attribution } } : outcome;
+  // The place search's credit is in the map's Help, not under the list (the owner, 2026-11-12: "move credits to help").
+  return rank(deps, "search", places, query);
 }
 
 /**

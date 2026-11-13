@@ -25,6 +25,7 @@ import { CHOICE_CASING_LAYER, CHOICE_CASING_OPACITY } from "./routeChoice.ts";
 import { COVERAGE_MASK_LAYERS } from "./mapGlue.ts";
 import { DC_MASK_LAYERS } from "./dcBoundary.ts";
 import { SCENIC_CASING_LAYER, SCENIC_COLOUR, scenicPointLayers } from "./scenicLayer.ts";
+import { restrictedDarkPaint, restrictedLightPaint } from "./restrictedSites.ts";
 
 export type MapFlavour = "light" | "dark";
 
@@ -142,7 +143,7 @@ export const MAP_DARK_CLASS = "map-dark";
 
 /** Every overlay layer's dark-map paint, by id: lib/darkPaint.ts's and the topo lines' (lib/topoLines.ts). */
 export function overlayDarkPaint(): PaintTable {
-  return { ...DARK_PAINT, ...topoDarkPaint() };
+  return { ...DARK_PAINT, ...topoDarkPaint(), ...restrictedDarkPaint() };
 }
 
 /** The light-map paint of the layers overlayDarkPaint paints for the dark map, to put back when the map turns light. */
@@ -154,6 +155,7 @@ export function overlayLightPaint(): Array<{ id: string; paint?: Record<string, 
     ...(scenicPointLayers(false) as Array<{ id: string; paint?: Record<string, unknown> }>),
     { id: CHOICE_CASING_LAYER, paint: { "line-opacity": CHOICE_CASING_OPACITY } },
     ...(topoLayers(true, false) as Array<{ id: string; paint?: Record<string, unknown> }>),
+    ...restrictedLightPaint(),
   ];
 }
 

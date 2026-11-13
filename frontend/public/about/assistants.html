@@ -204,7 +204,8 @@ never strays more than 5 miles from Metro.</li>
 <li>The assistant plans through the same route request as the app, so the route is exactly what the app
 would plan.</li>
 <li>Every route is a draft with a link to open it in the app. Nothing is saved until you say so. On the web,
-drafts are kept a week (our default) and listed in the app's Load route.</li>
+drafts are kept a week (our default) and listed in the app's Load route; an assistant's test plans are
+archived and left out.</li>
 <li>For riders, the connection on the web can add routes to My routes, read them, and tag, archive or restore them when you ask, but never rename them or delete one of its own accord. Instance admins can also have it write draft Featured routes posts.</li>
 </ul>
 <p class="find"><strong>Looking for something else?</strong> How the planner works: <a href="/about/routing.html">Routing</a>. How the site is built: <a href="/about/architecture.html">Architecture</a>.</p>
@@ -394,7 +395,7 @@ a route you can ask to keep the points where they are.</p>
 
 </div></details>
 <h2 id="tools">What an assistant can do</h2>
-<p>The assistant has twenty-one tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes and only <code>organize_route</code> tags, archives or restores a saved route, each only when you ask; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
+<p>The assistant has twenty-two tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes and only <code>organize_route</code> tags, archives or restores a saved route, each only when you ask, and <code>archive_draft</code> only hides the assistant's own drafts; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
 <p>In an assistant app that shows MCP Apps (Claude does), a planned route appears under the answer: a map colored
 by traffic stress, a stress ribbon over the elevation profile, and buttons to open it in the app, get its GPX file,
 get a picture (on the web) or ask to save it. On a Mass Ride the map and graphs show rider flow and the corkers
@@ -436,7 +437,8 @@ only.</td></tr>
 <tr><th scope="row"><code>ride_conditions</code></th><td>Says whether it is light or dark at the start and the finish of a ride at a given time (by civil dawn and dusk, as the app's Dawn and Dusk), when you arrive, and, within 48 hours, the National Weather Service alerts along the route and where rain is first forecast, through the site's own weather check (points rounded, nothing kept).</td></tr>
 <tr><th scope="row"><code>my_routes</code></th><td>Through the connector on the web: lists your saved routes with their tags and whether each is fixed (narrowed by a tag or by words in the name or tags, or the archived ones instead), or opens one by name ("my commute") as a draft to read or revise (a fixed route with closures on its line comes
 with the suggestion to plan it again around them); opening one counts as opening it in the app. It never changes My routes. A connection allowed before this tool existed cannot read them until you disconnect and connect again. On your own computer the site refuses it.</td></tr>
-<tr><th scope="row"><code>my_drafts</code></th><td>Lists the routes the assistant planned for you and you have not saved, the newest version of each, newest first: name, miles, ride type, when it was made, days left and link, narrowed by words in the name if you ask. So a recent one-off ("the sandwich shop loop from Tuesday") can be found again. <code>plan_route</code>, <code>plan_metro_loop</code> and <code>revise_route</code> take an optional name for the draft, the name Load route shows.</td></tr>
+<tr><th scope="row"><code>my_drafts</code></th><td>Lists the routes the assistant planned for you and you have not saved, the newest version of each, newest first: name, miles, ride type, when it was made, days left and link, narrowed by words in the name if you ask, or the archived ones instead. So a recent one-off ("the sandwich shop loop from Tuesday") can be found again. <code>plan_route</code>, <code>plan_metro_loop</code> and <code>revise_route</code> take an optional name for the draft, the name Load route shows.</td></tr>
+<tr><th scope="row"><code>archive_draft</code></th><td>Archives a draft and every revision of its route: it leaves the app's Load route and <code>my_drafts</code>, and still goes a week after it was made (our default). Asked with archived false, it restores one. It never touches My routes. <code>plan_route</code>, <code>plan_metro_loop</code> and <code>open_link</code> take <code>test: true</code> for a plan that only checks RouteMaker, not one you asked for: its draft is archived as it is made, and its revisions stay archived.</td></tr>
 <tr><th scope="row"><code>open_link</code></th><td>Picks up a route from a RouteMaker link you paste: the app's address after you changed a route, a saved route opened in the app, or a shared route's link.</td></tr>
 <tr><th scope="row"><code>save_route</code></th><td>On the web, saves a draft to My routes, with tags if you give them, and, when it replaces a saved route you name, archives that one once the new one is saved; on your own computer, writes it as a GPX file. Only when you say so. When your account is full, the save deletes the route archived longest and the assistant tells you which; with none archived, it offers to archive the route you have gone longest without opening, and deletes nothing itself. Asked for a fixed route, it saves the exact line: never re-routed, though a closure
 on its line offers Update route. Otherwise it saves the route by its via points (our default).</td></tr>
@@ -720,7 +722,7 @@ planned.</li>
 <p class="next">Next: <a href="/about/architecture.html">Architecture</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.25.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.26.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

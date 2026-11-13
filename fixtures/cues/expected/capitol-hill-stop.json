@@ -1,0 +1,80 @@
+[
+ {
+  "turn": "Start",
+  "road": "Path",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Left",
+  "road": "7th St SE",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Left",
+  "road": "A St SE",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "9th St SE",
+  "then": "then right onto North Carolina Ave SE",
+  "arrow": "turn right,right"
+ },
+ {
+  "turn": "Left",
+  "road": "7th St SE",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Cross",
+  "road": "",
+  "then": "then left onto Path",
+  "arrow": "turn across left"
+ },
+ {
+  "turn": "Stop 1",
+  "road": "",
+  "then": "",
+  "arrow": "stop 1"
+ },
+ {
+  "turn": "Left",
+  "road": "7th St SE",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "L St SE",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Left",
+  "road": "4th St SE",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "M St SE Cycletrack",
+  "then": "",
+  "arrow": "turn across right"
+ },
+ {
+  "turn": "U-turn",
+  "road": "M St SE Cycletrack",
+  "then": "",
+  "arrow": "turn uturn"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

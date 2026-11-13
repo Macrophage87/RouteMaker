@@ -448,9 +448,19 @@ class DatabaseDrafts:
         # Load route in the app).
         before = self._row(draft.revises) if getattr(draft, "revises", None) else None
         root = (before.root or before.draft_id) if before is not None else None
+        # A test call's draft is archived as it is made, and a revision of an archived route
+        # stays archived (the owner, 2026-11-12: agents' test routes kept out of Load route).
+        archived = mcp_module().TEST_CALL.get() or (
+            before is not None and before.archived_at is not None
+        )
         with transaction.atomic():
             ConnectorDraft.objects.create(
-                user=self.user, grant_id=self.grant_id, draft_id=draft_id, data=data, root=root
+                user=self.user,
+                grant_id=self.grant_id,
+                draft_id=draft_id,
+                data=data,
+                root=root,
+                archived_at=timezone.now() if archived else None,
             )
             drop_stale_drafts()
             mine = ConnectorDraft.objects.filter(user=self.user)
@@ -464,11 +474,11 @@ class DatabaseDrafts:
         if row is not None:
             SharedRoute.objects.filter(pk=route_id, owner=self.user).update(connector_draft=row)
 
-    def listing(self) -> list[dict]:
+    def listing(self, archived: bool = False) -> list[dict]:
         """Each route's newest draft not saved, newest first (my_drafts): `draft_id`, `draft`,
-        `made` and `route_id` (its link's, or None)."""
+        `made` and `route_id` (its link's, or None). The archived ones instead with `archived`."""
         rows = []
-        for row in newest_drafts(self._rows()):
+        for row in newest_drafts(self._rows(), archived=archived):
             draft = self.get(row.draft_id)
             if draft is None:
                 continue
@@ -484,6 +494,17 @@ class DatabaseDrafts:
         if row is not None:
             mark_saved(row)
 
+    def archive(self, draft_id: str, archived: bool = True) -> bool:
+        """Archive the draft's route, every revision (or restore it); whether it was found."""
+        row = self._row(draft_id)
+        if row is None:
+            return False
+        root = row.root or row.draft_id
+        ConnectorDraft.objects.filter(Q(root=root) | Q(draft_id=root), user_id=row.user_id).update(
+            archived_at=timezone.now() if archived else None
+        )
+        return True
+
     def name_gpx(self, draft_id: str, name: str) -> bool:
         """Keep the name the GPX link's file is given; whether the draft is still kept."""
         row = self._row(draft_id)
@@ -494,20 +515,21 @@ class DatabaseDrafts:
         return True
 
 
-def newest_drafts(rows) -> list:
+def newest_drafts(rows, archived: bool = False) -> list:
     """Of these drafts, each route's newest still kept and not saved (its later revisions
-    included), newest first."""
+    included), newest first: those not archived, or only the archived ones with `archived`."""
     kept = rows.filter(created_at__gte=timezone.now() - ConnectorDraft.KEPT).order_by(
         "-created_at", "-pk"
     )
     seen: set[str] = set()
     out = []
-    for row in kept.only("pk", "draft_id", "root", "created_at", "saved_at", "grant_id"):
+    fields = ("pk", "draft_id", "root", "created_at", "saved_at", "archived_at", "grant_id")
+    for row in kept.only(*fields):
         root = row.root or row.draft_id
         if root in seen:
             continue
         seen.add(root)
-        if row.saved_at is None:
+        if row.saved_at is None and (row.archived_at is not None) == archived:
             out.append(row)
     return out
 
