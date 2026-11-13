@@ -318,6 +318,8 @@ import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type Hom
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import type { Planner, WorstStretch } from "./lib/worstStretches.ts";
+
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { countUse } from "./lib/usage.ts";
 import { useWeather } from "./useWeather.ts";
@@ -345,6 +347,8 @@ import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
 import type { ShareCardSource } from "./ShareCardDialog.tsx";
 const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => m.ShareCardDialog));
+// Check a route (Plan, an opened file only): loaded on first use, its module with it.
+const CheckRoute = later(() => import("./CheckRoute.tsx").then((m) => m.CheckRoute));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
@@ -364,6 +368,9 @@ import { findShell } from "./lib/nativeShell.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
+
+/** Check a route's calmer way round a stretch: the route alone, no routes to choose from (review speed-5). */
+const planCalmer: Planner = (ends, ridePreset, calmDials) => requestRoute(ends, ridePreset, { dials: calmDials, routeOnly: true });
 
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -4367,6 +4374,36 @@ export function App() {
     commit(kept, { ...rideRef.current, imported: next });
     pending.afterGpx?.(track);
   };
+  // Check a route's Use this way (CheckRoute.tsx, the owner's pick 2026-11-13): the calmer way goes into the file's
+  // full line in place of the stretch, as a closure's detour does (closureReroute), and the plan follows that line. One
+  // edit, so Undo takes it out; the download is then the line with it (its text is gone, as after a detour).
+  const takeCalmerWay = async (stretch: WorstStretch, way: LonLat[]) => {
+    const file = rideRef.current.imported;
+    const route = shown;
+    if (!file?.verbatim || !route) return;
+    // Loaded already with the list (CheckRoute.tsx), so this waits on nothing.
+    const { CHECK_NOT_PUT, pointsKept, spliceAt, stretchEnds, usedSaid } = await import("./lib/worstStretches.ts");
+    const line = file.verbatim.track;
+    const ends = stretchEnds(route, stretch);
+    const cut = spliceAt(line, way, ends.share, ends.paddedM, ends.padded);
+    if (!cut) {
+      announce(CHECK_NOT_PUT);
+      return;
+    }
+    // The calmer way's own ends are kept too (they are not the file's vertices, as a closure's detour ends are).
+    const track = spliceDetours(line, [cut], [[[line[cut.before][0], line[cut.before][1]], ...way, [line[cut.after][0], line[cut.after][1]]]]).map((v) => [...v]) as NonNullable<ImportedPlan["verbatim"]>["track"];
+    // The plan's own points on the part replaced go; the rest stay where the file put them.
+    const kept = pointsKept(pointsRef.current, route, stretch);
+    // A snapped line (lib/gpxMatch.ts) was of the line before: it goes with it.
+    const { matched: _snapped, ...unsnapped } = file;
+    const next: ImportedPlan = { ...unsnapped, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
+    commit(kept, { ...rideRef.current, imported: next });
+    // Planned at once, as an opened file is (openImported): one press, no Update route after it.
+    setRouteAsk((n) => n + 1);
+    announce(usedSaid(stretch.street));
+    // The button goes with the list while the route is planned again: the focus waits on the Route heading.
+    routeHeadingRef.current?.focus();
+  };
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
   const downloadRoute = (said?: (line: string) => void) => {
@@ -6770,6 +6807,11 @@ export function App() {
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
+        // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
+        check:
+          mode === "plan" && imported && fileShown()?.follows_file ? (
+            <CheckRoute route={shown as RouteResponse} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={imported.verbatim ? (stretch, way) => void takeCalmerWay(stretch, way) : undefined} />
+          ) : null,
       }}
     />
   );

@@ -11598,6 +11598,30 @@ button.route-note:focus-visible {
   margin: 8px 0 0;
 }
 
+/* Check a route (CheckRoute.tsx): an opened file's busiest stretches, each with its calmer way and Use this way. */
+.check-route {
+  margin: 0.75rem 0;
+}
+.check-route h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.check-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.check-route .check-stretch {
+  display: block;
+  padding: 0;
+  text-align: start;
+}
+.check-route .check-way {
+  margin: 0.15rem 0 0.35rem;
+}
+
 /* Plan's Keep to compare (lib/compareRoutes.ts): the kept route and the route now, side by side. */
 .plan-compare {
   display: grid;

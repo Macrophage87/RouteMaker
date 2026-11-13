@@ -311,6 +311,8 @@ export interface RouteSectionProps {
   weather: WeatherReport | null;
   /** The planner out of reach while the page is offline: the error box says offline, the one message (P11). */
   offline?: boolean;
+  /** Plan's Check a route (CheckRoute.tsx) on a route that follows an opened file; null otherwise. */
+  check?: ReactNode;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -413,6 +415,7 @@ export function RouteSection(props: RouteSectionProps) {
           light={light}
           arriveMs={arriveMs}
           weather={weather}
+          check={props.check ?? null}
         />
       )}
     </section>
@@ -825,6 +828,7 @@ export function RouteSummary({
   light = [],
   arriveMs = null,
   weather = null,
+  check = null,
 }: {
   route: RouteResponse;
   answer: RouteResponse | null;
@@ -861,6 +865,8 @@ export function RouteSummary({
   arriveMs?: number | null;
   /** Weather along the route (lib/weather.ts): the NWS alerts and rain coming, with the warnings. */
   weather?: WeatherReport | null;
+  /** Plan's Check a route on an opened file (CheckRoute.tsx), under the warnings; null otherwise. */
+  check?: ReactNode;
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -1259,6 +1265,8 @@ export function RouteSummary({
       <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
       {segments.length > 0 && <StressFigure segments={segments} surface={surfaceGlanceParts(route.stress_spans)} />}
       {alerts}
+      {/* Check a route (the 2026-11-13 backlog, item 3): an opened file's busiest stretches, under its warnings. */}
+      {check}
       {noteList}
       {actions.savedNote}
       <div className="actions start-ride">
