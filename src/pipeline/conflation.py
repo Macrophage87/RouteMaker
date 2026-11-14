@@ -36,7 +36,7 @@ import re
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 
-from routemaker import agency_roads, divided
+from routemaker import agency_roads, ddot_projects, divided
 from routemaker.agency_roads import RoadFacts, WayFacts, names_agree
 from routemaker.geo import (
     EARTH_RADIUS_M,
@@ -1416,6 +1416,7 @@ def overlay_road_facts(
     }
     pairs = divided.carriageway_pairs(ways, one_way_streets) if one_way_streets else set()
     overlays: dict[int, agency_roads.Overlay] = {}
+    project_lanes = ddot_projects.project_lane_ways()
     for way in ways:
         facts = facts_by_way.get(way.osm_id)
         if facts is None:
@@ -1429,6 +1430,7 @@ def overlay_road_facts(
             side_lane=way.osm_id in context.side_lane,
             length_m=_length_m(way.coordinates),
             rows=rows,
+            project_lane=way.osm_id in project_lanes,
         )
     return overlays
 
