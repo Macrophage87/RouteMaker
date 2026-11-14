@@ -1,0 +1,1384 @@
+{
+ "source": "DDOT Bike Lane Projects, https://bikelanes.ddot.dc.gov/ (Completed Projects tables 2020-2024 and 2025-2026 project pages), read 2026-11-13",
+ "use": "Where the District's Roadway Block records no bike facility on a way inside one of these completed projects and OSM maps a painted lane, OSM's lane stands (agency_roads.overlay, row A). The owner, 2026-11-13: \"When there's a mismatch in data, we search for the project's own data.\"",
+ "matched": "Ways matched by street name and the project's cross streets on the 2026-11-11 map (reports/dc-own-picks/formula/spans.py in the project files).",
+ "projects": [
+  {
+   "year": 2024,
+   "street": "K St NE",
+   "extent": "6th Street to 8th Street NE",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    509324732,
+    589905456,
+    1378317999
+   ]
+  },
+  {
+   "year": 2024,
+   "street": "M St SE",
+   "extent": "Half Street to 11th Street SE",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    56226936,
+    56226937,
+    203009037,
+    334500091,
+    468448916,
+    468448919,
+    468448922,
+    468450729,
+    468450731,
+    468450733,
+    468488473,
+    468488474,
+    468488475,
+    481820130,
+    509643885,
+    509643886,
+    546095960,
+    546095961,
+    546095963,
+    580825854,
+    590525569,
+    633517691,
+    686997724,
+    1053866373,
+    1055083819,
+    1058919709,
+    1124361257,
+    1236493751,
+    1248740417,
+    1315578804,
+    1315578805,
+    1315578806,
+    1315578807,
+    1315578809,
+    1315578810,
+    1315578811,
+    1315578812,
+    1315578816,
+    1315578817,
+    1315578818,
+    1315578819,
+    1320608380,
+    1322063935,
+    1322063936,
+    1322456632,
+    1322828716,
+    1322828717,
+    1322841949,
+    1335024768,
+    1346012709,
+    1347978358,
+    1427945378,
+    1427945379,
+    1427945381
+   ]
+  },
+  {
+   "year": 2024,
+   "street": "Florida Ave NE",
+   "extent": "2nd Street to H Street NE",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    50523015,
+    130788132,
+    130788136,
+    397365140,
+    415101156,
+    436080556,
+    468421890,
+    468421894,
+    481782068,
+    496468125,
+    589905629,
+    590581767,
+    749443474,
+    888063255,
+    1111556753,
+    1198436030,
+    1232671719,
+    1292174996,
+    1321776835,
+    1321776836,
+    1321778667,
+    1321792568,
+    1321792569,
+    1333108542,
+    1333108543,
+    1333108544,
+    1333108545,
+    1333108546,
+    1333108547,
+    1333108548,
+    1333108549,
+    1333108550,
+    1333108551,
+    1333108552,
+    1333108553,
+    1333108554,
+    1333108555,
+    1333108556,
+    1333108557,
+    1333108558,
+    1333108560,
+    1333108561,
+    1333108562,
+    1333108563,
+    1333108564,
+    1333108565,
+    1333108566,
+    1333108567,
+    1333108568,
+    1333108569,
+    1333108570,
+    1333108571,
+    1333108572,
+    1333108573,
+    1333108574,
+    1333108575,
+    1333108576,
+    1333108577,
+    1333108578,
+    1333108579,
+    1333108580,
+    1333108581,
+    1333108582,
+    1333108583,
+    1333108584,
+    1333108585,
+    1333108586,
+    1333108587,
+    1333108588,
+    1333108589,
+    1333108590,
+    1333108591,
+    1333108593,
+    1333108594,
+    1333289170,
+    1333289843,
+    1337006794,
+    1341787692,
+    1341787694,
+    1389786919,
+    1412699555,
+    1517278933
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "4th Street SW",
+   "extent": "M St to P St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    6056027,
+    334553259,
+    334625930,
+    710022625,
+    710022626,
+    1128034663
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "8th St NE",
+   "extent": "Edgewood St to Monroe St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    6061168,
+    132577766,
+    1196676279,
+    1502134924
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "9th St NW",
+   "extent": "Pennsylvania Ave to T St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    29961183,
+    45838762,
+    47916249,
+    120478696,
+    130808379,
+    131076097,
+    397321702,
+    397321703,
+    397321704,
+    397321706,
+    397321709,
+    409551583,
+    466352084,
+    535548805,
+    589539537,
+    589551084,
+    954271698,
+    971624709,
+    971624710,
+    998338690,
+    1111537803,
+    1124384291,
+    1137954384,
+    1150289869,
+    1320333441,
+    1320333442,
+    1320633367,
+    1320633368,
+    1324662986,
+    1343062270,
+    1343949707,
+    1369556212,
+    1369556213
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "17th St SE",
+   "extent": "Potomac Ave to Barney Circle",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    50501880,
+    1350867146,
+    1350867147,
+    1350867148,
+    1350867149
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "19th St NE",
+   "extent": "C St to Benning Rd",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    130927089,
+    397292963,
+    708853145
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "44th St NW",
+   "extent": "Macomb St to New Mexico Ave",
+   "facility": "Protected Contraflow Bike Lane",
+   "ways": [
+    774935433
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "C St NE",
+   "extent": "14th Pl to 21st St, 22nd St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    6053868,
+    50515725,
+    50515728,
+    56228629,
+    56228630,
+    397283789,
+    397283796,
+    397283807,
+    397286166,
+    397286168,
+    589905482,
+    1054563234,
+    1149015219,
+    1149015220,
+    1149015221,
+    1149015222
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "I St SW",
+   "extent": "4th St to 7th St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    130908084,
+    130927017,
+    296755159,
+    296755162,
+    296794684,
+    340689794
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "I St SE",
+   "extent": "New Jersey Ave to 3rd St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    6059537,
+    265733214
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "K St NE",
+   "extent": "6th St to 8th St",
+   "facility": "Bike Lanes",
+   "ways": [
+    509324732,
+    589905456,
+    1378317999
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "Kalorama Rd NW",
+   "extent": "18th St to Columbia Rd",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    6062691
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "M St SE",
+   "extent": "1st St to 11th St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    56226936,
+    203009037,
+    334500091,
+    468448916,
+    468448919,
+    468448922,
+    468450729,
+    468450731,
+    468450733,
+    468488473,
+    468488474,
+    468488475,
+    481820130,
+    509643885,
+    509643886,
+    546095960,
+    546095961,
+    546095963,
+    590525569,
+    633517691,
+    686997724,
+    1053866373,
+    1055083819,
+    1058919709,
+    1236493751,
+    1315578804,
+    1315578805,
+    1315578806,
+    1315578807,
+    1315578809,
+    1315578810,
+    1315578811,
+    1315578812,
+    1315578816,
+    1315578817,
+    1315578818,
+    1315578819,
+    1322063935,
+    1322063936,
+    1322456632,
+    1322828716,
+    1322828717,
+    1322841949,
+    1335024768,
+    1346012709,
+    1347978358,
+    1427945378,
+    1427945379,
+    1427945381
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "New Mexico Ave NW",
+   "extent": "42nd St, Tunlaw Rd to Nebraska Ave",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    131052423,
+    397296871,
+    467430270,
+    590581599,
+    799532444,
+    832038977,
+    832038978,
+    837707417,
+    1111087037,
+    1111087038,
+    1568510958,
+    1568510959
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "North Carolina Ave NE",
+   "extent": "13th St to C St",
+   "facility": "Protected Bike Lanes",
+   "ways": [
+    6056826,
+    29964860,
+    50515734,
+    130714934,
+    130715014,
+    131076069,
+    280165296,
+    397283814,
+    397283821,
+    397283829,
+    1054566367
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "Pennsylvania Ave SE",
+   "extent": "2nd St, Independence Ave to 13 St, G St (W)",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    130285141,
+    130285143,
+    130285144,
+    203022895,
+    1009503890,
+    1042019565,
+    1409446061,
+    1409446062,
+    1409446063
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "Tunlaw Rd NW",
+   "extent": "Calvert St to 42nd St, New Mexico Ave",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    130927058,
+    131052466,
+    689648394,
+    836911472,
+    836911473,
+    837707414,
+    848230825
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "Wyoming Ave NW",
+   "extent": "18th St to 19th St",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    1239811171
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "5th St NW / Park Pl",
+   "extent": "Grant Cir (S) to Columbia Rd",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    6059252,
+    275390589,
+    1059855174,
+    1059855175
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "8th St NW",
+   "extent": "Nicholson St to Peabody St",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    1223411289,
+    1340682789
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "9th St NW",
+   "extent": "T St to U St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    1050689528,
+    1124384288,
+    1124384290
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "12th St SE",
+   "extent": "East Capitol St (S) to E St",
+   "facility": "Advisory Bike Lane",
+   "ways": [
+    6063061
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "17th St NW",
+   "extent": "T St to Florida Ave",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    6055550,
+    1111546581,
+    1111546582,
+    1204314680
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "19th St NE",
+   "extent": "East Capitol St to C St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    56228625,
+    397292958,
+    1041845469,
+    1075234305,
+    1095474059,
+    1095474060,
+    1095474061,
+    1095474062,
+    1208521869
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "21st St NW",
+   "extent": "C St to Virginia Ave",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    130908292,
+    589533516,
+    1125536347,
+    1314764615,
+    1314764617,
+    1314764620,
+    1314764621,
+    1314764622,
+    1314764625
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Argonne Pl NW",
+   "extent": "Harvard St to Lanier Pl",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    6054459
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Florida Ave NW",
+   "extent": "9th St, V St to 10th St, Barry Pl",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    6062553,
+    130788147,
+    589539499,
+    589539500,
+    949347933,
+    1050686818,
+    1097435632,
+    1097435633,
+    1111550085
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Kenyon St NW",
+   "extent": "Warder St to 11th St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    50757354,
+    130764283,
+    130889689
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Lanier Pl NW",
+   "extent": "Ontario Rd to Adams Mill Rd",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    109672314
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "M St NW",
+   "extent": "New Jersey Ave to 5th St",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    50511364,
+    882619946
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Maine Ave SW",
+   "extent": "6th St, M St to 7th St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    379782120,
+    379782128,
+    397301347,
+    397301348,
+    589539525,
+    987283618,
+    1124193427,
+    1124193428
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Minnesota Ave SE",
+   "extent": "30th St, M St to 34th St, Ely Pl",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    50715852,
+    583874843,
+    1053861972,
+    1071902164,
+    1305825655,
+    1305825657,
+    1305825659,
+    1305836909,
+    1305836910,
+    1306625693,
+    1306638811,
+    1379649240,
+    1409720449,
+    1489234369,
+    1489234372,
+    1489234373,
+    1489234374
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Monroe St NE",
+   "extent": "9th St to 12th St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    583950526
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "New Jersey Ave NW",
+   "extent": "N St to Rhode Island Ave",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    6060793,
+    50511362,
+    422347499,
+    429245667,
+    818647136,
+    984255565,
+    1111795865,
+    1111795866,
+    1111795867,
+    1111795868,
+    1436729256,
+    1436846715,
+    1436863291,
+    1436863292,
+    1504768008,
+    1508260465,
+    1508260466,
+    1508260469,
+    1508314437,
+    1508314439,
+    1508314440
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "North Carolina Ave SE",
+   "extent": "1st St to 2nd St, D St (W)",
+   "facility": "Advisory Bike Lane",
+   "ways": [
+    6051497,
+    6058982,
+    50507956,
+    50507957,
+    50507961
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Park Rd NW",
+   "extent": "Park Pl to Georgia Ave",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    6061744
+   ]
+  },
+  {
+   "year": 2022,
+   "street": "Upshur St NW",
+   "extent": "9th St to Georgia Ave",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    374744417
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "17th St NW",
+   "extent": "K St (East) to T St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    126303364,
+    130444170,
+    130444171,
+    130908283,
+    215307084,
+    438964977,
+    466359338,
+    983121554,
+    983121555,
+    1024919077,
+    1065097353,
+    1111463509,
+    1111546583,
+    1111546584,
+    1111546585,
+    1111546586,
+    1120294267,
+    1204314680,
+    1204314681,
+    1204314682,
+    1215423872,
+    1378244701
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "18th St NW",
+   "extent": "Constitution Ave to Virginia Ave",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    589551072,
+    1394069421
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "20th St NW",
+   "extent": "G St NW to Massachusetts Ave",
+   "facility": "Two-way Protected Bike",
+   "ways": [
+    86472738,
+    130908288,
+    130908290,
+    215306711,
+    421076400,
+    466349884,
+    496467785,
+    520537739,
+    589533511,
+    589905634,
+    589905709,
+    921887474,
+    996836100,
+    1048252755,
+    1049230589,
+    1314771838,
+    1314771850,
+    1314771859,
+    1436658150,
+    1460188538
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "Harry Thomas Way NE",
+   "extent": "Eckington Pl to 3rd St, R St",
+   "facility": "Protected Bike Lanes",
+   "ways": [
+    6051803
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "C St NE",
+   "extent": "2nd St to 4th St",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    50795351
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "Kentucky Ave SE",
+   "extent": "East Capitol St to Barney Cir",
+   "facility": "Advisory Bike Lane",
+   "ways": [
+    6053997,
+    6257737,
+    130808359,
+    229700984,
+    229700999,
+    229701007,
+    1059700539,
+    1059700540,
+    1081028871,
+    1081028872
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "Maryland Ave NE",
+   "extent": "3rd St to 14th St",
+   "facility": "Bike Lanes",
+   "ways": [
+    6056841,
+    229108523,
+    397364077,
+    397364080,
+    1028282942,
+    1028282943,
+    1063471333,
+    1063471334,
+    1063471337,
+    1063471338,
+    1063471339,
+    1063471340,
+    1063471341,
+    1063471342,
+    1063471343,
+    1063471344,
+    1063471345,
+    1063471346,
+    1063471347,
+    1063471348,
+    1063471349,
+    1063471350,
+    1063471351,
+    1063471352,
+    1063471353,
+    1063471354,
+    1132622012,
+    1208534009,
+    1210076675,
+    1436498724,
+    1436498725,
+    1445836666,
+    1445836667,
+    1445836668,
+    1445836669
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "Monroe St NE",
+   "extent": "9th St to 12 St",
+   "facility": "Protected Bike Lanes",
+   "ways": [
+    583950526
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "New Jersey Ave SE",
+   "extent": "E St to Eye St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    50503615,
+    50503620,
+    130908172,
+    130908175,
+    1211474187
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "Piney Branch Rd NW",
+   "extent": "Butternut St to Blair Rd",
+   "facility": "Bike Lane",
+   "ways": [
+    29234992,
+    468420664,
+    1061530068,
+    1061530069,
+    1111094172,
+    1258728843,
+    1258728844,
+    1258728845,
+    1332671427,
+    1332671428
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "T St NE",
+   "extent": "Lincoln Rd to 2nd St",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    6056792
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "Tennessee Ave NE",
+   "extent": "East Capitol St to 15th St",
+   "facility": "Advisory Bike Lane",
+   "ways": [
+    6053426,
+    6063014,
+    50519360,
+    50519361,
+    131052463,
+    1111565761
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "West Virginia Ave NE",
+   "extent": "9th St to Montana Ave",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    50711288,
+    50711289,
+    130908262,
+    130908264,
+    130927065,
+    366731347,
+    589905569,
+    589905576,
+    589905618,
+    589905624,
+    885739750,
+    885739751,
+    1111556754,
+    1111556755,
+    1111556756,
+    1111556758,
+    1111556759,
+    1111556760,
+    1111556761,
+    1208534029,
+    1208534030,
+    1208534052,
+    1208534053
+   ]
+  },
+  {
+   "year": 2021,
+   "street": "Wisconsin Ave NW",
+   "extent": "South St to Grace St",
+   "facility": "Bike Lane",
+   "ways": [
+    6062999
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "4th St NW",
+   "extent": "Butternut St to Blair Rd",
+   "facility": "Protected Contraflow Bike Lane",
+   "ways": [
+    50842701,
+    130908304
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "21st St NW",
+   "extent": "Virginia Ave to G St",
+   "facility": "Cycle Track",
+   "ways": [
+    589533516,
+    589533517,
+    696806637,
+    888235719,
+    1122270993,
+    1305940526,
+    1314764615
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "42nd St NW",
+   "extent": "Chesapeake St to Ellicott St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    848226977,
+    851300869,
+    1052377896,
+    1382334914
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "C St SE",
+   "extent": "19th St to 20th St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    1042038044
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "E St SE",
+   "extent": "Pennsylvania Ave to 12th St",
+   "facility": "Contraflow Bike Lane",
+   "ways": [
+    6256527,
+    1180789395,
+    1180789396,
+    1180789397
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "E St SE",
+   "extent": "12th St to Potomac Ave",
+   "facility": "Advisory Bike Lane",
+   "ways": [
+    6058147,
+    1180789397,
+    1180789398,
+    1180789399,
+    1180789400,
+    1180789401,
+    1180789402,
+    1180789403,
+    1180789404,
+    1180789405,
+    1180789406,
+    1180789407,
+    1180789408,
+    1180789409,
+    1180789410,
+    1180789411
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "Euclid St NW",
+   "extent": "15th St to 16th St",
+   "facility": "Climbing Lane",
+   "ways": [
+    109431927,
+    1111217919
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "Florida Ave NW",
+   "extent": "Vermont Ave to Sherman Ave",
+   "facility": "Bike Lane",
+   "ways": [
+    130788147,
+    589539499,
+    589539500,
+    1097435632,
+    1097435633,
+    1111550085
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "G St NW",
+   "extent": "17th St to Virginia Ave",
+   "facility": "Cycle Track",
+   "ways": [
+    6054895,
+    423830009,
+    543712321,
+    583694844,
+    1033847612,
+    1033847614,
+    1033847615,
+    1033847618
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "Massachusetts Ave SE",
+   "extent": "19th St to 20th St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    1156183416,
+    1180784456,
+    1180784458
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "New Jersey Ave NW",
+   "extent": "N St to H St NW",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    50511176,
+    50511185,
+    296338555,
+    308745784,
+    405667270,
+    468444092,
+    874946644,
+    874946645,
+    882619945,
+    961511394,
+    1052356069,
+    1052360209,
+    1079489383,
+    1079489384,
+    1119835480,
+    1119835481,
+    1130915073,
+    1362583292,
+    1508260465,
+    1508260466,
+    1508260468,
+    1508260472,
+    1508260473,
+    1508260475,
+    1508260476,
+    1508260479
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "New Jersey Ave SE",
+   "extent": "E St to Eye St",
+   "facility": "Protected Bike Lane",
+   "ways": [
+    50503615,
+    50503620,
+    130908172,
+    130908175,
+    1211474187
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "P St SW",
+   "extent": "2nd St to 4th St",
+   "facility": "Two-way Protected Bike Lane",
+   "ways": [
+    130908208,
+    1315754917
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "Ridge Rd SE",
+   "extent": "Texas Ave to Minnesota Ave",
+   "facility": "Bike Lane",
+   "ways": [
+    6054136,
+    203010879,
+    590581494,
+    590581503,
+    590581523,
+    695842773,
+    1111067879
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "Sherman Ave NW",
+   "extent": "Florida Ave to Barry Pl",
+   "facility": "Bike Lane",
+   "ways": [
+    87484440,
+    949346659,
+    1123574481
+   ]
+  },
+  {
+   "year": 2020,
+   "street": "Van Ness St NW",
+   "extent": "Connecticut Ave to Reno Rd",
+   "facility": "Bike Lane",
+   "ways": [
+    203172523,
+    203172528,
+    397275292,
+    397275293,
+    397275294,
+    397275295,
+    397275296,
+    397275297,
+    507342834,
+    681462608,
+    681462620,
+    700136469,
+    1061024273
+   ]
+  },
+  {
+   "year": 2025,
+   "street": "17th Street Northeast",
+   "extent": "Bladensburg Rd to Benning Rd",
+   "facility": "two-way cycle track",
+   "ways": [
+    130889754,
+    397295397,
+    583689615,
+    661652741,
+    882237098,
+    882237099,
+    1444157194,
+    1444157195,
+    1527281250
+   ]
+  },
+  {
+   "year": 2025,
+   "street": "K Street Northeast",
+   "extent": "1st St to 2nd St",
+   "facility": "bike lanes",
+   "ways": [
+    6061879,
+    97695807
+   ]
+  },
+  {
+   "year": 2025,
+   "street": "Arizona Avenue Northwest",
+   "extent": "Loughboro Rd to Carolina Pl",
+   "facility": "separated bike lanes",
+   "ways": [
+    50773195,
+    116837896,
+    397297432,
+    397339456,
+    422394505,
+    637485906,
+    640268373,
+    640268717,
+    808381336,
+    1468055281
+   ]
+  },
+  {
+   "year": 2025,
+   "street": "New Jersey Avenue Northwest",
+   "extent": "Louisiana Ave to H St",
+   "facility": "protected",
+   "ways": [
+    130908164,
+    130908169,
+    296345143,
+    296352766,
+    422189762,
+    479480580,
+    486641134,
+    486641135,
+    507243758,
+    1204886984,
+    1375371325,
+    1480618658,
+    1480618659
+   ]
+  },
+  {
+   "year": 2024,
+   "street": "Columbia Road Northwest",
+   "extent": "16th St to California St",
+   "facility": "protected",
+   "ways": [
+    6059002,
+    29235011,
+    130764271,
+    130808335,
+    130808336,
+    130808337,
+    131076051,
+    131076058,
+    406530015,
+    468484932,
+    468484936,
+    468494294,
+    468494299,
+    468494301,
+    468494302,
+    468494963,
+    1480680619,
+    1480680620,
+    1480680621,
+    1527538904
+   ]
+  },
+  {
+   "year": 2024,
+   "street": "11th Street Northwest",
+   "extent": "Pennsylvania Ave to L St",
+   "facility": "curbside protected",
+   "ways": [
+    130788190,
+    130788192,
+    130788195,
+    321444897,
+    321444898,
+    321444899,
+    321444900,
+    333922462,
+    333922526,
+    333922765,
+    333922782,
+    347003329,
+    397317310,
+    648026207,
+    664048981,
+    1317116230,
+    1376966578,
+    1377355238,
+    1377358671,
+    1377358672,
+    1377358673,
+    1377713882,
+    1377713883,
+    1388735803
+   ]
+  },
+  {
+   "year": 2023,
+   "street": "Pennsylvania Avenue Southeast",
+   "extent": "3rd St to 13th St",
+   "facility": "protected",
+   "ways": [
+    130285141,
+    130285143,
+    130285144,
+    203022895,
+    1042019565,
+    1409446061,
+    1409446062,
+    1409446063
+   ]
+  },
+  {
+   "year": 2024,
+   "street": "19th Street Southeast",
+   "extent": "East Capitol St to Potomac Ave",
+   "facility": "two-way protected",
+   "ways": [
+    6060762,
+    397297545,
+    583988078,
+    589551012,
+    1391721637,
+    1508388590
+   ]
+  },
+  {
+   "year": 2024,
+   "street": "Potomac Avenue Southeast",
+   "extent": "17th St to 19th St",
+   "facility": "two-way protected",
+   "ways": [
+    6280747,
+    590581775,
+    889381166,
+    1211705179
+   ]
+  }
+ ]
+}

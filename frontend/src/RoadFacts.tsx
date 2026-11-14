@@ -56,7 +56,10 @@ export function LevelBox({ tier, half, badge, words, narrative }: { tier: number
           </>
         )}
       </p>
-      <p className="road-level-why">{narrative}</p>
+      {/* The server writes the panel in English (core/segment_info.py): marked, so a voice reads it as English. */}
+      <p className="road-level-why" lang="en">
+        {narrative}
+      </p>
     </div>
   );
 }
@@ -76,7 +79,11 @@ export function RoadFacts({
   if (facts.length === 0) return null;
   return (
     <div className="road-facts">
-      {plain && <p className="road-facts-plain">{plain}</p>}
+      {plain && (
+        <p className="road-facts-plain" lang="en">
+          {plain}
+        </p>
+      )}
       {evidence && (
         <p className={`road-facts-evidence road-facts-evidence-${evidence.strength}`}>
           <span className="road-facts-marks" aria-hidden="true">
@@ -84,7 +91,7 @@ export function RoadFacts({
               <span key={n} className={on ? "road-facts-mark road-facts-mark-on" : "road-facts-mark"} />
             ))}
           </span>
-          <span>{evidence.words}</span>
+          <span lang="en">{evidence.words}</span>
         </p>
       )}
       <ul className="road-facts-list" aria-label={t("What the level rests on")}>
@@ -95,7 +102,9 @@ export function RoadFacts({
             <li key={fact.id} className={`road-facts-row road-facts-row-${fact.kind}`}>
               <span className={fact.kind === "record" ? "road-facts-mark road-facts-mark-on" : "road-facts-mark"} aria-hidden="true" />
               <span className="road-facts-text">
-                <span className="road-info-label">{fact.label}:</span> <span className="road-facts-value">{fact.value}</span>
+                <span lang="en">
+                  <span className="road-info-label">{fact.label}:</span> <span className="road-facts-value">{fact.value}</span>
+                </span>
                 {fact.kind === "estimated" ? (
                   <>
                     {" "}
@@ -105,13 +114,13 @@ export function RoadFacts({
                   <span className="visually-hidden">, {FACT_KIND_WORDS.record}</span>
                 )}
                 {factSourceLine(fact) && (
-                  <span className="road-facts-source">
+                  <span className="road-facts-source" lang="en">
                     <span className="visually-hidden">, </span>
                     {factSourceLine(fact)}
                   </span>
                 )}
                 {shown && fact.detail && (
-                  <span className="road-facts-detail" id={noteId}>
+                  <span className="road-facts-detail" id={noteId} lang="en">
                     {fact.detail}
                   </span>
                 )}

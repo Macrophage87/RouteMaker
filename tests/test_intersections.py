@@ -1967,3 +1967,44 @@ def test_an_assumed_speed_in_town_is_not_read_as_rural() -> None:
     posted = cost(crossed=(Road(4, speed_mph=45, urban=True),), **stop)
     assert country == pytest.approx(min(town * m.RURAL_FACTOR, m.MAX_CROSSING_FT))
     assert posted == country
+
+
+class TestRightHook:
+    """Straight on along a painted lane past a busy road (the owner, 2026-11-13: "Add the risks
+    to the junctions, rather than the road", "not as bad as a slip lane, but it's still a
+    cost")."""
+
+    LANE = Road(2, speed_mph=25, lanes=1, oneway=True, painted_lane=True, names=frozenset({"r"}))
+
+    def test_a_painted_lane_past_a_busy_road_pays_the_hook_on_top(self) -> None:
+        plain = replace(self.LANE, painted_lane=False)
+        with_lane = cost(incoming=self.LANE, outgoing=self.LANE, crossed=(LTS3,), continues=True)
+        without = cost(incoming=plain, outgoing=plain, crossed=(LTS3,), continues=True)
+        assert with_lane == pytest.approx(without + m.RIGHT_HOOK_FT)
+        assert m.RIGHT_HOOK_FT < m.SLIP_LANE_FT
+
+    def test_a_quiet_side_street_turning_or_a_car_free_lane_pay_nothing(self) -> None:
+        assert cost(incoming=self.LANE, outgoing=self.LANE, crossed=(QUIET,), continues=True) == 0
+        turning = cost(incoming=self.LANE, outgoing=QUIET, crossed=(LTS3,), movement=Movement.RIGHT)
+        assert turning < m.RIGHT_HOOK_FT
+        car_free = replace(self.LANE, car_free=True)
+        assert cost(incoming=car_free, outgoing=car_free, crossed=(LTS3,), continues=True) == (
+            cost(
+                incoming=replace(car_free, painted_lane=False),
+                outgoing=car_free,
+                crossed=(LTS3,),
+                continues=True,
+            )
+        )
+
+    def test_on_its_own_it_is_an_event_never_drawn(self) -> None:
+        busy_lane = replace(self.LANE, tier=3, speed_mph=25, lanes=2)
+        j = junction(
+            incoming=busy_lane,
+            outgoing=busy_lane,
+            crossed=(Road(2, half=True, names=frozenset({"q"})),),
+            continues=True,
+            control=Control.SIGNAL,
+        )
+        event = m.assess(j)
+        assert event is None or not event.flagged

@@ -57,7 +57,7 @@ import { COPY_LINK, ROUTE_FOLDS, ROUTE_FOLD_GROUP, chartFoldOpen } from "../lib/
 import { BROADCAST_ABOUT, BROADCAST_LABEL, SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
 import { BROADCAST_HOLD_HINT } from "../lib/broadcastQr.ts";
 import { useHold } from "../lib/useHold.ts";
-import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
+import { SHARE_IMAGE_LABEL } from "../lib/shareCardBasics.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
   SHARE_KEEP_LABEL,
