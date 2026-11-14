@@ -6,9 +6,11 @@ The owner has named the level of many roads he rides ("Most of Conn Ave is LTS4"
 override rows, and an override row is matched to its way by id and fingerprint. When OSM
 splits or redraws a way the row can stop reaching it, and the road quietly takes the
 formula's level again: Peach Tree Rd went from 2 to 4 that way. This check reads each
-called road back from the built table by where it is, not by way id, so a rebuild whose
-road no longer carries the owner's level is refused before it is promoted, as the
-Connecticut Ave sentinel (`pipeline.lts_sentinels`) is.
+called road back from the built table by where it is, not by way id, so a road that no
+longer carries the owner's level is listed before the build is promoted, as the Connecticut
+Ave sentinel's is (`pipeline.lts_sentinels`). Since 2026-11-13 a gap is listed for the raters,
+not refused (`REBUILD_OWNER_CALLS_REFUSE`; the owner: "Ignore my own calls"); a stretch whose
+rows are gone still refuses the build.
 
 The roads are in `fixtures/known-roads/known-roads.json`, one entry per stretch:
 
@@ -56,7 +58,10 @@ WITH line AS (
     SELECT ST_Buffer(geom::geography, %s)::geometry AS geom, geom AS line FROM line
 ), rows AS (
     SELECT ST_Length(s.geometry::geography) AS len,
-           ST_Length(ST_Intersection(s.geometry, band.geom)::geography) AS inside,
+           -- A grid size (1e-9 degrees, about 0.1 mm) snap-rounds the overlay: without it
+           -- GEOS 3.9, in the pinned postgis/postgis:16-3.4 image, returns an empty line for a
+           -- row lying exactly on the stretch's line, so the stretch read 0 m.
+           ST_Length(ST_Intersection(s.geometry, band.geom, 1e-9)::geography) AS inside,
            s.stress_tier + CASE WHEN s.stress_half THEN 0.5 ELSE 0 END AS level
     FROM {schema}.segment AS s, band
     WHERE s.map_class = 'road' AND NOT s.is_trail_class
@@ -166,10 +171,16 @@ def read(schema: str, road: KnownRoad) -> KnownRoadTiers:
     return KnownRoadTiers(road, total, at_level, line)
 
 
+def unread(tiers: KnownRoadTiers) -> bool:
+    """Too few road rows lie along the stretch's line to check it at all: the road moved,
+    was renamed or lost its rows. Refuses the build whatever `REBUILD_OWNER_CALLS_REFUSE`."""
+    return tiers.total_m < FOUND_SHARE * tiers.line_m
+
+
 def problems(tiers: KnownRoadTiers) -> list[str]:
     """What is wrong with the stretch, in words; empty when it holds."""
     road = tiers.road
-    if tiers.total_m < FOUND_SHARE * tiers.line_m:
+    if unread(tiers):
         return [
             f"{road.name}: only {_mi(tiers.total_m)} of road rows lie along its "
             f"{_mi(tiers.line_m)} line, so the owner's {road.wanted} ({road.decision}) "

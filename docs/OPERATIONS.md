@@ -3408,7 +3408,12 @@ memory and the staging schema, never a tile). The old VALIDATE stage split in tw
 owner's stretches, military and secured closures, Mass Ride capacity, long trails, calm
 runs) and **VALIDATE_TILES** the ones that read a built graph (the Lua loaded, no rule
 violations, the admin and timezone databases, grade, the derived and weekend tags, the
-bicycle-closure read-back). A segment failure now costs the 2.5 hours up to INJECT_TAGS
+bicycle-closure read-back). Since v0.27.0 a road the owner called (the reference LTS 4
+street, the owner's stretches and `fixtures/known-roads`) that comes out at another level is
+logged as `owner's call not met (listed for the raters)` and the build goes on (the owner,
+2026-11-14: "My calls were because the old metrics were way off. These aren't");
+`REBUILD_OWNER_CALLS_REFUSE=1` in `.env` refuses it instead. A stretch with no rows left
+refuses the build either way. A segment failure now costs the 2.5 hours up to INJECT_TAGS
 instead of that plus the whole tile stage: job 8023's calm-run failure, found after the
 tiles in attempt 3, is found in attempt 1. An alert now says
 `rebuild failed at stage validate_segments` or `... validate_tiles`.

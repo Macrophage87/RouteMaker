@@ -5214,12 +5214,28 @@ def test_a_rebuild_whose_reference_lts4_road_came_out_calmer_is_refused(
     workspace, states, settings
 ) -> None:
     lts4_sentinel_on(settings)
+    settings.REBUILD_OWNER_CALLS_REFUSE = True
     source, root = workspace
     with pytest.raises(RebuildFailed) as caught:
         run_pipeline(source, root, roadway=[reference_road_block(25)])
     assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert "TEST ROAD" in str(caught.value.cause)
     assert "Most of Conn Ave is LTS4" in str(caught.value.cause)
+
+
+def test_a_reference_lts4_road_that_came_out_calmer_is_listed_not_refused(
+    workspace, states, settings, caplog
+) -> None:
+    """The owner, 2026-11-13: "Ignore my own calls"; his calls tune the method, never
+    override it, so by default a gap is listed for the raters and the build goes on."""
+    lts4_sentinel_on(settings)
+    source, root = workspace
+    with caplog.at_level("WARNING", logger="pipeline.run"):
+        run_pipeline(source, root, roadway=[reference_road_block(25)], skip=NOT_SWAPPED)
+    assert any(
+        "owner's call not met" in r.getMessage() and "Most of Conn Ave is LTS4" in r.getMessage()
+        for r in caplog.records
+    )
 
 
 def test_a_reference_street_the_roadway_block_does_not_have_is_refused(

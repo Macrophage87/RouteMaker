@@ -123,3 +123,27 @@ def test_rows_are_read_back_by_where_they_are(at_least, share) -> None:
     assert got.total_m == pytest.approx(2 * one, rel=0.02), got
     assert got.share == pytest.approx(share, abs=0.01)
     assert got.line_m == pytest.approx(2 * one, rel=0.02)
+
+
+def test_a_gap_is_listed_and_a_lost_stretch_refuses(monkeypatch, settings, caplog) -> None:
+    """The owner, 2026-11-13: "Ignore my own calls"; a called road at another level is listed
+    for the raters, the build goes on. A stretch whose rows are gone still refuses it."""
+    from pipeline import run
+
+    monkeypatch.setattr(known_roads, "load", lambda path: [road()])
+    monkeypatch.setattr(
+        known_roads, "read", lambda schema, r: KnownRoadTiers(r, 1000.0, 0.0, 1000.0)
+    )
+    settings.REBUILD_OWNER_CALLS_REFUSE = False
+    with caplog.at_level("WARNING", logger="pipeline.run"):
+        assert len(run.assert_known_roads("x", "p")) == 1
+    assert any("owner's call not met" in r.getMessage() for r in caplog.records)
+    settings.REBUILD_OWNER_CALLS_REFUSE = True
+    with pytest.raises(run.ValidationFailed, match="OWNER-DECISIONS 999"):
+        run.assert_known_roads("x", "p")
+    settings.REBUILD_OWNER_CALLS_REFUSE = False
+    monkeypatch.setattr(
+        known_roads, "read", lambda schema, r: KnownRoadTiers(r, 100.0, 100.0, 1000.0)
+    )
+    with pytest.raises(run.ValidationFailed, match="could not be checked"):
+        run.assert_known_roads("x", "p")
