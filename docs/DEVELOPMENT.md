@@ -6523,7 +6523,13 @@ seconds, about two turns at `TURN_RANK_S` and a fraction of one busy crossing's 
 cost; at 40 under one turn; at 90 about four. Planner only: the graph still prices LTS 1 and
 2 the same, LTS 2 never starts an exclusion or a trail seek (`seek_weights`), and no map is
 rebuilt. Trailmaxxing, Cargo with passengers and Tandem keep their quarter. The 0.03 is our
-default; the PC comparison on the re-rated map is in the PR (#TBD).
+default. Measured 2026-11-14 on the PC's re-rated map (v0.26.0 code with the term patched
+in): 10 trips (NoMa to USP, Union Station to Fredericksburg, and eight 2-10 mi city and
+suburban trips) at Default and at 90, at 0, 0.03 and 0.06. 39 of 40 plans with the term
+came out the same line as without it. The one that moved, NoMa to USP at Default (both
+weights), stayed 19.97 mi, moved 0.15 mi from LTS 2 to LTS 1, dropped its one red junction
+and one turn, and cut 24 s of waits; 99.2% of the line was unchanged. So it breaks ties and
+does not change corridors.
 
 ### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
 
