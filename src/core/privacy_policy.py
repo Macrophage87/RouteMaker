@@ -78,7 +78,8 @@ USAGE_TOTALS = (
 # Every company that gets something about a rider, as the sections below say.
 OTHER_COMPANIES = (
     "Other companies get data only where this page says so: Discord (sign-in, feedback posts and "
-    "server roles), Garmin or Wahoo if you connect them, an AI assistant app you connect, and your "
+    "server roles), Google or Apple if you sign in with them, Garmin or Wahoo if you connect them, "
+    "an AI assistant app you connect, and your "
     "browser’s or phone’s speech service when you use Speak."
 )
 IN_THE_US = "RouteMaker is run from the United States, and your data is stored and handled there."
@@ -400,10 +401,10 @@ SECTIONS: list[tuple[str, str]] = [
         "Who else is contacted",
         _p(
             "Your browser and the app talk only to this site: the map, place search and routing "
-            "run on the site’s own servers. The exceptions are Discord’s pages when you "
-            "sign in, Garmin’s or Wahoo’s pages when you connect them, links you choose to "
-            "open, such as a street photo on Mapillary or a 311 website, and a course file you "
-            "hand to Garmin Connect."
+            "run on the site’s own servers. The exceptions are Discord’s, Google’s or "
+            "Apple’s pages when you sign in, Garmin’s or Wahoo’s pages when you connect them, "
+            "links you choose to open, such as a street photo on Mapillary or a 311 website, and "
+            "a course file you hand to Garmin Connect."
         )
         + _p("The site’s server contacts, with nothing about you:")
         + _ul(
@@ -417,6 +418,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "The bikeshare operator’s public feeds, for docks and bikes.",
                 "The National Park Service and DC’s road-closure notices, for closures.",
                 "Discord, to finish your sign-in and for the bot.",
+                "Google or Apple, to finish a sign-in with them.",
             ]
         )
         + _p("Where you connect Garmin, the server also contacts Garmin:")

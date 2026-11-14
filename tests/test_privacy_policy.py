@@ -345,6 +345,7 @@ class TestLawRequiredParts:
         assert "No other company" not in text
         for claim in (
             "Other companies get data only where this page says so",
+            "Google or Apple if you sign in with them",  # oidc_login.NAMES (release review)
             "stored and handled there",  # in the United States
             "Why RouteMaker may use your data",
             "contract, consent and legitimate interests",

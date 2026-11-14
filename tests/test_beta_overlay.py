@@ -2316,10 +2316,12 @@ def model_foreign_keys() -> tuple[dict[str, str], list[tuple[str, str, str]]]:
     for i, match in enumerate(classes):
         end = classes[i + 1].start() if i + 1 < len(classes) else len(models)
         body = models[match.start() : end]
-        table = re.search(r'db_table = "(\w+)"', body)
-        if not table:
+        found = re.search(r'db_table = "(\w+)"', body)
+        if not found and "(models.Model):" not in body.splitlines()[0]:
             continue
-        tables[match.group(1)] = table.group(1)
+        # A model with no db_table gets Django's own name, core_<class in lower case>.
+        table = found.group(1) if found else f"core_{match.group(1).lower()}"
+        tables[match.group(1)] = table
         for field, target in re.findall(
             r"^\s+(\w+) = models\.(?:ForeignKey|OneToOneField)\(\s*[\"']?([\w.]+)[\"']?",
             body,
@@ -2327,7 +2329,7 @@ def model_foreign_keys() -> tuple[dict[str, str], list[tuple[str, str, str]]]:
         ):
             if target == "settings.AUTH_USER_MODEL":
                 target = "User"
-            keys.append((table.group(1), field, target))
+            keys.append((table, field, target))
     return tables, keys
 
 

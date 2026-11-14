@@ -156,6 +156,11 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #   route_post_photo                  app_user, saved_route_id -> saved_route, route_id -> shared_route;
 #                                     their photos (v0.12.4) post_id -> route_post.
 #                                     Written on the site that shows them, never shipped.
+#   core_signinidentity               user_id -> app_user: a rider's Google or Apple sign-in (a keyed
+#                                     digest of the provider's id; v0.27.0, core.models.SignInIdentity,
+#                                     Django's default table name). Never shipped.
+#   daily_usage                       each site's own anonymous daily totals per tool (v0.27.0,
+#                                     core.usage): the beta counts its own, never home's.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -168,6 +173,7 @@ EXCLUDED_TABLE_DATA=(
 	review_item review_ruling review_queue_state
 	stress_suggestion_review assistant_key connector_client connector_grant connector_draft
 	report311_log garmin_link wahoo_link route_post route_post_section route_post_photo
+	core_signinidentity daily_usage
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as

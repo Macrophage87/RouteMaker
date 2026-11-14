@@ -8105,8 +8105,10 @@ ordinary closures (#1252); closed-site and green-place labels (#1253, #1256, #12
 - the Android app: the lock-screen turn card, tone and buzz need a new app build; the web app
   rides as before without it.
 
-The release agent's gate stops on this tag (the compose mount and the nginx template), so **the
-beta is a hand ship**.
+The release agent's gate stops on this tag (the compose mount, the nginx template, and
+`src/pipeline/schema.py`), so **the beta is a hand ship**. The schema reason asks for no map ship
+with this release: the road panel reads the new Setting and pavement columns only where the live
+table has them, so they arrive with the next map rebuild and its data ship.
 
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.27.0
   (annotated) on that commit, from the PC.
@@ -8114,9 +8116,10 @@ beta is a hand ship**.
   `User.discord_user_id`: the v0.26.0 api never writes a null there and reads accounts as before. Both
   reversible while no account was made with Google or Apple (0065 backwards fails on a null
   `discord_user_id`; no such account exists until those keys are set).
-- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
-  api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
-  api rebuild`, `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api
+- [ ] **At home**, as "Deploying a planner and front-end release", before the weekly rebuild
+  (Tuesday 08:00 UTC) or with it paused, and not between 07:00 and 07:30 UTC: rollback point (tag
+  the running api and pipeline images `pre-rel-<short>`, keep `index.html`), fast-forward the
+  checkout, `docker compose build api rebuild`, `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api
   worker rebuild caddy` with no job todo or doing (caddy for the new mount), then the front end.
   No router restart, no map rebuild.
 - [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
@@ -8126,7 +8129,8 @@ beta is a hand ship**.
   (as in "A new release sha", step 9). `PRIVACY_OPERATOR=` with the owner's name in `.env` by hand
   (BETA-RUNBOOK's settings table), then `beta-compose.sh up -d api`. Then `smoke-test.sh --local`,
   `smoke-test.sh --public <url> --open`, `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed
-  v0.27.0`, and `auto-release.sh resume`.
+  v0.27.0`, `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not refresh the
+  agent's own copy of `receive-data.sh`, which v0.27.0 changes), and `auto-release.sh resume`.
 - [ ] **Beta check.** `/privacy` names the operator in Contact; `GET /api/offline/packs` answers
   `503 not_built` and Settings' "Map for no signal" says it needs a signal or lists none until the
   next rebuild; Settings About shows the map data's dates; signing in offers Discord alone until
@@ -8136,8 +8140,8 @@ beta is a hand ship**.
   sources. Plan: Keep, then a second route shows the compare table; Out and back comes back the
   same way; When's Leave at takes a day and time. Open a GPX in Check a route: its busiest
   stretches each offer Use this way. A route shows its paved, gravel and dirt miles.
-- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.26.0 front
-  end. The usage table and the identities table stay (the v0.26.0 api ignores them). The nginx
+- [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
+  and the v0.26.0 front end. The usage table and the identities table stay (the v0.26.0 api ignores them). The nginx
   `/offline-packs/` location can stay. On the beta, the images and `index.html` alone: no
   `restore-dump`.
 

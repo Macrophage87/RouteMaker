@@ -9710,7 +9710,7 @@ def usage_count(request):
     if refusal is not None:
         return refusal
     tool = body.get("tool") if isinstance(body, dict) else None
-    if tool not in usage.CLIENT_TOOLS:
+    if not isinstance(tool, str) or tool not in usage.CLIENT_TOOLS:
         return _error(400, "tool is one of: " + ", ".join(sorted(usage.CLIENT_TOOLS)) + ".")
     usage.tally(tool)
     return HttpResponse(status=204)
