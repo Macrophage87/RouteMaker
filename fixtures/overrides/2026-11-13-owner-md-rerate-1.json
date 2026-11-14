@@ -1242194,19 +1242194,6 @@
     "visibility": "hidden"
    },
    "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 84676067,
-   "value": {
-    "adjustment_id": "edit-2036",
-    "annotation_status": "approved",
-    "category": "other",
-    "display": "route_only",
-    "tier": 2,
-    "visibility": "hidden"
-   },
-   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
   }
  ],
  "groups": [
