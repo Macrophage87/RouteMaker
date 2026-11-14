@@ -19,6 +19,16 @@ from routemaker import agency_lts
 from routemaker.agency_lts import PROHIBITED_NO_BICYCLE, AgencyRating
 from routemaker.stress import Stress, StressResult, classify, rural_floor
 
+
+@pytest.fixture(autouse=True)
+def _county_and_state_levels_in_use(monkeypatch):
+    """These tests read how an agency's level would set a tier, as the rebuild did before
+    2026-11-13 (only DDOT's was comparison-only). Since then every agency's is
+    (`agency_lts.COMPARISON_ONLY`; `test_no_agency_level_sets_a_tier` checks that), and the
+    ranking is kept for a region whose agency the owner trusts."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
+
+
 FORMULA = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ("maxspeed",))
 OVERRIDES = Path(__file__).resolve().parents[1] / "fixtures" / "overrides"
 

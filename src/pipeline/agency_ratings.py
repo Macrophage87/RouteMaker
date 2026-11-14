@@ -18,7 +18,8 @@ Each agency is matched on its own, with the street blocks' matching rules
 (`conflation.conflate_blocks`; a service or track way needs an agreeing name, a
 differently named record is vetoed), so a county's record and the state's record
 for one road do not compete for it: the way takes one level from each and
-`agency_lts.chosen` picks between them. From one agency's records along a way the way
+`agency_lts.chosen` would pick between them (every agency's level is comparison-only since
+2026-11-13, so none sets the tier). From one agency's records along a way the way
 takes the worst level of any record covering at least `WORST_STRETCH_MIN_M` of it (or
 half of it), the stress-averse reading the rest of the merge uses: the one tier a way
 carries is scored on its worst stretch (`agency_roads.WayFacts`; the highest count,
