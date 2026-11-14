@@ -542,3 +542,29 @@ def test_a_dirt_or_hiking_footway_or_a_pedestrian_area_is_no_cut_through():
         71, {**FOOTWAY, "surface": "paving_stones"}, [(0.0, 0.0), (0.0, 5.0), (88.0, 5.0)]
     )
     assert set(sw.cut_throughs(ways)) == {71}
+
+
+def test_e_bikes_and_road_bikes_ride_no_sidewalk_but_walk_a_short_link() -> None:
+    """The owner, 2026-11-14: "Novices might use them more and road bikes probably never.
+    Ebikes are typically prohibited from sidewalks"."""
+    from pipeline import variants
+    from pipeline.run import sidewalk_derived
+
+    ridden, last_resort, links = {1, 2, 3}, {1}, {3}
+
+    def told(variant, way):
+        return sidewalk_derived(variant, way, ridden, last_resort, links)
+
+    assert told(variants.Variant.STANDARD, 1) == {"sidewalk": sw.LAST_RESORT}
+    assert told(variants.Variant.STANDARD, 2) == {"sidewalk": True}
+    assert told(variants.Variant.STANDARD, 3) == {"sidewalk": True}
+    assert told(variants.Variant.NO_TRAIL, 3) == {}
+    for variant in (
+        variants.Variant.EBIKE,
+        variants.Variant.PAVED,
+        variants.Variant.PAVED_WEEKEND,
+    ):
+        assert told(variant, 1) == {}, "a sidewalk beside a calmer road: closed"
+        assert told(variant, 2) == {}, "a sidewalk beside an Avoid road: closed"
+        assert told(variant, 3) == {"link_walk": True}, "a short link is walked"
+    assert told(variants.Variant.STANDARD, 9) == {}

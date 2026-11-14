@@ -975,6 +975,9 @@ class RebuildContext:
     sidewalk_rides: set[int] = field(default_factory=set)
     # Those of them priced above an LTS 4 road (`sidewalks.LAST_RESORT`), rated LTS 4.
     sidewalk_last_resort: set[int] = field(default_factory=set)
+    # The short links among them (`sidewalks.links`), which the graphs that ride no sidewalk
+    # still walk (`sidewalk_derived`).
+    sidewalk_links: set[int] = field(default_factory=set)
     # Footways into rail stations opened as walk-your-bike links
     # (`routemaker.station_links`), all of them in `walk_bike` too.
     walk_links: set[int] = field(default_factory=set)
@@ -2172,6 +2175,32 @@ def last_resort_sidewalks(
         ):
             roads.append((way.osm_id, way.coordinates))
     return set(ridden) - set(links) - sidewalks.beside(asked, roads)
+
+
+# The graphs that ride no sidewalk (the owner, 2026-11-14: "Novices might use them more and
+# road bikes probably never. Ebikes are typically prohibited from sidewalks"): the e-bike
+# graph and Road Bike's two. A short link where a bike way stops at a footway is walked on
+# them, so the path it joins is no dead end; every other sidewalk stays closed.
+NO_SIDEWALK_VARIANTS = frozenset(
+    {variants.Variant.EBIKE, variants.Variant.PAVED, variants.Variant.PAVED_WEEKEND}
+)
+
+
+def sidewalk_derived(
+    variant: variants.Variant,
+    way_id: int,
+    ridden: Collection[int],
+    last_resort: Collection[int],
+    links: Collection[int],
+) -> dict[str, object]:
+    """What a graph is told of a sidewalk ridden as a last resort (`routemaker.sidewalks`),
+    which lua/routemaker_remap.lua prices: nothing on Mass Ride's graph (a crowd on a
+    sidewalk), a walked link or nothing on the graphs of `NO_SIDEWALK_VARIANTS`."""
+    if way_id not in ridden or variant is variants.Variant.NO_TRAIL:
+        return {}
+    if variant in NO_SIDEWALK_VARIANTS:
+        return {"link_walk": True} if way_id in links else {}
+    return {"sidewalk": sidewalks.LAST_RESORT if way_id in last_resort else True}
 
 
 def raise_ridden_sidewalks(
@@ -3768,6 +3797,7 @@ def build_handlers(
         context.sidewalk_last_resort = last_resort_sidewalks(
             context.ways, context.stress_by_way, nobike.sidewalk_rides, nobike.sidewalk_links
         )
+        context.sidewalk_links = set(nobike.sidewalk_links)
         context.walk_links = nobike.walk_links
         context.platform_walks = nobike.platform_walks
         raise_ridden_sidewalks(
@@ -4154,15 +4184,15 @@ def build_handlers(
                     derived["aisle_link"] = True
                 # A sidewalk ridden as a last resort (`routemaker.sidewalks`), priced so by
                 # lua/routemaker_remap.lua; never on Mass Ride's graph, a crowd on a sidewalk.
-                if (
-                    way.osm_id in context.sidewalk_rides
-                    and variant is not variants.Variant.NO_TRAIL
-                ):
-                    derived["sidewalk"] = (
-                        sidewalks.LAST_RESORT
-                        if way.osm_id in context.sidewalk_last_resort
-                        else True
+                derived.update(
+                    sidewalk_derived(
+                        variant,
+                        way.osm_id,
+                        context.sidewalk_rides,
+                        context.sidewalk_last_resort,
+                        context.sidewalk_links,
                     )
+                )
                 # A known hazard (v0.10.0; the owner, 2026-10-19: "Roads with hazards like
                 # this should get a major penalty"): cobbles or rails anywhere on the way,
                 # which lua/routemaker_remap.lua prices as LTS 4 without changing its rating.

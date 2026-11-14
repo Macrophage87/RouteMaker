@@ -1543,3 +1543,22 @@ def test_the_details_say_how_sure_the_level_is() -> None:
     assert rows["How sure"]["value"] == (
         "Inferred from surroundings: no traffic count and no known speed limit"
     )
+
+
+def test_a_last_resort_sidewalk_says_so_in_place_of_a_level() -> None:
+    """The owner, 2026-11-14: "we should have a special last resort tag". The 3 or 4 on a
+    ridden sidewalk is how the router prices it, not a rating of its stress."""
+    from routemaker import sidewalks
+
+    for rule in (sidewalks.RULE, sidewalks.LAST_RESORT_RULE):
+        row = {"stress_tier": 4, "stress_half": False, "stress_rule": rule}
+        assert segment_info.is_last_resort(row)
+        rows = {r["label"]: r for r in segment_info.stress_rows(row)}
+        assert rows["Level"]["value"] == "Last resort: sidewalk"
+        assert "LTS 4:" not in rows["Level"]["value"]
+        assert rows["Why"]["value"].startswith("A sidewalk")
+    # A rated way, and a sidewalk a rating row covers, keep their level.
+    road = {"stress_tier": 4, "stress_half": False, "stress_rule": "mixed traffic, 35 mph"}
+    assert not segment_info.is_last_resort(road)
+    assert segment_info.stress_rows(road)[0]["value"].startswith("LTS 4")
+    assert not segment_info.is_last_resort(_adjusted_row("rerate-x", tier=2))

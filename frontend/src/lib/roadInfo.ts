@@ -95,6 +95,8 @@ export interface SegmentInfo {
   step?: number | null;
   /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
   half_steps?: boolean | null;
+  /** A sidewalk ridden only as a last resort: the panel says so in place of a level; absent from an older API. */
+  last_resort?: boolean | null;
   open: boolean | null;
   osm_way_id: number | null;
   distance_m: number | null;
@@ -416,9 +418,10 @@ export function levelWords(info: SegmentInfo): string | null {
   return parts.length > 1 ? parts.slice(1).join(", ") : null;
 }
 
-/** The big level's text: "LTS 3", "LTS 3.5", or "Avoid". */
+/** The big level's text: "LTS 3", "LTS 3.5", "Avoid", or "Last resort" on a sidewalk ridden only as one. */
 export function levelBadge(info: SegmentInfo): string | null {
   if (info.tier == null) return null;
+  if (info.last_resort === true) return t("Last resort");
   if (info.tier === 5) return t("Avoid");
   const step = info.step ?? info.tier;
   return `LTS ${step}`;
