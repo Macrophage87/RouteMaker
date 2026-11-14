@@ -15,7 +15,8 @@ import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
-import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, signInLabel, tabSession } from "../lib/signIn.ts";
+import { signInHasChoice } from "../lib/stressEditor.ts";
 import { SignOutEverywhereForm, SignOutForm } from "../SignOut.tsx";
 import { AssistantAppsSetting } from "../AssistantApps.tsx";
 import { GarminSetting, WahooSetting } from "../ConnectionSetting.tsx";
@@ -28,6 +29,7 @@ import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSect
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
+import { RegionPackSetting } from "../RegionPackSetting.tsx";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { ThemeSetting, UnitsSetting } from "../DisplaySettings.tsx";
@@ -78,6 +80,7 @@ import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
 import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
+import { dataAgeSaid } from "../lib/dataAge.ts";
 import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
@@ -497,6 +500,8 @@ export interface SettingsSheetProps {
   nav: SheetNav;
   /** Send feedback's place-free details (lib/feedback.ts), worked out when the rider presses Send. */
   feedbackDetails?: () => FeedbackDetails;
+  /** The live map's build day (GET /api/coverage, lib/dataAge.ts), or null before it answers. */
+  mapDataDay?: string | null;
   /** What Garmin's return said (lib/garminLink.ts garminReturnFrom), once, or null. */
   garminReturned?: string | null;
   /** What Wahoo's return said (lib/wahooLink.ts wahooReturnFrom), once, or null. */
@@ -653,6 +658,7 @@ function SettingsTabs({ tab, onTab, label }: { tab: SettingsTab; onTab: (tab: Se
 export function SettingsSheet(props: SettingsSheetProps) {
   const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, garminReturned, wahooReturned } = props;
   const go = mode === "go";
+  const dataAge = dataAgeSaid(props.mapDataDay ?? null);
   // Back from Garmin or Wahoo, Settings opens on Account, where its line says what happened; otherwise on Riding,
   // and then on the tab last shown.
   const [tab, setTab] = useState<SettingsTab>(() => (garminReturned || wahooReturned ? "account" : "riding"));
@@ -696,6 +702,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
         {/* Avoid stairs on walks (Stephen, 2026-11-02): a switch of its own, for Go and Plan alike. */}
         <AvoidStairsSwitch idBase="settings-avoid-stairs" />
+        {/* The map for no signal (off-grid riding, the owner, 2026-11-12: "a whole region pack an optional download"). */}
+        <RegionPackSetting idBase="settings-region-pack" />
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
           <div className="setting-line">
@@ -797,8 +805,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
           {myGo.signedIn ? (
             <div className="account-line">
               <p className="hint signed-in">
-                <Icon name="user" size={16} /> {t("Signed in with Discord.")}
+                <Icon name="user" size={16} /> {signInHasChoice() ? t("Signed in.") : t("Signed in with Discord.")}
               </p>
+              {/* Discord, Google and Apple linked to one account (Stephen 2026-11-13): their page on the server. */}
+              {signInHasChoice() && <a href="/auth/sign-ins">{t("Sign-in methods")}</a>}
               <SignOutForm />
               {/* Beside Sign out, the one control that ends every sign-in, apps' too (core.auth_views). */}
               <SignOutEverywhereForm />
@@ -808,7 +818,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
             <p className="hint sign-in-line">
               <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-                {t("Sign in with Discord")}
+                {signInLabel()}
               </a>
               {t(SIGN_IN_LINE.slice("Sign in with Discord".length))}
             </p>
@@ -848,6 +858,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
         {props.feedbackDetails && <FeedbackBox details={props.feedbackDetails} onSay={announce} />}
         {/* The version (lib/appVersion.ts): here and in the map's Help, since Plan's phone sheet has no title row (P10). */}
         {APP_VERSION && <p className="hint settings-version">{versionSaid()}</p>}
+        {/* How old the data is (backlog item "Data that says how old it is", 2026-11-13): the map's day and the places'. */}
+        {dataAge && <p className="hint settings-data-age">{dataAge}</p>}
       </section>
       </div>
     </SheetFrame>

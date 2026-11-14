@@ -215,14 +215,6 @@ jobs:
         env:
           A11Y_SHARD: ${{ matrix.shard }}/3
         run: scripts/a11y/run.sh "$PWD/frontend/node_modules" "$RUNNER_TEMP/a11y-shots"
-      - name: Keep the count
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: a11y-count-${{ matrix.shard }}
-          path: ${{ runner.temp }}/a11y-shots/a11y-count.txt
-          if-no-files-found: error
-          # Long enough for "Re-run failed jobs" days later: the a11y job reads every shard's count.
-          retention-days: 14
       - name: Keep the screenshots
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -231,8 +223,8 @@ jobs:
           path: ${{ runner.temp }}/a11y-shots
 
   # The `a11y` check the beta's release agent requires (scripts/beta/cd_logic.py, CHECK_NAMES): green only
-  # when every shard passed and their counts add up to check.mjs's EXPECTED, so a section that stopped
-  # running fails here as it did in one browser. It runs whenever a shard failed, not only when all
+  # when every shard passed; each shard fails when one of its sections makes other than the checks it
+  # declares (check.mjs mine(N)), so a section that stopped running fails. It runs whenever a shard failed, not only when all
   # passed; a cancelled run skips it, and the release agent reads a skipped a11y as red
   # (cd_logic.ci_verdict: anything but success).
   a11y:
@@ -241,24 +233,11 @@ jobs:
     # Pinned, not ubuntu-latest: the move to 26.04 broke the Postgres client once (below).
     runs-on: ubuntu-26.04
     timeout-minutes: 10
-    # actions: read for `gh run download` of the shards' counts; contents: read for the checkout.
     permissions:
-      actions: read
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Every shard passed and every check ran
+      - name: Every shard passed, each section making the checks it declares
         env:
-          GH_TOKEN: ${{ github.token }}
           SHARDS: ${{ needs.a11y-shard.result }}
-        run: |
-          set -eu
-          test "$SHARDS" = success
-          total=0
-          for shard in 1 2 3; do
-            gh run download "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" -n "a11y-count-$shard" -D "$RUNNER_TEMP/count-$shard"
-            total=$((total + $(cat "$RUNNER_TEMP/count-$shard/a11y-count.txt")))
-          done
-          expected=$(sed -n 's/^const EXPECTED = \([0-9]*\);$/\1/p' scripts/a11y/check.mjs)
-          echo "$total checks ran; $expected expected (a new section needs if (mine()): docs/DEVELOPMENT.md)"
-          test -n "$expected" && test "$total" -eq "$expected"
+        # Each shard fails on its own when a section makes other than its mine(N) checks (scripts/a11y/check.mjs).
+        run: test "$SHARDS" = success

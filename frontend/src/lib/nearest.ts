@@ -174,12 +174,14 @@ export async function requestNearest(
                 ridingSpeedKmh: undefined,
                 targetDistanceM: undefined,
                 loop: false,
+                startAt: undefined,
               }),
             }
           : {
               preset,
               // The riding speed is sent: the times are at the rider's own pace, as the plan's.
-              ...dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false }),
+              // Not Plan's start time (lib/startTime.ts): the nearest places are found for now, as the API's nearest plans.
+              ...dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false, startAt: undefined }),
             }),
         // The closures are left out as the plan leaves them out.
         ...closureFields(dials),

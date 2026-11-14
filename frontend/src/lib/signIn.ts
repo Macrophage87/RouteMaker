@@ -8,6 +8,9 @@
  * once, on a load that has no plan of its own. A bfcache restore (`pageshow` with
  * `persisted`, App.tsx) drops it, since that Back never loads the page again.
  */
+import { t } from "./i18n.ts";
+import { signInHasChoice } from "./stressEditor.ts";
+
 export const PLAN_KEY = "routemaker.plan-before-sign-in";
 
 export interface StorageLike {
@@ -132,3 +135,11 @@ export const DELETE_ACCOUNT_PAGE = "/delete-account";
 
 /** The privacy policy (core.privacy_policy.PATH), linked from Settings > About and from the deletion page. */
 export const PRIVACY_PAGE = "/privacy";
+
+/**
+ * The Sign in buttons' words: "Sign in with Discord" where Discord is the only sign-in, "Sign in" once Google or
+ * Apple is set up too (Stephen 2026-11-13), when the button opens the choice.
+ */
+export function signInLabel(): string {
+  return signInHasChoice() ? t("Sign in") : t("Sign in with Discord");
+}

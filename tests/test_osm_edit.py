@@ -326,6 +326,17 @@ def test_a_way_s_bike_lane_may_be_corrected(osm, tmp_path):
     assert osm_edit.edit_problem(json.loads(gone.read_text())) is None
 
 
+def test_a_way_s_car_access_may_be_corrected(osm, tmp_path):
+    # A park road the agency closed to cars all year, still mapped with a weekend closure.
+    closed = _edit(
+        tmp_path,
+        element="way",
+        expect={"motor_vehicle": "yes", "motor_vehicle:conditional": "destination @ (Sa)"},
+        set={"motor_vehicle": "destination", "motor_vehicle:conditional": None},
+    )
+    assert osm_edit.edit_problem(json.loads(closed.read_text())) is None
+
+
 def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
     assert osm_edit.main(["show", str(_edit(tmp_path))]) == 0
     assert "highway: None -> 'traffic_signals'" in capsys.readouterr().out

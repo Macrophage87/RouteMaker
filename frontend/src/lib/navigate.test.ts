@@ -116,6 +116,7 @@ import {
   type Verbosity,
 } from "./navigate.ts";
 import { stopsAhead as stopsAheadOf } from "./navigate.ts";
+import { IPHONE_RIDE_LINE, RIDE_TOO_LONG, RIDE_TOO_LONG_IPHONE, rideTooLong } from "./navigate.ts";
 import { ViaMarks, plannedStopNumbers, viaIndices } from "./pointKinds.ts";
 import { parseTrailMiles } from "./trailMiles.ts";
 import { loadLanguage, setLanguageForTest } from "./i18n.ts";
@@ -683,6 +684,8 @@ test("whereAmI off route: the way back, its distance and direction", () => {
   assert.equal(whereAmI(model, s), "Off the planned route. The route is 200 feet to the south.");
   const back = wayBack(model, s);
   assert.equal(back?.direction, "south");
+  // The street the line is on there, for a rider with no signal (backlog 2026-11-12, area 08 item 1).
+  assert.equal(back?.street, "A Street");
 });
 
 test("compassWord", () => {
@@ -754,7 +757,7 @@ test("a polite cue carries its sentence from where the rider is when it is said 
   assert.equal(advance.respoken(cue.atM), null, "at the turn: its now says it");
   assert.ok(events.filter((e) => e.urgent).every((e) => !e.respoken), "urgent cues are said at once");
   const src = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(src, /announcer\.current\?\.say\(event\.spoken, event\.urgent, event\.after, again\);/);
+  assert.match(src, /announcer\.current\?\.say\(event\.spoken, event\.urgent, event\.after, again, cueMark\(event\)\);/);
 });
 
 test("a loop's start is not its end: arrival comes only at the end of the line", () => {
@@ -3230,4 +3233,15 @@ test("alongside: a stop on the line is still said beside it (#1165 review)", () 
   const r = rideThrough(model, [at(50, 0), at(100, 0), at(230, 60), at(900, 60)]);
   assert.equal(r.state.alongside, true);
   assert.ok(r.events.some((e) => e.spoken.startsWith("You have reached stop 1")), r.events.map((e) => e.spoken).join(" | "));
+});
+
+test("on an iPhone or iPad (no app yet) the ride lines never send the rider to a phone app (Stephen 2026-11-13)", () => {
+  assert.match(RIDE_TOO_LONG, /Use the phone app/);
+  assert.equal(rideTooLong(false), RIDE_TOO_LONG);
+  assert.equal(rideTooLong(true), RIDE_TOO_LONG_IPHONE);
+  for (const line of [RIDE_TOO_LONG_IPHONE, IPHONE_RIDE_LINE]) {
+    assert.doesNotMatch(line, /phone app/);
+    assert.match(line, /^On iPhone[,:] .*30 mi.*lock-screen cue images/);
+  }
+  assert.match(IPHONE_RIDE_LINE, /screen on/);
 });

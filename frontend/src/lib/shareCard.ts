@@ -21,14 +21,16 @@
  */
 import type { RouteProfile } from "./api.ts";
 import { t } from "./i18n.ts";
-import { formatClimb, formatDistance, METRES_PER_MILE } from "./format.ts";
+import { formatClimb, formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import type { Home } from "./myGo.ts";
+import { HOME_TRIM_M, ZONE_SHIFT_MAX_M, ZONE_SHIFT_MIN_M, ZONE_RADIUS_M } from "./shareCardBasics.ts";
+
+// Kept here too for the card's callers; the first load reads them from lib/shareCardBasics.ts.
+export { HOME_TRIM_M, SHARE_IMAGE_LABEL, ZONE_RADIUS_M, ZONE_SHIFT_MAX_M, ZONE_SHIFT_MIN_M } from "./shareCardBasics.ts";
 
 // ---- Words ----------------------------------------------------------------------------------------
 
-/** The button beside Share in Plan's More, and the dialog's heading. */
-export const SHARE_IMAGE_LABEL = t("Share as image");
 export const SIZE_LABEL = "Size";
 export const QR_LABEL = "QR code";
 export const PROFILE_LABEL = "Elevation profile";
@@ -199,13 +201,6 @@ export function cardAlt(opts: {
 
 // ---- Privacy: Home -------------------------------------------------------------------------------
 
-/** No part of the line, and no pin, is drawn within this of Home: 0.2 mi. */
-export const HOME_TRIM_M = 0.2 * METRES_PER_MILE;
-/** The hidden circle's centre is moved this far from Home (and its radius grown by as much), so its edge does not point at Home. */
-export const ZONE_SHIFT_MIN_M = 60;
-export const ZONE_SHIFT_MAX_M = 150;
-/** The hidden circle's radius, the same however far its centre moved, so the gap's size says nothing of the shift. */
-export const ZONE_RADIUS_M = HOME_TRIM_M + ZONE_SHIFT_MAX_M + 1;
 
 /** The circle the card leaves blank: around Home, moved, and large enough to hold everything within HOME_TRIM_M of it. */
 export interface HomeZone {

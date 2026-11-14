@@ -14,6 +14,17 @@ from routemaker.agency_lts import AgencyRating
 from routemaker.mdot_sha_rules import ENABLED, Stretch, read_as
 from routemaker.stress import Stress, StressResult
 
+
+@pytest.fixture(autouse=True)
+def _county_and_state_levels_in_use(monkeypatch):
+    """These tests read how a county's or the state's level would set a tier, as the rebuild
+    did before 2026-11-13; since then every agency's level is comparison-only
+    (`agency_lts.COMPARISON_ONLY`, `test_agency_lts.test_no_agency_level_sets_a_tier`)."""
+    from routemaker import agency_lts
+
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
+
+
 FIRST = "16000MD00410--1-----"
 SECOND = "16000MD00410--2-----"
 CITY = "24000MU01234--1-----"
