@@ -36,7 +36,18 @@ def test_the_box_is_the_coverage() -> None:
 
 
 def test_the_cells_cover_the_box_and_nothing_more() -> None:
-    assert mod.cells() == ["n40w079", "n40w078", "n40w077", "n39w079", "n39w078", "n39w077"]
+    # v0.28.0 pass 1 (south edge 37.1 N): the n38 row joins.
+    assert mod.cells() == [
+        "n40w079",
+        "n40w078",
+        "n40w077",
+        "n39w079",
+        "n39w078",
+        "n39w077",
+        "n38w079",
+        "n38w078",
+        "n38w077",
+    ]
     # A box on whole degrees takes exactly its own cells.
     assert mod.cells((-78.0, 38.0, -77.0, 39.0)) == ["n39w078"]
     assert mod.cells((-77.5, 38.5, -76.5, 39.5)) == ["n40w078", "n40w077", "n39w078", "n39w077"]
