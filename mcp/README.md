@@ -43,6 +43,36 @@ century".
 | `draft_route_post` | Site connector, instance admins only: writes a Featured routes post as a draft (title, about, who it's for, season, highlighted sections with their miles) around a draft route or a line to follow, for an admin to publish in the admin. Sending the same slug again with `replace` rewrites the draft. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
+`plan_route` also answers `why` on bike rides up to 25 mi in straight lines (our default,
+unmeasured): the route against the most direct one between the same points (the Fast ride
+type's, planned once more), in our own ratings: how many miles and minutes longer, how many
+fewer busy miles (LTS 3 and up), and up to three busy roads it leaves with what it rides instead
+("leaves Georgia Avenue (LTS 4) for the Metropolitan Branch Trail"; a road counts when it has
+at least 0.25 mi at LTS 3 and up, our default, unmeasured). It is left out on a loop, a
+followed line, Fast, Mass Ride and the transit, bikeshare, walk and run trips, and when the call
+has no time left for one more plan.
+
+### Ready-made asks (prompts)
+
+An assistant app that lists MCP prompts offers five starters a person can pick: **Plan a
+commute** (start, end, when you leave), **Family trail ride** (start, an end or none for a ride
+back, about how far), **Loop of N miles** (start, miles, whether to stay near Metro) and **Bike
+plus Metro** (start, end, when you leave) and **Plan a mass ride** (start, end, riders, corkers,
+riding time (typically 75 to 90 minutes, hills and signal waits counted) or miles, and speed,
+asked for when not given, and a midpoint if the ride has one; the length is the goal, the corkers needed
+stay within those you have, and grades stay under 5% where possible and never over 8%). Each becomes one ask that names the tools and settings
+that fit, and asks for a short answer. The server's instructions carry a short playbook beside
+them: which ride type for which ask, and what to say after a plan.
+
+### Calls sent together
+
+Assistants often send several calls at once. Each rider has one place search running at a time
+on the site, so a lookup (place search, and the scenic road, climb, closure, reach and riding
+time searches) that finds the site busy waits and tries again: each pause the Retry-After, at
+most 1 s, and at most 4 s for all of one call's lookups (our defaults, unmeasured; a waiting call
+holds its web worker). Past that, or when the site asks for a longer wait, the answer says
+`retry_after_s` and that nothing is wrong with the request.
+
 ### The route view: a map and graphs in the chat
 
 In an assistant app that shows MCP Apps (the `io.modelcontextprotocol/ui` extension; Claude does),
@@ -242,5 +272,6 @@ argument is the path to `routemaker_mcp.py`, and the settings above are environm
 - A route planned for the first time in the app may differ a little from the one saved here if
   live closures or the map change in between: the saved route keeps the line exactly as planned.
 - Tests: `tests/test_mcp_server.py` (the protocol, the Metro check, the loop builder against a
-  stand-in planner), `tests/test_mcp_route_view.py` (the route view) and
+  stand-in planner), `tests/test_mcp_connector_guidance.py` (calls sent together, the prompts and
+  `why`), `tests/test_mcp_route_view.py` (the route view) and
   `tests/test_connector.py` (the site's connector, saving and posts).

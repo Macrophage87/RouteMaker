@@ -159,8 +159,9 @@ class TestWholeRoute:
     def test_a_divided_road_is_crossed_as_one_stop_at_its_dearest(self) -> None:
         busy = (("road", "primary"), ("road", "primary"))
         near = [junction(*busy, m=100.0), junction(*busy, m=118.0, signal=True)]
-        # The signal's time shown, a city's big road with the ride-time setting not known.
-        assert d.delay_s(near) == d.CITY_PASS_S[None][0]
+        # The signal's time shown, a city's big road crossed from a side street with the
+        # ride-time setting not known.
+        assert d.delay_s(near) == d.city_pass_s(0, True)
 
     def test_the_district_test_is_asked_at_each_junction(self) -> None:
         stops = [junction(*CROSS_STREET, m=100.0), junction(*CROSS_STREET, m=300.0)]
@@ -193,7 +194,7 @@ class TestWholeRoute:
         )
         far = (Beacon(id=2, lon=-77.01, lat=38.9),)
         away = d.delay_s(at_beacon, beacon=lambda lon, lat: beacon_at(lon, lat, far) is not None)
-        assert (near, away) == (d.GIVE_WAY_DELAY_S[2], d.CITY_PASS_S[None][0])
+        assert (near, away) == (d.GIVE_WAY_DELAY_S[2], d.city_pass_s(0, True))
 
     def test_driveways_between_stops_do_not_merge_them(self) -> None:
         driveway = (("driveway", "service_other"),)
@@ -226,7 +227,7 @@ class TestWholeRoute:
             *busy, in_use="cycleway", out_use="cycleway", in_class=None, out_class=None
         )
         assert d.delay_s([trail]) == d.GIVE_WAY_DELAY_S[2]
-        shown = d.CITY_PASS_S[None][0]
+        shown = d.city_pass_s(0, True)
         assert d.delay_s([trail], signals={(-77.0, 38.9)}) == shown
         assert d.delay_runs([trail], signals={(-77.0, 38.9)}) == [(100.0, shown)]
         # Another junction's signal is not this one's.
@@ -355,15 +356,36 @@ class TestSuburbanSignals:
     30 s at any other suburban signal (no 15 s signal outside the cities: "30 is probably
     more realistic"), and twice those in the ranking."""
 
-    def test_a_dc_signal_at_a_big_road_is_30_s_shown_and_ranked_once(self) -> None:
+    def test_a_dc_signal_crossing_a_big_road_is_ranked_once(self) -> None:
         crossing = suburban_signal(*PRIMARY)
         wait = d.signal_wait(crossing, suburban=False)
-        assert (wait.red_s, wait.ranked_s, wait.button) == (30.0, 30.0, False)
+        red = d.city_red_s(0, True)
+        assert (wait.red_s, wait.ranked_s, wait.button) == (red, red, False)
         (run,) = d.waits([crossing], suburban=lambda _lon, _lat: False)
-        assert (run.red_s, run.ranked_s) == (d.CITY_BIG_SIGNAL_S, d.CITY_BIG_SIGNAL_S)
+        assert (run.red_s, run.ranked_s) == (red, red)
 
-    def test_a_dc_signal_at_a_secondary_road_is_15_s_and_at_a_side_street_20_s(self) -> None:
-        """The owner's city rides: a secondary road's signals were the quickest."""
+    def test_a_dc_signal_costs_less_riding_along_the_big_road_than_crossing_it(self) -> None:
+        """The owner's rides, 2026-11-13: at a big road's signal he stopped at 21% of passes
+        riding along it and 42% crossing it from a side street; he chose "Split signals,
+        keep give-way". The red stays a measured red (median stop 25 s and 29 s): the split
+        is in how often he stopped, not how long (the methodology audit, area 07, 2.3)."""
+        crossing = d.signal_wait(suburban_signal(*PRIMARY), suburban=False)
+        along = d.signal_wait(
+            suburban_signal(
+                *CROSS_STREET, in_class="primary", out_class="primary", headings=(0.0, 180.0)
+            ),
+            suburban=False,
+        )
+        assert (along.seconds, along.red_s) == (d.city_pass_s(0, False), d.city_red_s(0, False))
+        assert (crossing.seconds, crossing.red_s) == (16.9, 29.0)
+        assert (along.seconds, along.red_s) == (7.8, 25.0)
+        # A secondary road's signal splits the same way.
+        assert d.city_pass_s(1, True) > 2 * d.city_pass_s(1, False)
+        # Give-way prices do not change.
+        assert d.GIVE_WAY_DELAY_S[1] == 30
+
+    def test_a_dc_signal_at_a_secondary_road_or_a_side_street_takes_its_measured_red(self) -> None:
+        """The owner's rides at DC's signals: a median stop of 21 s crossing a secondary road."""
         secondary = suburban_signal(
             ("road", "secondary"),
             ("road", "secondary"),
@@ -376,17 +398,18 @@ class TestSuburbanSignals:
             in_class="residential",
             out_class="residential",
         )
-        assert d.signal_wait(secondary, suburban=False).red_s == 15.0
+        assert d.signal_wait(secondary, suburban=False).red_s == d.city_red_s(1, True)
         assert d.signal_wait(side, suburban=False).red_s == 20.0
-        # A big road the junction model reads by its lanes or speed counts as big.
-        assert d.signal_wait(side, suburban=False, big=True).red_s == 30.0
+        # A big road the junction model reads by its lanes or speed counts as big, and is
+        # crossed.
+        assert d.signal_wait(side, suburban=False, big=True).red_s == d.city_red_s(0, True)
 
     def test_before_and_after_a_suburban_big_crossing_is_45_s_at_a_red_and_90_ranked(self) -> None:
         # From a tertiary road: a rider on a minor road or a path also needs the button
         # (`TestBegButtons`).
         crossing = suburban_signal(*PRIMARY, in_class="tertiary", out_class="tertiary")
-        # Before (no suburban reading): a city's big road, 12 s shown on average.
-        assert d.delay_s([crossing]) == d.CITY_PASS_S[None][0] == 12.0
+        # Before (no suburban reading): a city's big road crossed, shown on average.
+        assert d.delay_s([crossing]) == d.city_pass_s(0, True)
         (run,) = d.waits([crossing], suburban=everywhere)
         assert run.red_s == d.SUBURBAN_BIG_SIGNAL_S == 45.0
         assert run.ranked_s == 90.0
@@ -401,28 +424,29 @@ class TestSuburbanSignals:
         rides with the green passes counted ("sometimes the light is green")."""
         crossing = suburban_signal(*SECONDARY, in_class="tertiary", out_class="tertiary")
         city = d.signal_wait(crossing, suburban=False)
-        assert (city.seconds, city.ranked_s, city.red_s) == (5.0, 15.0, 15.0)
+        red = d.city_red_s(1, True)
+        assert (city.seconds, city.ranked_s, city.red_s) == (d.city_pass_s(1, True), red, red)
         suburb = d.signal_wait(crossing, suburban=True)
         assert (suburb.seconds, suburb.ranked_s, suburb.red_s) == (15.0, 60.0, 30.0)
 
     def test_a_city_signal_is_quicker_before_7_am_and_slowest_at_rush_hour(self) -> None:
         """ "Separate by time of day on cities. Early morning might actually have shorter
-        times." The ranking does not change with the hour."""
+        times." Since 2026-11-13 the red the ranking counts changes with the hour too ("make
+        sure to add a time of day penalty like we had earlier"), by the same measured factor
+        as the time shown: night 0.68, a weekday about 1.15, the weekend 1.01."""
         crossing = suburban_signal(*PRIMARY)
         shown = {
             when: d.signal_wait(crossing, when=when).seconds
             for when in ("night", "weekday_rush", "weekday_offpeak", "weekend")
         }
-        assert shown == {
-            "night": 9.0,
-            "weekday_rush": 15.0,
-            "weekday_offpeak": 14.0,
-            "weekend": 11.0,
-        }
-        ranked = {d.signal_wait(crossing, when=w).ranked_s for w in shown}
-        assert ranked == {d.CITY_BIG_SIGNAL_S}
+        assert shown == {w: d.city_pass_s(0, True, w) for w in shown}
+        assert shown["night"] < shown["weekend"] < shown["weekday_rush"]
+        ranked = {w: d.signal_wait(crossing, when=w).ranked_s for w in shown}
+        red = d.city_red_s(0, True)
+        assert ranked == {w: round(red * d.CITY_HOUR_FACTOR[w], 1) for w in shown}
+        assert d.signal_wait(crossing).ranked_s == red
         (run,) = d.waits([crossing], when="night")
-        assert run.seconds == 9.0
+        assert run.seconds == d.city_pass_s(0, True, "night")
         # The suburbs' passes ran no quicker early: one set at every hour.
         assert d.signal_wait(crossing, suburban=True, when="night").seconds == 24.0
 
@@ -469,8 +493,8 @@ class TestSuburbanSignals:
         )
         wait = d.signal_wait(turn, suburban=True)
         assert (wait.red_s, wait.button) == (30.0, False)
-        # The same turn in a city: the cities' 30 s at a big road, the rider's own.
-        assert d.signal_wait(turn, suburban=False).red_s == 30.0
+        # The same turn in a city: the cities' big road, the rider's own, ridden along.
+        assert d.signal_wait(turn, suburban=False).red_s == d.city_red_s(0, False)
 
     def test_turning_onto_the_big_road_from_a_side_street_is_45_s(self) -> None:
         turn = suburban_signal(
@@ -550,8 +574,8 @@ class TestBegButtons:
         assert not untagged.button
         (run,) = d.waits([crossing], buttons={77})
         assert run.button
-        # The city's 30 s at a big road shown; two minutes in the ranking.
-        assert (run.red_s, run.ranked_s) == (30.0, 120.0)
+        # The city's big road crossed; two minutes in the ranking.
+        assert (run.red_s, run.ranked_s) == (d.city_red_s(0, True), 120.0)
 
     def test_the_planner_asks_the_map_only_about_crossings_and_paths(self, monkeypatch) -> None:
         from core import routing
@@ -693,7 +717,7 @@ class TestRoadBikeStackedWeight:
 
     def test_a_city_signal_on_road_bike_stays_at_3x(self) -> None:
         (run,) = d.waits([suburban_signal(*PRIMARY)])
-        assert 3.0 * d.ranked_s([run], 3.0) == 3.0 * 30.0
+        assert 3.0 * d.ranked_s([run], 3.0) == pytest.approx(3.0 * d.city_red_s(0, True))
 
     def test_a_button_crossing_on_road_bike_ranks_ten_minutes_below_2_3_of_the_stop_sign(
         self,
@@ -924,9 +948,15 @@ class TestSignalRuns:
         here = {(-77.0, 38.9)}
         (city_before,) = d.waits([along])
         (city_after,) = d.waits([along], own_big=here)
-        # In a city: before the secondary's 15 s red and 5 s shown; after the big road's.
-        assert (city_before.red_s, city_before.seconds) == (15.0, 5.0)
-        assert (city_after.red_s, city_after.seconds) == (30.0, 12.0)
+        # In a city: before the secondary's, ridden along; after the big road's.
+        assert (city_before.red_s, city_before.seconds) == (
+            d.city_red_s(1, False),
+            d.city_pass_s(1, False),
+        )
+        assert (city_after.red_s, city_after.seconds) == (
+            d.city_red_s(0, False),
+            d.city_pass_s(0, False),
+        )
         # In the suburbs: the time shown by the big road; the red stays 30 s, not 45 s, as
         # the rider does not cross or join a big road.
         (suburb,) = d.waits([along], suburban=everywhere, own_big=here)
@@ -1007,3 +1037,32 @@ class TestButtonsOff:
             max(weight * run.stop_s - d.BUTTON_BELOW_STOP_S, 0.0),
         )
         assert ride_ranked_s([run], presets.ROAD_BIKE) == pytest.approx(expected)
+
+
+class TestGiveWayByTheHour:
+    """The owner, 2026-11-13: give-way prices stay as they are ("people very much don't
+    like them"), with "a time of day penalty like we had earlier"."""
+
+    def test_giving_way_to_a_busy_road_ranks_more_at_rush_hour_and_less_at_night(self) -> None:
+        crossing = junction(*PRIMARY)
+        shown = d.GIVE_WAY_DELAY_S[2]
+        ranked = {
+            w: d.waits([crossing], when=w)[0].ranked_s
+            for w in (None, "weekday_rush", "weekend", "night")
+        }
+        assert ranked == {
+            None: shown,
+            "weekday_rush": shown * 1.25,
+            "weekend": round(shown * 0.85, 1),
+            "night": shown * 0.5,
+        }
+        # The time shown does not change.
+        assert d.waits([crossing], when="weekday_rush")[0].seconds == shown
+
+    def test_a_quiet_streets_stop_is_not_scaled(self) -> None:
+        (run,) = d.waits([junction(*CROSS_STREET)], when="weekday_rush")
+        assert run.ranked_s == d.STOP_DELAY_S
+
+    def test_outside_the_cities_night_is_x0_85(self) -> None:
+        (run,) = d.waits([junction(*PRIMARY)], when="night", suburban=everywhere)
+        assert run.ranked_s == round(d.GIVE_WAY_DELAY_S[2] * 0.85, 1)

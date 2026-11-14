@@ -300,7 +300,9 @@ class User(AbstractBaseUser):
     would add the stored flags and the group and permission tables back.
     """
 
-    discord_user_id = models.BigIntegerField(unique=True)
+    # Empty for an account made with Google or Apple and no Discord linked (SignInIdentity,
+    # 2026-11-13).
+    discord_user_id = models.BigIntegerField(unique=True, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
 
@@ -326,6 +328,8 @@ class User(AbstractBaseUser):
         db_table = "app_user"
 
     def __str__(self) -> str:
+        if self.discord_user_id is None:
+            return f"account:{self.pk}"
         return f"discord:{self.discord_user_id}"
 
     def save(self, *args, **kwargs):
@@ -583,6 +587,30 @@ class CachedMembership(models.Model):
             timed_out_until=self.timed_out_until,
             removed_at=self.removed_at,
         )
+
+
+class SignInIdentity(models.Model):
+    """A Google or Apple sign-in linked to an account (Stephen 2026-11-13: "Yes, and allow account
+    linking"). Discord's stays on User.discord_user_id. Only the keyed subject is kept
+    (core.oidc_login.subject_key): no name, no email, no token. Deleted with the account."""
+
+    PROVIDERS = (("google", "Google"), ("apple", "Apple"))
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sign_ins")
+    provider = models.CharField(max_length=16, choices=PROVIDERS)
+    subject_key = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "subject_key"], name="one_account_per_sign_in"
+            ),
+            models.UniqueConstraint(fields=["user", "provider"], name="one_sign_in_per_provider"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider} sign-in for account {self.user_id}"
 
 
 class BanTombstone(models.Model):
@@ -2753,3 +2781,22 @@ class RoutePostPhoto(models.Model):
 
     def __str__(self) -> str:
         return self.alt_text
+
+
+class DailyUsage(models.Model):
+    """How many times a tool was used on a day (core.usage): the day, the tool's name and a
+    number. Nothing about who, where or when in the day; the owner, 2026-11-13: "Yes to anonymous
+    data totals"."""
+
+    day = models.DateField()
+    tool = models.CharField(max_length=64)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "daily_usage"
+        constraints = [models.UniqueConstraint(fields=("day", "tool"), name="daily_usage_day_tool")]
+        ordering = ("-day", "tool")
+        verbose_name = "daily usage total"
+
+    def __str__(self) -> str:
+        return f"{self.day} {self.tool}: {self.count}"

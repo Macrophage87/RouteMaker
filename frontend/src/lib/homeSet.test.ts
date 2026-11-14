@@ -114,13 +114,11 @@ test("App: Home is said politely at once, saved to the account signed in or this
   assert.match(app, /const myGoControls = \{ myGo, signedIn: me\.signed_in, save: saveMyGoNow, setHome,/);
 });
 
-test("the map: Set as Home in the road panel (hold or right-click a spot), and Pick on the map's next tap", () => {
+test("the map: Pick on the map's next tap sets Home; the road panel has no Set as Home", () => {
   assert.equal(SET_AS_HOME_TEXT, "Set as Home");
-  // The road panel's "Use this spot" row has Set as Home; it closes the panel, whose close gives the focus back.
-  const row = road.slice(road.indexOf('aria-label={t("Use this spot")}'), road.indexOf("road-info-place-why"));
-  assert.match(row, /onSetHome\(request\.point\);\s*close\(\);/);
-  assert.match(row, /\{SET_AS_HOME_TEXT\}/);
-  assert.match(app, /onSetHome=\{\(point\) => void setHomeAt\(point\)\}/);
+  // The owner, 2026-11-13: "Don't bother with set as home. That would be in Favorites".
+  assert.doesNotMatch(road, /onSetHome|SET_AS_HOME_TEXT/);
+  assert.doesNotMatch(app, /onSetHome=/);
   // A tap while picking is Home, before Go's destination or a plan point; the pick ends with it.
   const place = app.slice(app.indexOf("const place = useCallback("), app.indexOf("if (goTapSetsEnd(modeRef.current))"));
   assert.match(place, /if \(homePickRef\.current\) \{\s*setHomePick\(false\);\s*void setHomeAtRef\.current\(point\);\s*return;/);

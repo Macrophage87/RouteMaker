@@ -595,5 +595,8 @@ test("one deliberate press goes at once: Plan's Route, Try again, a transit pick
   // Do another trip on a Rebalance Ride's summary (2026-11-07): one press, the next trip planned at once.
   const another = app.slice(app.indexOf("const anotherRebalance = () => {"), app.indexOf("const goHereKind"));
   assert.match(another, /sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);/);
-  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 5, "only Route, the transit pick, the plan kept offline once back online (P11), Mass Ride's switch to Group Ride and Do another trip set it");
+  // Plan's Use kept route (2026-11-13): one press, answered by the kept route itself.
+  const useKept = app.slice(app.indexOf("const useKeptRoute = () => {"), app.indexOf("const stopComparing"));
+  assert.match(useKept, /sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);/);
+  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 6, "only Route, the transit pick, the plan kept offline once back online (P11), Mass Ride's switch to Group Ride, Do another trip and Use kept route set it");
 });

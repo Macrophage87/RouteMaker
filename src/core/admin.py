@@ -44,6 +44,7 @@ from .models import (
     BorderCrossing,
     CachedMembership,
     ConfiguredGuild,
+    DailyUsage,
     DriftReport,
     FlashingSignal,
     InstanceAdminListing,
@@ -718,6 +719,34 @@ class SuggestionSettingsAdmin(AuditedAdmin):
     def save_model(self, request, obj, form, change) -> None:
         obj.pk = 1
         super().save_model(request, obj, form, change)
+
+
+@admin.register(DailyUsage, site=site)
+class DailyUsageAdmin(admin.ModelAdmin):
+    """Anonymous daily totals per tool (core.usage): read-only, an instance admin's only."""
+
+    list_display = ("day", "tool", "count")
+    list_filter = ("tool",)
+    date_hierarchy = "day"
+    search_fields = ("tool",)
+
+    def _admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._admin(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._admin(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
 
 
 @admin.register(StressSuggestion, site=site)
