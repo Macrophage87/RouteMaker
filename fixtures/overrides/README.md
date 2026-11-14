@@ -786,8 +786,9 @@ in the database still names it: delete that row in the admin when loading the fi
 - Kennedy Street NW (way 130908107): no override. Its LTS 4 was DDOT's 2020 level standing
   because the block took no count; the matcher's along-the-street pass now reads every agency
   and gives it 6,272 a day (checked on the live extract), and DDOT's layer is comparison only
-  (#1241). `fixtures/known-roads` checks it reads 2.5 at the next rebuild. The same-street draft
-  of 2026-11-13 (126 ways, mostly DC, agency-only levels) is withdrawn for the same reasons.
+  (#1241). No known-roads entry checks it (it is not one of the owner's calls); the rebuild's
+  stress report shows its level. The same-street draft of 2026-11-13 (126 ways, mostly DC,
+  agency-only levels) is withdrawn for the same reasons.
 
 - `2026-11-13-retire-arlington-blvd-service-road.json` (DRAFT, not approved): withdraws the two
   VA own-picks rows that rated Arlington Boulevard Service Road 4 on the boulevard's own 42,000

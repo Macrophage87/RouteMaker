@@ -785,10 +785,22 @@ def conflate(
             used_features.add(feature.feature_id)
 
     place(candidates)
-    place([c for c in held if c[2].feature_id not in used_features])
+    # Only a line whose nearest candidate is a street goes back: a second line on the freeway
+    # itself (its other direction, an overlapping section) that no freeway way took is still
+    # the freeway's, never the street's beneath it (Water Street NW again, review of #1240).
+    street_nearest = {fid for fid, (_d, street) in nearest.items() if street}
+    place(
+        [
+            c
+            for c in held
+            if c[2].feature_id in street_nearest and c[2].feature_id not in used_features
+        ]
+    )
     candidates += held
-    # The freeway's lines a freeway way did take stay off the streets in the next pass too.
-    freeway_lines = {m.feature_id for w, m in matched.items() if w in freeways} & freeway_lines
+    # The freeway's lines a freeway way did take, and those nearest a freeway, stay off the
+    # streets in the next pass too.
+    taken = {m.feature_id for w, m in matched.items() if w in freeways}
+    freeway_lines = (taken | (freeway_lines - street_nearest)) & freeway_lines
 
     # The ways no single count line was a candidate for at all (`_along_counts`). A street
     # beside a freeway does not take the freeway's line this way either.
