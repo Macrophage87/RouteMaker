@@ -12,7 +12,7 @@ import { ARRIVED_SAID, inSentence, type RideEvent, type RideFix, type RideModel,
 import { onBoardLeg, onBoardStart, onBoardStep, onBoardWhere, AT_STOP_M, ROUGH_FIX_M, type OnBoardLeg, type OnBoardState } from "./onBoard.ts";
 import { drawOf } from "./transit.ts";
 import { nextWalkTurn, walkModel, walkStart, walkStep, walkTurnLine, type WalkPath } from "./walkCues.ts";
-import { spokenDistance } from "./format.ts";
+import { formatDistance, spokenDistance } from "./format.ts";
 import { arrivalClock } from "./arrival.ts";
 
 /** A walk, with its planned seconds (null: unknown), or a train or bus. */
@@ -129,12 +129,38 @@ export function onwardWhere(parts: readonly OnwardPart[], state: OnwardState | n
   const line = walkTurnLine(part.model, walk);
   const next = line ? nextWalkTurn(part.model, walk) : null;
   if (!line || !next) {
-    if (!part.to) return null;
-    const to = t("Walk to {place}{distance}.", { place: part.to, distance: "" });
-    return { shown: [to], spoken: to };
+    // No turn left: the walk's end, named where it has a name (Stephen, 2026-11-14: Walk + 🚆🚌 "keeps saying you have
+    // arrived when I haven't"; a walk to the destination has none, and fell back on the line's "You have arrived").
+    const following = parts[current.index + 1];
+    const place = part.to ?? (following?.kind === "transit" ? following.leg.stops[0].name : null);
+    if (place) {
+      const to = t("Walk to {place}{distance}.", { place, distance: "" });
+      return { shown: [to], spoken: to };
+    }
+    const leftM = Math.max(0, part.model.lengthM - (walk.progressM ?? 0));
+    return {
+      shown: [t("Walk {distance} to the finish.", { distance: formatDistance(leftM) })],
+      spoken: t("Walk {distance} to the finish.", { distance: spokenDistance(leftM) }),
+    };
   }
   // Said with the distance in one unit, in words ("300 feet"); the turn's own sentence ends it.
   return { shown: [line], spoken: t("In {distance}, {cue}", { distance: spokenDistance(next.metres), cue: inSentence(next.cue, next.cue.text) }) };
+}
+
+/**
+ * Where am I?, asked or said by itself (back on screen, Resume): past the line, the part followed now (`onwardWhere`),
+ * else the line's own answer (`line`, navigate.ts whereAmI), which says "You have arrived" once the line is done
+ * (Stephen, 2026-11-14: Walk + 🚆🚌 "keeps saying you have arrived when I haven't": the answer said on coming back to the
+ * screen was the line's, the walk to the station's, though the train and the walk after were still to come).
+ */
+export function rideWhere(
+  arrived: boolean,
+  parts: readonly OnwardPart[],
+  state: OnwardState | null,
+  line: () => { shown: string[]; spoken: string },
+  nowMs: number = Date.now(),
+): { shown: string[]; spoken: string } {
+  return (arrived ? onwardWhere(parts, state, nowMs) : null) ?? line();
 }
 
 /** A last good fix this near a station the trip boards at counts as going down into it. Our default. */
