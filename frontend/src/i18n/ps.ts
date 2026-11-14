@@ -2226,6 +2226,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "شمالي ویرجینیا",
   "Northwest exurbs": "شمال لویدیځ ښارګوټي",
   "Baltimore and suburbs": "بالتیمور او شاوخوا",
+  "Central Virginia": "منځنۍ ویرجینیا",
   "The rest of the map": "د نقشې پاتې برخه",
   "Everything": "ټوله نقشه",
   "It is on {street}.": "په {street} کې ده.",

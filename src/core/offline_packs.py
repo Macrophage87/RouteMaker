@@ -132,7 +132,7 @@ REGIONS: tuple[Region, ...] = (
     ),
     Region(
         id="central-va",
-        name="Richmond, Charlottesville and Williamsburg",
+        name="Central Virginia",
         # Virginia south of NoVA's 38.2 N edge (v0.28.0 pass 1): Richmond, Petersburg,
         # Williamsburg and the Capital Trail, Fredericksburg's south side, and Charlottesville
         # with the US 29 side up through Madison to about 38.55 N, west of NoVA's -78.05 edge.

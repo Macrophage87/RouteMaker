@@ -2226,6 +2226,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "北バージニア",
   "Northwest exurbs": "北西部の郊外",
   "Baltimore and suburbs": "ボルチモアと郊外",
+  "Central Virginia": "バージニア中部",
   "The rest of the map": "地図のその他の地域",
   "Everything": "地図全体",
   "It is on {street}.": "{street}を通っています。",

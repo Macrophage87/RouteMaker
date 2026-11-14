@@ -2226,6 +2226,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "ሰሜን ቨርጂኒያ",
   "Northwest exurbs": "ሰሜን ምዕራብ ዳርቻዎች",
   "Baltimore and suburbs": "ባልቲሞር እና አካባቢው",
+  "Central Virginia": "ማዕከላዊ ቨርጂኒያ",
   "The rest of the map": "የቀረው ካርታ",
   "Everything": "ሙሉ ካርታ",
   "It is on {street}.": "በ{street} ላይ ነው።",
