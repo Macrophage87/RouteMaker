@@ -109,6 +109,7 @@ from pipeline.extract import close_writer
 from pipeline.rebuild import RebuildFailed, Stage, run_rebuild
 from pipeline.run import RebuildContext, build_handlers
 from pipeline.variants import Variant
+from routemaker.agency_lts import FORMULA_USED
 from routemaker.stress import classify
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -1245,9 +1246,11 @@ def test_volume_reaches_the_classifier(workspace, states) -> None:
     assert context.stress_by_way[100].volume_year == 2025
 
 
-def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) -> None:
-    """v0.7.0 (the owner's order, 2026-10-13): the county's rating over the state's
-    over the formula, every one kept for the road panel in `stress_ratings`."""
+def test_agency_ratings_are_kept_and_the_formula_sets_the_tier(workspace, states) -> None:
+    """Every agency's rating is kept for the road panel in `stress_ratings`. Since #1278 (the
+    owner's re-rate, 2026-11-14) Montgomery's and MDOT SHA's levels are comparison only
+    (`agency_lts.COMPARISON_ONLY`): the formula sets the tier. It was v0.7.0's order (the
+    county's rating over the state's over the formula, 2026-10-13) until then."""
     source, root = workspace
     staging = settings.SEGMENT_SCHEMA_STAGING
     line = [[-77.02, 38.90], [-76.98, 38.90]]
@@ -1269,8 +1272,9 @@ def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) 
     ]
     context, _ = run_pipeline(source, root, agency_lts=agency_lts, skip=NOT_SWAPPED)
     stress = context.stress_by_way[100]
-    assert (int(stress.tier), stress.half) == (2, True)
-    assert stress.rule.startswith("agency rating: Montgomery County Planning LTS 2.5")
+    # The formula's level, not Montgomery's 2.5.
+    assert (int(stress.tier), stress.half) == (int(stress.formula_tier), stress.formula_half)
+    assert not stress.rule.startswith("agency rating")
     with connection.cursor() as cursor:
         cursor.execute(
             f"SELECT stress_tier, stress_half, stress_ratings FROM {staging}.segment "
@@ -1278,10 +1282,10 @@ def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) 
         )
         tier, half, held = cursor.fetchone()
     held = json.loads(held) if isinstance(held, str) else held
-    assert (tier, half) == (2, True)
-    assert held["used"] == "moco"
+    assert (tier, half) == (int(stress.tier), stress.half)
+    assert held["used"] == FORMULA_USED
     assert [a["agency"] for a in held["agencies"]] == ["moco", "mdot-sha"]
-    assert held["formula"] is not None
+    assert held["formula"] == tier
     # A way no agency rates keeps the formula and records nothing.
     with connection.cursor() as cursor:
         cursor.execute(

@@ -84,7 +84,8 @@ def test_held_found_and_lost_in_words() -> None:
 def test_rows_are_read_back_by_where_they_are(at_least, share) -> None:
     from pipeline.schema import create_segment_schema, drop_segment_schema
 
-    name = "knownroads"
+    # One schema per case, so the two cases never share one however the suite is spread.
+    name = f"knownroads_{int(at_least)}"
     drop_segment_schema(name)
     create_segment_schema(name)
     lon = -77.0
@@ -119,6 +120,6 @@ def test_rows_are_read_back_by_where_they_are(at_least, share) -> None:
     finally:
         drop_segment_schema(name)
     one = 0.005 * 111_000
-    assert got.total_m == pytest.approx(2 * one, rel=0.02)
+    assert got.total_m == pytest.approx(2 * one, rel=0.02), got
     assert got.share == pytest.approx(share, abs=0.01)
     assert got.line_m == pytest.approx(2 * one, rel=0.02)
