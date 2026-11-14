@@ -1272,8 +1272,9 @@ def test_agency_ratings_are_kept_and_the_formula_sets_the_tier(workspace, states
     ]
     context, _ = run_pipeline(source, root, agency_lts=agency_lts, skip=NOT_SWAPPED)
     stress = context.stress_by_way[100]
-    # The formula's level, not Montgomery's 2.5.
-    assert (int(stress.tier), stress.half) == (int(stress.formula_tier), stress.formula_half)
+    # The formula's level (4 for this road), not Montgomery's 2.5.
+    assert (int(stress.tier), stress.half) == (4, False)
+    assert (int(stress.formula_tier), stress.formula_half) == (4, False)
     assert not stress.rule.startswith("agency rating")
     with connection.cursor() as cursor:
         cursor.execute(
