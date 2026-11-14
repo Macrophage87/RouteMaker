@@ -47,11 +47,16 @@ WHY = (
 )
 TAKEN = (
     "That {name} sign-in is already linked to another RouteMaker account. Sign in with it and"
-    " unlink it there first."
+    " unlink it there first, or delete that account if it is its only sign-in."
 )
 HAS_ONE = "This account already has a {name} sign-in. Unlink it first to link a different one."
 NOT_ALLOWED = "This account is not permitted to sign in."
 LAST_ONE = "An account keeps at least one sign-in, so this one can't be unlinked."
+# The Android app offers Discord alone (`offered`), so an account without Discord cannot be reached
+# from the app: signing in there would make a new, empty account (the v0.27.0 release review).
+APP_NEEDS_DISCORD = (
+    "The Android app signs in with Discord only: keep Discord to use this account there."
+)
 CANCELLED = "Sign-in was cancelled or did not finish. Nothing was changed."
 
 
@@ -371,9 +376,15 @@ def sign_ins(request):
                 f'<a href="{escape(start_url(provider, link=True))}" '
                 f'aria-label="Link {name}">Link</a></li>'
             )
+    warn = (
+        f"<p>{escape(APP_NEEDS_DISCORD)}</p>"
+        if "discord" in have and any(p != "discord" and available(p) for p in have)
+        else ""
+    )
     body = (
         "<p>Sign in with any of these to reach the same account. It keeps at least one.</p>"
-        f'<ul class="choices">{"".join(rows)}</ul>'
+        + warn
+        + f'<ul class="choices">{"".join(rows)}</ul>'
     )
     return _page(body, title="Sign-in methods")
 

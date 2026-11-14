@@ -156,6 +156,11 @@ PRIVACY_CONTACT = os.environ.get("PRIVACY_CONTACT", "").strip()
 # that stores its riders' data, hosting included. Empty: the page says the owner runs it at
 # home or with a hosting company.
 PRIVACY_HOSTING = os.environ.get("PRIVACY_HOSTING", "").strip()
+# Who runs the site (core.privacy_policy, the Contact section): the person or organisation
+# responsible for riders' data (GDPR Article 13(1)(a) asks for the controller's identity), set by
+# the owner in the deployment's environment file, so the public repository names nobody. Empty:
+# the page names nobody.
+PRIVACY_OPERATOR = os.environ.get("PRIVACY_OPERATOR", "").strip()
 
 # Android App Links (core.app_links, GET /.well-known/assetlinks.json): the store app's id and the
 # SHA-256 fingerprint of Play's app signing key (several separated by commas), set by the owner in

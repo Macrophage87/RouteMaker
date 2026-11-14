@@ -4,7 +4,8 @@
  * the focus goes back where it was.
  */
 import { useEffect, useId, useMemo, useRef } from "react";
-import { BROADCAST_QR_CLOSE, BROADCAST_QR_HEADING, BROADCAST_QR_LEAD, BROADCAST_QR_NAME, BROADCAST_QR_START, qrPath } from "./lib/broadcastQr.ts";
+import { BROADCAST_QR_CLOSE, BROADCAST_QR_HEADING, BROADCAST_QR_LEAD, BROADCAST_QR_NAME, BROADCAST_QR_START } from "./lib/broadcastQr.ts";
+import { qrPath } from "./lib/broadcastQrCode.ts";
 
 export function BroadcastQrDialog({ ask, onClose }: { ask: { link: string; start: (() => void) | null } | null; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
