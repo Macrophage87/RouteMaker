@@ -30,8 +30,10 @@ between two agencies about the same road is a thing a reviewer needs to see.
 
 from __future__ import annotations
 
+import functools
 import math
-from collections.abc import Collection, Mapping, Sequence
+import re
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from routemaker import agency_roads, divided
@@ -56,6 +58,23 @@ BEARING_TOLERANCE_DEG = 25.0
 # shorter line and 0.01 as a fraction of the way, and it is the way that the
 # count is being asked to describe. See `_overlap` for the other direction.
 MIN_OVERLAP_FRACTION = 0.5
+
+# A count line whose nearest candidate is a motorway way is the freeway's count, and only
+# freeway ways take it (`conflate`'s `freeway`): a surface street running under or beside an
+# elevated freeway lies within MAX_SEPARATION_M of its line, with the same bearing.
+FREEWAY_LINES_FREEWAY_ONLY = True
+# A count line this busy that a freeway on another level is also a candidate for is the
+# freeway's (`conflate`'s `layers`). Our default, unmeasured: a freeway count, not a
+# street's; Water Street NW took 37,593 under the Whitehurst Freeway.
+FREEWAY_STACKED_MIN_AADT = 20_000
+# A count under this on a road OSM classes trunk or primary is not read
+# (`drop_implausible`): the road's own class says far more traffic, so the line belongs to
+# something else or was keyed wrong. Piscataway Road (primary, MD 223) took 40 a day from
+# MDOT SHA's "FLORAL PARK RD" section and was rated on it (the methodology audit, area 04,
+# 2026-11-13). Our default, unmeasured; MDOT SHA's lowest Maryland-route sections run 32 to
+# 45 a day on short spurs that OSM classes below primary.
+IMPLAUSIBLE_AADT = 200
+IMPLAUSIBLE_CLASSES = frozenset({"trunk", "primary"})
 
 # Beyond this the features are not the same road, whatever their bearing.
 MAX_SEPARATION_M = 20.0
@@ -91,6 +110,11 @@ class AgencyFeature:
     source: str
     year: int | None = None
     agency: str | None = None
+    # The street and route the agency names the count for, where it does (MDOT SHA's
+    # `ROADNAME` and route number as OSM writes a `ref`, "MD 97"); None for a line that
+    # names neither (`conflate`'s `names`).
+    name: str | None = None
+    ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +148,30 @@ class ConflationResult:
     # two agencies disagreeing about the same road rather than only the winner.
     rejected: list[tuple[int, Match]]
     unmatched_features: list[str]
+
+
+def drop_implausible(
+    result: ConflationResult, highways: Mapping[int, str | None]
+) -> tuple[ConflationResult, list[Match]]:
+    """`result` without the counts under IMPLAUSIBLE_AADT on a trunk or primary way
+    (`highways`, each way's OSM `highway`), and the matches dropped. Such a way is rated as
+    an uncounted one is, and its count is listed with the rejected ones for a reviewer."""
+    dropped = [
+        match
+        for way_id, match in result.matched.items()
+        if match.aadt < IMPLAUSIBLE_AADT and highways.get(way_id) in IMPLAUSIBLE_CLASSES
+    ]
+    if not dropped:
+        return result, []
+    gone = {match.osm_way_id for match in dropped}
+    return (
+        ConflationResult(
+            matched={w: m for w, m in result.matched.items() if w not in gone},
+            rejected=result.rejected + [(m.osm_way_id, m) for m in dropped],
+            unmatched_features=result.unmatched_features,
+        ),
+        dropped,
+    )
 
 
 def _mean_bearing(coordinates: Sequence[tuple[float, float]]) -> float | None:
@@ -526,8 +574,11 @@ def conflate(
     min_overlap: float = MIN_OVERLAP_FRACTION,
     max_separation_m: float = MAX_SEPARATION_M,
     along_counts: bool = True,
-    along_agencies: Collection[str] | None = ("vdot",),
+    along_agencies: Collection[str] | None = None,
     name_required: Collection[int] = (),
+    freeway: Collection[int] = (),
+    layers: Mapping[int, int] | None = None,
+    names: Mapping[int, tuple[str | None, str | None]] | None = None,
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
 
@@ -545,10 +596,35 @@ def conflate(
     on the line, is the nearer. The share that must reach `min_overlap` is still the whole
     way's, so a way that only touches the end of a line is no candidate.
 
+    `freeway` are the motorway ways (`highway=motorway`, not its links): a count line whose
+    nearest candidate is one of them is that freeway's count, and so is a line of at least
+    FREEWAY_STACKED_MIN_AADT a day that a freeway way on another level (`layers`, each
+    way's OSM layer, a bridge with none read as 1) is a candidate for: the PC's read of the
+    live data found Water Street's own way nearest the freeway's line, under the freeway at
+    layer 2, and no other way takes it
+    (FREEWAY_LINES_FREEWAY_ONLY). Water Street NW ran under the Whitehurst Freeway, scored
+    1.00 against the freeway's 37,593-a-day line and was rated LTS 4 on it; the owner,
+    2026-11-13: "water street is definitely not a high stress road", then "If I say that a
+    road is incorrectly rated that means that I feel the formula is wrong. ... Or the raw
+    data".
+
+    `names` is each way's OSM name and ref. A line that names its street (`AgencyFeature`
+    `name`) is no candidate for a named way whose name disagrees with it, unless the two
+    share a route number (`same_road`): MDOT SHA draws one count's section on past its own
+    road, so "THIRD AVE (CO 675), MD 97 TO OBRECHT RD (AHEAD)" gave Obrecht Road Third
+    Avenue's 6,152 a day, and "MONOCACY BLVD (CO 413)" gave Gas House Pike 9,374 (the
+    borrowed-counts check, 2026-11-13; the owner: "Or the raw data"). A way left with no
+    count is rated as any uncounted road is.
+
     `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
     was a candidate for; it never changes or rejects a first-pass match, and lists a way it
     refuses for a claimed stretch in `rejected`, as the first pass does. It reads only
-    the lines of `along_agencies` (None: every line); the owner approved it for VDOT's counts.
+    the lines of `along_agencies` (None: every line). The owner approved it for VDOT's
+    counts (2026-10-31); since 2026-11-13 it reads every agency's, by his rule that a
+    misrated road means the raw data or the formula is wrong ("Don't use my calls as
+    one-offs but guides to inference"): Kennedy Street NW east of Georgia Avenue, one OSM
+    way past several of DDOT's block lines, took none of them and kept DDOT's 2020 LTS 4,
+    where the line it lies along carries 6,272 a day.
     Its ways are ranked before any claims, as the first pass's are, so the input order
     decides nothing.
 
@@ -627,7 +703,42 @@ def conflate(
             )
             if overlap < min_overlap:
                 continue
+            if names is not None and not same_road(names.get(way_id), feature):
+                continue
             candidates.append((overlap, way_id, feature, span, mean_distance, ranked))
+
+    # A freeway's count line goes to the freeway only (FREEWAY_LINES_FREEWAY_ONLY).
+    freeways = frozenset(freeway)
+    # A line is a freeway's where a freeway way is its nearest candidate: a street's own line
+    # beside a freeway stays the street's.
+    nearest: dict[str, tuple[float, bool]] = {}
+    for _o, way_id, feature, _span, mean_distance, _ranked in candidates:
+        mine = (mean_distance, way_id not in freeways)
+        if feature.feature_id not in nearest or mine < nearest[feature.feature_id]:
+            nearest[feature.feature_id] = mine
+    freeway_lines = (
+        {fid for fid, (_d, street) in nearest.items() if not street}
+        if FREEWAY_LINES_FREEWAY_ONLY and freeways
+        else set()
+    )
+    if FREEWAY_LINES_FREEWAY_ONLY and freeways and layers is not None:
+        # Stacked: the line cannot tell an elevated freeway from the street beneath it.
+        levels: dict[str, tuple[set[int], set[int]]] = {}
+        for _o, way_id, feature, *_r in candidates:
+            if feature.aadt < FREEWAY_STACKED_MIN_AADT:
+                continue
+            fw, st = levels.setdefault(feature.feature_id, (set(), set()))
+            (fw if way_id in freeways else st).add(layers.get(way_id, 0))
+        freeway_lines |= {fid for fid, (fw, st) in levels.items() if fw and st and fw != st}
+    # Held back, not dropped: a freeway's line that no freeway way takes after all (K Street
+    # NW's own 23,366 line, a freeway on another layer within reach) goes back to the
+    # streets it was a candidate for, after every other line has been placed.
+    held = []
+    if freeway_lines:
+        held = [c for c in candidates if c[1] not in freeways and c[2].feature_id in freeway_lines]
+        candidates = [
+            c for c in candidates if c[1] in freeways or c[2].feature_id not in freeway_lines
+        ]
 
     # Best first: precedence, then overlap inside the line's ends (hunt D3), then how
     # close the way actually runs to the feature - geometry breaking the tie rather
@@ -656,23 +767,31 @@ def conflate(
     used_features: set[str] = set()
     claimed: dict[str, list[tuple[float, float]]] = {}
 
-    for overlap, way_id, feature, span, _mean_distance, _ranked in sorted(candidates, key=rank):
-        match = Match(
-            osm_way_id=way_id,
-            feature_id=feature.feature_id,
-            aadt=feature.aadt,
-            source=feature.source,
-            year=feature.year,
-            score=overlap,
-            agency=feature.agency,
-        )
-        if way_id in matched or not _claim(claimed, feature.feature_id, span):
-            rejected.append((way_id, match))
-            continue
-        matched[way_id] = match
-        used_features.add(feature.feature_id)
+    def place(chosen) -> None:
+        for overlap, way_id, feature, span, _mean_distance, _ranked in sorted(chosen, key=rank):
+            match = Match(
+                osm_way_id=way_id,
+                feature_id=feature.feature_id,
+                aadt=feature.aadt,
+                source=feature.source,
+                year=feature.year,
+                score=overlap,
+                agency=feature.agency,
+            )
+            if way_id in matched or not _claim(claimed, feature.feature_id, span):
+                rejected.append((way_id, match))
+                continue
+            matched[way_id] = match
+            used_features.add(feature.feature_id)
 
-    # The ways no single count line was a candidate for at all (`_along_counts`).
+    place(candidates)
+    place([c for c in held if c[2].feature_id not in used_features])
+    candidates += held
+    # The freeway's lines a freeway way did take stay off the streets in the next pass too.
+    freeway_lines = {m.feature_id for w, m in matched.items() if w in freeways} & freeway_lines
+
+    # The ways no single count line was a candidate for at all (`_along_counts`). A street
+    # beside a freeway does not take the freeway's line this way either.
     contested = {way_id for _overlap, way_id, *_rest in candidates}
     found = []
     for entry in ways if along_counts else ():
@@ -688,6 +807,8 @@ def conflate(
             bearing_tolerance_deg,
             min_overlap,
             max_separation_m,
+            skip=frozenset() if way_id in freeways else freeway_lines,
+            keep=None if names is None else functools.partial(same_road, names.get(way_id)),
         )
         if along is not None:
             found.append((way_id, *along))
@@ -724,6 +845,38 @@ def conflate(
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
 
 
+def _refs(ref: str | None) -> set[str]:
+    """A `ref` as a set of route numbers, "I-95;MD 97" as {"I95", "MD97"}."""
+    return {re.sub(r"[^A-Z0-9]", "", part.upper()) for part in (ref or "").split(";")} - {""}
+
+
+def same_road(way: tuple[str | None, str | None] | None, feature: AgencyFeature) -> bool:
+    """Whether a count line may be a way's count by the names they carry (`conflate`'s
+    `names`): yes unless both name a street, the names disagree (`names_agree`), and they
+    share no route number. Georgia Avenue is MDOT SHA's "ROXBURY MILLS RD (MD 97)" north
+    of Brookeville, both MD 97; Obrecht Road is not "THIRD AVE (CO 675)"."""
+    if way is None or not feature.name:
+        return True
+    name, ref = way
+    if names_agree(name, feature.name) is not False:
+        return True
+    return bool(_refs(ref) & _refs(feature.ref))
+
+
+def way_layer(tags: Mapping[str, str]) -> int:
+    """A way's level for `conflate`'s `layers`: its OSM `layer`, a bridge with none read as
+    1, a tunnel with none as -1, else 0."""
+    try:
+        return int(tags["layer"])
+    except (KeyError, ValueError):
+        pass
+    if tags.get("bridge", "no") != "no":
+        return 1
+    if tags.get("tunnel", "no") != "no":
+        return -1
+    return 0
+
+
 def _precedence(feature: AgencyFeature) -> int:
     try:
         return SOURCE_PRECEDENCE.index(feature.source)
@@ -744,8 +897,13 @@ def _precedence(feature: AgencyFeature) -> int:
 # measures a block layer: probe by probe, against the count line it runs along there,
 # with the heading taken locally. The lines that win `MIN_BLOCK_PROBES` of its probes are
 # the ones it lies along; where they between them cover `min_overlap` of the way, the way
-# takes the highest of their counts (of the best-ranked source among them), the
-# stress-averse reading of a street whose stretches were counted differently. Each line's
+# takes the count most of its length carries (`_typical_count`: the median weighted by the
+# probes each line wins, the lower of two at a tie, from the best-ranked source among them).
+# It took the highest until 2026-11-13, the opposite of `aadt_smoothing`, which lowers a
+# count above its street's median as "probably bunching by the intersection"; the
+# methodology audit (area 04, suggestion 4) found about 30 mi taking a busier link's count
+# that way, and the owner asked for the audit's changes ("Let's implement all the
+# reccomended changes in logic"). Each line's
 # stretch is claimed as in the first pass, so a way lying alongside one that already took
 # that stretch - the other carriageway, a frontage road - still does not.
 def _along_counts(
@@ -757,14 +915,19 @@ def _along_counts(
     bearing_tolerance_deg: float,
     min_overlap: float,
     max_separation_m: float,
+    skip: Collection[str] = frozenset(),
+    keep: Callable[[AgencyFeature], bool] | None = None,
 ) -> tuple[AgencyFeature, float, float, list[tuple[str, tuple[float, float]]]] | None:
     """The count a way left without a candidate would take from the lines it runs along:
     the line, how much of the way they cover, the mean probe distance, and each line's
-    stretch to claim; or None. Claims nothing (`conflate` ranks the ways first)."""
+    stretch to claim; or None. Claims nothing (`conflate` ranks the ways first). `keep`
+    says which lines may count for this way (`conflate`'s `names`)."""
     near = [
         position
         for position in index.near(coordinates)
-        if agencies is None or features[position].agency in agencies
+        if (agencies is None or features[position].agency in agencies)
+        and features[position].feature_id not in skip
+        and (keep is None or keep(features[position]))
     ]
     if not near:
         return None
@@ -806,11 +969,30 @@ def _along_counts(
         for position, spots in sorted(lying_along.items())
     ]
     near_by = [d for position in lying_along for d in distances[position]]
-    chosen = min(
-        (features[position] for position in lying_along),
-        key=lambda feature: (_precedence(feature), -feature.aadt, feature.feature_id),
-    )
+    chosen = _typical_count(features, lying_along)
     return chosen, min(1.0, covered), sum(near_by) / len(near_by), spans
+
+
+def _typical_count(
+    features: Sequence[AgencyFeature], lying_along: Mapping[int, list[float]]
+) -> AgencyFeature:
+    """Of the lines a way lies along, the best-ranked source's line whose count is the median
+    weighted by how much of the way each covers (probes won), the lower one at a tie."""
+    best = min(_precedence(features[position]) for position in lying_along)
+    ranked = sorted(
+        (
+            (features[position].aadt, features[position].feature_id, len(spots), position)
+            for position, spots in lying_along.items()
+            if _precedence(features[position]) == best
+        )
+    )
+    total = sum(weight for _aadt, _fid, weight, _position in ranked)
+    running = 0
+    for _aadt, _fid, weight, position in ranked:
+        running += weight
+        if 2 * running >= total:
+            return features[position]
+    return features[ranked[-1][3]]
 
 
 def share_with_carriageways(
