@@ -3055,7 +3055,9 @@ class LoopOut(Schema):
     tried: int = Field(default=0, description="Routes asked for the way back.")
     same_way: bool = Field(
         default=False,
-        description="The rider asked to come back the same way (`out_and_back`): nothing was avoided.",
+        description=(
+            "The rider asked to come back the same way (`out_and_back`): nothing was avoided."
+        ),
     )
     fallback: str | None = Field(
         default=None,

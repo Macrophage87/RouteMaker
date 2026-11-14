@@ -636,7 +636,9 @@ class TestMakeItALoop:
         assert loop["fallback"] == "out_and_back"
         assert loop["overlap_pct"] == 100.0 and loop["shared_m"] == loop["return_m"]
 
-    def test_out_and_back_comes_back_the_same_way_on_purpose(self, client, segments, router) -> None:
+    def test_out_and_back_comes_back_the_same_way_on_purpose(
+        self, client, segments, router
+    ) -> None:
         # Plan's Out and back (Stephen 2026-11-13): one request for the whole plan, no ways
         # back asked with the way out excluded, and the answer says it was asked for.
         fake = router(self.loop_router())
