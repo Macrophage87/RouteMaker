@@ -868,39 +868,50 @@ if (mine(3)) {
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
   const none = await p.eval("document.querySelectorAll('input[placeholder=Default]').length");
   check("target distance: not offered below the top of the traffic slider", none === 0, String(none));
-  const toggle = await axNode(p, ".loop-toggle input");
-  check("loop: the toggle is named for what it does and described, off by default", toggle?.role === "checkbox" && toggle?.name === "Make it a loop" && toggle?.checked === false && /different way back/.test(toggle?.description ?? ""), JSON.stringify(toggle));
+  // How the ride ends: One way, Loop or Out and back (Stephen 2026-11-13, #1238; it was the "Make it a loop" box).
+  const ways = await p.eval("(() => { const f = document.querySelector('fieldset.loop-ways'); return { legend: f?.querySelector('legend')?.textContent, radios: [...(f?.querySelectorAll('input[type=radio]') ?? [])].map((r) => [r.closest('label').textContent.trim(), r.checked]) }; })()");
+  const group = await axNode(p, "fieldset.loop-ways");
+  // Names and roles as a screen reader meets them, not the label's text alone.
+  await p.eval("document.querySelectorAll('fieldset.loop-ways input').forEach((r, i) => { r.id = '__way' + i; }); true");
+  const radioAx = [];
+  for (const i of [0, 1, 2]) {
+    const ax = await axNode(p, `#__way${i}`);
+    radioAx.push([ax?.role, ax?.name, ax?.checked]);
+  }
+  check("loop: How the ride ends is a group of three radios, One way chosen by default, and described", ways.legend === "How the ride ends" && group?.name === "How the ride ends" && JSON.stringify(radioAx) === JSON.stringify([["radio", "One way", true], ["radio", "Loop", false], ["radio", "Out and back", false]]) && /different way back/.test(group?.description ?? ""), JSON.stringify({ ways, radioAx, name: group?.name, description: group?.description }));
+  // The keyboard's way in a radio group: the Tab stop is the chosen radio, and an arrow moves to the next and chooses it.
   const before = p.routeRequests;
-  await p.eval("document.querySelector('.loop-toggle input').focus(); true");
-  await p.key(" ", "Space", 32);
+  await p.eval("document.querySelectorAll('fieldset.loop-ways input')[0].focus(); true");
+  await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(1500);
-  const checked = await p.eval("document.querySelector('.loop-toggle input').checked");
-  const keyFocus = await p.eval("document.activeElement === document.querySelector('.loop-toggle input')");
-  // Plan-first (see pressRoute): Space plans nothing and keeps the focus; Route plans once.
+  const checked = await p.eval("document.querySelectorAll('fieldset.loop-ways input')[1].checked");
+  const keyFocus = await p.eval("document.activeElement === document.querySelectorAll('fieldset.loop-ways input')[1]");
+  // Plan-first (see pressRoute): the arrow plans nothing; Route plans once.
   const spacePlans = p.routeRequests - before;
   await pressRoute(p);
   await sleep(1500);
-  check("loop: Space turns it on, keeps the focus and plans nothing, then Route plans once", checked === true && keyFocus && spacePlans === 0 && p.routeRequests - before === 1 && /loop=1/.test(await p.eval("location.hash")), `${spacePlans} plans on Space, ${p.routeRequests - before} in all`);
+  check("loop: an arrow from One way moves to Loop and chooses it, and plans nothing, then Route plans once", checked === true && keyFocus && spacePlans === 0 && p.routeRequests - before === 1 && /loop=1/.test(await p.eval("location.hash")), `${spacePlans} plans on the arrow, ${p.routeRequests - before} in all`);
   await p.close();
 }
 if (mine(3)) {
   // A ride that ends where it starts is a loop, shown on and fixed.
   const p = await open({ route: S_DEFAULT, hash: "#p=-77.04000,38.91000;-77.01000,38.89000;-77.04000,38.91000&preset=default&v=2&stress=70&hills=0" });
-  const state = await axNode(p, ".loop-toggle input");
-  check("loop: a ride ending where it starts shows the toggle on and not changeable, and says why", state?.checked === true && state?.disabled === true && /ends where it starts/.test(state?.description ?? ""), JSON.stringify(state));
-  // aria-disabled, not disabled: it stays in the Tab order, and Space changes nothing (the a11y review's N6).
+  const RADIOS = "document.querySelectorAll('fieldset.loop-ways input')";
+  const state = await p.eval(`(() => { const r = ${RADIOS}; return { oneWay: r[0].checked, loop: r[1].checked, stuck: r[0].getAttribute('aria-disabled') }; })()`);
+  const group = await axNode(p, "fieldset.loop-ways");
+  check("loop: a ride ending where it starts shows Loop chosen and One way not choosable, and says why", !state.oneWay && state.loop && state.stuck === "true" && /ends where it starts/.test(group?.description ?? ""), JSON.stringify({ ...state, description: group?.description }));
+  // aria-disabled, not disabled: One way can still be reached and read with its reason (the a11y review's N6). The
+  // keyboard reaches it from Loop, the group's Tab stop, with an arrow, which would choose it: that changes nothing.
   const before = p.routeRequests;
-  await p.eval("document.querySelector('.loop-toggle input').focus(); true");
-  const focusable = await p.eval("document.activeElement === document.querySelector('.loop-toggle input')");
-  await p.key(" ", "Space", 32);
+  await p.eval(`${RADIOS}[1].focus(); true`);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
   await sleep(1200);
-  const after = await p.eval("({ checked: document.querySelector('.loop-toggle input').checked, attr: document.querySelector('.loop-toggle input').getAttribute('aria-disabled'), disabled: document.querySelector('.loop-toggle input').disabled })");
-  check("loop: when implied it keeps the focus, and Space neither unchecks it nor plans", focusable && after.checked && after.attr === "true" && !after.disabled && p.routeRequests === before, JSON.stringify({ focusable, ...after, plans: p.routeRequests - before }));
-  const size = await p.eval("(() => { const r = document.querySelector('.loop-toggle').getBoundingClientRect(); return Math.round(r.height); })()");
-  check("loop: its row is a 44 px target (2.5.8, and the owner's 44 px rule)", size >= 44, `${size} px`);
+  const after = await p.eval(`(() => { const r = ${RADIOS}; return { onOneWay: document.activeElement === r[0], loop: r[1].checked, oneWay: r[0].checked, disabled: r[0].disabled, attr: r[0].getAttribute('aria-disabled') }; })()`);
+  check("loop: when implied an arrow onto One way neither chooses it nor plans, and Loop stays chosen", after.onOneWay && after.loop && !after.oneWay && !after.disabled && after.attr === "true" && p.routeRequests === before, JSON.stringify({ ...after, plans: p.routeRequests - before }));
+  const size = await p.eval("Math.min(...[...document.querySelectorAll('.loop-way')].map((x) => Math.round(x.getBoundingClientRect().height)))");
+  check("loop: each choice is a 44 px target (2.5.8, and the owner's 44 px rule)", size >= 44, `${size} px`);
   await p.close();
 }
-
 if (mine(2)) {
   // Past the target (OWNER-DECISIONS 271): said in words, miles first, in the summary
   // and in the announcement, not as a colour.
@@ -1358,43 +1369,47 @@ if (mine(2)) {
   check("roads only: on Mass Ride it keeps the focus, and Space neither unchecks it nor plans", after.checked && after.attr === "true" && !after.disabled && after.focus && p.routeRequests === before && !/trailsoff/.test(await p.eval("location.hash")), JSON.stringify({ ...after, plans: p.routeRequests - before }));
   await p.close();
 }
-// ---- 17. Make it a loop by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393) ----
+// ---- 17. How the ride ends by the search, and the Plan button (OWNER-DECISIONS 388, 389, 392, 393; One way / Loop / Out and back since #1238) ----
 const FIRST_HINT = "Place the starting point, then a stop or two along the way.";
 if (mine(10)) {
-  // An empty planner: the box is there with no point, says what to place when checked, and says it once.
+  // An empty planner: the choice is there with no point, says what to place when Loop is chosen, and says it once.
   const p = await newPage(b, { width: 1280, height: 900 });
   await mock(p, S_DEFAULT, {});
   await media(p, {});
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
-  await p.waitFor("!!document.querySelector('.loop-toggle input')", 40000);
+  await p.waitFor("!!document.querySelector('fieldset.loop-ways input')", 40000);
   await sleep(800);
-  const box = await axNode(p, ".loop-toggle input");
+  const RADIOS = "document.querySelectorAll('fieldset.loop-ways input')";
+  const chosen = `[...${RADIOS}].map((r) => r.checked)`;
+  const start = await p.eval(chosen);
   // Plan starts as a loop (Stephen 2026-10-20: "For plan we should do loop as default").
-  check("loop first: with no point placed the box is in the page, named \"Make it a loop\", checked (Plan starts as a loop)", box?.role === "checkbox" && box?.name === "Make it a loop" && box?.checked === true, JSON.stringify(box));
-  const place = await p.eval("(() => { const t = document.querySelector('.loop-toggle'); const i = t.closest('section'); const r = t.getBoundingClientRect(); return { inPoints: i?.getAttribute('aria-labelledby') === 'points-heading', afterSearch: !!t.closest('.section-head'), outsideRide: !t.closest('.ride-settings-body'), shown: r.height > 0, row: Math.round(t.getBoundingClientRect().height) }; })()");
+  check("loop first: with no point placed the choice is in the page, Loop chosen (Plan starts as a loop)", JSON.stringify(start) === JSON.stringify([false, true, false]), JSON.stringify(start));
+  const place = await p.eval("(() => { const t = document.querySelector('fieldset.loop-ways'); const i = t.closest('section'); const r = t.getBoundingClientRect(); return { inPoints: i?.getAttribute('aria-labelledby') === 'points-heading', afterSearch: !!t.closest('.section-head'), outsideRide: !t.closest('.ride-settings-body'), shown: r.height > 0, row: Math.min(...[...t.querySelectorAll('.loop-way')].map((x) => Math.round(x.getBoundingClientRect().height))) }; })()");
   check("loop first: it is in the Points section, in its head row (UI-CLEANUP: Swap, Loop, Edit, Info), and not behind the Ride line's Edit", place.inPoints && place.afterSearch && place.outsideRide && place.shown, JSON.stringify(place));
-  check("loop first: its row is a 44 px target", place.row >= 44, `${place.row} px`);
+  check("loop first: each choice is a 44 px target", place.row >= 44, `${place.row} px`);
   // Every live region in the page, not only the first one found: the road panel's dialog holds a
   // status region of its own (S1) ahead of the page's in the document, and "once" means once in all of them.
   await p.eval("window.__said = []; const sel = '[role=status], [role=alert], [aria-live]:not([aria-live=off])'; for (const live of document.querySelectorAll(sel)) if (!live.parentElement?.closest(sel)) new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
-  const hintOf = "(() => { const h = document.getElementById(document.querySelector('.loop-toggle input').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height >= 10 && r.width >= 50 && getComputedStyle(h).visibility !== 'hidden' && !h.classList.contains('visually-hidden') && !h.closest('.visually-hidden, [hidden]'), size: Math.round(r.width) + 'x' + Math.round(r.height) }; })()";
+  const hintOf = "(() => { const h = document.getElementById(document.querySelector('fieldset.loop-ways').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height >= 10 && r.width >= 50 && getComputedStyle(h).visibility !== 'hidden' && !h.classList.contains('visually-hidden') && !h.closest('.visually-hidden, [hidden]'), size: Math.round(r.width) + 'x' + Math.round(r.height) }; })()";
   const first = await p.eval(hintOf);
-  check("loop first: checked with no point, the box is described by \"Place the starting point, then a stop or two along the way.\", said and not shown (Stephen 2026-10-20: simpler)", box?.description === FIRST_HINT && first.text === FIRST_HINT && !first.visible, JSON.stringify({ first, description: box?.description }));
-  // Unticked and ticked again: each said once.
-  await p.eval("document.querySelector('.loop-toggle input').focus(); true");
-  await p.key(" ", "Space", 32);
+  const group = await axNode(p, "fieldset.loop-ways");
+  check("loop first: Loop chosen with no point, the choice is described by \"Place the starting point, then a stop or two along the way.\", said and not shown (Stephen 2026-10-20: simpler)", group?.description === FIRST_HINT && first.text === FIRST_HINT && !first.visible, JSON.stringify({ first, description: group?.description }));
+  // One way, then Loop again, by the keyboard: from Loop (the group's Tab stop) an arrow back, then one forward. Each said once.
+  await p.eval(`${RADIOS}[1].focus(); true`);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
   await sleep(700);
-  const off = await axNode(p, ".loop-toggle input");
-  await p.key(" ", "Space", 32);
+  const off = await p.eval(chosen);
+  await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(700);
-  const on = await axNode(p, ".loop-toggle input");
-  check("loop first: Space unticks it and ticks it again", off?.checked === false && on?.checked === true, JSON.stringify({ off: off?.checked, on: on?.checked }));
-  check("loop first: the box is described by the hint again", on?.description === FIRST_HINT, JSON.stringify(on?.description));
-  const live = await p.eval("document.querySelectorAll('.loop-toggle [role=status], .loop-toggle [role=alert], .loop-toggle [aria-live]').length");
-  check("loop first: the box and its hint hold no live region of their own (the one announcement is the page's)", live === 0, String(live));
+  const on = await p.eval(chosen);
+  check("loop first: an arrow back chooses One way, and one forward Loop again", JSON.stringify(off) === JSON.stringify([true, false, false]) && JSON.stringify(on) === JSON.stringify([false, true, false]), JSON.stringify({ off, on }));
+  const again = (await axNode(p, "fieldset.loop-ways"))?.description;
+  check("loop first: the choice is described by the hint again", again === FIRST_HINT, JSON.stringify(again));
+  const live = await p.eval("document.querySelectorAll('fieldset.loop-ways [role=status], fieldset.loop-ways [role=alert], fieldset.loop-ways [aria-live]').length");
+  check("loop first: the choice and its hint hold no live region of their own (the one announcement is the page's)", live === 0, String(live));
   const said = await p.eval("window.__said");
-  check("loop first: unticking and ticking are each announced once", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.filter((t) => t.includes("Loop off")).length === 1 && said.length === 2, JSON.stringify(said));
-  check("loop first: ticking it plans nothing, and the focus stays on the box", p.routeRequests === 0 && (await p.eval("document.activeElement === document.querySelector('.loop-toggle input')")), `${p.routeRequests} plans`);
+  check("loop first: One way and Loop are each announced once", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.filter((t) => t.includes("Loop off")).length === 1 && said.length === 2, JSON.stringify(said));
+  check("loop first: choosing plans nothing, and the focus stays on Loop", p.routeRequests === 0 && (await p.eval(`document.activeElement === ${RADIOS}[1]`)), `${p.routeRequests} plans`);
   check("loop first: the empty-plan words do not send the rider to the Ride line", !/Edit button|ride settings/.test(await p.eval("document.querySelector('.tips-body').textContent")), "");
   await p.close();
 }
@@ -1406,14 +1421,14 @@ if (mine(1)) {
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/#preset=mass-ride&v=2` });
   await p.waitFor("!!document.querySelector('#points-search')", 40000);
   await sleep(800);
-  check("loop first: Mass Ride has no Make it a loop box", (await p.eval("document.querySelectorAll('.loop-toggle').length")) === 0 && !/loop/i.test(await p.eval("document.querySelector('#points-search').closest('section').textContent")), "");
+  check("loop first: Mass Ride has no How the ride ends choice", (await p.eval("document.querySelectorAll('.loop-ways').length")) === 0 && !/loop/i.test(await p.eval("document.querySelector('#points-search').closest('section').textContent")), "");
   await p.close();
 }
 if (mine(9)) {
-  // With a route shown and the points compact, the box is still there (it sits outside what Edit points hides).
+  // With a route shown and the points compact, the choice is still there (it sits outside what Edit points hides).
   const p = await open({ ride: false });
-  const compact = await p.eval("(() => { const s = document.querySelector('#points-search'); const t = document.querySelector('.loop-toggle input'); return { searchHidden: s.hidden, box: !!t && t.getBoundingClientRect().height > 0 }; })()");
-  check("loop first: with a route shown and the points compact, the search stays open (more stops by search) and the box stays", !compact.searchHidden && compact.box, JSON.stringify(compact));
+  const compact = await p.eval("(() => { const s = document.querySelector('#points-search'); const t = document.querySelector('fieldset.loop-ways'); return { searchHidden: s.hidden, box: !!t && t.getBoundingClientRect().height > 0 }; })()");
+  check("loop first: with a route shown and the points compact, the search stays open (more stops by search) and How the ride ends stays", !compact.searchHidden && compact.box, JSON.stringify(compact));
   // The Plan button: first in the bar, current on the planner, returns from a sheet to the planner's heading.
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => ({ text: x.querySelector('span').textContent, current: x.getAttribute('aria-current') }))");
   check("plan: five buttons, Plan first and current on the planner, the others not", bar.length === 5 && bar[0].text === "Plan" && bar[0].current === "true" && bar.slice(1).every((x) => !x.current), JSON.stringify(bar));
@@ -1594,8 +1609,8 @@ if (mine(26)) {
     const rows = await p.eval("document.querySelectorAll('.points > li').length");
     check("locate: one point is in the plan", rows >= 1, String(rows));
     // Every text the live regions held during the second press, to hear the pending sentence too.
-    // Plan starts as a loop, which has no To box: untick it, so the next press is Use my location on To.
-    await p.eval("document.querySelector('.loop-toggle input').click(); true");
+    // Plan starts as a loop, which has no To box: choose One way, so the next press is Use my location on To.
+    await p.eval("document.querySelector('fieldset.loop-ways input').click(); true");
     await sleep(500);
     await p.eval("(() => { window.__heard = []; const o = new MutationObserver(() => { for (const e of document.querySelectorAll('[role=status],[aria-live]')) { const t = e.textContent.trim(); if (t && !window.__heard.includes(t)) window.__heard.push(t); } }); o.observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
     await press(p);
@@ -2247,13 +2262,18 @@ if (mine(34)) {
   // The compact summary: a list a screen reader reads in order, one short line a fact, no source under each.
   const brief = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const ul = d.querySelector('ul.road-info-summary');
     const det = d.querySelector('details.road-info-details');
+    const more = [...d.querySelectorAll('ul.road-info-summary')][1];
     return { tag: ul?.tagName ?? '', lines: [...(ul?.querySelectorAll(':scope > li') ?? [])].map((li) => li.textContent),
+      more: [...(more?.querySelectorAll(':scope > li') ?? [])].map((li) => li.textContent), moreName: more?.getAttribute('aria-label') ?? '',
       sourcesInSummary: !!ul?.querySelector('.road-info-source'), detailsOpen: det?.open ?? null,
       summaryFirst: det?.firstElementChild?.tagName ?? '', summaryText: det?.querySelector('summary')?.textContent ?? '' }; })()`);
+  // Since #1258 (the owner, 2026-11-13) the level and its why lead, and the other facts follow the evidence in a second
+  // list, "More about this road".
   check("road panel: the summary is a list of short lines in order, no source under each, and no Mass Ride line on another map",
     brief.tag === "UL" && !brief.sourcesInSummary && JSON.stringify(brief.lines) === JSON.stringify([
-      "Traffic stress: LTS 3 · , For experienced cyclists", "Why: 30 mph, mixed traffic", "Speed: 30 mph (48 km/h), posted",
-      "Lanes: 2 each way", "Traffic: 18,400 a day (DDOT 2024)", "Bike lane: Painted", "Bikes: Allowed"]), JSON.stringify(brief.lines));
+      "Traffic stress: LTS 3 · , For experienced cyclists", "Why: 30 mph, mixed traffic"]) && brief.moreName === "More about this road" &&
+      JSON.stringify(brief.more) === JSON.stringify(["Speed: 30 mph (48 km/h), posted", "Lanes: 2 each way", "Traffic: 18,400 a day (DDOT 2024)", "Bike lane: Painted", "Bikes: Allowed"]),
+    JSON.stringify({ lines: brief.lines, more: brief.more, moreName: brief.moreName }));
   const sumAx = await axNode(p, "dialog.road-info details > summary");
   check("road panel: Details and sources is a native disclosure, closed at first, and says so",
     brief.detailsOpen === false && brief.summaryFirst === "SUMMARY" && brief.summaryText === "Details and sources" && sumAx?.expanded === false,
@@ -2476,9 +2496,10 @@ if (mine(34)) {
     const after = (a, b) => !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
     return { tags: [...(ul?.querySelectorAll('li > *') ?? [])].map((b) => b.tagName + ':' + b.textContent + ':' + (b.getAttribute('aria-disabled') ?? '')),
       underHeading: after(d.querySelector('h2'), ul) && after(ul, d.querySelector('ul.road-info-summary')), pins: document.querySelectorAll('.pin').length }; })()`);
-  // Set as Home joined the row in 27ad1dae ("Set Home by address search or a map tap"); Add note in Plan with route notes (#1154).
-  check("road panel: under the heading, Set as start, Set as end, Add as stop, Add note and Set as Home are real buttons, available on a two-point plan",
-    topAsk.opened && JSON.stringify(top.tags) === JSON.stringify(["BUTTON:Set as start:", "BUTTON:Set as end:", "BUTTON:Add as stop:", "BUTTON:Add note:", "BUTTON:Set as Home:"]) && top.underHeading,
+  // Add note in Plan with route notes (#1154). Set as Home left the road panel in #1258 (the owner, 2026-11-13); Home is set
+  // from the Home sheet's search, the map or Settings (App.tsx).
+  check("road panel: under the heading, Set as start, Set as end, Add as stop and Add note are real buttons, available on a two-point plan",
+    topAsk.opened && JSON.stringify(top.tags) === JSON.stringify(["BUTTON:Set as start:", "BUTTON:Set as end:", "BUTTON:Add as stop:", "BUTTON:Add note:"]) && top.underHeading,
     JSON.stringify({ ...top, ...topAsk, now: topAsk.opened ? undefined : await infoNow(p) }));
   await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-place button')].find((b) => b.textContent === 'Add as stop')?.focus(); true");
   await armInfoClose(p);
@@ -5032,9 +5053,12 @@ if (mine(1)) {
   // The card's action says Ride here since 178b5223 ("one Ride here": the stop card and Go's spot card now name it as the lists do).
   const p = await goWith("granted");
   const card = {};
+  // Everything said from the press on, not the last few lines: other polite lines (the map's notes, Settings' status
+  // lines) can come after it.
+  const from = await p.eval("window.__said.length");
   const at = await goPressMap(p, card);
   const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const after = await p.eval(`({ points: ${HASH_STOPS}, said: window.__said.slice(-4), assertive: document.querySelectorAll('[role=alert]:not(:empty)').length })`);
+  const after = await p.eval(`({ points: ${HASH_STOPS}, said: window.__said.slice(${from}), assertive: document.querySelectorAll('[role=alert]:not(:empty)').length })`);
   check("go press: a press on the map in Go opens the spot's card with Ride here focused and at least 44 px tall; its Ride here is the destination, routed from the current location at once (two points) and said politely (\"Destination set: …\")",
     !!at && card.points === 0 && card.text === "Ride here" && card.focused === true && card.height >= 44 && routed && after.points.length === 2 && after.points[0] === "-77.03650,38.90550" && after.said.some((t) => /Destination set: /.test(t)) && !after.said.some((t) => /Planning a route/.test(t)) && after.assertive === 0, JSON.stringify({ at, after }));
   await p.close();
