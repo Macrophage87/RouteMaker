@@ -203,10 +203,10 @@ export function targetSaid(route: Pick<RouteResponse, "calm_search" | "distance_
 /**
  * The straight-line span past which the calm search does not run: the API's
  * `core.refine.REFINE_MAX_SPAN_M`, which tests/test_plan_constants.py holds
- * this to. Said as a round figure, as PLAN.md has it: "19 mi (30 km)".
+ * this to. Said as a round figure, as PLAN.md has it: "37 mi (60 km)".
  */
-export const CALM_SEARCH_MAX_SPAN_M = 30_000;
-// (Trailmaxxing at the top of the slider is not held to it: it plans a longer trip leg by leg, OWNER-DECISIONS 256.)
+export const CALM_SEARCH_MAX_SPAN_M = 60_000;
+// (Trailmaxxing at the top of the slider is not held to it: past 19 mi (30 km) it plans leg by leg, OWNER-DECISIONS 256.)
 
 // "The usual route": the planner's first route for this ride type, before any
 // calmer-route search (the a11y review's N2: "the router's own route" was an

@@ -42,6 +42,31 @@ export interface SummaryRow {
   value: string;
 }
 
+/**
+ * One fact behind a road's level (core/segment_info.py `road_facts`; the owner, 2026-11-13: "redesign the
+ * panel of each road to adequately reflect the available raw data"): its value, whether it is a record
+ * (posted, counted, mapped, surveyed) or the classifier's estimate, who published it and when, and the
+ * longer note the (i) button opens. `input`: whether the level reads it (pavement does not).
+ */
+export interface RoadFact {
+  id: string;
+  label: string;
+  value: string;
+  kind: "record" | "estimated";
+  source: string | null;
+  date: string | null;
+  detail: string | null;
+  input: boolean;
+}
+
+/** How much of the level rests on records (`evidence_of`): "Strong evidence: 4 of 5 from records". */
+export interface RoadEvidence {
+  records: number;
+  inputs: number;
+  strength: "strong" | "some" | "thin";
+  words: string;
+}
+
 export interface MoreLink {
   label: string;
   url: string;
@@ -92,6 +117,14 @@ export interface SegmentInfo {
   trail_level?: number | null;
   sections: InfoSection[];
   attribution: string[];
+  /** The facts behind the level; absent from an older API, empty on a path or trail. */
+  facts?: RoadFact[];
+  /** How much of the level rests on records; null with no facts, absent from an older API. */
+  evidence?: RoadEvidence | null;
+  /** The road in one plain sentence from its facts; null with none, absent from an older API. */
+  plain?: string | null;
+  /** Why the road has its level, in plain words (the owner, 2026-11-13); absent from an older API. */
+  narrative?: string | null;
 }
 
 /** Where the panel was asked for: a spot the rider pointed at, or the map's centre by keyboard. */
@@ -369,6 +402,58 @@ export function infoHeading(state: InfoState): string {
   if (state.kind === "loading") return INFO_TITLE_LOADING;
   if (state.kind === "error") return t("Road info");
   return state.info.found ? state.info.title : NO_ROAD;
+}
+
+/**
+ * The level's words for the big level box: "For experienced cyclists" from the summary's stress line
+ * ("LTS 3 · For experienced cyclists"), or the whole line for Avoid.
+ */
+export function levelWords(info: SegmentInfo): string | null {
+  const line = info.summary?.find((r) => r.id === "stress")?.value;
+  if (!line) return null;
+  const parts = valueParts(line);
+  // Avoid's line is the level alone: the badge says it, so no words beside it.
+  return parts.length > 1 ? parts.slice(1).join(", ") : null;
+}
+
+/** The big level's text: "LTS 3", "LTS 3.5", or "Avoid". */
+export function levelBadge(info: SegmentInfo): string | null {
+  if (info.tier == null) return null;
+  if (info.tier === 5) return t("Avoid");
+  const step = info.step ?? info.tier;
+  return `LTS ${step}`;
+}
+
+/** Whether the panel leads with the big level and its narrative (an answer with a narrative), in place of the
+ * summary's level and Why lines. */
+export function leadsWithLevel(info: SegmentInfo): boolean {
+  return typeof info.narrative === "string" && info.narrative.length > 0 && info.tier != null;
+}
+
+/** The facts shown (an older API has none). */
+export function shownFacts(info: SegmentInfo): RoadFact[] {
+  return Array.isArray(info.facts) ? info.facts : [];
+}
+
+/** The word a fact's kind is said with, in view and to a screen reader, so the mark is never the only cue. */
+export const FACT_KIND_WORDS: Record<RoadFact["kind"], string> = {
+  record: t("from a record"),
+  estimated: t("estimated"),
+};
+
+/** The line under a fact: its source and date, "DDOT count, 2023". */
+export function factSourceLine(fact: RoadFact): string {
+  return [fact.source, fact.date].filter(Boolean).join(", ");
+}
+
+/** The (i) button's name: "About Traffic". */
+export function factInfoLabel(fact: RoadFact): string {
+  return t("About {label}", { label: fact.label });
+}
+
+/** The marks of the evidence line, one a level input: true for a record. Records first. */
+export function evidenceMarks(evidence: RoadEvidence): boolean[] {
+  return Array.from({ length: evidence.inputs }, (_, n) => n < evidence.records);
 }
 
 /** The summary lines shown: the Mass Ride room only on the Mass Ride map. */

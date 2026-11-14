@@ -3,8 +3,8 @@
 // (beside Start, on the ride screen, in Roam) shows its link as a QR code for riders nearby to scan with their camera.
 // The link is the one Broadcast's share sheet sends (one per ride: "if you press and share multiple times in the same
 // ride, it's the same link"); a rider following passes on the link they opened, so all who scan it follow its leader.
-import qrcode from "qrcode-generator";
-import { qrModules } from "./shareCard.ts";
+// The words only: the code itself is drawn by lib/broadcastQrCode.ts, which only the dialog loads, so the QR encoder
+// and the share card stay out of the first load (the v0.27.0 size budget).
 import { t } from "./i18n.ts";
 
 /** How long Broadcast is held before the QR code shows (a right-click, or the keyboard's menu key, shows it at once). */
@@ -19,18 +19,3 @@ export const BROADCAST_QR_START = t("Start ride");
 export const BROADCAST_QR_CLOSE = t("Close");
 /** Said with each Broadcast button, so the hold is found by those who do not see it. */
 export const BROADCAST_HOLD_HINT = t("Hold it, right-click it, or press Shift+F10 for a QR code to scan instead.");
-
-/** The quiet zone round the code, in modules (the standard asks for 4). */
-export const QR_MARGIN = 4;
-
-/** The code as one SVG path on a square `size` modules wide, quiet zone included: crisp at any size. */
-export function qrPath(link: string): { size: number; d: string } {
-  // Level M: still read off a phone's screen in sunlight, and short enough for a link with its plan.
-  const qr = qrcode(0, "M");
-  qr.addData(link);
-  qr.make();
-  const modules = qrModules(qr);
-  const parts: string[] = [];
-  modules.forEach((row, r) => row.forEach((dark, c) => dark && parts.push(`M${c + QR_MARGIN} ${r + QR_MARGIN}h1v1h-1z`)));
-  return { size: modules.length + QR_MARGIN * 2, d: parts.join("") };
-}

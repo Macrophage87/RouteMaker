@@ -896,6 +896,30 @@ def test_a_district_record_of_no_facility_removes_osm_s_painted_lane() -> None:
     assert result.disagreements == ()
 
 
+def test_a_completed_ddot_project_keeps_osm_s_lane_where_the_record_has_none() -> None:
+    """The owner, 2026-11-13: "When there's a mismatch in data, we search for the project's
+    own data." Inside a completed DDOT bikeway project (`routemaker.ddot_projects`) the block's
+    record of no facility is the stale source, and OSM's painted lane stands."""
+    tags = {"highway": "tertiary", "cycleway:both": "lane"}
+    kept = A.overlay(tags, way_facts(), project_lane=True)
+    assert kept.tags["cycleway:both"] == "lane"
+    assert A.ROW_NO_FACILITY not in kept.precedence
+    assert kept.disagreements == (
+        "bike facility: OSM has one where the agency records none"
+        " and a completed DDOT project keeps it",
+    )
+    # Outside a project, row A as before.
+    assert "cycleway:both" not in A.overlay(tags, way_facts()).tags
+
+
+def test_the_completed_projects_file_names_the_ways_ddot_built_lanes_on() -> None:
+    from routemaker import ddot_projects
+
+    ways = ddot_projects.project_lane_ways()
+    # K St NE, 6th to 8th St (2024), and New Jersey Ave NW, Louisiana Ave to H St (2025).
+    assert {509324732, 589905456, 296345143} <= ways
+
+
 def test_the_record_date_is_the_roadway_block_retrieval_date_in_sources() -> None:
     """`DC_RECORD_AS_OF` is the installed record's retrieval date, the date a newer
     OSM edit is flagged against for the owner (hunt D6, 2026-11-08); a reinstall
@@ -2362,3 +2386,30 @@ def test_osm_side_ranks_read_each_side_by_its_precedence() -> None:
         "left": A.BIKE_PROTECTED,
         "right": A.BIKE_BUFFERED,
     }
+
+
+# -- a turn bay counted as a through lane (the owner, 2026-11-13, of K Street NE: "It's one
+# lane each way with the occasional turning lane") ------------------------------------------
+
+
+def test_a_two_way_block_of_one_lane_one_way_and_two_the_other_is_one_each_way() -> None:
+    bay = facts(way="two", lanes={"ib": 1, "ob": 2})
+    assert A.turn_bay_block(bay)
+    assert A.lanes_per_direction(bay) == 1
+    way = A.aggregate(
+        [("600", facts(way="two", lanes={"ib": 1, "ob": 1}), True), ("700", bay, True)]
+    )
+    assert way.lanes_per_direction == way.lanes_forward == way.lanes_backward == 1
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"way": "two", "lanes": {"ib": 2, "ob": 2}},
+        {"way": "two", "lanes": {"ib": 2, "ob": 3}},
+        {"way": "one", "lanes": {"ob": 2}},
+        {"way": "two", "lanes": {"ib": 1, "ob": 2, "reversible": 1}},
+    ],
+)
+def test_other_blocks_are_read_as_they_stand(block) -> None:
+    assert not A.turn_bay_block(facts(**block))

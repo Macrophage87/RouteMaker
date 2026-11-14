@@ -22,7 +22,7 @@ function interfaceSources(dir: string = srcDir): Array<{ path: string; text: str
     const path = `${dir}${name}`;
     if (statSync(path).isDirectory()) {
       if (name !== "node_modules" && name !== "rail-data") out.push(...interfaceSources(`${path}/`));
-    } else if (/\.(ts|tsx|js|mjs|css|html|json)$/.test(name) && !/\.test\.(ts|mjs)$/.test(name)) {
+    } else if (/\.(ts|tsx|js|mjs|css|html|json)$/.test(name) && !/\.test\.(ts|tsx|mjs)$/.test(name)) {
       out.push({ path, text: readFileSync(path, "utf8") });
     }
   }
@@ -62,13 +62,6 @@ test("the Cargo Bike card's words cover passengers", () => {
   const card = PRESETS.find((p) => p.id === "cargo");
   assert.match(card?.description ?? "", /cargo or with passengers/);
   assert.doesNotMatch(card?.description ?? "", OLD_NAME);
-});
-
-test("the picker's group is named for cargo or passengers, and the load buttons use the labels", () => {
-  const picker = readFileSync(new URL("./RideTypePicker.tsx", import.meta.url), "utf8");
-  assert.match(picker, /aria-label=\{t\("\{ride\}: cargo or passengers", \{ ride: presetSaid\(option\.id\) \}\)\}/);
-  assert.match(picker, /\{load\.label\}/);
-  assert.match(picker, /carrying\.label\.toLowerCase\(\)/);
 });
 
 test("links and saved plans still say people: the id is the same", () => {

@@ -284,6 +284,18 @@ they survive a rotation. Between the portal issuing the new secret and the
 container holding it, new connections and refreshes fail and Send to Wahoo
 saves the FIT file instead.
 
+**`GOOGLE_CLIENT_SECRET`: rotate it in Google Cloud console (the OAuth
+client's Credentials page) first, then here, then `up -d`.** `api` uses it
+once per Google sign-in to exchange the code; nothing is stored under it, so
+linked accounts are unaffected. Between the two steps, Google sign-in fails and
+riders can use Discord or Apple.
+
+**`APPLE_PRIVATE_KEY`: make a new Sign in with Apple key in Apple's developer
+site, put its `.p8` contents here with its `APPLE_KEY_ID`, `up -d`, then revoke
+the old key.** `api` signs a five-minute client secret with it for each Apple
+sign-in; nothing is stored under it, so linked accounts are unaffected. Keeping
+the old key until the new one is in place means Apple sign-in never stops.
+
 `docker compose up -d`, **not** `docker compose restart`. Compose reads `.env`
 when it *creates* a container; `restart` restarts the process the container
 already has, with the environment it was created with, so the old secret stays

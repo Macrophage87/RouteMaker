@@ -358,3 +358,75 @@ def test_a_point_already_closed_is_not_sent_twice(monkeypatch) -> None:
     barriers.settle(_trip(TRAIL), {"exclude_locations": others}, "standard", None, [], index=INDEX)
     # The stile's point is already there; only the narrow gap's is added.
     assert len(asked[0]) == 2 and asked[0][0] == others[0]
+
+
+# -- "Go around" on a barrier's mark (`barrier_avoid`) -----------------------------------------
+
+
+def _unmapped_bollard() -> dict:
+    return next(i for i in barriers.reading(TRAIL, INDEX)["items"] if not i["width_mapped"])
+
+
+def test_go_around_plans_round_a_barrier_the_rider_picked(monkeypatch) -> None:
+    asked = []
+
+    def route(variant, request, deadline):
+        asked.append(request["exclude_locations"])
+        return {"trip": _trip(ROUND_THE_TRAIL)}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    # The bollard whose gap is not mapped is not impassable, so it is planned round only when asked,
+    # by the place the answer gave for it.
+    item = _unmapped_bollard()
+    avoid = barriers.avoid_set([[item["lon"], item["lat"]]])
+    trip, info = barriers.settle(
+        _trip(TRAIL), {}, "standard", None, points=[], index=INDEX, avoid=avoid
+    )
+    assert trip == _trip(ROUND_THE_TRAIL) and info["impassable"] == 0
+    # The stile, the narrow bollard and the one picked: three points.
+    assert len(asked[0]) == 3
+    assert {"lon": LON, "lat": north(34)} in asked[0]
+
+
+def test_without_go_around_an_unmapped_bollard_is_left(monkeypatch) -> None:
+    monkeypatch.setattr(routing, "_route", lambda *a: pytest.fail("asked the router"))
+    only_the_unmapped = [(LON, north(25)), (LON, north(30)), (LON, north(35))]
+    trip, info = barriers.settle(
+        _trip(only_the_unmapped), {}, "standard", None, points=[], index=INDEX
+    )
+    assert info["rounds"] == 0 and info["impassable"] == 0
+
+
+def test_a_picked_barrier_with_no_way_round_is_named(monkeypatch) -> None:
+    def refused(variant, request, deadline):
+        raise routing.RouterRefused(400, 442, "No path could be found for input")
+
+    monkeypatch.setattr(routing, "_route", refused)
+    item = _unmapped_bollard()
+    avoid = barriers.avoid_set([[item["lon"], item["lat"]]])
+    only_the_unmapped = [(LON, north(25)), (LON, north(30)), (LON, north(35))]
+    _, info = barriers.settle(
+        _trip(only_the_unmapped), {}, "standard", None, points=[], index=INDEX, avoid=avoid
+    )
+    assert info["limited"] == "no_way_round"
+    assert [b["word"] for b in info["in_the_way"]] == ["bollard"]
+    # Read again after a later pass, it is still in the way, as the round said.
+    barriers.reread(_trip(only_the_unmapped), info, INDEX, avoid=avoid)
+    assert info["impassable"] == 1 and info["limited"] == "no_way_round"
+
+
+def test_the_request_takes_go_around_points() -> None:
+    from core import api
+
+    body = api.RouteIn(
+        points=[[-77.03, 38.9], [-77.02, 38.91]],
+        preset="cargo",
+        barrier_avoid=[[-77.025, 38.905]],
+    )
+    assert api._bike_dials(body).barrier_avoid == ((-77.025, 38.905),)
+    with pytest.raises(ValueError):
+        api.RouteIn(
+            points=[[-77.03, 38.9], [-77.02, 38.91]],
+            preset="cargo",
+            barrier_avoid=[[-77.025, 38.905]] * 21,
+        )
