@@ -342,7 +342,7 @@ saved. <strong>Add a place</strong> searches for one, and <strong>Edit</strong> 
 Remove, so More leaves out Change home, and <strong>Move up</strong> and <strong>Move down</strong> for each place
 after Work (Home and Work stay first); the new order is kept with your account. Favorites are kept with your account only, never on the device or in a log, and are deleted with it;
 riding to one puts it in that plan's link, as any destination is. <strong>Load route</strong> opens the same popup as Plan's <strong>Load route</strong>
-(<strong>Sign in with Discord</strong> first when you are signed out, <strong>Open GPX file</strong>, then your
+(<strong>Sign in</strong> first when you are signed out, <strong>Open GPX file</strong>, then your
 saved routes, with the same search, tag chips and Archive, and the routes kept on this device); one tap opens a route in Go, ready for <strong>Start ride</strong>.
 In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly as drawn</strong> applies in Plan
 only.</li>
@@ -371,12 +371,14 @@ change.</li>
 you would arrive if you left now, such as "1 h 48 min · arrive 8:27 AM" (in the app's language, with your device's 12- or 24-hour clock when the device is set to that language), kept up to date each minute. A screen
 reader hears "arriving about 8:27 AM if you leave now". In Go a transit trip shows it too, door to door with the waits, from when the trip was planned. It isn't
 shown for a bikeshare trip, or when the <strong>When</strong> chosen isn't the time it is now, such as Weekend on a Tuesday
-(<strong>Now</strong> always is).</li>
+(<strong>Now</strong> always is). With Plan's <strong>Leave at</strong> it is for leaving then, and a screen reader
+hears that day and time too.</li>
 <li><strong>The route sheet</strong> ends with <strong>Start ride</strong> and <strong>Share live</strong>,
 kept at its bottom edge however far the sheet is pulled up; it is Go's only Start ride. From the top, it shows the
 time and distance, the stress bar, any warnings, the route card with <strong>Add a stop</strong> and the bike rack
 button on one row under it, then the ride types. A plain line says how the
-route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy road for 0.2 mi", over a bar of its
+route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy road for 0.2 mi", with the gravel
+and dirt miles added where it has 0.05 mi [80 m] or more of unpaved riding (Plan's line too), over a bar of its
 stress levels, half steps ridden in their own colors, and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
 Traffic stress key, and a screen reader hears every level's share, half steps included. A National Weather Service alert is one line under
 the totals, red for a Severe or Extreme one. <strong>Details</strong> has the rest, with the sources behind
@@ -583,7 +585,9 @@ remove it. Notes travel in the route's link.</li>
 rides best, weighing riding time, traffic stress and hills as the route does; the start and the finish stay where they are.</li>
 <li>On most ride types, Plan starts as a <strong>loop</strong>: the first point, in the box that reads <strong>Start and finish
 (loop)</strong>, is the start and finish, each later tap is a
-stop, and the ride comes back. Untick <strong>Loop</strong> for a ride that ends somewhere else, or
+stop, and the ride comes back. Three choices say how the ride ends: <strong>One way</strong>,
+<strong>Loop</strong> (back a different way where there is one) and <strong>Out and back</strong> (back the same way;
+not on Run). Choose One way for a ride that ends somewhere else, or
 right-click the map (press and hold on a phone) and choose <strong>Set as end</strong>, choose
 <strong>Make this the destination</strong> on a search result, or <strong>End here</strong> on a station's card.
 Each ends the ride there and turns the loop off.
@@ -620,12 +624,20 @@ this device, and with your account when you are signed in; never in a shared lin
 (Weekday rush)"; or Weekend, Weekday rush, Weekday off-hours, or Night, 9 PM to 7 AM. Rush
 hour and night change how busy roads are taken to be; weekends open roads closed to cars at
 weekends. Planning for now goes by the clock: a weekday federal holiday counts as Weekday off-hours, and so does
-Sunday from 6 PM, so roads closed to cars at weekends are planned with cars then.</li>
+Sunday from 6 PM, so roads closed to cars at weekends are planned with cars then. In Plan only, and not on the
+share-bike types, <strong>Leave at</strong> plans for a day and start time from now to a year ahead (the next whole
+hour at first, our default): that moment's ride time, the closures in force then, transit times and daylight. Go,
+Start ride, Best order and the nearest places always plan for now, and the time is never kept in a link or a saved
+route.</li>
 <li><strong>Easy MTB trails</strong> (Default and Trailmaxxing, off at first) lets the route use mountain-bike
 trails rated Green and unrated ones: <a href="/about/trails.html#easy-mtb">Easy MTB trails</a>.</li>
 <li><strong>Cargo Bike</strong> asks what you carry: Carrying cargo, or Cargo with passengers.</li>
 <li><strong>Rider and bike weight</strong> (Settings, Riding) makes climbs cost what they cost you;
 it is kept private.</li>
+<li><strong>Map for no signal</strong> (Settings, Riding; from the next map rebuild) downloads the whole road network of one area
+(Inside the Beltway, Northern Virginia, Northwest exurbs, Baltimore and suburbs, the rest of the map, or
+everything), kept on this phone or computer, so with no signal a ride finds its way back to the route anywhere in it. One area
+at a time (our default); it updates when the map does. Map data only, nothing about you.</li>
 <li><strong>Avoid stairs on walks</strong> (Settings, Riding) keeps the walks of Walk, Run, Bikeshare and transit trips off
 flights of steps where a step-free way, such as a ramp or an elevator, is near. Off unless you turn it on; kept on
 this device.</li>
@@ -635,9 +647,16 @@ lanes on LTS 4 and Avoid roads and counts them in the route's totals. Off unless
 you to confirm before it is planned.</li>
 </ul>
 <h3>Reading the route</h3>
+<p><strong>Keep to compare</strong> keeps the route on the map, dashed. Change the plan and route again, and a table
+sets the kept route beside the new one: time, distance, climb, busy roads, heavy traffic, stressful junctions,
+turns, waiting at lights, unpaved, and paths and protected lanes (a row that is zero on both is left out), with
+the better side marked. <strong>Use kept route</strong> brings it
+back and keeps the other to compare; <strong>Stop comparing</strong> drops it. Nothing is sent: the kept route stays
+on your device.</p>
 <p><strong>Stress and facilities</strong> also gives the route's <strong>Turns</strong>, its <strong>Waiting at
-lights and stops</strong> (part of the moving time) and, from 0.05 mi [80 m], <strong>Unpaved</strong>. These
-figures and Other routes' lines are in English for now.</p>
+lights and stops</strong> (part of the moving time) and its <strong>Surface</strong>: "All paved", or the paved,
+gravel and dirt miles, from 0.05 mi [80 m] of unpaved riding, and the miles whose surface isn't mapped where they are
+a tenth or more of the route (our defaults). These figures and Other routes' lines are in English for now.</p>
 <p>Under the route are its folds: <strong>Elevation and climbs</strong> (its key behind <strong>Key</strong>), <strong>Stress and
 facilities</strong>, <strong>Directions</strong> (with <strong>Full detail</strong>, and a copy or
 download as text, and the route's notices in one closed line before step 1, such as "8 alerts on this
@@ -646,7 +665,7 @@ more, planned at the top of the traffic slider or, for Fewer turns and All paved
 its turns, waiting at lights and stops, and unpaved miles) and <strong>Water and restrooms</strong> along the way. Each
 starts closed, and opening one of them closes the one that was open. A line under the time gives dawn and sunrise, or sunset and dusk, when the first of them still ahead
 falls during the ride or within
-about an hour of arriving, worked out on your device<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.
+about an hour of arriving (leaving at Plan's <strong>Leave at</strong> time when one is set), worked out on your device<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.
 Dawn and dusk are civil dawn and civil dusk, when the sun's center is 6 degrees below the horizon:
 about half an hour before sunrise and after sunset in the DC area.
 On a screen at least 1200 px wide, the route's results (its totals, Start ride, GPX, Link and these folds)
@@ -972,7 +991,8 @@ planned route is still shown. The planned route is 400 feet to the northeast.") 
 its nearest point ahead, as it does after Keep going and on a fixed route. From the next map rebuild, the
 roads within about a mile [1.6 km] of the route are fetched at Start ride too and kept for the ride only, so with no
 signal the phone finds a rough way back with its turns ("No signal: a rough way back to your route, found
-offline."); it is planned again properly once the signal returns.</li>
+offline."); it is planned again properly once the signal returns. From the same rebuild, an area downloaded in
+<strong>Map for no signal</strong> (Settings, Riding) does the same beyond that mile.</li>
 <li><strong>Pauses to save battery:</strong> a ride pauses after 10 minutes staying in one place once you
 have arrived, and Roam after 10 minutes without moving; in a browser, either also pauses after 10 minutes out of
 sight. A pause stops the map and the cues following you and lets the screen sleep. After a stay, your location is
@@ -1182,9 +1202,20 @@ panel and in Where am I?.</li>
 </ul>
 <h3>The road panel</h3>
 <ul>
-<li><strong>Road info</strong>: the road's name, its stress level and why, in words, its speed and whether
-bikes may ride it.</li>
-<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or <strong>Set as end</strong>, or <strong>Set as Home</strong> and, signed in, <strong>Save to Favorites</strong>.</li>
+<li><strong>The level</strong> leads, large and in the map's own color ("LTS 3, For experienced cyclists"), with
+why in plain words under it, such as "Bikes share the lane with two lanes of traffic each way at 25 mph and about
+24,100 vehicles a day."</li>
+<li><strong>How sure it is:</strong> "Strong evidence: 4 of 5 from records", or Some or Thin evidence, with a filled
+mark for each fact from a record and a hollow one for each estimate (our defaults, unmeasured).</li>
+<li><strong>What the level rests on:</strong> one line per fact, each with its source (and year, where the record has
+one) and an (i) note: speed
+limit, traffic, through lanes, bike lane, shoulder, bike lane width, parking beside the lane, and the setting, such
+as "Suburban: about 1,600 people and about 390 jobs within half a mile of a spot here" (from the 2020 Census and the
+Census Bureau's job counts, once loaded). The band is a label only; whether the road is urban or rural, from Census
+urban areas, is what the level reads, and until the counts are loaded the line says just Urban or Rural. In DC, pavement from DDOT's survey
+shows too, from the next map rebuild; it does not change the level either. Paths and trails have no facts.</li>
+<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or
+<strong>Set as end</strong> and, signed in, <strong>Save to Favorites</strong>. Home is set from the Home sheet.</li>
 <li><strong>Street View</strong>, the newest Mapillary photo facing along the road where there is one, and <strong>Edit in
 OSM</strong> to fix the map itself.</li>
 <li><strong>Suggest a change…</strong>: a road's level, a junction, or a hazard on a Mass Ride.</li>
@@ -1279,7 +1310,7 @@ lists your saved routes, the routes kept on this device and, in Plan, your share
 shows its tags, and Archived if it is. A search box finds a route by its name or tags. In Plan, once the route is up to date and you've picked it (when there is more than one line
 to choose from), the big button at the top of the map, where <strong>Update route</strong> sits, becomes <strong>Save route</strong>, with <strong>Start ride</strong>
 beside it (on a phone they read Save and Start). That Save also has <strong>Download GPX</strong>, and not
-signed in it offers <strong>Sign in with Discord</strong> (where available; your plan is kept) or
+signed in it offers <strong>Sign in</strong> (where available; your plan is kept) or
 Download GPX. A route someone sent you by link can be saved the same way. Plan's Save form has an optional
 <strong>Tags</strong> field (commas between tags; up to 8 a route, of up to 30 characters each), which offers the tags you
 already use. Only Plan's Save has a <strong>Fixed route</strong> box, unticked unless you tick it (our default).
@@ -1288,7 +1319,7 @@ its line offers Update route. Each saved route records when it was last opened. 
 longest and says which; with none archived, it asks whether to delete the route you have gone longest without opening
 (counted from when it was saved, if never opened), with Cancel first. Any change to the plan brings
 Update route back. With nothing planned yet, that button is <strong>Load route</strong>, which
-opens a short list. Not signed in, <strong>Sign in with Discord</strong> comes first (where
+opens a short list. Not signed in, <strong>Sign in</strong> comes first (where
 available). Then <strong>Open GPX file</strong> asks the ride type and whether to <strong>Snap to roads</strong>
 (streets and paths bikes may ride; the default) or keep it <strong>Exactly as drawn</strong> (even where bikes may not ride), then
 <strong>Choose file</strong>. Below are your saved routes and the drafts an AI assistant planned for you that you
@@ -1355,6 +1386,15 @@ point.</li>
 <strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event. Load route's <strong>Snap to roads</strong> and <strong>Exactly as drawn</strong> are the same choice, made before the file opens.
 Except with Follow the file exactly, which keeps them, a file that goes round a street corner on its crosswalks is
 put back on the road at that corner, so a plain corner is not drawn as a road crossing.</li>
+<li><strong>Busiest stretches</strong> (Plan, on a route that follows the opened file): up to three stretches of
+LTS 3 or busier by our ratings, worst first, where busier and longer counts more (each half level up doubles a
+mile's weight; busy sections within a tenth of a mile [160 m] are one stretch). Each line gives the street, its
+length and its level at worst; press it to show the stretch and its calmer way on the map. Under it, a calmer
+way round, planned on your ride type at the calmest traffic setting between points about 500 ft [150 m] outside
+the stretch, drawn dashed green, with how much longer it is. None is offered where nothing nearby is calmer, or
+where it would be more than twice as long as the stretch plus a mile [1.6 km]. <strong>Use this way</strong> (the
+owner's choice) puts it into the route and plans it at once, and a download is then the route with it; Undo takes
+it out, then press Update route. All these numbers are our defaults, not measured.</li>
 </ul>
 
 </div></details>
@@ -1404,11 +1444,18 @@ new version is ready, a line says so with Reload; it never interrupts a ride.</l
 <li><strong>When something is down,</strong> a line at the top of Go and Plan says so, such as "Updating. Back in a
 few minutes." or "Route planning is down right now." It is checked when the app opens or comes back to the front, or a
 plan fails, and every minute while it shows (our default). It is not shown while you are offline.</li>
+<li><strong>About</strong> also says how old the data is, such as "Map data from Nov 10, 2026. Places and racks from
+Oct 9, 2026." The places, water, food and mapped racks are refreshed after each map rebuild and reach the app with its
+next update; the date is the oldest of them.</li>
 <li><strong>Send feedback</strong> (under About, and in the Beta note): say what happened, in 3 to 2,000 characters,
 with no account needed. It goes to the owner on Discord with the app version, browser, ride type, language, Go or
 Plan, and web or Android app ("Sent with the app version, browser and ride type. Never where you are."); RouteMaker's server keeps no copy.</li>
-<li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
-saved routes with your account. <strong>Sign out</strong> ends this session, and <strong>Sign out
+<li><strong>Account:</strong> <strong>Sign in</strong> keeps My Go, starred ride types and
+saved routes with your account. It opens a choice of Discord, Google or Apple, each where it is set up (in the
+Android app, Discord only); with Discord alone the button reads <strong>Sign in with Discord</strong>. From Google
+or Apple RouteMaker keeps only a keyed account number: no name, e-mail or token. Where there is a choice,
+<strong>Sign-in methods</strong> links more of them to the same account, or unlinks one; an account always
+keeps at least one. <strong>Sign out</strong> ends this session, and <strong>Sign out
 everywhere</strong> ends every session of your account, this one too, and disconnects your AI assistant apps,
 after asking once. <strong>Delete account</strong> says what is deleted and what is kept,
 and asks once.</li>
@@ -1582,7 +1629,7 @@ default).</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.26.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.27.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

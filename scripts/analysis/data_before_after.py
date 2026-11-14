@@ -149,6 +149,8 @@ def main() -> int:
                         source=row["source"],
                         year=row.get("year"),
                         agency=row.get("agency"),
+                        name=row.get("name"),
+                        ref=row.get("ref"),
                     )
                 )
         agency = agency_roads.DC_AGENCY if region == "dc" else agency_roads.BALTIMORE_AGENCY

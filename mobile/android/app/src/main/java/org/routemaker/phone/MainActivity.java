@@ -31,6 +31,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SpeechPlugin.class);
         registerPlugin(VoiceFocusPlugin.class);
         registerPlugin(BatteryPlugin.class);
+        registerPlugin(RideCuePlugin.class);
         JSONObject json = SiteStore.readConfig(this);
         String address = SiteStore.address(this, json);
         if (json == null) {
@@ -110,5 +111,7 @@ public class MainActivity extends BridgeActivity {
         } catch (RuntimeException e) {
             // Nothing shown, or notifications off: nothing to clear.
         }
+        // The live turn card (RideCuePlugin) too.
+        RideCuePlugin.cancel(this);
     }
 }

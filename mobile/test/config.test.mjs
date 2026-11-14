@@ -87,6 +87,7 @@ test("the manifest asks for the network, the location, notifications and vibrati
     "FOREGROUND_SERVICE_LOCATION",
     "INTERNET",
     "POST_NOTIFICATIONS",
+    "POST_PROMOTED_NOTIFICATIONS",
     "VIBRATE",
   ]);
   const removed = [...manifest.matchAll(/<uses-permission android:name="android\.permission\.([A-Z_]+)" tools:node="remove" \/>/g)].map((m) => m[1]);

@@ -8,9 +8,10 @@ It's taking people onto dangerous intersections." The crossing was priced and dr
 (PR #1026), but nothing looked for a way round it:
 
 - the crossing search (`core.refine.refine`) runs only on a plan whose points are within
-  `refine.REFINE_MAX_SPAN_M` (30 km, 19 mi) of straight line, leg by leg added up, so a
-  long or many-stop plan on any ride type but Trailmaxxing answered the router's own line
-  with its red crossings drawn and not avoided (`routing._refine_limit`, "span");
+  `refine.REFINE_MAX_SPAN_M` (30 km, 19 mi then; 60 km, 37 mi since v0.27.0) of straight
+  line, leg by leg added up, so a long or many-stop plan on any ride type but Trailmaxxing
+  answered the router's own line with its red crossings drawn and not avoided
+  (`routing._refine_limit`, "span");
 - Trailmaxxing's long plans (`refine.refine_long`) search only the legs with busy road on
   them, so a leg whose only fault was a red crossing kept it.
 

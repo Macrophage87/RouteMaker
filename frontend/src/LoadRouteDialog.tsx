@@ -15,6 +15,8 @@
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";
+import { signInLabel } from "./lib/signIn.ts";
+import { signInHasChoice } from "./lib/stressEditor.ts";
 import { Icon } from "./Icon.tsx";
 import {
   LOAD_ALL,
@@ -395,8 +397,8 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
                   href="/auth/login"
                   onClick={signIn}
                 >
-                  <DiscordLogo />
-                  {t("Sign in with Discord")}
+                  {!signInHasChoice() && <DiscordLogo />}
+                  {signInLabel()}
                 </a>
               )}
               <button

@@ -14,6 +14,9 @@
 #                       reading the `current` symlink; standard, no-trail, ebike, weekend
 #                       (and offroad, mtb, paved and paved-weekend once they exist). The unpacked tiles/ directory is left
 #                       out: Valhalla serves from tiles.tar (tile_extract), verified.
+#   tiles/offline-packs/manifest.json and the packs-<build>/ folder it names
+#                       the region packs for riding off grid (pipeline/offline_packs.py), written
+#                       by the rebuild after each map swap; without them the beta lists none
 #   elevation/          the .hgt files the routers read at runtime for elevation profiles
 #   basemap/            region.pmtiles, fonts, sprites, and contours.pmtiles once
 #                       scripts/build_contours.py has written it (the Topo lines layer)
@@ -62,7 +65,7 @@
 #   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules], installed
 #                        for Linux x64 (in WSL with no Linux node, `npm ci` is Windows npm: install
 #                        it in the pinned image instead; frontend-build.sh refuses a Windows one)
-#   --without PART       leave a part out: tiles, elevation, basemap, photon, transit, frontend, db
+#   --without PART       leave a part out: tiles, elevation, basemap, photon, transit, packs, frontend, db
 #                        (repeatable; for an update that changes only some of them)
 #   --with-tile-dirs     also send each build's unpacked tiles/ directory (about 0.5 GB each)
 #   --no-transfer        build and verify the stage, send nothing
@@ -153,6 +156,11 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #   route_post_photo                  app_user, saved_route_id -> saved_route, route_id -> shared_route;
 #                                     their photos (v0.12.4) post_id -> route_post.
 #                                     Written on the site that shows them, never shipped.
+#   core_signinidentity               user_id -> app_user: a rider's Google or Apple sign-in (a keyed
+#                                     digest of the provider's id; v0.27.0, core.models.SignInIdentity,
+#                                     Django's default table name). Never shipped.
+#   daily_usage                       each site's own anonymous daily totals per tool (v0.27.0,
+#                                     core.usage): the beta counts its own, never home's.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -165,6 +173,7 @@ EXCLUDED_TABLE_DATA=(
 	review_item review_ruling review_queue_state
 	stress_suggestion_review assistant_key connector_client connector_grant connector_draft
 	report311_log garmin_link wahoo_link route_post route_post_section route_post_photo
+	core_signinidentity daily_usage
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as
@@ -216,7 +225,7 @@ while [ $# -gt 0 ]; do
 		--node-modules) [ $# -ge 2 ] || die "$1 needs a value"; node_modules=$2; shift 2 ;;
 		--without)
 			[ $# -ge 2 ] || die "$1 needs a value"
-			case "$2" in tiles | elevation | basemap | photon | transit | frontend | db) without[$2]=1 ;; *) die "--without: unknown part '$2'" ;; esac
+			case "$2" in tiles | elevation | basemap | photon | transit | packs | frontend | db) without[$2]=1 ;; *) die "--without: unknown part '$2'" ;; esac
 			shift 2
 			;;
 		--with-tile-dirs) with_tile_dirs=1; shift ;;
@@ -295,7 +304,7 @@ fi
 
 # --- start from a clean stage ------------------------------------------------------------------
 # Only what this script put there: it owns these names and nothing else in the stage.
-for part in tiles elevation basemap photon transit frontend db; do rm -rf "${stage:?}/$part"; done
+for part in tiles elevation basemap photon transit packs frontend db; do rm -rf "${stage:?}/$part"; done
 rm -f "$stage/SHA256SUMS" "$stage/MANIFEST.txt"
 
 link() { mkdir -p "$(dirname "$2")"; ln -s "$1" "$2"; }
@@ -342,6 +351,29 @@ fi
 if want photon; then
 	[ -d "$data_root/photon/photon_data" ] || die "no Photon index at $data_root/photon/photon_data"
 	link "$data_root/photon" "$stage/photon"
+fi
+
+# --- region packs for riding off grid ---------------------------------------------------------------
+# The manifest and the one build folder it names (pipeline/offline_packs.py), at the same path, so
+# the bundle still mirrors DATA_ROOT. Not built at home (no rebuild since they were added): said,
+# and left out.
+if want packs; then
+	packs_manifest="$data_root/tiles/offline-packs/manifest.json"
+	packs_dir=""
+	if [ -f "$packs_manifest" ]; then
+		packs_dir=$(sed -n 's/^ *"dir": *"\(packs-[0-9]\{8\}T[0-9]\{6\}Z\(-[0-9]*\)\{0,1\}\)",\{0,1\}$/\1/p' "$packs_manifest" | head -n 1)
+	fi
+	if [ -n "$packs_dir" ] && [ -d "$data_root/tiles/offline-packs/$packs_dir" ]; then
+		for f in "$data_root/tiles/offline-packs/$packs_dir"/*.json.gz "$data_root/tiles/offline-packs/$packs_dir/packs.json"; do
+			[ -f "$f" ] || die "offline packs: $packs_dir is missing $(basename "$f")"
+			link "$f" "$stage/tiles/offline-packs/$packs_dir/$(basename "$f")"
+		done
+		link "$packs_manifest" "$stage/tiles/offline-packs/manifest.json"
+		note "packs: $packs_dir"
+	else
+		note "WARNING: no region packs at $data_root/tiles/offline-packs (built by the rebuild after a map swap), so the beta lists none; pass --without packs to say so"
+		without[packs]=1
+	fi
 fi
 
 # --- transit schedule --------------------------------------------------------------------------------
@@ -504,7 +536,7 @@ git_dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l)
 	echo "database_server=$db_version"
 	echo "excluded_table_data=${EXCLUDED_TABLE_DATA[*]}"
 	echo "blanked_table_data=${BLANKED_TABLE_DATA[*]}"
-	echo "parts=$(for p in tiles elevation basemap photon transit frontend db; do want "$p" && printf '%s ' "$p"; done)"
+	echo "parts=$(for p in tiles elevation basemap photon transit packs frontend db; do want "$p" && printf '%s ' "$p"; done)"
 	echo "files=$files"
 	echo "bytes=$bytes"
 } >"$stage/MANIFEST.txt"

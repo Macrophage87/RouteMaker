@@ -89,7 +89,9 @@ def test_a_struck_rule_leaves_ddot_as_it_is() -> None:
     assert ddot_rules.read_as(block, enabled=ddot_rules.ENABLED - {"busy-road-at-1"}) is None
 
 
-def test_the_road_panel_says_why_ddot_was_read_otherwise() -> None:
+def test_the_road_panel_says_why_ddot_was_read_otherwise(monkeypatch) -> None:
+    # The rules as they read with DDOT's level in use (`agency_lts.COMPARISON_ONLY` off).
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
     bridge = StressResult(Stress.LTS3, "four lanes", (), volume_aadt=45_334, lanes=2, oneway=False)
     result = agency_lts.apply(bridge, [AgencyRating("ddot", 1)])
     assert result.tier is Stress.LTS4
@@ -102,7 +104,11 @@ def test_the_road_panel_says_why_ddot_was_read_otherwise() -> None:
     assert "," not in held.note
 
 
-def test_only_ddot_is_read_by_these_rules() -> None:
+def test_only_ddot_is_read_by_these_rules(monkeypatch) -> None:
+    from routemaker import agency_lts as _agency_lts
+
+    # How a county level would read in use; every agency is comparison-only since 2026-11-13.
+    monkeypatch.setattr(_agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
     county = StressResult(Stress.LTS3, "x", (), volume_aadt=45_334, lanes=2, oneway=False)
     result = agency_lts.apply(county, [AgencyRating("moco", 1)])
     assert result.tier is Stress.LTS1

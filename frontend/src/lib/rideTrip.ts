@@ -482,7 +482,8 @@ export function shareBikeOf(route: Pick<RouteResponse, "preset" | "bikeshare" | 
  * trip with stops planned for "Weekend" and ridden on a Tuesday planned its next leg on the weekend map.
  */
 export function rideNowDials(dials: Dials): Dials {
-  return { ...dials, loop: false, closuresNow: true, when: null };
+  // Nor Plan's start time (lib/startTime.ts): a ride is now.
+  return { ...dials, loop: false, closuresNow: true, when: null, startAt: undefined };
 }
 
 /**
@@ -508,7 +509,8 @@ export function legDials(dials: Dials, preset: PresetId, shareBike: Bike | null 
   const share = usesBikeshare(preset);
   const transit = isTransit(preset);
   const novice = preset === "bike-transit" || preset === "bikeshare-transit";
-  const out: Dials = { ...dials, when: null };
+  // Plan's start time goes too (lib/startTime.ts): a ride's own requests are for now.
+  const out: Dials = { ...dials, when: null, startAt: undefined };
   if (!share) {
     out.bike = undefined;
     out.ending = undefined;

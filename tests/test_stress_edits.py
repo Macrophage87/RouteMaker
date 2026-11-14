@@ -806,6 +806,7 @@ class TestMe:
             "can_suggest": False,
             "can_review_closures": False,
             "sign_in": True,
+            "sign_in_choices": ["discord"],
         }
         assert r["Cache-Control"] == "no-store" and "csrftoken" not in r.cookies
 
@@ -818,6 +819,7 @@ class TestMe:
             "can_suggest": False,
             "can_review_closures": False,
             "sign_in": True,
+            "sign_in_choices": ["discord"],
         }
         assert "csrftoken" not in r.cookies
 
@@ -830,6 +832,7 @@ class TestMe:
             "can_suggest": False,
             "can_review_closures": True,
             "sign_in": True,
+            "sign_in_choices": ["discord"],
         }
         assert "csrftoken" in r.cookies
 
@@ -851,6 +854,7 @@ class TestMe:
             "can_suggest",
             "can_review_closures",
             "sign_in",
+            "sign_in_choices",
         }
 
     def test_a_foreign_page_is_refused(self, client) -> None:

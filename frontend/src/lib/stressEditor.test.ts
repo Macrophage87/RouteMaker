@@ -134,8 +134,8 @@ test("who is asking is asked once per page and fails closed", async () => {
     asked += 1;
     return new Response(JSON.stringify({ signed_in: true, can_change_lts: true, can_suggest: false }), { status: 200 });
   }) as unknown as typeof fetch;
-  assert.deepEqual(await fetchMe("https://x.test", admin), { signed_in: true, can_change_lts: true, can_suggest: false, can_review_closures: false, sign_in: false });
-  assert.deepEqual(await fetchMe("https://x.test", admin), { signed_in: true, can_change_lts: true, can_suggest: false, can_review_closures: false, sign_in: false });
+  assert.deepEqual(await fetchMe("https://x.test", admin), { signed_in: true, can_change_lts: true, can_suggest: false, can_review_closures: false, sign_in: false, sign_in_choices: [] });
+  assert.deepEqual(await fetchMe("https://x.test", admin), { signed_in: true, can_change_lts: true, can_suggest: false, can_review_closures: false, sign_in: false, sign_in_choices: [] });
   assert.equal(asked, 1);
 
   forgetMe();
@@ -147,6 +147,7 @@ test("who is asking is asked once per page and fails closed", async () => {
     can_suggest: false,
     can_review_closures: false,
     sign_in: false,
+    sign_in_choices: [],
   });
   forgetMe();
   // Anything but a strict true is a no.

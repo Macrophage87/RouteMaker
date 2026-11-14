@@ -549,7 +549,7 @@ class TestTheSearchInTheAnswer:
     ) -> None:
         router(world())
         response = post(
-            client, {**good_body(), "stress": 100, "points": [[-77.0, 38.9], [-76.4, 38.9]]}
+            client, {**good_body(), "stress": 100, "points": [[-77.0, 38.9], [-76.2, 38.9]]}
         )
         assert response.status_code == 200
         search = response.json()["calm_search"]
@@ -563,8 +563,18 @@ class TestTheSearchInTheAnswer:
         self, client, arterial, router
     ) -> None:
         router(world())
-        response = post(client, {**good_body(), "points": [[-77.0, 38.9], [-76.4, 38.9]]})
+        response = post(client, {**good_body(), "points": [[-77.0, 38.9], [-76.2, 38.9]]})
         assert response.json()["calm_search"] is None
+
+    def test_a_trip_as_long_as_dc_to_baltimore_is_searched(self, client, arterial, router) -> None:
+        # 52 km of straight line, past the 30 km the search stopped at until v0.27.0 and
+        # under REFINE_MAX_SPAN_M (backlog 2026-11-12, "Long rides get the calm search"):
+        # Default's search runs on it, and says nothing stopped it.
+        router(world())
+        response = post(client, {**good_body(), "points": [[-77.0, 38.9], [-76.4, 38.9]]})
+        assert response.status_code == 200
+        search = response.json()["calm_search"]
+        assert search is not None and search["limited"] is None and search["rounds"] >= 1
 
     def test_a_ride_with_a_via_is_searched_too(self, client, arterial, router) -> None:
         router(world())
@@ -598,7 +608,7 @@ class TestWhyTheSearchDoesNotRun:
             ({"points": [[0, 0]]}, "points"),
             ({"long_ride": True}, "long_ride"),
             ({"seeking": True}, "seeking"),
-            ({"points": [[0, 0], [0.5, 0]]}, "span"),
+            ({"points": [[0, 0], [0.6, 0]]}, "span"),
         ],
     )
     def test_the_reasons(self, kwargs, why) -> None:
@@ -800,3 +810,29 @@ class TestDetour:
         ]
         assert len(probes) == 1
         assert detour["basis"] == "direct_route"
+
+
+class TestTheRoutersAlternativesStayWithinTheOldSpan:
+    """The review of PR #1231: the search ranks the router's own alternatives only up to
+    `refine.LONG_CALM_SPAN_M`; past it they would double a long route's router call and,
+    asked early, hold a second pool slot."""
+
+    def test_the_edge(self, monkeypatch) -> None:
+        from core import refine
+        from routemaker.geo import Point, haversine
+
+        points = [[0, 0], [0.1, 0]]
+        monkeypatch.setattr(refine, "LONG_CALM_SPAN_M", haversine(Point(0, 0), Point(0.1, 0)))
+        assert routing.alternates_span_ok(points)
+        monkeypatch.setattr(refine, "LONG_CALM_SPAN_M", haversine(Point(0, 0), Point(0.1, 0)) - 1)
+        assert not routing.alternates_span_ok(points)
+
+
+def test_a_loop_of_44_km_in_all_is_searched_and_one_of_67_is_not() -> None:
+    # A loop's straight line counts the way back (PLAN.md 266): 22 km out is now searched,
+    # 33 km out is past the span (the review of PR #1231, 4).
+    deadline = routing.Deadline(routing.clock() + 40, 35)
+    near = [[0, 0], [0.2, 0], [0, 0]]
+    far = [[0, 0], [0.3, 0], [0, 0]]
+    assert routing._refine_limit("default", near, False, False, deadline) is None
+    assert routing._refine_limit("default", far, False, False, deadline) == "span"

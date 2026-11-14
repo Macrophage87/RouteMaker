@@ -92,7 +92,9 @@ later, and no new plan starts after 90 minutes (all our defaults, unmeasured). R
 ```
 
 Turning it on is one owner step on beta after the release that carries it:
-`~/routemaker-beta-state/cd/bin/alert.sh install` (the deploy refreshes the script, not its timers).
+`"$RM_SRC/scripts/beta/alert.sh" install`, from the beta's checkout (the deploy refreshes the
+script, not its timers; `install` copies the script into `cd/bin`, so run it from the checkout, not
+from that copy).
 
 ## Not yet decided
 

@@ -808,6 +808,8 @@ def test_every_api_path_logs_errors_at_crit_only_with_the_api_proxy_settings() -
         "/api/transit/next-vehicle",
         "/api/bikeshare/docks",
         "/api/closures/map",
+        # The region packs' list (v0.27.0): the ride type's levels in the query
+        "/api/offline/packs",
         # Review (an instance admin's): a way, an area's name, a point on a road
         "/api/review/items",
         "/api/review/map",
@@ -2316,10 +2318,12 @@ def model_foreign_keys() -> tuple[dict[str, str], list[tuple[str, str, str]]]:
     for i, match in enumerate(classes):
         end = classes[i + 1].start() if i + 1 < len(classes) else len(models)
         body = models[match.start() : end]
-        table = re.search(r'db_table = "(\w+)"', body)
-        if not table:
+        found = re.search(r'db_table = "(\w+)"', body)
+        if not found and "(models.Model):" not in body.splitlines()[0]:
             continue
-        tables[match.group(1)] = table.group(1)
+        # A model with no db_table gets Django's own name, core_<class in lower case>.
+        table = found.group(1) if found else f"core_{match.group(1).lower()}"
+        tables[match.group(1)] = table
         for field, target in re.findall(
             r"^\s+(\w+) = models\.(?:ForeignKey|OneToOneField)\(\s*[\"']?([\w.]+)[\"']?",
             body,
@@ -2327,7 +2331,7 @@ def model_foreign_keys() -> tuple[dict[str, str], list[tuple[str, str, str]]]:
         ):
             if target == "settings.AUTH_USER_MODEL":
                 target = "User"
-            keys.append((table.group(1), field, target))
+            keys.append((table, field, target))
     return tables, keys
 
 
@@ -3989,3 +3993,140 @@ def test_the_riders_status_file_is_served_and_never_cached() -> None:
     block = dict(locations(stage("full")))["= /status.json"]
     assert "status;" in block and "root " in block
     assert 'add_header Cache-Control "no-store" always;' in block
+
+
+@needs_sh
+def test_ship_data_sends_the_region_packs_the_manifest_names(tmp_path: Path) -> None:
+    """Beta runs no rebuild, so the region packs for riding off grid go with the data: the
+    manifest and the one build folder it names, never an older build or a half-written one."""
+    if shutil.which("sha256sum") is None:
+        pytest.skip("needs sha256sum")
+    live = tmp_path / "live"
+    data = tmp_path / "data"
+    live.mkdir()
+    packs = data / "tiles" / "offline-packs"
+    packs.mkdir(parents=True)
+    (live / "compose.yaml").write_text("services: {}\n")
+    (live / ".env").write_text(f"DATA_ROOT={data}\n")
+    stage = tmp_path / "stage"
+    args = ["bash", SHIP, "--live-dir", str(live), "--stage", str(stage), "--no-transfer"]
+    args += [
+        arg
+        for part in ("db", "frontend", "tiles", "elevation", "basemap", "photon", "transit")
+        for arg in ("--without", part)
+    ]
+    done = run(*args)
+    assert done.returncode == 2, done.stderr
+    assert "WARNING: no region packs" in done.stderr and "--without packs" in done.stderr
+    for build in (
+        "packs-20261112T030000Z",
+        "packs-20261113T030000Z",
+        "packs-20261114T030000Z.part",
+    ):
+        (packs / build).mkdir()
+        (packs / build / "beltway.json.gz").write_bytes(build.encode())
+        (packs / build / "packs.json").write_text("[]")
+    (packs / "manifest.json").write_text(
+        '{\n "v": 1,\n "dir": "packs-20261113T030000Z",\n "packs": []\n}'
+    )
+    done = run(*args)
+    assert done.returncode == 0, done.stderr
+    sent = (stage / "SHA256SUMS").read_text()
+    assert "tiles/offline-packs/manifest.json" in sent
+    assert "tiles/offline-packs/packs-20261113T030000Z/beltway.json.gz" in sent
+    assert "packs-20261112T030000Z" not in sent and ".part" not in sent
+    assert re.search(r"^parts=packs $", (stage / "MANIFEST.txt").read_text(), re.M)
+
+
+@needs_sh
+def test_receive_files_installs_the_packs_then_the_manifest(tmp_path: Path) -> None:
+    if shutil.which("rsync") is None or shutil.which("sha256sum") is None:
+        pytest.skip("needs rsync and sha256sum")
+    data = tmp_path / "dr" / "routemaker"
+    packs = data / "tiles" / "offline-packs"
+    for old in ("packs-20261101T000000Z", "packs-20261105T000000Z"):
+        (packs / old).mkdir(parents=True)
+        (packs / old / "beltway.json.gz").write_text(old)
+    (packs / "manifest.json").write_text('{"v": 1, "dir": "packs-20261105T000000Z"}')
+    env = tmp_path / ".env"
+    env.write_text(f"DATA_ROOT={data}\n")
+    bundle = _bundle(tmp_path)
+    new = bundle / "tiles" / "offline-packs" / "packs-20261113T030000Z"
+    new.mkdir(parents=True)
+    (new / "beltway.json.gz").write_text("new")
+    (bundle / "tiles" / "offline-packs" / "manifest.json").write_text(
+        '{\n "v": 1,\n "dir": "packs-20261113T030000Z"\n}'
+    )
+    listed = [
+        "frontend/index.html",
+        "tiles/offline-packs/manifest.json",
+        "tiles/offline-packs/packs-20261113T030000Z/beltway.json.gz",
+    ]
+    sums = subprocess.run(
+        ["sha256sum", *listed], cwd=bundle, capture_output=True, text=True, check=True
+    ).stdout
+    (bundle / "SHA256SUMS").write_text(sums)
+    manifest = (bundle / "MANIFEST.txt").read_text()
+    (bundle / "MANIFEST.txt").write_text(
+        manifest.replace("parts=frontend ", "parts=packs frontend ")
+    )
+    done = run(
+        "bash",
+        "scripts/beta/receive-data.sh",
+        "--bundle",
+        str(bundle),
+        "--env-file",
+        str(env),
+        "files",
+    )
+    assert done.returncode == 0, done.stderr
+    assert '"packs-20261113T030000Z"' in (packs / "manifest.json").read_text()
+    assert (packs / "packs-20261113T030000Z" / "beltway.json.gz").read_text() == "new"
+    # The build before stays for a download under way; older ones go.
+    assert (packs / "packs-20261105T000000Z").is_dir()
+    assert not (packs / "packs-20261101T000000Z").exists()
+    assert "region packs installed: packs-20261113T030000Z" in done.stderr
+
+
+@needs_sh
+def test_receive_files_installs_the_first_packs_and_goes_on(tmp_path: Path) -> None:
+    """The first packs on a server: no other build to keep or remove, and the rest of the
+    install still runs (the front end after it)."""
+    if shutil.which("rsync") is None or shutil.which("sha256sum") is None:
+        pytest.skip("needs rsync and sha256sum")
+    data = tmp_path / "dr" / "routemaker"
+    data.mkdir(parents=True)
+    env = tmp_path / ".env"
+    env.write_text(f"DATA_ROOT={data}\n")
+    bundle = _bundle(tmp_path)
+    new = bundle / "tiles" / "offline-packs" / "packs-20261113T030000Z"
+    new.mkdir(parents=True)
+    (new / "beltway.json.gz").write_text("new")
+    (bundle / "tiles" / "offline-packs" / "manifest.json").write_text(
+        '{\n "v": 1,\n "dir": "packs-20261113T030000Z"\n}'
+    )
+    listed = [
+        "frontend/index.html",
+        "tiles/offline-packs/manifest.json",
+        "tiles/offline-packs/packs-20261113T030000Z/beltway.json.gz",
+    ]
+    sums = subprocess.run(
+        ["sha256sum", *listed], cwd=bundle, capture_output=True, text=True, check=True
+    ).stdout
+    (bundle / "SHA256SUMS").write_text(sums)
+    manifest = (bundle / "MANIFEST.txt").read_text()
+    (bundle / "MANIFEST.txt").write_text(
+        manifest.replace("parts=frontend ", "parts=packs frontend ")
+    )
+    done = run(
+        "bash",
+        "scripts/beta/receive-data.sh",
+        "--bundle",
+        str(bundle),
+        "--env-file",
+        str(env),
+        "files",
+    )
+    assert done.returncode == 0, done.stderr
+    assert "region packs installed: packs-20261113T030000Z" in done.stderr
+    assert "front end installed" in done.stderr

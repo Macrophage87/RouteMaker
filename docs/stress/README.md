@@ -40,6 +40,7 @@ route, under the elevation.
 | Page | What it covers |
 |---|---|
 | [classification.md](classification.md) | How a way gets its tier: inputs, rule order, AADT smoothing, curated files, closures (access) against stress |
+| [counts.md](counts.md) | How a traffic count reaches a road: sources, matching, names, gap fill, Maryland sections cut at busy junctions, implausible counts |
 | [overrides.md](overrides.md) | Stress and access override rows, `at_least` floors, `retire` lists, the loader, the owner's sign-off rule, re-matching by fingerprint |
 | [routing-costs.md](routing-costs.md) | Valhalla's graph tags and request knobs, the slider, each preset's values, RouteMaker's ranking (calm search, LTS 4 hold, strict order, worth rule), the junction model |
 | [stress-number.md](stress-number.md) | The numeric stress value, each preset's cost multiplier per level, half steps as midpoints (built), and the rolling stress chart as built |

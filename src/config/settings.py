@@ -81,6 +81,8 @@ MIDDLEWARE = [
     "core.middleware.SessionEpochMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Anonymous daily totals per tool (core.usage): counts a successful answer, nothing else.
+    "core.usage.UsageMiddleware",
 ]
 
 TEMPLATES = [
@@ -154,6 +156,11 @@ PRIVACY_CONTACT = os.environ.get("PRIVACY_CONTACT", "").strip()
 # that stores its riders' data, hosting included. Empty: the page says the owner runs it at
 # home or with a hosting company.
 PRIVACY_HOSTING = os.environ.get("PRIVACY_HOSTING", "").strip()
+# Who runs the site (core.privacy_policy, the Contact section): the person or organisation
+# responsible for riders' data (GDPR Article 13(1)(a) asks for the controller's identity), set by
+# the owner in the deployment's environment file, so the public repository names nobody. Empty:
+# the page names nobody.
+PRIVACY_OPERATOR = os.environ.get("PRIVACY_OPERATOR", "").strip()
 
 # Android App Links (core.app_links, GET /.well-known/assetlinks.json): the store app's id and the
 # SHA-256 fingerprint of Play's app signing key (several separated by commas), set by the owner in
@@ -664,6 +671,17 @@ REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
 REBUILD_SENTINEL_STRETCHES = (
     ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"),
 )
+# Roads the owner has called (`pipeline.known_roads`; backlog 2026-11-12, stress item 5):
+# VALIDATE_SEGMENTS reads each stretch in this file back by its line rather than by way id
+# and lists any that no longer carries the owner's level (`REBUILD_OWNER_CALLS_REFUSE` below);
+# a stretch with no rows left refuses the build. An empty path turns it off.
+REBUILD_KNOWN_ROADS = str(BASE_DIR / "fixtures" / "known-roads" / "known-roads.json")
+# Whether a road the owner called (the known roads above, the reference LTS 4 street and the
+# owner's stretches) coming out at another level refuses the build. 1 or true refuses it.
+# Unset, the default: the gap is logged for the raters (the owner, 2026-11-14: "These are
+# reasonable estimates. I'll go with them. My calls were because the old metrics were way off").
+# A stretch that cannot be read at all refuses the build either way.
+REBUILD_OWNER_CALLS_REFUSE = env_true(os.environ.get("REBUILD_OWNER_CALLS_REFUSE"))
 # Ways inside Joint Base Anacostia-Bolling that VALIDATE_SEGMENTS requires closed to bicycles
 # (`pipeline.run.assert_military_closures`; the owner's report of a route through the
 # base, 2026-10-05): two sidewalks and a service road with no access tag of their own,
@@ -732,6 +750,19 @@ MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS = frozenset({"CONNECTICUT AVE NW"})
 DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://localhost:8000/auth/callback")
+
+# Google and Apple sign-in (core.oidc_login, Stephen 2026-11-13), `openid` alone: each is
+# offered only once its keys are set. The redirect URIs must match the ones registered with
+# Google and Apple exactly. Apple's client secret is made per exchange from the private key
+# (.p8 contents), its key id and the team id.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
+APPLE_CLIENT_ID = os.environ.get("APPLE_CLIENT_ID", "")
+APPLE_TEAM_ID = os.environ.get("APPLE_TEAM_ID", "")
+APPLE_KEY_ID = os.environ.get("APPLE_KEY_ID", "")
+APPLE_PRIVATE_KEY = os.environ.get("APPLE_PRIVATE_KEY", "").replace("\\n", "\n")
+APPLE_REDIRECT_URI = os.environ.get("APPLE_REDIRECT_URI", "")
 
 # Garmin Connect (core.garmin): the Connect Developer Program app's client id and secret, from
 # Garmin's developer portal. Unset, Settings offers no Garmin connection and Send to Garmin hands
