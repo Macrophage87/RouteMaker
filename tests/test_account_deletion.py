@@ -73,7 +73,7 @@ class TestPage:
         r = client.get(account_deletion.PATH, **addr())
         body = r.content.decode()
         assert r.status_code == 200 and r["Cache-Control"] == "no-store"
-        assert "/auth/login?next=/delete-account" in body
+        assert "/auth/sign-in?next=/delete-account" in body
         assert "Your saved routes" in body and "Kept" in body
         assert "<form" not in body
         assert escape(account_deletion.BANNED) in body
