@@ -209,8 +209,9 @@ def stage_context(tmp_path, monkeypatch) -> RebuildContext:
 def test_the_rebuild_writes_the_flag_list(tmp_path, monkeypatch) -> None:
     context = stage_context(tmp_path, monkeypatch)
     build_handlers(context, load_overrides=lambda: [])[Stage.CLASSIFY_STRESS]()
-    # The agencies' levels decide; the formula's is kept beside them.
-    assert context.stress_by_way[DC_LANE].tier is Stress.LTS2
+    # MoCo's level decides; DDOT's 2020 level is comparison only (#1241), so K Street keeps the
+    # formula's 3 and DDOT's 2 is listed beside it.
+    assert context.stress_by_way[DC_LANE].tier is Stress.LTS3
     assert context.stress_by_way[MD_LANE].tier is Stress.LTS1
     assert context.stress_by_way[VA_LANE].tier is Stress.LTS3
     report = context.work_dir / "reports" / agency_lts.PAINTED_LANE_REPORT_NAME
