@@ -61,14 +61,14 @@ test("Escape or the chip again closes it, and the focus goes back to the chip", 
   assert.doesNotMatch(source, /sessionStorage|localStorage|getElementById/, "no dismissal to remember");
 });
 
-test("for reports it links the public Discord, and in small print the how-to-join page (owner, 2026-10-25, 2026-11-06)", () => {
+test("for reports it links the public Discord, and in small print the testers' welcome page (owner, 2026-10-25; backlog 2026-11-12)", () => {
   assert.equal(
     BETA_BANNER_TEXT,
     "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell us on",
   );
   assert.equal(BETA_DISCORD_URL, "https://discord.gg/Qwz6BEt6gc");
-  assert.equal(BETA_SIGNUP_URL, "/about/android-beta.html");
-  assert.ok(existsSync(new URL("../../public/about/android-beta.html", import.meta.url)), "the page it links is published");
+  assert.equal(BETA_SIGNUP_URL, "/about/welcome.html");
+  assert.ok(existsSync(new URL("../../public/about/welcome.html", import.meta.url)), "the page it links is published");
   assert.equal(BETA_SIGNUP_TEXT, "Sign up to test here!");
   const html = render({ enabled: true, initiallyOpen: true, ios: false });
   const newTab = '<span class="visually-hidden"> (opens in a new tab)</span>';
