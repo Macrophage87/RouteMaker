@@ -667,7 +667,7 @@ def test_a_mapped_facility_sets_ddots_2020_rating_aside(monkeypatch) -> None:
     assert held["used"] == agency_lts.FORMULA_USED and held["formula"] == 2
     rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
     assert not any("(used" in row["value"] for row in rows if "DDOT" in row["label"])
-    assert any(row["label"] == "Used" and "predates" in row["value"] for row in rows)
+    assert any(row["label"] == "Used" and "formula is used" in row["value"] for row in rows)
     # With no facility mapped DDOT's level is used, as before.
     assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
 
@@ -788,3 +788,20 @@ def test_mdot_shas_ban_is_still_read_with_every_level_comparison_only(monkeypatc
     ban = AgencyRating("mdot-sha", 5)
     assert agency_lts.prohibiting([ban]) == ban
     assert agency_lts.chosen([ban, AgencyRating("moco", 2)]) is None
+
+
+def test_with_every_level_comparison_only_the_report_and_panel_still_show_it(monkeypatch) -> None:
+    """The RL-3 painted-lane report sets the agency's level beside the formula's, and the road
+    panel records the formula as the one used (review of #1278)."""
+    import json
+
+    from pipeline import writers
+
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", REAL_COMPARISON_ONLY)
+    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 2)])
+    row = agency_lts.painted_lane_row(1, "Darnestown Rd", "MD", result)
+    assert (row["scope"], row["agency"], row["agency_level"]) == ("MoCo", "moco", "2")
+    assert row["differs"] == "yes"
+    held = json.loads(writers._ratings_json(result))
+    assert held["used"] == agency_lts.FORMULA_USED
+    assert [a["agency"] for a in held["agencies"]] == ["moco"]

@@ -9,9 +9,10 @@ each set of SHA's attributes, proposed rules from it, and had skeptic agents try
 each. The rules that survived are below; the owner chose "Rules in the build" over owner rows
 (2026-10-30), so each is a switch here (`ENABLED`) rather than thousands of rows.
 
-They apply only where SHA's level is the one the map uses: Maryland outside Montgomery
-(inside, the county's rating wins, `agency_lts.chosen`). SHA's 5, a ban, is never read
-otherwise. Each rule reads only SHA's own attributes (functional class, posted or assumed
+They apply where SHA rates the road: Maryland outside Montgomery (inside, the county's rating
+ranks first, `agency_lts.chosen`). Since 2026-11-13 every agency's level is comparison-only
+(`agency_lts.COMPARISON_ONLY`): the reading is recorded and shown, never the tier. SHA's 5,
+a ban, is never read otherwise. Each rule reads only SHA's own attributes (functional class, posted or assumed
 speed, through lanes, shoulder widths, bike facility), SHA's traffic count for the stretch
 (`MDOT SHA Annual Average Daily Traffic`, joined by route and milepoint), and whether the
 stretch lies in a Census urban area.

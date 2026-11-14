@@ -208,10 +208,10 @@ def test_the_panel_says_the_formula_is_used_beside_a_ban():
     assert values["MDOT SHA rates it"] == segment_info.PROHIBITED_LEVEL_WORDS
     assert "used" not in values["MDOT SHA rates it"]
     assert "not a stress level" in values["Used"]
-    # A rating set aside for a newer facility keeps its own words.
+    # Any other agency's level is shown for comparison only.
     ddot = {**held, "agencies": [{"agency": "ddot", "name": "DDOT", "level": 4}]}
     aside = segment_info.rating_rows({"stress_ratings": json.dumps(ddot)})
-    assert "predates the bike facility" in {r["label"]: r["value"] for r in aside}["Used"]
+    assert "comparison only" in {r["label"]: r["value"] for r in aside}["Used"]
 
 
 def test_an_owner_access_override_reopens_it():

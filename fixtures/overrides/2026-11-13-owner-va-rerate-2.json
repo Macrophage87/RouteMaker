@@ -2,7 +2,7 @@
  "version": 1,
  "decided": "2026-11-13",
  "decided_by": "the deployment owner",
- "status": "Re-rate asked for by the owner in conversation on 2026-11-13; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
+ "status": "Re-rate asked for by the owner in conversation on 2026-11-13; loaded on the PC 2026-11-13 to 11-14 with the owner's go for this file; built in the 2026-11-14 trial rebuild.",
  "annotations": "Every road re-rated on 2026-11-13 with one lean rater brief: one rater for every road, a second for the doubtful ones, a third where those two disagreed. A row for every way the re-rate rated, whether or not its level changed, so no way is left to an agency level or a later formula change; each retires the row in force on that way, the owner's own earlier rating rows among them (the owner, 2026-11-13: \"Ignore my own calls\", \"The goal here is no specific overrides\"). Baltimore streets whose bike facility the city records and the map lacks were rated with that record as a fact. Ways an agency rates that had no row of ours were rated the same way (an agency rating alone is not a rating: the owner, 2026-11-13). Closed roads and access rows are left as they are. Method and results: reports/rerate-2026-11-13/REPORT.md.",
  "retire": [
   {

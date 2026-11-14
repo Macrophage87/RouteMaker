@@ -841,8 +841,9 @@ _USED_WORDS = {
     "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
     "service road": "raised to LTS 1.5: alleys and service roads have delivery trucks and "
     "blind exits",
-    agency_lts.FORMULA_USED: "RouteMaker's formula is used: the agency's rating predates the "
-    "bike facility mapped here",
+    # Every agency's level is comparison-only since 2026-11-13 (`agency_lts.COMPARISON_ONLY`).
+    agency_lts.FORMULA_USED: "RouteMaker's formula is used: agency ratings are shown for "
+    "comparison only",
     agency_lts.PAINTED_LANE_USED: "set to LTS 2.5: the agency's rating predates the painted "
     "lane mapped here, but a lane on a road it rated this busy may still be stressful",
 }
