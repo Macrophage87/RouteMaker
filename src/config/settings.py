@@ -672,9 +672,16 @@ REBUILD_SENTINEL_STRETCHES = (
     ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"),
 )
 # Roads the owner has called (`pipeline.known_roads`; backlog 2026-11-12, stress item 5):
-# VALIDATE_SEGMENTS refuses a build where a stretch in this file, found by its line rather
-# than by way id, no longer carries the owner's level. An empty path turns it off.
+# VALIDATE_SEGMENTS reads each stretch in this file back by its line rather than by way id
+# and lists any that no longer carries the owner's level (`REBUILD_OWNER_CALLS_REFUSE` below);
+# a stretch with no rows left refuses the build. An empty path turns it off.
 REBUILD_KNOWN_ROADS = str(BASE_DIR / "fixtures" / "known-roads" / "known-roads.json")
+# Whether a road the owner called (the known roads above, the reference LTS 4 street and the
+# owner's stretches) coming out at another level refuses the build. 1 or true refuses it.
+# Unset, the default: the gap is logged for the raters (the owner, 2026-11-14: "These are
+# reasonable estimates. I'll go with them. My calls were because the old metrics were way off").
+# A stretch that cannot be read at all refuses the build either way.
+REBUILD_OWNER_CALLS_REFUSE = env_true(os.environ.get("REBUILD_OWNER_CALLS_REFUSE"))
 # Ways inside Joint Base Anacostia-Bolling that VALIDATE_SEGMENTS requires closed to bicycles
 # (`pipeline.run.assert_military_closures`; the owner's report of a route through the
 # base, 2026-10-05): two sidewalks and a service road with no access tag of their own,
