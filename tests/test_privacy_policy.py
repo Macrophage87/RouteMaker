@@ -59,7 +59,7 @@ class TestPage:
         _, body, _ = get(client)
         headings = re.findall(r"<h2>([^<]+)</h2>", body)
         assert headings == [escape(h) for h, _ in privacy_policy.SECTIONS]
-        needed = ["Your location", "Group and Mass Ride sharing", "If you sign in with Discord",
+        needed = ["Your location", "Group and Mass Ride sharing", "If you sign in",
                   "If you connect Garmin", "If you connect Wahoo", "Shared links",
                   "Suggestions and reports",
                   "Who else is contacted", "Cookies and your device", "Server logs",

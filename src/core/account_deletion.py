@@ -280,7 +280,7 @@ def _signed_out() -> str:
     if not sign_in_available():
         return "<p>Sign-in is not set up on this server, so it holds no accounts to delete.</p>"
     return (
-        f'<p><a href="/auth/login?next={PATH}">Sign in with Discord</a> to delete your account. '
+        f'<p><a href="/auth/sign-in?next={PATH}">Sign in</a> to delete your account. '
         "In the app, it is under Settings, Account, Delete account.</p>"
     )
 
