@@ -15,7 +15,8 @@ import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
-import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, signInLabel, tabSession } from "../lib/signIn.ts";
+import { signInHasChoice } from "../lib/stressEditor.ts";
 import { SignOutEverywhereForm, SignOutForm } from "../SignOut.tsx";
 import { AssistantAppsSetting } from "../AssistantApps.tsx";
 import { GarminSetting, WahooSetting } from "../ConnectionSetting.tsx";
@@ -801,8 +802,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
           {myGo.signedIn ? (
             <div className="account-line">
               <p className="hint signed-in">
-                <Icon name="user" size={16} /> {t("Signed in with Discord.")}
+                <Icon name="user" size={16} /> {signInHasChoice() ? t("Signed in.") : t("Signed in with Discord.")}
               </p>
+              {/* Discord, Google and Apple linked to one account (Stephen 2026-11-13): their page on the server. */}
+              {signInHasChoice() && <a href="/auth/sign-ins">{t("Sign-in methods")}</a>}
               <SignOutForm />
               {/* Beside Sign out, the one control that ends every sign-in, apps' too (core.auth_views). */}
               <SignOutEverywhereForm />
@@ -812,7 +815,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
             <p className="hint sign-in-line">
               <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-                {t("Sign in with Discord")}
+                {signInLabel()}
               </a>
               {t(SIGN_IN_LINE.slice("Sign in with Discord".length))}
             </p>

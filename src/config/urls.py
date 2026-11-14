@@ -27,6 +27,7 @@ from core import (
     privacy_policy,
     route_posts,
     share_preview,
+    sign_in_views,
     stress_tiles,
     wahoo_views,
 )
@@ -48,6 +49,30 @@ urlpatterns = [
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),
+    path("auth/sign-in", sign_in_views.choose, name="sign-in"),
+    path("auth/sign-ins", sign_in_views.sign_ins, name="sign-ins"),
+    path("auth/unlink", sign_in_views.unlink, name="sign-in-unlink"),
+    path(
+        "auth/google/start",
+        sign_in_views.provider_start,
+        {"provider": "google"},
+        name="google-start",
+    ),
+    path(
+        "auth/google/callback",
+        sign_in_views.provider_callback,
+        {"provider": "google"},
+        name="google-callback",
+    ),
+    path(
+        "auth/apple/start", sign_in_views.provider_start, {"provider": "apple"}, name="apple-start"
+    ),
+    path(
+        "auth/apple/callback",
+        sign_in_views.provider_callback,
+        {"provider": "apple"},
+        name="apple-callback",
+    ),
     path("auth/logout-everywhere", auth_views.logout_everywhere_view, name="logout-everywhere"),
     # Connecting a rider's Garmin account, for Send to Garmin (core.garmin_views).
     path("auth/garmin/start", garmin_views.connect_start, name="garmin-start"),

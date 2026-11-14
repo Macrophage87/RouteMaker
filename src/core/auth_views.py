@@ -129,18 +129,31 @@ SIGN_IN_OFF = "Sign-in is not set up on this server. Planning works without it."
 def login_start(request):
     if not sign_in_available():
         return HttpResponse(SIGN_IN_OFF, status=503, content_type="text/plain; charset=utf-8")
+    # With Google or Apple set up too (core.sign_in_views), the app's Sign in buttons, which link
+    # here, open the choice; the choice's Discord button comes back with `pick=discord`.
+    if request.GET.get("pick") != "discord" and request.GET.get("link") != "1":
+        from urllib.parse import urlencode
+
+        from .sign_in_views import offered
+
+        if len(offered(request)) > 1:
+            query = urlencode({"next": request.GET["next"]}) if request.GET.get("next") else ""
+            return HttpResponseRedirect("/auth/sign-in" + (f"?{query}" if query else ""))
     url, pending = begin_login(
         client_id=settings.DISCORD_CLIENT_ID,
         redirect_uri=settings.DISCORD_REDIRECT_URI,
         now=timezone.now(),
         redirect_after=safe_redirect_target(request, request.GET.get("next")),
     )
+    user = getattr(request, "user", None)
+    # Link this Discord account to the signed-in account (core.sign_in_views, 2026-11-13).
+    link = request.GET.get("link") == "1" and user is not None and user.is_authenticated
     request.session[STATE_SESSION_KEY] = {
         "state": pending.state,
         "issued_at": pending.issued_at.isoformat(),
         "redirect_after": pending.redirect_after,
+        "link_user": user.pk if link else None,
     }
-    user = getattr(request, "user", None)
     if user is None or not user.is_authenticated:
         request.session.set_expiry(PENDING_SESSION_S)
     return HttpResponseRedirect(url)
@@ -184,6 +197,14 @@ def login_callback(request, exchange=None):
     # used, and its presence is worth refusing rather than ignoring.
     if not scopes_are_minimal(granted_scopes):
         return HttpResponseForbidden("the grant carried more than the identify scope")
+
+    if stored and stored.get("link_user") is not None:
+        from .sign_in_views import link_discord
+
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated or user.pk != stored["link_user"]:
+            return HttpResponseBadRequest("the link was started by another account")
+        return link_discord(request, discord_user_id)
 
     if BanTombstone.objects.filter(
         tombstone=tombstone(discord_user_id, settings.TOMBSTONE_KEY)
