@@ -30,7 +30,7 @@ from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
 from core import presets, refine, route_hazards, routing, segment_info
-from routemaker import calm, flow
+from routemaker import calm, flow, ridetime
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -1084,6 +1084,13 @@ class TestRefusedInput:
             response = client.get(path, {"lon": -77.0, "lat": LAT, "at": at})
             assert response.status_code == 400, (path, response.content)
             assert "within a year" in response.json()["error"]
+
+    @pytest.mark.parametrize("preset", [presets.BIKESHARE, "rebalance"])
+    def test_a_start_time_on_bikeshare(self, preset, client, router) -> None:
+        # Plan's start time (the owner, 2026-11-13): the docks are read as they are now.
+        at = (timezone.now() + timedelta(days=1)).isoformat()
+        body = {**good_body(preset), "depart_at": at}
+        assert "docks as they are now" in refused_before_the_router(client, router, body)["error"]
 
     def test_twenty_six_points(self, client, router) -> None:
         points = [[-77.05 + i * 0.001, LAT] for i in range(26)]
@@ -3640,3 +3647,51 @@ class TestMassRideCapacitySections:
         classes = routing.classify(pieces, "weekday_offpeak")
         assert [c.rpm for c in classes] == [50, None]
         assert all(len(c) == 2 for c in classes)
+
+
+@db
+class TestStartTime:
+    """Plan's day and start time (backlog after v0.26.0, item 1; the owner, 2026-11-13: "Plan
+    only"): a bike plan takes `depart_at`, plans at that moment's ride time where the rider
+    chose none, and matches its closures at it."""
+
+    def saturday_morning(self) -> datetime:
+        local = timezone.now().astimezone(ZoneInfo("America/New_York"))
+        days = (5 - local.weekday()) % 7 or 7
+        return (local + timedelta(days=days)).replace(hour=10, minute=0, second=0, microsecond=0)
+
+    def other_kind_of_day(self) -> tuple[datetime, str]:
+        """A start whose ride time differs from now's: Saturday morning from a weekday, else a
+        Wednesday at 11 PM (night on any day, holiday or not)."""
+        local = timezone.now().astimezone(ZoneInfo("America/New_York"))
+        if ridetime.when_at(local) != "weekend":
+            return self.saturday_morning(), "weekend"
+        days = (2 - local.weekday()) % 7 or 7
+        at = (local + timedelta(days=days)).replace(hour=23, minute=0, second=0, microsecond=0)
+        return at, "night"
+
+    def test_a_bike_plan_takes_a_start_time(self, client, segments, router) -> None:
+        router(standard_router())
+        at, expected = self.other_kind_of_day()
+        response = post(client, {**good_body(), "depart_at": at.isoformat()})
+        assert response.status_code == 200, response.content
+        assert response.json()["dials"]["when"] == expected
+
+    def test_the_riders_own_when_stands(self, client, segments, router) -> None:
+        router(standard_router())
+        at = self.saturday_morning()
+        body = {**good_body(), "depart_at": at.isoformat(), "when": "night"}
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["dials"]["when"] == "night"
+
+    def test_the_closures_are_matched_at_the_start(self) -> None:
+        from core import api
+
+        at = self.saturday_morning()
+        body = api.RouteIn(**{**good_body(), "depart_at": at.replace(tzinfo=None).isoformat()})
+        dials = api._bike_dials(body)
+        # A time with no offset is Washington's.
+        assert dials.zones_at == at
+        assert dials.when == "weekend"
+        assert api._bike_dials(api.RouteIn(**good_body())).zones_at is None

@@ -115,8 +115,9 @@ class TestCountsAlongAStreet:
         assert conflate([(1, BENT_STREET)], [line], along_counts=False).matched == {}
         assert conflate([(1, BENT_STREET)], [line]).matched[1].aadt == 320
 
-    def test_a_street_past_several_count_lines_takes_the_highest(self) -> None:
-        """Each line covers under half of it (Victoria Road, way 8813727)."""
+    def test_a_street_past_several_count_lines_takes_the_count_most_of_it_carries(self) -> None:
+        """Each line covers under half of it (Victoria Road, way 8813727). The median weighted
+        by length since 2026-11-13; the highest (480) before (the methodology audit, area 04)."""
         street = [(-77.0200, 38.9000), (-77.0000, 38.9000)]
         lines = [
             feature("a", [(-77.0200, 38.90001), (-77.0130, 38.90001)], 160),
@@ -125,7 +126,7 @@ class TestCountsAlongAStreet:
         ]
         assert conflate([(1, street)], lines, along_counts=False).matched == {}
         match = conflate([(1, street)], lines).matched[1]
-        assert match.aadt == 480 and match.score > 0.9
+        assert match.aadt == 390 and match.score > 0.9
 
     def test_a_street_alongside_one_that_took_the_count_still_does_not(self) -> None:
         """The other carriageway, or a frontage road, wants the same stretch."""
@@ -157,9 +158,11 @@ class TestCountsAlongAStreet:
         other = conflate([(2, far), (1, near)], [line]).matched
         assert set(one) == set(other) == {1}
 
-    def test_only_vdot_counts_are_read_this_way(self) -> None:
+    def test_any_agencys_counts_are_read_this_way_unless_limited(self) -> None:
+        """VDOT's only until 2026-11-13; every agency's since (Kennedy Street NW)."""
         line = feature("f1", LONG_LINE, 320, agency="mdot")
-        assert conflate([(1, BENT_STREET)], [line]).matched == {}
+        assert conflate([(1, BENT_STREET)], [line]).matched[1].aadt == 320
+        assert conflate([(1, BENT_STREET)], [line], along_agencies=("vdot",)).matched == {}
 
     def test_a_cross_street_takes_nothing(self) -> None:
         cross = [(-77.0100, 38.8990), (-77.0100, 38.9010)]

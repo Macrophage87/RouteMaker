@@ -13,6 +13,7 @@ import type { Verbosity } from "./navigate.ts";
 import { englishOf, language, serverWordsIn, speechLang, t, voiceTags } from "./i18n.ts";
 import { isIos } from "./installOffer.ts";
 import { withoutMenuMarks } from "./menuNames.ts";
+import { browserChime, chimed } from "./cueTone.ts";
 
 // ---- The rider's choices, kept on this device -----------------------------------------------------
 
@@ -169,6 +170,20 @@ export interface Said {
   urgent: boolean;
   /** An urgent sentence that waits for the one being said instead of cutting it off (a jog's next turn). */
   after?: boolean;
+  /** A turn or off-route cue: a tone before it is said, and at a turn's "now" a buzz for its side (lib/cueTone.ts). */
+  mark?: CueMark;
+}
+
+/**
+ * What a cue gets besides its words (Stephen 2026-11-13, "All three, no new switches"): "turn" a tone before it, "left"
+ * and "right" the tone and a buzz (a turn's "now"), "off" the off-route tone.
+ */
+export type CueMark = "turn" | "left" | "right" | "off";
+
+/** The tone a mark gets before the voice. */
+export function chimeOf(mark: CueMark | undefined): "turn" | "off" | undefined {
+  if (!mark) return undefined;
+  return mark === "off" ? "off" : "turn";
 }
 
 /**
@@ -180,6 +195,10 @@ export class Announcer {
   /** Told of a polite sentence dropped unsaid (replaced while it waited, or dropped by an urgent one): the cue log. */
   onDrop: ((text: string) => void) | null = null;
   private lastPolite: number | null = null;
+  /** The last polite turn warning's time: a turn's next warning waits a gap after this one alone. */
+  private lastTurn: number | null = null;
+  /** When the waiting sentence's timer is due. */
+  private dueAt = 0;
   private waiting: Said | null = null;
   /** The waiting sentence built afresh as it is said (say's `again`). */
   private again: (() => string | null) | null = null;
@@ -205,24 +224,38 @@ export class Announcer {
    * `again`, where given, builds a polite sentence afresh when one held back is said at last (review RIDE-4: a
    * distance as it is then, not as it was up to POLITE_GAP_MS before); null from it drops the sentence.
    */
-  say(text: string, urgent: boolean, after = false, again?: () => string | null): void {
+  say(text: string, urgent: boolean, after = false, again?: () => string | null, mark?: CueMark): void {
     if (!text) return;
+    const marked = mark ? { mark } : {};
     if (urgent) {
       this.drop();
-      this.deliver(after ? { text, urgent: true, after: true } : { text, urgent: true });
+      this.deliver(after ? { text, urgent: true, after: true, ...marked } : { text, urgent: true, ...marked });
       return;
     }
     const now = this.now();
-    if (this.lastPolite === null || now - this.lastPolite >= POLITE_GAP_MS) {
+    // A turn's warning waits only for the gap after the last turn's, never behind a road note said just before it (the
+    // cue bench: "busy road on Maryland Avenue" held G Street's turn warning back to 5 s before the turn at 18 mph). The
+    // voice still lets the note finish first.
+    const since = mark ? this.lastTurn : this.lastPolite;
+    if (since === null || now - since >= POLITE_GAP_MS) {
       this.drop();
       this.lastPolite = now;
-      this.deliver({ text, urgent: false });
+      if (mark) this.lastTurn = now;
+      this.deliver({ text, urgent: false, ...marked });
       return;
     }
     if (this.waiting) this.onDrop?.(this.waiting.text);
-    this.waiting = { text, urgent: false };
+    this.waiting = { text, urgent: false, ...marked };
     this.again = again ?? null;
+    // Due a gap after what this one waits on (the last turn warning for a turn's, the last of any for a note): a
+    // timer set for the one it replaced is set again when that differs.
+    const due = (since ?? now) + POLITE_GAP_MS;
+    if (this.timer !== null && this.dueAt !== due) {
+      this.unschedule(this.timer);
+      this.timer = null;
+    }
     if (this.timer === null) {
+      this.dueAt = due;
       this.timer = this.schedule(() => {
         this.timer = null;
         const next = this.waiting;
@@ -233,9 +266,10 @@ export class Announcer {
         if (next && !text) this.onDrop?.(next.text);
         if (next && text) {
           this.lastPolite = this.now();
+          if (next.mark) this.lastTurn = this.lastPolite;
           this.deliver({ ...next, text });
         }
-      }, POLITE_GAP_MS - (now - this.lastPolite));
+      }, due - now);
     }
   }
 
@@ -289,6 +323,8 @@ export interface UtteranceLike {
   lang: string;
   onend: (() => void) | null;
   voice?: VoiceLike | null;
+  /** A tone just before the words (lib/cueTone.ts): the speech env plays it, then speaks. */
+  chime?: "turn" | "off";
 }
 
 /** A voice the phone has (SpeechSynthesisVoice): its language tag. */
@@ -333,7 +369,9 @@ export function voiceFor(voices: readonly VoiceLike[], tags: readonly string[] =
 }
 
 export function browserSpeech(): SpeechEnv {
-  const synth = typeof window !== "undefined" && "speechSynthesis" in window ? (window.speechSynthesis as unknown as SpeechApi) : undefined;
+  const page = typeof window !== "undefined" && "speechSynthesis" in window ? (window.speechSynthesis as unknown as SpeechApi) : undefined;
+  // A turn cue's tone first (lib/cueTone.ts), through Web Audio.
+  const synth = page ? chimed(page, (kind) => browserChime(kind)) : undefined;
   const utterance = (text: string): UtteranceLike =>
     typeof SpeechSynthesisUtterance === "function" ? (new SpeechSynthesisUtterance(text) as unknown as UtteranceLike) : { text, lang: "", onend: null };
   const voices = (): readonly VoiceLike[] => {
@@ -352,6 +390,8 @@ export function browserSpeech(): SpeechEnv {
  */
 export class Voice {
   private waiting: string | null = null;
+  /** The tone the waiting sentence gets. */
+  private waitingChime: "turn" | "off" | undefined = undefined;
   /** The utterance being said, held so the browser cannot collect it before its end fires (a Chrome bug). */
   private current: UtteranceLike | null = null;
   /** Its words as asked for (the English said in place of a language with no voice is still this sentence). */
@@ -374,14 +414,14 @@ export class Voice {
     this.speak(text, true);
   }
 
-  speak(text: string, urgent: boolean, after = false): void {
+  speak(text: string, urgent: boolean, after = false, chime?: "turn" | "off"): void {
     const synth = this.env.synth;
     if (!synth || !text) return;
     // Paused by the browser (a hidden page), speech would queue and never be heard.
     if (synth.paused) synth.resume?.();
     const busy = this.busy();
     if (urgent && after && busy) {
-      // A jog's next turn: straight after the turn being said, not over it.
+      // A jog's next turn: straight after the turn being said, not over it (no tone: the turn before had it).
       this.wait(text);
       return;
     }
@@ -393,23 +433,24 @@ export class Voice {
         if (this.current) this.env.trace?.("cut", this.currentText);
         synth.cancel();
       }
-      this.start(text);
+      this.start(text, chime);
       return;
     }
     if (busy) {
-      this.wait(text);
+      this.wait(text, chime);
       this.watch();
       return;
     }
     // A newer polite cue takes the place of any older one still waiting.
     this.replace();
-    this.start(text);
+    this.start(text, chime);
   }
 
   /** `text` waits for the sentence being said, in place of any already waiting. */
-  private wait(text: string): void {
+  private wait(text: string, chime?: "turn" | "off"): void {
     this.replace();
     this.waiting = text;
+    this.waitingChime = chime;
     this.env.trace?.("waits", text);
   }
 
@@ -456,7 +497,7 @@ export class Voice {
     return (this.env.now ?? Date.now)();
   }
 
-  private start(text: string): void {
+  private start(text: string, chime?: "turn" | "off"): void {
     // A language the phone has no voice for (Amharic, Tigrinya and others on many phones): the screen keeps the
     // language and the voice speaks the English, rather than an English voice spelling out words it cannot read. A
     // sentence with no English in the catalog (one of the server's) is left to the screen.
@@ -476,6 +517,7 @@ export class Voice {
     const utterance = this.env.utterance(said);
     utterance.lang = english !== null ? speechLang("en") : speechLang();
     if (voice && english === null) utterance.voice = voice;
+    if (chime) utterance.chime = chime;
     utterance.onend = () => {
       // Only the sentence being said ends it: a cancelled one's late end does not start the next over it.
       if (this.current === utterance) this.next();
@@ -490,8 +532,10 @@ export class Voice {
   private next(): void {
     this.current = null;
     const next = this.waiting;
+    const chime = this.waitingChime;
     this.waiting = null;
-    if (next) this.start(next);
+    this.waitingChime = undefined;
+    if (next) this.start(next, chime);
   }
 }
 

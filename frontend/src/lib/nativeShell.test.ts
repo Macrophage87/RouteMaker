@@ -22,7 +22,9 @@ import {
   rideWake,
   ridesHidden,
   shell,
-  showCue,
+  RIDE_CUE_PLUGIN,
+  rideBuzz,
+  showTurnCard,
   speaksAloud,
   type CapacitorBridge,
 } from "./nativeShell.ts";
@@ -30,6 +32,12 @@ import { browserRideEnv, watchRide } from "./rideWatch.ts";
 import { OUTPUT_LABELS, ScreenWake, Voice, WAKE_UNAVAILABLE, toVoice, type CueOutput } from "./rideOutput.ts";
 import type { LocateFailure } from "./geolocation.ts";
 import type { RideFix } from "./navigate.ts";
+import type { TurnCard } from "./turnCard.ts";
+
+/** A turn card (lib/turnCard.ts) whose words without a distance are `still`. */
+function card(still: string, title = still, body = "", arrow: TurnCard["arrow"] = "left"): TurnCard {
+  return { title, body, still, arrow, index: 0 };
+}
 
 interface Call {
   plugin: string;
@@ -103,7 +111,8 @@ test("in a browser every environment is the browser's own, and nothing native is
   assert.equal(rideSpeech(null).synth, undefined, "the test runner has no speechSynthesis: Web Speech's own answer");
   assert.equal(rideWake(null).request, undefined, "no navigator.wakeLock here: the browser's own answer");
   assert.equal(ridesHidden(), false, "a hidden page still pauses the ride after HIDDEN_STOP_MS");
-  showCue("Left on 14th St NW");
+  showTurnCard(card("Left · 14th St NW"));
+  rideBuzz("left", null, {});
   for (const output of Object.keys(OUTPUT_LABELS) as CueOutput[]) {
     for (const hidden of [false, true]) assert.equal(speaksAloud(output, hidden), toVoice(output), `${output}, hidden ${hidden}`);
   }
@@ -120,7 +129,7 @@ test("the web bundle imports no Capacitor package; frontend/package.json depends
   assert.deepEqual(deps.filter((d) => d.startsWith("@capacitor")), []);
   // Ride mode reaches the shell only through this module.
   const ride = readFileSync(fileURLToPath(new URL("../RideMode.tsx", import.meta.url)), "utf8");
-  assert.match(ride, /import \{ rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud \} from "\.\/lib\/nativeShell\.ts";/);
+  assert.match(ride, /import \{ rideBuzz, rideGeoEnv, rideSpeech, rideWake, ridesHidden, showTurnCard, speaksAloud \} from "\.\/lib\/nativeShell\.ts";/);
   // The shell's voice, with the cue log's trace added to it (lib/cueRecorder.ts).
   assert.match(ride, /new Voice\(\{ \.\.\.rideSpeech\(\), trace: /);
   assert.match(ride, /new ScreenWake\(rideWake\(\)\)/);
@@ -263,25 +272,26 @@ test("notifications refused at Start ride: the ride goes on, and no cue notifica
   await flush();
   fake.send("cb1", { latitude: 38.9, longitude: -77.03, accuracy: 6, speed: null, bearing: null, time: 1 });
   assert.equal(fixes.length, 1);
-  showCue("Left onto P St NW", found);
+  showTurnCard(card("Left onto P St NW"), found);
   await found!.notice!.settled();
   assert.deepEqual(fake.names(), ["BackgroundGeolocation.requestPermissions", "LocalNotifications.requestPermissions", "BackgroundGeolocation.addWatcher"]);
 });
 
 // ---- In the shell: the cue notification -------------------------------------------------------------------
 
-test("Android's cue notification: only while a ride's watch runs; silent channel; replaced; cleared at End", async () => {
+test("Android's cue notification in an older app: only while a ride's watch runs; silent channel; replaced; cleared at End", async () => {
   const fake = fakeBridge("android");
   const found = findShell({ Capacitor: fake.bridge });
-  showCue("Before any ride", found);
+  showTurnCard(card("Before any ride"), found);
   await found!.notice!.settled();
   assert.deepEqual(fake.calls, [], "nothing before a ride");
   const stop = watchRide(rideGeoEnv(found), () => undefined, () => undefined);
   await flush();
   fake.calls.splice(0, 2); // the two permission questions (tested above)
-  showCue("In 500 feet, left onto 14th St NW", found);
-  showCue("In 500 feet, left onto 14th St NW", found);
-  showCue("Left now", found);
+  // An older app (no live card): the words without the distance, put up again only when the turn changes, never stale.
+  showTurnCard(card("Left · 14th St NW", "500 ft · Left"), found);
+  showTurnCard(card("Left · 14th St NW", "450 ft · Left"), found);
+  showTurnCard(card("Right · Q St NW", "0.2 mi · Right"), found);
   await found!.notice!.settled();
   assert.deepEqual(fake.names(), [
     "BackgroundGeolocation.addWatcher",
@@ -297,15 +307,15 @@ test("Android's cue notification: only while a ride's watch runs; silent channel
   assert.deepEqual(first, {
     id: CUE_NOTICE_ID,
     title: "Latest cue",
-    body: "In 500 feet, left onto 14th St NW",
+    body: "Left · 14th St NW",
     channelId: CUE_CHANNEL,
     ongoing: true,
     autoCancel: false,
     isExactNotification: false,
   });
-  assert.equal((fake.calls[3].options!.notifications as Record<string, unknown>[])[0].body, "Left now");
+  assert.equal((fake.calls[3].options!.notifications as Record<string, unknown>[])[0].body, "Right · Q St NW");
   stop();
-  showCue("After the end", found);
+  showTurnCard(card("After the end"), found);
   await found!.notice!.settled();
   assert.deepEqual(fake.names().slice(4), [
     "BackgroundGeolocation.removeWatcher",
@@ -320,8 +330,8 @@ test("a cue update still in flight at End never brings the notification back", a
   const found = findShell({ Capacitor: fake.bridge });
   const stop = watchRide(rideGeoEnv(found), () => undefined, () => undefined);
   await flush();
-  showCue("Right onto Q St NW", found);
-  showCue("Left onto 15th St NW", found);
+  showTurnCard(card("Right onto Q St NW"), found);
+  showTurnCard(card("Left onto 15th St NW"), found);
   stop();
   // Answer every native call in turn, as the device would.
   for (let i = 0; i < 10; i += 1) {
@@ -340,9 +350,9 @@ test("notifications refused (Android 13+): the ride goes on and is not asked aga
   const found = findShell({ Capacitor: fake.bridge });
   watchRide(rideGeoEnv(found), () => undefined, () => undefined);
   await flush();
-  showCue("Left onto P St NW", found);
+  showTurnCard(card("Left onto P St NW"), found);
   await found!.notice!.settled();
-  showCue("Right onto 16th St NW", found);
+  showTurnCard(card("Right onto 16th St NW"), found);
   await found!.notice!.settled();
   assert.equal(fake.names().filter((n) => n.endsWith("schedule")).length, 1);
 });
@@ -352,7 +362,7 @@ test("iOS: no cue notification at all (VoiceOver would read each banner over the
   const found = findShell({ Capacitor: fake.bridge });
   const stop = watchRide(rideGeoEnv(found), () => undefined, () => undefined);
   await flush();
-  showCue("Left onto P St NW", found);
+  showTurnCard(card("Left onto P St NW"), found);
   stop();
   await flush();
   // No notifications question either: iOS has no cue notification, and its location pill needs none.
@@ -491,4 +501,91 @@ test("the app's share sheet (Stephen 2026-10-26): only in an app with the plugin
   assert.match(java, /public void share\(PluginCall call\)/);
   const main = readFileSync(fileURLToPath(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/MainActivity.java", import.meta.url)), "utf8");
   assert.match(main, /registerPlugin\(SharePlugin\.class\);/);
+});
+
+// ---- In the shell: riding with the phone in a pocket (RIDE_CUE_PLUGIN) ----------------------------------------------
+
+const withCues = ["BackgroundGeolocation", "TextToSpeech", "LocalNotifications", VOICE_FOCUS_PLUGIN, RIDE_CUE_PLUGIN];
+
+test("the live turn card: updated in place as the distance counts down, nothing repeated, cleared at End ride", async () => {
+  const fake = fakeBridge("android", withCues);
+  const found = findShell({ Capacitor: fake.bridge });
+  showTurnCard(card("Left · 14th St NW", "500 ft · Left", "14th St NW"), found);
+  await found!.notice!.settled();
+  assert.deepEqual(fake.calls, [], "nothing before a ride");
+  const stop = watchRide(rideGeoEnv(found), () => undefined, () => undefined);
+  await flush();
+  fake.calls.splice(0, 3); // the two permission questions and the watcher
+  showTurnCard(card("Left · 14th St NW", "500 ft · Left", "14th St NW"), found);
+  showTurnCard(card("Left · 14th St NW", "500 ft · Left", "14th St NW"), found);
+  showTurnCard(card("Left · 14th St NW", "450 ft · Left", "14th St NW"), found);
+  await found!.notice!.settled();
+  assert.deepEqual(fake.names(), [`${RIDE_CUE_PLUGIN}.show`, `${RIDE_CUE_PLUGIN}.show`], "the old Latest cue is not shown beside it");
+  assert.deepEqual(fake.calls[0].options, { title: "500 ft · Left", body: "14th St NW", arrow: "left" });
+  assert.equal(fake.calls[1].options!.title, "450 ft · Left");
+  // Arrived (a walk or a train may follow): the card goes, the watch goes on; a later card shows again.
+  showTurnCard(null, found);
+  showTurnCard(null, found);
+  await found!.notice!.settled();
+  assert.deepEqual(fake.names().slice(2), [`${RIDE_CUE_PLUGIN}.clear`]);
+  stop();
+  showTurnCard(card("After the end"), found);
+  await found!.notice!.settled();
+  assert.deepEqual(fake.names().slice(3), ["BackgroundGeolocation.removeWatcher", `${RIDE_CUE_PLUGIN}.clear`]);
+  const java = readFileSync(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/RideCuePlugin.java", import.meta.url), "utf8");
+  assert.match(java, /@CapacitorPlugin\(name = "RouteMakerRideCue"\)/);
+  assert.match(java, /VISIBILITY_PUBLIC/, "readable on the lock screen");
+  assert.match(java, /setOnlyAlertOnce\(true\)/);
+  assert.match(java, /IMPORTANCE_DEFAULT/, "a low-importance card is hidden from the lock screen on many phones");
+  assert.match(java, /enableVibration\(false\)/, "no sound or buzz of its own: the voice and the turn's buzz are the alerts");
+  assert.match(java, /setSound\(null, null\)/);
+  const main = readFileSync(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/MainActivity.java", import.meta.url), "utf8");
+  assert.match(main, /registerPlugin\(RideCuePlugin\.class\);/);
+  assert.match(main, /RideCuePlugin\.cancel\(this\)/, "a card left by a ride the app did not end is cleared");
+});
+
+test("a turn cue's tone: played inside the audio turn, then the words; a cue cut in during the tone drops them", async () => {
+  const fake = fakeBridge("android", withCues);
+  const voice = new Voice(rideSpeech(findShell({ Capacitor: fake.bridge })));
+  voice.speak("In 500 feet, left onto 14th St NW", false, false, "turn");
+  await flush();
+  await flush();
+  assert.deepEqual(fake.names().slice(0, 3), [`${VOICE_FOCUS_PLUGIN}.duck`, `${RIDE_CUE_PLUGIN}.chime`, "TextToSpeech.speak"]);
+  assert.deepEqual(fake.calls[1].options, { kind: "turn" });
+  // A cue with no tone: the words alone.
+  const plain = fakeBridge("android", withCues);
+  new Voice(rideSpeech(findShell({ Capacitor: plain.bridge }))).speak("Busy road on R St NW", false);
+  await flush();
+  assert.equal(plain.calls.some((c) => c.method === "chime"), false);
+  // Cut in during the tone: the turn's words are never said over the urgent cue.
+  const slow = fakeBridge("android", withCues);
+  slow.manual();
+  const cut = new Voice(rideSpeech(findShell({ Capacitor: slow.bridge })));
+  cut.speak("In 500 feet, left onto 14th St NW", false, false, "turn");
+  cut.speak("Off route", true, false, "off");
+  for (let i = 0; i < 8; i += 1) {
+    await flush();
+    slow.pending.shift()?.resolve();
+  }
+  await flush();
+  const spoken = slow.calls.filter((c) => c.method === "speak").map((c) => c.options?.text);
+  assert.deepEqual(spoken, ["Off route"]);
+  // An app built before the plugin: no tone, the words as before.
+  const old = fakeBridge();
+  new Voice(rideSpeech(findShell({ Capacitor: old.bridge }))).speak("Left now", true, false, "turn");
+  await flush();
+  assert.deepEqual(old.names(), ["TextToSpeech.speak"]);
+});
+
+test("a turn's buzz: the native one in the app; navigator.vibrate in a browser or an older app; nothing without either", () => {
+  const fake = fakeBridge("android", withCues);
+  rideBuzz("right", findShell({ Capacitor: fake.bridge }), {});
+  assert.deepEqual(fake.calls, [{ plugin: RIDE_CUE_PLUGIN, method: "buzz", options: { side: "right" } }]);
+  const buzzed: number[][] = [];
+  const page = { navigator: { vibrate: (p: number[]) => (buzzed.push(p), true) } };
+  rideBuzz("left", null, page);
+  rideBuzz("right", findShell({ Capacitor: fakeBridge().bridge }), page);
+  assert.deepEqual(buzzed, [[450], [140, 120, 140]]);
+  rideBuzz("left", null, {});
+  rideBuzz("left", null, { navigator: { vibrate: () => { throw new Error("no tap yet"); } } });
 });

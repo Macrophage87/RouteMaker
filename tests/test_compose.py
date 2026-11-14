@@ -429,6 +429,9 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     # Building without every agency's stress ratings (pipeline.agency_ratings), read
     # by the rebuild task alone.
     "REBUILD_ALLOW_NO_AGENCY_LTS": ("rebuild",),
+    # Whether a road the owner called at another level refuses the build, read by the
+    # rebuild task alone.
+    "REBUILD_OWNER_CALLS_REFUSE": ("rebuild",),
     # The floor on traffic counts in volume.json, read by the rebuild task alone.
     "REBUILD_VOLUME_MIN_ROWS": ("rebuild",),
     # The source extract the rebuild downloads, merges and clips for itself

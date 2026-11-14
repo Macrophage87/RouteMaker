@@ -7,6 +7,8 @@
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";
+import { signInLabel } from "./lib/signIn.ts";
+import { signInHasChoice } from "./lib/stressEditor.ts";
 import { Icon } from "./Icon.tsx";
 import { InfoButton } from "./SettingRow.tsx";
 import { firstWordAndRest, t } from "./lib/i18n.ts";
@@ -191,8 +193,8 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
             </>
           ) : signIn ? (
             <a className="button save-route-sign-in" href="/auth/login" onClick={signIn} ref={signInRef}>
-              <DiscordLogo />
-              {t("Sign in with Discord")}
+              {!signInHasChoice() && <DiscordLogo />}
+              {signInLabel()}
             </a>
           ) : null}
           {onGpx && (
