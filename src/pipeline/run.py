@@ -1619,7 +1619,8 @@ def assert_reference_lts4_street(
         )
     tiers = lts_sentinels.street_tiers(context.staging_schema, street, ids, north_of_lat)
     found = lts_sentinels.problems(tiers, min_share, north_min_share)
-    if tiers.total_m <= 0:
+    # No rows read at all, or none north of the line: a data fault, refused either way.
+    if tiers.total_m <= 0 or tiers.north_m <= 0:
         _owner_calls_found([], found)
     _owner_calls_found(found, [])
     logger.info(
@@ -1889,8 +1890,7 @@ def assert_known_roads(schema: str, path) -> list:
         logger.info(
             "known road %s: %.0f%% at %s", tiers.road.name, 100 * tiers.share, tiers.road.wanted
         )
-        unread = tiers.total_m < known_roads.FOUND_SHARE * tiers.line_m
-        (lost if unread else gaps).extend(known_roads.problems(tiers))
+        (lost if known_roads.unread(tiers) else gaps).extend(known_roads.problems(tiers))
     _owner_calls_found(gaps, lost)
     return read
 

@@ -1008,6 +1008,10 @@ services:
       # ratings in reference/agency-lts.json (pipeline.agency_ratings). Empty,
       # the default: such a rebuild is refused.
       REBUILD_ALLOW_NO_AGENCY_LTS: ${REBUILD_ALLOW_NO_AGENCY_LTS:-}
+      # 1 or true refuses a rebuild where a road the owner called (fixtures/known-roads,
+      # the Conn Ave and South Capitol sentinels) came out at another level. Empty, the
+      # default: the gap is logged for the raters and the build goes on.
+      REBUILD_OWNER_CALLS_REFUSE: ${REBUILD_OWNER_CALLS_REFUSE:-}
       # The fewest traffic counts reference/volume.json may hold before the
       # rebuild refuses it (pipeline.run.check_volume_rows). Empty: 10000; 0: off.
       REBUILD_VOLUME_MIN_ROWS: ${REBUILD_VOLUME_MIN_ROWS:-}

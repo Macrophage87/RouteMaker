@@ -171,10 +171,16 @@ def read(schema: str, road: KnownRoad) -> KnownRoadTiers:
     return KnownRoadTiers(road, total, at_level, line)
 
 
+def unread(tiers: KnownRoadTiers) -> bool:
+    """Too few road rows lie along the stretch's line to check it at all: the road moved,
+    was renamed or lost its rows. Refuses the build whatever `REBUILD_OWNER_CALLS_REFUSE`."""
+    return tiers.total_m < FOUND_SHARE * tiers.line_m
+
+
 def problems(tiers: KnownRoadTiers) -> list[str]:
     """What is wrong with the stretch, in words; empty when it holds."""
     road = tiers.road
-    if tiers.total_m < FOUND_SHARE * tiers.line_m:
+    if unread(tiers):
         return [
             f"{road.name}: only {_mi(tiers.total_m)} of road rows lie along its "
             f"{_mi(tiers.line_m)} line, so the owner's {road.wanted} ({road.decision}) "
