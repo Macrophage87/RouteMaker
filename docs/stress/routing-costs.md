@@ -131,10 +131,12 @@ come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo
 
 LTS 2 (OWNER-DECISIONS 240): Trailmaxxing and Cargo with passengers weigh a meter of LTS 2
 as a quarter of a meter of LTS 3 (`LTS2_WEIGHT`), and Riding with kids as half
-(`KIDS_LTS2_WEIGHT`). Every other preset, Bikeshare included, weighs LTS 2 at 0. The
-weight enters exposure and the strict order's second key, and at a calm rate of 0
-(80 and below, where Cargo with passengers starts) a separate score term: LTS 2 meters x
-the weight x LTS 3's added router cost at the request's `use_roads` in quiet meters
+(`KIDS_LTS2_WEIGHT`). Every other preset, Bikeshare included, weighs LTS 2 at a tiebreak
+share, 0.03 of LTS 3 (`LTS2_TIEBREAK`, 2026-11-14), and 1.5 at half that, so between routes
+the router prices alike the one on calmer streets wins, but turns and junctions still decide
+(at Default a mile of LTS 2 costs about what two turns do). The weight enters exposure and
+the strict order's second key, and at every calm rate a score term: LTS 2 meters x the
+weight x LTS 3's added router cost at the request's `use_roads` in quiet meters
 (`refine.lts3_added_m`, about 4 at 80). It never reaches a router request:
 LTS 2 is never an exclusion target and never starts a trail seek (`refine.seek_weights`).
 

@@ -157,8 +157,13 @@ class TestTheOneFigure:
         assert refine.stress_weight_m(up, None) == pytest.approx(4060, abs=40)
 
     def test_quiet_streets_stay_free(self, monkeypatch):
+        calm = analysed(monkeypatch, [(1000.0, "1")], 0.06)
+        assert calm.exposure_m == 0.0 and calm.lts4_m == calm.lts3_m == 0.0
+
+    def test_lts2_counts_only_its_tiebreak_share(self, monkeypatch):
         up = analysed(monkeypatch, [(500.0, "1"), (500.0, "2")], 0.06)
-        assert up.exposure_m == 0.0 and up.lts4_m == up.lts3_m == 0.0
+        assert up.lts4_m == up.lts3_m == 0.0 and up.lts2_m > 500.0
+        assert up.exposure_m == pytest.approx(presets.LTS2_TIEBREAK * up.lts2_m)
 
     def test_the_same_road_downhill_counts_as_flat(self, monkeypatch):
         down = analysed(monkeypatch, [(1000.0, "4")], -0.06, brake_grade=0.06)
@@ -307,11 +312,13 @@ class TestTheHillCountsAtEverySliderPosition:
 
     POSITIONS = range(0, 101, 5)
 
-    def ctx(self, stress: int, lts2: float = 0.0) -> refine.Context:
+    def ctx(self, stress: int, lts2: float = 0.0, exposure=None) -> refine.Context:
         ctx = test_refine.context(
             rate=presets.calm_rate_for(stress), weight=refine.intersection_weight(stress)
         )
-        if lts2:
+        if exposure is not None:
+            ctx.exposure = exposure
+        elif lts2:
             ctx.exposure = dataclasses.replace(presets.EXPOSURE_STRESS_AVERSE, lts2=lts2)
         return ctx
 
@@ -339,28 +346,30 @@ class TestTheHillCountsAtEverySliderPosition:
             )
 
     @pytest.mark.parametrize(
-        ("lts2", "exposure_m"),
-        # 300 m each of LTS 2, 3 and 4 and 100 m of LTS 1: 300 + 2 x 300 on the standard
-        # weights; 0.25 x 300 + 300 + 8 x 300 on the stress-averse ones with LTS 2 weighed.
-        [(0.0, 900.0), (presets.LTS2_WEIGHT, 2775.0)],
+        ("exposure", "exposure_m"),
+        # 300 m each of LTS 2, 3 and 4 and 100 m of LTS 1: 0.03 x 300 + 300 + 2 x 300 on the
+        # standard weights (LTS 2 as a tiebreaker); 0.25 x 300 + 300 + 8 x 300 on the
+        # stress-averse ones with LTS 2 weighed.
+        [
+            (presets.EXPOSURE_STANDARD, 909.0),
+            (
+                dataclasses.replace(presets.EXPOSURE_STRESS_AVERSE, lts2=presets.LTS2_WEIGHT),
+                2775.0,
+            ),
+        ],
     )
-    def test_a_flat_route_scores_as_before_at_every_position(self, monkeypatch, lts2, exposure_m):
-        exposure = (
-            dataclasses.replace(presets.EXPOSURE_STRESS_AVERSE, lts2=lts2)
-            if lts2
-            else presets.EXPOSURE_STANDARD
-        )
+    def test_a_flat_route_scores_as_before_at_every_position(
+        self, monkeypatch, exposure, exposure_m
+    ):
         tiers = [(300.0, "2"), (300.0, "3"), (300.0, "4"), (100.0, "1")]
         flat = analysed(monkeypatch, tiers, 0.0, exposure=exposure)
         assert flat.exposure_m == pytest.approx(exposure_m) and flat.hill_exposure_m == 0.0
         for stress in self.POSITIONS:
-            ctx = self.ctx(stress, lts2)
+            ctx = self.ctx(stress, exposure=exposure)
             # The score before the hill (release/v0.5.0): the router's cost plus the quiet
-            # cost x (calm rate x exposure, and at a rate of 0 the LTS 2 term); no junctions,
+            # cost x (calm rate x exposure, plus the LTS 2 term at every rate); no junctions,
             # no climb, no Avoid junctions in this reading.
-            extra = ctx.rate * exposure_m
-            if ctx.rate == 0 and lts2:
-                extra += lts2 * refine.lts3_added_m(ctx) * 300.0
+            extra = ctx.rate * exposure_m + exposure.lts2 * refine.lts3_added_m(ctx) * 300.0
             assert flat.score(ctx) == pytest.approx(flat.cost_s + ctx.quiet_cost * extra), stress
 
     def test_lts2_climbing_counts_once_at_a_rate_of_zero(self, monkeypatch):

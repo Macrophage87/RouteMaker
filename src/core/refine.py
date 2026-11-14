@@ -646,7 +646,10 @@ class Analysis:
             + self.hill_m
             - self.router_climb_m
         )
-        if ctx.rate == 0 and self.lts2_weight > 0:
+        if self.lts2_weight > 0:
+            # LTS 2's share of what a metre of LTS 3 adds in the router's own cost, at every
+            # calm rate (the rate's own share is already in `exposure_m`), so the tiebreaker
+            # does not drop away just above 80 on the slider, where the rate starts near 0.
             lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
             extra += self.lts2_weight * lts3_added_m(ctx) * lts2
         return (
