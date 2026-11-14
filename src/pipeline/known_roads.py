@@ -58,7 +58,10 @@ WITH line AS (
     SELECT ST_Buffer(geom::geography, %s)::geometry AS geom, geom AS line FROM line
 ), rows AS (
     SELECT ST_Length(s.geometry::geography) AS len,
-           ST_Length(ST_Intersection(s.geometry, band.geom)::geography) AS inside,
+           -- A grid size (1e-9 degrees, about 0.1 mm) snap-rounds the overlay: without it
+           -- GEOS 3.9, in the pinned postgis/postgis:16-3.4 image, returns an empty line for a
+           -- row lying exactly on the stretch's line, so the stretch read 0 m.
+           ST_Length(ST_Intersection(s.geometry, band.geom, 1e-9)::geography) AS inside,
            s.stress_tier + CASE WHEN s.stress_half THEN 0.5 ELSE 0 END AS level
     FROM {schema}.segment AS s, band
     WHERE s.map_class = 'road' AND NOT s.is_trail_class
