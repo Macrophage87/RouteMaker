@@ -1619,8 +1619,9 @@ def assert_reference_lts4_street(
         )
     tiers = lts_sentinels.street_tiers(context.staging_schema, street, ids, north_of_lat)
     found = lts_sentinels.problems(tiers, min_share, north_min_share)
-    if found:
-        raise ValidationFailed("; ".join(found))
+    if tiers.total_m <= 0:
+        _owner_calls_found([], found)
+    _owner_calls_found(found, [])
     logger.info(
         "%s: %.0f%% LTS 4, %.0f%% north of %.4f N",
         street,
@@ -1860,6 +1861,21 @@ def assert_zoo_rule(context: RebuildContext) -> None:
         raise ValidationFailed("the Zoo rule no longer fits the extract: " + "; ".join(problems))
 
 
+def _owner_calls_found(found: list[str], blocking: list[str]) -> None:
+    """A road the owner called that came out at another level: listed, and the build refused
+    only with `REBUILD_OWNER_CALLS_REFUSE` on. The owner, 2026-11-13: his calls tune the
+    method, never override it ("Ignore my own calls"; "If something is wrong the solution is
+    more context or adjusting the prompt"), so a gap goes back to the raters. A stretch that
+    could not be read at all (`blocking`) still refuses the build."""
+    if found and _setting("REBUILD_OWNER_CALLS_REFUSE"):
+        blocking = [*blocking, *found]
+    else:
+        for gap in found:
+            logger.warning("owner's call not met (listed for the raters): %s", gap)
+    if blocking:
+        raise ValidationFailed("; ".join(blocking))
+
+
 def assert_known_roads(schema: str, path) -> list:
     """Each road the owner has called (`REBUILD_KNOWN_ROADS`, `pipeline.known_roads`) came
     out at his level, read back from the staging schema by where it is, not by way id, so
@@ -1867,13 +1883,15 @@ def assert_known_roads(schema: str, path) -> list:
     roads = known_roads.load(path)
     if not roads:
         return []
-    found, read = known_roads.check(schema, roads)
+    _found, read = known_roads.check(schema, roads)
+    gaps, lost = [], []
     for tiers in read:
         logger.info(
             "known road %s: %.0f%% at %s", tiers.road.name, 100 * tiers.share, tiers.road.wanted
         )
-    if found:
-        raise ValidationFailed("; ".join(found))
+        unread = tiers.total_m < known_roads.FOUND_SHARE * tiers.line_m
+        (lost if unread else gaps).extend(known_roads.problems(tiers))
+    _owner_calls_found(gaps, lost)
     return read
 
 
@@ -1890,7 +1908,7 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
             "no agency street layer is installed, so the owner's stretches are not checked"
         )
         return []
-    found, read = [], []
+    found, gaps, read = [], [], []
     for stretch in stretches:
         ids = lts_sentinels.block_ids(reference.road_blocks, stretch.street)
         if not ids:
@@ -1901,7 +1919,7 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
             continue
         tiers = lts_sentinels.stretch_tiers(context.staging_schema, stretch, ids)
         read.append(tiers)
-        found.extend(lts_sentinels.stretch_problems(tiers))
+        (gaps if tiers.total_m > 0 else found).extend(lts_sentinels.stretch_problems(tiers))
         logger.info(
             "%s %.4f-%.4f N: %.0f%% at tier %d (%s)",
             stretch.street,
@@ -1911,8 +1929,7 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
             stretch.tier,
             stretch.decision,
         )
-    if found:
-        raise ValidationFailed("; ".join(found))
+    _owner_calls_found(gaps, found)
     return read
 
 

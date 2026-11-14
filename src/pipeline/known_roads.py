@@ -6,9 +6,11 @@ The owner has named the level of many roads he rides ("Most of Conn Ave is LTS4"
 override rows, and an override row is matched to its way by id and fingerprint. When OSM
 splits or redraws a way the row can stop reaching it, and the road quietly takes the
 formula's level again: Peach Tree Rd went from 2 to 4 that way. This check reads each
-called road back from the built table by where it is, not by way id, so a rebuild whose
-road no longer carries the owner's level is refused before it is promoted, as the
-Connecticut Ave sentinel (`pipeline.lts_sentinels`) is.
+called road back from the built table by where it is, not by way id, so a road that no
+longer carries the owner's level is listed before the build is promoted, as the Connecticut
+Ave sentinel's is (`pipeline.lts_sentinels`). Since 2026-11-13 a gap is listed for the raters,
+not refused (`REBUILD_OWNER_CALLS_REFUSE`; the owner: "Ignore my own calls"); a stretch whose
+rows are gone still refuses the build.
 
 The roads are in `fixtures/known-roads/known-roads.json`, one entry per stretch:
 
