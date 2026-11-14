@@ -20530,8 +20530,7 @@
    "kind": "stress",
    "osm_way_id": 15561007,
    "value": {
-    "tier": 4,
-    "half": true,
+    "tier": 5,
     "adjustment_id": "us-340-wilson-freeway",
     "category": "speed",
     "visibility": "public",

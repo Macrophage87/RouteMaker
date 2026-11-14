@@ -1242129,6 +1242129,84 @@
     "display": "map"
    },
    "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-09-owner-md-own-picks.json)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 11558956,
+   "value": {
+    "adjustment_id": "edit-2037",
+    "annotation_status": "approved",
+    "category": "other",
+    "display": "route_only",
+    "tier": 3,
+    "visibility": "hidden"
+   },
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1046487207,
+   "value": {
+    "adjustment_id": "edit-2038",
+    "annotation_status": "approved",
+    "category": "other",
+    "display": "route_only",
+    "tier": 2,
+    "visibility": "hidden"
+   },
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 17703298,
+   "value": {
+    "adjustment_id": "edit-2039",
+    "annotation_status": "approved",
+    "category": "other",
+    "display": "route_only",
+    "tier": 2,
+    "visibility": "hidden"
+   },
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 5990773,
+   "value": {
+    "adjustment_id": "edit-2040",
+    "annotation_status": "approved",
+    "category": "other",
+    "display": "route_only",
+    "tier": 2,
+    "visibility": "hidden"
+   },
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 84676067,
+   "value": {
+    "adjustment_id": "edit-2041",
+    "annotation_status": "approved",
+    "category": "other",
+    "display": "route_only",
+    "tier": 2,
+    "visibility": "hidden"
+   },
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 84676067,
+   "value": {
+    "adjustment_id": "edit-2036",
+    "annotation_status": "approved",
+    "category": "other",
+    "display": "route_only",
+    "tier": 2,
+    "visibility": "hidden"
+   },
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
   }
  ],
  "groups": [

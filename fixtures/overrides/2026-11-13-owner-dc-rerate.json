@@ -86191,6 +86191,20 @@
     "display": "map"
    },
    "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief (2026-11-01-owner-dc-rating-review.json)."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 978662876,
+   "value": {
+    "adjustment_id": "edit-2035",
+    "annotation_status": "approved",
+    "category": "road_conditions",
+    "display": "route_only",
+    "tier": 4,
+    "visibility": "hidden",
+    "half": true
+   },
+   "reason": "Replaced 2026-11-13 by the re-rate of every road with one brief: the owner's road-panel edit (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
   }
  ],
  "groups": [
