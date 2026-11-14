@@ -491,7 +491,7 @@ services:
 
   postgis:
     <<: [*restart, *logging]
-    image: docker.io/postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
+    image: docker.io/postgis/postgis:18-3.7@sha256:c5d1ba4292ff7b4471ff41cd515c677633797b72cdd2a7bb691cadaab91f1a1f
     # The same two names Django connects with, from the same variables and the
     # same defaults. They were literals here while every Django service read
     # ${PGUSER}/${PGDATABASE}, so a deployment that set either one in `.env`
