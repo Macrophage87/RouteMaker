@@ -772,7 +772,7 @@ in the database still names it: delete that row in the admin when loading the fi
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
 
 - `2026-11-13-owner-dc-rerate.json`, `-md-rerate-1.json`, `-md-rerate-2.json`,
-  `-va-rerate-1.json`, `-va-rerate-2.json`, `-wv-rerate.json` (282,335 ways, 273,232 retired;
+  `-va-rerate-1.json`, `-va-rerate-2.json`, `-wv-rerate.json` (282,316 ways, 273,232 retired;
   Maryland and Virginia are split to keep each file under 100 MB): every road re-rated on
   2026-11-13 with one lean rater brief (the owner, 2026-11-13: "Rerate the entire dataset on
   sonnet with the 'why' included. Then if skepticism is needed, use opus to review them. If the
@@ -789,12 +789,12 @@ in the database still names it: delete that row in the admin when loading the fi
   classifier's level). The retire lists are written against what the PC database held on
   2026-11-13, not against every file here: the 2026-11-12 side streets file, the North Bethesda,
   Darnestown, Redland and Patuxent files were not loaded, and the Montgomery County file's own
-  retirements had not run. Load the re-rate INSTEAD of the unloaded rating files. Another 1,434 ways that an
+  retirements had not run. Load the re-rate INSTEAD of the unloaded rating files. Another 1,415 ways that an
   agency rates, had no row and were outside that run were rated the same way from a PC extract
   (the owner, 2026-11-13: "If the only row in why is agency, it's not a valid rating. Return it
-  for rerating."); ways barred to bikes, and 330 that are not roads or have no facts, were not.
+  for rerating."); with the same second review and tie-break; ways barred to bikes, and 349 that are not roads or have no facts, were not.
   Left as they are: access rows, and the 113 ways the raters called closed (a closure is an access row with
-  on-the-spot evidence, never a rating). 9,491 ways had no row before and carry no fingerprint
+  on-the-spot evidence, never a rating). 9,472 ways had no row before and carry no fingerprint
   yet (`scripts/analysis/backfill_override_fingerprints.py` on the PC). Method and results:
   `reports/rerate-2026-11-13/REPORT.md` in the project files. Not loaded; load one file at a
   time after the owner confirms that file; takes effect on the next rebuild.
