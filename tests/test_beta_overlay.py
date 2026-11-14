@@ -808,6 +808,8 @@ def test_every_api_path_logs_errors_at_crit_only_with_the_api_proxy_settings() -
         "/api/transit/next-vehicle",
         "/api/bikeshare/docks",
         "/api/closures/map",
+        # The region packs' list (v0.27.0): the ride type's levels in the query
+        "/api/offline/packs",
         # Review (an instance admin's): a way, an area's name, a point on a road
         "/api/review/items",
         "/api/review/map",
