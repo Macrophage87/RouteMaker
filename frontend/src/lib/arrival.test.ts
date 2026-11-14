@@ -178,5 +178,7 @@ test("Go's and Plan's route time carry the arrival, on App's minute clock", () =
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.equal((panel.match(/<dd>\{timeShown\}<\/dd>/g) ?? []).length, 2, "Go's sheet and Plan's totals");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /const arriveMs = leaveNowArriveMs\(shown, minute, dials\.when \?\? null\);/);
+  // Leaving now, or at Plan's start time (lib/startTime.ts) with the When dial set aside.
+  assert.match(app, /const arriveMs = leaveNowArriveMs\(shown, startsMs \?\? minute, startsMs !== null \? null : \(dials\.when \?\? null\)\);/);
+  assert.match(app, /const startsMs = mode === "plan" \? startMs\(planDials\.startAt\) : null;/);
 });

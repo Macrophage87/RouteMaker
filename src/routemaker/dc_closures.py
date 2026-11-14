@@ -1135,7 +1135,8 @@ def _title(heading: str) -> str:
 
 # An item is read only if it is about traffic or a road. These are checked first, on its
 # title and categories; an item with any word of `NOT_TRAFFIC` is dropped whatever else
-# it says, before its text is read further, and is never stored, logged or shown.
+# it says, before its text is read further, and is never stored, logged or shown (but for a
+# road closure, `alertdc_kind`, and a peaceful protest's, `is_peaceful_protest`).
 TRAFFIC_WORDS = re.compile(
     r"\b(?:traffic|road(?:way)?s?\s+(?:closures?|closed|closing)|road closures?"
     r"|street\s+(?:closure|closed)"
@@ -1143,12 +1144,13 @@ TRAFFIC_WORDS = re.compile(
     r"|ddot|closure)\b",
     re.I,
 )
-NOT_TRAFFIC = re.compile(
-    r"\b(?:shoot\w*|stab\w*|robber\w*|homicide|murder|suspect\w*|missing|crime|burglar\w*"
-    r"|assault\w*|lookout|armed|weapon\w*|gun\w*|police activity|shelter in place|barricade\w*"
-    r"|arrest\w*|carjack\w*|sexual|abduct\w*|amber alert|endangered|wanted)\b",
-    re.I,
+# Crime words: these, with "police activity" and barricades, mark an item that is not traffic.
+CRIME_WORDS = (
+    r"shoot\w*|stab\w*|robber\w*|homicide|murder|suspect\w*|missing|crime|burglar\w*"
+    r"|assault\w*|lookout|armed|weapon\w*|gun\w*|shelter in place|arrest\w*|carjack\w*"
+    r"|sexual|abduct\w*|amber alert|endangered|wanted"
 )
+NOT_TRAFFIC = re.compile(rf"\b(?:{CRIME_WORDS}|police activity|barricade\w*)\b", re.I)
 TRAFFIC_CATEGORIES = re.compile(r"traffic|transport|road", re.I)
 
 
@@ -1170,6 +1172,33 @@ CORNER_MARGIN_M = 30.0
 # A police closure with no end of its own drops off this long after AlertDC posted it, unless
 # a reopening update ends it sooner (our default, 2026-11-12, unmeasured).
 POLICE_MAX_AGE = timedelta(hours=3)
+
+
+# A protest's road closures (Stephen 2026-11-13: "Sometimes police activity closures are due
+# to a protest (possibly the one we'd be riding on). That obviously needs a lot less caution
+# than an active shooter"). An item that names a protest and no violence is an ordinary
+# closure: its streets are avoided as listed, with no wide area round them. "Police activity"
+# and "barricades" alone are not violence here, as AlertDC uses both of crowd control. Its
+# updates are still matched as a police item's are, and with no end of its own it drops off
+# after `POLICE_MAX_AGE`; with no closure that reads, it is dropped, as a police item is.
+PROTEST_WORDS = re.compile(
+    r"\b(?:protest\w*|demonstrat(?:ion|ions|ors?)|first amendment|rall(?:y|ies)|vigils?"
+    r"|march(?:es|ers|ing)|(?-i:march)|sit-ins?|picket\w*)\b",
+    re.I,
+)
+VIOLENCE_WORDS = re.compile(
+    rf"\b(?:{CRIME_WORDS}|shots?|violen\w*|riot\w*|fight\w*|brawl\w*|clash\w*|kill\w*|dead"
+    r"|death|fatal\w*|struck|hostage|standoff|tear gas|pepper|hit[- ]and[- ]run|unrest"
+    r"|police[- ]involved|bomb\w*|explosi\w*|suspicious|injur\w*|(?<!cease-)fire)\b",
+    re.I,
+)
+
+
+def is_peaceful_protest(*texts: str) -> bool:
+    """Whether an AlertDC item names a protest and, anywhere in it, no violence."""
+    return any(PROTEST_WORDS.search(t) for t in texts) and not any(
+        VIOLENCE_WORDS.search(t) for t in texts
+    )
 
 
 def alertdc_kind(title: str, categories: Sequence[str]) -> str | None:
@@ -1368,12 +1397,18 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
         kind = alertdc_kind(item["title"], item["categories"])
         if kind is None:
             continue
-        police = kind == "police" or bool(NOT_TRAFFIC.search(item["description"]))
+        # Police wording: matched to its updates by place, dropped with no closure that
+        # reads, and ended after POLICE_MAX_AGE, whether or not it is a peaceful protest.
+        wording = kind == "police" or bool(NOT_TRAFFIC.search(item["description"]))
         # A police item whose title says only that roads reopened is read for that alone.
-        reopen_only = police and not ROAD_CLOSURE_TITLE.search(item["title"])
+        reopen_only = wording and not ROAD_CLOSURE_TITLE.search(item["title"])
         if reopen_only and not _REOPENED.search(item["title"]):
             continue  # a crime word in the text of an item that closes no road: dropped
-        item["police"] = police
+        item["police_wording"] = wording
+        # A peaceful protest's closures are ordinary closures, with no wide area.
+        item["police"] = wording and not is_peaceful_protest(
+            item["title"], item["description"], *item["categories"]
+        )
         lines = _strip_tags(item["description"]) or [item["title"]]
         sentences = [s for line in lines for s in re.split(r"(?<=[.!?])\s+", line) if s]
         # A "Final Update" never closes anything; nor do the bulleted lines under a
@@ -1440,17 +1475,17 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
         kept = [(s, f) for s, f in closes if f not in ended]
         if closes and not kept:
             continue
-        police = item["police"]
+        police, wording = item["police"], item["police_wording"]
         segments = [
             Segment(*f, published, _alert_end(s, published), s) for s, f in kept if len(f) == 3
         ]
         corners = [Corner(f[0], f[1], s) for s, f in kept if len(f) == 2]
-        if police and not (segments or corners):
+        if wording and not (segments or corners):
             continue  # a police item with no closure that reads: nothing of it is kept
-        unparsed = [] if (segments or corners or police) else (sentences[:4] or [item["title"]])
+        unparsed = [] if (segments or corners or wording) else (sentences[:4] or [item["title"]])
         ends = [s.end for s in segments]
         end = max(ends) if ends and all(e is not None for e in ends) and not corners else None
-        if police and end is None and published is not None:
+        if wording and end is None and published is not None:
             end = published + POLICE_MAX_AGE
         if published is not None and end is None and now - published > ALERTDC_MAX_AGE:
             continue
@@ -1486,7 +1521,7 @@ def _incident_of(item: Mapping) -> str:
     titled each their own way ("Road Closures / Police Activity (15th and P Streets, NW)",
     "Update: Police Activity (15th and P Streets, NW) - Roads Reopened"), so theirs is the
     place in the title's brackets."""
-    if item.get("police"):
+    if item.get("police_wording", item.get("police")):
         places = re.findall(r"\(([^()]*)\)", item["title"])
         if places:
             return "police|" + _tidy(places[-1]).lower()

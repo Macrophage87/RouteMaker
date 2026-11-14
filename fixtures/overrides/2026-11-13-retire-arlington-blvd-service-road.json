@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "decided": "2026-11-13",
+ "decided_by": "the deployment owner",
+ "status": "DRAFT, not approved: withdraws two rows only, adds none. Do not load until the owner confirms this file; then load with load_overrides (dry run first); takes effect on the next rebuild.",
+ "annotations": "Arlington Boulevard Service Road (2 ways): a VA own-picks row rated it 4 on the boulevard's own 42,000 a day. No replacement row: the formula decides from the service road's own facts.",
+ "rows": [],
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 624705229,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "va-own-g01645-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, posted 25 mph, 2 lanes one way, about 42,000 cars a day, no bike lane: our level 4.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in Arlington Boulevard's own count (about 42,000 a day) on its service road, which today's matcher no longer gives a count (a service road takes a count line only where the names agree, hunt D3). The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\" and \"Or the raw data\": the formula reads the service road again."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 468774885,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "va-own-g01645-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, posted 25 mph, 2 lanes one way, about 42,000 cars a day, no bike lane: our level 4.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in Arlington Boulevard's own count (about 42,000 a day) on its service road, which today's matcher no longer gives a count (a service road takes a count line only where the names agree, hunt D3). The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\" and \"Or the raw data\": the formula reads the service road again."
+  }
+ ]
+}

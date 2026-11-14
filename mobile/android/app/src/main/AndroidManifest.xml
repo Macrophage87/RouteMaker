@@ -76,7 +76,7 @@
     </queries>
 
     <!-- Permissions: the network for the site, the location for a ride, notifications (Android 13+)
-         for the ride's notifications, and vibration for a group ride's alert buzz (the WebView's
+         for the ride's notifications, and vibration for a group ride's alert buzz and a turn's buzz (the WebView's
          navigator.vibrate does nothing without it). Nothing else (mobile/README.md). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -87,6 +87,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16: the ride's live turn card (RideCuePlugin) may show as a Live Update, in the status bar and on the
+         always-on display. A normal permission, nothing asked of the rider; older Android ignores it. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
     <!-- Merged in by @capacitor/local-notifications for scheduled alarms and reboots, which the app never
          uses: the cue notification is shown at once and cleared at End ride. No plugin here takes a wake

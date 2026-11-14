@@ -1815,6 +1815,9 @@ class Dials:
     easy_mtb: bool = False
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
+    # Cargo and Tandem, "Go around" on a barrier's mark (`core.barriers.avoid_set`): the
+    # barriers, as [lon, lat] to six decimals, this plan is planned round as an impassable one.
+    barrier_avoid: tuple[tuple[float, float], ...] = ()
     # A dirt trail a point is on is ridden on a ride type that does not plan on them
     # (`core.trail_touch`); False plans on the ride type's own graph alone. Set by `plan`.
     trail_touch: bool = True
@@ -1887,6 +1890,9 @@ class Dials:
     # Set by `plan` alone, for the weekend plan it makes beside a ride's own (`_plan_twice`):
     # such a plan never falls back to another graph (it is given up instead).
     graph: str | None = None
+    # Plan's "Out and back" (Stephen 2026-11-13): with `loop`, come back the same way: the way
+    # back is planned as any leg is, not pushed off the way out (`refine.make_loop`). Appended.
+    out_and_back: bool = False
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -3194,13 +3200,25 @@ def straight_span_m(points: list) -> float:
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
 
 
+def alternates_span_ok(points: list) -> bool:
+    """Whether the calm search may rank the router's own alternatives on this plan: only up
+    to `refine.LONG_CALM_SPAN_M` of straight line, as before the search ran further (backlog
+    2026-11-12, "Long rides get the calm search"). Past it the alternatives roughly double a
+    long route's router call (`SEEK_MAX_SPAN_M`'s measurements) and, asked early, hold a
+    second pool slot beside the plan's own (on beta's pool of two, both), as a long plan's
+    legs never ask for them either (`refine.refine_long`). The review of PR #1231."""
+    from . import refine
+
+    return straight_span_m(points) <= refine.LONG_CALM_SPAN_M
+
+
 def long_calm_for(
     preset_name: str, points: list, stress: int, long_ride: bool, trails_off: bool = False
 ) -> bool:
     """Whether a plan is a long calm plan (OWNER-DECISIONS 256): the top of the
     stress slider on a ride type that plans past the calm search's working span
     leg by leg (`Preset.long_calm`, Trailmaxxing), for a start and an end and
-    stops that are past `refine.REFINE_MAX_SPAN_M` of straight line and not a long
+    stops that are past `refine.LONG_CALM_SPAN_M` of straight line and not a long
     ride (past the confirm span, which has its own rules). The Hills slider seeking
     climbs does not change it: at the top of the stress slider seeking hills keeps
     the stress order and the target (OWNER-DECISIONS 298(3)). Not with trails off
@@ -3215,7 +3233,7 @@ def long_calm_for(
         and presets.maxcalm_for(stress)
         and len(points) >= 2
         and not long_ride
-        and straight_span_m(points) > refine.REFINE_MAX_SPAN_M
+        and straight_span_m(points) > refine.LONG_CALM_SPAN_M
     )
 
 
@@ -5966,6 +5984,7 @@ def _plan(
         and not (quick or fixed or loop or long_calm)
         and not (maxcalm and target_m is not None and _trip_length_m(trips[0]) > target_m)
         and _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm) is None
+        and alternates_span_ok(points)
     ):
         from . import refine
 
@@ -6203,7 +6222,8 @@ def _plan(
         # stress: a router alternative with fewer lights is the choice the weight is for.
         rank_alternates=(
             presets.calm_rate_for(stress_dial) > 0 or presets.wait_weight_for(preset_name) > 1
-        ),
+        )
+        and alternates_span_ok(points),
         # Not the plan's own alternatives where the middle's route was kept: they were asked
         # at the hill-avoiding costing, and the search's are asked at the middle's (P4).
         router_trips=plan_alternates(request, trips, timed_out, bool(past) or kept_middle),
@@ -6229,7 +6249,11 @@ def _plan(
     # so a round does not swap it back for the router's own (the third routing hunt, C3-1).
     asked_trip = trip
     loop_info = None
-    if loop:
+    if loop and dials.out_and_back:
+        # Out and back on purpose: the router's own way back, which on one destination is the
+        # way out ridden back; nothing is excluded and nothing is held off it.
+        loop_info = {"same_way": True}
+    elif loop:
         # The way back by a different way, before the search, which then keeps it so.
         trip, loop_info = refine.make_loop(trip, refine_context)
         # A loop whose ways back ran out of time keeps the router's own way back, which the
@@ -6241,9 +6265,15 @@ def _plan(
             and (loop_info["fallback"] is None or overlap < refine.LOOP_OUT_AND_BACK * 100.0)
         ):
             refine_context.loop_overlap = overlap / 100.0
-    if len(trip.get("legs") or []) > 1 and not quick and not fixed:
+    if (
+        len(trip.get("legs") or []) > 1
+        and not quick
+        and not fixed
+        and not (loop and dials.out_and_back)
+    ):
         # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
-        # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`).
+        # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`). Not on an
+        # out and back, which rides its way twice on purpose.
         trip, repeat_info = refine.fewer_repeats(trip, refine_context)
         logger.info("fewer repeats: %s", repeat_info)
     refined = None
@@ -6377,6 +6407,7 @@ def _plan(
         trip, barrier_info = barriers.settle(
             trip, request, variant, deadline, points,
             level_excludes=refine_context.level_excludes,
+            avoid=barriers.avoid_set(dials.barrier_avoid),
             # Not held to the level rounds' guard (`refine.level_round_keeps`): a barrier a cargo
             # bike or tandem cannot pass ends the trip, so a busier or longer way round it is
             # still the way (the owner, 2026-11-12: "Exclude").
@@ -6485,7 +6516,7 @@ def _plan(
     if barrier_info is not None and trip is not barrier_trip:
         # A later pass changed the route the barrier round chose: what is in the way is read
         # again from the route answered.
-        barriers.reread(trip, barrier_info)
+        barriers.reread(trip, barrier_info, avoid=barriers.avoid_set(dials.barrier_avoid))
     if easy_held and easy_info is not None and trip is not easy_trip:
         again = easy_mtb.reread(trip, variant, trace_costing, deadline, traces)
         if again is not None:
@@ -6968,6 +6999,7 @@ def _plan(
                 "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,
+                "out_and_back": bool(loop and dials.out_and_back),
             },
             "hills_seek": hills_seek,
             "hills_avoid": hills_avoid,

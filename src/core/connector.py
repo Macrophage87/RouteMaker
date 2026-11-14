@@ -39,6 +39,7 @@ import hashlib
 import importlib.util
 import json
 import logging
+import math
 import re
 import secrets
 import sys
@@ -60,7 +61,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
-from . import cue_cards, ratelimit, route_picture, route_view_map
+from . import cue_cards, ratelimit, route_picture, route_view_map, usage
 from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
@@ -186,10 +187,8 @@ class InProcessApi:
                 " points, a lower stress setting, or plan it in two halves."
             )
         if status in (429, 503):
-            raise self._module.ToolError(
-                f"the site is busy ({message}); wait {response.get('Retry-After', 'a few')}"
-                " seconds and try again"
-            )
+            retry = self._module.retry_after(response, 5.0)
+            raise self._module.Busy("The route planner", math.ceil(retry))
         raise self._module.ToolError(self._module.refusal(status, message))
 
     def geocode(self, query, near=None):
@@ -204,10 +203,16 @@ class InProcessApi:
         not what is left of the /mcp request's, and still ends inside the call's budget."""
         from . import nearest, routing
 
-        started = routing.clock()
-        if self._started is not None:
-            started = min(started, self._started + CALL_BUDGET_S - nearest.NEAREST_BUDGET_S)
-        status, payload, _ = self._request("POST", "/api/nearest", body, started=started)
+        def budget():
+            # Counted again for each try, so a wait for a busy answer is not taken from it.
+            started = routing.clock()
+            if self._started is not None:
+                started = min(started, self._started + CALL_BUDGET_S - nearest.NEAREST_BUDGET_S)
+            return {"started": started}
+
+        status, payload, _ = self._module.patient_request(
+            self, "POST", "/api/nearest", body, what="Riding times", fresh_kw=budget
+        )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise self._module.ToolError(
@@ -657,10 +662,32 @@ def mcp_endpoint(request):
         answer = module._error(msg_id, -32603, f"internal error: {type(error).__name__}")
     if answer is None:
         return HttpResponse(status=202)  # a notification: nothing to answer
+    _count_tool_call(module, message, answer)
     return _no_store(JsonResponse(answer))
 
 
 mcp_endpoint.limits = ratelimit.CONNECTOR_CALLS
+
+
+def _count_tool_call(module, message, answer) -> None:
+    """Adds one to today's "assistant connector" total (core.usage) for a tools/call of one of
+    the connector's own tools that answered, unless it is marked `test: true` (an agent checking
+    the app). Neither the tool's name nor its arguments are kept."""
+    if not isinstance(message, dict) or message.get("method") != "tools/call":
+        return
+    if (
+        not isinstance(answer, dict)
+        or "error" in answer
+        or (answer.get("result") or {}).get("isError")
+    ):
+        return
+    params = message.get("params")
+    name = params.get("name") if isinstance(params, dict) else None
+    arguments = params.get("arguments") if isinstance(params, dict) else None
+    if isinstance(arguments, dict) and arguments.get("test") is True:
+        return
+    if isinstance(name, str) and name in {t["name"] for t in module.TOOLS}:
+        usage.tally(usage.CONNECTOR)
 
 
 def server_icons(request) -> list[dict]:

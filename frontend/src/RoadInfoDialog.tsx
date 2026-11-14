@@ -49,6 +49,10 @@ import {
   refreshedSaid,
   osmEditUrl,
   shownSections,
+  leadsWithLevel,
+  levelBadge,
+  levelWords,
+  shownFacts,
   shownSummary,
   streetViewUrl,
   subtitle,
@@ -58,7 +62,7 @@ import {
   type InfoState,
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
-import { SET_AS_HOME_TEXT } from "./lib/homeSet.ts";
+import { LevelBox, RoadFacts } from "./RoadFacts.tsx";
 import { SAVE_SPOT_TEXT } from "./lib/favoritePlaces.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
 import { TIMES_LABEL, requestStationTimes, stationCardRows } from "./lib/stationTimes.ts";
@@ -161,11 +165,9 @@ interface Props {
    * button reads Route through this trail only where this ride type's router uses the trail; else the panel says why.
    */
   trailRider?: TrailRider;
-  /** "Set as Home" (lib/homeSet.ts): the spot is the rider's Home; the panel then closes. Absent: no button. */
-  onSetHome?: (point: [number, number]) => void;
   /** Plan's Add note (lib/routeNotes.ts; 2026-11-10): a note at the spot, its words asked first. Absent elsewhere. */
   onAddNote?: (point: [number, number]) => void;
-  /** Signed in only (lib/favoritePlaces.ts): the spot saved to Favorites, beside Set as Home. */
+  /** Signed in only (lib/favoritePlaces.ts): the spot saved to Favorites, where Home and Work are set too. */
   onSaveFavorite?: (point: [number, number]) => void;
 }
 
@@ -189,6 +191,8 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
 }
 
 /** Both rail systems shown: where the panel is not told the map's toggles. */
+/** The summary lines above the facts: the level and why. The rest follow the facts. */
+const LEAD_LINES: ReadonlySet<string> = new Set(["stress", "why"]);
 const ALL_RAIL: RailVisibility = { metro: true, marc: true };
 const NO_TRAIL_RIDER: TrailRider = { rideType: "", mtbLevel: null };
 
@@ -225,7 +229,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onRouteHere, onSetHome, onAddNote, onSaveFavorite, trailRider = NO_TRAIL_RIDER }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onRouteHere, onAddNote, onSaveFavorite, trailRider = NO_TRAIL_RIDER }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -679,20 +683,6 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 </button>
               </li>
             )}
-            {onSetHome && (
-              <li>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    onSetHome(request.point);
-                    close();
-                  }}
-                >
-                  {SET_AS_HOME_TEXT}
-                </button>
-              </li>
-            )}
             {onSaveFavorite && (
               <li>
                 <button
@@ -739,9 +729,37 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             <span className="road-info-label">{t("Rider-marked hazard:")}</span> {hazardPanelText(hazard)}
           </p>
         )}
-        {summary.length > 0 && (
+        {/* The big level and why (the owner, 2026-11-13), in place of the summary's level and Why lines. */}
+        {ready && leadsWithLevel(ready) && (
+          <LevelBox tier={ready.tier as number} half={(ready.step ?? 0) % 1 !== 0} badge={levelBadge(ready) as string} words={levelWords(ready)} narrative={ready.narrative as string} />
+        )}
+        {summary.length > 0 && !(ready && leadsWithLevel(ready)) && (
           <ul className="road-info-summary" aria-label={t("Summary")}>
-            {summary.map((row) => (
+            {summary.filter((row) => LEAD_LINES.has(row.id)).map((row) => (
+              <li key={row.id} className={`road-info-line road-info-line-${row.id}`}>
+                <span className="road-info-label">{row.label}:</span>{" "}
+                {valueParts(row.value).map((part, n) => (
+                  <span key={n}>
+                    {n > 0 && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <span className="visually-hidden">, </span>
+                      </>
+                    )}
+                    {part}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
+        {/* The facts behind the level, after the level and its why (the owner, 2026-11-13; RoadFacts.tsx). */}
+        {ready && (
+          <RoadFacts facts={shownFacts(ready)} evidence={ready.evidence ?? null} plain={ready.plain ?? null} uid={id("facts").replace(/[^A-Za-z0-9_-]/g, "")} />
+        )}
+        {summary.some((row) => !LEAD_LINES.has(row.id)) && (
+          <ul className="road-info-summary" aria-label={t("More about this road")}>
+            {summary.filter((row) => !LEAD_LINES.has(row.id)).map((row) => (
               <li key={row.id} className={`road-info-line road-info-line-${row.id}`}>
                 <span className="road-info-label">{row.label}:</span>{" "}
                 {valueParts(row.value).map((part, n) => (

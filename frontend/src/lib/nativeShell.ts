@@ -17,7 +17,8 @@
  * - the screen wake lock (`WakeEnv`): the browser's lock still asked, but a ride no longer needs the
  *   screen on, so a WebView without the lock is not told "Set your phone to keep it on".
  *
- * On Android a second, silent notification shows the latest cue while a ride's watch runs (`showCue`).
+ * On Android a second, silent notification shows the next turn while a ride's watch runs (`showTurnCard`): a live card
+ * with the app's RideCuePlugin, else the older "Latest cue" notification.
  *
  * In a browser `nativeBridge()` is null and every function here answers the browser's own environment
  * (`browserRideEnv()`, `browserSpeech()`, `browserWake()`), so the site behaves exactly as before. No
@@ -30,6 +31,8 @@
 import { browserRideEnv, type RideGeoEnv, type WatchApi, type WatchPosition } from "./rideWatch.ts";
 import { browserSpeech, browserWake, toVoice, type CueOutput, type SpeechApi, type SpeechEnv, type UtteranceLike, type WakeEnv, type WakeLockSentinelLike } from "./rideOutput.ts";
 import { t } from "./i18n.ts";
+import type { TurnCard } from "./turnCard.ts";
+import { buzzPattern, type BuzzSide } from "./cueTone.ts";
 
 /** The parts of the injected `window.Capacitor` used here (Capacitor 8's native-bridge.js). */
 export interface CapacitorBridge {
@@ -48,6 +51,12 @@ export const NOTICE_PLUGIN = "LocalNotifications";
  * navigation app's, instead of playing over it at full volume (Stephen 2026-11-08). Apps built before it have none.
  */
 export const VOICE_FOCUS_PLUGIN = "RouteMakerVoiceFocus";
+/**
+ * Riding with the phone in a pocket (mobile/android/.../RideCuePlugin.java, backlog 2026-11-13): the live turn card on
+ * the lock screen, a tone before a turn cue, and a buzz for left and right. Apps built before it have none: the card
+ * falls back to the "Latest cue" notification, and the tone and buzz are not there.
+ */
+export const RIDE_CUE_PLUGIN = "RouteMakerRideCue";
 /** The app's share sheet (mobile/android/.../SharePlugin.java): Android's WebView has no navigator.share. */
 export const SHARE_PLUGIN = "RouteMakerShare";
 
@@ -120,11 +129,16 @@ export const CUE_CHANNEL_SETTINGS = {
 } as const;
 
 /**
- * The cue notification: shown and replaced while a ride's watch runs, cleared when the watch stops.
- * One call at a time, in order, so a late update never brings back a notification already cleared.
+ * The ride's turn card (lib/turnCard.ts): with RIDE_CUE_PLUGIN, one live card updated in place as the distance counts
+ * down; in an older app, the "Latest cue" notification with the card's words without the distance, replaced only when
+ * the turn changes (that plugin takes a notification down and puts it up again on each change).
+ * Shown and replaced while a ride's watch runs, cleared when the watch stops. One call at a time, in order, so a late
+ * update never brings back a notification already cleared.
  */
 export class CueNotice {
   private readonly bridge: CapacitorBridge;
+  /** The app has the live card (RIDE_CUE_PLUGIN). */
+  readonly liveCard: boolean;
   private queue: Promise<void> = Promise.resolve();
   private channelMade = false;
   private refused = false;
@@ -133,6 +147,7 @@ export class CueNotice {
 
   constructor(bridge: CapacitorBridge) {
     this.bridge = bridge;
+    this.liveCard = typeof bridge.isPluginAvailable === "function" && has(bridge, RIDE_CUE_PLUGIN);
   }
 
   start(): void {
@@ -148,9 +163,27 @@ export class CueNotice {
     this.refused = !granted;
   }
 
-  show(text: string): void {
-    if (!this.live || this.refused || !text || text === this.last) return;
-    this.last = text;
+  /** `null` takes a card that is up down (arrived: the walk or train after the line is not on it), keeping the ride's watch. */
+  show(card: TurnCard | null): void {
+    if (!this.live || this.refused) return;
+    if (!card) {
+      if (this.last) {
+        this.last = "";
+        this.run(() => this.clear(), false);
+      }
+      return;
+    }
+    const key = this.liveCard ? `${card.arrow}|${card.title}|${card.body}` : card.still;
+    if (!key || key === this.last) return;
+    this.last = key;
+    if (this.liveCard) {
+      this.run(async () => {
+        if (!this.live || this.refused) return;
+        await this.bridge.nativePromise(RIDE_CUE_PLUGIN, "show", { title: card.title, body: card.body, arrow: card.arrow });
+      }, true);
+      return;
+    }
+    const text = card.still;
     this.run(async () => {
       if (!this.live || this.refused) return;
       if (!this.channelMade) {
@@ -179,10 +212,16 @@ export class CueNotice {
     if (!this.live) return;
     this.live = false;
     this.last = "";
-    this.run(async () => {
-      await this.bridge.nativePromise(NOTICE_PLUGIN, "removeDeliveredNotifications", { notifications: [{ id: CUE_NOTICE_ID, title: "", body: "" }] });
-      await this.bridge.nativePromise(NOTICE_PLUGIN, "cancel", { notifications: [{ id: CUE_NOTICE_ID }] });
-    }, false);
+    this.run(() => this.clear(), false);
+  }
+
+  private async clear(): Promise<void> {
+    if (this.liveCard) {
+      await this.bridge.nativePromise(RIDE_CUE_PLUGIN, "clear", {});
+      return;
+    }
+    await this.bridge.nativePromise(NOTICE_PLUGIN, "removeDeliveredNotifications", { notifications: [{ id: CUE_NOTICE_ID, title: "", body: "" }] });
+    await this.bridge.nativePromise(NOTICE_PLUGIN, "cancel", { notifications: [{ id: CUE_NOTICE_ID }] });
   }
 
   /** Settled when every call so far has (tests). */
@@ -351,6 +390,7 @@ export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
   // Music dips for each cue and comes back after it (VOICE_FOCUS_PLUGIN); an app without it speaks as before.
   // Not assumed on a bridge that cannot say (as the share sheet): only newer builds ship it.
   const ducks = typeof bridge.isPluginAvailable === "function" && has(bridge, VOICE_FOCUS_PLUGIN);
+  const cues = typeof bridge.isPluginAvailable === "function" && has(bridge, RIDE_CUE_PLUGIN);
   const focus = (method: "duck" | "unduck") => {
     if (ducks) void bridge.nativePromise(VOICE_FOCUS_PLUGIN, method, {}).catch(() => undefined);
   };
@@ -369,9 +409,15 @@ export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
         utterance.onend?.();
       };
       focus("duck");
-      bridge
-        .nativePromise(SPEECH_PLUGIN, "speak", { text: utterance.text, lang: utterance.lang || "en-US", rate: 1, pitch: 1, volume: 1, queueStrategy: 0 })
-        .then(done, done);
+      const words = () => {
+        if (mine !== turn) return;
+        bridge
+          .nativePromise(SPEECH_PLUGIN, "speak", { text: utterance.text, lang: utterance.lang || "en-US", rate: 1, pitch: 1, volume: 1, queueStrategy: 0 })
+          .then(done, done);
+      };
+      // A turn cue's tone first, inside the same audio turn (RIDE_CUE_PLUGIN); an app without it says the words alone.
+      if (utterance.chime && cues) void bridge.nativePromise(RIDE_CUE_PLUGIN, "chime", { kind: utterance.chime }).then(words, words);
+      else words();
     },
     cancel() {
       turn += 1;
@@ -475,9 +521,27 @@ export function ridesHidden(found: Shell | null = shell): boolean {
   return found?.locates === true;
 }
 
-/** The latest cue on Android's notification, while a ride's watch runs; nothing elsewhere. */
-export function showCue(text: string, found: Shell | null = shell): void {
-  found?.notice?.show(text);
+/** The ride's turn card on Android's lock screen and shade (lib/turnCard.ts), while a ride's watch runs; nothing elsewhere. */
+export function showTurnCard(card: TurnCard | null, found: Shell | null = shell): void {
+  found?.notice?.show(card);
+}
+
+/**
+ * A turn's buzz (lib/cueTone.ts): in the phone app the native one, which follows the phone's silent setting; in an
+ * older app or a browser, navigator.vibrate where there is one (Chrome on Android; nothing on an iPhone).
+ */
+export function rideBuzz(side: BuzzSide, found: Shell | null = shell, scope: unknown = globalThis): void {
+  const bridge = found?.bridge;
+  if (bridge && typeof bridge.isPluginAvailable === "function" && has(bridge, RIDE_CUE_PLUGIN)) {
+    void bridge.nativePromise(RIDE_CUE_PLUGIN, "buzz", { side }).catch(() => undefined);
+    return;
+  }
+  const nav = (scope as { navigator?: { vibrate?: (pattern: number[]) => boolean } } | null)?.navigator;
+  try {
+    nav?.vibrate?.(buzzPattern(side));
+  } catch {
+    // Refused (no tap yet on this page): nothing to do.
+  }
 }
 
 /**
