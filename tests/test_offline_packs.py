@@ -30,6 +30,7 @@ def test_the_regions_are_his_riding_areas_and_cover_the_map() -> None:
         "nova",
         "nw-exurbs",
         "baltimore",
+        "central-va",
         "rest",
         "all",
     ]

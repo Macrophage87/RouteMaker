@@ -213,10 +213,37 @@ def test_the_eastern_panhandle_is_inside_the_box(place: str) -> None:
     assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
 
 
-def test_the_west_edge_clears_martinsburg_and_stops_short_of_winchester() -> None:
+def test_the_west_edge_clears_martinsburg_and_stops_short_of_the_blue_ridge() -> None:
+    """v0.28.0 pass 1 moved the west edge past Charlottesville and Crozet (the owner,
+    2026-11-14: "One rectangle", which takes in Winchester, Front Royal and Luray early).
+    The Valley west of the Blue Ridge crest (Waynesboro, Staunton) waits for pass 2."""
     west = settings.COVERAGE_BBOX[0]
     assert west < MARTINSBURG_WEST, "all of Martinsburg"
-    assert west > -78.16, "not Winchester, Virginia, which the owner did not ask for"
+    assert west > -78.89, "not Waynesboro, which is pass 2's Valley"
+
+
+# v0.28.0 pass 1 (the owner, 2026-11-14): Richmond, Charlottesville and Williamsburg with the
+# Virginia Capital Trail, joined to the map with no islands. Town centres and trail ends, lon, lat.
+CENTRAL_VIRGINIA_PLACES = {
+    "Richmond": (-77.436, 37.541),
+    "Capital Trail, Richmond end (Great Shiplock Park)": (-77.420, 37.525),
+    "Capital Trail, Jamestown end": (-76.779, 37.226),
+    "Jamestown-Scotland ferry, Scotland landing": (-76.786, 37.183),
+    "Williamsburg": (-76.707, 37.271),
+    "Yorktown": (-76.509, 37.238),
+    "Petersburg": (-77.402, 37.228),
+    "Charlottesville": (-78.477, 38.030),
+    "Crozet": (-78.700, 38.069),
+    "Madison": (-78.258, 38.380),
+    "Fredericksburg": (-77.460, 38.303),
+}
+
+
+@pytest.mark.parametrize("place", sorted(CENTRAL_VIRGINIA_PLACES))
+def test_central_virginia_is_inside_the_box(place: str) -> None:
+    lon, lat = CENTRAL_VIRGINIA_PLACES[place]
+    west, south, east, north = settings.COVERAGE_BBOX
+    assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
 
 
 # Maryland's northern extent in the Census TIGER state layer, which is the

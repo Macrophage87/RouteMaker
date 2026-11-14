@@ -242,7 +242,18 @@ VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 # re-run over the new box. The box only says where the map may reach: West
 # Virginia's roads are in the map only once its Geofabrik extract is downloaded
 # with the others (`pipeline.source.GEOFABRIK_REGIONS`, which lists it since v0.7.0).
-COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+#
+# West -78.76 and south 37.1 since v0.28.0 pass 1 (the owner, 2026-11-14: Richmond,
+# Charlottesville and Williamsburg with the Virginia Capital Trail, joined to the map with no
+# islands; "One rectangle" over a trimmed polygon, so Winchester, Front Royal and Luray come in
+# a pass early). West reaches Crozet (-78.70) and stops short of the Blue Ridge crest, so
+# Waynesboro and the Valley wait for pass 2; -78.76 rather than -78.75, which is a tile edge at
+# every zoom to 14. South takes in Jamestown and the Scotland ferry landing (37.18). No new
+# Geofabrik extract: the whole area is Virginia's, already downloaded. Added cost, estimated from
+# Census TIGER road counts (2026-11-14, not measured on a build): about 180,000 road segments
+# on today's 278,000, so +65%; three more 3DEP tiles (N37W077, N37W078, N37W079); and the
+# basemap, Photon, amenity layers and stress pre-draw re-run over the wider box.
+COVERAGE_BBOX = (-78.76, 37.1, -76.02, 39.72)
 
 # The coverage polygon itself, which `osmium extract --polygon` would take in
 # preference to the box. PLAN:13's region is a polygon and the box around it

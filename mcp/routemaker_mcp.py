@@ -94,7 +94,7 @@ OUT_OF_TIME = (
     "stopped there to answer inside the site's time limit; to fix where it strays, add the"
     " station named in metro_check as a via point (revise_route add_points), or move its points"
 )
-COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+COVERAGE_BBOX = (-78.76, 37.1, -76.02, 39.72)
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
 # 50 s) after a wait for its one long slot.
 ROUTE_TIMEOUT_S = 120

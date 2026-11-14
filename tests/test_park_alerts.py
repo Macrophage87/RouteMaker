@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import park_alerts as script  # noqa: E402
 
 # The map's box (settings.COVERAGE_BBOX), the C&O's last miles included.
-WEST, SOUTH, EAST, NORTH = -78.05, 38.2, -76.02, 39.72
+WEST, SOUTH, EAST, NORTH = -78.76, 37.1, -76.02, 39.72
 
 NOVA_HOME = """
 <nav><a href="/parks">Parks</a></nav>
