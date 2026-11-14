@@ -23,6 +23,7 @@
 import { GUIDES_PAGE } from "./mapInfo.ts";
 import { createElement as h, useId, useRef, useState, type ReactElement } from "react";
 import { t } from "./i18n.ts";
+import { installState } from "./installOffer.ts";
 
 export const BETA_BANNER_TEXT = t("Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell us on");
 
@@ -37,6 +38,17 @@ export const BETA_SIGNUP_TEXT = t("Sign up to test here!");
  * instructions to the Google group"): join the testers' Google Group, opt in on Play, install. Was the sign-up form.
  */
 export const BETA_SIGNUP_URL = "/about/android-beta.html";
+
+/**
+ * On an iPhone or iPad, the welcome page's iPhone steps instead (Stephen 2026-11-13, "add those all in"): there is no
+ * iPhone app yet, so the Android page's three steps do not apply; welcome.html says what to open and what a ride needs.
+ */
+export const BETA_SIGNUP_URL_IPHONE = "/about/welcome.html#iphone";
+
+/** Where "Sign up to test here!" goes on this device. */
+export function betaSignupUrl(ios: boolean): string {
+  return ios ? BETA_SIGNUP_URL_IPHONE : BETA_SIGNUP_URL;
+}
 
 /** The help guides' button beside it (lib/mapInfo.ts GUIDES_PAGE, the page Help's button opens too). */
 export const BETA_GUIDES_TEXT = t("Using RouteMaker");
@@ -79,6 +91,8 @@ interface Props {
   feedback?: ReactElement | null;
   /** Test seam: start with the note shown. */
   initiallyOpen?: boolean;
+  /** Test seam: whether this is an iPhone or iPad; absent, lib/installOffer.ts installState() says. */
+  ios?: boolean;
 }
 
 export function BetaChip(props: Props): ReactElement | null {
@@ -129,7 +143,7 @@ export function BetaChip(props: Props): ReactElement | null {
       h(
         "p",
         { className: "beta-chip-actions" },
-        link(BETA_SIGNUP_URL, BETA_SIGNUP_TEXT),
+        link(betaSignupUrl(props.ios ?? installState().ios), BETA_SIGNUP_TEXT),
         link(GUIDES_PAGE, BETA_GUIDES_TEXT),
       ),
       // Send feedback without a Discord account (the owner, 2026-11-12), where the server takes it.

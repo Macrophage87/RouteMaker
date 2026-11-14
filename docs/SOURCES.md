@@ -127,6 +127,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     "Agency stress ratings (agency-lts.json)"); the road panel names "DDOT" beside its
     level. Item id, size, sha256 and the licence text verbatim: the download's README, to
     be copied here.
+  - **DDOT Bike Lane Projects** (District Department of Transportation),
+    https://bikelanes.ddot.dc.gov/, read 2026-11-13: the Completed Projects tables
+    (2020-2024) and the 2025-2026 project pages, by street, block range, facility type
+    and year. Facts only (which streets got which bikeway, when), cited; the site's text
+    and images are not copied. Read where the District's street record and OSM disagree
+    about a bike facility (`routemaker.ddot_projects`; the owner, 2026-11-13: "When
+    there's a mismatch in data, we search for the project's own data").
+    `fixtures/ddot-projects/completed-bikeways.json`.
   - **DDOT Central Business District** (District Department of Transportation), item
     `32143ca8983d4476b64f4202162bf61e`, retrieved 2026-09-30; decides which sidewalks
     bicycles may not ride. Record and sha256: `fixtures/cbd/README.md`.
@@ -214,6 +222,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   smoothness reading, over OSM's `smoothness` (the owner, 2026-10-11: "DC score in
   most cases takes priority over OSM data"): 70 and over good, 55 to 69 fair (a small
   penalty), under 55 poor (rough), on streets only; alleys and trails keep OSM's.
+  The road panel also shows the street's score and survey date as its Pavement line
+  (`segment.pavement_pci`, `pavement_surveyed`; `core.segment_info.road_facts`), even where a
+  newer OSM `smoothness` keeps OSM's reading for routing (not where a correction overrides it).
   Fetched at rebuild time with `scripts/fetch_agency_layer.py` (docs/OPERATIONS.md,
   "DC pavement condition (DC-PCI)"); not yet downloaded, so no size or sha256 yet.
 - Publisher: District Department of Transportation and DC GIS (the service's
@@ -318,7 +329,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Dataset: **Maryland Bicycle Level of Traffic Stress (LTS)** (2022), on Maryland's open
   data portal (item `fc3c7b650076475ba9a4b0232f6d8655`), downloaded with
   `scripts/fetch_agency_layer.py` as `mdot-lts`, clipped to the coverage box. Approved as
-  a rating source (`routemaker.agency_lts.AGENCIES`, rank state: a county's rating wins).
+  a rating source (`routemaker.agency_lts.AGENCIES`, rank state), comparison-only since
+  2026-11-13 (`COMPARISON_ONLY`): its level is shown beside ours and never sets a tier; its
+  bicycle ban still closes the way.
   Field `LTS_ADJUSTED`, per MDOT's "Bicycle Level of Traffic Stress (LTS) Metadata and
   Methodology" (<https://www.mdot.maryland.gov/OPCP/MDOT_LTS_Metadata_Methodology_Full.pdf>);
   installed into `reference/agency-lts.json` by `scripts/install_agency_lts.py`
@@ -546,6 +559,17 @@ No credit: nothing from these is used.
   sha256 `99d6597b1fc7767deef62e01d28d8b5dcbd578e151855f7dc0d173cbf5bf0868`, from
   <https://www2.census.gov/geo/tiger/GENZ2023/shp/>. The District is OpenStreetMap's boundary
   (above).
+- Dataset: **TIGER/Line 2020 blocks** (`TABBLOCK20`, one file per state:
+  `tl_2020_<state FIPS>_tabblock20.zip` from <https://www2.census.gov/geo/tiger/TIGER2020/TABBLOCK20/>),
+  read for each block's 2020 Census people (`POP20`), homes (`HOUSING20`) and internal point,
+  and **LEHD LODES 8 Workplace Area Characteristics** (`<state>_wac_S000_JT00_2023.csv.gz` from
+  <https://lehd.ces.census.gov/data/lodes/LODES8/>), read for each block's jobs (`C000`). Counted
+  within half a mile of each way into `<DATA_ROOT>/reference/setting.json`
+  (`scripts/install_reference_data.py --census-blocks --lodes-wac`, `routemaker.setting`): the
+  road panel's Setting line (remote, rural, suburban, urban, dense core) with the people and
+  jobs near the road; the owner, 2026-11-13. A label only, never a stress input. Checked
+  reachable 2026-11-13 (`tl_2020_11_tabblock20.zip`, 4,694,165 bytes; `dc_wac_S000_JT00_2023.csv.gz`,
+  113,247 bytes); the full set is not yet downloaded, so no sizes or sha256 yet.
 
 ## Photon
 
@@ -760,7 +784,12 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
   exception (Stephen 2026-11-12) is a road closure whose title also names police activity or a
   crime: only its closed streets are kept, routed round as one area about 1,000 ft round them
   (our default) and shown as "Police activity: streets closed near ...", with none of its other
-  words.
+  words. A closure that names a protest (protest, demonstration, First Amendment, rally, vigil,
+  marchers) and no violence word anywhere in it is an ordinary closure instead: its streets are
+  avoided as listed, with no wide area (Stephen 2026-11-13: a protest "needs a lot less caution
+  than an active shooter"). "Police activity" and barricades alone are not violence here; its
+  reopening still ends it, and with no end of its own it drops off after 3 hours, as a police
+  closure does.
 - Publisher: DC Homeland Security and Emergency Management Agency.
 - Terms: public government alerts (inferred public). Not legal advice.
 

@@ -325,12 +325,43 @@ def lanes_per_direction(tags: dict[str, str]) -> int | None:
         shared = parse_lanes(tags.get("lanes:both_ways")) or 0
         directional.append(total - shared - directional[0])
     if directional:
-        return max(1, max(directional))
+        through = [
+            _less_turn_bays(tags, key, value)
+            for key, value in zip(DIRECTIONAL_LANE_KEYS, _directional_values(tags), strict=True)
+            if value is not None
+        ]
+        # A direction filled in from the total (RL-8) has no key of its own to read turns from.
+        through += directional[len(through) :]
+        return max(1, max(through))
     if total is None:
         return None
     if is_oneway(tags):
         return max(1, total)
     return max(1, total // 2)
+
+
+def _directional_values(tags: dict[str, str]) -> list[int | None]:
+    return [parse_lanes(tags.get(key)) for key in DIRECTIONAL_LANE_KEYS]
+
+
+def _less_turn_bays(tags: dict[str, str], key: str, count: int) -> int:
+    """`count` lanes one way less the turn-only lanes OSM maps that way (`turn:<key>`, e.g.
+    `turn:lanes:forward=left|through;right`), where it lists exactly `count` lanes: a turn bay is
+    not a through lane (the owner, 2026-11-13, of K Street NE: "one lane each way with the
+    occasional turning lane"). A lane marked `through`, `none` or nothing carries through
+    traffic. A list of another length is about other lanes, and the count stands."""
+    turns = tags.get(f"turn:{key}")
+    if not turns:
+        return count
+    lanes = turns.split("|")
+    if len(lanes) != count:
+        return count
+    through = sum(
+        1
+        for lane in lanes
+        if not lane.strip() or {"through", "none"} & {part.strip() for part in lane.split(";")}
+    )
+    return max(1, through)
 
 
 # `no_parking`, `no_stopping` and `no_standing` all say parking is absent.

@@ -59,7 +59,7 @@ class TestPage:
         _, body, _ = get(client)
         headings = re.findall(r"<h2>([^<]+)</h2>", body)
         assert headings == [escape(h) for h, _ in privacy_policy.SECTIONS]
-        needed = ["Your location", "Group and Mass Ride sharing", "If you sign in with Discord",
+        needed = ["Your location", "Group and Mass Ride sharing", "If you sign in",
                   "If you connect Garmin", "If you connect Wahoo", "Shared links",
                   "Suggestions and reports",
                   "Who else is contacted", "Cookies and your device", "Server logs",
@@ -183,7 +183,7 @@ class TestPage:
             "Riding with RouteMaker",  # the app's foreground-service notification
             "keeps going with the screen locked",  # the app's foreground service, Start to End
             "bikeshare docks",  # POST /api/bikeshare/stations takes a point
-            "including the internet address, for a short time",  # error logs
+            "until the size-capped log writes over it",  # error logs: compose json-file max-size
             "A note that an account was deleted, and when",  # account_deletion.KEPT
             "never asks for location all the time",  # no ACCESS_BACKGROUND_LOCATION
             "a year after it was last opened",  # shared_routes.KEEP
@@ -329,3 +329,57 @@ class TestLinks:
         from django.urls import resolve
 
         assert resolve(privacy_policy.PATH).func is privacy_policy.page
+
+
+@pytest.mark.django_db
+class TestLawRequiredParts:
+    """What GDPR (Arts. 6, 13, 15-22, 77), CalOPPA (Do Not Track, changes) and COPPA ask a policy
+    to say, and that it never claims no other company gets data (Discord, Garmin, Wahoo, AI
+    assistant apps and speech services do)."""
+
+    @pytest.mark.parametrize("hosting", ["", "Amazon Web Services (AWS)"])
+    def test_the_required_parts_are_there(self, client, hosting) -> None:
+        with override_settings(PRIVACY_HOSTING=hosting):
+            _, body, _ = get(client)
+        text = re.sub(r"<[^>]+>", " ", body).replace("&#x27;", "'").replace("’", "'")
+        assert "No other company" not in text
+        for claim in (
+            "Other companies get data only where this page says so",
+            "Google or Apple if you sign in with them",  # oidc_login.NAMES (release review)
+            "stored and handled there",  # in the United States
+            "Why RouteMaker may use your data",
+            "contract, consent and legitimate interests",
+            "Your rights",
+            "within 30 days",
+            "within 45 days",
+            "data protection authority",
+            "children under 13",
+            "parents, guardians and other caretakers",
+            "Do Not Track or Global Privacy Control",
+            "Changes to this page",
+            "never to judge your health",
+            "removed or blurred",
+        ):
+            assert claim in text, claim
+
+
+@pytest.mark.django_db
+class TestOperator:
+    """Who runs the site comes from the deployment (PRIVACY_OPERATOR), so the repository names
+    nobody; GDPR Article 13(1)(a) asks the policy to say who the controller is."""
+
+    @override_settings(PRIVACY_OPERATOR="A. Rider")
+    def test_a_configured_operator_is_named_in_contact(self, client) -> None:
+        _, body, _ = get(client)
+        contact = body[body.index("<h2>Contact</h2>") :]
+        assert escape(privacy_policy.OPERATOR_LEAD + "A. Rider.") in contact
+
+    @override_settings(PRIVACY_OPERATOR="")
+    def test_unset_names_nobody(self, client) -> None:
+        _, body, _ = get(client)
+        assert escape(privacy_policy.OPERATOR_LEAD) not in body
+
+    @override_settings(PRIVACY_OPERATOR='<i onclick="x">Me</i>')
+    def test_a_configured_operator_is_escaped(self, client) -> None:
+        _, body, _ = get(client)
+        assert "<i onclick" not in body and "&lt;i onclick=" in body

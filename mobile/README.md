@@ -16,8 +16,20 @@ opens the live site in a WebView and gives Ride mode three native things while a
   text-to-speech engine) in place of Web Speech. Before each cue `VoiceFocusPlugin.java`
   ("RouteMakerVoiceFocus") asks Android for a short audio turn, as navigation apps do: music dips under the
   cue (a spoken podcast pauses) and comes back just after it, instead of playing over it at full volume.
-- **The latest cue on the notification shade** (v0.8.0 site only). `@capacitor/local-notifications`
-  shows a second, silent "Latest cue" notification, replaced as each cue is said, cleared at End ride.
+- **The next turn on the lock screen** (v0.27.0 site and app). `RideCuePlugin.java` ("RouteMakerRideCue")
+  shows one silent turn card: the turn's arrow, the distance counting down in the rider's unit, the street and
+  the turn after it, updated in place (`frontend/src/lib/turnCard.ts`), cleared at End ride and when the app
+  starts or closes. Its channel is default importance with no sound or vibration (a "silent" low-importance
+  card is hidden from the lock screen on many phones) and lock-screen public; on Android 16 it asks to be a Live
+  Update (`POST_PROMOTED_NOTIFICATIONS`, a normal permission), shown in the status bar and on the always-on
+  display where the phone allows it. An older app keeps `@capacitor/local-notifications`' silent "Latest cue"
+  notification, now with the turn and street only (no stale distance), replaced when the turn changes.
+- **A tone and a buzz** (v0.27.0 site and app; the owner, 2026-11-13: "All three, no new switches"). The same
+  plugin plays the phone's own short beep just before each spoken turn cue (two shorter beeps before
+  "off route"), inside the
+  voice's audio turn, and buzzes at a turn's "now": one long for left, two short for right. The buzz follows
+  the phone's own setting: a phone set to silent gets none. Lengths and patterns are our defaults, unmeasured
+  (`frontend/src/lib/cueTone.ts`). In a browser the tone is Web Audio and the buzz `navigator.vibrate`.
 
 One more native thing, outside a ride: **Send to Garmin** (the site's GPX sheet, v0.9.0 site and app). The
 site makes the FIT course and hands it to `FilesPlugin.java` ("RouteMakerFiles"), which writes it to the app's
@@ -182,7 +194,12 @@ in the build environment):
 - the "Riding with RouteMaker" notification appears at Start ride and goes at End ride, and no "Latest
   cue" is left on the shade after the app is swiped away and opened again;
 - cues keep coming with the phone locked in a pocket for more than ten minutes;
-- on a v0.8.0 site, the "Latest cue" notification follows the cues and clears at End ride;
+- on a v0.27.0 site and app, the lock screen shows the turn card (arrow, distance counting down, street,
+  next turn) without unlocking, it clears at End ride, a tone comes before each turn cue, and a turn's "now"
+  buzzes (one long left, two short right; none with the phone on silent); on Android 16 the card shows as a
+  Live Update in the status bar;
+- with an older app on a v0.27.0 site, the "Latest cue" notification shows the turn and street, with no
+  distance, and changes with the turn;
 - battery: on a v0.17.0 site or later the service asks for high accuracy with a 4 m distance filter
   (`NATIVE_DISTANCE_FILTER_M`), so a rider standing still gets no fix; the page's 5 s stillness
   backup (`lib/ridePause.ts` heartbeat) keeps the dock and stay clocks going for up to a minute
@@ -206,8 +223,9 @@ tell whether TalkBack is on, so the choice is what keeps cues from being said tw
 - With the phone locked (or another app in front), TalkBack reads nothing of the page, so on a v0.8.0
   site the native voice speaks "My screen reader" cues then; back in front, TalkBack alone again.
   "Neither" stays silent.
-- The "Latest cue" notification is on a low-importance channel: no sound, no vibration, no heads-up,
-  and Android sends TalkBack no announcement for it, so it never repeats the voice.
+- The turn card has no sound, no vibration of its own and no heads-up; it alerts only once
+  (`setOnlyAlertOnce`), so TalkBack hears it when it first shows and not on each update. An older app's
+  "Latest cue" notification is on a low-importance channel, which TalkBack never announces. The turn's buzz is separate and comes with any cue output but "Neither".
 - On an older site (compatibility layer), "My screen reader" is silent with the phone locked: choose
   "App voice" for pocket riding until v0.8.0 is deployed.
 
@@ -243,13 +261,14 @@ Positions stay on the phone, as on the website: the plugin hands each fix to the
 it for the cues and forgets it, and nothing sends the rider's position to the server (a re-plan sends
 the route request, as today). No analytics, no crash reporting, no tracking SDK. The manifest asks for
 the network, location (fine and coarse, "while using the app"; never `ACCESS_BACKGROUND_LOCATION`),
-the location foreground service, notifications, and vibration (a group ride's alert buzz, through
-the WebView's `navigator.vibrate`; a normal permission, never asked); the local-notifications plugin's boot, exact-alarm
+the location foreground service, notifications, Android 16's promoted notifications for the turn card
+(a normal permission, never asked), and vibration (a group ride's alert buzz, through the WebView's
+`navigator.vibrate`, and a turn's buzz through `RideCuePlugin`; a normal permission, never asked); the local-notifications plugin's boot, exact-alarm
 and wake-lock permissions are removed, and `allowBackup` is off and `dataExtractionRules`
 (`res/xml/data_extraction_rules.xml`) exclude everything, so the site's data in the app never goes to
 a cloud backup or, on Android 12+, to a new phone by device transfer. The plugin's location service is
-declared not exported (only the app binds it), and a GPS is not required to install. A "Latest cue"
-notification is cleared when the app starts and when the site's screen goes, so none is left stale. The site address is kept in the app's private preferences only; the
+declared not exported (only the app binds it), and a GPS is not required to install. The turn card and a "Latest cue"
+notification are cleared when the app starts and when the site's screen goes, so none is left stale. The site address is kept in the app's private preferences only; the
 basic-auth password is never kept by the app (above). The app's FileProvider lends files from one
 folder only, `FilesPlugin`'s `cache/courses/` (`res/xml/file_paths.xml`), with read access to the one
 file handed on. `mobile/test/config.test.mjs` holds the permission list and the provider's folder.

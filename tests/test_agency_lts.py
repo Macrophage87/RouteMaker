@@ -12,6 +12,19 @@ from routemaker import agency_lts
 from routemaker.agency_lts import AgencyRating
 from routemaker.stress import Stress, StressResult, rural_floor
 
+# The switch as the rebuild reads it, before the fixture below sets it back for these tests.
+REAL_COMPARISON_ONLY = agency_lts.COMPARISON_ONLY
+
+
+@pytest.fixture(autouse=True)
+def _county_and_state_levels_in_use(monkeypatch):
+    """These tests read how an agency's level would set a tier, as the rebuild did before
+    2026-11-13 (only DDOT's was comparison-only). Since then every agency's is
+    (`agency_lts.COMPARISON_ONLY`; `test_no_agency_level_sets_a_tier` checks that), and the
+    ranking is kept for a region whose agency the owner trusts."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
+
+
 FORMULA = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ("maxspeed",))
 
 
@@ -38,9 +51,24 @@ def test_montgomerys_lts5_is_our_45():
     assert result.rule == "agency rating: Montgomery County Planning LTS 5, our LTS 4.5"
 
 
-def test_a_ddot_lts5_is_avoid():
+def test_a_ddot_lts5_is_avoid(monkeypatch):
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     result = agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])
     assert (result.tier, result.half) == (Stress.AVOID, False)
+
+
+def test_ddots_2020_rating_is_recorded_and_never_used() -> None:
+    """The owner, 2026-11-13: "I want as few overrides as possible. If I say that a road is
+    incorrectly rated that means that I feel the formula is wrong", and of DDOT's 2020 layer,
+    2026-10-30: "6 year old data is too stale to rely on". The formula decides in the District;
+    DDOT's level stays on the road panel beside it."""
+    assert "ddot" in agency_lts.COMPARISON_ONLY
+    for level in (1, 2, 3, 4, 5):
+        result = agency_lts.apply(FORMULA, [AgencyRating("ddot", level)])
+        assert (result.tier, result.half) == (FORMULA.tier, FORMULA.half)
+        assert [r.agency for r in result.agency_ratings] == ["ddot"]
+    # Montgomery's still sets the tier where it rates the road.
+    assert agency_lts.apply(FORMULA, [AgencyRating("moco", 2)]).tier is Stress.LTS2
 
 
 def test_no_rating_leaves_the_formula():
@@ -322,7 +350,8 @@ def test_a_state_avoid_under_a_county_rating_takes_the_county():
     assert result.tier is Stress.LTS3
 
 
-def test_the_rural_floor_never_lowers_an_agency_avoid():
+def test_the_rural_floor_never_lowers_an_agency_avoid(monkeypatch):
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     rated = agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])
     assert rural_floor(rated, {"highway": "unclassified"}, urban=False).tier is Stress.AVOID
 
@@ -622,10 +651,11 @@ def test_the_ddot_level_field_is_found_on_any_record_not_only_the_first(tmp_path
     assert "LTS_SCORE" not in module.DDOT_LEVEL_FIELDS, "MDOT's preliminary score's name"
 
 
-def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
+def test_a_mapped_facility_sets_ddots_2020_rating_aside(monkeypatch) -> None:
     """The owner, 2026-10-21, of 14th Street NW, choosing "Formula wins where newer": DDOT's 2020
     layer predates lanes built since, so where a bike facility is mapped the formula's tier stands;
     the rating is still recorded for the road panel."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
     result = agency_lts.apply(lane, [AgencyRating("ddot", 4)], facility_mapped=True)
     assert result.tier is Stress.LTS2
@@ -637,15 +667,18 @@ def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
     assert held["used"] == agency_lts.FORMULA_USED and held["formula"] == 2
     rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
     assert not any("(used" in row["value"] for row in rows if "DDOT" in row["label"])
-    assert any(row["label"] == "Used" and "predates" in row["value"] for row in rows)
+    assert any(row["label"] == "Used" and "formula is used" in row["value"] for row in rows)
     # With no facility mapped DDOT's level is used, as before.
     assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
 
 
-def test_a_painted_lane_on_a_road_ddot_rated_higher_takes_the_level_its_traffic_gives() -> None:
+def test_a_painted_lane_on_a_road_ddot_rated_higher_takes_the_level_its_traffic_gives(
+    monkeypatch,
+) -> None:
     """The owner, 2026-10-30, of R Street's painted blocks: "I think formula wins on most of
     them, but make the higher cars/day ones, 2.5"; and 2026-10-31 of the DC review's rules
     (`ddot_rules.painted_lane_level`): "I agree with these"."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     # Thomas Circle NW, 14th St to M St: three lanes one way beside the lane.
     busy = StressResult(
         Stress.LTS1, "bike lane, 25 mph", (), volume_aadt=24_499, lanes=3, oneway=True
@@ -676,9 +709,10 @@ def test_a_painted_lane_on_a_road_ddot_rated_higher_takes_the_level_its_traffic_
     assert (kept.tier, kept.half) == (Stress.LTS1, False)
 
 
-def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane() -> None:
+def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane(monkeypatch) -> None:
     """Only a rating above the formula's is set aside: a lane built since makes a road calmer,
     and on a painted multilane street DDOT's calmer level stands (RL-3, 2026-10-16)."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())  # the switch off
     multilane = StressResult(Stress.LTS3, "bike lane, two-way floor", ())
     result = agency_lts.apply(
         multilane, [AgencyRating("ddot", 2)], facility_mapped=True, painted_lane=True
@@ -733,3 +767,41 @@ def test_the_ddot_set_aside_reads_the_tags_the_formula_read(tmp_path, monkeypatc
     assert result.tier is Stress.LTS3
     assert agency_lts.set_aside(result.rule) == {"ddot"}
     assert result.agency_ratings == (AgencyRating("ddot", 4),)
+
+
+@pytest.mark.parametrize("agency", ["ddot", "moco", "mdot-sha"])
+@pytest.mark.parametrize("level", [1, 1.5, 2, 2.5, 3, 4, 4.5])
+def test_no_agency_level_sets_a_tier(monkeypatch, agency, level) -> None:
+    """The owner, 2026-11-13: "If the only row in why is agency, it's not a valid rating.
+    Return it for rerating." and "MDOT had a 50 mph road with 20,000 cars as LTS1, safe for
+    kids." Every agency's level is recorded beside the formula's and never used."""
+    assert REAL_COMPARISON_ONLY == frozenset(agency_lts.AGENCIES)
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", REAL_COMPARISON_ONLY)
+    result = agency_lts.apply(FORMULA, [AgencyRating(agency, level)])
+    assert (result.tier, result.half) == (FORMULA.tier, FORMULA.half)
+    assert [r.agency for r in result.agency_ratings] == [agency]
+
+
+def test_mdot_shas_ban_is_still_read_with_every_level_comparison_only(monkeypatch) -> None:
+    """A ban is access, not a level: MDOT SHA's 5 still marks the way closed to bicycles."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", REAL_COMPARISON_ONLY)
+    ban = AgencyRating("mdot-sha", 5)
+    assert agency_lts.prohibiting([ban]) == ban
+    assert agency_lts.chosen([ban, AgencyRating("moco", 2)]) is None
+
+
+def test_with_every_level_comparison_only_the_report_and_panel_still_show_it(monkeypatch) -> None:
+    """The RL-3 painted-lane report sets the agency's level beside the formula's, and the road
+    panel records the formula as the one used (review of #1278)."""
+    import json
+
+    from pipeline import writers
+
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", REAL_COMPARISON_ONLY)
+    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 2)])
+    row = agency_lts.painted_lane_row(1, "Darnestown Rd", "MD", result)
+    assert (row["scope"], row["agency"], row["agency_level"]) == ("MoCo", "moco", "2")
+    assert row["differs"] == "yes"
+    held = json.loads(writers._ratings_json(result))
+    assert held["used"] == agency_lts.FORMULA_USED
+    assert [a["agency"] for a in held["agencies"]] == ["moco"]

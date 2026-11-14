@@ -162,6 +162,7 @@ You stay responsible for riding safely; the route can be wrong.
   share the top row; Go round (for a road that is closed ahead: it finds a way round; nothing is sent unless you choose to at the ride's end)
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
   sunset and dawn or dusk (civil twilight: the sun 6 degrees below the horizon) times and the minutes till each.
+  A ride is always for now, even when Plan's When was set to Leave at a later day and time.
 - After End ride you get the ride's summary: where you went, how far and how long first, then distance, moving time,
   average speed, total time and climbing; the elevation chart and the traffic stress you rode are under Details. Done
   leaves Go empty for your next trip (in Plan the plan stays to adjust); Keep riding carries on with the same ride.

@@ -52,6 +52,7 @@ from routemaker import (
     mtbmode,
     pavement,
     ridetime,
+    setting,
     sidewalks,
     singletrack,
     speed_corrections,
@@ -89,10 +90,12 @@ from . import (
     elevation,
     extract,
     hazard_layer,
+    known_roads,
     lts_sentinels,
     major_corridors,
     mass_capacity,
     offline_network,
+    offline_packs,
     overrides,
     promotion,
     rated_facts,
@@ -551,6 +554,11 @@ class ReferenceData:
     # licence is confirmed), from `signals.json`. Optional like `roadway.json`: without it the map
     # keeps OSM's signals only, and the load logs that it is absent.
     agency_signal_list: tuple[agency_signals.Signal, ...] = ()
+    # People, homes and jobs within half a mile of each way, with the area counted
+    # (`routemaker.setting`), from `setting.json`, for the road panel's Setting line.
+    # Optional like `roadway.json`: without it the line says urban or rural alone.
+    # Never read by the classifier.
+    setting_by_way: dict[int, list] = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -622,6 +630,8 @@ class ReferenceData:
                 # from the tier: an unknown agency is a thing a reviewer can
                 # see, a tier wearing an agency's name is not.
                 agency=row.get("agency"),
+                name=row.get("name"),
+                ref=row.get("ref"),
             )
             for row in volume_rows
         )
@@ -682,6 +692,7 @@ class ReferenceData:
                 )
             ),
             agency_signal_list=agency_signals.load(directory / agency_signals.FILE_NAME),
+            setting_by_way=cls.load_setting(directory / setting.FILE_NAME),
             **dict(
                 zip(
                     ("scenic_features", "scenic_labels"),
@@ -710,6 +721,18 @@ class ReferenceData:
             )
             return ()
         return tuple(pavement.Block.from_json(row) for row in json.loads(path.read_text()))
+
+    @staticmethod
+    def load_setting(path: Path) -> dict[int, list]:
+        """People, homes and jobs around each way, or none (with a warning)."""
+        if not path.exists():
+            logger.warning(
+                "%s is absent, so the road panel's Setting line says urban or rural alone. "
+                "Install it with scripts/install_reference_data.py --census-blocks --lodes-wac",
+                path,
+            )
+            return {}
+        return {int(way_id): row for way_id, row in json.loads(path.read_text()).items()}
 
     @staticmethod
     def load_road_blocks(path: Path) -> tuple[conflation.RoadFeature, ...]:
@@ -1596,8 +1619,10 @@ def assert_reference_lts4_street(
         )
     tiers = lts_sentinels.street_tiers(context.staging_schema, street, ids, north_of_lat)
     found = lts_sentinels.problems(tiers, min_share, north_min_share)
-    if found:
-        raise ValidationFailed("; ".join(found))
+    # No rows read at all, or none north of the line: a data fault, refused either way.
+    if tiers.total_m <= 0 or tiers.north_m <= 0:
+        _owner_calls_found([], found)
+    _owner_calls_found(found, [])
     logger.info(
         "%s: %.0f%% LTS 4, %.0f%% north of %.4f N",
         street,
@@ -1837,6 +1862,39 @@ def assert_zoo_rule(context: RebuildContext) -> None:
         raise ValidationFailed("the Zoo rule no longer fits the extract: " + "; ".join(problems))
 
 
+def _owner_calls_found(found: list[str], blocking: list[str]) -> None:
+    """A road the owner called that came out at another level: listed, and the build refused
+    only with `REBUILD_OWNER_CALLS_REFUSE` on. The owner, 2026-11-13: his calls tune the
+    method, never override it ("Ignore my own calls"; "If something is wrong the solution is
+    more context or adjusting the prompt"), so a gap goes back to the raters. A stretch that
+    could not be read at all (`blocking`) still refuses the build."""
+    if found and _setting("REBUILD_OWNER_CALLS_REFUSE"):
+        blocking = [*blocking, *found]
+    else:
+        for gap in found:
+            logger.warning("owner's call not met (listed for the raters): %s", gap)
+    if blocking:
+        raise ValidationFailed("; ".join(blocking))
+
+
+def assert_known_roads(schema: str, path) -> list:
+    """Each road the owner has called (`REBUILD_KNOWN_ROADS`, `pipeline.known_roads`) came
+    out at his level, read back from the staging schema by where it is, not by way id, so
+    an override row a re-match lost is caught. Off with an empty path."""
+    roads = known_roads.load(path)
+    if not roads:
+        return []
+    _found, read = known_roads.check(schema, roads)
+    gaps, lost = [], []
+    for tiers in read:
+        logger.info(
+            "known road %s: %.0f%% at %s", tiers.road.name, 100 * tiers.share, tiers.road.wanted
+        )
+        (lost if known_roads.unread(tiers) else gaps).extend(known_roads.problems(tiers))
+    _owner_calls_found(gaps, lost)
+    return read
+
+
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
     out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
@@ -1850,7 +1908,7 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
             "no agency street layer is installed, so the owner's stretches are not checked"
         )
         return []
-    found, read = [], []
+    found, gaps, read = [], [], []
     for stretch in stretches:
         ids = lts_sentinels.block_ids(reference.road_blocks, stretch.street)
         if not ids:
@@ -1861,7 +1919,7 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
             continue
         tiers = lts_sentinels.stretch_tiers(context.staging_schema, stretch, ids)
         read.append(tiers)
-        found.extend(lts_sentinels.stretch_problems(tiers))
+        (gaps if tiers.total_m > 0 else found).extend(lts_sentinels.stretch_problems(tiers))
         logger.info(
             "%s %.4f-%.4f N: %.0f%% at tier %d (%s)",
             stretch.street,
@@ -1871,8 +1929,7 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
             stretch.tier,
             stretch.decision,
         )
-    if found:
-        raise ValidationFailed("; ".join(found))
+    _owner_calls_found(gaps, found)
     return read
 
 
@@ -2642,7 +2699,28 @@ def build_handlers(
             for way in context.ways
             if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
         }
-        result = conflation.conflate(entries, reference.volume_features, name_required=nameless)
+        # A freeway's count line goes to the freeway only (`conflation.conflate`'s `freeway`).
+        freeway = {way.osm_id for way in context.ways if way.tags.get("highway") == "motorway"}
+        result = conflation.conflate(
+            entries,
+            reference.volume_features,
+            name_required=nameless,
+            freeway=freeway,
+            layers={way.osm_id: conflation.way_layer(way.tags) for way in context.ways},
+            # A count line that names another street is not this way's (`conflate`'s `names`).
+            names={way.osm_id: (way.name, way.tags.get("ref")) for way in context.ways},
+        )
+        # A trunk or primary road counted at under 200 a day is read as uncounted
+        # (`conflation.drop_implausible`), here before any carriageway shares the count.
+        result, implausible = conflation.drop_implausible(
+            result, {way.osm_id: way.tags.get("highway") for way in context.ways}
+        )
+        if implausible:
+            logger.info(
+                "%d counts under %d a day on trunk or primary ways not read",
+                len(implausible),
+                conflation.IMPLAUSIBLE_AADT,
+            )
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
         # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy
@@ -4524,11 +4602,15 @@ def build_handlers(
                         else None,
                         walk_bike=way.osm_id in context.walk_bike,
                         button_operated=way.osm_id in button_ways,
+                        # The pavement survey for the road panel (DC-PCI), on a street
+                        # the layer speaks for; shown even where OSM's reading routes.
+                        **pavement.panel_columns(context.pci_by_way.get(way.osm_id)),
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_default_speed_mph=_smallint(
                             getattr(stress, "default_speed_mph", None)
                         ),
                         road_urban=way.osm_id in reference.urban_way_ids,
+                        **setting.panel_columns(reference.setting_by_way.get(way.osm_id)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
                         mass_usable_width_m=massflow.usable_width_rounded(
                             way.tags,
@@ -4664,6 +4746,9 @@ def build_handlers(
                 calm_path_sentinels,
                 calm_street_sentinels,
                 _setting("REBUILD_CALM_RUN_FLOORS"),
+            )
+            failures.check(
+                assert_known_roads, context.staging_schema, _setting("REBUILD_KNOWN_ROADS")
             )
         except Exception as error:
             if own and not isinstance(error, ValidationFailed):
@@ -4884,6 +4969,19 @@ def build_handlers(
             raise
 
     def reconcile_after_swap() -> None:
+        # The region packs for off-grid riding (core.offline_packs), from the map now live. The
+        # map is live whatever happens here: a failure is logged and the last packs stay listed
+        # (their manifest names the older build), never a failed rebuild. Before the drift
+        # report, so a failure there still leaves the packs built.
+        try:
+            offline_packs.build_packs(
+                _setting("SEGMENT_SCHEMA_LIVE"),
+                Path(context.tiles_dir) / "offline-packs",
+                context.build_id,
+                _setting("COVERAGE_BBOX"),
+            )
+        except Exception:  # noqa: BLE001 - logged; the swap already stands
+            logger.exception("offline region packs not built; the previous packs stay served")
         context.drift_report = reconcile.drift_report(
             context.build_id,
             _setting("SEGMENT_SCHEMA_LIVE"),
