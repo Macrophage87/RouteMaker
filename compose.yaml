@@ -654,7 +654,7 @@ services:
     # 1856M, not 2G (the owner's "New weekend graph" of 2026-11-08): Road Bike's weekend router
     # (valhalla-paved-weekend) adds 768M resident and 768M more at the swap, which the 32G check
     # (scripts/check_compose_limits.py) has room for only with each of the four 192M lower. Two
-    # workers at the check's 700M each still fit; the beta runs these at 640M.
+    # workers at the check's 700M each still fit; the beta runs this one at 1024M (640M until 2026-11-14).
     deploy:
       resources:
         limits: { memory: 1856M, cpus: "2" }
@@ -783,7 +783,7 @@ services:
     # 1856M, not 2G (the owner's "New weekend graph" of 2026-11-08): Road Bike's weekend router
     # (valhalla-paved-weekend) adds 768M resident and 768M more at the swap, which the 32G check
     # (scripts/check_compose_limits.py) has room for only with each of the four 192M lower. Two
-    # workers at the check's 700M each still fit; the beta runs these at 640M.
+    # workers at the check's 700M each still fit; the beta runs this one at 1024M (640M until 2026-11-14).
     deploy:
       resources:
         limits: { memory: 1856M, cpus: "2" }
