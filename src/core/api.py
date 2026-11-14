@@ -7654,6 +7654,14 @@ class MeOut(Schema):
             " Sign in with Discord only when it is true."
         ),
     )
+    sign_in_choices: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The sign-ins offered to this browser, of discord, google and apple"
+            " (core.sign_in_views): with more than Discord's, the page's buttons say Sign in and"
+            " open /auth/sign-in."
+        ),
+    )
 
 
 def _private(response: HttpResponse) -> HttpResponse:
@@ -7785,6 +7793,7 @@ def me(request, response: HttpResponse):
         get_token(request)
     _private(response)
     from .auth_views import sign_in_available
+    from .sign_in_views import offered
 
     return Status(
         200,
@@ -7794,6 +7803,9 @@ def me(request, response: HttpResponse):
             "can_suggest": can_suggest,
             "can_review_closures": can_review,
             "sign_in": sign_in_available(),
+            # The sign-ins this browser is offered (core.sign_in_views): ["discord"] alone keeps
+            # "Sign in with Discord"; more, and the buttons say "Sign in" and open the choice.
+            "sign_in_choices": offered(request),
         },
     )
 
