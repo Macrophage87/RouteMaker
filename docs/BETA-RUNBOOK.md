@@ -34,9 +34,9 @@ already exists (`/data` included: it holds other people's data).
 It does not touch the other sites, `nginx.conf`, the firewall, the system packages' configuration,
 or Docker's daemon settings. If a step seems to need any of those, **stop and ask the owner**.
 
-The memory budget is hard: every container has a cap (`compose.beta.yaml`, 8150 MiB = 7.96 GiB
-resident in all with the four trail routers and the 24M memcached, 8406 MiB = 8.21 GiB at the startup peak, against the host's 8.6 GiB available;
-the owner, 2026-11-08, "New weekend graph", for Road Bike's weekend router at about 7.96 GiB and a start-up margin of about 0.4 GiB), so a spike restarts a
+The memory budget is hard: every container has a cap (`compose.beta.yaml`, 9516 MiB = 9.29 GiB
+resident in all with the four trail routers and the 24M memcached, 9772 MiB = 9.54 GiB at the startup peak, against about 11.3 GiB available to this stack
+(measured 2026-11-14); the owner, 2026-11-14, "Raise memory caps", after the standard router and the api were OOM-killed at 640M and 1450M), so a spike restarts a
 RouteMaker container rather than starving another site. Every RouteMaker container also has
 `cpu_shares: 512` and `oom_score_adj: 500`: under CPU contention the other sites win, and a
 host-wide out-of-memory kill picks a RouteMaker process first.
@@ -49,7 +49,7 @@ host-wide out-of-memory kill picks a RouteMaker process first.
    `-p`, `-f`, `--scale` and any profile but `offroad`. Name services as the steps below do.
 2. One-shot management commands run inside the api (`beta-compose.sh exec -T api ./manage.py check`, for example)
    or in the small migrate container (`beta-compose.sh run --rm --no-deps migrate ./manage.py migrate --check`),
-   never as `run --rm api ...`: that starts a second container with the api's 1450M cap beside
+   never as `run --rm api ...`: that starts a second container with the api's 2048M cap beside
    the running one, which the memory budget does not have room for.
 3. Never `docker compose down -v`, `docker system prune`, or `rm -rf` anything outside the directories
    in the table above.
@@ -105,7 +105,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
 - available memory, plus what this project's own running containers already hold, is at least
-  the 8806 MiB threshold below (the 8406 MiB startup peak plus the checker's 0.39 GiB margin); the
+  the 10172 MiB threshold below (the 9772 MiB startup peak plus the checker's 0.39 GiB margin); the
   containers' share counts because a redeploy replaces them rather than adding to them;
 - an x86_64 machine (the api image is built at home, on x86_64);
 - `beta.example.org` resolves to this server's own public address (checked live below; the
@@ -113,7 +113,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m; ids=$("$RM_SRC/scripts/beta/beta-compose.sh" ps -q); [ -z "$ids" ] || docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' $ids   # "available" plus the usage of this project's containers listed must be at least 8806 MiB: the 8406 MiB startup peak plus the checker's 0.39 GiB margin (the caps total 8150 MiB = 7.96 GiB resident)
+free -m; ids=$("$RM_SRC/scripts/beta/beta-compose.sh" ps -q); [ -z "$ids" ] || docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' $ids   # "available" plus the usage of this project's containers listed must be at least 10172 MiB: the 9772 MiB startup peak plus the checker's 0.39 GiB margin (the caps total 9516 MiB = 9.29 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
@@ -316,7 +316,7 @@ from `.env` (the rendered config holds every secret), only the table and any pro
 prints a problem, stop and report it. It checks: no caddy or rebuild; a memory cap, CPU cap and
 `memswap_limit` on every container; `cpu_shares` below 1024 and `oom_score_adj` at least 500 on
 every container; only the api publishing a port and only on `127.0.0.1`; the resident total under
-7.96 GiB (the four trail routers always counted) and the startup peak (plus the largest one-shot) leaving 0.39 GiB of the host's 8.6; at most
+9.3 GiB (the four trail routers always counted) and the startup peak (plus the largest one-shot) leaving 0.39 GiB of the 11.3 GiB available to this stack; at most
 six gunicorn workers with one left free beside the routing, geocoding and tile pools; Photon's heap
 plus capped direct buffers inside its cap; the weekly rebuild paused; every long-running service
 restarting `unless-stopped` and Django debug off; and in `.env`, no `COMPOSE_PROFILES` or
@@ -548,8 +548,8 @@ free -m
 ```
 
 Every container should sit well under its cap (api about 0.5 GiB at six workers, photon about
-1 GiB, each router under 0.7 GiB). Then measure the two-plans-at-once case once (OWNER-DECISIONS
-367.2), and report the api's and photon's peaks against their 1450M and 1300M caps:
+1 GiB, each router under 0.7 GiB, the standard and weekend routers under 1 GiB). Then measure the two-plans-at-once case once (OWNER-DECISIONS
+367.2), and report the api's and photon's peaks against their 2048M and 1300M caps:
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
@@ -1493,7 +1493,7 @@ and `$RM_DATA/tiles/mtb/current` exist):
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
 scripts/beta/auto-release.sh install                                  # the agent that knows the trail routers
-"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.96 GiB resident
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 9.29 GiB resident
 scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend
 ```
 

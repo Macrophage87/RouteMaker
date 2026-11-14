@@ -100,7 +100,7 @@
 #                                network) before the owner is alerted [30]
 #   RM_CD_PAVED_MIN_MIB          MiB of available memory plus what this project's running containers
 #                                hold, below which a stopped valhalla-paved or valhalla-paved-weekend
-#                                is left stopped [8806]
+#                                is left stopped [10172]
 #   RM_CD_HOST                   Host header for the local health check [RM_BETA_HOST from the
 #                                checkout's .env; one of the two is required]
 # DOCKER and CURL name the docker and curl binaries [docker, curl] (the tests use stubs).
@@ -150,13 +150,13 @@ load_vars() {
 	docker_free_gib=${RM_CD_DOCKER_FREE_GIB:-3}
 	case "$docker_free_gib" in '' | *[!0-9]*) die "RM_CD_DOCKER_FREE_GIB must be a whole number of GiB" ;; esac
 	# Road Bike's routers start only where available memory plus what this project's running
-	# containers already hold reaches the startup peak (8406 MiB, every cap) plus the 0.39 GiB
-	# margin of check_beta_compose.py: 8806 MiB. It was 8086 MiB plus 0.7 GiB (8803) until Road
-	# Bike's weekend router came in (the owner, 2026-11-08, "New weekend graph", at a start-up
-	# margin of about 0.4 GiB).
+	# containers already hold reaches the startup peak (9772 MiB, every cap) plus the 0.39 GiB
+	# margin of check_beta_compose.py: 10172 MiB. It was 8806 MiB (an 8406 MiB peak) until the
+	# standard and weekend routers and the api were raised (the owner, 2026-11-14, "Raise memory
+	# caps"), and 8803 MiB before Road Bike's weekend router came in (2026-11-08).
 	# Counting `available` alone, with the stack up, counted postgis, photon and memcached twice
 	# and left it stopped on a host with room (2026-11-03: 5759 available + 3258 held = 9017).
-	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-8806}
+	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-10172}
 	case "$paved_min_mib" in '' | *[!0-9]*) die "RM_CD_PAVED_MIN_MIB must be a whole number of MiB" ;; esac
 	progress="$cd_dir/in-progress"
 	# The agent's own files: the installed copy, so a release cannot change the agent under a pass.
