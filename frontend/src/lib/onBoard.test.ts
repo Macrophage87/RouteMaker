@@ -559,6 +559,10 @@ test("the watch is low power on a train or bus until 'Next stop', so the GPS is 
   assert.equal(near.state.saidNext, true);
   assert.equal(lowPowerOnBoard(true, near.state), false);
   assert.equal(lowPowerOnBoard(true, { saidNext: false, done: true }), false);
+  // At NoMa, the stop before the rider's: high accuracy already, so the fix that tells NoMa left comes in time.
+  const atNoma = onBoardStep(LEG, { ...waiting, boardedAt: 0, at: 3 }, 500_000, fix(north(4800), 50, 500_000));
+  assert.equal(atNoma.state.saidNext, false);
+  assert.equal(lowPowerOnBoard(true, atNoma.state), false);
   assert.equal(lowPowerOnBoard(false, waiting), false, "the walk after");
 });
 

@@ -76,6 +76,8 @@ export interface OnBoardState {
   left?: number;
   /** When `at` last moved on: a stop reached DWELL_S ago is taken as left, as no fix may come between stops underground. */
   atSince?: number | null;
+  /** On board at the stop before the rider's or later: the watch is at high accuracy again (`lowPowerOnBoard`). */
+  warm?: boolean;
   /** The last usable fix's time. */
   fixAt: number | null;
   saidNext: boolean;
@@ -87,12 +89,13 @@ export interface OnBoardState {
 }
 
 /**
- * Whether the ride's watch may be low power (lib/rideWatch.ts ON_BOARD_WATCH_OPTIONS): on a train or bus, until "Next
- * stop" is said. From then the GPS has the last stop's run to warm up to high accuracy before the walk or ride after,
- * whose first turns come soon after getting off (2026-11-05 review).
+ * Whether the ride's watch may be low power (lib/rideWatch.ts ON_BOARD_WATCH_OPTIONS): on a train or bus, until the
+ * stop before the rider's is reached (`warm`) or "Next stop" is said. From then the GPS is at high accuracy: fixes come
+ * often enough to tell that stop left (bus stops a block apart leave a short gap for "Next stop" before the rider's own),
+ * and it is warm for the walk or ride after, whose first turns come soon after getting off (2026-11-05 review).
  */
-export function lowPowerOnBoard(onTransit: boolean, board: Pick<OnBoardState, "saidNext" | "done"> | null | undefined): boolean {
-  return onTransit && !board?.saidNext && !board?.done;
+export function lowPowerOnBoard(onTransit: boolean, board: Pick<OnBoardState, "saidNext" | "done" | "warm"> | null | undefined): boolean {
+  return onTransit && !board?.saidNext && !board?.done && !board?.warm;
 }
 
 /** A transit step as one to follow; null without at least two stops (an older API). `afterS`: the plan's seconds after it to the trip's end. */
@@ -220,7 +223,9 @@ export function onBoardStep(leg: OnBoardLeg, state: OnBoardState, now: number, f
       }
     }
   }
-  if (next.at > state.at || (next.boardedAt !== null && state.boardedAt === null)) next.atSince = now;
+  // (A state kept from before `atSince`, on Resume, starts its count now.)
+  if (next.at > state.at || (next.boardedAt !== null && (state.boardedAt === null || state.atSince == null))) next.atSince = now;
+  if (next.boardedAt !== null && next.at >= last - 1) next.warm = true;
   // A stop reached DWELL_S ago is left (the doors closed), fix or none: underground no fix may come till the next stop.
   if (next.boardedAt !== null && next.atSince != null && now - next.atSince >= DWELL_S * 1000) next.left = Math.max(next.left ?? -1, next.at);
   const off = leg.stops[last].name;
