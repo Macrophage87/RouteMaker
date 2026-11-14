@@ -148,6 +148,7 @@ class TestWhoMaySuggest:
             "can_suggest": True,
             "can_review_closures": False,
             "sign_in": True,
+            "sign_in_choices": ["discord"],
         }
         assert "csrftoken" in r.cookies
 

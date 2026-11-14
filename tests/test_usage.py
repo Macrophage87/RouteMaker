@@ -122,3 +122,8 @@ def test_a_count_that_fails_never_breaks_the_answer(monkeypatch) -> None:
         return HttpResponse(status=200)
 
     assert usage.UsageMiddleware(view)(request).status_code == 200
+
+
+def test_nothing_on_a_ride_link_is_counted() -> None:
+    # The ride endpoints write nothing to the database (tests/test_ride_presence.py).
+    assert not [route for _method, route in usage.ROUTES if route.startswith("api/rides/")]
