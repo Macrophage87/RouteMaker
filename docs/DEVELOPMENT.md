@@ -6509,6 +6509,28 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
+### LTS 1, 1.5 and 2 as tiebreakers on every ride (2026-11-14)
+
+Stephen, 2026-11-14, after the re-rate moved about 4,000 mi of quiet streets from 2 to 1 and
+1.5: "make sure that the levels are modest, intersections are often a bigger issue at that
+level anyway, but those low levels might be useful for tiebreakers." Every ride that weighed
+LTS 2 at nothing now weighs it at `presets.LTS2_TIEBREAK` (0.03 of LTS 3), and 1.5 at half
+that (`refine.stress_totals`). It is the same `Exposure.lts2` knob as below, so it rides the
+same paths: the score's LTS 2 term (now at every calm rate, so it does not drop away just
+past 80, where the rate starts near 0), the exposure at the calm rate, and the top of the
+slider's second figure. At Default (70) a mile of LTS 2 in place of LTS 1 costs about 71 cost
+seconds, about two turns at `TURN_RANK_S` and a fraction of one busy crossing's junction
+cost; at 40 under one turn; at 90 about four. Planner only: the graph still prices LTS 1 and
+2 the same, LTS 2 never starts an exclusion or a trail seek (`seek_weights`), and no map is
+rebuilt. Trailmaxxing, Cargo with passengers and Tandem keep their quarter. The 0.03 is our
+default. Measured 2026-11-14 on the PC's re-rated map (v0.26.0 code with the term patched
+in): 10 trips (NoMa to USP, Union Station to Fredericksburg, and eight 2-10 mi city and
+suburban trips) at Default and at 90, at 0, 0.03 and 0.06. 39 of 40 plans with the term
+came out the same line as without it. The one that moved, NoMa to USP at Default (both
+weights), stayed 19.97 mi, moved 0.15 mi from LTS 2 to LTS 1, dropped its one red junction
+and one turn, and cut 24 s of waits; 99.2% of the line was unchanged. So it breaks ties and
+does not change corridors.
+
 ### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
 
 The owner, 2026-10-03, item 240: "A and B sound good." (A): "a small LTS 2 weight in the
@@ -6535,7 +6557,8 @@ is not in control of the ride is stress-averse.
   costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
   slider does not move, the calm search does not turn on, and the router's requests are
   unchanged: only the choice among the routes it returns (the crossing rounds') changes.
-  Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
+  Default, Bikeshare and carrying cargo weigh LTS 2 only at the tiebreak share below
+  (`LTS2_TIEBREAK`, 2026-11-14).
   The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
   kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
   with LTS 3's added cost toward the slider's busiest end, where `use_roads` is 1 and LTS 3

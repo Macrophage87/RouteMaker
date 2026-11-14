@@ -490,7 +490,8 @@ class Exposure:
     # Refuse a candidate with more LTS 4 and Avoid metres than the router's first
     # route (each leg's, and the whole trip's).
     hold_lts4: bool = False
-    # What a metre of LTS 2 counts, in metres of LTS 3 (FOLLOWUP-LTS2-WEIGHT).
+    # What a metre of LTS 2 counts, in metres of LTS 3 (FOLLOWUP-LTS2-WEIGHT): a tiebreaker
+    # on every ride (LTS2_TIEBREAK), more on the rides that weigh it (LTS2_WEIGHT).
     lts2: float = 0.0
     # Novice and Nervous (v0.7.0 plan): how many levels up the search reads every road
     # and junction before it prices them (`shifted_tier`, `shift_stress`): 1 there, so LTS 1
@@ -538,9 +539,21 @@ def shifted_severity(severity: str | None, shift: int) -> str | None:
 
 # OWNER-DECISIONS 240 (A): "about a quarter of LTS 3".
 LTS2_WEIGHT = 0.25
+# LTS 1, 1.5 and 2 as tiebreakers on every other ride (Stephen, 2026-11-14, after the re-rate
+# moved about 4,000 mi of quiet streets from 2 to 1 and 1.5: "make sure that the levels are
+# modest, intersections are often a bigger issue at that level anyway, but those low levels
+# might be useful for tiebreakers"). A metre of LTS 2 counts 3% of what a metre of LTS 3
+# adds, and 1.5 half that (`refine.stress_totals`). At Default (70 on the slider) that is
+# about a tenth of a quiet metre: a mile of LTS 2 in place of LTS 1 costs about what two
+# turns do (`refine.TURN_RANK_S`) and a fraction of one busy crossing's junction cost, so the
+# junctions and turns still decide and the level only breaks ties. Our default, unmeasured
+# against riders; docs/DEVELOPMENT.md, "LTS 1, 1.5 and 2 as tiebreakers on every ride".
+LTS2_TIEBREAK = 0.03
 
-EXPOSURE_STANDARD = Exposure()
-EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True)
+EXPOSURE_STANDARD = Exposure(lts2=LTS2_TIEBREAK)
+EXPOSURE_STRESS_AVERSE = Exposure(
+    lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True, lts2=LTS2_TIEBREAK
+)
 # The rides whose rider is not in control of the ride, or wants the calmest route
 # (Trailmaxxing, Cargo with passengers; items 240 (A) and 241): item 250's weights and
 # hold, and LTS 2 at a quarter of LTS 3.
