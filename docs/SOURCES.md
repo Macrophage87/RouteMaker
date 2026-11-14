@@ -127,6 +127,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     "Agency stress ratings (agency-lts.json)"); the road panel names "DDOT" beside its
     level. Item id, size, sha256 and the licence text verbatim: the download's README, to
     be copied here.
+  - **DDOT Bike Lane Projects** (District Department of Transportation),
+    https://bikelanes.ddot.dc.gov/, read 2026-11-13: the Completed Projects tables
+    (2020-2024) and the 2025-2026 project pages, by street, block range, facility type
+    and year. Facts only (which streets got which bikeway, when), cited; the site's text
+    and images are not copied. Read where the District's street record and OSM disagree
+    about a bike facility (`routemaker.ddot_projects`; the owner, 2026-11-13: "When
+    there's a mismatch in data, we search for the project's own data").
+    `fixtures/ddot-projects/completed-bikeways.json`.
   - **DDOT Central Business District** (District Department of Transportation), item
     `32143ca8983d4476b64f4202162bf61e`, retrieved 2026-09-30; decides which sidewalks
     bicycles may not ride. Record and sha256: `fixtures/cbd/README.md`.

@@ -412,6 +412,20 @@ ASSUMED_LANES = {3: 1, 4: 2, 5: 2}
 SLIP_LANE_FT = 1000.0
 SIGNALISED_SLIP_FACTOR = 0.5
 
+# --- Right hooks on a painted lane (the owner, 2026-11-13) ---------------------
+#
+# Riding straight on along a painted lane past a busy road, cars on the rider's road turn
+# across the lane into it (a right hook, or a left across from the other side). The owner,
+# of R Street NW by Dupont Circle: "Right hook chances"; then "3 would probably make people
+# avoid this more likely. The problem is that it's everywhere. Add the risks to the
+# junctions, rather than the road", and "It's not as bad as a slip lane, but it's still a
+# cost". So the lane's own level is left as it is, and each such junction costs
+# RIGHT_HOOK_FT on top of whatever else it costs: a quarter of an unsignalised slip lane
+# (SLIP_LANE_FT), at a signal too, where turning on green is the right hook. A busy road
+# is 2.5 or above (`Road.busy`). Our default, not measured; below orange, so never drawn
+# on its own.
+RIGHT_HOOK_FT = 250.0
+
 # --- Severity (item 172) ----------------------------------------------------
 #
 # A stopped-side crossing of an LTS 3 road (800-1,600 ft) is orange; of an LTS 4
@@ -584,6 +598,9 @@ class Road:
     # urban area (`time_factor` at night). None on a table built before them.
     default_speed_mph: float | None = field(default=None, compare=False)
     urban: bool | None = field(default=None, compare=False)
+    # The road carries a painted bike lane (`facility.Facility.LANE`) on the segment table:
+    # riding straight on along it past a busy road costs RIGHT_HOOK_FT.
+    painted_lane: bool = field(default=False, compare=False)
     # A half step (OWNER-DECISIONS 441i-441l, 461a): the road is half a level above `tier`.
     # Its base costs are the midpoints of its two levels' (`_table`); an on/off rule
     # takes the cautious side, so 2.5 is busy.
@@ -940,6 +957,14 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
         roads = [r for r in (j.incoming, j.outgoing, *j.crossed, *j.links) if r.busy]
         busiest = max(roads, key=lambda r: r.level) if roads else None
         take(slip_ft(j.control) if busiest else 0.0, "slip_lane", busiest)
+    if j.movement is Movement.STRAIGHT and j.incoming.painted_lane and not j.incoming.car_free:
+        # Straight on along a painted lane past a busy road: cars turn across the lane
+        # (`RIGHT_HOOK_FT`), on top of the junction's other cost.
+        hooks = [r for r in (*j.crossed, *j.links) if r.busy and not r.car_free]
+        if hooks:
+            if about is None:
+                kind, about = "right_hook", max(hooks, key=lambda r: r.level)
+            cost += RIGHT_HOOK_FT
     if about is None and not j.incoming.busy and not j.outgoing.busy:
         # Quiet street meets quiet street: a stop sign here is the owner's
         # "rolls through when safe", priced near zero.
@@ -1084,6 +1109,7 @@ KIND_WORDS = {
     # The route crosses the slip lane's path (item 195), so the words say so
     # (review r3: "beside" read as riding past it).
     "slip_lane": "Crossing a slip lane off",
+    "right_hook": "Turning cars across your bike lane into",
 }
 
 
