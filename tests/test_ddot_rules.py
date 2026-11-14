@@ -104,7 +104,11 @@ def test_the_road_panel_says_why_ddot_was_read_otherwise(monkeypatch) -> None:
     assert "," not in held.note
 
 
-def test_only_ddot_is_read_by_these_rules() -> None:
+def test_only_ddot_is_read_by_these_rules(monkeypatch) -> None:
+    from routemaker import agency_lts as _agency_lts
+
+    # How a county level would read in use; every agency is comparison-only since 2026-11-13.
+    monkeypatch.setattr(_agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
     county = StressResult(Stress.LTS3, "x", (), volume_aadt=45_334, lanes=2, oneway=False)
     result = agency_lts.apply(county, [AgencyRating("moco", 1)])
     assert result.tier is Stress.LTS1

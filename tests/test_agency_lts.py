@@ -12,6 +12,19 @@ from routemaker import agency_lts
 from routemaker.agency_lts import AgencyRating
 from routemaker.stress import Stress, StressResult, rural_floor
 
+# The switch as the rebuild reads it, before the fixture below sets it back for these tests.
+REAL_COMPARISON_ONLY = agency_lts.COMPARISON_ONLY
+
+
+@pytest.fixture(autouse=True)
+def _county_and_state_levels_in_use(monkeypatch):
+    """These tests read how an agency's level would set a tier, as the rebuild did before
+    2026-11-13 (only DDOT's was comparison-only). Since then every agency's is
+    (`agency_lts.COMPARISON_ONLY`; `test_no_agency_level_sets_a_tier` checks that), and the
+    ranking is kept for a region whose agency the owner trusts."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
+
+
 FORMULA = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ("maxspeed",))
 
 
@@ -754,3 +767,24 @@ def test_the_ddot_set_aside_reads_the_tags_the_formula_read(tmp_path, monkeypatc
     assert result.tier is Stress.LTS3
     assert agency_lts.set_aside(result.rule) == {"ddot"}
     assert result.agency_ratings == (AgencyRating("ddot", 4),)
+
+
+@pytest.mark.parametrize("agency", ["ddot", "moco", "mdot-sha"])
+@pytest.mark.parametrize("level", [1, 1.5, 2, 2.5, 3, 4, 4.5])
+def test_no_agency_level_sets_a_tier(monkeypatch, agency, level) -> None:
+    """The owner, 2026-11-13: "If the only row in why is agency, it's not a valid rating.
+    Return it for rerating." and "MDOT had a 50 mph road with 20,000 cars as LTS1, safe for
+    kids." Every agency's level is recorded beside the formula's and never used."""
+    assert REAL_COMPARISON_ONLY == frozenset(agency_lts.AGENCIES)
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", REAL_COMPARISON_ONLY)
+    result = agency_lts.apply(FORMULA, [AgencyRating(agency, level)])
+    assert (result.tier, result.half) == (FORMULA.tier, FORMULA.half)
+    assert [r.agency for r in result.agency_ratings] == [agency]
+
+
+def test_mdot_shas_ban_is_still_read_with_every_level_comparison_only(monkeypatch) -> None:
+    """A ban is access, not a level: MDOT SHA's 5 still marks the way closed to bicycles."""
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", REAL_COMPARISON_ONLY)
+    ban = AgencyRating("mdot-sha", 5)
+    assert agency_lts.prohibiting([ban]) == ban
+    assert agency_lts.chosen([ban, AgencyRating("moco", 2)]) is None

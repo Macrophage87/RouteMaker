@@ -7,11 +7,24 @@ from __future__ import annotations
 import csv
 import io
 
+import pytest
+
 from pipeline import agency_ratings
 from pipeline.extract import Way, close_writer
 from routemaker import agency_lts, facility
 from routemaker.agency_lts import PROHIBITED_NO_BICYCLE, AgencyRating
 from routemaker.stress import Stress
+
+
+@pytest.fixture(autouse=True)
+def _county_and_state_levels_in_use(monkeypatch):
+    """These tests read how a county's or the state's level would set a tier, as the rebuild
+    did before 2026-11-13; since then every agency's level is comparison-only
+    (`agency_lts.COMPARISON_ONLY`, `test_agency_lts.test_no_agency_level_sets_a_tier`)."""
+    from routemaker import agency_lts
+
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
+
 
 LINE = [(-77.30 + i * 0.001, 39.20) for i in range(11)]
 

@@ -6343,7 +6343,9 @@ files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
 | `second-record` | SHA's record for a road's other direction (route id character 15, "2"), within 130 ft (40 m) of the first | the first direction's level, as read |
 
 SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner's rule
-<rule>: N records`. Montgomery's rating still wins inside the county. The road panel shows
+<rule>: N records`. Since 2026-11-13 no agency's level sets a tier (`agency_lts.COMPARISON_ONLY`,
+the owner: "If the only row in why is agency, it's not a valid rating"); the reading is recorded
+for comparison, and SHA's bicycle ban still closes the way. The road panel shows
 SHA's own level and the reading: "LTS 4, read as LTS 3: a two-lane collector where SHA
 assumed 35 mph".
 
@@ -6428,7 +6430,8 @@ box's rebuild would refuse it hours later.
 Then rebuild. The rebuild logs `agency stress ratings: <agency>, N of M records matched, N
 ways` for each agency, and `import_cloud_build` (dry run and `--confirm`) prints
 `agency stress ratings in staging: Montgomery County Planning on N segments (sets the
-tier on N); DDOT on N ...; MDOT SHA on N ...`, with a `warning: no segment carries ...`
+tier on N); DDOT on N ...; MDOT SHA on N ...` (since 2026-11-13 "sets the tier on" reads 0 for every
+agency: their levels are comparison-only), with a `warning: no segment carries ...`
 line for any agency at 0. No such warning should appear.
 
 ## The Scenic layer (v0.8.0)

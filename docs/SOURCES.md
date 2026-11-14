@@ -329,7 +329,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Dataset: **Maryland Bicycle Level of Traffic Stress (LTS)** (2022), on Maryland's open
   data portal (item `fc3c7b650076475ba9a4b0232f6d8655`), downloaded with
   `scripts/fetch_agency_layer.py` as `mdot-lts`, clipped to the coverage box. Approved as
-  a rating source (`routemaker.agency_lts.AGENCIES`, rank state: a county's rating wins).
+  a rating source (`routemaker.agency_lts.AGENCIES`, rank state), comparison-only since
+  2026-11-13 (`COMPARISON_ONLY`): its level is shown beside ours and never sets a tier; its
+  bicycle ban still closes the way.
   Field `LTS_ADJUSTED`, per MDOT's "Bicycle Level of Traffic Stress (LTS) Metadata and
   Methodology" (<https://www.mdot.maryland.gov/OPCP/MDOT_LTS_Metadata_Methodology_Full.pdf>);
   installed into `reference/agency-lts.json` by `scripts/install_agency_lts.py`
