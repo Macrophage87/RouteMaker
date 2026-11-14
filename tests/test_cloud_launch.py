@@ -820,6 +820,7 @@ def test_an_interrupted_attach_leaves_the_rebuild_running(fake) -> None:
         # waiting on a child that exits normally carry on, so the run would wait forever.
         deadline = time.monotonic() + 60
         while len(fake.called("describe-instances")) < 2:
+            assert proc.poll() is None, proc.communicate()
             assert time.monotonic() < deadline, "the launcher never started polling"
             time.sleep(0.1)
         proc.send_signal(signal.SIGINT)
