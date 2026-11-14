@@ -39,16 +39,22 @@
 #   service            cap      cpus  measured idle        why this cap
 #   postgis            1024M    1.5   0.21 GB              shared_buffers 256M + ~40 backends' work_mem
 #                                                          + 64M maintenance (pg_restore) + page cache
-#   api                1450M    2.0   0.55 GB at 7 workers 6 workers is about 0.48 GB; the rest is for
-#                                                          two route plans and tile draws at once
+#   api                2048M    2.0   0.55 GB at 7 workers 6 workers is about 0.48 GB; the rest is for
+#                                                          two route plans and tile draws at once.
+#                                                          1450M until 2026-11-14: OOM-killed at
+#                                                          1.42 GB under heavy plans and traces
 #   photon             1300M    1.0   1.04 GB at -Xmx1g    heap 896M + direct buffers capped at 192M
 #                                                          + ~190M metaspace, code cache, threads, GC
 #                                                          = ~1280M; the 0.74 GB index is mmapped page
 #                                                          cache, reclaimable
-#   valhalla x4         640M    2.0   0.04-0.67 GB each    working set is the mmapped tiles.tar
-#                                                          (0.4-0.5 GB) plus 2 workers; mapped file
-#                                                          pages are reclaimed, not OOM-killed. 768M
-#                                                          until the trail routers came (2026-10-20)
+#   valhalla x2        1024M    2.0   0.42-0.56 GB each    standard and weekend, the two busiest:
+#                                                          the standard router was OOM-killed at
+#                                                          640M on 2026-11-14 under heavy plans
+#   valhalla x2         640M    2.0   0.04-0.67 GB each    no-trail and ebike. Working set is the
+#                                                          mmapped tiles.tar (0.4-0.5 GB) plus 2
+#                                                          workers; mapped file pages are reclaimed,
+#                                                          not OOM-killed. 768M until the trail
+#                                                          routers came (2026-10-20)
 #   valhalla x4 trails  320M    1.0   (new)                valhalla-offroad, valhalla-mtb, valhalla-paved and
 #                                                          valhalla-paved-weekend, 1 worker
 #                                                          each; the tiles.tar is paged in as asked
@@ -63,10 +69,15 @@
 #                                                          measured 20 MiB resident (2026-10-27)
 #   migrate (one-shot)  256M    0.5   exits before api starts, not counted as resident
 #
-#   resident total: 1024 + 1450 + 1300 + 4*640 + 4*320 + 512 + 24 = 8150 MiB = 7.96 GiB,
-#   against about 8.6 GiB available, so a spike in every container at once still leaves 0.64 GiB.
-#   The startup peak adds the largest one-shot (migrate, 256M): 8406 MiB = 8.21 GiB, which
-#   leaves 0.39 GiB.
+#   resident total: 1024 + 2048 + 1300 + 2*1024 + 2*640 + 4*320 + 512 + 24 = 9516 MiB = 9.29 GiB,
+#   against about 11.3 GiB available to this stack (measured 2026-11-14: 7133 MiB available
+#   plus the 4478 MiB the stack held), so a spike in every container at once still leaves
+#   about 2 GiB. The startup peak adds the largest one-shot (migrate, 256M): 9772 MiB =
+#   9.54 GiB, which leaves about 1.76 GiB.
+#   The owner, 2026-11-14, on the card "Fix beta's out-of-memory crashes how?": "Raise memory
+#   caps" (the standard and weekend routers to about 1 GB, the api to about 2 GB), after the
+#   standard router and the api were OOM-killed at 640M and 1450M. The figure of 8.6 GiB
+#   available, from before, was re-measured the same day at about 11.3 GiB.
 #   The memcached's 24M comes out of the 40 MiB the ceiling left (the owner, 2026-10-27,
 #   approving the shared answer cache at about 16 MB).
 #   The ceiling is 7.96 GiB, and the startup peak's margin 0.39 GiB, for Road Bike's weekend
@@ -182,10 +193,10 @@ services:
         target: /data/basemap
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 1450M
+    memswap_limit: 2048M
     deploy:
       resources:
-        limits: { memory: 1450M, cpus: "2" }
+        limits: { memory: 2048M, cpus: "2" }
 
   worker:
     <<: *beta-yield
@@ -357,10 +368,10 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 640M
+    memswap_limit: 1024M
     deploy:
       resources:
-        limits: { memory: 640M, cpus: "2" }
+        limits: { memory: 1024M, cpus: "2" }
   valhalla-no-trail:
     <<: *beta-yield
     volumes:
@@ -438,10 +449,10 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 640M
+    memswap_limit: 1024M
     deploy:
       resources:
-        limits: { memory: 640M, cpus: "2" }
+        limits: { memory: 1024M, cpus: "2" }
 
   # --- the off-road router (NO-BIKE, in the rebuild bundle) ----------------------
   # Gravel and Mountain Goat's graph, with green and unrated mountain-bike trails open.
