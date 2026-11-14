@@ -234,7 +234,9 @@ def stage_context(tmp_path, monkeypatch) -> RebuildContext:
         found.append(Way(osm_id=osm_id, tags=tags, node_ids=[], coordinates=coords))
     context.ways = found
     context.ways_by_id = {w.osm_id: w for w in found}
-    context.reference = SimpleNamespace(urban_way_ids={w.osm_id for w in found}, road_blocks=[])
+    context.reference = SimpleNamespace(
+        urban_way_ids={w.osm_id for w in found}, road_blocks=[], setting_by_way={}
+    )
     monkeypatch.setattr(run_module.states, "state_polygons", lambda pbf: {})
     monkeypatch.setattr(
         run_module.states, "way_states", lambda ways, polygons: {w.osm_id: "MD" for w in ways}

@@ -57,6 +57,7 @@ Contents:
 - [Steep grades (v0.12.5)](#steep-grades-v0125)
 - [Phone app (v0.8.0)](#phone-app-v080)
 - [Routing hunt 4](#routing-hunt-4)
+- [Riding with the phone in a pocket (v0.27.0)](#riding-with-the-phone-in-a-pocket-v0270)
 
 <!-- /CONTENTS -->
 

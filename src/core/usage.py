@@ -51,7 +51,8 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "api/bikeshare/stations"): "bikeshare",
     ("GET", "api/transit/station-times"): "transit times",
     ("POST", "api/offline/network"): "offline route",
-    ("GET", "api/offline/packs"): "offline packs",
+    # Not GET api/offline/packs: Settings asks for the list each time it opens, so it would count
+    # opened Settings, not packs kept (the v0.27.0 release review).
     ("POST", "api/me/routes"): "save route",
     ("POST", "api/shared-routes"): "share link",
     # One total for both: a per-service row on a quiet day would point to the few linked accounts.

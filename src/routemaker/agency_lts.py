@@ -470,7 +470,9 @@ def painted_lane_row(
     the District, not rated by DDOT or Montgomery, not in Virginia). The caller has already
     found it to be one of the RL-3 roads."""
     local = [r for r in result.agency_ratings if r.agency in PAINTED_LANE_AGENCIES]
-    pick = chosen(local)
+    # A comparison-only level (DDOT's 2020, #1241) never decides, but this report is where it is
+    # set beside the formula's, so it is still listed (the v0.27.0 release review).
+    pick = chosen(local) or next((r for r in local if r.agency in COMPARISON_ONLY), None)
     if pick is not None:
         scope = "DC" if pick.agency == "ddot" else "MoCo"
     elif state == "DC":

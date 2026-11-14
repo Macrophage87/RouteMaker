@@ -2244,4 +2244,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Check it fits your bike.": "자전거가 지나갈 수 있는지 확인하세요.",
   "Width not mapped: it may be too narrow for your bike.": "폭이 지도에 없습니다: 자전거에 너무 좁을 수 있습니다.",
   "Barrier: {name}": "장애물: {name}",
+  // The road panel (the v0.27.0 accessibility review).
+  "Traffic stress:": "교통 스트레스:",
+  "What the level rests on": "등급의 근거",
+  "More about this road": "이 도로에 대해 더 보기",
+  "from a record": "기록 기준",
+  "estimated": "추정",
+  "About {label}": "{label} 정보",
 };
