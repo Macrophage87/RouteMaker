@@ -1,0 +1,718 @@
+{
+ "version": 1,
+ "decided": "2026-11-13",
+ "decided_by": "the deployment owner",
+ "status": "DRAFT, not approved: withdraws 50 rows only, adds none. Do not load until the owner confirms this file; then load with load_overrides (dry run first); takes effect on the next rebuild, which must reinstall volume.json so the cut and the names reach the counts.",
+ "annotations": "50 ways on 8 Maryland urban roads pinned at a level that rested on an MDOT SHA count measured past a junction with another busy road (reports/borrowed-counts/JUDGMENT.md). Replaces the earlier draft that re-pinned them at estimated levels: the count matcher now fixes the data, so no new row is needed.",
+ "rows": [],
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 11538074,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p005143-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "MDOT SHA's LTS layer says 4, but with 2 lanes, no posted speed, 6,152 cars/day we rate it lower, 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 169731566,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02514-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban 3-lane minor arterial, 35 mph posted, about 22,600 cars a day, no bike facility, a 3-lane 35 mph road over 20,000 a day is 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 178248065,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00687-5",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, posted 35 mph, 2 lanes in all, about 22,600 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 178248066,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00890-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary (MD, 30 mph posted, 33 pieces): four-lane urban arterial with about 25,000 a day, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 188427082,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-8",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban divided secondary, 3 lanes each way, posted 35 mph, about 21,700 cars a day, no bike lane: a 6-lane arterial above 20,000 a day, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 191923150,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g03287-3",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Multilane arterial with about 22,600 cars a day, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 191923151,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-10",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary, 35 mph posted, 2 lanes one way, about 22,600 cars a day, no bike facility: a 4-lane arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 424994367,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02514-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban 3-lane minor arterial, 35 mph posted, about 22,600 cars a day, no bike facility, a 3-lane 35 mph road over 20,000 a day is 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 424996946,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00890-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary (MD, 30 mph posted, 33 pieces): four-lane urban arterial with about 25,000 a day, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 424996947,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02570-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary (MD, 30 mph posted, 15 pieces): six-lane urban arterial at 30 mph with about 23,000 a day, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 424996948,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g03287-3",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Multilane arterial with about 22,600 cars a day, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719988,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-10",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary, 35 mph posted, 2 lanes one way, about 22,600 cars a day, no bike facility: a 4-lane arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719989,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-12",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "About 22,500 cars a day on 4-lane divided roads posted 35 with no bike lane, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719990,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-8",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban divided secondary, 3 lanes each way, posted 35 mph, about 21,700 cars a day, no bike lane: a 6-lane arterial above 20,000 a day, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719991,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-6",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban divided secondary, 3 lanes each way, posted 35 mph, about 21,700 cars a day, no bike lane: a 6-lane arterial above 20,000 a day, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719992,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-10",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary, 35 mph posted, 2 lanes one way, about 22,600 cars a day, no bike facility: a 4-lane arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719993,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-12",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "About 22,500 cars a day on 4-lane divided roads posted 35 with no bike lane, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719995,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-6",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban divided secondary, 3 lanes each way, posted 35 mph, about 21,700 cars a day, no bike lane: a 6-lane arterial above 20,000 a day, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 547719996,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-12",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "About 22,500 cars a day on 4-lane divided roads posted 35 with no bike lane, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 945434018,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-8",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban divided secondary, 3 lanes each way, posted 35 mph, about 21,700 cars a day, no bike lane: a 6-lane arterial above 20,000 a day, so 4. MDOT SHA's rating says 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 979674102,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00890-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary (MD, 30 mph posted, 33 pieces): four-lane urban arterial with about 25,000 a day, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 981076008,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-10",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary, 35 mph posted, 2 lanes one way, about 22,600 cars a day, no bike facility: a 4-lane arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 982251442,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02514-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban 3-lane minor arterial, 35 mph posted, about 22,600 cars a day, no bike facility, a 3-lane 35 mph road over 20,000 a day is 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1054405862,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00890-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary (MD, 30 mph posted, 33 pieces): four-lane urban arterial with about 25,000 a day, so 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1305153967,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00687-5",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, posted 35 mph, 2 lanes in all, about 22,600 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1305153968,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g02514-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban 3-lane minor arterial, 35 mph posted, about 22,600 cars a day, no bike facility, a 3-lane 35 mph road over 20,000 a day is 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 11516717,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g01081-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban collector road, posted 35 mph, about 13,400 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 78343998,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g01081-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban collector road, posted 35 mph, about 13,400 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 40117460,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00462-21",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary road, no posted speed, about 20,800 cars/day, no bike facility: urban arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 454434389,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00462-21",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary road, no posted speed, about 20,800 cars/day, no bike facility: urban arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 454434390,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00462-21",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary road, no posted speed, about 20,800 cars/day, no bike facility: urban arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 887473597,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00462-21",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary road, no posted speed, about 20,800 cars/day, no bike facility: urban arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1418662372,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00598-14",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, no posted speed, 2 lanes in all, about 20,800 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1424929690,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00462-21",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary road, no posted speed, about 20,800 cars/day, no bike facility: urban arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1424929691,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00598-14",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, no posted speed, 2 lanes in all, about 20,800 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 11559436,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p005544-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "half": true,
+    "public_note": "MDOT SHA's LTS layer says 4, but Garland Groh Boulevard is posted 35 mph and carries about 13,500 cars a day, so 3.5.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 278441898,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-own-g00625-2",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "About 13,000 cars a day on an unposted city collector (30 mph by law): past the 12,000 a day where arterials reach 3.5. MDOT SHA's rating says 4.",
+    "visibility": "public",
+    "display": "map",
+    "half": true
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 737644963,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-own-g04481-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "About 13,500 cars a day at 35 mph, one lane each way: cars pass in your lane at 35, over the 12,000 line, 3.5. MDOT SHA's rating says 4.",
+    "visibility": "public",
+    "display": "map",
+    "half": true
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1537051754,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-own-g01367-11",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban collector road, no posted speed, about 13,500 cars a day, no bike lane: our level 3.5. MDOT SHA's rating says 4.",
+    "visibility": "public",
+    "display": "map",
+    "half": true
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 56232118,
+   "value": {
+    "tier": 2,
+    "adjustment_id": "md-own-g00485-12",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban residential street, no posted speed, about 9,000 cars a day, no bike lane: our level 2.5. MDOT SHA's rating says 4.",
+    "visibility": "public",
+    "display": "map",
+    "half": true
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 249628728,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p017101-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "half": true,
+    "public_note": "Montgomery County's LTS layer says 4; MDOT SHA's LTS layer says 4, but Tuckerman Lane here is a road with 2 lanes one way, 35 mph posted, about 7,300 cars a day, paint on part of one side, so 3.5.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1079380913,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p029842-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "half": true,
+    "public_note": "Montgomery County's LTS layer says 4; MDOT SHA's LTS layer says 4, but this stretch has 35 mph posted, a one-way carriageway, about 7,300 cars a day, no bike lane, so we rate it 3.5.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1165975088,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p030776-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "half": true,
+    "public_note": "Montgomery County's LTS layer says 4; MDOT SHA's LTS layer says 2, but this stretch has 35 mph posted, one lane each way, about 7,300 cars a day, a shoulder but no bike lane, so we rate it 3.5.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1501503839,
+   "value": {
+    "tier": 3,
+    "adjustment_id": "md-review-p017102-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Montgomery County's LTS layer says 4; MDOT SHA's LTS layer says 2, but Tuckerman Lane here is a road with 1 lane each way, 35 mph posted, about 7,300 cars a day, a paved shoulder, so 3.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 468850565,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g06628-1",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Rural secondary, 35 mph posted, no bike facility. Rural 35 mph three-lane one-way at about 25,500 a day: 4.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 468850574,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-5",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, posted 35 mph, 3 lanes one way, about 25,500 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 468850580,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-4",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary, 35 mph posted, 2 lanes one way, about 25,500 cars a day, no bike facility: a 4-lane arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1039289822,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00432-4",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban secondary, 35 mph posted, 2 lanes one way, about 25,500 cars a day, no bike facility: a 4-lane arterial above 20,000 a day: 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1055901700,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-5",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, posted 35 mph, 3 lanes one way, about 25,500 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1512352219,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "md-own-g00799-5",
+    "category": "other",
+    "annotation_status": "approved",
+    "public_note": "Urban main road, posted 35 mph, 3 lanes one way, about 25,500 cars a day, no bike lane: our level 4. MDOT SHA's rating agrees.",
+    "visibility": "public",
+    "display": "map"
+   },
+   "reason": "Withdrawn 2026-11-13: the row baked in an MDOT SHA count taken past a busy junction (or on another street's section). From the next rebuild that count stops at the junction (routemaker.mdot_aadt.cut_at_junctions) and a line named for another street no longer reaches the road (conflation.same_road), so the formula reads the road from its own facts. The owner, 2026-11-13: \"If I say that a road is incorrectly rated that means that I feel the formula is wrong\", \"Or the raw data\", and of the methodology audit, \"Let's implement all the reccomended changes in logic\"."
+  }
+ ]
+}
