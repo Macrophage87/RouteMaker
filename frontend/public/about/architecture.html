@@ -231,8 +231,9 @@ Android shell.</li>
 search, all behind one Caddy web server.</li>
 <li><strong>Data:</strong> rebuilt weekly from OpenStreetMap and agency data; live feeds read every
 few minutes.</li>
-<li><strong>Privacy:</strong> signed-out plans are never stored; sign-in is through Discord and keeps no
-Discord token. Live ride sharing from the app is end-to-end encrypted: phones seal their dots, alerts
+<li><strong>Privacy:</strong> signed-out plans are never stored; sign-in is through Discord, Google or Apple
+and keeps no token (from Google or Apple only a keyed account number). Usage is counted as anonymous daily
+totals: a day, a tool's name and a number, with no route, place, account or address. Live ride sharing from the app is end-to-end encrypted: phones seal their dots, alerts
 and the leader's path with AES-256-GCM, using a key derived by HKDF-SHA-256 from a secret in the link
 after the #, each value padded to a fixed size so its length says little, and the server holds only
 sealed text, for 2 minutes.</li>
@@ -623,7 +624,8 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <div class="more-body">
 
 <p>Each request has a time budget, a rate limit and a cap on plans in flight, so one busy rider cannot
-slow everyone else. Trips over about 19 mi [30 km] are refined leg by leg. A route can have 2 to 25
+slow everyone else. The calm search runs on a trip in one piece up to 37 mi [60 km]; only Trailmaxxing at the
+top of the traffic slider is refined leg by leg past 19 mi [30 km]. A route can have 2 to 25
 points; very long plans over 93 mi [150 km] ask for confirmation when signed out.</p>
 <p>A plan's answer is kept for up to 2 minutes, as a "From my location" start is a live location (not at all
 for Bikeshare or transit, whose answers are live, or Walk, planned as transit is, or Run, planned by its own planner), so asking
@@ -727,7 +729,7 @@ key keep it on the server. Street photos from Mapillary are fetched through the 
 
 </div></details>
 <h2 id="apps">Apps, accounts and AI assistants</h2>
-<p>RouteMaker installs as an app, has a thin Android shell for rides, signs in through Discord without keeping a token, and keeps your data only when you ask it to.</p>
+<p>RouteMaker installs as an app, has a thin Android shell for rides, signs in through Discord, Google or Apple without keeping a token, and keeps your data only when you ask it to.</p>
 <details class="more"><summary>More: Apps, accounts and AI assistants</summary>
 <div class="more-body">
 
@@ -737,8 +739,15 @@ own files for offline starts but never caches routes, tiles or account data unle
 offline on a planned route (up to 10).</li>
 <li><strong>Android app.</strong> A thin Capacitor<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup> shell around the site that adds
 background location, a screen wake lock and spoken cues during a ride, and, from its next update, Android's own share sheet for sharing a route or ride.</li>
-<li><strong>Accounts.</strong> Sign-in uses Discord with the narrowest permission (your user id).
-RouteMaker exchanges the sign-in code once and keeps no Discord token.</li>
+<li><strong>Accounts.</strong> Sign-in uses Discord with the narrowest permission (your user id), or, where
+they are set up, Google or Apple through OpenID Connect, asking for nothing past the sign-in itself (Google's
+<code>openid</code> scope; no scope for Apple). RouteMaker exchanges the
+sign-in code once (for Google at oauth2.googleapis.com, for Apple at appleid.apple.com) and keeps no token; from
+Google or Apple it keeps only the account's subject, keyed with HMAC. Sign-in methods links them to one
+account.</li>
+<li><strong>Usage totals.</strong> The server adds one to a daily count per tool used (routes planned, searches,
+rides started, connector tools): each row is a day, a tool's name and a number, with no route, place, account,
+internet address or time of day. Connector calls marked as tests and ride links are not counted.</li>
 <li><strong>Garmin and Wahoo.</strong> When you connect Garmin or Wahoo in Settings, Account, the server
 keeps that service's sign-in token, encrypted under a key that is never in the database. It contacts
 Garmin (diauth.garmin.com to sign in and renew the token, apis.garmin.com for the rest) or api.wahooligan.com only to send the routes you choose, read your account number once, and end the

@@ -321,6 +321,9 @@ const GO_RIDE_ALSO = [
   "lib/onBoard.ts",
   // Settings' Avoid stairs (2026-11-02), for Go and Plan alike.
   "lib/avoidStairs.ts",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "RegionPackSetting.tsx",
+  "lib/regionPack.ts",
   "AvoidNotice.tsx",
   "lib/accessMode.ts",
   "lib/skipLink.ts",

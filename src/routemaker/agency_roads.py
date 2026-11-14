@@ -792,6 +792,9 @@ _SUFFIXES = {
     "pkwy": "parkway",
     "hwy": "highway",
     "ter": "terrace",
+    "terr": "terrace",
+    # MDOT SHA's "ST AGNES LA".
+    "la": "lane",
     "cir": "circle",
     "fwy": "freeway",
     "sq": "square",
@@ -804,6 +807,15 @@ _SUFFIXES = {
     # Avenue is "Junior" to OSM.
     "jr": "junior",
     "sr": "senior",
+}
+# Other words agencies shorten. Not street types, so kept out of `_SUFFIXES`, whose keys
+# also decide when a compass word is a street's own name. MDOT SHA writes "MT AETNA RD",
+# "BALTO ANNAPOLIS BLVD" and "GOV RITCHIE HWY" where OSM writes the words out.
+_ABBREVIATED_WORDS = {
+    "mt": "mount",
+    "ft": "fort",
+    "balto": "baltimore",
+    "gov": "governor",
 }
 _DIRECTION_WORDS = {
     "n": "north",
@@ -850,11 +862,18 @@ def name_tokens(name: str | None) -> frozenset[str]:
     A compass word directly followed by the street type is the street's name and
     is kept, so "E Street" and "N Street" are different streets (review r1: they
     had no identifying word at all, so neither agreed nor disagreed)."""
+    return frozenset(_name_words(name))
+
+
+@functools.lru_cache(maxsize=65536)
+def _name_words(name: str | None) -> tuple[str, ...]:
+    """`name_tokens`' words in the order the name gives them."""
     if not name:
-        return frozenset()
+        return ()
     words = re.findall(r"[a-z0-9]+", name.lower().replace("&", " and "))
     kept = []
     for number, word in enumerate(words):
+        word = _ABBREVIATED_WORDS.get(word, word)
         expanded = _SUFFIXES.get(word, _DIRECTION_WORDS.get(word, word))
         following = words[number + 1] if number + 1 < len(words) else None
         if word in _DIRECTION_WORDS or word in _DIRECTION_WORDS.values():
@@ -863,7 +882,7 @@ def name_tokens(name: str | None) -> frozenset[str]:
             continue
         if expanded not in _GENERIC:
             kept.append(_singular(expanded))
-    return frozenset(kept)
+    return tuple(kept)
 
 
 def names_agree(a: str | None, b: str | None) -> bool | None:
@@ -876,7 +895,11 @@ def names_agree(a: str | None, b: str | None) -> bool | None:
     left, right = name_tokens(a), name_tokens(b)
     if not left or not right:
         return None
-    return left <= right or right <= left
+    if left <= right or right <= left:
+        return True
+    # One street written with its words run together or split: OSM's "Highfalcon Road"
+    # is MDOT SHA's "HIGH FALCON RD", "Spring Hill-Newtown Road" its "SPRINGHILL NEWTOWN RD".
+    return "".join(_name_words(a)) == "".join(_name_words(b))
 
 
 # -- aggregating the blocks a way lies along ---------------------------------------

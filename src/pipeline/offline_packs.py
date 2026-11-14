@@ -43,9 +43,11 @@ def _box_wkt(box) -> str:
 
 
 def region_wkt(region: Region, coverage_box) -> str:
-    """The region's area as WKT: its outline less the Beltway (outside it), or for the rest
-    of the map the coverage box less every other region."""
+    """The region's area as WKT: its outline less the Beltway (outside it), for the rest of
+    the map the coverage box less every other region, and for everything the coverage box."""
     beltway = next(r for r in REGIONS if not r.outside_beltway)
+    if region.whole:
+        return _box_wkt(coverage_box)
     with connection.cursor() as cursor:
         if region.outline is None:
             others = [_polygon_wkt(r.outline) for r in REGIONS if r.outline is not None]

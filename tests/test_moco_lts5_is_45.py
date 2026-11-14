@@ -111,15 +111,21 @@ def test_every_county_row_in_the_fixture_loads_as_45():
         assert adjustment.step == 4.5, row["value"]["adjustment_id"]
 
 
-def test_the_owners_darnestown_rows_stay_lts4():
-    """Ways 5970658, 697630700, 222928109, 92183771 and 92183773 (the owner, 2026-10-14)."""
-    rows = json.loads((OVERRIDES / "2026-10-14-owner-darnestown-road.json").read_text())["rows"]
-    assert {r["osm_way_id"] for r in rows} == {5970658, 697630700, 222928109, 92183771, 92183773}
-    for row in rows:
-        by_way = {row["osm_way_id"]: agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])}
-        override = Override(kind="stress", osm_way_id=row["osm_way_id"], value=row["value"])
-        overrides.apply_stress(by_way, [override])
-        assert _step(by_way[row["osm_way_id"]]) == 4
+def test_darnestown_reads_45_once_the_lts4_pin_is_withdrawn():
+    """Ways 5970658, 697630700, 222928109, 92183771 and 92183773: pinned at 4 on 2026-10-14;
+    the owner, 2026-11-13: "Darnestown makes sense at 4.5 ... we didn't want to make it a
+    complete avoid". The 2026-11-13 file withdraws the pin, so the county's 5 reads as 4.5."""
+    pinned = json.loads((OVERRIDES / "2026-10-14-owner-darnestown-road.json").read_text())["rows"]
+    withdrawn = json.loads((OVERRIDES / "2026-11-13-retire-darnestown-lts4-pin.json").read_text())[
+        "retire"
+    ]
+    ways = {5970658, 697630700, 222928109, 92183771, 92183773}
+    assert {r["osm_way_id"] for r in pinned} == ways
+    assert {(r["osm_way_id"], r["value"]["adjustment_id"]) for r in withdrawn} == {
+        (r["osm_way_id"], r["value"]["adjustment_id"]) for r in pinned
+    }
+    for way in ways:
+        assert _step(agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])) == 4.5, way
 
 
 def test_the_panel_says_the_county_rates_it_5_and_the_map_uses_45():

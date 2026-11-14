@@ -4176,34 +4176,37 @@ Bureau's county boundaries, docs/SOURCES.md) a signal's wait is
 | Any other signal: a secondary road crossed, riding along the big road through its own signals included (the owner: "I don't think there are many 15 second suburban signals. Never really encountered one. 30 is probably more realistic. Cities do have quicker signal changes.") | 30 s | 60 s |
 | A big or secondary road crossed or turned onto from a path, sidepath, trail or minor road (unclassified, residential, service), or a signal whose crossing or path the map tags `button_operated=yes` (anywhere) | as above (in a city, as below) | 120 s, held below a stop sign across the same road |
 
-In the cities a red is 30 s at a big road, 15 s at a secondary one and 20 s at any other, by
-the busiest road there, the rider's own included (a 4-lane or 40 mph road ridden along is a
-big one where the junction model has an event at the signal: `intersections.own_big_signal_points`,
-the signal review of 2026-11-08; the suburban 45 s red stays for crossing or joining one),
-ranked once ("Not really needed for DC"
-"or the major cities"; "Use the values from real data").
+In the cities (since 2026-11-13) both numbers are measured from the owner's rides at the
+District's signals, by the busiest road there (the rider's own included) and by what the rider
+does: riding along that road, or crossing or turning onto it from a side street. 92,843
+junction passes in 2,330 rides, 34,156 of them straight through a signal; a pass "stopped" if
+the rider stood more than 3 s within 40 m; stops over 4 minutes left out as breaks
+(`junction_delay.CITY_RED_S`, `CITY_PASS_S`, `CITY_HOUR_FACTOR`; scripts and the table by
+setting in the project's reports/ride-check, never the repository):
 
-**Time shown: the average pass (the owner, 2026-11-08).** Those are waits at a red, and "sometimes
-the light is green". In a year of the owner's rides (every pass within 20 m of a
-signal or a cluster of signals within 30 m, the stopped time within 40 m of it, the 50
-stops over 4 minutes left out as breaks), the rider stopped at 29% of 4,797 passes through
-the cities' big-road signals, 16% of 2,798 at secondary ones and 16% of 724 at others, and at
-43% of 489, 36% of 116 and 24% of 113 in the suburbs. He chose "Averages for time, reds for
-choice": the time shown is the average stopped time per pass, plus a stop's 8 s for the share
-that stopped (`junction_delay.CITY_PASS_S`, `SUBURBAN_PASS_S`), and the ranking keeps the
-waits at a red above. The cities' run by the ride-time setting ("Early morning might actually
-have shorter times"); the suburbs' did not run shorter early:
+| City signal | Stopped | Red (median stop), ranked once | Time shown per pass |
+|---|---|---|---|
+| Crossing a big road from a side street | 42% of 9,191 passes, 474 signals | 29 s (IQR 17-44) | 16.9 s |
+| Riding along a big road | 21% of 9,752, 914 | 25 s (13-39) | 7.8 s |
+| Crossing a secondary road | 39% of 2,019, 156 | 21 s | 13.3 s |
+| Riding along a secondary road | 19% of 9,086, 422 | 20 s | 6.4 s |
+| Any other signal, crossing / along | 28% of 118 / 3,990 | 20 s | 8.6 / 9.4 s |
 
-| Time shown (big / secondary / other road) | Cities | Suburbs |
-|---|---|---|
-| Night (from the passes before 7 AM) | 9 / 4 / 2 s | 24 / 15 / 10 s |
-| Weekday rush | 15 / 6 / 6 s | 24 / 15 / 10 s |
-| Weekday off-peak (from midday's) | 14 / 6 / 4 s | 24 / 15 / 10 s |
-| Weekend | 11 / 4 / 4 s | 24 / 15 / 10 s |
-| Setting not known | 12 / 5 / 4 s | 24 / 15 / 10 s |
+Both are scaled by the ride-time setting, one measured factor for every city signal: night
+0.68, weekday rush 1.14, weekday off-peak 1.15, weekend 1.01, setting not known 1.0 (the
+owner, 2026-11-13: "make sure to add a time of day penalty like we had earlier"). The red
+is not scaled by the stop rate: the split is in how often he stopped, not in how long (the
+methodology audit, area 07, 2.3). Before 2026-11-13 a city red was 30, 15 or 20 s from 4
+signals and the time shown 12, 5 or 4 s from 8,319 passes; the suburbs' figures below are
+still from that study.
 
-A pass counts riding along a road through its green as well as crossing it, so a crossing's
-own wait runs somewhat above these.
+**Time shown outside the cities: the average pass (the owner, 2026-11-08).** Those are waits at a red, and "sometimes
+the light is green". In a year of the owner's rides the rider stopped at 43% of 489 passes
+through the suburbs' big-road signals, 36% of 116 at secondary ones and 24% of 113 at others.
+He chose "Averages for time, reds for choice": the time shown is the average stopped time per
+pass, plus a stop's 8 s for the share that stopped (`junction_delay.SUBURBAN_PASS_S`: 24, 15
+and 10 s), and the ranking keeps the waits at a red above. The suburbs' passes did not run
+shorter early, and there are too few to measure a ride-time factor, so they take none.
 
 The ranking counts a suburban red's wait twice ("I'd probably double A, with a 2x
 penalty but keep those numbers. There's a 'pain' factor to waiting at busy roads"):
@@ -10064,7 +10067,8 @@ side:
   plugin 1.2.26 would start its foreground service before the grant and Android 14+ refuses that; End
   ride's `clearWatch` removes the native watcher, which stops the foreground service), the native voice behind the same `SpeechEnv` (rideOutput's `Voice`
   is unchanged), a wake lock that never says "keep your screen on yourself", no `HIDDEN_STOP_MS` pause
-  (`ridesHidden()`), Android's silent "Latest cue" notification (`showCue`, each delivered sentence),
+  (`ridesHidden()`), Android's silent "Latest cue" notification (`showCue`, each delivered sentence; since v0.27.0 the live turn card,
+  `showTurnCard`, lib/turnCard.ts, below),
   and `speaksAloud()`: the rider's output choice as before, plus "My screen reader" spoken while the
   page is hidden (TalkBack reads nothing of a hidden page, so nothing is said twice). `RIDE_SAFETY`
   drops "needs the screen on" in the app. RideGroup's own watch stays the browser's.
@@ -10117,3 +10121,45 @@ side:
   share ride. A ride (own bike or share bike) after the last transit leg names the ending
   (`transit._ending`). Tests: tests/test_transit.py. No map rebuild.
 - X4-3 (darkness over a run's span) is built under "Round 4 owner decisions (2026-11-09)".
+
+## Riding with the phone in a pocket (v0.27.0)
+
+The owner, 2026-11-13, picked "All three, no new switches" from the backlog's pocket-riding item. No control was
+added; every figure below is our default, unmeasured.
+
+- **Live turn card** (`lib/turnCard.ts`, `nativeShell.ts` `showTurnCard`, `mobile/.../RideCuePlugin.java`): one
+  lock-screen-public notification (default importance with no sound or vibration of its own: a low-importance card
+  is hidden from the lock screen on many phones; `setOnlyAlertOnce`, so TalkBack hears it once, not each update) with the next turn, stop or end from `cueSheet`: "450 ft · Left", the
+  street, and "Then in 0.3 mi · Right · R St NW". The distance is in the rider's unit alone (`format.ts`
+  `cardDistance`), to the nearest 50 ft or m, so it changes every few seconds. `CueNotice` skips an update that
+  changes nothing; an older app without the plugin gets the old "Latest cue" with the turn and street only. It
+  follows a units switch, and goes on arrival (a walk or train after the line has its own cues).
+  Off route it says "Off the planned route." and, while the closure question is open, the closure ahead, in place
+  of a turn that no longer counts down (`noteCard`). Under weak GPS it counts from the reckoned place (`cardAtM`),
+  held short of the next cue, so a reckoning that ran ahead never takes a turn off the card before a real fix.
+  Android 16: `setRequestPromotedOngoing` (Live Update) where the phone allows it.
+- **Tone before a turn cue** (`lib/cueTone.ts`): `cueMark` gives a turn's cue a tone (its "now" also a buzz for
+  its side) and off route its own tone; nothing else gets one. `Announcer` carries the mark, `Voice` puts it on
+  the utterance (`UtteranceLike.chime`), and the speech env plays it first: `RideCuePlugin.chime` inside the
+  voice's audio turn in the app, Web Audio (`chimed`, `browserChime`) in a browser. A cancel during the tone
+  drops the words. One beep of 150 ms for a turn, two of 90 ms 50 ms apart for off route, 60 ms before the words:
+  the phone's own short beep (`ToneGenerator.TONE_PROP_BEEP`) in the app, 880 Hz and 660 Hz sine in a browser.
+- **Buzz for left and right** (`rideBuzz`): at a turn's "now", one 450 ms buzz for left (and a U-turn), two of
+  140 ms for right; `RideCuePlugin.buzz` skips a phone set to silent; a browser uses `navigator.vibrate`. Not
+  with the cue output "Neither".
+- **Estimated cues through weak GPS** (`navigate.ts` `estimateStep`, `ESTIMATE_MS` 30 s, `ESTIMATE_AFTER_MS`
+  5 s, `ESTIMATE_MIN_SPEED_MS` about 4.5 mph): with no good fix for 5 s while poor fixes come (a stopped rider's
+  GPS sends none, so a rider at a light is never reckoned on), riding the line (not off route, alongside,
+  arrived, walking to a dock, docking, or asked about the start) with a turn next before any stop or the end,
+  RideMode's 3 s check carries the ride on along the line at the slower of the last fix's speed and the
+  smoothed one (`RideState.estM`, never `progressM`), and says the next turn's phases as estimates: "In about
+  450 feet, ...", "About here: ...". What it says is kept in `estSaid`: a good fix counts its warnings as said
+  but never its "now", so a reckoning that ran ahead still gets the real "now" at the turn, and nothing is
+  dropped as passed on a guess. A stop, the end and road notes wait for a real fix; nothing goes off route or
+  re-plans on a guess. The weak-GPS note waits until the estimates end where they can run (`weakNoteAfterMs`).
+  The cue bench's weak-GPS variant rides it.
+- **Cue timing** (cue bench findings): a polite turn warning waits only for the gap after the last turn
+  warning, never behind a road note or a "Where am I?" answer (`Announcer.lastTurn`; the voice still lets
+  what is being said finish); arriving at a stop or the end is `after`, so it waits for the turn's "now" being
+  said instead of cutting it off (and a screen reader gets it in the polite region, after the turn).
+

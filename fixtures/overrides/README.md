@@ -770,3 +770,41 @@ in the database still names it: delete that row in the admin when loading the fi
   only old photos) keep their own-picks rows. The index says "agrees" only at the same level and
   "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
+
+- `2026-11-13-owner-water-street-nw.json` (levels confirmed by the owner 2026-11-13; OPEN
+  QUESTION, keep only until a rebuild shows the data fixes reach his levels): Water Street NW's
+  last 0.09 mi before the Capital Crescent Trail, ways 137952735 and 1000673731, rated LTS 4
+  from the Whitehurst Freeway's count (37,593 a day) and 35 mph. The owner, 2026-11-13: "water
+  street is definitely not a high stress road and it connects to the CCT"; "1 by the track, 2 by
+  the lanes". Since his rule of the same day ("If I say that a road is incorrectly rated that
+  means that I feel the formula is wrong", "Or the raw data", "keep searching for why") the
+  count is fixed in the matcher (`pipeline.conflation`, a freeway's line goes to the freeway):
+  checked on the live extract, both ways now take no count. Still open: the 35 mph (the
+  freeway block overhead) and the separated track, which OSM does not map on 137952735. Drop
+  this file once those are fixed in the data and `fixtures/known-roads` passes without it.
+
+- Kennedy Street NW (way 130908107): no override. Its LTS 4 was DDOT's 2020 level standing
+  because the block took no count; the matcher's along-the-street pass now reads every agency
+  and gives it 6,272 a day (checked on the live extract), and DDOT's layer is comparison only
+  (#1241). `fixtures/known-roads` checks it reads 2.5 at the next rebuild. The same-street draft
+  of 2026-11-13 (126 ways, mostly DC, agency-only levels) is withdrawn for the same reasons.
+
+- `2026-11-13-retire-arlington-blvd-service-road.json` (DRAFT, not approved): withdraws the two
+  VA own-picks rows that rated Arlington Boulevard Service Road 4 on the boulevard's own 42,000
+  a day; adds no row, so the formula reads the service road again.
+
+- `2026-11-13-retire-md-borrowed-count-pins.json` (DRAFT, not approved; do not load until the
+  owner confirms the file): withdraws the 50 rows on eight Maryland urban roads (East Joppa Rd,
+  Brock Bridge Rd, Obrecht Rd, South Potomac St, Garland Groh Blvd, Baltimore Annapolis Blvd,
+  Tuckerman Ln, Ritchie Marlboro Rd) whose pinned level rested on an MDOT SHA count taken past a
+  junction or on another street's section; adds none. The data is fixed instead: a section's
+  count stops at the busy junctions either side of its station (`mdot_aadt.cut_at_junctions`)
+  and a line named for another street does not reach the road (`conflation.same_road`). Needs
+  `volume.json` reinstalled at the next rebuild. Replaces the earlier draft that re-pinned the
+  50 ways at estimated levels (the methodology audit, area 04: 30 of them were on the road's
+  own section, which its name test had missed).
+
+- `2026-11-13-retire-darnestown-lts4-pin.json` (DRAFT, not approved): withdraws the 2026-10-14
+  LTS 4 pin on Darnestown Road's five ways, so Montgomery's 5 reads as 4.5, the level the
+  owner gave on 2026-11-13 ("Darnestown makes sense at 4.5") and the one `fixtures/known-roads`
+  asks for; with the pin the known-roads check refuses the build.
