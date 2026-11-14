@@ -30,6 +30,7 @@ from pipeline.conflation import (
     _probes,
     _ranked_share,
     conflate,
+    same_road,
 )
 from routemaker.geo import bearing_delta
 
@@ -1135,3 +1136,172 @@ class TestThePreparedMeasureChangesTheCostAndNothingElse:
         result = conflate(ways, [feature("long", line)])
         assert len(result.matched) == 10
         assert computed.count(101) == 1
+
+
+class TestRawCountFixes:
+    """The owner, 2026-11-13: a misrated road means the formula or the raw data is wrong
+    ("If I say that a road is incorrectly rated that means that I feel the formula is
+    wrong", "Or the raw data"), so the counts are fixed where they are matched."""
+
+    def test_a_freeways_line_does_not_reach_the_street_under_it(self) -> None:
+        """Water Street NW under the Whitehurst Freeway took the freeway's 37,593."""
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90006), (-77.0095, 38.90006)]
+        line = feature(
+            "fwy", [(-77.0205, 38.90003), (-77.0095, 38.90003)], 37593, "locality", "ddot"
+        )
+        before = conflate([(1, street), (2, elevated)], [line])
+        after = conflate([(1, street), (2, elevated)], [line], freeway={2})
+        assert 1 in before.matched or 2 in before.matched
+        assert 1 not in after.matched
+        assert after.matched[2].aadt == 37593
+
+    def test_a_street_still_takes_its_own_line_beside_a_freeway(self) -> None:
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90015), (-77.0095, 38.90015)]
+        own = feature("st", [(-77.0200, 38.89999), (-77.0100, 38.89999)], 4000, "locality", "ddot")
+        fwy = feature(
+            "fwy", [(-77.0205, 38.90016), (-77.0095, 38.90016)], 37593, "locality", "ddot"
+        )
+        after = conflate([(1, street), (2, elevated)], [own, fwy], freeway={2})
+        assert after.matched[1].aadt == 4000
+
+    def test_a_way_past_several_block_lines_takes_a_count_from_any_agency(self) -> None:
+        """Kennedy Street NW east of Georgia Avenue: one way past several of DDOT's block
+        lines, none covering half of it, had kept no count (the pass read VDOT's only)."""
+        way = [(-77.030, 38.9560), (-77.016, 38.9560)]
+        blocks = [
+            feature(f"b{i}", [(x0, 38.95601), (x0 + 0.0035, 38.95601)], 6272, "locality", "ddot")
+            for i, x0 in enumerate((-77.030, -77.0265, -77.023, -77.0195))
+        ]
+        assert 1 not in conflate([(1, way)], blocks, along_agencies=("vdot",)).matched
+        assert conflate([(1, way)], blocks).matched[1].aadt == 6272
+
+    def test_a_freeways_line_nearest_the_street_beneath_it_goes_to_the_freeway(self) -> None:
+        """The PC's read of the live data: the Whitehurst Freeway's line lay nearest Water
+        Street NW (1.00), with the freeway at layer 2 also a candidate."""
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90012), (-77.0095, 38.90012)]
+        line = feature(
+            "fwy", [(-77.0205, 38.90001), (-77.0095, 38.90001)], 37593, "locality", "ddot"
+        )
+        ways = [(1, street), (2, elevated)]
+        assert conflate(ways, [line], freeway={2}).matched[1].aadt == 37593
+        after = conflate(ways, [line], freeway={2}, layers={1: 0, 2: 2})
+        assert 1 not in after.matched
+        # A street's own quieter line under the freeway stays the street's.
+        own = feature("st", [(-77.0205, 38.90001), (-77.0095, 38.90001)], 5000, "locality", "ddot")
+        assert conflate(ways, [own], freeway={2}, layers={1: 0, 2: 2}).matched[1].aadt == 5000
+
+    def test_a_line_no_freeway_way_takes_goes_back_to_the_street(self) -> None:
+        """The PC's read of 12a81f6d: K Street NW's own 23,366 line, with the freeway on
+        another layer within reach but already counted by its own line, reached no way."""
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90012), (-77.0095, 38.90012)]
+        fwy = feature(
+            "fwy", [(-77.0205, 38.90013), (-77.0095, 38.90013)], 40000, "locality", "ddot"
+        )
+        own = feature("k", [(-77.0205, 38.90003), (-77.0095, 38.90003)], 23366, "locality", "ddot")
+        after = conflate([(1, street), (2, elevated)], [fwy, own], freeway={2}, layers={1: 0, 2: 2})
+        assert after.matched[2].aadt == 40000
+        assert after.matched[1].aadt == 23366
+
+    def test_a_line_named_for_another_street_is_not_this_ways_count(self) -> None:
+        """MDOT SHA's "THIRD AVE (CO 675), MD 97 TO OBRECHT RD (AHEAD)" ran on along Obrecht
+        Road and gave it Third Avenue's 6,152 a day (the borrowed-counts check)."""
+        road = [(-77.0200, 39.50000), (-77.0100, 39.50000)]
+        line = AgencyFeature(
+            feature_id="third",
+            coordinates=[(-77.0205, 39.50001), (-77.0095, 39.50001)],
+            aadt=6152,
+            source="state",
+            agency="mdot-sha",
+            name="THIRD AVE",
+        )
+        assert conflate([(1, road)], [line]).matched[1].aadt == 6152
+        assert 1 not in conflate([(1, road)], [line], names={1: ("Obrecht Road", None)}).matched
+        # Not the along pass either.
+        halves = [
+            AgencyFeature(
+                feature_id=f"third{i}",
+                coordinates=[(x0, 39.50001), (x0 + 0.0035, 39.50001)],
+                aadt=6152,
+                source="state",
+                agency="mdot-sha",
+                name="THIRD AVE",
+            )
+            for i, x0 in enumerate((-77.0200, -77.0165, -77.0130))
+        ]
+        assert 1 in conflate([(1, road)], halves).matched
+        assert 1 not in conflate([(1, road)], halves, names={1: ("Obrecht Road", None)}).matched
+        # Its own street, and a way with no name, still take it.
+        assert conflate([(1, road)], [line], names={1: ("Third Avenue", None)}).matched[1]
+        assert conflate([(1, road)], [line], names={1: (None, None)}).matched[1]
+
+    def test_one_route_under_two_names_keeps_its_count(self) -> None:
+        """MD 97 is Georgia Avenue to OSM and "ROXBURY MILLS RD" to MDOT SHA near Brookeville."""
+        road = [(-77.0200, 39.50000), (-77.0100, 39.50000)]
+        line = AgencyFeature(
+            feature_id="md97",
+            coordinates=[(-77.0205, 39.50001), (-77.0095, 39.50001)],
+            aadt=12051,
+            source="state",
+            agency="mdot-sha",
+            name="ROXBURY MILLS RD",
+            ref="MD 97",
+        )
+        kept = conflate([(1, road)], [line], names={1: ("Georgia Avenue", "MD 97;MD 650")})
+        assert kept.matched[1].aadt == 12051
+        refused = conflate([(1, road)], [line], names={1: ("Georgia Avenue", "MD 650")})
+        assert 1 not in refused.matched
+
+
+@pytest.mark.parametrize(
+    ("osm", "agency"),
+    [
+        ("Mount Aetna Road", "MT AETNA RD"),
+        ("Highfalcon Road", "HIGH FALCON RD"),
+        ("Spring Hill-Newtown Road", "SPRINGHILL NEWTOWN RD"),
+        ("Baltimore Annapolis Boulevard", "BALTO ANNAPOLIS BLVD"),
+        ("Governor Ritchie Highway", "GOV RITCHIE HWY"),
+        ("Saint Stephens Church Road", "ST STEPHENS CHURCH RD"),
+    ],
+)
+def test_one_street_written_two_ways_agrees(osm: str, agency: str) -> None:
+    assert same_road((osm, None), AgencyFeature("f", [], 1, "state", name=agency))
+
+
+def test_mdot_route_numbers_read_as_osm_refs() -> None:
+    from routemaker import mdot_aadt
+
+    assert mdot_aadt.route_ref({"ID_PREFIX": "MD", "ID_RTE_NO": 97}) == "MD 97"
+    assert mdot_aadt.route_ref({"ID_PREFIX": "IS", "ID_RTE_NO": "95"}) == "I 95"
+    assert mdot_aadt.route_ref({"ID_PREFIX": "CO", "ID_RTE_NO": 675}) is None
+    assert mdot_aadt.road_name({"ROADNAME": " THIRD AVE "}) == "THIRD AVE"
+    assert same_road(
+        ("Interstate 95", "I 95"), AgencyFeature("f", [], 1, "state", name="X", ref="I 95")
+    )
+
+
+def test_a_way_along_several_lines_takes_the_count_most_of_it_carries() -> None:
+    """Gap fill took the highest of the lines a way lies along; it now takes the median
+    weighted by length (the methodology audit, area 04, suggestion 4)."""
+    way = [(-77.030, 38.9560), (-77.016, 38.9560)]
+    spans = [(-77.030, 0.0063, 5000), (-77.0237, 0.0042, 20000), (-77.0195, 0.0035, 3000)]
+    lines = [
+        feature(f"b{i}", [(x0, 38.95601), (x0 + length, 38.95601)], aadt, "state", "vdot")
+        for i, (x0, length, aadt) in enumerate(spans)
+    ]
+    assert conflate([(1, way)], lines).matched[1].aadt == 5000
+
+
+def test_a_primary_counted_at_40_a_day_is_read_as_uncounted() -> None:
+    """Piscataway Road (primary) took 40 a day from MDOT SHA's FLORAL PARK RD section."""
+    from pipeline.conflation import drop_implausible
+
+    road = [(-77.0200, 38.70000), (-77.0100, 38.70000)]
+    line = feature("fp", [(-77.0205, 38.70001), (-77.0095, 38.70001)], 40, "state", "mdot-sha")
+    result = conflate([(1, road)], [line])
+    kept, dropped = drop_implausible(result, {1: "primary"})
+    assert 1 not in kept.matched and [m.aadt for m in dropped] == [40]
+    assert drop_implausible(result, {1: "tertiary"})[0].matched[1].aadt == 40

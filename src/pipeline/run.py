@@ -90,6 +90,7 @@ from . import (
     elevation,
     extract,
     hazard_layer,
+    known_roads,
     lts_sentinels,
     major_corridors,
     mass_capacity,
@@ -629,6 +630,8 @@ class ReferenceData:
                 # from the tier: an unknown agency is a thing a reviewer can
                 # see, a tier wearing an agency's name is not.
                 agency=row.get("agency"),
+                name=row.get("name"),
+                ref=row.get("ref"),
             )
             for row in volume_rows
         )
@@ -1857,6 +1860,23 @@ def assert_zoo_rule(context: RebuildContext) -> None:
         raise ValidationFailed("the Zoo rule no longer fits the extract: " + "; ".join(problems))
 
 
+def assert_known_roads(schema: str, path) -> list:
+    """Each road the owner has called (`REBUILD_KNOWN_ROADS`, `pipeline.known_roads`) came
+    out at his level, read back from the staging schema by where it is, not by way id, so
+    an override row a re-match lost is caught. Off with an empty path."""
+    roads = known_roads.load(path)
+    if not roads:
+        return []
+    found, read = known_roads.check(schema, roads)
+    for tiers in read:
+        logger.info(
+            "known road %s: %.0f%% at %s", tiers.road.name, 100 * tiers.share, tiers.road.wanted
+        )
+    if found:
+        raise ValidationFailed("; ".join(found))
+    return read
+
+
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
     out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
@@ -2662,7 +2682,28 @@ def build_handlers(
             for way in context.ways
             if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
         }
-        result = conflation.conflate(entries, reference.volume_features, name_required=nameless)
+        # A freeway's count line goes to the freeway only (`conflation.conflate`'s `freeway`).
+        freeway = {way.osm_id for way in context.ways if way.tags.get("highway") == "motorway"}
+        result = conflation.conflate(
+            entries,
+            reference.volume_features,
+            name_required=nameless,
+            freeway=freeway,
+            layers={way.osm_id: conflation.way_layer(way.tags) for way in context.ways},
+            # A count line that names another street is not this way's (`conflate`'s `names`).
+            names={way.osm_id: (way.name, way.tags.get("ref")) for way in context.ways},
+        )
+        # A trunk or primary road counted at under 200 a day is read as uncounted
+        # (`conflation.drop_implausible`), here before any carriageway shares the count.
+        result, implausible = conflation.drop_implausible(
+            result, {way.osm_id: way.tags.get("highway") for way in context.ways}
+        )
+        if implausible:
+            logger.info(
+                "%d counts under %d a day on trunk or primary ways not read",
+                len(implausible),
+                conflation.IMPLAUSIBLE_AADT,
+            )
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
         # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy
@@ -4688,6 +4729,9 @@ def build_handlers(
                 calm_path_sentinels,
                 calm_street_sentinels,
                 _setting("REBUILD_CALM_RUN_FLOORS"),
+            )
+            failures.check(
+                assert_known_roads, context.staging_schema, _setting("REBUILD_KNOWN_ROADS")
             )
         except Exception as error:
             if own and not isinstance(error, ValidationFailed):

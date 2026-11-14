@@ -36,6 +36,9 @@ class Region:
     outline: tuple[tuple[float, float], ...] | None
     # Whether the Beltway region is cut out of it (the regions outside it).
     outside_beltway: bool = True
+    # The whole map in one pack (the coverage box), offered beside the areas (Stephen,
+    # 2026-11-13: "Offer everything too to download").
+    whole: bool = False
 
 
 # Our draft borders, approximate, drawn along the Beltway, the Potomac and the county lines
@@ -132,6 +135,12 @@ REGIONS: tuple[Region, ...] = (
         name="The rest of the map",
         # Southern Maryland, Prince George's outside the Beltway, the West Virginia panhandle.
         outline=None,
+    ),
+    Region(
+        id="all",
+        name="Everything",
+        outline=None,
+        whole=True,
     ),
 )
 

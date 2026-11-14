@@ -29,6 +29,7 @@ import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSect
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
+import { RegionPackSetting } from "../RegionPackSetting.tsx";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { ThemeSetting, UnitsSetting } from "../DisplaySettings.tsx";
@@ -701,6 +702,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
         {/* Avoid stairs on walks (Stephen, 2026-11-02): a switch of its own, for Go and Plan alike. */}
         <AvoidStairsSwitch idBase="settings-avoid-stairs" />
+        {/* The map for no signal (off-grid riding, the owner, 2026-11-12: "a whole region pack an optional download"). */}
+        <RegionPackSetting idBase="settings-region-pack" />
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
           <div className="setting-line">
