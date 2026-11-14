@@ -131,9 +131,29 @@ REGIONS: tuple[Region, ...] = (
         ),
     ),
     Region(
+        id="central-va",
+        name="Central Virginia",
+        # Virginia south of NoVA's 38.2 N edge (v0.28.0 pass 1): Richmond, Petersburg,
+        # Williamsburg and the Capital Trail, Fredericksburg's south side, and Charlottesville
+        # with the US 29 side up through Madison to about 38.55 N, west of NoVA's -78.05 edge.
+        # East of -76.95 the top runs down toward the Potomac's mouth so Southern Maryland stays
+        # in the rest of the map.
+        outline=(
+            (-78.760, 37.100),
+            (-76.020, 37.100),
+            (-76.020, 37.950),
+            (-76.950, 38.200),
+            (-78.050, 38.200),
+            (-78.050, 38.550),
+            (-78.760, 38.550),
+            (-78.760, 37.100),
+        ),
+    ),
+    Region(
         id="rest",
         name="The rest of the map",
-        # Southern Maryland, Prince George's outside the Beltway, the West Virginia panhandle.
+        # Southern Maryland, Prince George's outside the Beltway, the West Virginia panhandle,
+        # and the north end of the Valley (Winchester, Front Royal, Luray) west of -78.05.
         outline=None,
     ),
     Region(

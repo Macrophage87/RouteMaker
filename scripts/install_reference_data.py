@@ -348,7 +348,7 @@ def urban_way_ids(
 # src/config/settings.py COVERAGE_BBOX (west, south, east, north), which this script
 # cannot import without a configured Django; tests/test_reference_data_install.py holds
 # the two the same.
-COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+COVERAGE_BBOX = (-78.76, 37.1, -76.02, 39.72)
 
 
 def install_setting(

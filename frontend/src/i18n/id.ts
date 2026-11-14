@@ -2226,6 +2226,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "Virginia Utara",
   "Northwest exurbs": "Pinggiran barat laut",
   "Baltimore and suburbs": "Baltimore dan sekitarnya",
+  "Central Virginia": "Virginia Tengah",
   "The rest of the map": "Sisa peta",
   "Everything": "Seluruh peta",
   "It is on {street}.": "Rutenya ada di {street}.",

@@ -2782,6 +2782,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Northern Virginia": "Norte de Virginia",
   "Northwest exurbs": "Afueras del noroeste",
   "Baltimore and suburbs": "Baltimore y alrededores",
+  "Central Virginia": "Virginia central",
   "The rest of the map": "El resto del mapa",
   "Everything": "Todo el mapa",
   "It is on {street}.": "Está en {street}.",

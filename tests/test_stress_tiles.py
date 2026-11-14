@@ -366,9 +366,9 @@ class TestContract:
 
     # Just past one side of the box and inside the other three.
     BEYOND = {
-        "west": (-78.5, 39.0),
+        "west": (-79.2, 39.0),
         "east": (-75.7, 39.0),
-        "south": (-77.0, 37.85),
+        "south": (-77.0, 36.75),
         "north": (-77.0, 40.05),
         "far away": FAR_AWAY,
     }
@@ -1047,7 +1047,7 @@ class TestCoverageClip:
         assert layer is None or not layer.features
 
     @pytest.mark.parametrize(
-        ("lon", "lat"), [(-78.05, 39.0), (-76.02, 39.0), (-77.0, 38.2), (-77.0, 39.72)]
+        ("lon", "lat"), [(-78.76, 39.0), (-76.02, 39.0), (-77.0, 37.1), (-77.0, 39.72)]
     )
     def test_every_edge_of_the_box_clips(self, lon, lat) -> None:
         level = stress_tiles.level_for(12)

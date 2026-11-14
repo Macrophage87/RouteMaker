@@ -18,7 +18,7 @@
   ],
   "outside": [
     {"name": "Philadelphia", "lon": -75.1652, "lat": 39.9526},
-    {"name": "Richmond", "lon": -77.4360, "lat": 37.5407},
+    {"name": "Norfolk", "lon": -76.2859, "lat": 36.8508},
     {"name": "Pittsburgh", "lon": -79.9959, "lat": 40.4406}
   ]
 }

@@ -83,13 +83,15 @@ test("no more than the API's twenty-five points", () => {
 });
 
 test("the coverage box is the settings' one and clicks outside it are refused", () => {
-  assert.deepEqual(COVERAGE_BBOX, [-78.05, 38.2, -76.02, 39.72]);
+  assert.deepEqual(COVERAGE_BBOX, [-78.76, 37.1, -76.02, 39.72]);
   assert.equal(insideCoverage(DUPONT), true);
   assert.equal(insideCoverage([-76.61, 39.29]), true); // Baltimore
   assert.equal(insideCoverage([-75.5, 39.0]), false); // east
   assert.equal(insideCoverage([-77.0, 39.8]), false); // north of Mason-Dixon
-  assert.equal(insideCoverage([-78.5, 38.9]), false); // west
-  assert.equal(insideCoverage([-77.0, 38.0]), false); // south
+  assert.equal(insideCoverage([-77.436, 37.541]), true); // Richmond
+  assert.equal(insideCoverage([-78.477, 38.03]), true); // Charlottesville
+  assert.equal(insideCoverage([-78.9, 38.07]), false); // west: Waynesboro, pass 2
+  assert.equal(insideCoverage([-76.3, 36.85]), false); // south: Norfolk
 });
 
 test("a detour is flagged when the route is far longer than the straight line", () => {

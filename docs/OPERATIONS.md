@@ -5691,7 +5691,7 @@ proxy cannot reach the service.
    python3 scripts/fetch_agency_layer.py \
        --slug mdot-sha-aadt --item 77010abe7558425997b4fcdab02e2b64 \
        --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
-       --bbox=-78.05,38.2,-76.02,39.72 \
+       --bbox=-78.76,37.1,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
    sudo mkdir -p "$DATA_ROOT/reference/inputs/mdot-sha-aadt" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
    sudo cp ~/rmdata/datasets/mdot-sha-aadt/* \
@@ -6482,7 +6482,7 @@ permission) and Frederick County's draft rustic roads (no licence).
    python3 scripts/fetch_agency_layer.py --slug md-scenic-byways \
        --item dc571b56e48a4f4292986c97a119e88a \
        --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Scenic_Byways/FeatureServer/0 \
-       --bbox=-78.05,38.2,-76.02,39.72 \
+       --bbox=-78.76,37.1,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "MDOT SHA (Maryland iMAP)"
    for slug in moco-rustic-roads md-scenic-byways; do
        sudo mkdir -p "$DATA_ROOT/reference/inputs/$slug" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/$slug"

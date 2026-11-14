@@ -199,20 +199,32 @@ def test_the_deployments_region_fetches_its_six_tiles(tmp_path) -> None:
 
     Read through the stage itself with the deployment's own box, so what is
     pinned is what a first rebuild fetches: the N38 and N39 bands by the W079,
-    W078 and W077 columns. 39.72 N is still in the N39 band. The east edge is
+    W078 and W077 columns, and since v0.28.0 pass 1 (Richmond, Charlottesville and
+    Williamsburg, south edge 37.1 N) the N37 band too, three more tiles. 39.72 N is
+    still in the N39 band and -78.76 still in the W079 column. The east edge is
     what could have moved it further - see the next test."""
     from django.conf import settings
 
     seen: list = []
     ensure_tiles(tmp_path, settings.COVERAGE_BBOX, fetch_recording(seen), warp_writing(3601))
-    assert sorted(seen) == ["N38W077", "N38W078", "N38W079", "N39W077", "N39W078", "N39W079"]
+    assert sorted(seen) == [
+        "N37W077",
+        "N37W078",
+        "N37W079",
+        "N38W077",
+        "N38W078",
+        "N38W079",
+        "N39W077",
+        "N39W078",
+        "N39W079",
+    ]
 
 
 def test_an_east_edge_on_the_tile_line_would_fetch_a_column_of_the_eastern_shore() -> None:
     """Why the box's east edge is -76.02 rather than the round -76.0.
 
     `tiles_covering` is inclusive of its edges, so a box ending exactly on
-    -76.0 touches the W076 column: two more 26 MB tiles, of Cecil County and
+    -76.0 touches the W076 column: three more 26 MB tiles, of Cecil County and
     the Eastern Shore, which the region does not include. Havre de Grace, the
     easternmost place the amendment names, is at -76.09."""
     from django.conf import settings
@@ -220,6 +232,7 @@ def test_an_east_edge_on_the_tile_line_would_fetch_a_column_of_the_eastern_shore
     west, south, east, north = settings.COVERAGE_BBOX
     round_east = {t.stem for t in tiles_covering(west, south, -76.0, north)}
     assert round_east - {t.stem for t in tiles_covering(west, south, east, north)} == {
+        "N37W076",
         "N38W076",
         "N39W076",
     }

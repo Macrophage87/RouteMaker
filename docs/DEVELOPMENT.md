@@ -4310,7 +4310,7 @@ curl -fsSL --retry 3 -o district-of-columbia-latest.osm.pbf.part <url>
 osmium merge --overwrite -f pbf dc.osm.pbf md.osm.pbf va.osm.pbf \
     -o merged.osm.pbf.part
 osmium extract --overwrite -f pbf -s smart -S types=boundary,multipolygon \
-    --bbox -78.05,38.2,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
+    --bbox -78.76,37.1,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
 ```
 
 `-s smart` is PLAN:13's, and the `-S` half is the one that is easy to lose:
@@ -4351,9 +4351,24 @@ running the rebuild on the deployment host or putting a small hand-made
 `merged.osm.pbf`/`source.osm.pbf` pair in `<DATA_ROOT>/extracts/`, which the
 freshness rule will then reuse.
 
-### The coverage box (west edge -78.05 W since v0.7.0)
+### The coverage box (Richmond, Charlottesville and Williamsburg since v0.28.0)
 
-The box is **(-78.05, 38.2, -76.02, 39.72)**, west, south, east, north: 78.05° W
+v0.28.0 (Virginia pass 1; the owner, 2026-11-14, "One rectangle") moved the west edge
+to -78.76 and the south edge to 37.1: **(-78.76, 37.1, -76.02, 39.72)**, about 147 mi
+(237 km) east to west and 181 mi (291 km) north to south. That takes in Richmond,
+Petersburg, Williamsburg, Jamestown and the Scotland ferry landing (the Virginia
+Capital Trail), Charlottesville and Crozet, and the US 29 side through Madison. It
+also takes in Winchester, Front Royal and Luray a pass early. The Valley west of the
+Blue Ridge crest (Waynesboro and beyond) waits for pass 2. -78.76 is used rather than
+-78.75, which is a tile edge at every zoom to 14. The whole new area is Virginia's,
+so no extract or state is added, and Virginia's law is already in the classifier.
+What it adds on the next rebuild: three HGT tiles (N37W077, N37W078, N37W079), the
+n38 row of 3DEP contour cells, the `central-va` off-grid pack
+(`core.offline_packs`), and the basemap, Photon, amenity layers and stress pre-draw
+over the wider box. Size, estimated from Census TIGER road counts and not measured on
+a build: about +65% road segments on today's map.
+
+Before v0.28.0 the box was **(-78.05, 38.2, -76.02, 39.72)**, west, south, east, north: 78.05° W
 (78° 3′ W) to 76.02° W, 38.2° N to 39.72° N, about 109 mi (175 km) east to west
 and 105 mi (169 km) north to south. v0.7.0 moved the west edge from -78.0 so
 all of Martinsburg, West Virginia is in (the owner, 2026-10-12; its city limits

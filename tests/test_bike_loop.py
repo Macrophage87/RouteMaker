@@ -152,11 +152,11 @@ class TestSearch:
 
     def test_a_corner_off_the_map_is_not_asked(self) -> None:
         ask = FakeAsk(factor=1.3)
-        edge = (-78.04, 38.21)  # the coverage box's south-west corner
+        edge = (-78.75, 37.11)  # the coverage box's south-west corner
         shapes, _note = bike_loop.search(router(ask), edge, 30 * MILE, payload_of)
         for points in ask.asked:
             for lon, lat in points:
-                assert -78.05 <= lon and 38.2 <= lat
+                assert -78.76 <= lon and 37.1 <= lat
         assert all(90 <= s.bearing % 360 or s.bearing == 0 for s in shapes)
 
 
