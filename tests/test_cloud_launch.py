@@ -815,9 +815,13 @@ def test_an_interrupted_attach_leaves_the_rebuild_running(fake) -> None:
         text=True,
     )
     try:
-        for _ in range(100):
-            if len(fake.called("describe-instances")) >= 2:
-                break
+        # Wait for the launcher's own polling (its describe-instances calls come after its INT
+        # trap is set). A SIGINT sent before the trap meets bash's default, which lets a script
+        # waiting on a child that exits normally carry on, so the run would wait forever.
+        deadline = time.monotonic() + 60
+        while len(fake.called("describe-instances")) < 2:
+            assert proc.poll() is None, proc.communicate()
+            assert time.monotonic() < deadline, "the launcher never started polling"
             time.sleep(0.1)
         proc.send_signal(signal.SIGINT)
         proc.wait(timeout=30)
