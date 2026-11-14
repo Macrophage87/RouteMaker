@@ -158,8 +158,8 @@ SUMMARY = (
             NO_ADS,
             "You can use RouteMaker without an account.",
             WHERE_YOU_ARE,
-            "Signing in with Discord keeps your Discord account number, not your name or e-mail, "
-            "and what you choose to save.",
+            "Signing in with Discord, Google or Apple keeps an account number from that service, "
+            "not your name or e-mail, and what you choose to save.",
         ]
     )
     + (
@@ -246,7 +246,7 @@ SECTIONS: list[tuple[str, str]] = [
         + _details(RIDE_CRYPTO_SUMMARY, RIDE_CRYPTO),
     ),
     (
-        "If you sign in with Discord",
+        "If you sign in",
         _ul(
             [
                 "RouteMaker asks Discord only for your identity.",
@@ -259,6 +259,13 @@ SECTIONS: list[tuple[str, str]] = [
         + _p(
             "If the site’s owner connects a Discord server, its bot keeps which of that "
             "server’s roles you have, as numbers, to decide what you may do on the site."
+        )
+        + _p(
+            "If you sign in with Google or Apple, or link them to your account, RouteMaker asks "
+            "only for an account number. It keeps that number scrambled with a secret key, so it "
+            "matches your next sign-in and can't be looked up anywhere else, and when it was "
+            "linked. Not your name, e-mail or picture, and no Google or Apple token. Unlinking "
+            "deletes it."
         )
         + _p("With your account, RouteMaker keeps what you save, private to you:")
         + _ul(

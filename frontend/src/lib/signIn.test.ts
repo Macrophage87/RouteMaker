@@ -98,3 +98,15 @@ test("a plan holding the rider's location is kept for the round trip for now, an
   rememberPlanForSignIn(skipped, PLAN, false, true);
   assert.equal(planToOpen(skipped, ""), PLAN, "a plan without one still is");
 });
+
+test("the Sign in buttons name Discord only while Discord is the one sign-in (Stephen 2026-11-13)", async () => {
+  const { signInLabel } = await import("./signIn.ts");
+  const { setSignInChoicesForTest, signInHasChoice } = await import("./stressEditor.ts");
+  setSignInChoicesForTest(["discord"]);
+  assert.equal(signInHasChoice(), false);
+  assert.equal(signInLabel(), "Sign in with Discord");
+  setSignInChoicesForTest(["discord", "google", "apple"]);
+  assert.equal(signInHasChoice(), true);
+  assert.equal(signInLabel(), "Sign in");
+  setSignInChoicesForTest([]);
+});

@@ -742,6 +742,19 @@ DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://localhost:8000/auth/callback")
 
+# Google and Apple sign-in (core.oidc_login, Stephen 2026-11-13), `openid` alone: each is
+# offered only once its keys are set. The redirect URIs must match the ones registered with
+# Google and Apple exactly. Apple's client secret is made per exchange from the private key
+# (.p8 contents), its key id and the team id.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
+APPLE_CLIENT_ID = os.environ.get("APPLE_CLIENT_ID", "")
+APPLE_TEAM_ID = os.environ.get("APPLE_TEAM_ID", "")
+APPLE_KEY_ID = os.environ.get("APPLE_KEY_ID", "")
+APPLE_PRIVATE_KEY = os.environ.get("APPLE_PRIVATE_KEY", "").replace("\\n", "\n")
+APPLE_REDIRECT_URI = os.environ.get("APPLE_REDIRECT_URI", "")
+
 # Garmin Connect (core.garmin): the Connect Developer Program app's client id and secret, from
 # Garmin's developer portal. Unset, Settings offers no Garmin connection and Send to Garmin hands
 # the file to the Garmin Connect app as before. The redirect URI must match the portal's exactly.
