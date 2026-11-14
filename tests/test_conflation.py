@@ -1206,6 +1206,27 @@ class TestRawCountFixes:
         assert after.matched[2].aadt == 40000
         assert after.matched[1].aadt == 23366
 
+    def test_a_second_line_on_the_freeway_stays_off_the_street_beneath(self) -> None:
+        """Review of #1240: the freeway's two lines (its two directions, 37,593 and 36,000),
+        both nearest the elevated freeway; the freeway takes one and the other went back to
+        the street at layer 0 beneath it."""
+        street = [(-77.0200, 38.90000), (-77.0100, 38.90000)]
+        elevated = [(-77.0205, 38.90012), (-77.0095, 38.90012)]
+        east_line = feature(
+            "fwy-e", [(-77.0205, 38.90011), (-77.0095, 38.90011)], 37593, "locality", "ddot"
+        )
+        west_line = feature(
+            "fwy-w", [(-77.0205, 38.90010), (-77.0095, 38.90010)], 36000, "locality", "ddot"
+        )
+        after = conflate(
+            [(1, street), (2, elevated)],
+            [east_line, west_line],
+            freeway={2},
+            layers={1: 0, 2: 2},
+        )
+        assert after.matched[2].feature_id in {"fwy-e", "fwy-w"}
+        assert 1 not in after.matched
+
     def test_a_line_named_for_another_street_is_not_this_ways_count(self) -> None:
         """MDOT SHA's "THIRD AVE (CO 675), MD 97 TO OBRECHT RD (AHEAD)" ran on along Obrecht
         Road and gave it Third Avenue's 6,152 a day (the borrowed-counts check)."""

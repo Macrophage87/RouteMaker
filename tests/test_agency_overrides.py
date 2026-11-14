@@ -68,7 +68,14 @@ def test_no_way_is_named_twice_across_the_approved_files() -> None:
         for row in json.loads(path.read_text())["rows"]
     ]
     assert len(new) == len(set(new))
-    assert not set(new) & others
+    # The 2026-11-13 re-rate of every road replaces the Baltimore rows it re-rated, retiring
+    # each in the same file that writes the new row.
+    replaced = {
+        (row["kind"], int(row["osm_way_id"]))
+        for path in OVERRIDES.glob("2026-11-13-owner-*-rerate*.json")
+        for row in json.loads(path.read_text())["retire"]
+    }
+    assert not (set(new) - replaced) & others
 
 
 def test_the_montgomery_file_retires_every_row_it_loaded() -> None:
