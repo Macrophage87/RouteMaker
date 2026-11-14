@@ -871,18 +871,26 @@ if (mine(3)) {
   // How the ride ends: One way, Loop or Out and back (Stephen 2026-11-13, #1238; it was the "Make it a loop" box).
   const ways = await p.eval("(() => { const f = document.querySelector('fieldset.loop-ways'); return { legend: f?.querySelector('legend')?.textContent, radios: [...(f?.querySelectorAll('input[type=radio]') ?? [])].map((r) => [r.closest('label').textContent.trim(), r.checked]) }; })()");
   const group = await axNode(p, "fieldset.loop-ways");
-  check("loop: How the ride ends is a group of three radios, One way chosen by default, and described", ways.legend === "How the ride ends" && JSON.stringify(ways.radios) === JSON.stringify([["One way", true], ["Loop", false], ["Out and back", false]]) && /different way back/.test(group?.description ?? ""), JSON.stringify({ ways, description: group?.description }));
+  // Names and roles as a screen reader meets them, not the label's text alone.
+  await p.eval("document.querySelectorAll('fieldset.loop-ways input').forEach((r, i) => { r.id = '__way' + i; }); true");
+  const radioAx = [];
+  for (const i of [0, 1, 2]) {
+    const ax = await axNode(p, `#__way${i}`);
+    radioAx.push([ax?.role, ax?.name, ax?.checked]);
+  }
+  check("loop: How the ride ends is a group of three radios, One way chosen by default, and described", ways.legend === "How the ride ends" && group?.name === "How the ride ends" && JSON.stringify(radioAx) === JSON.stringify([["radio", "One way", true], ["radio", "Loop", false], ["radio", "Out and back", false]]) && /different way back/.test(group?.description ?? ""), JSON.stringify({ ways, radioAx, name: group?.name, description: group?.description }));
+  // The keyboard's way in a radio group: the Tab stop is the chosen radio, and an arrow moves to the next and chooses it.
   const before = p.routeRequests;
-  await p.eval("document.querySelectorAll('fieldset.loop-ways input')[1].focus(); true");
-  await p.key(" ", "Space", 32);
+  await p.eval("document.querySelectorAll('fieldset.loop-ways input')[0].focus(); true");
+  await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(1500);
   const checked = await p.eval("document.querySelectorAll('fieldset.loop-ways input')[1].checked");
   const keyFocus = await p.eval("document.activeElement === document.querySelectorAll('fieldset.loop-ways input')[1]");
-  // Plan-first (see pressRoute): Space plans nothing and keeps the focus; Route plans once.
+  // Plan-first (see pressRoute): the arrow plans nothing; Route plans once.
   const spacePlans = p.routeRequests - before;
   await pressRoute(p);
   await sleep(1500);
-  check("loop: Space on Loop chooses it, keeps the focus and plans nothing, then Route plans once", checked === true && keyFocus && spacePlans === 0 && p.routeRequests - before === 1 && /loop=1/.test(await p.eval("location.hash")), `${spacePlans} plans on Space, ${p.routeRequests - before} in all`);
+  check("loop: an arrow from One way moves to Loop and chooses it, and plans nothing, then Route plans once", checked === true && keyFocus && spacePlans === 0 && p.routeRequests - before === 1 && /loop=1/.test(await p.eval("location.hash")), `${spacePlans} plans on the arrow, ${p.routeRequests - before} in all`);
   await p.close();
 }
 if (mine(3)) {
@@ -892,14 +900,14 @@ if (mine(3)) {
   const state = await p.eval(`(() => { const r = ${RADIOS}; return { oneWay: r[0].checked, loop: r[1].checked, stuck: r[0].getAttribute('aria-disabled') }; })()`);
   const group = await axNode(p, "fieldset.loop-ways");
   check("loop: a ride ending where it starts shows Loop chosen and One way not choosable, and says why", !state.oneWay && state.loop && state.stuck === "true" && /ends where it starts/.test(group?.description ?? ""), JSON.stringify({ ...state, description: group?.description }));
-  // aria-disabled, not disabled: One way stays in the Tab order, and Space on it changes nothing (the a11y review's N6).
+  // aria-disabled, not disabled: One way can still be reached and read with its reason (the a11y review's N6). The
+  // keyboard reaches it from Loop, the group's Tab stop, with an arrow, which would choose it: that changes nothing.
   const before = p.routeRequests;
-  await p.eval(`${RADIOS}[0].focus(); true`);
-  const focusable = await p.eval(`document.activeElement === ${RADIOS}[0]`);
-  await p.key(" ", "Space", 32);
+  await p.eval(`${RADIOS}[1].focus(); true`);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
   await sleep(1200);
-  const after = await p.eval(`(() => { const r = ${RADIOS}; return { loop: r[1].checked, oneWay: r[0].checked, disabled: r[0].disabled }; })()`);
-  check("loop: when implied One way keeps the focus, and Space on it neither chooses it nor plans", focusable && after.loop && !after.oneWay && !after.disabled && p.routeRequests === before, JSON.stringify({ focusable, ...after, plans: p.routeRequests - before }));
+  const after = await p.eval(`(() => { const r = ${RADIOS}; return { onOneWay: document.activeElement === r[0], loop: r[1].checked, oneWay: r[0].checked, disabled: r[0].disabled, attr: r[0].getAttribute('aria-disabled') }; })()`);
+  check("loop: when implied an arrow onto One way neither chooses it nor plans, and Loop stays chosen", after.onOneWay && after.loop && !after.oneWay && !after.disabled && after.attr === "true" && p.routeRequests === before, JSON.stringify({ ...after, plans: p.routeRequests - before }));
   const size = await p.eval("Math.min(...[...document.querySelectorAll('.loop-way')].map((x) => Math.round(x.getBoundingClientRect().height)))");
   check("loop: each choice is a 44 px target (2.5.8, and the owner's 44 px rule)", size >= 44, `${size} px`);
   await p.close();
@@ -1386,17 +1394,17 @@ if (mine(10)) {
   const first = await p.eval(hintOf);
   const group = await axNode(p, "fieldset.loop-ways");
   check("loop first: Loop chosen with no point, the choice is described by \"Place the starting point, then a stop or two along the way.\", said and not shown (Stephen 2026-10-20: simpler)", group?.description === FIRST_HINT && first.text === FIRST_HINT && !first.visible, JSON.stringify({ first, description: group?.description }));
-  // One way, then Loop again: each said once.
-  await p.eval(`${RADIOS}[0].focus(); true`);
-  await p.key(" ", "Space", 32);
+  // One way, then Loop again, by the keyboard: from Loop (the group's Tab stop) an arrow back, then one forward. Each said once.
+  await p.eval(`${RADIOS}[1].focus(); true`);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
   await sleep(700);
   const off = await p.eval(chosen);
-  await p.eval(`${RADIOS}[1].focus(); true`);
-  await p.key(" ", "Space", 32);
+  await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(700);
   const on = await p.eval(chosen);
-  check("loop first: Space chooses One way, then Loop again", JSON.stringify(off) === JSON.stringify([true, false, false]) && JSON.stringify(on) === JSON.stringify([false, true, false]), JSON.stringify({ off, on }));
-  check("loop first: the choice is described by the hint again", (await axNode(p, "fieldset.loop-ways"))?.description === FIRST_HINT, "");
+  check("loop first: an arrow back chooses One way, and one forward Loop again", JSON.stringify(off) === JSON.stringify([true, false, false]) && JSON.stringify(on) === JSON.stringify([false, true, false]), JSON.stringify({ off, on }));
+  const again = (await axNode(p, "fieldset.loop-ways"))?.description;
+  check("loop first: the choice is described by the hint again", again === FIRST_HINT, JSON.stringify(again));
   const live = await p.eval("document.querySelectorAll('fieldset.loop-ways [role=status], fieldset.loop-ways [role=alert], fieldset.loop-ways [aria-live]').length");
   check("loop first: the choice and its hint hold no live region of their own (the one announcement is the page's)", live === 0, String(live));
   const said = await p.eval("window.__said");
@@ -2489,7 +2497,7 @@ if (mine(34)) {
     return { tags: [...(ul?.querySelectorAll('li > *') ?? [])].map((b) => b.tagName + ':' + b.textContent + ':' + (b.getAttribute('aria-disabled') ?? '')),
       underHeading: after(d.querySelector('h2'), ul) && after(ul, d.querySelector('ul.road-info-summary')), pins: document.querySelectorAll('.pin').length }; })()`);
   // Add note in Plan with route notes (#1154). Set as Home left the road panel in #1258 (the owner, 2026-11-13); Home is set
-  // from Go's Home sheet.
+  // from the Home sheet's search, the map or Settings (App.tsx).
   check("road panel: under the heading, Set as start, Set as end, Add as stop and Add note are real buttons, available on a two-point plan",
     topAsk.opened && JSON.stringify(top.tags) === JSON.stringify(["BUTTON:Set as start:", "BUTTON:Set as end:", "BUTTON:Add as stop:", "BUTTON:Add note:"]) && top.underHeading,
     JSON.stringify({ ...top, ...topAsk, now: topAsk.opened ? undefined : await infoNow(p) }));
