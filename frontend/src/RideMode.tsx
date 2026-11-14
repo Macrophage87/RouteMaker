@@ -100,6 +100,9 @@ import {
   OFF_SURE_M,
   GPS_WEAK_SAID,
   weighFix,
+  estimateStep,
+  weakNoteAfterMs,
+  type EstimateGround,
   CUE_SHEET_SAID,
   cueSheet,
   cueSheetAfterMs,
@@ -166,6 +169,7 @@ import {
   type Verbosity,
   endWords,
   ARRIVED_SAID,
+  OFF_ROUTE_KEPT_SAID,
 } from "./lib/navigate.ts";
 import { statsPause, statsStart, statsStep, withClosedStretch, type RideStats } from "./lib/rideStats.ts";
 import {
@@ -174,6 +178,7 @@ import {
   RIDE_TEXT_BUTTON,
   ScreenWake,
   Voice,
+  chimeOf,
   phoneKind,
   toScreenReader,
   readRideIconsOnly,
@@ -190,7 +195,9 @@ import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
-import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
+import { rideBuzz, rideGeoEnv, rideSpeech, rideWake, ridesHidden, showTurnCard, speaksAloud } from "./lib/nativeShell.ts";
+import { cardAtM, noteCard, turnCard } from "./lib/turnCard.ts";
+import { cueMark } from "./lib/cueTone.ts";
 import { rideCueLog } from "./lib/cueRecorder.ts";
 import {
   DETOUR_BUSY,
@@ -1513,9 +1520,10 @@ export function RideMode({
     // A jog's next turn (`after`) in the polite region, so it is read after the turn before rather than in place of it.
     if (toScreenReader(output)) (said.urgent && !said.after ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
     // The voice as chosen; in the phone app also "my screen reader" while the page is hidden (nativeShell.ts).
-    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent, said.after);
-    // The phone app's cue notification on Android (nothing in a browser).
-    showCue(said.text);
+    // A turn cue's tone goes with the voice (lib/cueTone.ts): a rider with the voice off hears neither.
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent, said.after, chimeOf(said.mark));
+    // A turn's "now" buzzes for its side with any output but Neither (Stephen 2026-11-13: no new switches).
+    if (output !== "neither" && (said.mark === "left" || said.mark === "right")) rideBuzz(said.mark);
   }, []);
   const announcer = useRef<Announcer | null>(null);
   if (announcer.current === null) {
@@ -1544,7 +1552,7 @@ export function RideMode({
           if (text) rideCueLog.alias(text, event.spoken);
           return text;
         });
-      announcer.current?.say(event.spoken, event.urgent, event.after, again);
+      announcer.current?.say(event.spoken, event.urgent, event.after, again, cueMark(event));
     }
   }, []);
   // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
@@ -2001,6 +2009,16 @@ export function RideMode({
     if (prefsRef.current.verbosity !== "quiet") announcer.current?.say(onStandard.current ? ON_STANDARD_SAID : ON_DETOUR_SAID, false);
   }, []);
 
+  // Weak GPS: poor fixes since the last good one (a stopped rider's GPS sends none at all: never reckoned on).
+  const poorSeen = useRef(false);
+  const estimateGround = useCallback(
+    (): EstimateGround => ({
+      poorSeen: poorSeen.current,
+      lastSpeedMs: lastRealFix.current?.speedMs ?? null,
+      free: !tripRef.current.walking && !dockingRef.current && !toStartAsking.current,
+    }),
+    [],
+  );
   // No good fix for a minute, or for longer than the next turn is away: the turns ahead as a list, said
   // once; a good fix brings the turn-by-turn card back (the owner, 2026-10-16). Asked on each fix and on
   // a timer (below), so it comes when the fixes stop altogether too.
@@ -2008,12 +2026,22 @@ export function RideMode({
     (now: number) => {
       const state = rideRef.current;
       if (ended.current || state.arrived || pausedRef.current) return;
+      // Weak GPS on the line: the next turn still said, as an estimate, for up to ESTIMATE_MS (lib/navigate.ts
+      // estimateStep). Not on the way to the dock or the start, nor while a question holds the ride.
+      if (gpsWeak.current.goodAt < now) {
+        const est = estimateStep(modelRef.current, state, now - gpsWeak.current.goodAt, prefsRef.current.verbosity, estimateGround());
+        if (est.state !== state) {
+          rideRef.current = est.state;
+          setRide(est.state);
+          say(est.events);
+        }
+      }
       const sheet = cueSheetShown(gpsWeak.current, now, cueSheetAfterMs(modelRef.current, state.progressM ?? 0, state.speedMs));
       if (sheet && !cueSheetRef.current) notify(CUE_SHEET_SAID);
       cueSheetRef.current = sheet;
       setCueSheetOn(sheet);
     },
-    [notify],
+    [notify, say, estimateGround],
   );
   useEffect(() => {
     // The same timer gives the app's heartbeat and the destination's stay check (everyTick, below), so no timer more.
@@ -2117,7 +2145,9 @@ export function RideMode({
       lastRealFix.current = fix;
       lastFixAt.current = Date.now();
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
-      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
+      // Poor fixes since the last good one: the GPS is weak, not just quiet (estimateStep reckons only then).
+      poorSeen.current = fix.accuracyM > POOR_FIX_M;
+      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current, weakNoteAfterMs(modelRef.current, rideRef.current, estimateGround(), prefsRef.current.verbosity));
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
       if (weighed.sayNow) rideCueLog.note("gps-weak", Date.now());
       if (weighed.sayNow && !gpsQuietRef.current) notify(GPS_WEAK_SAID);
@@ -3579,7 +3609,6 @@ export function RideMode({
         // The voice only: a screen reader hears the dialog itself as the focus moves into it, named by the closure
         // (the v0.26.0 accessibility review: an alert as well said it twice).
         if (speaksAloud(prefsRef.current.output, document.visibilityState === "hidden")) rideVoice.speak(said, true);
-        showCue(said);
         // Only a good fix now: an old one could already be RESTART_AUTO_M away, closing it unheard (none: the next good one).
         const fix = rideRef.current.fix;
         const at = fix && fix.accuracyM <= POOR_FIX_M ? fix.point : null;
@@ -3587,6 +3616,18 @@ export function RideMode({
       }
     }
   }, [watched, watchAt, suddenAsk, showToast]);
+  // The lock screen's live turn card in the phone app (lib/turnCard.ts): its words change as the distance counts down
+  // (and with the units); the notice skips an update that changes nothing. Off route, or asked about a closure just
+  // ahead, it says so in place of a turn that no longer counts down. Arrived, it goes (a walk or a train after the line
+  // has its own cues); End ride clears it with the watch.
+  const estNow = ride.estM;
+  const offNote = ride.off ? OFF_ROUTE_KEPT_SAID : null;
+  const askNote = suddenAsk ? closedAheadSaid(suddenAsk.distance, suddenAsk.name) : null;
+  useEffect(() => {
+    const note = offNote ?? askNote;
+    // Weak GPS: the card counts down from where the ride is reckoned to be (estimateStep), as the voice does.
+    showTurnCard(arrived ? null : note ? noteCard(note) : turnCard(model, cardAtM(model, progress, estNow)));
+  }, [model, progress, estNow, arrived, unitsNow, offNote, askNote]);
   // Left unanswered while the rider rides on, it closes as Keep going (as Start first does, RESTART_AUTO_M): past the
   // closure, or that far from where it was asked (the v0.26.0 accessibility review).
   const fixNow = ride.goodFix ?? ride.fix;

@@ -106,6 +106,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have reached stop {stop}, {name}.": "ማቆሚያ {stop}፣ {name} ደርሰዋል።",
   "You have reached stop {stop}.": "ማቆሚያ {stop} ደርሰዋል።",
   "In {distance}, {cue}": "በ{distance} ውስጥ፣ {cue}",
+  "In about {distance}, {cue}": "በግምት በ{distance} ውስጥ፣ {cue}",
+  "About here: {cue}": "በግምት እዚህ፦ {cue}",
   "{n} feet": "{n} ጫማ",
   "1 mile": "1 ማይል",
   "{n} miles": "{n} ማይል",

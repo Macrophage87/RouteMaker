@@ -106,6 +106,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have reached stop {stop}, {name}.": "정류 지점 {stop}, {name}에 도착했습니다.",
   "You have reached stop {stop}.": "정류 지점 {stop}에 도착했습니다.",
   "In {distance}, {cue}": "{distance} 후 {cue}",
+  "In about {distance}, {cue}": "약 {distance} 후 {cue}",
+  "About here: {cue}": "이쯤에서: {cue}",
   "{n} feet": "{n}피트",
   "1 mile": "1마일",
   "{n} miles": "{n}마일",
