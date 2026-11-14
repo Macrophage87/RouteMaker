@@ -139,13 +139,13 @@ AT_START, AT_END = 0.001, 0.999
 
 _ROADS_BY_WAY = """
 SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway,
-       seg.default_speed, seg.urban, seg.half, seg.car_free
+       seg.default_speed, seg.urban, seg.half, seg.car_free, seg.painted_lane
 FROM unnest(%s::int[], %s::bigint[], %s::float8[], %s::float8[]) AS j(idx, way, lon, lat)
 CROSS JOIN LATERAL (
     SELECT {tier} AS tier, s.volume_aadt AS aadt, {speed} AS speed,
            {lanes} AS lanes, {oneway} AS oneway,
            {default_speed} AS default_speed, {urban} AS urban, {half} AS half,
-           {car_free} AS car_free
+           {car_free} AS car_free, {painted_lane} AS painted_lane
     FROM {schema}.segment AS s
     WHERE s.osm_way_id = j.way
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
@@ -1081,6 +1081,8 @@ def roads_by_way(
         half=half,
         # Closed to cars at the ride's time: no traffic to read it by (`intersections.by_traffic`).
         car_free="(%s = ANY(s.car_free_when))" if with_facility else "false",
+        # A painted lane (`intersections.RIGHT_HOOK_FT`).
+        painted_lane="(s.facility = 'lane')" if with_facility else "false",
         speed="s.road_speed_mph" if traits else "NULL::smallint",
         lanes="s.road_lanes" if traits else "NULL::smallint",
         oneway="s.road_oneway" if traits else "NULL::boolean",
@@ -1112,6 +1114,7 @@ def roads_by_way(
             urban,
             half_step,
             car_free,
+            painted_lane,
         ) in cursor.fetchall():
             found[(idx, way_id)] = Road(
                 tier=int(tier) if tier is not None else None,
@@ -1123,6 +1126,7 @@ def roads_by_way(
                 urban=urban,
                 half=half_step is True,
                 car_free=car_free is True,
+                painted_lane=painted_lane is True,
             )
     return found
 

@@ -224,8 +224,10 @@ def test_a_stretch_is_read_back_by_its_blocks_and_latitudes_at_exactly_its_tier(
     assert lts_sentinels.stretch_problems(got)
 
 
-def test_validate_refuses_a_stretch_left_at_avoid(monkeypatch) -> None:
+def test_validate_refuses_a_stretch_left_at_avoid(monkeypatch, settings, caplog) -> None:
     from pipeline import run
+
+    settings.REBUILD_OWNER_CALLS_REFUSE = True
 
     blocks = [SimpleNamespace(feature_id="dc-s", facts=SimpleNamespace(name="SOUTH CAPITOL ST BN"))]
     context = SimpleNamespace(
@@ -243,6 +245,12 @@ def test_validate_refuses_a_stretch_left_at_avoid(monkeypatch) -> None:
         run.assert_owner_stretches(context, [row])
     assert seen["ids"] == ["dc-s"]
     assert run.assert_owner_stretches(context, []) == []
+    # By default the gap is listed for the raters and the build goes on (the owner,
+    # 2026-11-13: "Ignore my own calls").
+    settings.REBUILD_OWNER_CALLS_REFUSE = False
+    with caplog.at_level("WARNING", logger="pipeline.run"):
+        assert len(run.assert_owner_stretches(context, [row])) == 1
+    assert any("432" in r.getMessage() for r in caplog.records)
 
 
 # --- The owner's rating rules over the whole table (review 2026-10-29) ---------------------
@@ -350,3 +358,36 @@ def test_validate_drops_exempt_rural_roads_and_listed_bans(monkeypatch) -> None:
     monkeypatch.setattr(lts_sentinels, "open_ban_ways", lambda schema: [11, 12])
     with pytest.raises(run.ValidationFailed, match="MDOT SHA"):
         run.assert_rating_rules(context)
+
+
+def test_an_unread_stretch_or_reference_street_still_refuses_with_the_setting_off(
+    monkeypatch, settings
+) -> None:
+    """Review of #1285: a gap from the owner's call is listed, but a stretch or street with no
+    rows read is a data fault and refuses the build whatever REBUILD_OWNER_CALLS_REFUSE."""
+    from pipeline import run
+
+    settings.REBUILD_OWNER_CALLS_REFUSE = False
+    blocks = [
+        SimpleNamespace(feature_id="dc-s", facts=SimpleNamespace(name="SOUTH CAPITOL ST BN")),
+        SimpleNamespace(feature_id="dc-c", facts=SimpleNamespace(name="CONNECTICUT AVE NW")),
+    ]
+    context = SimpleNamespace(
+        require_reference=lambda: SimpleNamespace(road_blocks=blocks), staging_schema="x"
+    )
+    monkeypatch.setattr(
+        lts_sentinels, "stretch_tiers", lambda schema, s, ids: lts_sentinels.StretchTiers(s, 0, 0)
+    )
+    row = ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432")
+    with pytest.raises(run.ValidationFailed, match="was not checked"):
+        run.assert_owner_stretches(context, [row])
+
+    def street(total, north):
+        return lambda schema, name, ids, lat: lts_sentinels.StreetTiers(
+            name, lat, total, total, north, north
+        )
+
+    for total, north in ((0.0, 0.0), (1000.0, 0.0)):
+        monkeypatch.setattr(lts_sentinels, "street_tiers", street(total, north))
+        with pytest.raises(run.ValidationFailed):
+            run.assert_reference_lts4_street(context, "CONNECTICUT AVE NW", 0.6, 38.9126, 0.95)

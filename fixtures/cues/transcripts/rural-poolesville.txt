@@ -134,7 +134,8 @@
   299 s   1604 m  #5 right Cattail Rd undefined: "Continue on Cattail Road for 1.7 miles." -> said
   780 s   4184 m  #6 left Darnestown Rd advance: "In 500 feet, left onto Darnestown Road. Busy junction." -> said
   798 s   4281 m  #6 left Darnestown Rd prepare: "In 170 feet, left onto Darnestown Road." -> said
-  811 s           note: "GPS is weak: turn cues paused."
+  805 s   4318 m  #6 left Darnestown Rd now (urgent): "About here: Left now onto Darnestown Road." -> said
+  829 s           note: "GPS is weak: turn cues paused."
   856 s   4592 m  #7 right Peach Tree Rd advance: "In 500 feet, right onto Peach Tree Road." -> said
   874 s   4689 m  #7 right Peach Tree Rd prepare: "In 170 feet, right onto Peach Tree Road." -> said
   881 s   4726 m  #7 right Peach Tree Rd now (urgent): "Right now onto Peach Tree Road." -> said

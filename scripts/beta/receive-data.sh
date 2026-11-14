@@ -278,6 +278,8 @@ if [ "$command_name" = files ]; then
 		for build_dir in "$bundle"/tiles/*/*/; do
 			[ -d "$build_dir" ] || continue
 			rel=${build_dir#"$bundle"/tiles/}; rel=${rel%/}
+			# The region packs travel as their own part (packs), not as a router graph.
+			[ "${rel%%/*}" != offline-packs ] || continue
 			grep -qxF "${rel%%/*}=${rel#*/}" <<<"$(tr ' ' '\n' <<<"$pairs")" ||
 				note "skipping tiles/$rel: not in this bundle's MANIFEST (left by an earlier bundle)"
 		done
@@ -311,6 +313,23 @@ if [ "$command_name" = files ]; then
 		# changes, so nothing restarts.
 		install_listed tiles/transit/ 1
 		note "transit schedule installed"
+	fi
+
+	if has_part packs; then
+		# The region packs for riding off grid: the build folder first, the manifest that names it
+		# last by rename, so the api never lists a pack that is not there yet. No delete: a phone
+		# part way through a download still finishes it; builds beyond the newest two other than
+		# the manifest's are removed after.
+		[ -n "$(listed tiles/offline-packs/manifest.json)" ] || die "SHA256SUMS does not list tiles/offline-packs/manifest.json"
+		install_listed tiles/offline-packs/ 0 tiles/offline-packs/manifest.json
+		cp "$bundle/tiles/offline-packs/manifest.json" "$data_root/tiles/offline-packs/.manifest.json.new"
+		chmod 644 "$data_root/tiles/offline-packs/.manifest.json.new"
+		mv -f "$data_root/tiles/offline-packs/.manifest.json.new" "$data_root/tiles/offline-packs/manifest.json"
+		packs_now=$(sed -n 's/^ *"dir": *"\(packs-[^"]*\)".*/\1/p' "$data_root/tiles/offline-packs/manifest.json" | head -n 1)
+		(cd "$data_root/tiles/offline-packs" && find . -maxdepth 1 -mindepth 1 -type d -name 'packs-*' ! -name '*.part' -printf '%f\n' | sort -r | { grep -vxF -- "$packs_now" || true; } | tail -n +2) | while IFS= read -r old; do
+			rm -rf -- "$data_root/tiles/offline-packs/$old"
+		done
+		note "region packs installed: $packs_now"
 	fi
 
 	if has_part photon; then

@@ -91,8 +91,8 @@ the stricter `WORTH_OVER_TARGET`, and up to the target `WORTH_UP_TO_TARGET`, hal
 default's price, OWNER-DECISIONS 435; below the top the same rule holds at `worth_ratio`,
 which rises with the slider). A candidate past the
 ceiling is never taken, and the router's own price for the route, and any credit for
-trail, do not come into it. A trip past the working span (`REFINE_MAX_SPAN_M`) is
-planned leg by leg (`refine_long`).
+trail, do not come into it. A Trailmaxxing trip past `LONG_CALM_SPAN_M` is planned
+leg by leg (`refine_long`); any other is searched in one piece up to `REFINE_MAX_SPAN_M`.
 """
 
 from __future__ import annotations
@@ -161,10 +161,22 @@ RETRACE_SLACK_M = 50.0
 RETRACE_MATCH_M = 2.0
 # Rounds in a row that may not beat the best score before the search gives up.
 REFINE_PATIENCE = 2
-# The longest span (metres of straight line) the search runs on, as the avoid
-# half of the hills slider has its own (`routing.AVOID_MAX_SPAN_M`): on the live
-# router a cold 42-48 km request took 33 s without alternates.
-REFINE_MAX_SPAN_M = 30_000
+# The longest span (metres of straight line) the search runs on in one piece, as the
+# avoid half of the hills slider has its own (`routing.AVOID_MAX_SPAN_M`). It was 30 km
+# from September, when on the live router a cold 42-48 km request took 33 s without
+# alternates. Re-measured on the PC's scorecard runs of 2026-11-12 (five runs each): at
+# Default, Dupont Circle to Reston (27.8 km) planned with the search in 3.9 to 5.0 s and
+# Silver Spring to Columbia (28.7 km) in 4.0 to 9.2 s; past the span, Old Town to Bowie
+# (31.0 km) took 5.0 to 6.0 s and Union Station to the Inner Harbor (54.6 km) 10.9 to
+# 19.9 s with no search at all. So 60 km (37 mi), which takes in DC to Baltimore, leaves a
+# DC-to-Baltimore plan at least 20 s of the 40 s budget for its rounds, which stop at the
+# deadline as on any plan (`_refine_limit`'s "time", `REFINE_ROUND_MIN_S`). Our default,
+# not measured on beta (backlog 2026-11-12, "Long rides get the calm search").
+REFINE_MAX_SPAN_M = 60_000
+# Past this span a Trailmaxxing plan at the top of the slider is planned leg by leg
+# (`refine_long`, `routing.long_calm_for`, OWNER-DECISIONS 256), as it has been since
+# 2026-10-03; it was the search's working span then and is kept where it was.
+LONG_CALM_SPAN_M = 30_000
 # A junction is a target for avoidance from this cost (feet): the red ones. An
 # orange crossing is worth about a block of detour, which is not worth the
 # second route the search costs (2 to 3 s on the live host); it still counts in

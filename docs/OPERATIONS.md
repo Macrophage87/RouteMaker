@@ -67,6 +67,7 @@ Contents:
 - [Agency stress ratings (agency-lts.json)](#agency-stress-ratings-agency-ltsjson)
 - [The Scenic layer (v0.8.0)](#the-scenic-layer-v080)
 - [Popular bike corridors (v0.11.0)](#popular-bike-corridors-v0110)
+- [Refreshing the places after a map rebuild](#refreshing-the-places-after-a-map-rebuild)
 - [Deployment actions](#deployment-actions)
 - [Build ids](#build-ids)
 - [After a host restart: the postgis bind race](#after-a-host-restart-the-postgis-bind-race)
@@ -92,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.27.0](#deploying-v0270)
 - [Deploying v0.26.0](#deploying-v0260)
 - [Deploying v0.25.1](#deploying-v0251)
 - [Deploying v0.25.0](#deploying-v0250)
@@ -773,7 +775,7 @@ Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 anywhere on it (near its ends too since routing hunt 4, J4-1) asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
 are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
-the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
+the crossing search did not cover (legs adding up past 37 mi [60 km], a long Trailmaxxing
 plan searched leg by leg, a search cut short, a climb seek, a loop, a route Mountain Bike's
 choice swapped in) asks round each red after it (`core.red_crossings`; an owner report of
 the GW Parkway at Tulane Dr on a long Mount Vernon ride): a plain one-leg plan first asks
@@ -3406,7 +3408,12 @@ memory and the staging schema, never a tile). The old VALIDATE stage split in tw
 owner's stretches, military and secured closures, Mass Ride capacity, long trails, calm
 runs) and **VALIDATE_TILES** the ones that read a built graph (the Lua loaded, no rule
 violations, the admin and timezone databases, grade, the derived and weekend tags, the
-bicycle-closure read-back). A segment failure now costs the 2.5 hours up to INJECT_TAGS
+bicycle-closure read-back). Since v0.27.0 a road the owner called (the reference LTS 4
+street, the owner's stretches and `fixtures/known-roads`) that comes out at another level is
+logged as `owner's call not met (listed for the raters)` and the build goes on (the owner,
+2026-11-14: "My calls were because the old metrics were way off. These aren't");
+`REBUILD_OWNER_CALLS_REFUSE=1` in `.env` refuses it instead. A stretch with no rows left
+refuses the build either way. A segment failure now costs the 2.5 hours up to INJECT_TAGS
 instead of that plus the whole tile stage: job 8023's calm-run failure, found after the
 tiles in attempt 3, is found in attempt 1. An alert now says
 `rebuild failed at stage validate_segments` or `... validate_tiles`.
@@ -3843,8 +3850,9 @@ only when a Mass Ride is open; no edge, compose or deploy change.
 The water and restrooms layer (`frontend/src/lib/waterRestrooms.ts`) is
 OpenStreetMap data and needs nothing beyond the ODbL credit. Its file,
 `frontend/src/amenity-data/water-restrooms.json`, is a committed snapshot built
-by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
-not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
+by `scripts/build_water_restrooms.py` from the extract; the rebuild does not write it, and
+`scripts/refresh_places.py` refreshes it after each map rebuild ("Refreshing the places after a
+map rebuild").
 Since 2026-10-10 the script merges a restroom node into the restroom building
 around it and leaves out historic springs (rules and merge order in that
 README); the committed file was refreshed with both on 2026-10-11, for v0.4.0.
@@ -3863,8 +3871,9 @@ compressed, and is named by the published front end's script.
 
 The barrier list Cargo and Tandem plan round (`src/core/geodata/barriers.json`,
 `core.barriers`; docs/DEVELOPMENT.md, "Barriers on Cargo and Tandem routes") is OpenStreetMap
-data too, a committed snapshot the weekly rebuild does not refresh (the first, #1210, from the
-2026-11-02 extract: 11,734 barriers). A refresh, read only, after a map rebuild,
+data too, a committed snapshot the rebuild does not write (the first, #1210, from the
+2026-11-02 extract: 11,734 barriers). `scripts/refresh_places.py` refreshes it with the places
+after each map rebuild ("Refreshing the places after a map rebuild"); on its own, read only,
 on the build host with pyosmium:
 
     python scripts/barrier_census.py --pbf <DATA_ROOT>/extracts/source.osm.pbf \
@@ -3877,8 +3886,8 @@ release's notes, not in the repository's data.
 The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
 v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
 Its file, `frontend/src/amenity-data/food.json`, is a committed snapshot built
-by `scripts/build_food.py` from the extract; like the water file, the weekly
-rebuild does not refresh it. The file committed with the feature was empty
+by `scripts/build_food.py` from the extract; like the water file, `scripts/refresh_places.py`
+refreshes it after each map rebuild. The file committed with the feature was empty
 (the search said "No food data yet"); the v0.5.0 rebuild on the build host
 ran it once on 2026-10-11 (15,480 places, committed in #92), next to the
 water layer's refresh by hand, and a later refresh runs the same:
@@ -3886,7 +3895,8 @@ water layer's refresh by hand, and a later refresh runs the same:
     .venv311/bin/python scripts/build_food.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
-then records the printed counts, size and digest in
+(after a map rebuild, `scripts/refresh_places.py` runs it with the
+others), then records the printed counts, size and digest in
 `frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
 the file. It is a hashed asset under `/assets/`, fetched on the first search
 only (2.3 MB, 555 KB with `gzip -9`, for the committed file) and left out of the service worker's
@@ -4728,6 +4738,32 @@ the first host to run it is the first test of it.
    docker compose exec -T rebuild python3 scripts/install_reference_data.py \
        --data-root /data --extract /data/extracts/source.osm.pbf \
        --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson </dev/null
+   ```
+
+   **The road panel's Setting line (optional, v0.27.0).** People, homes and jobs
+   within half a mile of each way go to `setting.json`; without it the line says
+   urban or rural alone. One Census block file and one LODES jobs file per state
+   the extract covers (DC 11, MD 24, VA 51, WV 54, PA 42), copied into
+   `"$DATA_ROOT/reference/inputs"` first
+   (`https://www2.census.gov/geo/tiger/TIGER2020/TABBLOCK20/tl_2020_<FIPS>_tabblock20.zip`,
+   `https://lehd.ces.census.gov/data/lodes/LODES8/<st>/wac/<st>_wac_S000_JT00_2023.csv.gz`).
+   Never a stress input. Like `urban-areas.json` it lists the way ids of the extract
+   it was made from, so **remake it whenever the extract changes**: a way added later
+   has no counts and its line falls back to plain urban or rural.
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --extract /data/extracts/source.osm.pbf \
+       --census-blocks /data/reference/inputs/tl_2020_11_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_24_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_51_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_54_tabblock20.zip \
+       --census-blocks /data/reference/inputs/tl_2020_42_tabblock20.zip \
+       --lodes-wac /data/reference/inputs/dc_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/md_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/va_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/wv_wac_S000_JT00_2023.csv.gz \
+       --lodes-wac /data/reference/inputs/pa_wac_S000_JT00_2023.csv.gz </dev/null
    ```
 
    **Every input path is absolute and inside the container.** A bare
@@ -5728,7 +5764,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept. A peaceful protest's closure (a protest word and no violence word, `is_peaceful_protest`, 2026-11-13) is kept as ordinary closures instead, under AlertDC's title, with the same 3 h age and reopening |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
@@ -5742,17 +5778,21 @@ without it NPS is simply not read. The host needs egress to the four hosts, and 
 Maryland's Road Closure Reporter (PLAYBOOK §0), and (v0.26.0) `www7.montgomerycountymd.gov` for
 Montgomery County's road closures.
 
-**A source that reads as nothing** (v0.26.0). Each good read's count of closures and notices is
-kept (the last 8). A read of none from a source whose usual count (the median of those, once there
-are 3) is 5 or more is not taken: its last copy is kept, and the run fails at once with "read as
-nothing: <source>", so the operations page shows it the same day. It almost always means the page
-or layer changed shape (AlertDC's RSS turning into an HTML list in 2026): fetch it by hand and
-compare with its sample in `tests/data/closures`. A source that is often empty (Montgomery
-County's closures) never trips it, and MPD and AlertDC are left out (their closures end in the
-reading, so none left is real news). Once the kept copy is past its "Dropped after" age the empty
-read is taken, and further empty reads are quiet. Counts are zones and notices, so a closure along
-several stretches counts each. 8, 3 and 5 are our default, unmeasured
-(`COUNTS_KEPT`, `ZERO_ALARM_READS`, `ZERO_ALARM_USUAL` in src/core/closure_sources.py).
+**A source that has stopped making sense** (v0.26.0, widened in v0.27.0; `core.feed_sense`).
+Each good read's count of closures and notices is kept (the last 8). A read that does not fit the
+source's usual count (the median of those, once there are 3) is not taken: none from a source that
+usually has 5 or more, or under a fifth of the usual from one that usually has 20 or more. Its last
+copy is kept, and the run fails at once with "read did not make sense: <source>" (the detail says
+"read as nothing (usually N items)" or "read only N items (usually M)"), so the operations page
+shows it the same day. It almost always means the page or layer changed shape (AlertDC's RSS
+turning into an HTML list in 2026), or a changed field made the parser drop most items: fetch it by
+hand and compare with its sample in `tests/data/closures`. A source that is often empty or small
+(Montgomery County's closures) never trips it, and MPD and AlertDC are left out (their closures end
+in the reading, so few or none left is real news). Once the kept copy is past its "Dropped after"
+age the read is taken and the counts start again from it, so the source is not judged again until
+it has 3 reads of its new size. Counts are zones and notices,
+so a closure along several stretches counts each. 8, 3, 5, 20 and a fifth are our default,
+unmeasured (`src/core/feed_sense.py`).
 
 **First checks on a new host.** The readers were built on saved sample pages
 (`tests/data/closures`), not on live downloads, so after the first run:
@@ -5785,7 +5825,9 @@ several stretches counts each. 8, 3 and 5 are our default, unmeasured
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.
 
-Closures follow the ride time (the When setting). Only closures known to be in effect
+Closures follow the ride time (the When setting); with Plan's Leave at (v0.27.0, #1239: `depart_at`
+on a bike plan, not Bikeshare or Rebalance Ride) they are those in force at that start. Go
+and rides always plan for now. Only closures known to be in effect
 reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
 away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
 around anywhere and give no warning or cue, not even when the TOPS source cannot be
@@ -6307,7 +6349,9 @@ files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
 | `second-record` | SHA's record for a road's other direction (route id character 15, "2"), within 130 ft (40 m) of the first | the first direction's level, as read |
 
 SHA's 5 is never read otherwise. The install prints `mdot-sha read by the owner's rule
-<rule>: N records`. Montgomery's rating still wins inside the county. The road panel shows
+<rule>: N records`. Since 2026-11-13 no agency's level sets a tier (`agency_lts.COMPARISON_ONLY`,
+the owner: "If the only row in why is agency, it's not a valid rating"); the reading is recorded
+for comparison, and SHA's bicycle ban still closes the way. The road panel shows
 SHA's own level and the reading: "LTS 4, read as LTS 3: a two-lane collector where SHA
 assumed 35 mph".
 
@@ -6392,7 +6436,8 @@ box's rebuild would refuse it hours later.
 Then rebuild. The rebuild logs `agency stress ratings: <agency>, N of M records matched, N
 ways` for each agency, and `import_cloud_build` (dry run and `--confirm`) prints
 `agency stress ratings in staging: Montgomery County Planning on N segments (sets the
-tier on N); DDOT on N ...; MDOT SHA on N ...`, with a `warning: no segment carries ...`
+tier on N); DDOT on N ...; MDOT SHA on N ...` (since 2026-11-13 "sets the tier on" reads 0 for every
+agency: their levels are comparison-only), with a `warning: no segment carries ...`
 line for any agency at 0. No such warning should appear.
 
 ## The Scenic layer (v0.8.0)
@@ -6559,6 +6604,51 @@ map's labels (`trail_name`; tile format 14). The class comes from two inputs:
    popular; `scripts/cloud/send-inputs.sh` refuses a reference folder without it.
 
 Refresh it about once a year: the classes are for drawing, not routing, and change slowly.
+
+## Refreshing the places after a map rebuild
+
+Backlog item "Data that says how old it is" (2026-11-13). The places riders act on in the moment
+(Find food, Places to see, water and restrooms, repair stands, bike racks, trail mile markers), the
+restricted sites with their gates, and the barrier list Cargo and Tandem plan round are committed
+files built from the OSM extract, and the rebuild does not write them. So after every map rebuild,
+once the swap is done, refresh them all from that rebuild's extract in one step, on the build host
+(pyosmium; each builder reads the whole extract in turn, so under the heavy-job lock with at least
+3,000 MB free):
+
+    free -m    # "available" at least 3,000 MB; else stop
+    flock <the host's heavy.lock> .venv311/bin/python scripts/refresh_places.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+Add `--cities` to fetch DDOT's and BCDOT's racks again (network); without it the cities' racks
+already in the file are kept, with their old date. The extract's day is the file's modified day
+(the day the rebuild downloaded and clipped it); give `--extract-date YYYY-MM-DD` when a copy lost
+it. It writes, in the checkout it runs from:
+
+- `frontend/src/amenity-data/` `water-restrooms.json`, `food.json`, `places.json`,
+  `trail-miles.json`, `bike-parking.json`, and `as-of.json` (each file's extract day, and the day
+  the cities' racks were fetched);
+- `frontend/src/restricted-data/restricted-sites.json` (the restricted sites and their gates; the
+  api image copies it too);
+- `src/core/geodata/barriers.json` (with the extract's day as its `built`); the census's coverage
+  report goes to `~/barrier-census-<day>.md`, kept with the release's notes, never committed.
+
+It ends with a change report, one line a file: the count before and after and how many came and
+went (`food: 15,663 -> 15,702 (+120, -81)`). A file left with under 80% of what it had (our
+default, unmeasured) is marked `CHECK`: a builder that read a truncated or wrong extract writes a
+small file rather than failing, so explain the drop before committing. Put the report in the
+rebuild's thread, update the counts in `frontend/src/amenity-data/README.md`'s "Status" sections
+when they matter, and commit the files on a branch for the next release. A builder that fails
+stops the run before `as-of.json` is written and prints the `git restore` line for the files it
+had already changed.
+
+The front-end files reach riders with the next front-end build; `barriers.json` and
+`restricted-sites.json` reach the router with the next api image (a hand ship). Riders see the dates in Settings, About, under the version: "Map data from
+Nov 10, 2026. Places and racks from Oct 9, 2026." The map's day is the live standard graph's build
+day (`GET /api/coverage`'s `properties.map_data`, from the `valhalla_upstream` row), so it moves
+with a map swap by itself; the places' day is the oldest in `as-of.json`, so it moves only with
+this refresh (it is also never newer than the cities' racks: run with `--cities` now and then).
+The climbs file is not part of it: it reads the live table, `manage.py build_climbs`
+("The Climbs layer").
 
 ## Deployment actions
 
@@ -7065,9 +7155,9 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   before.
 - **Loops (item 266)** ask for the way back up to 4 more times (every point, then every 2nd, 4th and 8th),
   each a /route, its reading and the whole loop's reading, inside 14 s (`refine.LOOP_BUDGET_S`); the
-  search then runs as for any plan up to 19 mi (30 km) of straight line in all, and not at all past it.
-  A loop is never a long calm plan, and its straight line counts the way back too, so a Trailmaxxing
-  loop with a 9.5 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
+  search then runs as for any plan up to 37 mi (60 km) of straight line in all (19 mi (30 km) until
+  v0.27.0), and not at all past it. A loop is never a long calm plan, and its straight line counts the
+  way back too, so a Trailmaxxing loop with an 18.6 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
   fault. Such a loop still has its red crossings asked round, each by its own stretch so the way
   back stays as made (`core.red_crossings`), and at the top of the slider its target distance and
   ceiling still hold (`_fit_target`; the 2026-11-08 hunt, R1: before, a loop past the span lost
@@ -7987,6 +8077,82 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.27.0
+
+The road panel's big coloured level with its why and facts (#1258), its Setting line (#1259) and
+pavement row; data dates in Settings About and places refreshed at every rebuild (#1237); Plan's
+Keep to compare and One way / Loop / Out and back (#1238); Plan's Leave at (#1239); the connector's
+parallel calls, prompts and "why this way" (#1234); foundations: rendered tests, a size budget,
+parts loaded on first use (#1235); anonymous daily usage totals (#1261, #1273); route surface at a
+glance (#1264); iPhone riders' steps (#1262); Check a route's busiest stretches (#1233); a live feed
+that answers but stopped making sense (#1263); the calm search on long rides (#1231); Cargo and
+Tandem barrier marks to go round (#1271); sign in with Discord, Google or Apple (#1270); off-grid
+region packs, server and phone (#1232, #1265); the phone in a pocket (#1236); protest closures as
+ordinary closures (#1252); closed-site and green-place labels (#1253, #1256, #1257); `osm_edit`'s
+`motor_vehicle` tags (#1260); the privacy policy's required parts (#1243).
+
+**No `lua/`, `valhalla/` or requirements change.** What changes for a deploy:
+
+- migrations 0064 (`DailyUsage`, a new table: day, tool, count) and 0065 (sign-in identities: a
+  new `SignInIdentity` table, and `User.discord_user_id` made nullable for accounts made with Google or
+  Apple);
+- a new middleware, `core.usage.UsageMiddleware`, counting a successful answer per tool per day,
+  and new endpoints: `GET /api/offline/packs` (30 a minute, our default; `503 not_built` until the
+  next map rebuild), `POST /api/usage` (10 a minute, our default), and `auth/sign-in`,
+  `auth/sign-ins`, `auth/unlink`, `auth/google/*`, `auth/apple/*`, all through `location /`;
+- `compose.yaml`: optional api settings `GOOGLE_*`, `APPLE_*` (unset: only Discord is offered) and
+  `PRIVACY_OPERATOR` (unset: the privacy page names nobody); Caddy mounts `${DATA_ROOT}/tiles`
+  read-only for `/offline-packs/*`;
+- the beta's nginx template: a `/offline-packs/` location for the region packs;
+- `scripts/beta/` (`ship-data.sh`, `receive-data.sh`: a new `packs` part, sent only once a
+  rebuild has built them);
+- pipeline changes that take effect only at the next map rebuild, in its own thread: the region
+  packs (`pipeline/offline_packs.py`), the segment table's Setting and pavement columns (the road
+  panel reads them only where the live table has them), and `setting.json` from the Census files
+  (docs/OPERATIONS.md, "The road panel's Setting line");
+- the Android app: the lock-screen turn card, tone and buzz need a new app build; the web app
+  rides as before without it.
+
+The release agent's gate stops on this tag (the compose mount, the nginx template, and
+`src/pipeline/schema.py`), so **the beta is a hand ship**. The schema reason asks for no map ship
+with this release: the road panel reads the new Setting and pavement columns only where the live
+table has them, so they arrive with the next map rebuild and its data ship.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.27.0
+  (annotated) on that commit, from the PC.
+- [ ] **Migrations.** 0064 adds a table. 0065 adds a table and drops `NOT NULL` from
+  `User.discord_user_id`: the v0.26.0 api never writes a null there and reads accounts as before. Both
+  reversible while no account was made with Google or Apple (0065 backwards fails on a null
+  `discord_user_id`; no such account exists until those keys are set).
+- [ ] **At home**, as "Deploying a planner and front-end release", before the weekly rebuild
+  (Tuesday 08:00 UTC) or with it paused, and not between 07:00 and 07:30 UTC: rollback point (tag
+  the running api and pipeline images `pre-rel-<short>`, keep `index.html`), fast-forward the
+  checkout, `docker compose build api rebuild`, `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api
+  worker rebuild caddy` with no job todo or doing (caddy for the new mount), then the front end.
+  No router restart, no map rebuild.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, `migrate`, the worker recreated, the front end built on the PC), with the nginx
+  template re-rendered, `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload`
+  (as in "A new release sha", step 9). `PRIVACY_OPERATOR=` with the owner's name in `.env` by hand
+  (BETA-RUNBOOK's settings table), then `beta-compose.sh up -d api`. Then `smoke-test.sh --local`,
+  `smoke-test.sh --public <url> --open`, `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed
+  v0.27.0`, `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not refresh the
+  agent's own copy of `receive-data.sh`, which v0.27.0 changes), and `auto-release.sh resume`.
+- [ ] **Beta check.** `/privacy` names the operator in Contact; `GET /api/offline/packs` answers
+  `503 not_built` and Settings' "Map for no signal" says it needs a signal or lists none until the
+  next rebuild; Settings About shows the map data's dates; signing in offers Discord alone until
+  Google or Apple keys are set (each needs its outbound host: `accounts.google.com`,
+  `oauth2.googleapis.com`, `appleid.apple.com`).
+- [ ] **Spot checks.** Tap a road: the big coloured level with its why, and the facts with their
+  sources. Plan: Keep, then a second route shows the compare table; Out and back comes back the
+  same way; When's Leave at takes a day and time. Open a GPX in Check a route: its busiest
+  stretches each offer Use this way. A route shows its paved, gravel and dirt miles.
+- [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
+  and the v0.26.0 front end. The usage table and the identities table stay (the v0.26.0 api ignores them). The nginx
+  `/offline-packs/` location can stay. On the beta, the images and `index.html` alone: no
+  `restore-dump`.
+
 ## Deploying v0.26.0
 
 The first wave: My routes in its own window (#1168), archived assistant test drafts (#1169), sudden
@@ -8059,14 +8225,15 @@ before the tag.
   `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload` (as in "A new release
   sha", step 9); and, when the owner has the bug-reports forum's webhook, `FEEDBACK_WEBHOOK_URL=` in
   `.env` and `beta-compose.sh up -d api`. Then `smoke-test.sh --local`, then `smoke-test.sh --public
-  <url> --passwords-file <file>`, then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
+  <url> --open` (no site password since 2026-10-22), then `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.26.0`
   (the new script's, not the installed v0.25.x copy's: only the new one records v0.25.1 as the
   release `rollback` puts back), then
   `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not reinstall the agent, and
   v0.26.0 changes it: #1195's quick deploys, `rollback`, `rollback-map`, `ship-held` and the
-  workflow image pull start with the next release), then `~/routemaker-beta-state/cd/bin/alert.sh
-  install` (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship
-  refreshes the script, not its timers), then `auto-release.sh resume`.
+  workflow image pull start with the next release), then `"$RM_SRC/scripts/beta/alert.sh" install`
+  (#1179's nightly scorecard, 3 AM ET, report only, and #1197's new checks: the ship refreshes the
+  script, not its timers; the checkout's copy, because `install` copies itself into `cd/bin` and the
+  `cd/bin` copy stops with "are the same file"), then `auto-release.sh resume`.
 - [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
   with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
   means the host is not answering (the run itself only fails after 45 minutes), and the next
@@ -8487,8 +8654,9 @@ each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and
 access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
 15 (our defaults). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
-PC against the extract (`frontend/src/restricted-data/README.md`); run it again after a map
-rebuild that changes a site, as the bike racks' file is. No map rebuild is needed for it.
+PC against the extract (`frontend/src/restricted-data/README.md`); `scripts/refresh_places.py`
+reruns it after each map rebuild ("Refreshing the places after a map rebuild"). No map rebuild
+is needed for it.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
@@ -9637,7 +9805,16 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    zones read before stay in use as the labels below say, and the failing runs are what turns
    `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
-   real reading here.
+   real reading here. Once a feed has 3 good reads (v0.27.0, `core.feed_sense`, as the closure
+   sources), a read of none from one that usually has 5 or more is not taken (the last copy is kept
+   until it is 2 hours old) and the run fails with `read did not make sense: md`. The "under a
+   fifth" rule of the closure sources is not used here: zones in force now can fall a long way
+   when a night's work ends. So does a feed whose own
+   `feed_info.update_date` is more than 3 days old (`md not updated by its publisher since ...`):
+   its zones are still used, since they are still what the state publishes, but the feed has
+   stopped being fed and is worth a look. There is no switch to silence it: every run fails until
+   the publisher updates the feed (or the feed is dropped, below). All these numbers are our
+   default, unmeasured.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
@@ -10253,7 +10430,9 @@ Python 3.11 or later, standard library only.
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
-  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing);
+  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing; `motor_vehicle` and
+  `motor_vehicle:conditional` for a road closed or opened to cars, from the managing agency's
+  own notice or what is posted there);
   `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
@@ -10343,3 +10522,54 @@ the signal returns, the server plans it again.
   about 250 miles (`MAX_LINE_M`, our default) is refused with a 400.
 - Privacy: the request carries the route's line only; nothing about the rider is logged or
   kept, and the phone keeps the network in memory for the ride only.
+
+### Region packs (v0.27.0)
+
+The optional whole-area download beside each ride's mile-wide network (the owner, 2026-11-12:
+"Potentially split it by subregion"; "Beltway, NoVA, NW exurbs, Baltimore and suburbs, etc.").
+Six packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
+exurbs, Baltimore and suburbs, the rest of the map (the coverage box less the others), and
+Everything, the whole coverage box in one pack (Stephen, 2026-11-13: "Offer everything too to
+download"; the largest, so the biggest memory use on the phone in a ride with no signal). The
+borders are our draft, approximate; each pack also takes the roads within a mile of its border.
+
+- **Built after every map swap**, first thing in the rebuild's last stage, from the live
+  `offline_way` table: `${DATA_ROOT}/tiles/offline-packs/packs-<build id>/<region>.json.gz`,
+  then `manifest.json` beside it is replaced in one rename to name that folder. The folder is
+  named `packs-...`, not a bare build id, so the tile pruning and the beta ship script never
+  take it for a router graph. The manifest's build and the one before it are kept. The log
+  reads `offline pack <region>: N ways, B bytes` for each; that is where the sizes come from.
+  A failure is logged (`offline region packs not built`) and never fails the rebuild: the map
+  is already live, and the previous packs stay listed. A retry with the same build id reuses
+  the packs already written.
+- **Beta** runs no rebuild: `scripts/beta/ship-data.sh` sends the packs as their own part,
+  `packs` (the manifest and the folder it names), and `receive-data.sh files` installs the
+  folder, then the manifest by rename, and keeps one build before it. Without packs at home
+  the ship script warns; `--without packs` says so.
+- **Listed** by `GET /api/offline/packs` (each pack's name, bytes, checksum and address, and
+  the ride's level prices); 503 `not_built` before the first build. 30 a minute per client
+  (our default).
+- **Served** by the web server, never an api worker:
+  `/offline-packs/packs-<build id>/<region>.json.gz`, pack files only (never the manifest),
+  same-site only, kept a day. Compose's Caddy mounts `${DATA_ROOT}/tiles` read-only at
+  `/srv/tiles`; beta's nginx reads the folder directly. **Deploy steps:** on beta, render the
+  nginx template again and reload nginx (the new `/offline-packs/` location); on compose,
+  `docker compose up -d caddy` for the new mount.
+- To build the packs by hand for the live map (after a swap whose pack build failed), in
+  `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
+  then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
+  settings.COVERAGE_BBOX)`.
+- **On the phone** (`frontend/src/lib/regionPack.ts`, `RegionPackSetting.tsx`): Settings >
+  Riding, "Map for no signal", one picker: None or an area (with its size). Choosing one
+  downloads it, checks its SHA-256 against the list, and keeps it compressed in IndexedDB
+  (`routemaker-region-pack`), one area at a time; the one kept before stays until the new one
+  is checked and stored. None removes it. While Settings is open with a signal, a kept area
+  whose checksum the list no longer gives (the map was rebuilt) is downloaded again.
+- **In a ride**: when a re-plan fails for no signal, the way back is looked for first on the
+  ride's own mile-wide network, then, only if that finds none, on the kept area: unzipped when
+  the phone loses its signal (or at the first re-plan that needs it) and held until the ride
+  ends, so a ride with a signal never holds it in memory; priced with the ride's own
+  level prices where they were fetched, else the Default ride type's kept with the pack.
+- **Where neither finds a way**, Ride says the no-signal line with where the planned route is
+  and, where it has a name, its street ("The planned route is 400 feet to the northeast. It
+  is on Beach Drive."), and draws the way back to it on the map.

@@ -11,6 +11,7 @@ import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { leaveNowArrival } from "../lib/arrival.ts";
+import { startMs } from "../lib/startTime.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { firstWordAndRest, t } from "../lib/i18n.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
@@ -36,7 +37,8 @@ import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
-import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { IPHONE_RIDE_LINE, rideTooLong } from "../lib/navigate.ts";
+import { installState } from "../lib/installOffer.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
 import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine, walksLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
@@ -55,7 +57,7 @@ import { COPY_LINK, ROUTE_FOLDS, ROUTE_FOLD_GROUP, chartFoldOpen } from "../lib/
 import { BROADCAST_ABOUT, BROADCAST_LABEL, SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
 import { BROADCAST_HOLD_HINT } from "../lib/broadcastQr.ts";
 import { useHold } from "../lib/useHold.ts";
-import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
+import { SHARE_IMAGE_LABEL } from "../lib/shareCardBasics.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
   SHARE_KEEP_LABEL,
@@ -67,7 +69,7 @@ import {
   type ShareKeep,
   type ShareKeepChoice,
 } from "../lib/sharedRoutes.ts";
-import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts } from "../lib/quickFigures.ts";
+import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts, surfaceGlanceParts } from "../lib/quickFigures.ts";
 import { facilityRows } from "../lib/facilityBar.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
@@ -262,6 +264,8 @@ export interface RouteSectionProps {
   slow: boolean;
   preset: PresetId;
   dials: Dials;
+  /** Cargo and Tandem: the barriers this plan goes around (planDials.barrierAvoid, lib/barriers.ts). */
+  barrierAvoid?: [number, number][];
   points: LonLat[];
   cancelLong: () => void;
   planButtonRef: RefObject<HTMLButtonElement | null>;
@@ -302,14 +306,16 @@ export interface RouteSectionProps {
   go: GoRouteControls;
   /** The transit ride types' options and departure (TransitSummary). */
   transitControls: TransitControls;
-  /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now; empty otherwise. */
+  /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now or at Plan's start; empty otherwise. */
   light: readonly LightMark[];
-  /** When the route shown ends leaving now (lib/arrival.ts leaveNowArriveMs), kept current each minute; else null. */
+  /** When the route shown ends leaving now, or at Plan's start time (lib/arrival.ts leaveNowArriveMs); else null. */
   arriveMs: number | null;
   /** Weather along the route, leaving now (lib/weather.ts), once checked; else null. */
   weather: WeatherReport | null;
   /** The planner out of reach while the page is offline: the error box says offline, the one message (P11). */
   offline?: boolean;
+  /** Plan's Check a route (CheckRoute.tsx) on a route that follows an opened file; null otherwise. */
+  check?: ReactNode;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -411,7 +417,10 @@ export function RouteSection(props: RouteSectionProps) {
           transitControls={{ ...transitControls, busy: stale }}
           light={light}
           arriveMs={arriveMs}
+          startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
+          check={props.check ?? null}
+          barrierAvoid={props.barrierAvoid}
         />
       )}
     </section>
@@ -603,7 +612,7 @@ interface NoteLine {
   short?: string | null;
 }
 
-function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false): NoteLine[] {
+function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false, barrierAvoid: readonly [number, number][] = []): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
   // A stop or the end not open to the public is a warning, shown with the route's alerts under its totals (RouteAlerts).
@@ -634,7 +643,7 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   const easy = easyMtbNote(route);
   if (easy) lines.push({ key: "easy-mtb", className: "notice easy-mtb-warning", icon: "warn", text: easy.text, short: easy.short });
   // Cargo and Tandem: an impassable barrier no way round was found for, or the barriers on the route (lib/barriers.ts).
-  const barrier = barrierNote(route);
+  const barrier = barrierNote(route, barrierAvoid.map(([lon, lat]) => ({ lon, lat })));
   if (barrier) {
     lines.push(
       barrier.warn
@@ -699,7 +708,7 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
  * hears every share: the bar's name, and the strip's. `line` takes the key's place, or the plain words', where the ride
  * type says it its own way (Group Ride, lib/quickFigures.ts groupRideLine; the audit's P6).
  */
-function StressFigure({ segments, go, line = null }: { segments: StressSegment[]; line?: string | null; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
+function StressFigure({ segments, go, line = null, surface = [] }: { segments: StressSegment[]; line?: string | null; surface?: readonly string[]; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
   const keyHintId = useId();
   // One image to a screen reader, named with each share; the line under it says the same in text.
   const bar = (
@@ -731,6 +740,13 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
             {stressBarKey(segments)}
           </p>
         )}
+        {/* Surface at a glance (Plan item 10): the unpaved riding by kind, where the route has some. */}
+        {surface.length > 0 && (
+          <p className="stress-key surface-line">
+            <span aria-hidden="true">{surface.join(" · ")}</span>
+            <span className="visually-hidden">{`${surface.join(", ")}.`}</span>
+          </p>
+        )}
       </figure>
     );
   }
@@ -745,7 +761,7 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
         ))}
       </div>
     ) : null;
-  const parts = line ? [line] : stressPlainParts(go.route);
+  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route);
   return (
     <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
       <figcaption id="stress-figure-caption" className="visually-hidden">
@@ -781,8 +797,8 @@ function StressFigure({ segments, go, line = null }: { segments: StressSegment[]
 const climbCount = (n: number) => (n === 1 ? t("1 climb") : t("{count} climbs", { count: n }));
 
 /** " · arrive 8:27 AM" after the route's time: when the ride ends if it starts now, as the ride shows it. */
-function ArriveAt({ arriveMs }: { arriveMs: number }) {
-  const { shown, said } = leaveNowArrival(arriveMs);
+function ArriveAt({ arriveMs, startsMs }: { arriveMs: number; startsMs: number | null }) {
+  const { shown, said } = leaveNowArrival(arriveMs, undefined, startsMs);
   return (
     <span className="route-arrive">
       <span aria-hidden="true"> · {shown}</span>
@@ -816,8 +832,13 @@ export function RouteSummary({
   transitControls,
   light = [],
   arriveMs = null,
+  startsMs = null,
   weather = null,
+  check = null,
+  barrierAvoid = [],
 }: {
+  /** Cargo and Tandem: the barriers this plan goes around (lib/barriers.ts), [lon, lat]. */
+  barrierAvoid?: readonly [number, number][];
   route: RouteResponse;
   answer: RouteResponse | null;
   choice: number;
@@ -851,8 +872,12 @@ export function RouteSummary({
   light?: readonly LightMark[];
   /** When the ride ends leaving now (lib/arrival.ts leaveNowArriveMs), shown after the route's time; null for none. */
   arriveMs?: number | null;
+  /** Plan's start time (lib/startTime.ts), when set: the arrival is for leaving then, not now. */
+  startsMs?: number | null;
   /** Weather along the route (lib/weather.ts): the NWS alerts and rain coming, with the warnings. */
   weather?: WeatherReport | null;
+  /** Plan's Check a route on an opened file (CheckRoute.tsx), under the warnings; null otherwise. */
+  check?: ReactNode;
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -872,7 +897,7 @@ export function RouteSummary({
   const segments = capacity || noBike ? [] : stressSegments(route.stress_m, route.stress_spans);
   // Group Ride: quiet roads and its turns, in place of the shares (the 2026-10-28 audit, P6).
   const groupLine = preset === "group-ride" ? groupRideLine(route) : null;
-  const notes = noteLines(route, points, light, mode === "go");
+  const notes = noteLines(route, points, light, mode === "go", barrierAvoid);
   const pace = paceText(route);
   // A transit trip's rides joined (lib/tripRides.ts): the distance ridden, the climb and the chart are every ride's.
   const trip = tripRoute(route);
@@ -890,7 +915,7 @@ export function RouteSummary({
       {/* <bdi>: "31 min" keeps its order on a right-to-left page (DC's languages, 2026-10-28). */}
       <bdi>{timeText}</bdi>
       {/* A transit trip's arrival in Go only (the 2026-11-12 backlog's scope: Plan's transit panel unchanged). */}
-      {arriveMs != null && !(transit && mode !== "go") && <ArriveAt arriveMs={arriveMs} />}
+      {arriveMs != null && !(transit && mode !== "go") && <ArriveAt arriveMs={arriveMs} startsMs={startsMs} />}
     </>
   );
   const calm = calmPercent(route.stress_m);
@@ -935,16 +960,27 @@ export function RouteSummary({
       )}
     </>
   ) : null;
+  // An iPhone or iPad has no RouteMaker app yet (Stephen 2026-11-13: after Android), so a ride there stops when the screen
+  // locks: said in one shown line under Start, with the long-ride answer (backlog 2026-11-12, ride item 14).
+  const iphone = !ridesHidden() && installState().ios;
   const startHint = rideable ? (
-    // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
-    // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
-    <p id="start-ride-hint" className="visually-hidden start-ride-hint">
-      {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
-    </p>
+    iphone ? (
+      // Shown on iPhone, and said with Start as the hint is elsewhere.
+      <p id="start-ride-hint" className="hint start-ride-hint iphone-ride-line">
+        <span className="visually-hidden">{t("Turn-by-turn directions on this phone, said as you chose.")} </span>
+        {IPHONE_RIDE_LINE}
+      </p>
+    ) : (
+      // Said with Start, not shown under it: Plan's since Stephen 2026-10-20 ("it needs to be simpler, still a wall of
+      // text"), Go's since the owner's P1 (2026-10-28: it was shown on every route).
+      <p id="start-ride-hint" className="visually-hidden start-ride-hint">
+        {t("Turn-by-turn directions on this phone, said as you chose.")}{ridesHidden() ? "" : t(" Keep the screen on and this page in front.")}
+      </p>
+    )
   ) : noBike ? (
     <p className="hint no-bike-line">{noBike}</p>
   ) : !ridesLine(route) ? null : (
-    <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
+    <p className="hint start-ride-long">{rideTooLong(iphone)}</p>
   );
   const alerts = (
     <>
@@ -1238,14 +1274,16 @@ export function RouteSummary({
       {infoBody}
       {transitFold}
       <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
-      {segments.length > 0 && <StressFigure segments={segments} />}
+      {segments.length > 0 && <StressFigure segments={segments} surface={surfaceGlanceParts(route.stress_spans)} />}
       {alerts}
+      {/* Check a route (the 2026-11-13 backlog, item 3): an opened file's busiest stretches, under its warnings. */}
+      {check}
       {noteList}
       {actions.savedNote}
       <div className="actions start-ride">
         <RouteActions {...actions} start={start} />
         {/* Plan streamline (Stephen 2026-10-17): the how-to is Start's description, out of sight; the too-long line shows. */}
-        {rideable ? <div className="visually-hidden">{startHint}</div> : startHint}
+        {rideable && !iphone ? <div className="visually-hidden">{startHint}</div> : startHint}
       </div>
       {(profile || climbs) && (
         <Fold

@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "decided": "2026-11-13",
+ "decided_by": "the deployment owner",
+ "status": "DRAFT, not approved: withdraws five rows only, adds none. Do not load until the owner confirms this file; then load with load_overrides (dry run first); takes effect on the next rebuild.",
+ "annotations": "Darnestown Road (MD 28), the five ways of the 2026-10-14 file (3.57 mi). No replacement row: Montgomery's 5 reads as 4.5 by the rule every such road follows.",
+ "rows": [],
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 5970658,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "darnestown-road-lts4",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "Withdrawn 2026-11-13: the owner, 2026-11-13, \"Darnestown makes sense at 4.5 we rated that because moco had it at 5, and we didn't want to make it a complete avoid.\" Without this pin Montgomery County's LTS 5 on these ways reads as 4.5 (agency_lts), the level the known-roads check (fixtures/known-roads) asks of this stretch; with it, the check refuses the build."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 697630700,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "darnestown-road-lts4",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "Withdrawn 2026-11-13: the owner, 2026-11-13, \"Darnestown makes sense at 4.5 we rated that because moco had it at 5, and we didn't want to make it a complete avoid.\" Without this pin Montgomery County's LTS 5 on these ways reads as 4.5 (agency_lts), the level the known-roads check (fixtures/known-roads) asks of this stretch; with it, the check refuses the build."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 222928109,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "darnestown-road-lts4",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "Withdrawn 2026-11-13: the owner, 2026-11-13, \"Darnestown makes sense at 4.5 we rated that because moco had it at 5, and we didn't want to make it a complete avoid.\" Without this pin Montgomery County's LTS 5 on these ways reads as 4.5 (agency_lts), the level the known-roads check (fixtures/known-roads) asks of this stretch; with it, the check refuses the build."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 92183771,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "darnestown-road-lts4",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "Withdrawn 2026-11-13: the owner, 2026-11-13, \"Darnestown makes sense at 4.5 we rated that because moco had it at 5, and we didn't want to make it a complete avoid.\" Without this pin Montgomery County's LTS 5 on these ways reads as 4.5 (agency_lts), the level the known-roads check (fixtures/known-roads) asks of this stretch; with it, the check refuses the build."
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 92183773,
+   "value": {
+    "tier": 4,
+    "adjustment_id": "darnestown-road-lts4",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "Withdrawn 2026-11-13: the owner, 2026-11-13, \"Darnestown makes sense at 4.5 we rated that because moco had it at 5, and we didn't want to make it a complete avoid.\" Without this pin Montgomery County's LTS 5 on these ways reads as 4.5 (agency_lts), the level the known-roads check (fixtures/known-roads) asks of this stretch; with it, the check refuses the build."
+  }
+ ]
+}

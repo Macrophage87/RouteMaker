@@ -308,6 +308,9 @@ test("each of DC's languages has every turn sentence Ride says (the owner, 2026-
  */
 const GO_RIDE_SCREENS = ["app/Go.tsx", "RideMode.tsx", "RideGroup.tsx", "RoamMode.tsx", "app/Sheets.tsx"];
 const GO_RIDE_ALSO = [
+  // The road panel opens from Go's spot dialog too (the v0.27.0 accessibility review); lib/roadInfo.ts's panel
+  // words are in every catalog as well, but it also holds Plan's map tools.
+  "RoadFacts.tsx",
   // Ready for a dozen testers (2026-11-12): Send feedback, the server's status line, the battery line.
   "FeedbackBox.tsx",
   "BatteryNote.tsx",
@@ -321,6 +324,9 @@ const GO_RIDE_ALSO = [
   "lib/onBoard.ts",
   // Settings' Avoid stairs (2026-11-02), for Go and Plan alike.
   "lib/avoidStairs.ts",
+  // Settings' map for no signal (off-grid riding, v0.27.0).
+  "RegionPackSetting.tsx",
+  "lib/regionPack.ts",
   "AvoidNotice.tsx",
   "lib/accessMode.ts",
   "lib/skipLink.ts",
@@ -463,6 +469,7 @@ test("Go and Ride's named phrases are worded in the language in force as their m
     assert.equal(shared.SHARED_OPENING, "Abriendo el enlace compartido…");
     const nav = await fresh<typeof import("./navigate.ts")>("./navigate.ts");
     assert.match(nav.RIDE_TOO_LONG, /^Iniciar recorrido en un navegador es para recorridos de hasta 30 mi/);
+    assert.match(nav.IPHONE_RIDE_LINE, /^En iPhone, mantén la pantalla encendida/);
   } finally {
     setLanguageForTest("en");
   }
