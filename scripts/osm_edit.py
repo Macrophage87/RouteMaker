@@ -99,6 +99,11 @@ ALLOWED_KEYS = frozenset(
         "cycleway:right",
         "cycleway:left:oneway",
         "cycleway:right:oneway",
+        # Who may drive a road, from the managing agency's own closure or what is posted on
+        # the spot (owner 2026-11-13, Upper Beach Drive in Rock Creek Park: OSM still had the
+        # old weekend-only closure after the park closed it to cars all year).
+        "motor_vehicle",
+        "motor_vehicle:conditional",
     }
 )
 NODE_HIGHWAY_VALUES = frozenset({"traffic_signals", "stop", "give_way", "crossing"})

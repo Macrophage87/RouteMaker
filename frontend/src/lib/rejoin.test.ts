@@ -340,6 +340,8 @@ test("Ride says the way back with No signal, and draws it on the map", () => {
   // Both the timeout's and a failed answer's No signal carry the way back.
   assert.equal(ride.match(/tell\(noSignalSaid\(wayBack\(modelRef\.current, rideRef\.current\)\)\)/g)?.length, 1);
   assert.match(ride, /tell\(failed === "network" \? noSignalSaid\(wayBack\(modelRef\.current, rideRef\.current\)\) : said\)/);
+  // With the street the line is on there, where it has a name (backlog 2026-11-12, area 08 item 1).
+  assert.match(ride, /return back\.street \? `\$\{where\} \$\{t\("It is on \{street\}\.", \{ street: back\.street \}\)\}` : where;/);
   assert.match(ride, /wayBackShown\(ride\.off, keepPlanned, fixedRef\.current, replanNote === REPLAN_NO_SIGNAL\)/);
   assert.match(ride, /\{backShown && back && \(/);
   assert.match(ride, /transitPath,\n\s+wayBackTo,\n\s+\}\);/);

@@ -7,11 +7,24 @@ from __future__ import annotations
 import csv
 import io
 
+import pytest
+
 from pipeline import agency_ratings
 from pipeline.extract import Way, close_writer
 from routemaker import agency_lts, facility
 from routemaker.agency_lts import PROHIBITED_NO_BICYCLE, AgencyRating
 from routemaker.stress import Stress
+
+
+@pytest.fixture(autouse=True)
+def _county_and_state_levels_in_use(monkeypatch):
+    """These tests read how a county's or the state's level would set a tier, as the rebuild
+    did before 2026-11-13; since then every agency's level is comparison-only
+    (`agency_lts.COMPARISON_ONLY`, `test_agency_lts.test_no_agency_level_sets_a_tier`)."""
+    from routemaker import agency_lts
+
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
+
 
 LINE = [(-77.30 + i * 0.001, 39.20) for i in range(11)]
 
@@ -195,10 +208,10 @@ def test_the_panel_says_the_formula_is_used_beside_a_ban():
     assert values["MDOT SHA rates it"] == segment_info.PROHIBITED_LEVEL_WORDS
     assert "used" not in values["MDOT SHA rates it"]
     assert "not a stress level" in values["Used"]
-    # A rating set aside for a newer facility keeps its own words.
+    # Any other agency's level is shown for comparison only.
     ddot = {**held, "agencies": [{"agency": "ddot", "name": "DDOT", "level": 4}]}
     aside = segment_info.rating_rows({"stress_ratings": json.dumps(ddot)})
-    assert "predates the bike facility" in {r["label"]: r["value"] for r in aside}["Used"]
+    assert "comparison only" in {r["label"]: r["value"] for r in aside}["Used"]
 
 
 def test_an_owner_access_override_reopens_it():

@@ -792,6 +792,9 @@ _SUFFIXES = {
     "pkwy": "parkway",
     "hwy": "highway",
     "ter": "terrace",
+    "terr": "terrace",
+    # MDOT SHA's "ST AGNES LA".
+    "la": "lane",
     "cir": "circle",
     "fwy": "freeway",
     "sq": "square",
@@ -804,6 +807,15 @@ _SUFFIXES = {
     # Avenue is "Junior" to OSM.
     "jr": "junior",
     "sr": "senior",
+}
+# Other words agencies shorten. Not street types, so kept out of `_SUFFIXES`, whose keys
+# also decide when a compass word is a street's own name. MDOT SHA writes "MT AETNA RD",
+# "BALTO ANNAPOLIS BLVD" and "GOV RITCHIE HWY" where OSM writes the words out.
+_ABBREVIATED_WORDS = {
+    "mt": "mount",
+    "ft": "fort",
+    "balto": "baltimore",
+    "gov": "governor",
 }
 _DIRECTION_WORDS = {
     "n": "north",
@@ -850,11 +862,18 @@ def name_tokens(name: str | None) -> frozenset[str]:
     A compass word directly followed by the street type is the street's name and
     is kept, so "E Street" and "N Street" are different streets (review r1: they
     had no identifying word at all, so neither agreed nor disagreed)."""
+    return frozenset(_name_words(name))
+
+
+@functools.lru_cache(maxsize=65536)
+def _name_words(name: str | None) -> tuple[str, ...]:
+    """`name_tokens`' words in the order the name gives them."""
     if not name:
-        return frozenset()
+        return ()
     words = re.findall(r"[a-z0-9]+", name.lower().replace("&", " and "))
     kept = []
     for number, word in enumerate(words):
+        word = _ABBREVIATED_WORDS.get(word, word)
         expanded = _SUFFIXES.get(word, _DIRECTION_WORDS.get(word, word))
         following = words[number + 1] if number + 1 < len(words) else None
         if word in _DIRECTION_WORDS or word in _DIRECTION_WORDS.values():
@@ -863,7 +882,7 @@ def name_tokens(name: str | None) -> frozenset[str]:
             continue
         if expanded not in _GENERIC:
             kept.append(_singular(expanded))
-    return frozenset(kept)
+    return tuple(kept)
 
 
 def names_agree(a: str | None, b: str | None) -> bool | None:
@@ -876,7 +895,11 @@ def names_agree(a: str | None, b: str | None) -> bool | None:
     left, right = name_tokens(a), name_tokens(b)
     if not left or not right:
         return None
-    return left <= right or right <= left
+    if left <= right or right <= left:
+        return True
+    # One street written with its words run together or split: OSM's "Highfalcon Road"
+    # is MDOT SHA's "HIGH FALCON RD", "Spring Hill-Newtown Road" its "SPRINGHILL NEWTOWN RD".
+    return "".join(_name_words(a)) == "".join(_name_words(b))
 
 
 # -- aggregating the blocks a way lies along ---------------------------------------
@@ -993,6 +1016,22 @@ def classifier_reversible(facts: RoadFacts, ended: frozenset[str] | None = None)
     return count
 
 
+# A turn bay counted as a through lane (the owner, 2026-11-13, of K Street NE 6th-8th: "It's one
+# lane each way with the occasional turning lane"). DC's Roadway Block leaves its turn-lane fields
+# blank on every block, so a block approaching a junction with a turn bay records it as a second
+# lane that way: one lane one way and two the other on a two-way block (K Street NE's 700 block,
+# where OSM maps the second lane as `turn:lanes:forward=left|through;right`; 524 two-way ways in
+# DC carry the pattern). Such a block reads one lane each way. A two-way block of two lanes or
+# more each way, or one with reversible lanes, is read as it stands. Our reading of his words,
+# not measured.
+def turn_bay_block(facts: RoadFacts) -> bool:
+    """A two-way block whose lanes are one one way and two the other (`turn_bay_block`'s note)."""
+    lanes = facts.lanes
+    if facts.way == "one" or lanes.get("reversible"):
+        return False
+    return sorted((lanes.get("ib", 0), lanes.get("ob", 0))) == [1, 2]
+
+
 def lanes_per_direction(facts: RoadFacts) -> int | None:
     """The through lanes a rider meets in one direction on a block, at the
     busiest time: the more of its two directions' lanes, plus the lanes that
@@ -1004,6 +1043,8 @@ def lanes_per_direction(facts: RoadFacts) -> int | None:
     lanes = facts.lanes
     if not lanes:
         return None
+    if turn_bay_block(facts):
+        return 1
     directional = [count for label, count in lanes.items() if label in ("ib", "ob", "from", "to")]
     if directional and max(directional) > 0:
         return max(directional) + classifier_reversible(facts)
@@ -1031,6 +1072,8 @@ def _directional_lanes(facts: RoadFacts, label: str) -> int | None:
     count = facts.lanes.get(label)
     if not count:
         return None
+    if turn_bay_block(facts):
+        return 1
     return count + classifier_reversible(facts)
 
 
@@ -1570,6 +1613,7 @@ def overlay(
     side_lane: bool = False,
     length_m: float | None = None,
     rows: Collection[str] = ROWS_190,
+    project_lane: bool = False,
 ) -> Overlay:
     """The way's tags as the classifier should read them, given its blocks' facts.
 
@@ -1591,7 +1635,11 @@ def overlay(
     in `Overlay.precedence`:
 
     * A, no facility recorded on any block of the way: OSM's painted lane is
-      removed (a track OSM maps on the road is kept and reported);
+      removed (a track OSM maps on the road is kept and reported) - except on a
+      way inside a completed DDOT bikeway project (`project_lane`,
+      `routemaker.ddot_projects`; the owner, 2026-11-13: "When there's a
+      mismatch in data, we search for the project's own data"), where the
+      project says the lane was built and OSM's lane stands;
     * B, one-way recorded where OSM says two-way in so many words: the way is
       one-way - except on a block with reversible lanes, on a junction stub
       of MIN_ONE_WAY_OVERRIDE_M or less (`length_m`, `is_junction_stub`), or
@@ -1842,12 +1890,18 @@ def overlay(
             and ROW_NO_FACILITY in rows
             and not separate
             and not facts.bike_recorded
+            and not project_lane
             and _drop_painted(out)
         ):
             sources["bike"] = agency
             precedence.append(ROW_NO_FACILITY)
             if set(_FACILITY_VALUES) & _cycleway_values(out):
                 disagreements.append("bike facility: OSM has a track, the agency records none")
+        elif has_osm_facility and project_lane and not facts.bike_recorded:
+            disagreements.append(
+                "bike facility: OSM has one where the agency records none"
+                " and a completed DDOT project keeps it"
+            )
         elif has_osm_facility:
             disagreements.append("bike facility: OSM has one, the agency records none")
 

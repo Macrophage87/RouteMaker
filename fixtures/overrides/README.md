@@ -770,3 +770,75 @@ in the database still names it: delete that row in the admin when loading the fi
   only old photos) keep their own-picks rows. The index says "agrees" only at the same level and
   "is close" half a level off; side-street notes keep their agency sentence where it fits. 94 ways whose bumped level was 3 are left as they were (the level without the
   bump is not recoverable from the file). Load like the others; takes effect on the next rebuild.
+
+- `2026-11-13-owner-water-street-nw.json` (levels confirmed by the owner 2026-11-13; OPEN
+  QUESTION, keep only until a rebuild shows the data fixes reach his levels): Water Street NW's
+  last 0.09 mi before the Capital Crescent Trail, ways 137952735 and 1000673731, rated LTS 4
+  from the Whitehurst Freeway's count (37,593 a day) and 35 mph. The owner, 2026-11-13: "water
+  street is definitely not a high stress road and it connects to the CCT"; "1 by the track, 2 by
+  the lanes". Since his rule of the same day ("If I say that a road is incorrectly rated that
+  means that I feel the formula is wrong", "Or the raw data", "keep searching for why") the
+  count is fixed in the matcher (`pipeline.conflation`, a freeway's line goes to the freeway):
+  checked on the live extract, both ways now take no count. Still open: the 35 mph (the
+  freeway block overhead) and the separated track, which OSM does not map on 137952735. Drop
+  this file once those are fixed in the data and `fixtures/known-roads` passes without it.
+
+- Kennedy Street NW (way 130908107): no override. Its LTS 4 was DDOT's 2020 level standing
+  because the block took no count; the matcher's along-the-street pass now reads every agency
+  and gives it 6,272 a day (checked on the live extract), and DDOT's layer is comparison only
+  (#1241). No known-roads entry checks it (it is not one of the owner's calls); the rebuild's
+  stress report shows its level. The same-street draft of 2026-11-13 (126 ways, mostly DC,
+  agency-only levels) is withdrawn for the same reasons.
+
+- `2026-11-13-retire-arlington-blvd-service-road.json` (DRAFT, not approved): withdraws the two
+  VA own-picks rows that rated Arlington Boulevard Service Road 4 on the boulevard's own 42,000
+  a day; adds no row, so the formula reads the service road again.
+
+- `2026-11-13-retire-md-borrowed-count-pins.json` (DRAFT, not approved; do not load until the
+  owner confirms the file): withdraws the 50 rows on eight Maryland urban roads (East Joppa Rd,
+  Brock Bridge Rd, Obrecht Rd, South Potomac St, Garland Groh Blvd, Baltimore Annapolis Blvd,
+  Tuckerman Ln, Ritchie Marlboro Rd) whose pinned level rested on an MDOT SHA count taken past a
+  junction or on another street's section; adds none. The data is fixed instead: a section's
+  count stops at the busy junctions either side of its station (`mdot_aadt.cut_at_junctions`)
+  and a line named for another street does not reach the road (`conflation.same_road`). Needs
+  `volume.json` reinstalled at the next rebuild. Replaces the earlier draft that re-pinned the
+  50 ways at estimated levels (the methodology audit, area 04: 30 of them were on the road's
+  own section, which its name test had missed).
+
+- `2026-11-13-retire-darnestown-lts4-pin.json` (DRAFT, not approved): withdraws the 2026-10-14
+  LTS 4 pin on Darnestown Road's five ways, so Montgomery's 5 reads as 4.5, the level the
+  owner gave on 2026-11-13 ("Darnestown makes sense at 4.5") and the one `fixtures/known-roads`
+  asks for; with the pin the known-roads check refuses the build.
+
+- `2026-11-13-owner-dc-rerate.json`, `-md-rerate-1.json`, `-md-rerate-2.json`,
+  `-va-rerate-1.json`, `-va-rerate-2.json`, `-wv-rerate.json` (282,316 ways, 273,232 retired;
+  Maryland and Virginia are split to keep each file under 100 MB): every road re-rated on
+  2026-11-13 with one lean rater brief (the owner, 2026-11-13: "Rerate the entire dataset on
+  sonnet with the 'why' included. Then if skepticism is needed, use opus to review them. If the
+  values disagree, use a higher effort to break the tie."). One rater rated all 280,996 ways
+  blind to agency ratings, a second reviewed the doubtful ones, and a third settled the 165
+  stretches where those two were more than half a level apart. There is a row for every way
+  rated, whether or not its level changed (149,665 did not), so no way is left to an agency
+  level or to a later formula change; each row retires the row in force on that way where it
+  had one, the owner's own earlier rating rows among them (the owner, 2026-11-13: "Ignore my own
+  calls" and "The goal here is no specific overrides"). The 257 Baltimore streets of
+  `2026-10-01-owner-baltimore-facilities.json` were re-rated with the city's record of the bike
+  facility given to the rater as a fact. All 386 Montgomery County LTS 5 rows still live on the
+  PC are retired (38 on ways outside the re-rate are only retired, so those ways take the
+  classifier's level). The retire lists are written against what the PC database held on
+  2026-11-13, not against every file here: the 2026-11-12 side streets file, the North Bethesda,
+  Darnestown, Redland and Patuxent files were not loaded, and the Montgomery County file's own
+  retirements had not run. Load the re-rate INSTEAD of the unloaded rating files. Another 1,415 ways that an
+  agency rates, had no row and were outside that run were rated the same way from a PC extract
+  (the owner, 2026-11-13: "If the only row in why is agency, it's not a valid rating. Return it
+  for rerating."); with the same second review and tie-break; ways barred to bikes, and 349 that are not roads or have no facts, were not.
+  Left as they are: access rows, and the 113 ways the raters called closed (a closure is an access row with
+  on-the-spot evidence, never a rating). 9,472 ways had no row before and carry no fingerprint
+  yet (`scripts/analysis/backfill_override_fingerprints.py` on the PC). Method and results:
+  `reports/rerate-2026-11-13/REPORT.md` in the project files. The retires include the owner's
+  six live road-panel edits on those ways (edit-2035, edit-2037 to edit-2041) and the US 340
+  Avoid row in West Virginia. Loaded on the PC 2026-11-13 to 11-14, with the owner's go for each
+  file ("load trials with everything"), in this order: `2026-11-13-trial-retire-panel-edit-2036.json`
+  first, then dc, md-1, md-2, va-1, va-2, wv. The 2036 file retires panel edit 2036 on its own,
+  because edit-2041 superseded it and retiring 2041 alone would bring 2036 back. Built in the
+  trial rebuild of 2026-11-14; takes effect on the PC and beta only at a swap the owner approves.

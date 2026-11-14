@@ -5,6 +5,7 @@ import { licenceNotices } from "./src/licences/notices.mjs";
 import { railFixtures } from "./src/lib/railFixturesPlugin.mjs";
 import { appWorker } from "./src/sw/swPlugin.mjs";
 import { appPreload } from "./src/lib/appPreloadPlugin.mjs";
+import { sizeBudget } from "./src/lib/sizeBudgetPlugin.mjs";
 
 // `npm run build` writes dist/, which the deploy step copies to
 // <DATA_ROOT>/frontend for Caddy to serve at / (docs/DEPLOYMENT.md, "The
@@ -34,13 +35,15 @@ export default defineConfig({
   // licenceNotices completes what build.license writes (src/licences/notices.mjs);
   // railFixtures refuses rail fixtures that no longer fit (src/lib/railFixturesPlugin.mjs); appWorker
   // writes the installable app's service worker, sw.js and its kill switch sw-kill.js (src/sw/swPlugin.mjs); appPreload
-  // has index.html preload App's chunks while the language loads (src/lib/appPreloadPlugin.mjs).
+  // has index.html preload App's chunks while the language loads (src/lib/appPreloadPlugin.mjs); sizeBudget fails the
+  // build when the first load grows past its limit (src/lib/sizeBudgetPlugin.mjs).
   plugins: [
     react(),
     licenceNotices(frontendRoot),
     railFixtures(`${frontendRoot}src/rail-data`),
     appWorker(),
     appPreload(),
+    sizeBudget(),
     { name: "app-version-title", transformIndexHtml: (html) => html.replace("<title>RouteMaker</title>", `<title>RouteMaker ${appVersion}</title>`) },
   ],
   define: { "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion) },

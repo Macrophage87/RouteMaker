@@ -50,7 +50,22 @@ def test_no_way_is_also_named_by_another_file() -> None:
             (OVERRIDES / "2026-11-12-owner-side-streets-and-arlington-index.json").read_text()
         )["retire"]
     }
-    assert set(ours) & retired - recheck == {553709201}
+    # And the 2026-11-13 withdraw-only drafts, whose rows rested on a count the matcher now
+    # refuses (an MDOT SHA count past a busy junction; a boulevard's count on its service road).
+    withdrawn = {
+        int(row["osm_way_id"])
+        for path in OVERRIDES.glob("2026-11-13-retire-*.json")
+        for row in json.loads(path.read_text())["retire"]
+    }
+    # The 2026-11-13 re-rate of every road with one brief retires each row whose level it changes.
+    rerate = {
+        int(row["osm_way_id"])
+        for path in OVERRIDES.glob("2026-11-13-owner-*-rerate*.json")
+        for row in json.loads(path.read_text())["retire"]
+    }
+    # It replaces the North Bethesda row on Woodglen Drive too (the owner: "Ignore my own calls").
+    assert set(ours) & retired - recheck - withdrawn - rerate == set()
+    assert 553709201 in rerate
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)
