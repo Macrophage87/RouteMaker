@@ -57,7 +57,15 @@ def test_no_way_is_also_named_by_another_file() -> None:
         for path in OVERRIDES.glob("2026-11-13-retire-*.json")
         for row in json.loads(path.read_text())["retire"]
     }
-    assert set(ours) & retired - recheck - withdrawn == {553709201}
+    # The 2026-11-13 re-rate of every road with one brief retires each row whose level it changes.
+    rerate = {
+        int(row["osm_way_id"])
+        for path in OVERRIDES.glob("2026-11-13-owner-*-rerate*.json")
+        for row in json.loads(path.read_text())["retire"]
+    }
+    # It replaces the North Bethesda row on Woodglen Drive too (the owner: "Ignore my own calls").
+    assert set(ours) & retired - recheck - withdrawn - rerate == set()
+    assert 553709201 in rerate
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)

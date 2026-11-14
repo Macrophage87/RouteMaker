@@ -259,9 +259,15 @@ def test_a_one_sided_lane_is_one_side() -> None:
     assert N._bike_sides({"cycleway": "lane", "cycleway:right": "no"}) == {"left": 1}
 
 
-def test_the_osm_only_tier_goes_through_the_ratings_and_steps_the_real_tier_does() -> None:
+def test_the_osm_only_tier_goes_through_the_ratings_and_steps_the_real_tier_does(
+    monkeypatch,
+) -> None:
     """Hunt 3, stress 3: "tier OSM only" was the bare formula beside a "tier with DC" with the
     agency's rating and the owner's steps in it, so the suggested row dropped the rating."""
+    from routemaker import agency_lts as _agency_lts
+
+    # How a county level would read in use; every agency is comparison-only since 2026-11-13.
+    monkeypatch.setattr(_agency_lts, "COMPARISON_ONLY", frozenset({"ddot"}))
     from pipeline.run import osm_tags_tier
     from routemaker.agency_lts import AgencyRating
 
