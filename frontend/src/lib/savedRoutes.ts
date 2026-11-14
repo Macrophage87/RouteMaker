@@ -184,6 +184,13 @@ export function keptAnswer(route: RouteResponse): RouteResponse {
  * A planned route's save: the line exactly as on screen, its answer without the other candidates. Its link keeps
  * each point's kind and each stop's own name (2026-10-24), from the page's marks, so it reopens as it was planned.
  */
+/** The dials kept with a saved or shared route: never Plan's start time (lib/startTime.ts), as when someone rides is theirs. */
+export function withoutStart(dials: Dials): Dials {
+  if (dials.startAt === undefined) return dials;
+  const { startAt: _start, ...kept } = dials;
+  return kept;
+}
+
 export function planSave(name: string, route: RouteResponse, points: readonly LonLat[], preset: PresetId, dials: Dials): SaveBody {
   const answer = keptAnswer(route);
   return {
@@ -191,7 +198,7 @@ export function planSave(name: string, route: RouteResponse, points: readonly Lo
     source: "plan",
     line: route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as SavedVertex),
     distance_m: route.distance_m,
-    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", PAGE_NOTES.list), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
+    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", PAGE_NOTES.list), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials: withoutStart(dials) },
     answer,
   };
 }
@@ -209,7 +216,7 @@ export function gpxSave(name: string, text: string, track: readonly SavedVertex[
     source: "gpx",
     line: track.map((v) => [...v] as SavedVertex),
     distance_m: m,
-    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", PAGE_NOTES.list), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
+    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", PAGE_NOTES.list), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials: withoutStart(dials) },
     gpx: text,
     ...(shown ? { answer: keptAnswer(shown) } : {}),
   };

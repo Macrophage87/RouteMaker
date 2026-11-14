@@ -10,9 +10,10 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { LonLat } from "./geo.ts";
-import { isTransit, onFoot, usesBikeshare, type PresetId } from "./presets.ts";
+import { isTransit, onFoot, runs, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 import { t } from "./i18n.ts";
+import { offersStartTime } from "./startTime.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
@@ -59,6 +60,11 @@ export interface Dials {
    */
   targetDistanceM?: number;
   /**
+   * Plan's day and start time (lib/startTime.ts; the owner, 2026-11-13: Plan only), the region's wall clock
+   * "YYYY-MM-DDTHH:MM", with `when` null. Absent is now. Sent as `depart_at`; never in a link or a saved route.
+   */
+  startAt?: string;
+  /**
    * "System weight" (OWNER-DECISIONS 264), in kilograms: rider, bike and load, which
    * the effort the Hills slider avoids is weighed by. Optional, and only at the top
    * of the traffic slider; absent is the default (`SYSTEM_WEIGHT_KG`, or
@@ -72,6 +78,11 @@ export interface Dials {
   ridingSpeedKmh?: number;
   /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
   loop?: boolean;
+  /**
+   * Plan's "Out and back" (Stephen 2026-11-13, his pick of the Loop control as One way / Loop / Out and back): on a
+   * loop, come back the same way rather than by a different way (lib/loop.ts loopWay). In the link; absent is off.
+   */
+  outAndBack?: boolean;
   /**
    * Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level, 1 (green) to 4 (red).
    * Absent is the default, level 2 (lib/mtbMode.ts DEFAULT_MTB_LEVEL).
@@ -110,6 +121,11 @@ export interface Dials {
    * (`closureFields`), in no link, and not in dialFields (the other endpoints do not take it).
    */
   closureBypass?: string[];
+  /**
+   * Cargo and Tandem, "Go around" on a barrier's mark (lib/barriers.ts): the barriers, [lon, lat] as the answer gave
+   * them, this plan goes around. Session only, like closureBypass: in the route request (`barrier_avoid`), never a link.
+   */
+  barrierAvoid?: [number, number][];
   /**
    * v0.9.1, Go and a ride: only the closures known to be on, leaving out DDOT's permits, which say a road may be
    * closed (Stephen, 2026-10-19: "They aren't as useful for on the go routing, but worth keeping for future ride
@@ -436,6 +452,10 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(offersEasyMtb(preset) && dials.easyMtb === true ? { easyMtb: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
+    // A start time stays with the plan through a change of ride type, except onto one planned from the docks now.
+    ...(typeof dials.startAt === "string" && offersStartTime(preset) ? { startAt: dials.startAt } : {}),
+    // Not on Run (lib/loop.ts loopWays).
+    ...(dials.outAndBack === true && !runs(preset) ? { outAndBack: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
@@ -470,6 +490,9 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (weight !== undefined) fields.system_weight_kg = Math.round(weight);
   if (typeof dials.ridingSpeedKmh === "number" && Number.isFinite(dials.ridingSpeedKmh)) fields.cycling_speed_kmh = dials.ridingSpeedKmh;
   if (dials.loop) fields.loop = true;
+  // Plan's start time (lib/startTime.ts): Washington's wall clock, which the API reads as such.
+  if (dials.startAt) fields.depart_at = dials.startAt;
+  if (dials.outAndBack) fields.out_and_back = true;
   // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
   const level = fitMtbLevel(dials.mtbLevel);
   if (level !== undefined) fields.mtb_level = level;

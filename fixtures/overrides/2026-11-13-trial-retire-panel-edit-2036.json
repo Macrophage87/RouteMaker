@@ -1,0 +1,23 @@
+{
+ "version": 1,
+ "decided": "2026-11-13",
+ "decided_by": "the deployment owner",
+ "status": "TRIAL BUILD: load FIRST, before 2026-11-13-owner-md-rerate-1.json (the owner's go per file). Withdraws one row, adds none.",
+ "annotations": "Road-panel edit 2036 on way 84676067, already superseded by panel edit 2041. md-rerate-1 retires 2041; without this file, deleting 2041 would make 2036 live again (superseded_by is set null on delete). The loader takes one retire per way per file, so 2036 has its own file.",
+ "rows": [],
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 84676067,
+   "value": {
+    "adjustment_id": "edit-2036",
+    "annotation_status": "approved",
+    "category": "other",
+    "display": "route_only",
+    "tier": 2,
+    "visibility": "hidden"
+   },
+   "reason": "Withdrawn 2026-11-13 with the re-rate of every road (the owner, 2026-11-13: \"Ignore my own calls\" and \"The goal here is no specific overrides\")."
+  }
+ ]
+}

@@ -28,9 +28,27 @@ export interface Me {
   can_review_closures: boolean;
   /** Whether this server can sign anyone in (both Discord keys set): Sign in with Discord is offered only then. */
   sign_in: boolean;
+  /** The sign-ins this browser is offered, of "discord", "google" and "apple" (core.sign_in_views, 2026-11-13). */
+  sign_in_choices?: string[];
 }
 
-export const NO_ME: Me = { signed_in: false, can_change_lts: false, can_suggest: false, can_review_closures: false, sign_in: false };
+/** The sign-ins offered, from the last /api/me read (none until it comes). */
+let choices: string[] = [];
+
+/**
+ * Whether there is more than Discord to sign in with (Stephen 2026-11-13: Discord, Google and Apple): the Sign in
+ * buttons then say "Sign in", without Discord's mark, and /auth/login opens the choice (core.auth_views).
+ */
+export function signInHasChoice(): boolean {
+  return choices.length > 1;
+}
+
+/** Test seam: the choices as if /api/me had said them. */
+export function setSignInChoicesForTest(next: string[]): void {
+  choices = next;
+}
+
+export const NO_ME: Me = { signed_in: false, can_change_lts: false, can_suggest: false, can_review_closures: false, sign_in: false, sign_in_choices: [] };
 
 export interface EditorStep {
   value: number;
@@ -378,6 +396,7 @@ export function fetchMe(origin: string, get: Fetch = fetch): Promise<Me> {
           can_suggest: body.can_suggest === true,
           can_review_closures: body.can_review_closures === true,
           sign_in: body.sign_in === true,
+          sign_in_choices: (choices = Array.isArray(body.sign_in_choices) ? body.sign_in_choices.filter((c) => typeof c === "string") : []),
         };
       } catch {
         // Not cached: the next panel asks again. Until then nobody is offered the editor.

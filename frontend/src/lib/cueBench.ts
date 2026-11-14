@@ -12,12 +12,15 @@ import { cueRows } from "./cueSheetPdf.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
   GPS_WEAK_SAID,
+  POOR_FIX_M,
   PASSED_M,
   pointAt,
   rideModel,
   startState,
   step,
   weighFix,
+  estimateStep,
+  weakNoteAfterMs,
   type Cue,
   type GpsWeakness,
   type RideEvent,
@@ -27,7 +30,8 @@ import {
   type Verbosity,
 } from "./navigate.ts";
 import { CueRecorder } from "./cueRecorder.ts";
-import { Announcer, Voice, type SpeechApi, type UtteranceLike } from "./rideOutput.ts";
+import { Announcer, Voice, chimeOf, type SpeechApi, type UtteranceLike } from "./rideOutput.ts";
+import { chimeMs, cueMark } from "./cueTone.ts";
 
 export interface CueFixture {
   name: string;
@@ -246,8 +250,10 @@ class Speech implements SpeechApi {
   }
   private begin(u: UtteranceLike): void {
     this.speaking = true;
+    // A turn cue's tone comes first (lib/cueTone.ts): heard from the tone, the words that much longer in all.
+    const toneMs = u.chime ? chimeMs(u.chime) : 0;
     this.started(u, this.clock.now + SPEECH_START_S * 1000);
-    const ms = (SPEECH_START_S + u.text.length / SPEECH_CHARS_S) * 1000;
+    const ms = toneMs + (SPEECH_START_S + u.text.length / SPEECH_CHARS_S) * 1000;
     const timer = this.clock.later(() => {
       this.current = null;
       this.speaking = false;
@@ -327,7 +333,7 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
     trace: (what, text) => log.voice(what, text, clock.now),
   });
   const announcer = new Announcer(
-    (said) => voice.speak(said.text, said.urgent, said.after),
+    (said) => voice.speak(said.text, said.urgent, said.after, chimeOf(said.mark)),
     () => clock.now,
     (fn, ms) => clock.later(fn, ms) as unknown as ReturnType<typeof setTimeout>,
     (timer) => clock.cancel(timer as unknown as number),
@@ -335,19 +341,25 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
   announcer.onDrop = (text) => log.voice("dropped", text, clock.now);
   let state: RideState = startState();
   let weakness: GpsWeakness = { goodAt: 0, weak: false };
+  let lastSpeed: number | null = null;
   for (let i = 0; i < track.fixes.length; i++) {
     const fix = track.fixes[i];
     clock.runTo(fix.at);
-    const weighed = weighFix(weakness, fix.accuracyM, fix.at);
+    // As RideMode: poor fixes since the last good one, and the last fix's own speed (estimateGround).
+    lastSpeed = fix.speedMs;
+    const ground = { poorSeen: fix.accuracyM > POOR_FIX_M, lastSpeedMs: lastSpeed, free: true };
+    const weighed = weighFix(weakness, fix.accuracyM, fix.at, weakNoteAfterMs(model, state, ground, level));
     weakness = { goodAt: weighed.goodAt, weak: weighed.weak };
     if (weighed.sayNow) {
       log.note("gps-weak", fix.at);
       notes.push({ madeS: fix.at / 1000, text: GPS_WEAK_SAID });
       announcer.note(GPS_WEAK_SAID);
     }
-    const out = step(model, state, fix, level);
+    // Weak GPS: the turns reckoned along the line, as RideMode's checkCueSheet does before each fix is stepped.
+    const est = estimateStep(model, state, fix.at - weakness.goodAt, level, ground);
+    const out = step(model, est.state, fix, level);
     state = out.state;
-    for (const event of out.events) {
+    for (const event of [...est.events, ...out.events]) {
       log.made(event, state.progressM, fix.accuracyM, fix.at);
       const h: Heard = { madeS: fix.at / 1000, atM: track.alongM[i], event };
       heard.push(h);
@@ -363,7 +375,7 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
           }
           return text;
         });
-      announcer.say(event.spoken, event.urgent, event.after, again);
+      announcer.say(event.spoken, event.urgent, event.after, again, cueMark(event));
     }
     if (variant === "missed-turn" && state.off) {
       // Off route found: the re-plan would take over from here.

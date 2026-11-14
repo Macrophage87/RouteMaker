@@ -179,7 +179,7 @@ test("wired into Go and Plan (with the warnings), Ride mode and Roam; never in S
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const start = app.slice(app.indexOf("const startRideChecked"), app.indexOf("const [broadcastNote"));
   assert.doesNotMatch(start, /weather/i, "Start never waits on the weather");
-  assert.match(app, /&& !dials\.when \? lineKey/, "a plan set to another time is not checked against leaving now");
+  assert.match(app, /&& !dials\.when && !planDials\.startAt \? lineKey/, "a plan set to another time (or Plan's start time) is not checked against leaving now");
   // The NWS link opens a new tab, named for a screen reader.
   const lines = readFileSync(new URL("../WeatherLines.tsx", import.meta.url), "utf8");
   assert.match(lines, /target="_blank" rel="noopener noreferrer" aria-label=\{nwsLinkName\(alert\)\}/);

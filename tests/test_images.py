@@ -880,6 +880,10 @@ PIPELINE_ONLY_PATHS = {
     "fixtures/mall_grounds": "the Monument grounds' and Constitution Gardens' walks are "
     "opened by the rebuild (routemaker.mallgrounds); the api never imports it",
     "fixtures/bike_lanes": "curated bike lanes are applied by the rebuild's classifier (433)",
+    "fixtures/ddot-projects/completed-bikeways.json": (
+        "completed DDOT bikeway projects are read by the rebuild's conflation "
+        "(routemaker.ddot_projects); the api never imports it"
+    ),
     "fixtures/pavement/overrides.json": (
         "the owner's PCI corrections are read by the rebuild (DC-PCI); "
         "the api never imports routemaker.pavement"
@@ -998,6 +1002,10 @@ def test_the_circle_park_filter_runs_from_the_api_image_layout(tmp_path) -> None
 # Settings paths that are not image content: the data volume and the Valhalla config
 # the rebuild writes and the api reads from a shared mount, and the rebuild's input.
 NOT_IMAGE_CONTENT = {
+    "fixtures/known-roads/known-roads.json": (
+        "settings.REBUILD_KNOWN_ROADS: the rebuild's known-roads check (pipeline.known_roads) "
+        "reads it; the api never opens it"
+    ),
     ".": "BASE_DIR, the repository root itself",
     "data": "DATA_ROOT and everything under it is a mounted volume",
     "valhalla": "VALHALLA_CONFIG_DIR is the shared config mount",
