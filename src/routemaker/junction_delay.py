@@ -5,8 +5,8 @@ Valhalla's bicycle costing (3.9.1, `BicycleCost::TransitionCost`) times a juncti
 going straight: about a second at most for a straight crossing, whatever controls it. A
 real stop costs a rider far more. Fajans and Curry measured riders at a steady effort on
 two parallel San Francisco streets: one stop every 530 ft (California St) against one every
-2,800 ft (Sacramento St) cut the average speed from 14.2 to 10.9 mph, about 7.6 s for each
-extra stop ("Why Bicyclists Hate Stop Signs", ACCESS 18, 2001,
+2,800 ft (Sacramento St) cut the average speed from 14.2 to 10.9 mph, about 9.5 s for each
+extra stop (77 s a mile over about 8 more stops a mile; "Why Bicyclists Hate Stop Signs", ACCESS 18, 2001,
 https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs). So a line through
 twenty stop signs was timed as if it had none, and a route on a grid of all-way stops was
 both timed too quick and preferred over a trail of the same length (the owner's ride of
@@ -65,18 +65,20 @@ Baltimore City, Alexandria and Arlington (the caller's `suburban`):
   are many 15 second suburban signals. Never really encountered one. 30 is probably more
   realistic. Cities do have quicker signal changes.").
 
-In the cities the wait comes from the busiest road at the signal, the one the rider rides
-along included ("Use the values from real data"): CITY_BIG_SIGNAL_S at a big road,
-CITY_SECONDARY_SIGNAL_S at a secondary one, and CITY_SIGNAL_S at any other.
+In the cities the wait is measured from the owner's rides at the District's signals
+(2026-11-13; "Use the values from real data"), by the busiest road at the signal, the
+rider's own included, and by what the rider does there: riding along that road, or
+crossing or turning onto it from a side street ("Calmer streets often have lower signal
+priority"). The ranking counts the wait at a red, the median stop (CITY_RED_S); the time
+shown is the average per pass, green passes included (CITY_PASS_S), since he stopped at
+about 42% of big-road crossings and 21% of passes riding along one. Both are scaled by the
+ride-time setting (`when`, CITY_HOUR_FACTOR, measured: night 0.68, a weekday about 1.15,
+the weekend 1.01; the owner, 2026-11-13, "make sure to add a time of day penalty").
 
-Those are the waits at a red. Counting every pass through a signal in a year of the owner's
-rides (about 9,000 passes; "sometimes the light is green"), the rider stopped at
-29% of the cities' big-road signals, 16% of their others, and 24 to 43% of the suburbs', so
-the wait a ride meets on average is far below the red's. He chose (2026-11-08, "Averages for
-time, reds for choice"): the time shown is the average per pass, with the cities' by the
-ride-time setting (`when`: "Early morning might actually have shorter times"), CITY_PASS_S
-and SUBURBAN_PASS_S; the ranking keeps the waits at a red, a suburban one doubled, as the
-"pain" of a long light.
+Outside the cities the waits at a red are as above, and the time shown is the average per
+pass in a year of his rides (SUBURBAN_PASS_S, about 9,000 passes; "sometimes the light is
+green"); his choice of 2026-11-08 ("Averages for time, reds for choice"). The suburbs'
+passes did not run shorter early, so they take no ride-time factor.
 
 The time shown is those seconds. When routes are ranked a suburban signal's wait counts
 SUBURBAN_SIGNAL_WEIGHT times ("I'd probably double A, with a 2x penalty but keep those
@@ -113,11 +115,13 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, replace
 
-from .intersections import MERGE_WITHIN_M, Movement
+from .intersections import MERGE_WITHIN_M, Movement, time_factor
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
 
-# One full stop and the speed built up again: Fajans and Curry's 14.2 to 10.9 mph at one
-# stop every 530 ft against one every 2,800 ft (see the docstring) is 7.6 s a stop, rounded.
+# One full stop and the speed built up again. Our default, 8 s: Fajans and Curry's 14.2 to
+# 10.9 mph at one stop every 530 ft against one every 2,800 ft (see the docstring) is about
+# 9.5 s a stop (it was misread as 7.6 s until the methodology audit's check, 2026-11-13).
+# CITY_PASS_S and SUBURBAN_PASS_S include it for the share of passes that stopped.
 STOP_DELAY_S = 8.0
 # A signal: the average wait for a rider arriving at random, red squared over twice the
 # cycle (Webster's uniform delay with no queue), at a 100 s cycle with 50 s of red, is
@@ -125,24 +129,37 @@ STOP_DELAY_S = 8.0
 # about 16.5 s, rounded down to 15. The junction model's own price; the wait at a signal is
 # `signal_wait`'s.
 SIGNAL_DELAY_S = 15.0
-# The wait at a red in DC, Baltimore City, Alexandria or Arlington, as the ranking counts it,
-# by the busiest road there (see the docstring; the owner's city rides, 2026-11): a big road
-# (trunk or primary, or 4+ lanes, or 40 mph+), a secondary road, and any other.
-CITY_BIG_SIGNAL_S = 30.0
-CITY_SECONDARY_SIGNAL_S = 15.0
-CITY_SIGNAL_S = 20.0
-# The time shown at a signal: the average per pass in a year of the owner's rides
-# (green passes included, the stops over 4 minutes left out as breaks), plus STOP_DELAY_S for
-# the share of passes that stopped, rounded, as (big, secondary, other). The cities' by the
-# ride-time setting (`routemaker.ridetime`; night from the passes before 7 AM, weekday
-# off-peak from midday's), None where the setting is not known (every pass); the suburbs'
-# did not run shorter early, so one set.
-CITY_PASS_S = {
-    None: (12.0, 5.0, 4.0),
-    "night": (9.0, 4.0, 2.0),
-    "weekday_rush": (15.0, 6.0, 6.0),
-    "weekday_offpeak": (14.0, 6.0, 4.0),
-    "weekend": (11.0, 4.0, 4.0),
+# A city signal (DC, Baltimore City, Alexandria, Arlington) from the owner's rides, measured
+# at DC's signals on 2026-11-13: 92,843 junction passes in 2,330 rides, of them 34,156
+# straight through a signal (reports/ride-check/junction-test/junction-waits-by-band.csv,
+# outside the repository; the scripts are in reports/ride-check/code). Split by what the
+# rider does there, True crossing or turning onto a busier road from a side street, False
+# riding along the busiest road (its own green comes first), and by the busiest road,
+# (big: trunk or primary, or 4+ lanes, or 40 mph+; secondary; any other).
+#
+# The wait at a red, as the ranking counts it: the median stop, when he stopped (more than
+# 3 s within 40 m). Crossing a big road 29 s (IQR 17-44, 474 junctions), riding along one 25 s
+# (13-39, 914 junctions); a secondary road 21 s and 20 s; any other 20 s. Until 2026-11-13
+# these were 30, 15 and 20 s from 4 signals, and then the stop-rate split was applied to
+# them as well, giving 41.4 s and 19.2 s, which no red measured (the methodology audit,
+# area 07, 2.3).
+CITY_RED_S = {True: (29.0, 21.0, 20.0), False: (25.0, 20.0, 20.0)}
+# The time shown: the average per pass, green passes included, plus STOP_DELAY_S for the
+# share that stopped. Crossing a big road he stopped at 42% of passes, riding along it 21%; a
+# secondary road 39% and 19%; any other 28% both ways (only 118 crossings).
+CITY_PASS_S = {True: (16.9, 13.3, 8.6), False: (7.8, 6.4, 9.4)}
+# The ride-time setting (`routemaker.ridetime`) on a city signal's time shown and its red: the
+# same passes' average by setting over the average of all, the mix of signals held fixed.
+# Night 0.68; the weekday, rush or not, about 1.15; the weekend 1.01. One factor for every
+# city signal. The owner, 2026-11-13: "make sure to add a time of day penalty like we had
+# earlier"; the methodology audit (area 07, 2.6) found the earlier factors were the stress
+# model's (0.5, 1.25, 0.85) reused, not measured waits.
+CITY_HOUR_FACTOR = {
+    None: 1.0,
+    "night": 0.68,
+    "weekday_rush": 1.14,
+    "weekday_offpeak": 1.15,
+    "weekend": 1.01,
 }
 SUBURBAN_PASS_S = (24.0, 15.0, 10.0)
 # The wait at a red outside the major cities, as the ranking counts it before the suburban
@@ -411,12 +428,18 @@ def signal_wait(
     onto_busy = onto_big or crossed == SECONDARY_SIGNAL_RANK
     busiest = _busiest(junction, crossed, big or own_big)
     if suburban:
+        # No ride-time factor: the suburbs' passes did not run shorter early, and there are
+        # too few to measure one (the methodology audit, area 07, 2.6).
         red = SUBURBAN_BIG_SIGNAL_S if onto_big else SUBURBAN_SIGNAL_S
         seconds = SUBURBAN_PASS_S[busiest]
         ranked = red * SUBURBAN_SIGNAL_WEIGHT
     else:
-        red = (CITY_BIG_SIGNAL_S, CITY_SECONDARY_SIGNAL_S, CITY_SIGNAL_S)[busiest]
-        seconds = CITY_PASS_S.get(when, CITY_PASS_S[None])[busiest]
+        # Crossing or turning onto a road busier than the rider's own (or one the junction
+        # model reads as big where the rider's own is not); riding along it otherwise, a
+        # road as busy as the rider's own crossed included, as the passes were counted.
+        crossing = crossed is not None and (crossed < _own_rank(junction) or (big and not own_big))
+        red = city_red_s(busiest, crossing, when)
+        seconds = city_pass_s(busiest, crossing, when)
         ranked = red
     stop = None
     if stop_extra_s is not None and crossed is not None:
@@ -440,6 +463,44 @@ def signal_wait(
         pressed = min(pressed, stop - BUTTON_BELOW_STOP_S)
     # Never below the signal's own wait as ranked: a button does not make a light quicker.
     return SignalWait(seconds, max(pressed, ranked), True, red, stop, ranked, True)
+
+
+def hour_factor(when: str | None, suburban: bool = False) -> float:
+    """The ride-time factor on a give-way wait as the ranking counts it, giving way to a road
+    busier than a neighbourhood street (a city signal has its own measured factor,
+    CITY_HOUR_FACTOR): the junction model's
+    (`intersections.time_factor`; rush hour x1.25, weekend x0.85, night x0.5 in the cities
+    and x0.85 outside them, 1.0 off-peak or with no setting). The owner, 2026-11-13, choosing
+    the split signals: "make sure to add a time of day penalty like we had earlier"."""
+    return time_factor(when, urban=not suburban)
+
+
+def _give_way_ranked(
+    cost: float,
+    when: str | None,
+    suburban: Callable[[float, float], bool] | None,
+    here: tuple[float, float],
+) -> float:
+    """A junction's wait with no signal as the ranking counts it: giving way to a busy road
+    (more than a stop's STOP_DELAY_S) by the hour (`hour_factor`); a quiet street's stop or
+    yield is not scaled, as the junction model's are not. `suburban` is asked only where a
+    ride time is set, at night, where its answer can change the factor."""
+    if when is None or cost <= STOP_DELAY_S:
+        return cost
+    outside = when == "night" and suburban is not None and suburban(*here)
+    return round(cost * hour_factor(when, outside), 1)
+
+
+def city_red_s(busiest: int, crossing: bool, when: str | None = None) -> float:
+    """A city signal's wait at a red, as the ranking counts it: `busiest` 0 big, 1
+    secondary, 2 any other; `crossing`: the rider crosses or turns onto the busier road
+    rather than riding along it; `when`: the ride-time setting (CITY_HOUR_FACTOR)."""
+    return round(CITY_RED_S[crossing][busiest] * CITY_HOUR_FACTOR.get(when, 1.0), 1)
+
+
+def city_pass_s(busiest: int, crossing: bool, when: str | None = None) -> float:
+    """A city signal's time shown, the average per pass, read as `city_red_s` is."""
+    return round(CITY_PASS_S[crossing][busiest] * CITY_HOUR_FACTOR.get(when, 1.0), 1)
 
 
 def _busiest(junction: RawJunction, crossed: int | None, big: bool) -> int:
@@ -574,13 +635,17 @@ def waits(
             if run_signal is not None:
                 run = signal_run(run, run_signal)
             elif cost > run.seconds:
-                run = replace(run, seconds=cost, ranked_s=cost)
+                ranked = _give_way_ranked(cost, when, suburban, here)
+                run = replace(run, seconds=cost, ranked_s=ranked)
             continue
         if run is not None:
             out.append(run)
         run_signal = signal
         run_signal_m = junction.m
-        run = Wait(junction.m, *here, cost, cost)
+        # Giving way to a busy road ranks by the hour too (`hour_factor`); a quiet street's
+        # stop or yield does not, as the junction model's quiet-street stops are not scaled.
+        ranked = cost if signal is not None else _give_way_ranked(cost, when, suburban, here)
+        run = Wait(junction.m, *here, cost, ranked)
         if signal is not None:
             run = replace(signal_run(run, signal), button=signal.button, button_at=button_at)
     if run is not None:

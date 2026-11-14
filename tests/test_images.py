@@ -880,6 +880,10 @@ PIPELINE_ONLY_PATHS = {
     "fixtures/mall_grounds": "the Monument grounds' and Constitution Gardens' walks are "
     "opened by the rebuild (routemaker.mallgrounds); the api never imports it",
     "fixtures/bike_lanes": "curated bike lanes are applied by the rebuild's classifier (433)",
+    "fixtures/ddot-projects/completed-bikeways.json": (
+        "completed DDOT bikeway projects are read by the rebuild's conflation "
+        "(routemaker.ddot_projects); the api never imports it"
+    ),
     "fixtures/pavement/overrides.json": (
         "the owner's PCI corrections are read by the rebuild (DC-PCI); "
         "the api never imports routemaker.pavement"

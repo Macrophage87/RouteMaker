@@ -4176,34 +4176,37 @@ Bureau's county boundaries, docs/SOURCES.md) a signal's wait is
 | Any other signal: a secondary road crossed, riding along the big road through its own signals included (the owner: "I don't think there are many 15 second suburban signals. Never really encountered one. 30 is probably more realistic. Cities do have quicker signal changes.") | 30 s | 60 s |
 | A big or secondary road crossed or turned onto from a path, sidepath, trail or minor road (unclassified, residential, service), or a signal whose crossing or path the map tags `button_operated=yes` (anywhere) | as above (in a city, as below) | 120 s, held below a stop sign across the same road |
 
-In the cities a red is 30 s at a big road, 15 s at a secondary one and 20 s at any other, by
-the busiest road there, the rider's own included (a 4-lane or 40 mph road ridden along is a
-big one where the junction model has an event at the signal: `intersections.own_big_signal_points`,
-the signal review of 2026-11-08; the suburban 45 s red stays for crossing or joining one),
-ranked once ("Not really needed for DC"
-"or the major cities"; "Use the values from real data").
+In the cities (since 2026-11-13) both numbers are measured from the owner's rides at the
+District's signals, by the busiest road there (the rider's own included) and by what the rider
+does: riding along that road, or crossing or turning onto it from a side street. 92,843
+junction passes in 2,330 rides, 34,156 of them straight through a signal; a pass "stopped" if
+the rider stood more than 3 s within 40 m; stops over 4 minutes left out as breaks
+(`junction_delay.CITY_RED_S`, `CITY_PASS_S`, `CITY_HOUR_FACTOR`; scripts and the table by
+setting in the project's reports/ride-check, never the repository):
 
-**Time shown: the average pass (the owner, 2026-11-08).** Those are waits at a red, and "sometimes
-the light is green". In a year of the owner's rides (every pass within 20 m of a
-signal or a cluster of signals within 30 m, the stopped time within 40 m of it, the 50
-stops over 4 minutes left out as breaks), the rider stopped at 29% of 4,797 passes through
-the cities' big-road signals, 16% of 2,798 at secondary ones and 16% of 724 at others, and at
-43% of 489, 36% of 116 and 24% of 113 in the suburbs. He chose "Averages for time, reds for
-choice": the time shown is the average stopped time per pass, plus a stop's 8 s for the share
-that stopped (`junction_delay.CITY_PASS_S`, `SUBURBAN_PASS_S`), and the ranking keeps the
-waits at a red above. The cities' run by the ride-time setting ("Early morning might actually
-have shorter times"); the suburbs' did not run shorter early:
+| City signal | Stopped | Red (median stop), ranked once | Time shown per pass |
+|---|---|---|---|
+| Crossing a big road from a side street | 42% of 9,191 passes, 474 signals | 29 s (IQR 17-44) | 16.9 s |
+| Riding along a big road | 21% of 9,752, 914 | 25 s (13-39) | 7.8 s |
+| Crossing a secondary road | 39% of 2,019, 156 | 21 s | 13.3 s |
+| Riding along a secondary road | 19% of 9,086, 422 | 20 s | 6.4 s |
+| Any other signal, crossing / along | 28% of 118 / 3,990 | 20 s | 8.6 / 9.4 s |
 
-| Time shown (big / secondary / other road) | Cities | Suburbs |
-|---|---|---|
-| Night (from the passes before 7 AM) | 9 / 4 / 2 s | 24 / 15 / 10 s |
-| Weekday rush | 15 / 6 / 6 s | 24 / 15 / 10 s |
-| Weekday off-peak (from midday's) | 14 / 6 / 4 s | 24 / 15 / 10 s |
-| Weekend | 11 / 4 / 4 s | 24 / 15 / 10 s |
-| Setting not known | 12 / 5 / 4 s | 24 / 15 / 10 s |
+Both are scaled by the ride-time setting, one measured factor for every city signal: night
+0.68, weekday rush 1.14, weekday off-peak 1.15, weekend 1.01, setting not known 1.0 (the
+owner, 2026-11-13: "make sure to add a time of day penalty like we had earlier"). The red
+is not scaled by the stop rate: the split is in how often he stopped, not in how long (the
+methodology audit, area 07, 2.3). Before 2026-11-13 a city red was 30, 15 or 20 s from 4
+signals and the time shown 12, 5 or 4 s from 8,319 passes; the suburbs' figures below are
+still from that study.
 
-A pass counts riding along a road through its green as well as crossing it, so a crossing's
-own wait runs somewhat above these.
+**Time shown outside the cities: the average pass (the owner, 2026-11-08).** Those are waits at a red, and "sometimes
+the light is green". In a year of the owner's rides the rider stopped at 43% of 489 passes
+through the suburbs' big-road signals, 36% of 116 at secondary ones and 24% of 113 at others.
+He chose "Averages for time, reds for choice": the time shown is the average stopped time per
+pass, plus a stop's 8 s for the share that stopped (`junction_delay.SUBURBAN_PASS_S`: 24, 15
+and 10 s), and the ranking keeps the waits at a red above. The suburbs' passes did not run
+shorter early, and there are too few to measure a ride-time factor, so they take none.
 
 The ranking counts a suburban red's wait twice ("I'd probably double A, with a 2x
 penalty but keep those numbers. There's a 'pain' factor to waiting at busy roads"):

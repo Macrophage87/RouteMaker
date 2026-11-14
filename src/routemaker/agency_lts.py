@@ -53,6 +53,17 @@ AGENCIES: dict[str, tuple[str, int]] = {
 
 AGENCY_RULE = "agency rating"
 
+# The agencies whose rating is recorded for comparison and never sets a tier. DDOT's 2020 layer:
+# the owner, 2026-10-30, "I think it's just that 6 year old data is too stale to rely on", and
+# 2026-11-13, "I want as few overrides as possible. If I say that a road is incorrectly rated
+# that means that I feel the formula is wrong" and "Many roads rated very dangerous in 2020 have
+# been targets for improvement in the 6 years since". The formula decides in the District from
+# the city's own counts, lanes and speeds; DDOT's level stays on the road panel beside it.
+# Every agency, 2026-11-13 (trial build; the owner: "those have been so horribly off in parts
+# that I don't trust them. If the only row in why is agency, it's not a valid rating. Return it
+# for rerating."). MDOT SHA's prohibition (a bicycle ban, `prohibiting`) still closes the way.
+COMPARISON_ONLY = frozenset({"ddot", "moco", "mdot-sha"})
+
 # An agency layer older than the bike facilities on the ground. DDOT's is its 2020 Level of
 # Traffic Stress (`scripts/install_agency_lts.py`), from before K Street's, Irving Street's and
 # other lanes since. The owner, 2026-10-21, of 14th Street NW ("there's a bike lane on 14th street
@@ -256,7 +267,7 @@ def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     rank on one way (two counties meeting at a line) take the higher level, the
     stress-averse reading. A ban (`PROHIBITING_LEVELS`) is access, not a level, and
     is never chosen."""
-    levels = [r for r in ratings if prohibiting((r,)) is None]
+    levels = [r for r in ratings if prohibiting((r,)) is None and r.agency not in COMPARISON_ONLY]
     ranked = sorted(levels, key=lambda r: (r.rank, -used_level(r)))
     return ranked[0] if ranked else None
 

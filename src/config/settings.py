@@ -653,7 +653,8 @@ REBUILD_MASS_CAPACITY_MEDIAN_RANGE = (60, 200)
 # it's LTS4 north of R." The 2026-10-03 build gave 49% and 72% (R St to Calvert St was
 # LTS 3 at a posted 25 mph); with the R St to Calvert St corridor (fixtures/corridors/)
 # about 67% and 99%. An empty street turns the check off (the test suite's toy extracts).
-REBUILD_SENTINEL_LTS4_STREET = "CONNECTICUT AVE NW"
+# TRIAL BUILD ONLY (claude/project-thread-uqkmln): off, the re-rate ignores the owner's calls. Never merge.
+REBUILD_SENTINEL_LTS4_STREET = ""
 REBUILD_SENTINEL_LTS4_MIN_SHARE = 0.6
 REBUILD_SENTINEL_LTS4_NORTH_OF_LAT = 38.9126
 REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
@@ -663,9 +664,15 @@ REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE = 0.95
 # tier. (ROUTENAME, south latitude, north latitude, tier, minimum share, decision.)
 # South Capitol St, Martin Luther King Jr Ave SE to Mississippi Ave SE, LTS 4 (432:
 # "There's no other routes through there"), by the named corridor in fixtures/corridors/.
-REBUILD_SENTINEL_STRETCHES = (
-    ("SOUTH CAPITOL ST BN", 38.8309, 38.8357, 4, 0.95, "OWNER-DECISIONS 432"),
-)
+# TRIAL BUILD ONLY (claude/project-thread-uqkmln): off, the re-rate ignores the owner's calls. Never merge.
+REBUILD_SENTINEL_STRETCHES = ()
+# Roads the owner has called (`pipeline.known_roads`; backlog 2026-11-12, stress item 5):
+# VALIDATE_SEGMENTS refuses a build where a stretch in this file, found by its line rather
+# than by way id, no longer carries the owner's level. An empty path turns it off.
+# TRIAL BUILD ONLY (branch claude/project-thread-uqkmln): off, because the owner asked the
+# 2026-11-13 re-rate to ignore his own calls ("Ignore my own calls"); the trial's report lists
+# where each called road came out instead. Never merge this line.
+REBUILD_KNOWN_ROADS = ""
 # Ways inside Joint Base Anacostia-Bolling that VALIDATE_SEGMENTS requires closed to bicycles
 # (`pipeline.run.assert_military_closures`; the owner's report of a route through the
 # base, 2026-10-05): two sidewalks and a service road with no access tag of their own,

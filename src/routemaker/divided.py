@@ -30,8 +30,9 @@ alongside it within C4_PAIR_M, and reads the street's name without the
 District's quadrant (South Capitol Street is "Southwest" on one carriageway and
 "Southeast" on the other, 12 m apart; E Street NW's carriageways are 57 to 65 m
 apart and H Street NW's 52 m, past PAIR_M; combined correctness review). It is
-not the stress reading: item 109's divided-road flag keeps PAIR_M and the
-names as mapped.
+not the stress reading: item 109's divided-road flag keeps PAIR_M, and since
+2026-11-13 reads the name without its quadrant too (North Capitol Street's
+carriageways are "Northeast" and "Northwest").
 
 A third reading closes the U-turn where a median ends (`median_uturns`). Where
 the two carriageways meet at the median's nose, the router saw one carriageway
@@ -179,7 +180,11 @@ def small_loops(ways, name_of=None) -> set[int]:
 def carriageways(ways: Iterable) -> set[int]:
     """The ids of the ways (anything with osm_id, tags and coordinates) that
     are one carriageway of a divided road."""
-    return _paired(ways, DIVIDED_HIGHWAY, lambda tags: tags["name"], PAIR_M)
+    # The name without the District's quadrant (`street_name`): North Capitol Street's
+    # carriageways are "Northeast" on one side and "Northwest" on the other, and read as two
+    # one-way streets they missed the two-way road's steps (the owner, 2026-11-13: a road
+    # misrated means the formula or its data is wrong).
+    return _paired(ways, DIVIDED_HIGHWAY, lambda tags: street_name(tags["name"]), PAIR_M)
 
 
 def carriageway_pairs(ways: Iterable, names: Iterable[str] | None = None) -> set[int]:
