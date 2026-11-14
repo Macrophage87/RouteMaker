@@ -228,7 +228,7 @@ test("the toggle's hint with a start alone talks of no end point", () => {
   const A: LonLat = [-77.0, 38.9];
   const B: LonLat = [-76.98, 38.9];
   const off = loopView("default", false, [A])!;
-  assert.equal(off.hint, "Turn on to finish back at the start. Each point you add is then a stop.");
+  assert.equal(off.hint, "Loop or Out and back finishes back at the start. Each point you add is then a stop.");
   assert.equal(loopView("default", false, [])!.hint, off.hint, "the same before any point (389)");
   assert.doesNotMatch(off.hint, /end point/);
   assert.match(loopView("default", false, [A, B])!.hint, /end point/);

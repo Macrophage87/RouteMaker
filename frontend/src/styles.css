@@ -842,15 +842,6 @@ progress.planning {
   min-height: 24px;
 }
 
-/* "Make it a loop" by the search (OWNER-DECISIONS 388): a 44 px row, its hint under it. */
-.loop-toggle {
-  margin: 8px 0;
-}
-
-.loop-toggle .toggle {
-  min-height: 44px;
-}
-
 /* The loop toggle when the ride is a loop already: in the Tab order, but not changeable. */
 .toggle input[aria-disabled="true"] {
   opacity: 0.6;
@@ -3216,6 +3207,21 @@ button.secondary,
 .dials fieldset.when > label.toggle:has(input:checked) {
   border: 2px solid var(--accent);
   font-weight: 700;
+}
+
+/* Plan's Leave at: its day and time box on a row of its own, under the chip (lib/startTime.ts) */
+.dials fieldset.when .start-time {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0 0 4px;
+}
+
+.dials fieldset.when .start-time input {
+  min-height: 44px;
+  font: inherit;
 }
 
 .dials fieldset.when .hint,
@@ -8988,6 +8994,28 @@ details.fold > summary .icon {
   z-index: 3;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
+/* A barrier's mark as a button (lib/barriers.ts): clear, over the layer's octagon, ringed when focused. */
+.barrier-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  /* A clear 44 px target over the drawn mark (the v0.27.0 accessibility review: 32 px was under the rule). */
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+  z-index: 3;
+}
+.barrier-button:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .barrier-button:focus-visible {
+    outline: 3px solid CanvasText;
+  }
+}
 .closure-marker.closure-bypassed {
   width: 18px;
   height: 18px;
@@ -11461,4 +11489,252 @@ button.route-note:focus-visible {
 }
 .feedback-box .feedback-said:empty {
   display: none;
+}
+
+/* The facts behind a road's level (RoadFacts.tsx; the owner, 2026-11-13). A filled mark is a record, a
+   hollow one an estimate; the words say the same ("estimated", "Strong evidence: 4 of 5 from records"). */
+.road-facts {
+  margin-top: 8px;
+}
+
+.road-facts-plain {
+  margin: 0 0 6px;
+}
+
+.road-facts-evidence {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.road-facts-marks {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
+.road-facts-mark {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--text);
+  box-sizing: border-box;
+  flex: none;
+}
+
+.road-facts-mark-on {
+  background: var(--text);
+}
+
+.road-facts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.road-facts-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.road-facts-row > .road-facts-mark {
+  margin-top: 0.3em;
+}
+
+.road-facts-text {
+  overflow-wrap: anywhere;
+}
+
+.road-facts-estimated {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.road-facts-source {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.road-facts-detail {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.875rem;
+}
+
+/* The (i): a 44px touch target around a 28px ring. */
+.road-facts-info {
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px -8px 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.road-facts-info {
+  background-image: radial-gradient(circle, transparent 12px, var(--text-muted) 12.5px, var(--text-muted) 14px, transparent 14.5px);
+}
+
+.road-facts-info[aria-expanded="true"] {
+  color: var(--accent);
+  background-image: radial-gradient(circle, transparent 12px, var(--accent) 12.5px, var(--accent) 14px, transparent 14.5px);
+}
+
+/* The big level and why (RoadFacts.tsx LevelBox; the owner, 2026-11-13). */
+.road-level {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.road-level-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.road-level-badge {
+  font-size: 1.375rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 2px solid;
+  white-space: nowrap;
+  flex: none;
+}
+
+.road-level-words {
+  font-weight: 600;
+  font-size: 1.0625rem;
+}
+
+.road-level-why {
+  margin: 8px 0 0;
+}
+
+/* Check a route (CheckRoute.tsx): an opened file's busiest stretches, each with its calmer way and Use this way. */
+.check-route {
+  margin: 0.75rem 0;
+}
+.check-route h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.check-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.check-route .check-stretch {
+  display: block;
+  padding: 0;
+  text-align: start;
+}
+.check-route .check-way {
+  margin: 0.15rem 0 0.35rem;
+}
+
+/* Plan's Keep to compare (lib/compareRoutes.ts): the kept route and the route now, side by side. */
+.plan-compare {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-keep {
+  justify-self: start;
+  min-height: 44px;
+}
+
+.plan-compare-table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-compare-table th,
+.plan-compare-table td {
+  padding: 4px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border, #d1d5db);
+}
+
+.plan-compare-table td {
+  white-space: nowrap;
+}
+
+.plan-compare-table th[scope="row"] {
+  text-align: left;
+  font-weight: 400;
+}
+
+.plan-compare-better {
+  font-weight: 700;
+}
+
+.plan-compare-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-compare-actions button {
+  min-height: 44px;
+}
+
+/* How the ride ends (2026-11-13): One way, Loop, Out and back, a row of three by the search. */
+.loop-ways {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.loop-way {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.loop-way + .loop-way {
+  border-left: 1px solid var(--swatch-border);
+}
+
+.loop-way.chosen {
+  background: var(--bg-soft);
+  font-weight: 700;
+}
+
+.loop-way input[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

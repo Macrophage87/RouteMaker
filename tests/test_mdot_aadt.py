@@ -11,6 +11,7 @@ is for. Nothing here downloads anything: the real layer arrives at rebuild time.
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -219,3 +220,43 @@ class TestBothCarriageways:
         )
         _result, added = self.shared([carriageway(1, WEST), two_way], mdot_aadt.AGENCY)
         assert added == {}
+
+
+class TestCutAtJunctions:
+    """A section's count stops at a busy junction either side of its station (Bucklodge Road
+    took Barnesville Road's 5,641 from past such a junction; the methodology audit, area 04)."""
+
+    MILE = 1609.344 / (111_320.0 * math.cos(math.radians(39.0)))
+
+    def section(self, count, begin=0.0, end=3.0, station=0.5, route=117):
+        line = [(-77.4 + begin * self.MILE, 39.0), (-77.4 + end * self.MILE, 39.0)]
+        props = {
+            "AADT": count,
+            "ID_PREFIX": "MD",
+            "ID_RTE_NO": route,
+            "COUNTY_DESC": "MONTGOMERY",
+            "BEGIN_SECTION": begin,
+            "END_SECTION": end,
+            "ID_MP": station,
+        }
+        return line, props
+
+    def side_road(self, count, at_mile=1.5):
+        x = -77.4 + at_mile * self.MILE
+        return [(x, 39.0), (x, 39.01)], {"AADT": count, "ID_PREFIX": "CO", "ID_RTE_NO": 9}
+
+    def test_a_busy_junction_ends_the_count(self) -> None:
+        cut = mdot_aadt.cut_at_junctions([self.section(5641), self.side_road(3000)])
+        assert cut[0][0] == pytest.approx((-77.4, 39.0))
+        assert cut[0][-1][0] == pytest.approx(-77.4 + 1.5 * self.MILE, abs=1e-6)
+        assert len(cut[1]) == 2  # the side road has no junction of its own
+
+    def test_a_quiet_junction_does_not(self) -> None:
+        cut = mdot_aadt.cut_at_junctions([self.section(5641), self.side_road(800)])
+        assert cut[0][-1][0] == pytest.approx(-77.4 + 3 * self.MILE)
+
+    def test_a_station_that_cannot_be_placed_keeps_the_whole_line(self) -> None:
+        line, props = self.section(5641)
+        props = {**props, "ID_MP": None}
+        cut = mdot_aadt.cut_at_junctions([(line, props), self.side_road(3000)])
+        assert cut[0][-1][0] == pytest.approx(-77.4 + 3 * self.MILE)

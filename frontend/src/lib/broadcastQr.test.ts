@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { QR_MARGIN, qrPath } from "./broadcastQr.ts";
+import { QR_MARGIN, qrPath } from "./broadcastQrCode.ts";
 
 const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");

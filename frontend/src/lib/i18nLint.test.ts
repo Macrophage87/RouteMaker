@@ -64,6 +64,7 @@ const ALLOWED: readonly { file: string; text: string; why: string }[] = [
   { file: "MyRoutes.tsx", text: "GPX", why: "the file format's name" },
   { file: "app/RoutePanel.tsx", text: "GPX", why: "the file format's name" },
   { file: "RailStations.tsx", text: "Metro", why: "the system's name" },
+  { file: "RoadFacts.tsx", text: "i", why: "the information symbol drawn in the (i) button; its name is t(\"About {label}\")" },
 ];
 
 function sources(dir: string): string[] {

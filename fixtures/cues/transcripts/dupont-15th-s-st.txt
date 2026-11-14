@@ -47,7 +47,7 @@
   144 s   1159 m  #2 right 19th St NW advance: "In 700 feet, right onto 19th Street Northwest." -> said
   161 s   1296 m  #2 right 19th St NW prepare: "In 250 feet, right onto 19th Street Northwest." -> said
   169 s   1360 m  #2 right 19th St NW now (urgent): "Right now onto 19th Street Northwest." -> said
-  170 s   1368 m  #3 right Svc Rd advance: "In 600 feet, right onto the service road beside Florida Avenue Northwest." -> held 1.9 s
+  170 s   1368 m  #3 right Svc Rd advance: "In 600 feet, right onto the service road beside Florida Avenue Northwest." -> held 2.2 s
   184 s   1481 m  #3 right Svc Rd prepare: "In 250 feet, right onto the service road beside Florida Avenue Northwest." -> said
   192 s   1545 m  #3 right Svc Rd now (urgent): "Right now onto the service road beside Florida Avenue Northwest." -> said
   199 s   1601 m  #4 end arrive (urgent): "You have arrived at the end of the route. Destination on your left." -> said

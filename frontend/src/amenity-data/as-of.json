@@ -1,0 +1,13 @@
+{
+  "note": "Written by scripts/refresh_places.py: the day of the OpenStreetMap extract each snapshot was built from, and the day DDOT's and BCDOT's racks were last fetched.",
+  "extract": {
+    "water-restrooms": "2026-10-09",
+    "food": "2026-10-09",
+    "places": "2026-10-09",
+    "trail-miles": "2026-10-09",
+    "bike-parking": "2026-10-31",
+    "restricted-sites": "2026-11-02",
+    "barriers": "2026-11-02"
+  },
+  "cities": "2026-11-01"
+}
