@@ -684,6 +684,8 @@ test("whereAmI off route: the way back, its distance and direction", () => {
   assert.equal(whereAmI(model, s), "Off the planned route. The route is 200 feet to the south.");
   const back = wayBack(model, s);
   assert.equal(back?.direction, "south");
+  // The street the line is on there, for a rider with no signal (backlog 2026-11-12, area 08 item 1).
+  assert.equal(back?.street, "A Street");
 });
 
 test("compassWord", () => {

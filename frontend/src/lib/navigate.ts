@@ -2333,11 +2333,19 @@ export function compassWord(a: LonLat, b: LonLat): string {
  * Back to the planned route ("Keep the planned route", plan section 4): the nearest point of the
  * line at or ahead of the last progress, its distance and its direction from the rider.
  */
-export function wayBack(model: RideModel, state: RideState): { metres: number; direction: string; point: LonLat } | null {
+export function wayBack(model: RideModel, state: RideState): { metres: number; direction: string; point: LonLat; street: string | null } | null {
   if (!state.fix) return null;
   const found = snap(model, state.fix.point, state.progressM ?? 0, Infinity);
   if (!found) return null;
-  return { metres: haversineM(state.fix.point, found.point), direction: compassWord(state.fix.point, found.point), point: found.point };
+  // The street the line is on there, by name only (backlog 2026-11-12, area 08 item 1: "on Beach Drive"): an unnamed
+  // way says nothing a rider could look for.
+  const street = stretchAt(model, found.alongM)?.street ?? null;
+  return {
+    metres: haversineM(state.fix.point, found.point),
+    direction: compassWord(state.fix.point, found.point),
+    point: found.point,
+    street: isUnnamed(street) ? null : wayWords(street as string),
+  };
 }
 
 /**

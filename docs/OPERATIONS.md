@@ -10442,8 +10442,10 @@ the signal returns, the server plans it again.
 
 The optional whole-area download beside each ride's mile-wide network (the owner, 2026-11-12:
 "Potentially split it by subregion"; "Beltway, NoVA, NW exurbs, Baltimore and suburbs, etc.").
-Five packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
-exurbs, Baltimore and suburbs, and the rest of the map (the coverage box less the others). The
+Six packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
+exurbs, Baltimore and suburbs, the rest of the map (the coverage box less the others), and
+Everything, the whole coverage box in one pack (Stephen, 2026-11-13: "Offer everything too to
+download"; the largest, so the biggest memory use on the phone in a ride with no signal). The
 borders are our draft, approximate; each pack also takes the roads within a mile of its border.
 
 - **Built after every map swap**, first thing in the rebuild's last stage, from the live
@@ -10472,3 +10474,17 @@ borders are our draft, approximate; each pack also takes the roads within a mile
   `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
   then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
   settings.COVERAGE_BBOX)`.
+- **On the phone** (`frontend/src/lib/regionPack.ts`, `RegionPackSetting.tsx`): Settings >
+  Riding, "Map for no signal", one picker: None or an area (with its size). Choosing one
+  downloads it, checks its SHA-256 against the list, and keeps it compressed in IndexedDB
+  (`routemaker-region-pack`), one area at a time; the one kept before stays until the new one
+  is checked and stored. None removes it. While Settings is open with a signal, a kept area
+  whose checksum the list no longer gives (the map was rebuilt) is downloaded again.
+- **In a ride**: when a re-plan fails for no signal, the way back is looked for first on the
+  ride's own mile-wide network, then, only if that finds none, on the kept area: unzipped when
+  the phone loses its signal (or at the first re-plan that needs it) and held until the ride
+  ends, so a ride with a signal never holds it in memory; priced with the ride's own
+  level prices where they were fetched, else the Default ride type's kept with the pack.
+- **Where neither finds a way**, Ride says the no-signal line with where the planned route is
+  and, where it has a name, its street ("The planned route is 400 feet to the northeast. It
+  is on Beach Drive."), and draws the way back to it on the map.
