@@ -13,9 +13,9 @@ They apply where SHA rates the road: Maryland outside Montgomery (inside, the co
 ranks first, `agency_lts.chosen`). Since 2026-11-13 every agency's level is comparison-only
 (`agency_lts.COMPARISON_ONLY`): the reading is recorded and shown, never the tier. SHA's 5,
 a ban, is never read otherwise. Each rule reads only SHA's own attributes (functional class,
-posted or assumed speed, through lanes, shoulder widths, bike facility), SHA's traffic count for the stretch
-(`MDOT SHA Annual Average Daily Traffic`, joined by route and milepoint), and whether the
-stretch lies in a Census urban area.
+posted or assumed speed, through lanes, shoulder widths, bike facility), SHA's traffic count
+for the stretch (`MDOT SHA Annual Average Daily Traffic`, joined by route and milepoint), and
+whether the stretch lies in a Census urban area.
 
 And one fault in SHA's data, not its judgment (`SECOND_RECORD`): SHA inventories many roads
 in both directions, and the second direction's record (route id character 15, "2") has no
