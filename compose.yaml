@@ -249,6 +249,8 @@ services:
       PRIVACY_CONTACT: ${PRIVACY_CONTACT:-}
       # Who hosts the server, named by the privacy policy: unset, it says the site's owner runs it.
       PRIVACY_HOSTING: ${PRIVACY_HOSTING:-}
+      # Who runs the site, named by the privacy policy's Contact: unset, it names nobody.
+      PRIVACY_OPERATOR: ${PRIVACY_OPERATOR:-}
       # Android App Links (core.app_links): the store app's id and Play's signing key's SHA-256
       # fingerprint. Either unset, /.well-known/assetlinks.json is a 404 and links open the browser.
       ANDROID_APP_ID: ${ANDROID_APP_ID:-}

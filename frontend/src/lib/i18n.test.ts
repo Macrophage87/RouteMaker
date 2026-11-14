@@ -308,6 +308,9 @@ test("each of DC's languages has every turn sentence Ride says (the owner, 2026-
  */
 const GO_RIDE_SCREENS = ["app/Go.tsx", "RideMode.tsx", "RideGroup.tsx", "RoamMode.tsx", "app/Sheets.tsx"];
 const GO_RIDE_ALSO = [
+  // The road panel opens from Go's spot dialog too (the v0.27.0 accessibility review); lib/roadInfo.ts's panel
+  // words are in every catalog as well, but it also holds Plan's map tools.
+  "RoadFacts.tsx",
   // Ready for a dozen testers (2026-11-12): Send feedback, the server's status line, the battery line.
   "FeedbackBox.tsx",
   "BatteryNote.tsx",

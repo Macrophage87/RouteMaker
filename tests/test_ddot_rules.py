@@ -89,7 +89,9 @@ def test_a_struck_rule_leaves_ddot_as_it_is() -> None:
     assert ddot_rules.read_as(block, enabled=ddot_rules.ENABLED - {"busy-road-at-1"}) is None
 
 
-def test_the_road_panel_says_why_ddot_was_read_otherwise() -> None:
+def test_the_road_panel_says_why_ddot_was_read_otherwise(monkeypatch) -> None:
+    # The rules as they read with DDOT's level in use (`agency_lts.COMPARISON_ONLY` off).
+    monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
     bridge = StressResult(Stress.LTS3, "four lanes", (), volume_aadt=45_334, lanes=2, oneway=False)
     result = agency_lts.apply(bridge, [AgencyRating("ddot", 1)])
     assert result.tier is Stress.LTS4

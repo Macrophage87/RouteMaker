@@ -266,7 +266,8 @@ def test_the_osm_only_tier_goes_through_the_ratings_and_steps_the_real_tier_does
     from routemaker.agency_lts import AgencyRating
 
     street = {"highway": "residential", "maxspeed": "25 mph", "lanes": "2"}
-    formula = classify(street, urban=True, jurisdiction="DC")
+    # Outside DC: a DC street of this kind is LTS 1 (`stress.QUIET_RESIDENTIAL_RULE`).
+    formula = classify(street, urban=True, jurisdiction="MD")
     assert formula.tier is Stress.LTS2
     rated = [AgencyRating("moco", 3)]
     assert osm_tags_tier(formula, street, rated, urban=True).tier is Stress.LTS3

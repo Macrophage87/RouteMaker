@@ -253,6 +253,8 @@ def test_unlink_keeps_at_least_one_sign_in(client, keys, monkeypatch) -> None:
     assert client.post("/auth/unlink", {"provider": "discord"}).status_code == 409
     provider_login(client, monkeypatch, "google", "g-sub", link=True)
     user = User.objects.get()
+    # The Android app signs in with Discord alone: the page says so before Discord is unlinked.
+    assert "Android app signs in with Discord only" in client.get("/auth/sign-ins").content.decode()
     assert client.post("/auth/unlink", {"provider": "discord"})["Location"] == "/auth/sign-ins"
     user.refresh_from_db()
     assert user.discord_user_id is None

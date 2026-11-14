@@ -30,7 +30,7 @@
 import type { RouteError, RouteResponse } from "./api.ts";
 import { t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { ZONE_RADIUS_M } from "./shareCard.ts";
+import { ZONE_RADIUS_M } from "./shareCardBasics.ts";
 import type { Home } from "./myGo.ts";
 import type { SaveBody, SavedRoute } from "./savedRoutes.ts";
 import { csrfFromCookie } from "./stressEditor.ts";

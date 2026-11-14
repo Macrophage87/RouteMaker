@@ -2244,4 +2244,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Check it fits your bike.": "ብሽክለታኹም ከም ትሓልፍ ኣረጋግጹ።",
   "Width not mapped: it may be too narrow for your bike.": "ስፍሓቱ ኣብ ካርታ የለን: ንብሽክለታኹም ኣዝዩ ጸቢብ ክኸውን ይኽእል።",
   "Barrier: {name}": "ዕንቅፋት: {name}",
+  // The road panel (the v0.27.0 accessibility review).
+  "Traffic stress:": "ጸቕጢ ትራፊክ:",
+  "What the level rests on": "እቲ ደረጃ ዝተመርኮሶ",
+  "More about this road": "ብዛዕባ እዚ መገዲ ተወሳኺ",
+  "from a record": "ካብ መዝገብ",
+  "estimated": "ግምታዊ",
+  "About {label}": "ብዛዕባ {label}",
 };

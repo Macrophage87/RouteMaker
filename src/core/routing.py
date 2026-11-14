@@ -6265,7 +6265,12 @@ def _plan(
             and (loop_info["fallback"] is None or overlap < refine.LOOP_OUT_AND_BACK * 100.0)
         ):
             refine_context.loop_overlap = overlap / 100.0
-    if len(trip.get("legs") or []) > 1 and not quick and not fixed and not (loop and dials.out_and_back):
+    if (
+        len(trip.get("legs") or []) > 1
+        and not quick
+        and not fixed
+        and not (loop and dials.out_and_back)
+    ):
         # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
         # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`). Not on an
         # out and back, which rides its way twice on purpose.

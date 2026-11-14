@@ -105,7 +105,10 @@ class TestAPaintedLaneOnAWideTwoWayStreet:
         assert not painted_lane_multilane({**SIX_LANE, **LANE}, lanes=1)
         assert not painted_lane_multilane({"highway": "cycleway", "lanes": "4", **LANE})
 
-    def test_an_agency_still_wins_and_the_rural_floor_stays(self) -> None:
+    def test_an_agency_still_wins_and_the_rural_floor_stays(self, monkeypatch) -> None:
+        # DDOT's 2020 layer is comparison-only (`agency_lts.COMPARISON_ONLY`); this reads
+        # how an agency that decides still wins.
+        monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
         formula = classify({**SIX_LANE, **LANE})
         rated = agency_lts.apply(formula, [AgencyRating("ddot", 2)])
         assert rated.tier is Stress.LTS2 and rated.formula_tier is Stress.LTS3
@@ -120,7 +123,8 @@ def result_for(ratings=()) -> object:
 
 
 class TestTheFlagList:
-    def test_a_ddot_and_a_montgomery_row(self) -> None:
+    def test_a_ddot_and_a_montgomery_row(self, monkeypatch) -> None:
+        monkeypatch.setattr(agency_lts, "COMPARISON_ONLY", frozenset())
         row = agency_lts.painted_lane_row(1, "K St", "DC", result_for([AgencyRating("ddot", 2)]))
         assert row is not None
         assert (row["scope"], row["agency"], row["agency_level"]) == ("DC", "ddot", "2")
@@ -205,8 +209,9 @@ def stage_context(tmp_path, monkeypatch) -> RebuildContext:
 def test_the_rebuild_writes_the_flag_list(tmp_path, monkeypatch) -> None:
     context = stage_context(tmp_path, monkeypatch)
     build_handlers(context, load_overrides=lambda: [])[Stage.CLASSIFY_STRESS]()
-    # The agencies' levels decide; the formula's is kept beside them.
-    assert context.stress_by_way[DC_LANE].tier is Stress.LTS2
+    # MoCo's level decides; DDOT's 2020 level is comparison only (#1241), so K Street keeps the
+    # formula's 3 and DDOT's 2 is listed beside it.
+    assert context.stress_by_way[DC_LANE].tier is Stress.LTS3
     assert context.stress_by_way[MD_LANE].tier is Stress.LTS1
     assert context.stress_by_way[VA_LANE].tier is Stress.LTS3
     report = context.work_dir / "reports" / agency_lts.PAINTED_LANE_REPORT_NAME
