@@ -4,8 +4,8 @@
 #
 # scripts/beta/beta-compose.sh runs exactly that and refuses a bare `up`, so use it.
 #
-# What this overlay is for: the owner's shared host (15 GiB RAM, about 8.6 GiB
-# free, NO swap, 4 vCPU, nginx already serving other sites on 80/443). RouteMaker
+# What this overlay is for: the owner's shared host (15 GiB RAM, about 11.3 GiB
+# available to this stack as measured 2026-11-14, NO swap, 4 vCPU, nginx already serving other sites on 80/443). RouteMaker
 # must never be the reason another site on that host dies, so every container gets
 # a hard memory cap: when something spikes, the kernel kills RouteMaker's own
 # container (restart: unless-stopped brings it back), not the host's other sites.
@@ -80,7 +80,7 @@
 #   available, from before, was re-measured the same day at about 11.3 GiB.
 #   The memcached's 24M comes out of the 40 MiB the ceiling left (the owner, 2026-10-27,
 #   approving the shared answer cache at about 16 MB).
-#   The ceiling is 7.96 GiB, and the startup peak's margin 0.39 GiB, for Road Bike's weekend
+#   The ceiling was 7.96 GiB, and the startup peak's margin 0.39 GiB, for Road Bike's weekend
 #   router (the owner, 2026-11-08, on the card "How should Road Bike get the weekend parkways?":
 #   "New weekend graph", at a resident budget of about 7.96 GiB and a start-up margin of about
 #   0.4 GiB). It was 7.66 GiB, and the margin 0.7 GiB, for the Road Bike router
@@ -91,7 +91,7 @@
 #   two trail routers (it was 7.0 GiB, at 6.94 without them).
 #   One-shot management commands go through `exec api ...` (inside the api's own cap) or
 #   `run --rm --no-deps migrate ...` (256M), never `run --rm api ...`, which would start a
-#   second container with the api's 1450M cap beside the running one.
+#   second container with the api's 2048M cap beside the running one.
 #
 # Concurrency (OWNER-DECISIONS 367.2, "Allow 2 at once"): settings.routing_concurrency is
 # workers - 2 - GEOCODE_CONCURRENCY (2), floored at one, and tile_concurrency is
