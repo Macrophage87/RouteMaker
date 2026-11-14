@@ -2245,4 +2245,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Check it fits your bike.": "देख लें कि आपकी साइकिल निकल जाए।",
   "Width not mapped: it may be too narrow for your bike.": "चौड़ाई मैप पर नहीं है: यह आपकी साइकिल के लिए बहुत संकरी हो सकती है।",
   "Barrier: {name}": "रुकावट: {name}",
+  // The road panel (the v0.27.0 accessibility review).
+  "Traffic stress:": "यातायात तनाव:",
+  "What the level rests on": "स्तर किस पर आधारित है",
+  "More about this road": "इस सड़क के बारे में और",
+  "from a record": "रिकॉर्ड से",
+  "estimated": "अनुमानित",
+  "About {label}": "{label} के बारे में",
 };

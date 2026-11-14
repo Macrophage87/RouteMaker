@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.27.0](#deploying-v0270)
 - [Deploying v0.26.0](#deploying-v0260)
 - [Deploying v0.25.1](#deploying-v0251)
 - [Deploying v0.25.0](#deploying-v0250)
@@ -8067,6 +8068,82 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.27.0
+
+The road panel's big coloured level with its why and facts (#1258), its Setting line (#1259) and
+pavement row; data dates in Settings About and places refreshed at every rebuild (#1237); Plan's
+Keep to compare and One way / Loop / Out and back (#1238); Plan's Leave at (#1239); the connector's
+parallel calls, prompts and "why this way" (#1234); foundations: rendered tests, a size budget,
+parts loaded on first use (#1235); anonymous daily usage totals (#1261, #1273); route surface at a
+glance (#1264); iPhone riders' steps (#1262); Check a route's busiest stretches (#1233); a live feed
+that answers but stopped making sense (#1263); the calm search on long rides (#1231); Cargo and
+Tandem barrier marks to go round (#1271); sign in with Discord, Google or Apple (#1270); off-grid
+region packs, server and phone (#1232, #1265); the phone in a pocket (#1236); protest closures as
+ordinary closures (#1252); closed-site and green-place labels (#1253, #1256, #1257); `osm_edit`'s
+`motor_vehicle` tags (#1260); the privacy policy's required parts (#1243).
+
+**No `lua/`, `valhalla/` or requirements change.** What changes for a deploy:
+
+- migrations 0064 (`DailyUsage`, a new table: day, tool, count) and 0065 (sign-in identities: a
+  new `SignInIdentity` table, and `User.discord_user_id` made nullable for accounts made with Google or
+  Apple);
+- a new middleware, `core.usage.UsageMiddleware`, counting a successful answer per tool per day,
+  and new endpoints: `GET /api/offline/packs` (30 a minute, our default; `503 not_built` until the
+  next map rebuild), `POST /api/usage` (10 a minute, our default), and `auth/sign-in`,
+  `auth/sign-ins`, `auth/unlink`, `auth/google/*`, `auth/apple/*`, all through `location /`;
+- `compose.yaml`: optional api settings `GOOGLE_*`, `APPLE_*` (unset: only Discord is offered) and
+  `PRIVACY_OPERATOR` (unset: the privacy page names nobody); Caddy mounts `${DATA_ROOT}/tiles`
+  read-only for `/offline-packs/*`;
+- the beta's nginx template: a `/offline-packs/` location for the region packs;
+- `scripts/beta/` (`ship-data.sh`, `receive-data.sh`: a new `packs` part, sent only once a
+  rebuild has built them);
+- pipeline changes that take effect only at the next map rebuild, in its own thread: the region
+  packs (`pipeline/offline_packs.py`), the segment table's Setting and pavement columns (the road
+  panel reads them only where the live table has them), and `setting.json` from the Census files
+  (docs/OPERATIONS.md, "The road panel's Setting line");
+- the Android app: the lock-screen turn card, tone and buzz need a new app build; the web app
+  rides as before without it.
+
+The release agent's gate stops on this tag (the compose mount, the nginx template, and
+`src/pipeline/schema.py`), so **the beta is a hand ship**. The schema reason asks for no map ship
+with this release: the road panel reads the new Setting and pavement columns only where the live
+table has them, so they arrive with the next map rebuild and its data ship.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.27.0
+  (annotated) on that commit, from the PC.
+- [ ] **Migrations.** 0064 adds a table. 0065 adds a table and drops `NOT NULL` from
+  `User.discord_user_id`: the v0.26.0 api never writes a null there and reads accounts as before. Both
+  reversible while no account was made with Google or Apple (0065 backwards fails on a null
+  `discord_user_id`; no such account exists until those keys are set).
+- [ ] **At home**, as "Deploying a planner and front-end release", before the weekly rebuild
+  (Tuesday 08:00 UTC) or with it paused, and not between 07:00 and 07:30 UTC: rollback point (tag
+  the running api and pipeline images `pre-rel-<short>`, keep `index.html`), fast-forward the
+  checkout, `docker compose build api rebuild`, `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api
+  worker rebuild caddy` with no job todo or doing (caddy for the new mount), then the front end.
+  No router restart, no map rebuild.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, `migrate`, the worker recreated, the front end built on the PC), with the nginx
+  template re-rendered, `--diff "$NGINX_SITE"`, installed, `sudo nginx -t && sudo nginx -s reload`
+  (as in "A new release sha", step 9). `PRIVACY_OPERATOR=` with the owner's name in `.env` by hand
+  (BETA-RUNBOOK's settings table), then `beta-compose.sh up -d api`. Then `smoke-test.sh --local`,
+  `smoke-test.sh --public <url> --open`, `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed
+  v0.27.0`, `"$RM_SRC/scripts/beta/auto-release.sh" install` (a hand ship does not refresh the
+  agent's own copy of `receive-data.sh`, which v0.27.0 changes), and `auto-release.sh resume`.
+- [ ] **Beta check.** `/privacy` names the operator in Contact; `GET /api/offline/packs` answers
+  `503 not_built` and Settings' "Map for no signal" says it needs a signal or lists none until the
+  next rebuild; Settings About shows the map data's dates; signing in offers Discord alone until
+  Google or Apple keys are set (each needs its outbound host: `accounts.google.com`,
+  `oauth2.googleapis.com`, `appleid.apple.com`).
+- [ ] **Spot checks.** Tap a road: the big coloured level with its why, and the facts with their
+  sources. Plan: Keep, then a second route shows the compare table; Out and back comes back the
+  same way; When's Leave at takes a day and time. Open a GPX in Check a route: its busiest
+  stretches each offer Use this way. A route shows its paved, gravel and dirt miles.
+- [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
+  and the v0.26.0 front end. The usage table and the identities table stay (the v0.26.0 api ignores them). The nginx
+  `/offline-packs/` location can stay. On the beta, the images and `index.html` alone: no
+  `restore-dump`.
 
 ## Deploying v0.26.0
 

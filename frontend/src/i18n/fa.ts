@@ -2245,4 +2245,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Check it fits your bike.": "بررسی کنید دوچرخه‌تان رد می‌شود.",
   "Width not mapped: it may be too narrow for your bike.": "عرض روی نقشه نیست: شاید برای دوچرخه شما خیلی باریک باشد.",
   "Barrier: {name}": "مانع: {name}",
+  // The road panel (the v0.27.0 accessibility review).
+  "Traffic stress:": "فشار ترافیک:",
+  "What the level rests on": "پایهٔ این سطح",
+  "More about this road": "بیشتر دربارهٔ این راه",
+  "from a record": "از یک سابقه",
+  "estimated": "تخمینی",
+  "About {label}": "دربارهٔ {label}",
 };
