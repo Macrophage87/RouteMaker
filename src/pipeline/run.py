@@ -3785,7 +3785,11 @@ def build_handlers(
         # 2026-11-15, the side path along Saint Elizabeths Rd SE).
         context.trail_link_sidewalks = facility.trail_link_sidewalks(
             ((way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways),
-            hidden=context.short_paths_hidden | set(nobike.reasons),
+            hidden=context.short_paths_hidden | set(nobike.reasons) | nobike.platform_walks,
+        )
+        logger.info(
+            "sidewalk runs drawn as the only link between two trails: %d ways",
+            len(context.trail_link_sidewalks),
         )
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack

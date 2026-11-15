@@ -1458,7 +1458,8 @@ def trail_link_sidewalks(
 
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]); `hidden` the ways the map
     leaves out or routing closes, which neither anchor nor carry a link. Only the
-    ways along each shortest run are kept, so a web of sidewalks draws one line.
+    ways along each shortest run are kept, shortest first and only where the two
+    pieces are not yet joined, so a web of sidewalks draws one line per gap.
     """
     import heapq
 
@@ -1472,6 +1473,7 @@ def trail_link_sidewalks(
         elif (
             _sidewalk_or_crossing(tags)
             and tags.get("bicycle") in BICYCLE_ALLOWED
+            and tags.get("indoor", "no") == "no"
             and len(node_ids) == len(coords)
         ):
             for (a, pa), (b, pb) in zip(
@@ -1532,7 +1534,14 @@ def trail_link_sidewalks(
                     dist[nxt] = total
                     came[nxt] = (node, osm_id)
                     heapq.heappush(heap, (total, nxt))
-    return {osm_id for _, run in best.values() for osm_id in run}
+    # Shortest first, each only where its two pieces are not yet joined: one line per gap.
+    drawn: set[int] = set()
+    for pair, (_, run) in sorted(best.items(), key=lambda item: item[1][0]):
+        first, other = (find(p) for p in pair)
+        if first != other:
+            parent[other] = first
+            drawn |= run
+    return drawn
 
 
 def _trim_dead_ends(

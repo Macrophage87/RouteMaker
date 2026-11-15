@@ -895,6 +895,19 @@ def test_a_sidewalk_run_that_is_the_only_link_between_two_trails_is_drawn() -> N
     far = [*ways[:2], (3, side, [11, 20], _west_east(-77.0, 38.852, 2500))]
     assert facility_rules.trail_link_sidewalks(far) == set()
     assert facility_rules.TRAIL_LINK_SIDEWALK_M == 1600
+    # Three trails a web of sidewalks joins pairwise: one line per gap, shortest first.
+    third = {"highway": "cycleway", "name": "Suitland Parkway Trail"}
+    web = [
+        *ways[:2],
+        (10, third, [60, 61], _west_east(-76.99, 38.86, 900)),
+        (11, side, [11, 20], _west_east(-77.0, 38.852, 300)),
+        (12, side, [20, 60], _west_east(-77.0, 38.853, 400)),
+        (13, side, [11, 60], _west_east(-77.0, 38.854, 500)),
+    ]
+    assert facility_rules.trail_link_sidewalks(web) == {11, 12}
+    # An indoor crosswalk is no link.
+    indoor = [*ways[:2], (3, {**side, "indoor": "yes"}, [11, 20], ways[2][3])]
+    assert facility_rules.trail_link_sidewalks(indoor) == set()
     # By its tags alone a sidewalk stays off the map; the rebuild draws the run (`map_class_of`).
     assert facility_rules.map_class(side) is facility_rules.MapClass.HIDDEN
 
