@@ -80,7 +80,11 @@ speed with a marked crossing, 4 where traffic is accelerating onto a highway.
 
 **Trails and protected lanes crossing a road** are rated as `cross` from the trail. Riders there
 include children, so look hardest at these: an unsignalled trail crossing of a fast multilane road
-is about 4 or more: a good trail does not make the road easier to cross.
+is about 4 or more: a good trail does not make the road easier to cross. A marked trail crossing
+is a crosswalk, where drivers must by law stop or yield for someone in it: better than a plain
+give-way, not nearly as good as a signal (the owner, 2026-11-15). Take about half a level to a
+level off on a two-lane road or at 30 mph or less, little across fast multilane roads, where the
+driver in the second lane often does not stop; expect some wait either way and say it in `delay_s`.
 
 **Many legs or offset legs** (five or more, or two junctions a few yards apart): about half a level
 harder than the same crossing at a plain four-way, more if the signal has long gaps between turns.

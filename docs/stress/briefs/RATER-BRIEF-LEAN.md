@@ -105,6 +105,21 @@ name the crossings or gaps that make it so and set `second_look` true.
 **Trails in their own corridor** (rail trails, park paths): 1, with road crossings judged the same
 way. Unpaved or narrow is a surface fact to say in `why`, not stress.
 
+**A marked trail crossing is a crosswalk.** Drivers must by law stop or yield for someone in it,
+so it is better than a plain give-way and not nearly as good as a signal (the owner, 2026-11-15:
+"the major ones especially are considered crosswalks, so cars legally have to stop. It's probably
+not nearly as safe as a signaled intersection, but it's certainly better than a give-way"). Rate a
+marked crossing about half a level to a level easier than the same road crossed unmarked: most of
+that on a two-lane road or at 30 mph or less, little of it across a fast multilane road, where the
+driver in the second lane often does not stop. A missing signal tag is common where a major trail
+crosses a big road: say when the control is a guess, and do not assume the worst from a missing tag.
+
+**A long trail is not its worst crossing.** One or two hard crossings in many miles do not set the
+level of the whole trail: the planner prices each junction where it is. Name them in `why`, and
+set the level by what the trail is like along its length and at its usual crossings, half a level
+more at most for the rare hard one. A short link whose whole job is one hard crossing is still
+that crossing's level.
+
 ## Reading the facts you are given
 
 - Rate the roadway itself. A protected lane or side path mapped as its own way is its own group,
