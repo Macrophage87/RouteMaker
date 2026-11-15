@@ -82,43 +82,26 @@ rated as a painted lane. A shared-lane marking or a signed route is no facility:
 sidewalk open to bikes is about 2 (walkers, driveways, kerb ramps), not a protected lane; a wide,
 railed bridge sidewalk about 1.5.
 
-**Crossings decide whether a separated facility stays at 1.** Crossing an alley or a quiet side
-street where the lane carries on with priority is a simple crossing and changes nothing, however
-many there are: a protected lane down a city grid is still about 1 to 1.5. A signal makes a big
-street a simple crossing; cars turning across the lane on green are what is left, less with a bike
-phase. What adds stress is the hard crossings: a slip lane or highway ramp, a run of busy driveways
-(shops, fuel stations, car parks), a place where turning cars merge across the lane. A few: about
-1.5. Many: 2 to 2.5. A multilane street at 35 mph or more crossed with no signal or refuge sets the
-level by itself, about 3 (Furth); so does a path that drops the rider into the road. On a two-way
-path on one side of the road, drivers turning out do not look for riders coming the "wrong" way:
-about half a level more where driveways or side streets are frequent. Count only what the rider
-rides across: a crosswalk over the lane's own road, or the lane's end where it rejoins that road,
-is not a crossing.
+**Road crossings are not part of this level.** Each road crossing is rated separately as a
+junction, with its own stress and delay, and the planner charges it once, where it is. So a signal,
+a multilane crossing, a slip lane or a highway ramp must not raise the level of the lane, side path
+or trail that crosses it; counting it here as well would charge it twice, and for every mile of the
+way (the owner, 2026-11-15, on a test of both methods). What still counts is what the rider meets
+between crossings: a run of busy driveways (shops, fuel stations, car parks), cars turning across
+the lane at driveways and minor entrances, a place where the path drops the rider into the road. A
+few: about 1.5. Many: 2 to 2.5. On a two-way path on one side of the road, drivers turning out do
+not look for riders coming the "wrong" way: about half a level more where driveways are frequent.
+Name the hard road crossings in `why` so a reader knows they are there, without rating them.
 
-Take the worse of separation and crossings, and half a level more when both are poor.
+Take the worse of separation and driveways, and half a level more when both are poor.
 
 **Compare with the road.** A facility is there to be calmer than the roadway beside it, and it
 almost always is. If your level for a lane or side path comes out above the road's own, or at 3 or
 more, look again at what you counted. Some paths really are that bad; when you hold such a level,
-name the crossings or gaps that make it so and set `second_look` true.
+name the driveways or gaps that make it so and set `second_look` true.
 
-**Trails in their own corridor** (rail trails, park paths): 1, with road crossings judged the same
-way. Unpaved or narrow is a surface fact to say in `why`, not stress.
-
-**A marked trail crossing is a crosswalk.** Drivers must by law stop or yield for someone in it,
-so it is better than a plain give-way and not nearly as good as a signal (the owner, 2026-11-15:
-"the major ones especially are considered crosswalks, so cars legally have to stop. It's probably
-not nearly as safe as a signaled intersection, but it's certainly better than a give-way"). Rate a
-marked crossing about half a level to a level easier than the same road crossed unmarked: most of
-that on a two-lane road or at 30 mph or less, little of it across a fast multilane road, where the
-driver in the second lane often does not stop. A missing signal tag is common where a major trail
-crosses a big road: say when the control is a guess, and do not assume the worst from a missing tag.
-
-**A long trail is not its worst crossing.** One or two hard crossings in many miles do not set the
-level of the whole trail: the planner prices each junction where it is. Name them in `why`, and
-set the level by what the trail is like along its length and at its usual crossings, half a level
-more at most for the rare hard one. A short link whose whole job is one hard crossing is still
-that crossing's level.
+**Trails in their own corridor** (rail trails, park paths): 1. Their road crossings are rated as
+junctions, not here. Unpaved or narrow is a surface fact to say in `why`, not stress.
 
 ## Reading the facts you are given
 
