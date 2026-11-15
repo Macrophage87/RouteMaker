@@ -6530,6 +6530,9 @@ came out the same line as without it. The one that moved, NoMa to USP at Default
 weights), stayed 19.97 mi, moved 0.15 mi from LTS 2 to LTS 1, dropped its one red junction
 and one turn, and cut 24 s of waits; 99.2% of the line was unchanged. So it breaks ties and
 does not change corridors.
+Re-run 2026-11-15 on build 20261115T125405Z (new lane, side-path and alley ratings; v0.27.0
+code): all 40 plans with the term gave the same line as without it. It acts only on near
+ties, and none of these trips had one on that map.
 
 ### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
 
