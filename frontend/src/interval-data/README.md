@@ -15,5 +15,4 @@ again is in docs/OPERATIONS.md, "The Intervals layer".
 
 ## Status
 
-Empty: not yet written on the build host. The layer says the stretches arrive with the next map
-data update until it is.
+Written on the PC on 2026-11-16 by `manage.py build_intervals` from the live table (477,350 segments, map build swapped in 2026-11-15) and the rebuild's elevation tiles: **2,871 stretches** (321 both ways, 2,550 one way), 145 s, rebuild container peak about 1.6 GiB. 1,117,183 bytes, sha256 `160c850bfff1056d658c7b67e1bb4efde48747c7377ff66fff0b5bea5e3b103f`. No ground for N38W076, N39W076 (east of 76 W, outside the coverage box) and N38W079, N39W079 (west of 78 W): stretches there are left out, as in climb-data/README.md.
