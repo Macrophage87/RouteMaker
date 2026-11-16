@@ -58,6 +58,7 @@ import { WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { ClimbsLayerControls } from "../lib/climbsLegend.ts";
 import { ScenicSection } from "../lib/scenicLayer.ts";
+import { IntervalsSection } from "../lib/intervals.ts";
 import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { SteepGradeKey, steepGradesFor } from "../lib/steepGrades.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
@@ -164,6 +165,8 @@ export interface LayersSheetProps {
   bikeshare: { operators: readonly OperatorInfo[]; choices: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void; status: string };
   /** The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   scenic: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
+  /** The Intervals layer (lib/intervals.ts): one switch, off by default; null in Go, which leaves it out. */
+  intervals?: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
   /** Go's stress bar tapped (the owner's P1): each new number opens the Traffic stress section, its colour key. */
@@ -175,7 +178,7 @@ export const PLACES_LAYER_HINT = t("Museums, gardens, viewpoints and more. Place
 
 /** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits, stressKeyAsk } = props;
+  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, intervals, permits, stressKeyAsk } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -270,6 +273,8 @@ export function LayersSheet(props: LayersSheetProps) {
 
       {/* v0.8.0: the Scenic layer, one switch, off by default, after Trails and terrain; Plan's alone. */}
       {scenic && <ScenicSection {...scenic} drawn={scenicDrawn} />}
+      {/* The owner, 2026-11-16: stretches an interval effort can run unbroken; Plan's alone, after Scenic. */}
+      {intervals && <IntervalsSection {...intervals} />}
       {/* v0.9.1: DDOT's permits, flagged only, one switch, off by default; Plan's alone. */}
       {permits && <PermitsSection {...permits} />}
 
