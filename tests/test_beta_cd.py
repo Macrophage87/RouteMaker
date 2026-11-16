@@ -3017,7 +3017,12 @@ def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval
         "id-token": "write",
         "attestations": "write",
     }
-    assert any("attest-build-provenance" in st.get("uses", "") for st in jobs["image"]["steps"])
+    steps = jobs["image"]["steps"]
+    attest = [st for st in steps if "attest-build-provenance" in st.get("uses", "")]
+    assert len(attest) == 1
+    # The push step logs out of ghcr.io, so the attestation must not try to push there (v0.27.2's
+    # first run failed on it); the agent reads it from GitHub's attestations API.
+    assert attest[0]["with"].get("push-to-registry") is False
     assert "image" in jobs["tag"]["needs"] and jobs["tag"]["permissions"] == {"contents": "write"}
     for name, job in jobs.items():
         if name != "image":
