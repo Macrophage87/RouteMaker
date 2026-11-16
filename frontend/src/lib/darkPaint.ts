@@ -34,6 +34,9 @@ export const DARK_PAINT: PaintTable = {
   // A viewpoint is a white ring with a teal edge: the edge is what meets the map.
   "scenic-viewpoints": { "circle-stroke-color": SCENIC_DARK_COLOUR },
   "route-choice-casing": { "line-opacity": CHOICE_CASING_DARK_OPACITY },
+  // The Intervals layer's pink (lib/intervals.ts INTERVALS_DARK_COLOUR, kept here so this file imports nothing of it).
+  "intervals-line": { "line-color": "#f472b6" },
+  "intervals-arrows": { "text-color": "#f472b6", "text-halo-color": "#111827" },
 };
 
 /** A layer as it is added now: its dark-map paint over its own while the dark map shows. */
