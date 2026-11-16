@@ -11743,11 +11743,11 @@ button.route-note:focus-visible {
    the popout with the map of the areas, each area numbered as on the map. Area colours: one hue each, light fills with
    a darker kept fill; the numbers carry the meaning, so colour alone never does. */
 :root {
-  --pack-area-1: #d1495b;
+  --pack-area-1: #b83246;
   --pack-area-2: #2f6fd6;
-  --pack-area-3: #2a9d5c;
+  --pack-area-3: #1f7d47;
   --pack-area-4: #8a4fbf;
-  --pack-area-5: #b86e00;
+  --pack-area-5: #8f5600;
   --pack-map-bg: #f3f4f6;
 }
 :root.theme-dark {
