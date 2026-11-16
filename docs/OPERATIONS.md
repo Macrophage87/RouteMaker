@@ -102,6 +102,7 @@ Contents:
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
 - [The Climbs layer (454; MTB/topo slice 5; claude/v0-5-0-climbs)](#the-climbs-layer-454-mtbtopo-slice-5-claudev0-5-0-climbs)
+- [The Intervals layer](#the-intervals-layer)
 - [The rebuild bundle (wip/rebuild-bundle)](#the-rebuild-bundle-wiprebuild-bundle)
 - [Bikeshare feeds](#bikeshare-feeds)
 - [Work zones](#work-zones)
@@ -9201,6 +9202,40 @@ every base-map surface; the number 4.5:1 or more on it), from zoom 9; the climb'
 from zoom 12; where markers meet, the bigger climb is drawn. A tap shows a card ("Category 3 climb,
 2.1 miles (3.4 km) at 4.6%", the gain, the trail, "Mostly unpaved"). With a route planned, "Climbs
 on your route" lists in words each climb the route rides uphill, start to summit, in riding order.
+
+## The Intervals layer
+
+The owner, 2026-11-16: "a layer that could identify interval-capable segments ... long segments that
+have limited turns, no intersections, and are either flat or uphill ... in the Plan panel and
+available for the MCP." Plan's Map layers has one switch, "Interval stretches" (off until turned on,
+kept per browser as `routemaker.intervalsLayer`; not in Go, not on the Mass Ride map), that draws
+`frontend/src/interval-data/intervals.json`: a pink glow under the stress line, with arrows where a
+stretch holds one way only. `GET /api/intervals-near` and the connector's `intervals_near` read the
+same file, so `docker/api.Dockerfile` copies it into the api image and a new file reaches the
+connector with the next api image. The file ships empty: the switch says the stretches arrive with
+the next map data update, and the endpoint lists none.
+
+**What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
+`pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
+railway crossings, barriers, from the extract's node tags; a stop or yield sign on a junction's own
+node only where the stretch is not the busier road), at a busy road (LTS 3+) crossed, at
+any road a path meets, at a sharp turn (60 degrees), and at a descent (2% held 150 m) for the
+direction it falls; LTS 4 and Avoid never count. The numbers are the connector's interval check's
+(`mcp/routemaker_mcp.py`, the owner's 2026-10-25 ask), except the 1 mile minimum, which is our
+default (unmeasured). `JUNCTION_RULE = "every"` cuts at every road that joins instead.
+
+**Writing it**, on the build host after a swap, under the heavy-job lock with 3,000 MB free (it
+reads the live table, the extract and the elevation tiles, as `build_climbs` does):
+
+    flock <heavy.lock> docker compose exec -T rebuild ./manage.py build_intervals </dev/null
+
+Its peak memory is not yet measured: it holds what `build_climbs` holds (about 3.2 GB) plus an
+index of the shared nodes (node keys packed as one int; a few hundred MB more is our estimate).
+Watch it the first time and note the peak here.
+
+It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
+to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's
+README, and commit. It reads only and is safe to re-run.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 

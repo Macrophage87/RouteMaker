@@ -185,3 +185,25 @@ class TestClimbsNear:
         monkeypatch.setattr(hillseek, "load", lambda: None)
         assert client.get("/api/climbs-near", query, **fresh_client()).status_code == 503
         assert client.get("/api/climbs-near", {**query, "miles": 40}).status_code == 400
+
+
+@db
+class TestIntervalsNear:
+    def test_stretches_near_a_point_are_listed_and_a_missing_file_is_503(
+        self, client, monkeypatch
+    ) -> None:
+        from core import intervals_near
+
+        line = ((-77.3855, 39.178), (-77.39, 39.18), (-77.40, 39.19))
+        found = intervals_near.Stretch(
+            id="ab", length_m=1700.0, rise_m=20.0, grade_pct=1.2, line=line
+        )
+        monkeypatch.setattr(intervals_near, "load", lambda: (found,))
+        query = {"lon": SPOT[0], "lat": SPOT[1], "miles": 2}
+        response = client.get("/api/intervals-near", query, **fresh_client())
+        assert response.status_code == 200
+        (stretch,) = response.json()["intervals"]
+        assert stretch["id"] == "ab" and stretch["surface"] == "road" and stretch["through"]
+        monkeypatch.setattr(intervals_near, "load", lambda: None)
+        assert client.get("/api/intervals-near", query, **fresh_client()).status_code == 503
+        assert client.get("/api/intervals-near", {**query, "miles": 40}).status_code == 400
