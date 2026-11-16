@@ -9229,9 +9229,7 @@ reads the live table, the extract and the elevation tiles, as `build_climbs` doe
 
     flock <heavy.lock> docker compose exec -T rebuild ./manage.py build_intervals </dev/null
 
-Its peak memory is not yet measured: it holds what `build_climbs` holds (about 3.2 GB) plus an
-index of the shared nodes (node keys packed as one int; a few hundred MB more is our estimate).
-Watch it the first time and note the peak here.
+Measured 2026-11-16 on the PC: the rebuild container peaked at about 1.6 GiB (WSL available never under 4.7 GB), 145 s.
 
 It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
 to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's
