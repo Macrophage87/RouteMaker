@@ -1,16 +1,16 @@
 // Stop by stop on transit (Stephen, 2026-11-02): the stops followed by any fix that places the rider, a Wi-Fi fix
-// underground too, else by the timetable; "Next stop" one before the rider's, then "Get off here".
+// underground too, else by the timetable; "Next stop" once the stop before the rider's is left, then "Get off here".
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { CARD_STOPS_AHEAD, STALE_MS, boardingGroups, moreStopsText, onBoardCardRows, onBoardWhere, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, onBoardSecondsTo, laterDepartureText, lineBadge, liveForBoarding, liveNextText, lowPowerOnBoard, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { CARD_STOPS_AHEAD, DWELL_S, STALE_MS, boardingGroups, moreStopsText, onBoardCardRows, onBoardWhere, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, onBoardSecondsTo, laterDepartureText, lineBadge, liveForBoarding, liveNextText, lowPowerOnBoard, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
 import { gpsQuietHere, onwardOf, onwardStart, onwardStep, onwardWhere, type OnwardPart } from "./onward.ts";
 import { arrivalClock } from "./arrival.ts";
 import { englishOf, setCatalogForTest, setLanguageForTest } from "./i18n.ts";
-import { walkPart } from "./onward.ts";
+import { rideWhere, walkPart } from "./onward.ts";
 import { CATALOG as AM } from "../i18n/am.ts";
 import { CATALOG as JA } from "../i18n/ja.ts";
 
@@ -47,7 +47,7 @@ test("a transit step with its stops is one to follow; one without (an older API)
   assert.equal(onBoardLeg({ ...STEP, stops: null }), null);
 });
 
-test("on board by GPS: passing stops, 'Next stop' one before, 'Get off here' at it, never twice", () => {
+test("on board by GPS: passing stops, 'Next stop' once the stop before is left, 'Get off here' at it, never twice", () => {
   const t0 = 1_000_000;
   let s: OnBoardState = onBoardStart(t0);
   const said: string[] = [];
@@ -74,9 +74,16 @@ test("on board by GPS: passing stops, 'Next stop' one before, 'Get off here' at 
     [["Brookland-CUA", false, false], ["Rhode Island Ave", true, false], ["NoMa-Gallaudet U", false, false], ["Union Station", false, true]],
   );
   go(3600, 100, 500_000);
+  // Pulling into NoMa, and at its platform: NoMa is the stop coming up, so "Next stop: Union Station" waits
+  // (Stephen, 2026-11-14: "It also says next stop early ... one stop early").
+  go(4700, 100, 595_000);
   go(4800, 100, 600_000);
-  assert.deepEqual(said, ["Next stop: Union Station. Get off there."]);
   go(4850, 100, 610_000);
+  assert.deepEqual(said, []);
+  // Out of NoMa, on the way to Union Station: said once.
+  go(5050, 100, 630_000);
+  assert.deepEqual(said, ["Next stop: Union Station. Get off there."]);
+  go(5200, 100, 640_000);
   assert.equal(said.length, 1);
   go(6000, 100, 700_000);
   assert.deepEqual(said, ["Next stop: Union Station. Get off there.", "Get off here: Union Station."]);
@@ -97,17 +104,21 @@ test("one rough fix far down the line is not taken: no 'Get off' from a stray Wi
   assert.equal(s.at, 3);
 });
 
-test("stops a block apart: boarded at the next stop, and a bus's button is said before the stop before the rider's is left", () => {
+test("stops a block apart: boarded at the next stop, and a bus's button is said only once the stop before the rider's is left", () => {
   const close = onBoardLeg({ ...STEP, mode: "bus", lines: ["B10"], stops: [0, 300, 600, 900].map((m, i) => ({ name: `S${i}`, point: north(m), after_s: i * 60 })) })!;
   let s = onBoardStart(0);
   const said: string[] = [];
-  for (const [m, at] of [[20, 10_000], [310, 70_000], [560, 130_000]] as const) {
+  const go = (m: number, at: number) => {
     const out = onBoardStep(close, s, at, fix(north(m), 10, at));
     s = out.state;
     said.push(...out.said);
-  }
+  };
+  for (const [m, at] of [[20, 10_000], [310, 70_000], [560, 130_000], [600, 135_000]] as const) go(m, at);
   assert.ok(s.boardedAt !== null);
   assert.equal(s.at, 2);
+  // At S2: the button pressed now would stop the bus at S2, so it waits.
+  assert.deepEqual(said, []);
+  go(730, 150_000);
   assert.deepEqual(said, ["Next stop: S3. Press the stop button to get off there."]);
   // Two stops 350 m apart: a good fix at the second ends the ride.
   const two = onBoardLeg({ ...STEP, stops: [0, 350].map((m, i) => ({ name: `T${i}`, point: north(m), after_s: i * 60 })) })!;
@@ -122,7 +133,8 @@ test("a fix too rough or off the line says nothing; a bus says to press the stop
   assert.equal(onBoardStep(LEG, s, 1000, fix(north(3000), 900, 1000)).state.fixAt, null);
   assert.equal(onBoardStep(LEG, s, 1000, fix([-76.9, 38.9], 30, 1000)).state.fixAt, null);
   const bus = onBoardLeg({ ...STEP, mode: "bus", lines: ["B10"] })!;
-  const out = onBoardStep(bus, { ...s, boardedAt: 0, at: 3 }, 5000, fix(north(4800), 50, 5000));
+  assert.deepEqual(onBoardStep(bus, { ...s, boardedAt: 0, at: 3 }, 5000, fix(north(4800), 50, 5000)).said, []);
+  const out = onBoardStep(bus, { ...s, boardedAt: 0, at: 3 }, 20_000, fix(north(5100), 50, 20_000));
   assert.deepEqual(out.said, ["Next stop: Union Station. Press the stop button to get off there."]);
 });
 
@@ -134,8 +146,11 @@ test("no fix underground: the timetable, from the planned wait, places the train
   // Past the wait and STALE_MS: boarded at the end of the planned wait (240 s), stops by their scheduled seconds.
   s = onBoardStep(LEG, s, 240_000 + STALE_MS + 1).state;
   assert.equal(s.boardedAt, 240_000);
-  const out1 = onBoardStep(LEG, s, 240_000 + 4 * 120_000 + 1000);
-  assert.equal(out1.state.at, 4);
+  // Due at NoMa: not yet "Next stop"; DWELL_S on, the train has left it.
+  const due = onBoardStep(LEG, s, 240_000 + 4 * 120_000 + 1000);
+  assert.equal(due.state.at, 4);
+  assert.deepEqual(due.said, []);
+  const out1 = onBoardStep(LEG, due.state, 240_000 + 4 * 120_000 + DWELL_S * 1000 + 1000);
   assert.deepEqual(out1.said, ["Next stop should be Union Station, by the timetable. Get off there."]);
   const out2 = onBoardStep(LEG, out1.state, 240_000 + 5 * 120_000 + 1000);
   assert.deepEqual(out2.said, ["Union Station should be about now, by the timetable. Get off there."]);
@@ -154,8 +169,10 @@ test("boarding first seen two stops on: the time left, each stop's time and the 
   assert.equal(onBoardSecondsLeft(LEG, s, seen + 60_000), 300);
   assert.equal(onBoardSecondsTo(LEG, s, seen + 60_000, 3), 60);
   // No fix since: the timetable says the stop before the rider's on time, and the rider's at its time (600 s on).
-  const before = onBoardStep(LEG, s, t0 + 481_000);
-  assert.equal(before.state.at, 4);
+  const due = onBoardStep(LEG, s, t0 + 481_000);
+  assert.equal(due.state.at, 4);
+  assert.deepEqual(due.said, []);
+  const before = onBoardStep(LEG, due.state, t0 + 481_000 + DWELL_S * 1000);
   assert.deepEqual(before.said, ["Next stop should be Union Station, by the timetable. Get off there."]);
   s = before.state;
   const off = onBoardStep(LEG, s, t0 + 601_000);
@@ -472,6 +489,20 @@ test("Where am I? on a walk says the distance in words, in one unit, and ends th
   assert.equal(where.spoken, "In 250 feet, left onto F St NE.");
 });
 
+test("Where am I? on the last walk, with no turn left and no name: the walk left, never 'You have arrived' (Stephen, 2026-11-14)", () => {
+  const M = 111_195;
+  const KX = M * Math.cos((38.9 * Math.PI) / 180);
+  const at = (east: number, north: number): LonLat => [-77.0 + east / KX, 38.9 + north / M];
+  const walk = walkPart({ coordinates: [at(0, 0), at(0, 300)], turns: [], to: null })!;
+  const start = onwardStart([walk], 0);
+  const where = onwardWhere([walk], { ...start, walk: { ...start.walk!, progressM: 100 } }, 0)!;
+  assert.equal(where.spoken, "Walk 700 feet to the finish.");
+  assert.ok(!/arrived/i.test(where.shown.join(" ")));
+  // A walk with no name to a train: the stop it boards at.
+  const parts = [walkPart({ coordinates: [at(0, 0), at(0, 300)], turns: [], to: null })!, ...onwardOf([{ ...STEP, mode: "ride", route_line: true, coordinates: [] }, STEP], 0)];
+  assert.equal(onwardWhere(parts, onwardStart(parts, 0), 0)!.spoken, "Walk to Takoma.");
+});
+
 test("the on-board card: the next three stops, one row for the rest, then the stop to get off", () => {
   const s: OnBoardState = { ...onBoardStart(0), boardedAt: 0, at: 0 };
   const { rows, hidden } = onBoardCardRows(LEG, s);
@@ -523,11 +554,15 @@ test("the watch is low power on a train or bus until 'Next stop', so the GPS is 
   assert.equal(lowPowerOnBoard(true, null), true, "arriving at the platform, before following starts");
   const waiting = onBoardStart(0);
   assert.equal(lowPowerOnBoard(true, waiting), true);
-  // At NoMa: "Next stop: Union Station" is said, and high accuracy comes back with it.
-  const near = onBoardStep(LEG, { ...waiting, boardedAt: 0, at: 3 }, 500_000, fix(north(4800), 50, 500_000));
+  // Out of NoMa: "Next stop: Union Station" is said, and high accuracy comes back with it.
+  const near = onBoardStep(LEG, { ...waiting, boardedAt: 0, at: 3 }, 500_000, fix(north(5000), 50, 500_000));
   assert.equal(near.state.saidNext, true);
   assert.equal(lowPowerOnBoard(true, near.state), false);
   assert.equal(lowPowerOnBoard(true, { saidNext: false, done: true }), false);
+  // At NoMa, the stop before the rider's: high accuracy already, so the fix that tells NoMa left comes in time.
+  const atNoma = onBoardStep(LEG, { ...waiting, boardedAt: 0, at: 3 }, 500_000, fix(north(4800), 50, 500_000));
+  assert.equal(atNoma.state.saidNext, false);
+  assert.equal(lowPowerOnBoard(true, atNoma.state), false);
   assert.equal(lowPowerOnBoard(false, waiting), false, "the walk after");
 });
 
@@ -593,4 +628,28 @@ test("weak GPS is not said in a station on the way to or from a train (Stephen, 
   assert.equal(gpsQuietHere([train], null, { arrived: false, end: station }, away), false);
   // No transit at all: never.
   assert.equal(gpsQuietHere([walkOut], onwardStart([walkOut], 0), line, station), false);
+});
+
+test("'Next stop' with no fix after the stop before the rider's: said once the train has stood there DWELL_S (Stephen, 2026-11-14)", () => {
+  // A Wi-Fi fix on NoMa's platform, then nothing (the tunnel): said DWELL_S after reaching NoMa, not on the way in.
+  const s = { ...onBoardStart(0), boardedAt: 0, at: 3, fixAt: 590_000 };
+  const at = onBoardStep(LEG, s, 600_000, fix(north(4790), 60, 600_000));
+  assert.equal(at.state.at, 4);
+  assert.deepEqual(at.said, []);
+  assert.deepEqual(onBoardStep(LEG, at.state, 600_000 + DWELL_S * 1000 - 1000).said, []);
+  const left = onBoardStep(LEG, at.state, 600_000 + DWELL_S * 1000);
+  assert.deepEqual(left.said, ["Next stop: Union Station. Get off there."]);
+  assert.deepEqual(onBoardStep(LEG, left.state, 640_000).said, []);
+});
+
+test("Where am I? said on coming back to the screen past the line: the train followed, not the walk's 'You have arrived' (Stephen, 2026-11-14)", () => {
+  const parts = onwardOf([{ ...STEP, mode: "walk", route_line: false, coordinates: [] }, STEP], 0);
+  const arrived = () => ({ shown: ["You have arrived at the end of the route."], spoken: "You have arrived at the end of the route." });
+  const t0 = 1_000_000;
+  const waiting = rideWhere(true, parts, onwardStart(parts, t0), arrived, t0);
+  assert.ok(!/arrived/i.test(waiting.spoken), waiting.spoken);
+  assert.match(waiting.spoken, /Get off at Union Station/);
+  // Still on the line, or everything after it done: the line's own answer.
+  assert.equal(rideWhere(false, parts, null, () => ({ shown: ["On F St NE."], spoken: "On F St NE." }), t0).spoken, "On F St NE.");
+  assert.equal(rideWhere(true, parts, { ...onwardStart(parts, t0), index: parts.length }, arrived, t0).spoken, "You have arrived at the end of the route.");
 });
