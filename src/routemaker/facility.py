@@ -1434,6 +1434,116 @@ def short_paths_to_hide(
     return hidden
 
 
+# How long a run of sidewalks open to bicycles may be and still be drawn as the link
+# between two pieces of the trail network (`trail_link_sidewalks`). Our default
+# (unmeasured), about a mile: the Saint Elizabeths Rd SE side path that joins the I-295 / Malcolm X
+# path to the Anacostia Riverwalk Trail runs about 0.7 mi (1,150 m).
+TRAIL_LINK_SIDEWALK_M = 1600.0
+
+
+def trail_link_sidewalks(
+    ways: Iterable[tuple[int, dict[str, str], Sequence[int], Sequence[tuple[float, float]]]],
+    hidden: Collection[int] = (),
+    max_m: float = TRAIL_LINK_SIDEWALK_M,
+) -> set[int]:
+    """The sidewalks and crosswalks open to bicycles that the map draws after all,
+    because they are the only way the drawn trails meet: the shortest run of them,
+    up to `max_m`, between two pieces of the trail network that no drawn trail
+    joins. A sidewalk is otherwise left off the map (`map_class`), and a trail that
+    carries on along one looked as if it stopped dead (the owner, 2026-11-15, of
+    the side path along Saint Elizabeths Rd SE between the I-295 / Malcolm X path
+    and the Anacostia Riverwalk Trail: "a connector and it isn't shown anymore").
+    The purpose is the short link rule's (`short_paths_to_hide`): trails should not
+    look broken where they join.
+
+    `ways` is (osm id, tags, node ids, [(lon, lat), ...]); `hidden` the ways the map
+    leaves out or routing closes, which neither anchor nor carry a link. Only the
+    ways along each shortest run are kept, shortest first and only where the two
+    pieces are not yet joined, so a web of sidewalks draws one line per gap.
+    """
+    import heapq
+
+    kept: list[tuple[int, Sequence[int]]] = []
+    edges: dict[int, list[tuple[int, float, int]]] = {}
+    for osm_id, tags, node_ids, coords in ways:
+        if osm_id in hidden or tags.get("highway") not in TRAIL_CLASS_HIGHWAY or not node_ids:
+            continue
+        if map_class(tags) is MapClass.ROAD:
+            kept.append((osm_id, node_ids))
+        elif (
+            _sidewalk_or_crossing(tags)
+            and tags.get("bicycle") in BICYCLE_ALLOWED
+            and tags.get("indoor", "no") == "no"
+            and len(node_ids) == len(coords)
+        ):
+            for (a, pa), (b, pb) in zip(
+                zip(node_ids, coords, strict=False),
+                zip(node_ids[1:], coords[1:], strict=False),
+                strict=False,
+            ):
+                step = _length_m([pa, pb])
+                edges.setdefault(a, []).append((b, step, osm_id))
+                edges.setdefault(b, []).append((a, step, osm_id))
+    if not edges or not kept:
+        return set()
+    # The drawn trail network's pieces, by shared nodes.
+    parent: dict[int, int] = {}
+
+    def find(node: int) -> int:
+        root = node
+        while parent.get(root, root) != root:
+            root = parent[root]
+        while parent.get(node, node) != root:
+            parent[node], node = root, parent[node]
+        return root
+
+    for _, node_ids in kept:
+        first = find(node_ids[0])
+        for node in node_ids[1:]:
+            other = find(node)
+            if other != first:
+                parent[other] = first
+    piece = {node: find(node) for _, node_ids in kept for node in node_ids}
+    sources: dict[int, list[int]] = {}
+    for node in edges:
+        if node in piece:
+            sources.setdefault(piece[node], []).append(node)
+    best: dict[frozenset[int], tuple[float, set[int]]] = {}
+    for start_piece, starts in sources.items():
+        dist = dict.fromkeys(starts, 0.0)
+        came: dict[int, tuple[int, int]] = {}
+        heap = [(0.0, node) for node in starts]
+        heapq.heapify(heap)
+        while heap:
+            d, node = heapq.heappop(heap)
+            if d > dist.get(node, math.inf):
+                continue
+            other_piece = piece.get(node, start_piece)
+            if other_piece != start_piece:
+                pair = frozenset((start_piece, other_piece))
+                if d < best.get(pair, (math.inf, set()))[0]:
+                    run, at = set(), node
+                    while at in came:
+                        at, osm_id = came[at]
+                        run.add(osm_id)
+                    best[pair] = (d, run)
+                continue
+            for nxt, step, osm_id in edges.get(node, ()):
+                total = d + step
+                if total <= max_m and total < dist.get(nxt, math.inf):
+                    dist[nxt] = total
+                    came[nxt] = (node, osm_id)
+                    heapq.heappush(heap, (total, nxt))
+    # Shortest first, each only where its two pieces are not yet joined: one line per gap.
+    drawn: set[int] = set()
+    for pair, (_, run) in sorted(best.items(), key=lambda item: item[1][0]):
+        first, other = (find(p) for p in pair)
+        if first != other:
+            parent[other] = first
+            drawn |= run
+    return drawn
+
+
 def _trim_dead_ends(
     chain: set[int], short: dict[int, tuple[int, int]], kept_nodes: set[int]
 ) -> set[int]:

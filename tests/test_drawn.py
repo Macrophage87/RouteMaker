@@ -195,6 +195,20 @@ class TestDrawnRoute:
             "break",
         ]
 
+    def test_a_via_point_is_matched_to_the_way_it_sits_on(self, client, segments, router) -> None:
+        # A via dropped on a road beside a trail means the road: matched to the nearest way
+        # alone, not the cheapest within a stop's radius (Stephen, 2026-11-16).
+        fake = router(drawn_router())
+        points = [list(VERTICES[i]) for i in (0, 1, 2)]
+        post(client, {"points": points, "preset": "default", "via_points": [1]})
+        locations = bike_routes(fake)[0]["locations"]
+        assert [loc["radius"] for loc in locations] == [
+            routing.STOP_RADIUS_M,
+            routing.VIA_RADIUS_M,
+            routing.STOP_RADIUS_M,
+        ]
+        assert routing.VIA_RADIUS_M == 0
+
     def test_without_drawn_legs_the_plan_is_as_before(self, client, segments, router) -> None:
         fake = router(drawn_router())
         body = post(client, drawn_body(straight_legs=[])).json()
