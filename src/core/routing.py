@@ -166,6 +166,12 @@ ELEVATION_INTERVAL_M = 30
 # alone, the route left the trail for 0.6 mi of the Avoid-rated parkway to reach it
 # (Stephen, 2026-10-11).
 STOP_RADIUS_M = 15
+# A via point is matched to the way it sits on alone (the router's nearest way, `radius` 0),
+# not the cheapest within STOP_RADIUS_M: a via the rider drops on a road beside a trail means
+# that road, and the cheapest way near it was the trail (Stephen, 2026-11-16: "When there's a
+# road that parallels a trail, it's currently difficult to have it prefer the road on that
+# stretch"). A via only shapes the route, so the ramp-beside-a-trail case above is a stop's.
+VIA_RADIUS_M = 0
 
 # The whole request's budget, from its arrival to its answer. gunicorn's
 # --timeout is 60 s (GUNICORN_TIMEOUT in docker/api-entrypoint.sh), and this is
@@ -1921,6 +1927,14 @@ def location_type(index: int, count: int, vias: tuple[int, ...]) -> str:
     if 0 < index < count - 1 and index in vias:
         return VIA_LOCATION_TYPE
     return "break"
+
+
+def location_radius(index: int, count: int, vias: tuple[int, ...]) -> int:
+    """The router's `radius` for the rider's point `index` of `count`: a via point's
+    (`VIA_RADIUS_M`, the way it sits on) where `location_type` makes it one, else a stop's."""
+    if location_type(index, count, vias) == VIA_LOCATION_TYPE:
+        return VIA_RADIUS_M
+    return STOP_RADIUS_M
 
 
 def via_boundaries(count: int, vias, legs: int) -> tuple[int, ...]:
@@ -5742,7 +5756,7 @@ def _plan(
                 "lon": lon,
                 "lat": lat,
                 "type": location_type(index, len(points), dials.vias),
-                "radius": STOP_RADIUS_M,
+                "radius": location_radius(index, len(points), dials.vias),
                 **circle_park_filter(lon, lat),
             }
             for index, (lon, lat) in enumerate(points)
