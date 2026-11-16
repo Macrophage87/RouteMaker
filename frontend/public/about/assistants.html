@@ -401,7 +401,7 @@ a route you can ask to keep the points where they are.</p>
 
 </div></details>
 <h2 id="tools">What an assistant can do</h2>
-<p>The assistant has twenty-two tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes and only <code>organize_route</code> tags, archives or restores a saved route, each only when you ask, and <code>archive_draft</code> only hides the assistant's own drafts; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
+<p>The assistant has twenty-three tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes and only <code>organize_route</code> tags, archives or restores a saved route, each only when you ask, and <code>archive_draft</code> only hides the assistant's own drafts; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
 <p>In an assistant app that shows MCP Apps (Claude does), a planned route appears under the answer: a map colored
 by traffic stress, a stress ribbon over the elevation profile, and buttons to open it in the app, get its GPX file,
 get a picture (on the web) or ask to save it. On a Mass Ride the map and graphs show rider flow and the corkers
@@ -418,6 +418,10 @@ needed, with the junctions to cork marked. Other assistant apps get the same ans
 <tr><th scope="row"><code>metro_stations</code></th><td>Lists the 98 Metrorail stations, or those near a point, with miles and direction.</td></tr>
 <tr><th scope="row"><code>scenic_roads_near</code></th><td>Lists the Montgomery County Rustic Roads, scenic byways, East Coast Greenway and US Bicycle Routes within 5 mi [8 km] of a point, or up to 15 mi [24 km] if asked, nearest first and at most 25, each with its miles in reach, its miles on each stress level and a point on it to route through. So a ride on rustic roads can be asked for in words alone.</td></tr>
 <tr><th scope="row"><code>climbs_near</code></th><td>Lists the categorised climbs near a point, with name, miles, gain, grade and surface. For interval training it keeps those long enough for one effort, steepest first, and plans up the first few to check that an effort fits with no stop, signal, busy crossing or sharp turn: hill repeats, up for the effort and down to recover.</td></tr>
+<tr><th scope="row"><code>intervals_near</code></th><td>Lists the Interval stretches near a point (3 mi [5 km]
+unless asked, up to 15 mi [24 km]): unbroken stretches of a mile or more, flat or uphill, quiet and paved unless
+asked otherwise, with each one's minutes at a pace (18 mph unless asked); with a length of effort, those long enough
+for it, longest first.</td></tr>
 <tr><th scope="row"><code>closures_near</code></th><td>Lists the trail and road closures and construction in force now near a point, nearest first: what is closed, until when, how far away, the source and its link. So an assistant can check a park or trail before suggesting a ride there.</td></tr>
 <tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates; on Rebalance Ride one, the start alone, from which it finds the crowded dock and one that needs bikes; on Walk and the transit ride types a start, up to 3 stops and an end, with no via points, and on Bikeshare a start and an end) on any ride type and setting, as a loop if asked (except on Bikeshare, Rebalance Ride, Mass Ride, Walk and the transit ride types). Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. A town typed by name, such as "Leesburg, VA", is found ahead of same-named streets and shops (our default). Can check the distance from Metro and add stations where the route strays. Its answer, like every other plan's, also lists what the route rides: its roads in order with miles, stress level and any scenic designation, where it is on stress level 3 or above (leaving out a busy bit of 0.1 mi [160 m] or less at a Metro station end, our default), its very-high-stress junctions, and small detours where it leaves a road and comes back to it. It also lists the closures on and around the route and warns whenever the route rides through one (a blocked bike lane is listed, not warned about), naming any stop or via point that sits on a closed stretch, and lists the notices to check before you go at the ride's time, such as park alerts and the parks' deer-management closures. It also lists the permits and planned work along the
 route (DDOT permits, DDOT ProTrack+, DC Water, WSSC Water) that may close the road or bike lane in their window, with
@@ -731,7 +735,7 @@ planned.</li>
 <p class="next">Next: <a href="/about/architecture.html">Architecture</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.27.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.28.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
