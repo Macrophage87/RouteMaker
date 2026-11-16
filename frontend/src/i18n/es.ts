@@ -2772,7 +2772,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Place search is down right now.": "La búsqueda de lugares no funciona ahora mismo.",
   // Settings' map for no signal (off-grid riding, v0.27.0).
   "Map for no signal": "Mapa para sin señal",
-  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in the area downloaded here. One area at a time; it updates when the map does.": "Sin señal, el recorrido encuentra el camino de vuelta a la ruta en este teléfono: siempre cerca de la ruta, y en cualquier parte de la zona descargada aquí. Una zona a la vez; se actualiza cuando se actualiza el mapa.",
   "Downloading…": "Descargando…",
   "Kept on this phone.": "Guardado en este teléfono.",
   "Could not download it. Try again with a signal.": "No se pudo descargar. Inténtelo de nuevo con señal.",
@@ -2782,7 +2781,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Northern Virginia": "Norte de Virginia",
   "Northwest exurbs": "Afueras del noroeste",
   "Baltimore and suburbs": "Baltimore y alrededores",
-  "The rest of the map": "El resto del mapa",
   "Everything": "Todo el mapa",
   "It is on {street}.": "Está en {street}.",
   // Plan's day and start time (lib/startTime.ts, 2026-11-13).
@@ -2850,4 +2848,19 @@ export const ES: Readonly<Record<string, string>> = {
   "Check it fits your bike.": "Comprueba que tu bici quepa.",
   "Width not mapped: it may be too narrow for your bike.": "Ancho sin mapear: puede ser demasiado estrecho para tu bici.",
   "Barrier: {name}": "Barrera: {name}",
+  // Settings > Riding's maps for no signal, the popout (2026-11-15; needs a native check).
+  "With no signal, a ride finds its way back to the route on this phone: near the route always, and anywhere in an area downloaded here. Each updates when the map does.": "Sin señal, el recorrido encuentra el camino de vuelta a la ruta en este teléfono: siempre cerca de la ruta, y en cualquier parte de una zona descargada aquí. Cada una se actualiza cuando se actualiza el mapa.",
+  "Manage": "Administrar",
+  "None on this phone": "Nada en este teléfono",
+  "On this phone": "En este teléfono",
+  "Part of the whole map": "Parte del mapa completo",
+  "Download": "Descargar",
+  "Download {name}": "Descargar {name}",
+  "Delete all": "Eliminar todo",
+  "Waiting…": "En espera…",
+  "Map of the areas": "Mapa de las zonas",
+  "On this phone: {size}": "En este teléfono: {size}",
+  "Download all ({size})": "Descargar todo ({size})",
+  "Map of {date}": "Mapa del {date}",
+  "Southern Maryland": "Sur de Maryland",
 };

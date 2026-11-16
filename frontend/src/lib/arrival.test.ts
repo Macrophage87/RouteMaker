@@ -129,7 +129,8 @@ test("RideMode shows the arrival clock after each time to go and says it in Wher
   assert.equal((source.match(/<TimeToGo seconds=/g) ?? []).length, 2, "the next stop and the end");
   assert.match(source, /visually-hidden">\{t\(", arriving about"\)\} </);
   assert.match(source, /atPace\(toGo\(model, progress\), paceFactor\(paceRef\.current\)\)/);
-  assert.equal((source.match(/milesRef\.current, arrivingAt\)/g) ?? []).length, 3);
+  // The line's Where am I? (lineWhere), shown and said, for the button and for coming back to the screen.
+  assert.equal((source.match(/milesRef\.current, arrivingAt\)/g) ?? []).length, 2);
   assert.match(source, /setClockTick\(\(n\) => n \+ 1\), 30_000\)/, "the clock moves on with no fix");
   assert.match(source, /\|\$\{togoWords\}`;/, "large text fits again when the times lengthen");
   assert.match(source, /riding: !stepped\.state\.walking && !pausedRef\.current && !out\.state\.off && !out\.state\.arrived/);

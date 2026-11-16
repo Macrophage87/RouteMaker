@@ -3501,11 +3501,13 @@ class TestStressAverseWeights:
             ):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
-            assert exposure.weights == {"2": 0.0, "3": 1.0, "4": 2.0, "5": 3.0}, name
+            assert exposure.weights == {"2": presets.LTS2_TIEBREAK, "3": 1.0, "4": 2.0, "5": 3.0}, (
+                name
+            )
             assert not exposure.hold_lts4, name
         # Cargo Bike's default choice is carrying cargo.
         assert presets.exposure_for("cargo") == presets.EXPOSURE_STANDARD
-        assert refine.EXPOSURE_WEIGHTS == {"2": 0.0, "3": 1.0, "4": 2.0, "5": 3.0}
+        assert refine.EXPOSURE_WEIGHTS == {"2": presets.LTS2_TIEBREAK, "3": 1.0, "4": 2.0, "5": 3.0}
 
     def test_it_is_a_preset_field_not_a_global(self) -> None:
         assert presets.PRESETS["trailmaxxing"].exposure is presets.EXPOSURE_NOT_IN_CONTROL
@@ -3598,7 +3600,8 @@ class TestLts2Weight:
             # Item 250 stands on them: LTS 4 at 8, Avoid at 16, the hold.
             assert (exposure.lts4, exposure.avoid, exposure.hold_lts4) == (8.0, 16.0, True)
 
-    def test_nothing_on_any_other_ride(self) -> None:
+    def test_only_the_tiebreak_on_any_other_ride(self) -> None:
+        """Stephen, 2026-11-14: LTS 1, 1.5 and 2 as modest tiebreakers on every other ride."""
         weighed_rides = {
             ("trailmaxxing", None),
             ("cargo", presets.CARRYING_PEOPLE),
@@ -3609,9 +3612,14 @@ class TestLts2Weight:
         for name in presets.PRESETS:
             for carrying in presets.PRESETS[name].carrying or (None,):
                 if (name, carrying) not in weighed_rides:
-                    assert presets.exposure_for(name, carrying).lts2 == 0.0, (name, carrying)
-        assert presets.EXPOSURE_STANDARD.lts2 == 0.0
-        assert presets.EXPOSURE_STRESS_AVERSE.lts2 == 0.0
+                    assert presets.exposure_for(name, carrying).lts2 == presets.LTS2_TIEBREAK, (
+                        name,
+                        carrying,
+                    )
+        assert presets.EXPOSURE_STANDARD.lts2 == presets.LTS2_TIEBREAK
+        assert presets.EXPOSURE_STRESS_AVERSE.lts2 == presets.LTS2_TIEBREAK
+        # Modest: a small share of LTS 3, far under the quarter the weighing rides give it.
+        assert 0 < presets.LTS2_TIEBREAK <= presets.LTS2_WEIGHT / 5
 
     def test_the_reading_counts_lts2_in_the_score_by_the_rides_weight(self, monkeypatch) -> None:
         classes = [("2", "none"), ("2", "none"), ("3", "none"), ("1", "none")]
@@ -3628,8 +3636,8 @@ class TestLts2Weight:
         trip = {"legs": [{"shape": "x"}], "summary": {"length": 0.4, "time": 100.0, "cost": 1.0}}
         standard = context()
         plain = refine.analyse(trip, standard, standard.deadline)
-        assert plain.exposure_m == 100.0
-        assert plain.second_m == 100.0
+        assert plain.exposure_m == pytest.approx(100.0 + presets.LTS2_TIEBREAK * 200.0)
+        assert plain.second_m == pytest.approx(100.0 + presets.LTS2_TIEBREAK * 200.0)
         ctx = context()
         ctx.exposure = NOT_IN_CONTROL
         read = refine.analyse(trip, ctx, ctx.deadline)
@@ -3641,10 +3649,14 @@ class TestLts2Weight:
         assert read.top_m == 0.0
 
     def test_below_the_top_the_score_prices_lts2_at_the_calm_rate(self) -> None:
+        """Its share of the calm rate and of what LTS 3 adds to the router's cost, as LTS 3
+        pays both."""
         ctx = context(rate=4.0)
         calm = weighed(lts2_reading("c", "1" * 10, 0.25), NOT_IN_CONTROL)
         busy = weighed(lts2_reading("b", "2" * 10, 0.25), NOT_IN_CONTROL)
-        assert busy.score(ctx) - calm.score(ctx) == pytest.approx(QUIET_COST * 4.0 * 0.25 * 1000.0)
+        assert busy.score(ctx) - calm.score(ctx) == pytest.approx(
+            QUIET_COST * (4.0 + refine.lts3_added_m(ctx)) * 0.25 * 1000.0
+        )
 
     @staticmethod
     def at_80(name: str, carrying: str | None = None) -> refine.Context:
@@ -3683,9 +3695,11 @@ class TestLts2Weight:
         assert refine.better(quiet, lts2, ctx)
         assert not refine.better(lts2, quiet, ctx)
 
-    def test_at_80_default_bikeshare_and_cargo_with_cargo_are_unchanged(self) -> None:
-        """The term is only for the rides that weigh LTS 2: elsewhere the router's cheaper
-        route still wins, by its own cost alone."""
+    def test_at_80_lts2_only_breaks_ties_on_default_bikeshare_and_cargo_with_cargo(self) -> None:
+        """Stephen, 2026-11-14: "make sure that the levels are modest ... those low levels
+        might be useful for tiebreakers". Where the router prices two routes the same, the
+        one with less LTS 2 wins; 2 km of LTS 2 costs under three minutes of router cost, so a
+        route the router prices four minutes cheaper still wins with it."""
         for name, carrying in (
             ("default", None),
             ("bikeshare", None),
@@ -3693,20 +3707,24 @@ class TestLts2Weight:
         ):
             ctx = self.at_80(name, carrying)
             quiet, lts2 = self.routes_at_80(ctx)
-            assert lts2.score(ctx) == lts2.cost_s, name
+            charge = ctx.quiet_cost * presets.LTS2_TIEBREAK * refine.lts3_added_m(ctx) * 2000.0
+            assert 0 < charge < 180.0, name
+            assert lts2.score(ctx) == pytest.approx(lts2.cost_s + charge), name
             assert quiet.score(ctx) == quiet.cost_s, name
+            lts2.cost_s = quiet.cost_s
+            assert refine.better(quiet, lts2, ctx), name
+            lts2.cost_s = quiet.cost_s - 240.0
             assert refine.better(lts2, quiet, ctx), name
-            assert not refine.better(quiet, lts2, ctx), name
 
-    def test_above_80_the_calm_rate_prices_lts2_alone(self) -> None:
-        """Above 80 the LTS 2 metres are in the exposure at the calm rate; the term for a
-        rate of 0 is not added on top."""
+    def test_above_80_the_term_stays_and_the_calm_rate_adds_to_it(self) -> None:
+        """Above 80 the LTS 2 metres are in the exposure at the calm rate, and the share of
+        LTS 3's added cost stays on top, so the weight does not drop away just past 80."""
         ctx = self.at_80("cargo", presets.CARRYING_PEOPLE)
         ctx.rate = presets.calm_rate_for(90)
         quiet, lts2 = self.routes_at_80(ctx)
         quiet, lts2 = weighed(quiet, ctx.exposure), weighed(lts2, ctx.exposure)
         assert lts2.score(ctx) - quiet.score(ctx) == pytest.approx(
-            ctx.quiet_cost * ctx.rate * 0.25 * 2000.0 - 100.0
+            ctx.quiet_cost * (ctx.rate + refine.lts3_added_m(ctx)) * 0.25 * 2000.0 - 100.0
         )
 
     def test_at_the_top_a_route_with_less_lts2_ranks_calmer_on_these_rides_alone(self) -> None:
