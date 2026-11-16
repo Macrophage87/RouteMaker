@@ -131,10 +131,12 @@ come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo
 
 LTS 2 (OWNER-DECISIONS 240): Trailmaxxing and Cargo with passengers weigh a meter of LTS 2
 as a quarter of a meter of LTS 3 (`LTS2_WEIGHT`), and Riding with kids as half
-(`KIDS_LTS2_WEIGHT`). Every other preset, Bikeshare included, weighs LTS 2 at 0. The
-weight enters exposure and the strict order's second key, and at a calm rate of 0
-(80 and below, where Cargo with passengers starts) a separate score term: LTS 2 meters x
-the weight x LTS 3's added router cost at the request's `use_roads` in quiet meters
+(`KIDS_LTS2_WEIGHT`). Every other preset, Bikeshare included, weighs LTS 2 at a tiebreak
+share, 0.03 of LTS 3 (`LTS2_TIEBREAK`, 2026-11-14), and 1.5 at half that, so between routes
+the router prices alike the one on calmer streets wins, but turns and junctions still decide
+(at Default a mile of LTS 2 costs about what two turns do). The weight enters exposure and
+the strict order's second key, and at every calm rate a score term: LTS 2 meters x the
+weight x LTS 3's added router cost at the request's `use_roads` in quiet meters
 (`refine.lts3_added_m`, about 4 at 80). It never reaches a router request:
 LTS 2 is never an exclusion target and never starts a trail seek (`refine.seek_weights`).
 
@@ -150,9 +152,9 @@ LTS 2 is never an exclusion target and never starts a trail seek (`refine.seek_w
   `refine.py:141-144`, `quiet_cost_per_m` `:179-186`). That is 0.44 cost-seconds a meter
   at 11.2 mph [18 km/h].
 - `exposure_m` = the meters of each tier times its exposure weight (`refine.py:657-661`).
-  LTS 1 and unknown count 0, and LTS 2 counts 0 except on the rides that weigh it
-  (section 3). On those, at a rate of 0, the score adds `lts2_weight x lts3_added_m x
-  lts2_m` inside the brackets instead (`refine.lts3_added_m`).
+  LTS 1 and unknown count 0, and LTS 2 counts its ride's weight: the 0.03 tiebreak on most
+  rides, more on those that weigh it (section 3). At every rate the score also adds
+  `lts2_weight x lts3_added_m x lts2_m` inside the brackets (`refine.lts3_added_m`).
 - `junction_m` = the summed junction costs in meters (`intersections.penalty_m`).
 - A candidate replaces the best only if it beats it by more than 10 cost-seconds
   (`IMPROVEMENT_EPS_S`, `refine.py:140`, `:570`). Where the calm search runs with a calm
@@ -196,7 +198,8 @@ again without it, and it is not asked again. Mass Ride is skipped (`ctx.group`).
   beyond the route it would replace (`retrace_m`, `doubles_back`, `RETRACE_SLACK_M`).
 - **Stop matching**: the rider's locations go to the router with a 49 ft [15 m]
   `radius` (`routing.STOP_RADIUS_M`), so a stop is reached by the cheapest way within
-  that distance, not only the nearest.
+  that distance, not only the nearest. A via point is matched to the way it sits on alone
+  (`routing.VIA_RADIUS_M`, 0), so a via on a road beside a trail means the road.
 
 ### The top of the slider (100): strict order and worth rule
 

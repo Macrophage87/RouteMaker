@@ -44,7 +44,7 @@ def test_the_regions_are_his_riding_areas_and_cover_the_map() -> None:
 
 @pytest.fixture
 def ways():
-    """Four streets: one downtown DC, one in Arlington, one in Baltimore, one in La Plata."""
+    """Streets in downtown DC, Arlington, Baltimore, La Plata, Potomac, Martinsburg and Bowie."""
     from pipeline.schema import SEGMENT_DDL  # noqa: F401 - the table's DDL is the rebuild's own
 
     with connection.cursor() as cursor:
@@ -64,6 +64,10 @@ def ways():
         3: ("Charles Street", (-76.615, 39.30)),
         4: ("La Plata Road", (-76.98, 38.53)),
         5: ("River Road", (-77.18, 39.00)),
+        # Martinsburg, West Virginia: south of the Potomac, so with Northern Virginia.
+        6: ("Queen Street", (-77.964, 39.456)),
+        # Bowie, Prince George's north of Upper Marlboro: with Baltimore.
+        7: ("Annapolis Road", (-76.73, 38.96)),
     }
     for way_id, (name, (lon, lat)) in places.items():
         points = [_at(lon, lat), _at(lon, lat, east_m=200)]
@@ -104,9 +108,11 @@ def test_each_pack_holds_its_regions_ways_and_current_names_the_build(
         return set(graph["names"])
 
     assert names("beltway") == {"K Street", "Wilson Boulevard"}
-    assert names("nova") == set(), "Arlington is inside the Beltway, not cut twice"
-    assert names("baltimore") == {"Charles Street"}
-    assert names("rest") == {"La Plata Road"}, "La Plata is in the rest of the map"
+    assert names("nova") == {"Queen Street"}, (
+        "Arlington is inside the Beltway, not cut twice; Martinsburg is south of the Potomac"
+    )
+    assert names("baltimore") == {"Charles Street", "Annapolis Road"}
+    assert names("rest") == {"La Plata Road"}, "La Plata is in Southern Maryland"
     assert names("nw-exurbs") == {"River Road"}, "Potomac, Maryland is not left to the rest"
     assert names("all") == {
         "K Street",
@@ -114,6 +120,8 @@ def test_each_pack_holds_its_regions_ways_and_current_names_the_build(
         "Charles Street",
         "La Plata Road",
         "River Road",
+        "Queen Street",
+        "Annapolis Road",
     }, "everything is every street"
     assert all(p["bytes"] > 0 and len(p["sha256"]) == 64 for p in found["packs"])
     assert found["dir"] == "packs-20261113T030000Z"
@@ -180,6 +188,13 @@ def test_the_list_names_each_pack_and_its_address(ways, tmp_path, settings, clie
     assert [p["id"] for p in body["packs"]] == [r.id for r in offline_packs.REGIONS]
     assert body["packs"][0]["url"] == "/offline-packs/packs-20261113T030000Z/beltway.json.gz"
     assert len(body["level_factor"]) == 11
+    # Each pack's area, for the phone's map and its pick of the pack to open for a ride.
+    areas = {p["id"]: p["area"] for p in body["packs"]}
+    assert areas["beltway"]["outline"][0] == areas["beltway"]["outline"][-1]
+    assert not areas["beltway"]["outside_beltway"] and areas["nova"]["outside_beltway"]
+    assert areas["rest"] == {"outline": None, "outside_beltway": False, "whole": False}
+    assert areas["all"] == {"outline": None, "outside_beltway": False, "whole": True}
+    assert body["box"] == list(settings.COVERAGE_BBOX)
     foreign = client.get("/api/offline/packs", HTTP_SEC_FETCH_SITE="cross-site", **headers)
     assert foreign.status_code == 403
 
@@ -201,6 +216,7 @@ def test_both_web_servers_serve_only_pack_files_to_this_site() -> None:
     nginx = (repo / "deploy" / "beta" / "nginx-routemaker.conf.template").read_text()
     location = nginx[nginx.index("location ~ ^/offline-packs/") :]
     location = location[: location.index("\n    }\n")]
-    assert r"(packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$" in location
+    assert r"(?P<rm_pack>packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$" in location
     assert "$rmbeta_basemap_foreign" in location
-    assert "alias @DATA_ROOT@/tiles/offline-packs/$1;" in location
+    # A named capture: the same-site map is a regex map, which resets $1 (#1295).
+    assert "alias @DATA_ROOT@/tiles/offline-packs/$rm_pack;" in location
