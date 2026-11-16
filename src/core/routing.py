@@ -2697,7 +2697,8 @@ def _exposure(
 ):
     """A trip's traffic exposure by the plan's weights (`presets.Exposure`: LTS 3
     once, LTS 4 twice and Avoid three times unless the ride type weighs them
-    otherwise) and its metres of LTS 4 and Avoid, as (exposure, metres); None
+    otherwise; LTS 2 only on the rides that weigh it for itself, never its tiebreak
+    share, `presets.gate_exposure`) and its metres of LTS 4 and Avoid, as (exposure, metres); None
     when a leg cannot be traced. A half step counts as the calm search counts it, at
     its midpoint (`refine.half_exposure_m`, `refine.stress_totals`; review RL-7)."""
     from . import refine
@@ -2712,7 +2713,8 @@ def _exposure(
     classes = refine.shift_classes(classify(pieces, when), exposure.shift)
     stress = totals(zip(pieces, classes, strict=True))[0]
     halves = refine.half_metres(pieces, classes)
-    weights = exposure.weights
+    # A gate, not a ranking: LTS 2's tiebreak share is left out (`presets.gate_exposure`).
+    weights = presets.gate_exposure(exposure).weights
     return (
         sum(weights[tier] * stress[tier] for tier in weights)
         + refine.half_exposure_m(halves, weights),

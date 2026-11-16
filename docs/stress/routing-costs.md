@@ -152,9 +152,9 @@ LTS 2 is never an exclusion target and never starts a trail seek (`refine.seek_w
   `refine.py:141-144`, `quiet_cost_per_m` `:179-186`). That is 0.44 cost-seconds a meter
   at 11.2 mph [18 km/h].
 - `exposure_m` = the meters of each tier times its exposure weight (`refine.py:657-661`).
-  LTS 1 and unknown count 0, and LTS 2 counts 0 except on the rides that weigh it
-  (section 3). On those, at a rate of 0, the score adds `lts2_weight x lts3_added_m x
-  lts2_m` inside the brackets instead (`refine.lts3_added_m`).
+  LTS 1 and unknown count 0, and LTS 2 counts its ride's weight: the 0.03 tiebreak on most
+  rides, more on those that weigh it (section 3). At every rate the score also adds
+  `lts2_weight x lts3_added_m x lts2_m` inside the brackets (`refine.lts3_added_m`).
 - `junction_m` = the summed junction costs in meters (`intersections.penalty_m`).
 - A candidate replaces the best only if it beats it by more than 10 cost-seconds
   (`IMPROVEMENT_EPS_S`, `refine.py:140`, `:570`). Where the calm search runs with a calm

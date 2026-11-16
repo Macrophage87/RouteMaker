@@ -2103,6 +2103,33 @@ class TestTheHillsChoiceUsesThePlansExposure:
         held = routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, AVERSE)
         assert held == 0, "150 m of LTS 4 against 100 m: the hold refuses, whatever the weights"
 
+    def test_the_lts2_tiebreak_never_vetoes_an_equal_route(self, monkeypatch):
+        """Review of #1290: the gates compare strictly, so LTS 2's tiebreak share would refuse
+        a hill-avoiding route equal at LTS 3 and up for 1 m more of LTS 2. They leave it out
+        (`presets.gate_exposure`); a ride that weighs LTS 2 for itself keeps it."""
+        own = {"2": 100.0, "3": 50.0}
+        alternative = {"2": 101.0, "3": 50.0}
+        self.stress(monkeypatch, own, alternative)
+        assert presets.EXPOSURE_STANDARD.lts2 == presets.LTS2_TIEBREAK
+        got = routing.calmer_or_own(
+            self.trips, 1, "standard", {}, "w", self.deadline, {}, presets.EXPOSURE_STANDARD
+        )
+        assert got == 1
+        self.stress(monkeypatch, own, alternative)
+        weighs = presets.EXPOSURE_NOT_IN_CONTROL
+        assert (
+            routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, weighs)
+            == 0
+        )
+
+    def test_the_gate_weights_drop_only_the_tiebreak_share(self):
+        assert presets.gate_exposure(presets.EXPOSURE_STANDARD).lts2 == 0.0
+        assert presets.gate_exposure(presets.EXPOSURE_STRESS_AVERSE).lts2 == 0.0
+        assert (
+            presets.gate_exposure(presets.EXPOSURE_NOT_IN_CONTROL)
+            == presets.EXPOSURE_NOT_IN_CONTROL
+        )
+
     def test_without_the_hold_the_plans_weights_still_decide(self, monkeypatch):
         weighted = presets.Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=False)
         # LTS 3 900 against LTS 4 150 at 8: 900 against 1,200.

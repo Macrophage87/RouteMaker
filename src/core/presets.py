@@ -480,8 +480,8 @@ def target_ceiling_m(target_m: float) -> float:
 # figure of the ranking and in the stress the worth rule counts (`Analysis.second_m`). It
 # is never a search target (the search excludes LTS 3 and worse only), and the routing
 # graph does not grade LTS 2 (item 240 (C), FOLLOWUP-DECIMAL-STRESS, stays in the
-# backlog), so no graph is rebuilt. Every other ride, Bikeshare included, keeps LTS 2 at
-# nothing.
+# backlog), so no graph is rebuilt. Every other ride, Bikeshare included, weighs LTS 2 at
+# the tiebreak share only (LTS2_TIEBREAK, 2026-11-14).
 @dataclass(frozen=True)
 class Exposure:
     lts3: float = 1.0
@@ -551,6 +551,19 @@ LTS2_WEIGHT = 0.25
 LTS2_TIEBREAK = 0.03
 
 EXPOSURE_STANDARD = Exposure(lts2=LTS2_TIEBREAK)
+
+
+def gate_exposure(exposure: Exposure) -> Exposure:
+    """The weights a yes/no busier-than gate compares by (the hills slider's
+    `routing.calmer_or_own` and `routing.no_busier_than_middle`): the plan's own, less a
+    tiebreak-only LTS 2 share. A strict comparison would turn the tiebreak into a veto
+    (1 m more of LTS 2 refusing a route equal at LTS 3 and up); the rides that weigh LTS 2
+    for itself (LTS2_WEIGHT and more) keep it, as before."""
+    if 0 < exposure.lts2 <= LTS2_TIEBREAK:
+        return replace(exposure, lts2=0.0)
+    return exposure
+
+
 EXPOSURE_STRESS_AVERSE = Exposure(
     lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True, lts2=LTS2_TIEBREAK
 )
@@ -1118,7 +1131,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 hills=CARGO_HILLS,
                 carrying=CARGO_CARRYING_STRESS,
                 # Items 250 and 240 (A) for Cargo with passengers; carrying cargo
-                # keeps 1, 2, 3 and LTS 2 at nothing.
+                # keeps 1, 2, 3 and LTS 2 at its tiebreak share (LTS2_TIEBREAK).
                 carrying_exposure={CARRYING_PEOPLE: EXPOSURE_NOT_IN_CONTROL},
                 assist_speed_kmh=CARGO_ASSIST_PLANNING_SPEED_KMH,
                 bicycle_type="Hybrid",

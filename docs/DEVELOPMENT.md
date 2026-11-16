@@ -6542,25 +6542,29 @@ calm-search score, about a quarter of LTS 3, on"
 Item 241's rationale applies: a rider who
 is not in control of the ride is stress-averse.
 
-- `presets.Exposure.lts2` (0 by default) and `presets.LTS2_WEIGHT` (0.25).
+- `presets.Exposure.lts2` (0 by default; `EXPOSURE_STANDARD` and `EXPOSURE_STRESS_AVERSE`
+  carry the 0.03 tiebreak since 2026-11-14) and `presets.LTS2_WEIGHT` (0.25).
   `presets.EXPOSURE_NOT_IN_CONTROL` is item 250's 1 / 8 / 16 with the hold, plus LTS 2 at
   0.25; Trailmaxxing and Cargo with passengers use it. Carrying cargo, Default at 100 and
-  every other ride keep LTS 2 at nothing. Bikeshare keeps item 250's weights without the
-  LTS 2 weight, since 240 (A) does not name it.
+  every other ride keep LTS 2 at the tiebreak share only. Bikeshare keeps item 250's weights
+  without the quarter, since 240 (A) does not name it.
 - Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
   weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
   quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the seek's guards
-  weigh it the same way.
+  weigh it the same way. The hills slider's busier-than gates (`routing.calmer_or_own`,
+  `no_busier_than_middle`) leave the 0.03 tiebreak out (`presets.gate_exposure`), so it
+  never vetoes a route there.
 - At 80 and below, where the calm rate is 0, the exposure is not priced, so on its own the
   weight would never price a route where Cargo with passengers starts (review, blocking).
-  There the score adds a separate LTS 2 term instead: LTS 2 metres x the ride's weight x
+  So the score adds a separate LTS 2 term (at 80 and below at first; at every calm rate
+  since 2026-11-14, on top of the rate's own share): LTS 2 metres x the ride's weight x
   what a metre of LTS 3 adds to the router's own cost at the request's `use_roads`, in
   quiet metres (`refine.lts3_added_m`: the graded-stress model's middle LTS 3 figure,
   `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
   costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
   slider does not move, the calm search does not turn on, and the router's requests are
   unchanged: only the choice among the routes it returns (the crossing rounds') changes.
-  Default, Bikeshare and carrying cargo weigh LTS 2 only at the tiebreak share below
+  Default, Bikeshare and carrying cargo weigh LTS 2 only at the tiebreak share above
   (`LTS2_TIEBREAK`, 2026-11-14).
   The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
   kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
