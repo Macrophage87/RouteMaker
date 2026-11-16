@@ -97,6 +97,7 @@ from . import (
     follow,
     gbfs,
     geocode,
+    intervals_near,
     map_match,
     micromobility,
     nearest,
@@ -7420,6 +7421,78 @@ def climbs_near_point(request, params: Query[ClimbsNearIn], response: HttpRespon
         return Status(503, {"error": "this server has no climbs file"})
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {"climbs": found, "attribution": list(CLIMBS_NEAR_ATTRIBUTION)})
+
+
+# --- Interval-capable stretches near a point (core.intervals_near) ------------------------
+#
+# GET /api/intervals-near: the stretches an interval effort can run unbroken near a point, from
+# the Intervals layer's file, for the assistant connector's `intervals_near` (the owner,
+# 2026-11-16: "available for the MCP"). Read only, signed out, counted and limited.
+
+
+class IntervalsNearIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+    miles: float = Field(
+        default=5.0, gt=0, le=intervals_near.MAX_RADIUS_MI, description="How far to look, miles."
+    )
+    min_miles: float = Field(default=0.0, ge=0, le=50, description="Only stretches this long.")
+    paved_only: bool = Field(default=False, description="Leave out gravel stretches.")
+    quiet_only: bool = Field(default=False, description="Leave out stretches mostly on LTS 3.")
+    longest: bool = Field(default=False, description="Longest first, not nearest first.")
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class IntervalNearOut(Schema):
+    id: str = Field(description="The stretch's id in the Intervals layer's file.")
+    name: str | None = Field(description="From its roads; null if none.")
+    miles: float
+    rise_ft: int = Field(description="Net rise from start to end.")
+    grade_pct: float = Field(description="Average grade from start to end, %.")
+    both_ways: bool = Field(description="It holds ridden either way, not only start to end.")
+    start: list[float] = Field(description="Where an effort starts, [lon, lat].")
+    end: list[float] = Field(description="Where it ends, [lon, lat].")
+    through: list[list[float]] = Field(description="Points along it: via points for a plan.")
+    surface: str = Field(description='"road", "path" or "gravel".')
+    busy: bool = Field(description="Most of it is on LTS 3 roads.")
+    away_mi: float
+
+
+class IntervalsNearOut(Schema):
+    intervals: list[IntervalNearOut] = Field(description="Nearest (or longest) first, at most 25.")
+    attribution: list[str]
+
+
+@api.get(
+    "/intervals-near",
+    response={200: IntervalsNearOut, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 503: ErrorOut},
+    summary="The interval-capable stretches near a point",
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.INTERVALS_NEAR),
+    ratelimit.rate_limited(ratelimit.INTERVALS_NEAR_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def intervals_near_point(request, params: Query[IntervalsNearIn], response: HttpResponse):
+    try:
+        found = intervals_near.near(
+            params.lon,
+            params.lat,
+            params.miles,
+            min_miles=params.min_miles,
+            paved_only=params.paved_only,
+            quiet_only=params.quiet_only,
+            longest=params.longest,
+        )
+    except intervals_near.Unavailable:
+        return Status(503, {"error": "this server has no intervals file"})
+    response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
+    return Status(200, {"intervals": found, "attribution": list(CLIMBS_NEAR_ATTRIBUTION)})
 
 
 # --- The road panel's street photo (v0.7.0; core.street_photo) ------------------------------
