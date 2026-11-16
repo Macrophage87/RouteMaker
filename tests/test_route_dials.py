@@ -752,9 +752,16 @@ class TestTheWeekendGraph:
         expected = twins.get(presets.PRESETS[name].variant, presets.PRESETS[name].variant)
         if name in presets.OFFROAD_PRESETS:
             expected = "offroad"
-        # Both graphs give the same route here: a tie keeps the ride's own.
+        if expected == "ebike":
+            # Both graphs give the same route here, but the weekend graph reads way 202's
+            # stretch closed to cars as calm, where the e-bike graph reads it as LTS 2: with
+            # LTS 2 as a tiebreak on every ride (#1290), the weekend reading ranks above, which
+            # is what planning an e-bike ride twice on a weekend is for.
+            expected = "weekend"
+        # Otherwise a tie keeps the ride's own.
         assert body["variant"] == expected
-        bases = {settings.VALHALLA_UPSTREAMS[expected]}
+        own = "offroad" if name in presets.OFFROAD_PRESETS else presets.PRESETS[name].variant
+        bases = {settings.VALHALLA_UPSTREAMS[twins.get(own, own)]}
         if presets.weekend_too(name, "weekend"):
             # Gravel, Mountain Goat and Mountain Bike plan on the weekend graph too, as the
             # fixture's weekend closure (way 202) is in reach (`routing._plan_twice`).
