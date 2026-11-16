@@ -575,7 +575,7 @@ type, and everything else a route pays for.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 336" role="img" aria-labelledby="fig-weights-t fig-weights-d" focusable="false" style="min-width:576px">
 <title id="fig-weights-t">How heavily each ride type counts busy roads</title>
-<desc id="fig-weights-d">Three sets of weights used when RouteMaker compares routes. Standard, for most ride types: LTS 2 0, LTS 3 1, LTS 4 2, Avoid 3. Stress-averse, for Bikeshare, Rebalance Ride, Bikeshare plus transit and Mountain Bike: LTS 3 1, LTS 4 8, Avoid 16. Not in control, for Trailmaxxing, Cargo Bike with passengers and Tandem: the same plus LTS 2 at 0.25.</desc>
+<desc id="fig-weights-d">Three sets of weights used when RouteMaker compares routes. Standard, for most ride types: LTS 2 0.03, LTS 3 1, LTS 4 2, Avoid 3. Stress-averse, for Bikeshare, Rebalance Ride, Bikeshare plus transit and Mountain Bike: LTS 2 0.03, LTS 3 1, LTS 4 8, Avoid 16. Not in control, for Trailmaxxing, Cargo Bike with passengers and Tandem: the same plus LTS 2 at 0.25.</desc>
 <defs><marker id="ah-weights" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <line class="grid" x1="360.0" y1="8" x2="360.0" y2="290"/>
 <text class="ts" x="360.0" y="306" text-anchor="middle">0</text>
@@ -589,7 +589,8 @@ type, and everything else a route pays for.</p>
 <text class="ts" x="780.0" y="306" text-anchor="middle">16</text>
 <text class="tb" x="10" y="26" text-anchor="start">Standard: most ride types</text>
 <text class="ts" x="352" y="45" text-anchor="end">LTS 2</text>
-<text class="ts" x="366.0" y="45" text-anchor="start">0</text>
+<rect x="360" y="34" width="2.0" height="13" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="366.7875" y="45" text-anchor="start">0.03</text>
 <text class="ts" x="352" y="61" text-anchor="end">LTS 3</text>
 <rect x="360" y="50" width="26.2" height="13" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="392.25" y="61" text-anchor="start">1</text>
@@ -601,7 +602,8 @@ type, and everything else a route pays for.</p>
 <text class="ts" x="444.75" y="93" text-anchor="start">3</text>
 <text class="tb" x="10" y="118" text-anchor="start">Stress-averse: Bikeshare, Rebalance, Mountain Bike</text>
 <text class="ts" x="352" y="137" text-anchor="end">LTS 2</text>
-<text class="ts" x="366.0" y="137" text-anchor="start">0</text>
+<rect x="360" y="126" width="2.0" height="13" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="366.7875" y="137" text-anchor="start">0.03</text>
 <text class="ts" x="352" y="153" text-anchor="end">LTS 3</text>
 <rect x="360" y="142" width="26.2" height="13" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="392.25" y="153" text-anchor="start">1</text>
@@ -630,11 +632,12 @@ type, and everything else a route pays for.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 528" role="img" aria-labelledby="fig-weights-n-t fig-weights-n-d" focusable="false">
 <title id="fig-weights-n-t">How heavily each ride type counts busy roads</title>
-<desc id="fig-weights-n-d">Three sets of weights used when RouteMaker compares routes. Standard, for most ride types: LTS 2 0, LTS 3 1, LTS 4 2, Avoid 3. Stress-averse, for Bikeshare, Rebalance Ride, Bikeshare plus transit and Mountain Bike: LTS 3 1, LTS 4 8, Avoid 16. Not in control, for Trailmaxxing, Cargo Bike with passengers and Tandem: the same plus LTS 2 at 0.25.</desc>
+<desc id="fig-weights-n-d">Three sets of weights used when RouteMaker compares routes. Standard, for most ride types: LTS 2 0.03, LTS 3 1, LTS 4 2, Avoid 3. Stress-averse, for Bikeshare, Rebalance Ride, Bikeshare plus transit and Mountain Bike: LTS 2 0.03, LTS 3 1, LTS 4 8, Avoid 16. Not in control, for Trailmaxxing, Cargo Bike with passengers and Tandem: the same plus LTS 2 at 0.25.</desc>
 <defs><marker id="ah-weights-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="10" y="26" text-anchor="start">Standard: most ride types</text>
 <text class="ts" x="66" y="51" text-anchor="end">LTS 2</text>
-<text class="ts" x="80.0" y="51" text-anchor="start">0</text>
+<rect x="74" y="38" width="2.0" height="16" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="80.3675" y="51" text-anchor="start">0.03</text>
 <text class="ts" x="66" y="73" text-anchor="end">LTS 3</text>
 <rect x="74" y="60" width="12.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="92.25" y="73" text-anchor="start">1</text>
@@ -647,7 +650,8 @@ type, and everything else a route pays for.</p>
 <text class="tb" x="10" y="158" text-anchor="start">Stress-averse: Bikeshare, Rebalance,</text>
 <text class="tb" x="10" y="178" text-anchor="start">Mountain Bike</text>
 <text class="ts" x="66" y="203" text-anchor="end">LTS 2</text>
-<text class="ts" x="80.0" y="203" text-anchor="start">0</text>
+<rect x="74" y="190" width="2.0" height="16" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="80.3675" y="203" text-anchor="start">0.03</text>
 <text class="ts" x="66" y="225" text-anchor="end">LTS 3</text>
 <rect x="74" y="212" width="12.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="92.25" y="225" text-anchor="start">1</text>
@@ -926,7 +930,7 @@ riding. Press a line or its row to ride it; your own setting stays as it was.</l
 <p class="next">Next: <a href="/about/stress.html">Stress ratings</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.27.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.27.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

@@ -67,7 +67,7 @@
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_DOCKER [docker], CLOUD_SUDO [sudo],
 # CLOUD_GIT [git], CLOUD_RECEIVE, CLOUD_BETA_COMPOSE, CLOUD_SMOKE [the scripts/beta/ ones],
-# CLOUD_MEMINFO [/proc/meminfo, the --beta router gate's], RM_CD_PAVED_MIN_MIB [8806],
+# CLOUD_MEMINFO [/proc/meminfo, the --beta router gate's], RM_CD_PAVED_MIN_MIB [10172],
 # CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15], CLOUD_ROUTER_WAIT_S [180, the longest wait for a restarted router to answer].
 set -Eeuo pipefail
 
@@ -202,7 +202,7 @@ if [ "$beta" = 1 ]; then
 	# Road Bike's two routers start only with room for their startup peak, the agent's own gate
 	# (scripts/beta/auto-release.sh, RM_CD_PAVED_MIN_MIB): available memory plus what this
 	# project's running containers hold. A running one is recreated whatever the reading.
-	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-8806}
+	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-10172}
 	case "$paved_min_mib" in '' | *[!0-9]*) die "RM_CD_PAVED_MIN_MIB must be a whole number of MiB" ;; esac
 	paved_room_mib() {
 		local avail ids held=0

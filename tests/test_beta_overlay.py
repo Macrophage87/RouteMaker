@@ -112,16 +112,18 @@ def test_the_only_published_port_is_the_apis_on_loopback(rendered: dict) -> None
 
 
 @needs_docker
-def test_the_resident_total_is_about_7_96_gib_and_the_peak_counts_the_one_shot() -> None:
+def test_the_resident_total_is_about_9_29_gib_and_the_peak_counts_the_one_shot() -> None:
     # With the two trail routers (the owner, 2026-10-20: "Both, raise limit to 7.1 GB") and the
     # worker at 512M for the pre-draw (2026-10-25, ceiling 7.35 GiB), and the api workers'
     # shared answer cache at 24M (audit S14; the owner, 2026-10-27, "about 16 MB"), and the
     # Road Bike router (2026-11-02, "Raise ceiling to 7.66 GB"), and Road Bike's weekend
-    # router (2026-11-08, "New weekend graph": about 7.96 GiB, a margin of about 0.4 GiB).
+    # router (2026-11-08, "New weekend graph": about 7.96 GiB, a margin of about 0.4 GiB), and
+    # the standard and weekend routers at 1024M and the api at 2048M after the OOM kills of
+    # 2026-11-14 (the owner, "Raise memory caps"; about 11.3 GiB measured available that day).
     services = beta.render(offroad=True)["services"]
-    assert beta.resident_bytes(services) == 8150 * 1024**2  # compose.beta.yaml's header
-    assert beta.peak_bytes(services) == (8150 + 256) * 1024**2  # plus migrate, the largest one-shot
-    assert round(8150 / 1024, 2) == 7.96 and round(8.6 - 8406 / 1024, 2) == 0.39
+    assert beta.resident_bytes(services) == 9516 * 1024**2  # compose.beta.yaml's header
+    assert beta.peak_bytes(services) == (9516 + 256) * 1024**2  # plus migrate, the largest one-shot
+    assert round(9516 / 1024, 2) == 9.29 and round(11.3 - 9772 / 1024, 2) == 1.76
     assert beta.resident_bytes(services) / 1024**3 <= beta.MAX_RESIDENT_GB
     assert not any(
         "resident total" in p or "startup peak" in p for p in beta.check({"services": services})
@@ -139,8 +141,8 @@ def test_the_trail_routers_start_only_when_named_and_fit_the_budget_at_one_worke
     for name in ("valhalla-offroad", "valhalla-mtb", "valhalla-paved", "valhalla-paved-weekend"):
         assert services[name]["command"][-1] == "1"
         assert beta.parse_bytes(services[name]["memswap_limit"]) == 320 * 1024**2
-    for v in ("standard", "no-trail", "ebike", "weekend"):
-        assert beta.parse_bytes(services[f"valhalla-{v}"]["memswap_limit"]) == 640 * 1024**2
+    for v, mb in (("standard", 1024), ("no-trail", 640), ("ebike", 640), ("weekend", 1024)):
+        assert beta.parse_bytes(services[f"valhalla-{v}"]["memswap_limit"]) == mb * 1024**2
     # One more trail-router worker would not fit its cap: the gate stops it.
     services["valhalla-mtb"]["command"][-1] = "2"
     assert any("valhalla-mtb" in p for p in beta.check({"services": services}))
@@ -378,7 +380,7 @@ def test_the_synthetic_good_stack_passes() -> None:
         (lambda s: s["worker"].pop("oom_score_adj"), "worker: oom_score_adj None is under 500"),
         (lambda s: s["photon"].update(oom_score_adj=0), "photon: oom_score_adj 0 is under 500"),
         (
-            lambda s: s["migrate"]["deploy"]["resources"]["limits"].update(memory="1500M"),
+            lambda s: s["migrate"]["deploy"]["resources"]["limits"].update(memory="4100M"),
             "startup peak",
         ),
         (
@@ -399,7 +401,7 @@ def test_the_synthetic_good_stack_passes() -> None:
             "valhalla-ebike: 8 workers",
         ),
         (
-            lambda s: s["api"]["deploy"]["resources"]["limits"].update(memory="3G"),
+            lambda s: s["api"]["deploy"]["resources"]["limits"].update(memory="4G"),
             "exceeds the beta's",
         ),
     ],
@@ -452,9 +454,10 @@ def test_the_checker_refuses_renderer_and_bot() -> None:
 
 
 def test_the_memory_constants_are_the_reviewed_figures() -> None:
-    assert beta.HOST_AVAILABLE_GB == 8.6
-    # The owner, 2026-11-08, "New weekend graph": about 7.96 GiB resident, about 0.4 GiB margin.
-    assert beta.MAX_RESIDENT_GB == 7.96
+    # Measured 2026-11-14: 7133 MiB available plus the 4478 MiB the stack held.
+    assert beta.HOST_AVAILABLE_GB == 11.3
+    # The owner, 2026-11-14, "Raise memory caps": 9516 MiB = 9.29 GiB resident.
+    assert beta.MAX_RESIDENT_GB == 9.3
     assert beta.PEAK_MARGIN_GB == 0.39
     assert beta.PHOTON_OTHER_NATIVE_MB == 192
     assert beta.POSTGRES_MAX_SHARED_BUFFERS_FRACTION == 0.30
@@ -467,16 +470,16 @@ def _cap(service: dict, mb: int) -> None:
     service["memswap_limit"] = f"{mb}M"
 
 
-@pytest.mark.parametrize(("api_mb", "ok"), [(2475, True), (2476, False)])
-def test_the_resident_ceiling_is_exactly_seven_point_nine_six_gib(api_mb: int, ok: bool) -> None:
-    # good() is 7126 MiB resident with a 1450M api; 8151.04 MiB is 7.96 GiB exactly
+@pytest.mark.parametrize(("api_mb", "ok"), [(3847, True), (3848, False)])
+def test_the_resident_ceiling_is_exactly_nine_point_three_gib(api_mb: int, ok: bool) -> None:
+    # good() is 7126 MiB resident with a 1450M api; 9523.2 MiB is 9.3 GiB exactly
     found = problems_for(lambda s: _cap(s["api"], api_mb))
     assert (not any("resident total" in p for p in found)) is ok, found
 
 
-@pytest.mark.parametrize(("migrate_mb", "ok"), [(1281, True), (1282, False)])
+@pytest.mark.parametrize(("migrate_mb", "ok"), [(4045, True), (4046, False)])
 def test_the_startup_peak_leaves_exactly_0_39_gib(migrate_mb: int, ok: bool) -> None:
-    # 7126 MiB resident + the one-shot must stay within 8.6 - 0.39 GiB = 8407.04 MiB
+    # 7126 MiB resident + the one-shot must stay within 11.3 - 0.39 GiB = 11171.84 MiB
     found = problems_for(lambda s: _cap(s["migrate"], migrate_mb))
     assert (not any("startup peak" in p for p in found)) is ok, found
 
@@ -2849,7 +2852,7 @@ def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> No
     a variable and its address is checked live, never written down."""
     step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
     assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
-    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8806 MiB", "x86_64"):
+    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "10172 MiB", "x86_64"):
         assert fact in step1, fact
     assert "https://api.ipify.org" in step1 and "getent ahostsv4 beta.example.org" in step1
     assert '[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ]' in step1  # re-check ops SF-A
@@ -3210,9 +3213,9 @@ def test_the_certificate_paths_and_the_checkout_come_from_the_vars_file() -> Non
 
 
 def test_the_runbook_states_the_budget_in_both_units() -> None:
-    """Re-check 2 ops NIT-5: 8150 MiB is 7.96 GiB, and the two are written together."""
-    assert round(8150 / 1024, 2) == 7.96 and round(8406 / 1024, 2) == 8.21
-    assert "8150 MiB = 7.96 GiB" in RUNBOOK and "8406 MiB = 8.21 GiB" in RUNBOOK
+    """Re-check 2 ops NIT-5: 9516 MiB is 9.29 GiB, and the two are written together."""
+    assert round(9516 / 1024, 2) == 9.29 and round(9772 / 1024, 2) == 9.54
+    assert "9516 MiB = 9.29 GiB" in RUNBOOK and "9772 MiB = 9.54 GiB" in RUNBOOK
 
 
 @needs_sh

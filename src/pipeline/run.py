@@ -1002,6 +1002,9 @@ class RebuildContext:
     # (facility.short_paths_to_hide), the roads inside a military base, every
     # way inside a cemetery, and a parking lot's own ways.
     short_paths_hidden: set[int] = field(default_factory=set)
+    # The sidewalks and crosswalks open to bicycles the map draws after all, as the
+    # only link between two pieces of the trail network (`facility.trail_link_sidewalks`).
+    trail_link_sidewalks: set[int] = field(default_factory=set)
     # The ways inside a cemetery, routed only to or from a point inside one
     # (`rm:cemetery`; OWNER-DECISIONS 98).
     cemetery_ways: set[int] = field(default_factory=set)
@@ -3807,6 +3810,17 @@ def build_handlers(
         # A walked short link of the mountain-bike class stays on that layer, as it was.
         context.mtb_only = nobike.mtb_only() | nobike.short_links_mtb
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
+        # Last, once every rule that closes a way or hides it has run: a sidewalk run
+        # that is the only link between two drawn trails is drawn (owner report
+        # 2026-11-15, the side path along Saint Elizabeths Rd SE).
+        context.trail_link_sidewalks = facility.trail_link_sidewalks(
+            ((way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways),
+            hidden=context.short_paths_hidden | set(nobike.reasons) | nobike.platform_walks,
+        )
+        logger.info(
+            "sidewalk runs drawn as the only link between two trails: %d ways",
+            len(context.trail_link_sidewalks),
+        )
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
         context.offroad_singletracks = nobike.offroad_singletrack
@@ -4452,6 +4466,10 @@ def build_handlers(
         if osm_id in context.singletracks and osm_id not in context.drawn_singletracks:
             return facility.MapClass.HIDDEN
         base = facility.map_class(tags)
+        if base is facility.MapClass.HIDDEN and osm_id in context.trail_link_sidewalks:
+            # A sidewalk run that is the only link between two drawn trails
+            # (`facility.trail_link_sidewalks`): drawn, so the trail does not stop dead.
+            base = facility.MapClass.ROAD
         reason = context.no_bicycle.get(osm_id)
         if (
             reason is not None

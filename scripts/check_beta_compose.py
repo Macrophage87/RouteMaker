@@ -4,7 +4,7 @@
 The beta variant of scripts/check_compose_limits.py. That script is written
 against the 32 GB production host (caddy publishes, the rebuild is resident, the
 sum of limits must stay under 32 GB); the beta runs on the owner's shared 15 GiB host
-with about 8.6 GiB free and no swap, with nginx instead of Caddy and no rebuild,
+with about 11.3 GiB available to this stack and no swap, with nginx instead of Caddy and no rebuild,
 so it needs its own rules. It checks the RENDERED config - what `docker compose
 -f compose.yaml -f compose.beta.yaml config` prints - because that is what the
 daemon will be given: an overlay's merge can change a value the file never
@@ -111,8 +111,15 @@ ONE_SHOT = {"migrate"}
 # Bike get the weekend parkways?", "New weekend graph", knowing the beta's resident budget rises
 # to about 7.96 GiB and its start-up margin falls to about 0.4 GiB. The exact figures: 8150 MiB
 # resident = 7.959 GiB; the startup peak 8406 MiB = 8.209 GiB leaves 0.391 GiB of the 8.6.
-HOST_AVAILABLE_GB = 8.6
-MAX_RESIDENT_GB = 7.96
+# Then, 2026-11-14, the standard router and the api were OOM-killed at 640M and 1450M under
+# heavy plans, and the owner picked "Raise memory caps" (card "Fix beta's out-of-memory crashes
+# how?"): the standard and weekend routers at 1024M and the api at 2048M. The host was measured
+# the same day (free -m and docker stats): 7133 MiB available plus the 4478 MiB this stack held
+# = 11611 MiB, about 11.3 GiB available to this stack, with the host's other sites and its
+# mysql at about 1.8 GiB. So: 9516 MiB = 9.293 GiB resident, and the startup peak 9772 MiB =
+# 9.543 GiB leaves about 1.76 GiB of the 11.3; the 0.39 GiB margin is the floor, unchanged.
+HOST_AVAILABLE_GB = 11.3
+MAX_RESIDENT_GB = 9.3
 # The startup peak (resident plus the largest one-shot) must leave the host at least this much.
 PEAK_MARGIN_GB = 0.39
 

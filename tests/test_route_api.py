@@ -2369,7 +2369,23 @@ def hold_slots(pairs):
     with other.cursor() as cursor:
         for pair in pairs:
             cursor.execute("SELECT pg_advisory_lock(%s, %s)", list(pair))
-    return other
+    return _Holder(other)
+
+
+class _Holder:
+    """The other worker's connection. Its close() lets the locks go before it hangs up: a
+    closed connection's locks are freed only when its server process exits, a moment after
+    close() returns, so a request sent straight after could still find every slot taken."""
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    def close(self) -> None:
+        try:
+            with self._conn.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_unlock_all()")
+        finally:
+            self._conn.close()
 
 
 def our_advisory_locks() -> int:

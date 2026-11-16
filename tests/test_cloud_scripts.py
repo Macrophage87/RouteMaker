@@ -1424,11 +1424,11 @@ def test_on_the_beta_the_swap_starts_the_trail_routers_whose_tiles_are_there(fak
     assert "valhalla-offroad" not in calls
 
 
-@pytest.mark.parametrize(("available_mib", "started"), [(9000, True), (6000, False)])
+@pytest.mark.parametrize(("available_mib", "started"), [(10500, True), (6000, False)])
 def test_on_the_beta_the_swap_starts_road_bikes_routers_only_with_room(
     fake, beta, available_mib, started
 ) -> None:
-    # The agent's gate (RM_CD_PAVED_MIN_MIB, 8806 MiB of available memory plus what the
+    # The agent's gate (RM_CD_PAVED_MIN_MIB, 10172 MiB of available memory plus what the
     # project's containers hold): the beta has a thin margin and no swap.
     for variant in ("paved", "paved-weekend"):
         (beta.data / "tiles" / variant / BUILD).mkdir(parents=True, exist_ok=True)
@@ -1447,7 +1447,7 @@ def test_on_the_beta_the_swap_starts_road_bikes_routers_only_with_room(
         assert start in calls, calls
     else:
         assert "--force-recreate valhalla-paved" not in calls, calls
-        assert "valhalla-paved-weekend left stopped: 6000 MiB of the 8806" in done.stdout
+        assert "valhalla-paved-weekend left stopped: 6000 MiB of the 10172" in done.stdout
     assert "beta-compose exec -T api ./manage.py sync_upstreams" in calls
 
 
