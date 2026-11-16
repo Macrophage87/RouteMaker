@@ -38,7 +38,8 @@ The file, one stretch per entry, short keys (frontend/src/lib/intervals.ts reads
 
     id   stable id from its ends and `w` (10 hex digits)
     l    length, m (whole)
-    r    net rise along `line`, m (whole; negative only on a stretch that holds both ways)
+    r    net rise along `line`, m (whole; a one-way stretch may fall a little overall, never
+         2% for 150 m; a both-ways stretch reads either sign)
     g    average grade along `line`, % to a tenth
     line the stretch in its riding direction (the direction it holds, or either for `w`),
          simplified to `climb_layer.SIMPLIFY_M`
