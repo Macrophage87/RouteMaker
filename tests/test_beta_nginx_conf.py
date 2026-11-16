@@ -139,3 +139,27 @@ def test_robots_txt_is_served_exactly(tmp_path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ROBOTS
+
+
+def test_a_region_pack_is_served_to_the_site_and_refused_elsewhere(tmp_path) -> None:
+    """2026-11-15, the beta's first packs: the same-site check is a regex `map`, and evaluating
+    it reset the location's `$1`, so the alias named the packs folder and nginx answered 301 to
+    the app's own fetch. The file name is a named capture now."""
+    site = render(tmp_path, VARIANTS["open-no-ipv6"])
+    folder = site / "data" / "tiles" / "offline-packs" / "packs-20261115T125405Z"
+    folder.mkdir(parents=True)
+    (folder / "beltway.json.gz").write_bytes(b"pack bytes")
+    for path in (site / "data", *(site / "data").rglob("*")):
+        path.chmod(0o755 if path.is_dir() else 0o644)
+    url = f"https://{SERVER_NAME}/offline-packs/packs-20261115T125405Z/beltway.json.gz"
+    get = f"curl -sk -o /dev/null -w '%{{http_code}} ' --resolve {SERVER_NAME}:443:127.0.0.1"
+    result = in_nginx(
+        site,
+        "nginx -c /rmtest/nginx.conf && "
+        f"curl -sk --resolve {SERVER_NAME}:443:127.0.0.1 -H 'Referer: https://{SERVER_NAME}/' {url}"
+        f" && echo && {get} {url} && {get} -H 'Referer: https://elsewhere.test/' {url}",
+    )
+    assert result.returncode == 0, result.stderr
+    body, codes = result.stdout.split("\n", 1)
+    assert body == "pack bytes", result.stdout
+    assert codes.split() == ["403", "403"], "no Referer, or another site's: refused"

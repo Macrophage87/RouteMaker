@@ -17,8 +17,9 @@ import { appPreloads } from "./appPreloadPlugin.mjs";
 export const BUDGET_KB = {
   // The loader, React, MapLibre, App and what App imports at once, with their stylesheets.
   firstLoad: 960,
-  // App's own chunk.
-  app: 360,
+  // App's own chunk. 362 since v0.27.1: Map for no signal's areas and their pick on a ride (#1296) need 0.4 KB more
+  // with the popout itself moved to first use; the first load stays under its 960.
+  app: 362,
 };
 
 /** The chunks and stylesheets a first open downloads: the entry, what it imports at once, and App's (appPreloads). */
