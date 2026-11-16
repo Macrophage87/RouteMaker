@@ -16,13 +16,15 @@ import { withDarkPaint } from "./darkPaint.ts";
 
 export const INTERVALS_LABEL = "Interval stretches";
 /** Read on every focus, so one short line. */
-export const INTERVALS_HINT = "A mile or more with no stops, busy crossings or sharp turns, flat or uphill. Arrows: one way only.";
+export const INTERVALS_HINT = "A mile or more with no stops, busy crossings or sharp turns, flat or uphill.";
 export const INTERVALS_UNAVAILABLE = "Interval stretches are unavailable for now.";
 /** The file ships empty until the build host fills it (interval-data/README.md). */
 export const INTERVALS_NONE = "No interval stretches yet: they arrive with the next map data update.";
 export const INTERVALS_PREF_KEY = "routemaker.intervalsLayer";
 
 /** Deep pink: not a stress colour, not the Scenic teal, the rails' violet nor the route's blue. 6:1 on white. */
+/** Drawn at this opacity: at least 3:1 on white, the land colour and the dark map as drawn (WCAG 1.4.11; v0.27.2 review). */
+export const INTERVALS_OPACITY = 0.7;
 export const INTERVALS_COLOUR = "#be185d";
 export const INTERVALS_DARK_COLOUR = "#f472b6";
 export const INTERVALS_SOURCE = "intervals";
@@ -100,7 +102,7 @@ export function intervalsLayers(dark?: boolean): Record<string, unknown>[] {
     source: INTERVALS_SOURCE,
     minzoom: INTERVALS_MIN_ZOOM,
     layout: { "line-join": "round", "line-cap": "round" },
-    paint: { "line-color": INTERVALS_COLOUR, "line-opacity": 0.5, "line-width": ["interpolate", ["linear"], ["zoom"], INTERVALS_MIN_ZOOM, 5, 14, 12, 17, 18] },
+    paint: { "line-color": INTERVALS_COLOUR, "line-opacity": INTERVALS_OPACITY, "line-width": ["interpolate", ["linear"], ["zoom"], INTERVALS_MIN_ZOOM, 5, 14, 12, 17, 18] },
   };
   const arrows = {
     id: INTERVALS_ARROW_LAYER,

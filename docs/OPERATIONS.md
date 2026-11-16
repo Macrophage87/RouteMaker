@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.27.2](#deploying-v0272)
 - [Deploying v0.27.1](#deploying-v0271)
 - [Deploying v0.27.0](#deploying-v0270)
 - [Deploying v0.26.0](#deploying-v0260)
@@ -8078,6 +8079,45 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.27.2
+
+A patch with the Interval stretches layer, on the owner's ask (2026-11-16, "Add as a patch then"):
+Plan's "Interval stretches" switch (#1304), its docs (#1305) and the first file, 2,871 stretches
+written on the PC from the 2026-11-15 map (#1306); the api's `GET /api/intervals-near` and the
+connector's `intervals_near` read the same file. Everything else on release/v0.28.0 stays there.
+
+**No `lua/`, `valhalla/`, requirements, migration, compose or nginx change.** What changes for a deploy:
+
+- the front end: the switch and a lazy-loaded `intervals.json` (about 1.1 MB, its own hashed file,
+  fetched only when the switch is turned on, left out of the service worker's precache);
+- the api image: `docker/api.Dockerfile` copies `frontend/src/interval-data/intervals.json` in, and
+  the api answers `/api/intervals-near` (rate-limited as the other `_near` endpoints). The
+  Dockerfile change makes the release agent's gate stop unless the tag names a CI-built image.
+- nothing for the map: the file is already written. A map rebuild does not write it again by
+  itself: after one, run `build_intervals` by hand and commit the file ("The Intervals layer"),
+  or the stretches stay one map behind.
+
+v0.27.1 must be on the beta first (its nginx template is a hand step). After that the beta takes
+v0.27.2 by itself if the tag is made by the Release workflow (it names the api image it built, so
+the Dockerfile change is deployed); a tag pushed by hand from the PC holds for a hand ship.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: either the Release
+  workflow (Actions, "Release", Run workflow on main, version v0.27.2, then approve), or an
+  annotated tag v0.27.2 on that commit pushed from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api and pipeline images `pre-rel-<short>`, keep `index.html`), fast-forward the checkout,
+  `docker compose build api`, then `docker compose up -d --no-deps --no-build --force-recreate api
+  worker` with no job todo or doing, then the front end. No router restart, no map rebuild.
+- [ ] **Beta.** With a Release-workflow tag, the release agent deploys it; `auto-release.sh status`
+  shows it. With a hand-pushed tag: `auto-release.sh pause --wait "shipping by hand"`, then
+  docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image built there, the worker
+  recreated, the front end built on the PC), `smoke-test.sh --local`, `smoke-test.sh --public <url>
+  --open`, `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.27.2` and `auto-release.sh
+  resume`.
+- [ ] **Beta check.** `GET /api/intervals-near?lat=38.98&lon=-77.10` lists stretches (not 503);
+  Plan, Map layers, Interval stretches draws the pink glow; the connector's `intervals_near` answers.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.27.1 front end.
 
 ## Deploying v0.27.1
 
