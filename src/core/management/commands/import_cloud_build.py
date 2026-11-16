@@ -49,7 +49,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import models
 
 from core import stress_changes
-from pipeline import promotion, reconcile, retention, tiles
+from core.offline_packs import packs_dir as offline_packs_dir
+from pipeline import offline_packs, promotion, reconcile, retention, tiles
 from pipeline.variants import RESTART_OFFROAD_WHERE_IT_RUNS, RESTART_ROUTERS, Variant
 
 PREDRAW = "docker compose exec -T api python manage.py predraw_stress_tiles"
@@ -437,6 +438,17 @@ class Command(BaseCommand):
                 f"edits re-applied: {getattr(outcome, 'edits_reapplied', None)}"
             ),
         )
+        # The region packs for off-grid riding, as a rebuild run on this host builds them after
+        # its swap (`pipeline.run`, RECONCILE). Before 2026-11-15 a cloud import never built
+        # them, so a deployment fed only from the cloud box had none to offer. A failure is a
+        # note: the swap stands and the last packs stay listed.
+        try:
+            offline_packs.build_packs(live, offline_packs_dir(), build_id, settings.COVERAGE_BBOX)
+        except Exception as error:  # noqa: BLE001 - the swap stands; the packs are extra
+            self.stderr.write(
+                f"the offline region packs were not built: {error}. Build them later: "
+                "./manage.py build_offline_packs"
+            )
         try:
             reconcile.drift_report(build_id, live, settings.SEGMENT_SCHEMA_RETIRED)
         except Exception as error:  # noqa: BLE001 - the swap stands; the report is a record

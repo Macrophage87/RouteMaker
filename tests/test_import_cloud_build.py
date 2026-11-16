@@ -532,3 +532,54 @@ def test_the_dry_run_counts_each_agencys_rated_segments(deployment) -> None:
     ) in out
     assert "warning: no segment carries DDOT's rating" in out
     assert "carries Montgomery" not in out and "carries MDOT" not in out
+
+
+def test_a_confirmed_import_builds_the_offline_packs_for_the_new_build(deployment) -> None:
+    """Before 2026-11-15 only a rebuild run on the host built them, so a map fed from the
+    cloud box offered no packs for off-grid riding."""
+    import json
+
+    run(NEW, "--overrides-read-at", READ_AT, "--confirm")
+
+    manifest = json.loads((deployment / "offline-packs" / "manifest.json").read_text())
+    assert manifest["build_id"] == NEW
+
+
+def test_packs_that_fail_leave_the_swap_standing(deployment, monkeypatch) -> None:
+    from pipeline import offline_packs
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(offline_packs, "build_packs", broken)
+    err = StringIO()
+    call_command(
+        "import_cloud_build",
+        NEW,
+        "--overrides-read-at",
+        READ_AT,
+        "--confirm",
+        stdout=StringIO(),
+        stderr=err,
+    )
+
+    assert serving(deployment) == {NEW}
+    assert "offline region packs were not built" in err.getvalue()
+    assert "build_offline_packs" in err.getvalue()
+
+
+def test_build_offline_packs_packs_the_build_now_served(deployment) -> None:
+    import json
+
+    out = StringIO()
+    call_command("build_offline_packs", stdout=out)
+
+    manifest = json.loads((deployment / "offline-packs" / "manifest.json").read_text())
+    assert manifest["build_id"] == OLD
+    assert f"for build {OLD}" in out.getvalue()
+
+
+def test_build_offline_packs_refuses_where_no_build_is_served(settings, tmp_path) -> None:
+    settings.TILES_DIR = tmp_path
+    with pytest.raises(CommandError, match="no build is served"):
+        call_command("build_offline_packs", stdout=StringIO())

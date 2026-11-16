@@ -10587,7 +10587,9 @@ northwest exurbs and Baltimore stay our draft. New borders take effect at the ne
 until then the list gives the new areas beside the old packs (a ride near a moved border may
 open a pack that lacks the roads there, and falls back to its own mile).
 
-- **Built after every map swap**, first thing in the rebuild's last stage, from the live
+- **Built after every map swap**: first thing in the rebuild's last stage, and (since
+  2026-11-15) by `import_cloud_build --confirm` after a cloud build's swap, on the PC and on
+  beta alike (before then a cloud install built none, so the API answered `not_built`). From the live
   `offline_way` table: `${DATA_ROOT}/tiles/offline-packs/packs-<build id>/<region>.json.gz`,
   then `manifest.json` beside it is replaced in one rename to name that folder. The folder is
   named `packs-...`, not a bare build id, so the tile pruning and the beta ship script never
@@ -10610,10 +10612,11 @@ open a pack that lacks the roads there, and falls back to its own mile).
   `/srv/tiles`; beta's nginx reads the folder directly. **Deploy steps:** on beta, render the
   nginx template again and reload nginx (the new `/offline-packs/` location); on compose,
   `docker compose up -d caddy` for the new mount.
-- To build the packs by hand for the live map (after a swap whose pack build failed), in
-  `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
-  then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
-  settings.COVERAGE_BBOX)`.
+- To build the packs by hand for the live map (after a swap whose pack build failed, or a
+  cloud build imported before 2026-11-15): `./manage.py build_offline_packs` in the rebuild
+  container. It packs the build the standard graph serves, from the live `offline_way` table,
+  and writes only `${DATA_ROOT}/tiles/offline-packs/`; the api picks the new manifest up with
+  no restart.
 - **On the phone** (`frontend/src/lib/regionPack.ts`, `RegionPackSetting.tsx`): Settings >
   Riding, "Map for no signal", one line saying what is on the phone and Manage, which opens a
   popout (Stephen, 2026-11-15: "download one or all, and delete one or all ... It should tell
