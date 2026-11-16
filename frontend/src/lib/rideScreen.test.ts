@@ -113,7 +113,8 @@ test("icons only on the side buttons (Stephen 2026-10-29): off by default, kept 
 test("toasts across the map's top, over the side buttons, never cut behind them; their lines kept", () => {
   assert.match(css, /\.ride-toast \{\s*top: 8px;\s*right: 12px;\s*bottom: auto;\s*left: 12px;\s*z-index: 2;/);
   assert.match(css, /\.ride-toast p \{\s*margin: 0;\s*white-space: pre-line;/);
-  assert.match(ride, /whereAmIShown\(modelRef\.current, rideRef\.current, milesRef\.current, arrivingAt\)\.join\("\\n"\)/);
+  assert.match(ride, /shown: whereAmIShown\(modelRef\.current, state, milesRef\.current, arrivingAt\)/);
+  assert.match(ride, /showToast\(walk \? walk\.shown : where!\.shown\.join\("\\n"\)\)/);
 });
 
 test("the screen-on note: one line, the steps for the rider's own phone, the whole of it said", () => {
