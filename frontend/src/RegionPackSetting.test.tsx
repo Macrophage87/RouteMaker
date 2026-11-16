@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { render } from "./testSupport/render.ts";
 import { RegionPackDialog } from "./RegionPackSetting.tsx";
-import type { KeptPack, PackList } from "./lib/regionPack.ts";
+import { downloadPack, type KeptPack, type PackList } from "./lib/regionPack.ts";
 
 const MB = 1024 * 1024;
 const square = (w: number, s: number, e: number, n: number): [number, number][] => [[w, s], [e, s], [e, n], [w, n], [w, s]];
@@ -60,4 +60,21 @@ test("no signal: the kept areas are still shown and can be deleted", async () =>
   assert.match(screen.text(), /Needs a signal to list the maps/);
   assert.ok(screen.button("Delete Inside the Beltway"));
   assert.equal(screen.all("button", /^Download/).length, 0);
+});
+
+test("while Download all runs, it says so and the areas wait (no area kept twice), and a kept area can still be deleted", async () => {
+  let land!: () => void;
+  const held = new Promise<void>((done) => (land = done));
+  const fetcher = (async () => {
+    await held;
+    return new Response("x");
+  }) as unknown as typeof fetch;
+  const done = downloadPack(LIST.packs[3], LIST, fetcher, { put: async () => undefined, get: async () => null, delete: async () => undefined });
+  const screen = await popout(LIST, [kept("beltway", 10.8 * MB)]);
+  assert.ok(screen.button("Downloading…"));
+  assert.equal(screen.button("Download Northern Virginia").getAttribute("aria-disabled"), "true");
+  const del = screen.button("Delete Inside the Beltway");
+  assert.equal(del.getAttribute("aria-disabled"), "false");
+  land();
+  await done;
 });

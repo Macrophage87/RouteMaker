@@ -11866,3 +11866,8 @@ button.route-note:focus-visible {
 .region-pack-area button {
   min-height: 44px;
 }
+.region-pack-map mask path,
+.region-pack-map mask rect {
+  fill-opacity: 1;
+  stroke: none;
+}

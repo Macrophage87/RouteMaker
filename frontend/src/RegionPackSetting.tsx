@@ -42,7 +42,7 @@ import {
   type PackList,
 } from "./lib/regionPack.ts";
 
-const OUTCOME_SAID: Record<DownloadOutcome, string> = { kept: PACK_KEPT, failed: PACK_FAILED, "no-room": PACK_NO_ROOM };
+const OUTCOME_SAID: Record<DownloadOutcome, string> = { kept: PACK_KEPT, failed: PACK_FAILED, "no-room": PACK_NO_ROOM, cancelled: "" };
 
 const totalBytes = (kept: KeptPack[]) => kept.reduce((sum, k) => sum + k.bytes, 0);
 
@@ -221,16 +221,22 @@ export function RegionPackDialog({
                               : sizeText(row.bytes)}
                     </span>
                   </span>
-                  {!wholeKept &&
-                    (has ? (
-                      <button type="button" className="secondary danger" aria-label={deleteName(row.name)} onClick={() => drop(row.id)}>
-                        {PACK_DELETE}
-                      </button>
-                    ) : (
-                      <button type="button" className="secondary" aria-label={downloadName(row.name)} disabled={busy(row.id) || !list} onClick={() => get(row.id)}>
-                        {PACK_DOWNLOAD}
-                      </button>
-                    ))}
+                  {!wholeKept && (has || list) && (
+                    // One button that changes between Download and Delete (and is only marked unavailable while the
+                    // whole map or this area downloads), so the focus stays on it.
+                    <button
+                      type="button"
+                      className={has ? "secondary danger" : "secondary"}
+                      aria-label={has ? deleteName(row.name) : downloadName(row.name)}
+                      aria-disabled={!has && (busy(row.id) || (!!whole && busy(whole.id)))}
+                      onClick={() => {
+                        if (has) drop(row.id);
+                        else if (!busy(row.id) && !(whole && busy(whole.id))) get(row.id);
+                      }}
+                    >
+                      {has ? PACK_DELETE : PACK_DOWNLOAD}
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -283,6 +289,7 @@ const TOWNS: readonly [string, number, number][] = [
  * with no outline is the box less the others, drawn under them.
  */
 function AreaMap({ areas, order, kept }: { areas: Areas; order: string[]; kept: ReadonlySet<string> }) {
+  const maskId = useId().replace(/:/g, "");
   const outlined = Object.entries(areas.areas).filter(([, a]) => a.outline);
   const xs = outlined.flatMap(([, a]) => a.outline!.map((p) => p[0]));
   const ys = outlined.flatMap(([, a]) => a.outline!.map((p) => p[1]));
@@ -314,8 +321,15 @@ function AreaMap({ areas, order, kept }: { areas: Areas; order: string[]; kept: 
   };
   return (
     <svg className="region-pack-map" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={PACK_MAP_LABEL}>
+      {/* The rest: the box less the outlined areas, so its fill never tints theirs. */}
+      <mask id={`${maskId}-rest`}>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        {outlined.map(([id, a]) => (
+          <path key={id} d={path(a.outline!)} fill="#000" />
+        ))}
+      </mask>
       {rest && number(rest[0]) > 0 && (
-        <rect x="0" y="0" width={W} height={H} className={`area-${number(rest[0])}${kept.has(rest[0]) ? " kept" : ""}`} />
+        <rect x="0" y="0" width={W} height={H} mask={`url(#${maskId}-rest)`} className={`area-${number(rest[0])}${kept.has(rest[0]) ? " kept" : ""}`} />
       )}
       {drawn.map(([id, a]) =>
         number(id) > 0 ? <path key={id} d={path(a.outline!)} className={`area-${number(id)}${kept.has(id) ? " kept" : ""}`} /> : null,

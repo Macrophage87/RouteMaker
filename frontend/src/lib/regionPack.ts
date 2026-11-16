@@ -305,7 +305,8 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
 
 // ---- Downloads: one at a time, the rest waiting ------------------------------------------------------------------
 
-export type DownloadOutcome = "kept" | "failed" | "no-room";
+/** "cancelled": deleted (or Delete all pressed) before it was in, or an area that finished after the whole map was kept. */
+export type DownloadOutcome = "kept" | "failed" | "no-room" | "cancelled";
 
 interface Job {
   pack: PackInfo;
@@ -314,6 +315,8 @@ interface Job {
   store: PackStore;
   done: Promise<DownloadOutcome>;
   resolve: (outcome: DownloadOutcome) => void;
+  /** Deleted while it downloaded: never kept when it lands. */
+  cancelled: boolean;
 }
 
 const jobs: Job[] = [];
@@ -341,7 +344,7 @@ export function downloadPack(pack: PackInfo, list: PackList, fetcher: typeof fet
   if (same) return same.done;
   let resolve!: (outcome: DownloadOutcome) => void;
   const done = new Promise<DownloadOutcome>((r) => (resolve = r));
-  jobs.push({ pack, list, fetcher, store, done, resolve });
+  jobs.push({ pack, list, fetcher, store, done, resolve, cancelled: false });
   if (jobs.length === 1) void next();
   tell();
   return done;
@@ -350,7 +353,7 @@ export function downloadPack(pack: PackInfo, list: PackList, fetcher: typeof fet
 async function next(): Promise<void> {
   const job = jobs[0];
   if (!job) return;
-  const outcome = await fetchAndKeep(job.pack, job.list, job.fetcher, job.store);
+  const outcome = await fetchAndKeep(job);
   jobs.shift();
   job.resolve(outcome);
   tell();
@@ -359,11 +362,12 @@ async function next(): Promise<void> {
 
 /** Stop the waiting downloads (not the one under way). */
 export function cancelWaiting(): void {
-  for (const job of jobs.splice(1)) job.resolve("failed");
+  for (const job of jobs.splice(1)) job.resolve("cancelled");
   tell();
 }
 
-async function fetchAndKeep(pack: PackInfo, list: PackList, fetcher: typeof fetch, store: PackStore): Promise<DownloadOutcome> {
+async function fetchAndKeep(job: Job): Promise<DownloadOutcome> {
+  const { pack, list, fetcher, store } = job;
   let bytes: ArrayBuffer;
   try {
     const answer = await fetcher(pack.url);
@@ -379,6 +383,12 @@ async function fetchAndKeep(pack: PackInfo, list: PackList, fetcher: typeof fetc
     return error instanceof DOMException && error.name === "QuotaExceededError" ? "no-room" : "failed";
   }
   const before = keptPacks();
+  // Deleted while it downloaded, or an area landing after the whole map was kept (which holds it): not kept.
+  const holds = !pack.area?.whole && before.some((k) => k.id !== pack.id && (storedAreas()?.areas[k.id]?.whole ?? k.id === "all"));
+  if (job.cancelled || holds) {
+    if (!before.some((k) => k.key === pack.id)) await store.delete(pack.id).catch(() => undefined);
+    return "cancelled";
+  }
   const kept: KeptPack = { id: pack.id, name: pack.name, buildId: list.buildId, bytes: bytes.byteLength, sha256: pack.sha256, levelFactor: list.levelFactor, key: pack.id };
   // The whole map stands for every area: the separate ones are removed once it is in.
   const gone = pack.area?.whole ? before.filter((k) => k.id !== pack.id) : before.filter((k) => k.id === pack.id && k.key !== pack.id);
@@ -389,6 +399,10 @@ async function fetchAndKeep(pack: PackInfo, list: PackList, fetcher: typeof fetc
 
 /** Remove one kept pack. */
 export async function removePack(id: string, store: PackStore = indexedDbStore): Promise<void> {
+  // Its download under way (a newer map) is not kept when it lands; one waiting is dropped.
+  if (jobs[0]?.pack.id === id) jobs[0].cancelled = true;
+  for (let i = jobs.length - 1; i >= 1; i--) if (jobs[i].pack.id === id) jobs.splice(i, 1)[0].resolve("cancelled");
+  tell();
   const before = keptPacks();
   const gone = before.filter((k) => k.id === id);
   writeKept(before.filter((k) => k.id !== id));
@@ -398,6 +412,7 @@ export async function removePack(id: string, store: PackStore = indexedDbStore):
 /** Remove every kept pack, and the downloads waiting. */
 export async function removeAll(store: PackStore = indexedDbStore): Promise<void> {
   cancelWaiting();
+  if (jobs[0]) jobs[0].cancelled = true;
   const before = keptPacks();
   writeKept([]);
   for (const k of before) await store.delete(k.key).catch(() => undefined);

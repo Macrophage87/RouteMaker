@@ -215,6 +215,38 @@ test("one download at a time: the same pack joins the one under way, another wai
   assert.deepEqual(downloads(), { active: null, waiting: [] });
 });
 
+test("a pack deleted while it downloads is not kept when it lands; Delete all stops the rest", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  const slow = (async (u: string) => {
+    await new Promise((done) => setTimeout(done, 5));
+    return served(u);
+  }) as unknown as typeof fetch;
+  const whole = downloadPack(pack(list, "all"), list, slow, store);
+  const area = downloadPack(pack(list, "beltway"), list, slow, store);
+  await removeAll(store);
+  assert.equal(await whole, "cancelled");
+  assert.equal(await area, "cancelled");
+  assert.deepEqual(keptPacks(), []);
+  assert.equal(store.bytes.size, 0);
+  const one = downloadPack(pack(list, "nova"), list, slow, store);
+  await removePack("nova", store);
+  assert.equal(await one, "cancelled");
+  assert.deepEqual(keptPacks(), []);
+});
+
+test("an area that lands after the whole map is kept is not kept beside it", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  await downloadPack(pack(list, "all"), list, served, store);
+  assert.equal(await downloadPack(pack(list, "beltway"), list, served, store), "cancelled");
+  assert.deepEqual(
+    keptPacks().map((k) => k.id),
+    ["all"],
+  );
+  assert.deepEqual([...store.bytes.keys()], ["all"]);
+});
+
 test("which area holds a place: the Beltway cut out of the areas around it, the rest the box less the others", async () => {
   await listed();
   const downtown: [number, number] = [-77.03, 38.9];
