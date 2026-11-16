@@ -8094,8 +8094,9 @@ connector's `intervals_near` read the same file. Everything else on release/v0.2
 - the api image: `docker/api.Dockerfile` copies `frontend/src/interval-data/intervals.json` in, and
   the api answers `/api/intervals-near` (rate-limited as the other `_near` endpoints). The
   Dockerfile change makes the release agent's gate stop unless the tag names a CI-built image.
-- nothing for the map: the file is already written; the next map rebuild writes it again
-  ("The Intervals layer").
+- nothing for the map: the file is already written. A map rebuild does not write it again by
+  itself: after one, run `build_intervals` by hand and commit the file ("The Intervals layer"),
+  or the stretches stay one map behind.
 
 v0.27.1 must be on the beta first (its nginx template is a hand step). After that the beta takes
 v0.27.2 by itself if the tag is made by the Release workflow (it names the api image it built, so

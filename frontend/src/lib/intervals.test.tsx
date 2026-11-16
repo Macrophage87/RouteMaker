@@ -12,6 +12,7 @@ import {
   INTERVALS_HINT,
   INTERVALS_LEGEND_TEXT,
   INTERVALS_NONE,
+  INTERVALS_OPACITY,
   INTERVALS_PREF_KEY,
   IntervalsSection,
   intervalsGeoJson,
@@ -52,9 +53,13 @@ test("the layers are valid, the arrows only on one-way stretches, and the pink r
   const one = spec.featureFilter(arrows.filter as never, "f").filter;
   assert.equal(one({ zoom: 14 } as never, { type: 2, properties: { one: true }, geometry: [] } as never), true);
   assert.equal(one({ zoom: 14 } as never, { type: 2, properties: { one: false }, geometry: [] } as never), false);
-  assert.ok(contrastRatio(INTERVALS_COLOUR, "#ffffff") >= 4.5);
+  // What the rider sees is the colour at the drawn opacity over the map: 3:1 for a map graphic.
+  const line = intervalsLayers(false)[0] as { paint: Record<string, unknown> };
+  assert.equal(line.paint["line-opacity"], INTERVALS_OPACITY);
+  const drawn = (fg: string, bg: string) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(fg.slice(i, i + 2), 16) * INTERVALS_OPACITY + parseInt(bg.slice(i, i + 2), 16) * (1 - INTERVALS_OPACITY)).toString(16).padStart(2, "0")).join("");
+  for (const bg of ["#ffffff", "#f2efe9"]) assert.ok(contrastRatio(drawn(INTERVALS_COLOUR, bg), bg) >= 3, bg);
   assert.equal(DARK_PAINT["intervals-line"]["line-color"], INTERVALS_DARK_COLOUR);
-  assert.ok(contrastRatio(INTERVALS_DARK_COLOUR, "#111827") >= 3);
+  assert.ok(contrastRatio(drawn(INTERVALS_DARK_COLOUR, "#111827"), "#111827") >= 3);
 });
 
 test("off by default and kept on this device", () => {
