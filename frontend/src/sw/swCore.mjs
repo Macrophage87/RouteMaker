@@ -61,7 +61,7 @@ export const SKIP_WAITING = "SKIP_WAITING";
  * downloaded at the install and not before the page starts.
  */
 export const LANG_ASSET = /^\/assets\/lang-([a-z]+)-[^/]*\.js$/;
-export const LAZY_ASSET = /^\/assets\/(?:(?:food|climbs|federal-land)-[^/]*\.json|lang-(?!es-)[^/]*\.js)$/;
+export const LAZY_ASSET = /^\/assets\/(?:(?:food|climbs|intervals|federal-land)-[^/]*\.json|lang-(?!es-)[^/]*\.js)$/;
 
 /** The build's own cache: its assets and its shell. */
 export function buildCache(buildId) {

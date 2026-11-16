@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.27.2](#deploying-v0272)
 - [Deploying v0.27.1](#deploying-v0271)
 - [Deploying v0.27.0](#deploying-v0270)
 - [Deploying v0.26.0](#deploying-v0260)
@@ -102,6 +103,7 @@ Contents:
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
 - [The Climbs layer (454; MTB/topo slice 5; claude/v0-5-0-climbs)](#the-climbs-layer-454-mtbtopo-slice-5-claudev0-5-0-climbs)
+- [The Intervals layer](#the-intervals-layer)
 - [The rebuild bundle (wip/rebuild-bundle)](#the-rebuild-bundle-wiprebuild-bundle)
 - [Bikeshare feeds](#bikeshare-feeds)
 - [Work zones](#work-zones)
@@ -8078,6 +8080,45 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.27.2
+
+A patch with the Interval stretches layer, on the owner's ask (2026-11-16, "Add as a patch then"):
+Plan's "Interval stretches" switch (#1304), its docs (#1305) and the first file, 2,871 stretches
+written on the PC from the 2026-11-15 map (#1306); the api's `GET /api/intervals-near` and the
+connector's `intervals_near` read the same file. Everything else on release/v0.28.0 stays there.
+
+**No `lua/`, `valhalla/`, requirements, migration, compose or nginx change.** What changes for a deploy:
+
+- the front end: the switch and a lazy-loaded `intervals.json` (about 1.1 MB, its own hashed file,
+  fetched only when the switch is turned on, left out of the service worker's precache);
+- the api image: `docker/api.Dockerfile` copies `frontend/src/interval-data/intervals.json` in, and
+  the api answers `/api/intervals-near` (rate-limited as the other `_near` endpoints). The
+  Dockerfile change makes the release agent's gate stop unless the tag names a CI-built image.
+- nothing for the map: the file is already written. A map rebuild does not write it again by
+  itself: after one, run `build_intervals` by hand and commit the file ("The Intervals layer"),
+  or the stretches stay one map behind.
+
+v0.27.1 must be on the beta first (its nginx template is a hand step). After that the beta takes
+v0.27.2 by itself if the tag is made by the Release workflow (it names the api image it built, so
+the Dockerfile change is deployed); a tag pushed by hand from the PC holds for a hand ship.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: either the Release
+  workflow (Actions, "Release", Run workflow on main, version v0.27.2, then approve), or an
+  annotated tag v0.27.2 on that commit pushed from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api and pipeline images `pre-rel-<short>`, keep `index.html`), fast-forward the checkout,
+  `docker compose build api`, then `docker compose up -d --no-deps --no-build --force-recreate api
+  worker` with no job todo or doing, then the front end. No router restart, no map rebuild.
+- [ ] **Beta.** With a Release-workflow tag, the release agent deploys it; `auto-release.sh status`
+  shows it. With a hand-pushed tag: `auto-release.sh pause --wait "shipping by hand"`, then
+  docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image built there, the worker
+  recreated, the front end built on the PC), `smoke-test.sh --local`, `smoke-test.sh --public <url>
+  --open`, `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed v0.27.2` and `auto-release.sh
+  resume`.
+- [ ] **Beta check.** `GET /api/intervals-near?lat=38.98&lon=-77.10` lists stretches (not 503);
+  Plan, Map layers, Interval stretches draws the pink glow; the connector's `intervals_near` answers.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.27.1 front end.
+
 ## Deploying v0.27.1
 
 A patch with the fixes finished for v0.28.0, on the owner's ask (2026-11-16): Map for no signal's
@@ -9201,6 +9242,40 @@ every base-map surface; the number 4.5:1 or more on it), from zoom 9; the climb'
 from zoom 12; where markers meet, the bigger climb is drawn. A tap shows a card ("Category 3 climb,
 2.1 miles (3.4 km) at 4.6%", the gain, the trail, "Mostly unpaved"). With a route planned, "Climbs
 on your route" lists in words each climb the route rides uphill, start to summit, in riding order.
+
+## The Intervals layer
+
+The owner, 2026-11-16: "a layer that could identify interval-capable segments ... long segments that
+have limited turns, no intersections, and are either flat or uphill ... in the Plan panel and
+available for the MCP." Plan's Map layers has one switch, "Interval stretches" (off until turned on,
+kept per browser as `routemaker.intervalsLayer`; not in Go, not on the Mass Ride map), that draws
+`frontend/src/interval-data/intervals.json`: a pink glow under the stress line, with arrows where a
+stretch holds one way only. `GET /api/intervals-near` and the connector's `intervals_near` read the
+same file, so `docker/api.Dockerfile` copies it into the api image and a new file reaches the
+connector with the next api image. The first file was written on 2026-11-16 (2,871 stretches;
+counts in `frontend/src/interval-data/README.md`). An unbuilt file (`"built": null`) makes the
+switch say the stretches arrive with the next map data update, and the endpoint answer 503.
+
+**What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
+`pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
+railway crossings, barriers, from the extract's node tags; a stop or yield sign on a junction's own
+node only where the stretch is not the busier road), at a busy road (LTS 3+) crossed, at
+any road a path meets, at a sharp turn (60 degrees), and at a descent (2% held 150 m) for the
+direction it falls; LTS 4 and Avoid never count. The numbers are the connector's interval check's
+(`mcp/routemaker_mcp.py`, the owner's 2026-10-25 ask), except the 1 mile minimum, which is our
+default (unmeasured). `JUNCTION_RULE = "every"` cuts at every road that joins instead.
+
+**Writing it**, on the build host after a swap, under the heavy-job lock with 3,000 MB free (it
+reads the live table, the extract and the elevation tiles, as `build_climbs` does):
+
+    flock <heavy.lock> docker compose exec -T rebuild ./manage.py build_intervals </dev/null
+
+Measured 2026-11-16 on the PC: the rebuild container peaked at about 1.6 GiB (WSL "available"
+never under 4.7 GB), 145 s.
+
+It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
+to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's
+README, and commit. It reads only and is safe to re-run.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 

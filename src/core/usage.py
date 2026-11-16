@@ -48,6 +48,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "api/segment-info"): "road panel",
     ("GET", "api/scenic-roads"): "scenic roads",
     ("GET", "api/climbs-near"): "climbs near",
+    ("GET", "api/intervals-near"): "intervals near",
     ("POST", "api/bikeshare/stations"): "bikeshare",
     ("GET", "api/transit/station-times"): "transit times",
     ("POST", "api/offline/network"): "offline route",
