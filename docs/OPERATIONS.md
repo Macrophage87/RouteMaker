@@ -8095,6 +8095,10 @@ sits on (#1297); region packs built by every cloud install (#1294) and served by
 - the beta's nginx template: the `/offline-packs/` location aliases the file by a named capture
   (#1295). The beta was patched by hand on 2026-11-15; the ship re-renders it so the file matches;
 - `src/pipeline/run.py` and `routemaker/facility.py` (#1293): only at the next map rebuild.
+- the areas' new borders (#1296, "Region packs" below): the packs on the PC and the beta were
+  built to the old borders, so they keep them until the next map build packs them again. Until
+  then a ride near a moved border (Bowie, Laurel, Anne Arundel, the West Virginia panhandle) may
+  open a pack that lacks the roads there and falls back to its own mile.
 
 The nginx template stops the release agent's gate, so **the beta is a hand ship**.
 
@@ -10576,7 +10580,7 @@ Everything, the whole coverage box in one pack (Stephen, 2026-11-13: "Offer ever
 download"; the largest, so the biggest memory use on the phone in a ride with no signal). Each
 pack also takes the roads within a mile of its border.
 
-Borders (v0.28.0, Stephen, 2026-11-15): the Potomac divides Virginia and West Virginia
+Borders (v0.27.1, Stephen, 2026-11-15): the Potomac divides Virginia and West Virginia
 (Northern Virginia, which takes the Martinsburg and Charles Town panhandle) from Maryland ("so
 few crossings outside DC that it's reasonable to divide there"); Southern Maryland is Charles,
 Calvert and St. Mary's Counties and Prince George's south of Upper Marlboro's latitude (38.816);
