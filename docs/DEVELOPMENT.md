@@ -3862,7 +3862,9 @@ the router with a 49 ft (15 m) `radius` (`routing.STOP_RADIUS_M`): Valhalla take
 way within that distance as a candidate and the route takes the cheapest, where before
 it had only the nearest. The stop on the Fairfax County Parkway Trail lay 15 ft (4.5 m)
 from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route left the
-trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. The search's own requests reuse
+trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. A via point is the exception (`routing.VIA_RADIUS_M`, 0): it is
+matched to the way it sits on, so a via dropped on a road beside a trail rides the road, not
+the cheaper trail (Stephen, 2026-11-16). The search's own requests reuse
 the plan's locations, so they match alike, and so do the stop-order leg costs and
 its matrix past ten stops (`stoporder`); `core.nearest` matches the rider the same way and
 keeps the nearest way at its fixed places. The cut points of a long plan (`refine.long_legs`) and the dedodge
