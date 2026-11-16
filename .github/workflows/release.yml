@@ -130,7 +130,9 @@ jobs:
         with:
           subject-name: ghcr.io/macrophage87/routemaker-api
           subject-digest: ${{ steps.push.outputs.sha256 }}
-          push-to-registry: true
+          # Kept by GitHub only: the agent reads it from GitHub's attestations API, and the push step
+          # has logged out of ghcr.io (v0.27.2's first run failed "No credentials found for registry").
+          push-to-registry: false
 
   # Runs only after the approved image job: the annotated tag on the checked commit, naming the
   # image by digest. The beta's agent reads that line (scripts/beta/cd_logic.py, tag-image).
