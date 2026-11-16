@@ -548,13 +548,15 @@ server {
     # The region packs for riding off grid (Caddyfile handle /offline-packs/*): a build's gzip
     # JSON pack files only, never the manifest, same-site, kept a day (a build's files never
     # change). Shipped from home with the data (scripts/beta/ship-data.sh, part packs).
-    location ~ ^/offline-packs/(packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$ {
+    # The file is a NAMED capture: the same-site check below is a regex map, and evaluating it
+    # resets $1, so `alias .../$1` named the folder and nginx answered 301 (beta, 2026-11-15).
+    location ~ ^/offline-packs/(?P<rm_pack>packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$ {
         if ($rmbeta_basemap_foreign) {
             add_header Cache-Control "no-store" always;
             add_header X-Robots-Tag "noindex, nofollow" always;
             return 403;
         }
-        alias @DATA_ROOT@/tiles/offline-packs/$1;
+        alias @DATA_ROOT@/tiles/offline-packs/$rm_pack;
         default_type application/gzip;
         types { }
         add_header X-Robots-Tag "noindex, nofollow" always;
