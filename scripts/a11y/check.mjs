@@ -1192,8 +1192,9 @@ if (mine(16)) for (const mobile of [false, true]) {
   // Six since Bikeshare and e-bikes (787abd98), Places to see and the repair stands (280b1d80, 2b38bf1c) joined;
   // seven with Scenic (v0.8.0), after Trails and terrain, off by default like the rest.
   // v0.9.1: DC permits, Plan's alone, off by default, after Scenic; Potential closures since v0.17.0 (#853).
-  check(`sections (${where}): eight, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
-    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails and terrain", "Scenic", "Potential closures"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
+  // Nine with Interval stretches (v0.27.2, #1304), Plan's alone, off by default, before Potential closures.
+  check(`sections (${where}): nine, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
+    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails and terrain", "Scenic", "Interval stretches", "Potential closures"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
   const ax = await axNode(p, "#terrain-section-switch");
   const chevron = await axNode(p, "[aria-controls=terrain-section-body]");
   check(`sections (${where}): the section's switch is a switch named for it, off; the disclosure a collapsed button named for its layers`,
