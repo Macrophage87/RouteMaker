@@ -45,7 +45,7 @@ def test_the_regions_are_his_riding_areas_and_cover_the_map() -> None:
 
 @pytest.fixture
 def ways():
-    """Four streets: one downtown DC, one in Arlington, one in Baltimore, one in La Plata."""
+    """Streets in downtown DC, Arlington, Baltimore, La Plata, Potomac, Martinsburg and Bowie."""
     from pipeline.schema import SEGMENT_DDL  # noqa: F401 - the table's DDL is the rebuild's own
 
     with connection.cursor() as cursor:
@@ -65,6 +65,10 @@ def ways():
         3: ("Charles Street", (-76.615, 39.30)),
         4: ("La Plata Road", (-76.98, 38.53)),
         5: ("River Road", (-77.18, 39.00)),
+        # Martinsburg, West Virginia: south of the Potomac, so with Northern Virginia.
+        6: ("Queen Street", (-77.964, 39.456)),
+        # Bowie, Prince George's north of Upper Marlboro: with Baltimore.
+        7: ("Annapolis Road", (-76.73, 38.96)),
     }
     for way_id, (name, (lon, lat)) in places.items():
         points = [_at(lon, lat), _at(lon, lat, east_m=200)]
@@ -105,9 +109,11 @@ def test_each_pack_holds_its_regions_ways_and_current_names_the_build(
         return set(graph["names"])
 
     assert names("beltway") == {"K Street", "Wilson Boulevard"}
-    assert names("nova") == set(), "Arlington is inside the Beltway, not cut twice"
-    assert names("baltimore") == {"Charles Street"}
-    assert names("rest") == {"La Plata Road"}, "La Plata is in the rest of the map"
+    assert names("nova") == {"Queen Street"}, (
+        "Arlington is inside the Beltway, not cut twice; Martinsburg is south of the Potomac"
+    )
+    assert names("baltimore") == {"Charles Street", "Annapolis Road"}
+    assert names("rest") == {"La Plata Road"}, "La Plata is in Southern Maryland"
     assert names("nw-exurbs") == {"River Road"}, "Potomac, Maryland is not left to the rest"
     assert names("all") == {
         "K Street",
@@ -115,6 +121,8 @@ def test_each_pack_holds_its_regions_ways_and_current_names_the_build(
         "Charles Street",
         "La Plata Road",
         "River Road",
+        "Queen Street",
+        "Annapolis Road",
     }, "everything is every street"
     assert all(p["bytes"] > 0 and len(p["sha256"]) == 64 for p in found["packs"])
     assert found["dir"] == "packs-20261113T030000Z"
@@ -181,6 +189,13 @@ def test_the_list_names_each_pack_and_its_address(ways, tmp_path, settings, clie
     assert [p["id"] for p in body["packs"]] == [r.id for r in offline_packs.REGIONS]
     assert body["packs"][0]["url"] == "/offline-packs/packs-20261113T030000Z/beltway.json.gz"
     assert len(body["level_factor"]) == 11
+    # Each pack's area, for the phone's map and its pick of the pack to open for a ride.
+    areas = {p["id"]: p["area"] for p in body["packs"]}
+    assert areas["beltway"]["outline"][0] == areas["beltway"]["outline"][-1]
+    assert not areas["beltway"]["outside_beltway"] and areas["nova"]["outside_beltway"]
+    assert areas["rest"] == {"outline": None, "outside_beltway": False, "whole": False}
+    assert areas["all"] == {"outline": None, "outside_beltway": False, "whole": True}
+    assert body["box"] == list(settings.COVERAGE_BBOX)
     foreign = client.get("/api/offline/packs", HTTP_SEC_FETCH_SITE="cross-site", **headers)
     assert foreign.status_code == 403
 
@@ -205,3 +220,37 @@ def test_both_web_servers_serve_only_pack_files_to_this_site() -> None:
     assert r"(packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$" in location
     assert "$rmbeta_basemap_foreign" in location
     assert "alias @DATA_ROOT@/tiles/offline-packs/$1;" in location
+
+
+# v0.28.0 pass 1: where the places the wider box brings in fall, each in one area only.
+PASS_1_PLACES = {
+    "Richmond": ((-77.436, 37.541), "central-va"),
+    "Williamsburg": ((-76.707, 37.271), "central-va"),
+    "Charlottesville": ((-78.477, 38.030), "central-va"),
+    "Madison": ((-78.258, 38.380), "central-va"),
+    "Kinsale, Northern Neck": ((-76.580, 38.030), "central-va"),
+    "Winchester": ((-78.163, 39.186), "nova"),
+    "Front Royal": ((-78.194, 38.918), "nova"),
+    "Luray": ((-78.460, 38.665), "nova"),
+    "Capon Bridge, West Virginia": ((-78.434, 39.298), "nova"),
+    "Hancock, Maryland": ((-78.180, 39.699), "nw-exurbs"),
+    "Point Lookout, Maryland": ((-76.322, 38.045), "rest"),
+}
+
+
+@db
+@pytest.mark.parametrize("place", sorted(PASS_1_PLACES))
+def test_the_pass_1_places_fall_in_one_area(place, settings) -> None:
+    (lon, lat), want = PASS_1_PLACES[place]
+    found = []
+    with connection.cursor() as cursor:
+        for region in offline_packs.REGIONS:
+            if region.whole:
+                continue
+            cursor.execute(
+                "SELECT ST_Contains(ST_GeomFromText(%s, 4326), ST_SetSRID(ST_MakePoint(%s, %s), 4326))",
+                [builder.region_wkt(region, settings.COVERAGE_BBOX), lon, lat],
+            )
+            if cursor.fetchone()[0]:
+                found.append(region.id)
+    assert found == [want], place

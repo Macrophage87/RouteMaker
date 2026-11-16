@@ -10528,10 +10528,21 @@ the signal returns, the server plans it again.
 The optional whole-area download beside each ride's mile-wide network (the owner, 2026-11-12:
 "Potentially split it by subregion"; "Beltway, NoVA, NW exurbs, Baltimore and suburbs, etc.").
 Six packs, `core/offline_packs.py` `REGIONS`: Inside the Beltway, Northern Virginia, Northwest
-exurbs, Baltimore and suburbs, the rest of the map (the coverage box less the others), and
+exurbs, Baltimore and suburbs, Southern Maryland (the coverage box less the others), and
 Everything, the whole coverage box in one pack (Stephen, 2026-11-13: "Offer everything too to
-download"; the largest, so the biggest memory use on the phone in a ride with no signal). The
-borders are our draft, approximate; each pack also takes the roads within a mile of its border.
+download"; the largest, so the biggest memory use on the phone in a ride with no signal). Each
+pack also takes the roads within a mile of its border.
+
+Borders (v0.28.0, Stephen, 2026-11-15): the Potomac divides Virginia and West Virginia
+(Northern Virginia, which takes the Martinsburg and Charles Town panhandle) from Maryland ("so
+few crossings outside DC that it's reasonable to divide there"); Southern Maryland is Charles,
+Calvert and St. Mary's Counties and Prince George's south of Upper Marlboro's latitude (38.816);
+Prince George's north of it (Bowie, Laurel), all of Anne Arundel and the Eastern Shore go with
+Baltimore. The river and county lines are the Census Bureau's 2023 cartographic boundaries
+(1:500,000, public domain), simplified to about 300 m; the Beltway and the line between the
+northwest exurbs and Baltimore stay our draft. New borders take effect at the next pack build;
+until then the list gives the new areas beside the old packs (a ride near a moved border may
+open a pack that lacks the roads there, and falls back to its own mile).
 
 - **Built after every map swap**, first thing in the rebuild's last stage, from the live
   `offline_way` table: `${DATA_ROOT}/tiles/offline-packs/packs-<build id>/<region>.json.gz`,
@@ -10546,9 +10557,10 @@ borders are our draft, approximate; each pack also takes the roads within a mile
   `packs` (the manifest and the folder it names), and `receive-data.sh files` installs the
   folder, then the manifest by rename, and keeps one build before it. Without packs at home
   the ship script warns; `--without packs` says so.
-- **Listed** by `GET /api/offline/packs` (each pack's name, bytes, checksum and address, and
-  the ride's level prices); 503 `not_built` before the first build. 30 a minute per client
-  (our default).
+- **Listed** by `GET /api/offline/packs` (each pack's name, bytes, checksum, address and
+  `area`: its outline, whether the Beltway is cut out, whether it is the whole map; the map's
+  `box`; and the ride's level prices); 503 `not_built` before the first build. 30 a minute per
+  client (our default).
 - **Served** by the web server, never an api worker:
   `/offline-packs/packs-<build id>/<region>.json.gz`, pack files only (never the manifest),
   same-site only, kept a day. Compose's Caddy mounts `${DATA_ROOT}/tiles` read-only at
@@ -10560,16 +10572,25 @@ borders are our draft, approximate; each pack also takes the roads within a mile
   then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
   settings.COVERAGE_BBOX)`.
 - **On the phone** (`frontend/src/lib/regionPack.ts`, `RegionPackSetting.tsx`): Settings >
-  Riding, "Map for no signal", one picker: None or an area (with its size). Choosing one
-  downloads it, checks its SHA-256 against the list, and keeps it compressed in IndexedDB
-  (`routemaker-region-pack`), one area at a time; the one kept before stays until the new one
-  is checked and stored. None removes it. While Settings is open with a signal, a kept area
-  whose checksum the list no longer gives (the map was rebuilt) is downloaded again.
+  Riding, "Map for no signal", one line saying what is on the phone and Manage, which opens a
+  popout (Stephen, 2026-11-15: "download one or all, and delete one or all ... It should tell
+  you what's on it"): the size on the phone and the map's date, a small map of the numbered
+  areas (drawn from their outlines, so it shows with no signal), each area's Download or
+  Delete, Download all and Delete all. Downloads run one at a time, the rest waiting. Each is
+  checked against its SHA-256 and kept compressed in IndexedDB (`routemaker-region-pack`)
+  under its id; the same area's older map stays until the new one is stored. Download all is
+  the one Everything pack (the areas overlap a mile, so one file is smaller than five) and
+  removes the separate areas once it is in. While Settings is open with a signal, each kept
+  area whose checksum the list no longer gives (the map was rebuilt) is downloaded again. A
+  pack kept by v0.27.0 (one only, under the key `pack`) is still read, until it is replaced
+  or deleted.
 - **In a ride**: when a re-plan fails for no signal, the way back is looked for first on the
-  ride's own mile-wide network, then, only if that finds none, on the kept area: unzipped when
-  the phone loses its signal (or at the first re-plan that needs it) and held until the ride
-  ends, so a ride with a signal never holds it in memory; priced with the ride's own
-  level prices where they were fetched, else the Default ride type's kept with the pack.
+  ride's own mile-wide network, then, only if that finds none, on the kept area that holds the
+  rider (by the areas last listed; else the whole map; else the only one kept): unzipped when
+  the phone loses its signal (or at the first re-plan that needs it) and held while it is the
+  one that holds the rider, one at a time, so a ride with a signal never holds one in memory;
+  priced with the ride's own level prices where they were fetched, else the Default ride
+  type's kept with the pack.
 - **Where neither finds a way**, Ride says the no-signal line with where the planned route is
   and, where it has a name, its street ("The planned route is 400 feet to the northeast. It
   is on Beach Drive."), and draws the way back to it on the map.

@@ -1,10 +1,26 @@
-// The region pack for riding off grid (lib/regionPack.ts): listed, downloaded and checked, kept, opened for a ride.
+// The region packs for riding off grid (lib/regionPack.ts): listed, downloaded and checked, kept (one, several or the
+// whole map), deleted, and the one covering the rider opened for a ride.
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
-import { downloadPack, downloading, fetchPackList, keptPack, openPack, removePack, areaName, type PackList, type PackStore } from "./regionPack.ts";
+import {
+  areaName,
+  covers,
+  downloadPack,
+  downloads,
+  fetchPackList,
+  keptPacks,
+  mapDateText,
+  openPack,
+  packFor,
+  removeAll,
+  removePack,
+  ridePacks,
+  type PackList,
+  type PackStore,
+} from "./regionPack.ts";
 
 // localStorage, as a phone has it.
 const items = new Map<string, string>();
@@ -22,34 +38,47 @@ const GRAPH = { v: 1, nodes: [-77000000, 38900000, -77001000, 38900000], edges: 
 const GZ = gzipSync(JSON.stringify(GRAPH));
 const SHA = createHash("sha256").update(GZ).digest("hex");
 const asBuffer = (b: Buffer) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+// A second pack's bytes: the same network, another file.
+const GZ2 = gzipSync(JSON.stringify({ ...GRAPH, names: ["Other"] }));
+const SHA2 = createHash("sha256").update(GZ2).digest("hex");
+const GZ3 = gzipSync(JSON.stringify({ ...GRAPH, names: ["Whole"] }));
+const SHA3 = createHash("sha256").update(GZ3).digest("hex");
 
+// Squares for areas: the Beltway in the middle of Northern Virginia's square, which cuts it out; the rest is the box less both.
+const BELTWAY: [number, number][] = [[-77.2, 38.8], [-76.9, 38.8], [-76.9, 39.0], [-77.2, 39.0], [-77.2, 38.8]];
+const NOVA: [number, number][] = [[-78, 38.3], [-76.8, 38.3], [-76.8, 39.1], [-78, 39.1], [-78, 38.3]];
+const url = (id: string) => `/offline-packs/packs-20261115T125405Z/${id}.json.gz`;
 const LISTED = {
-  build_id: "20261113T050000Z",
-  built_at: "2026-11-13T05:00:00+00:00",
+  build_id: "20261115T125405Z",
+  built_at: "2026-11-15T12:54:05+00:00",
   graph_v: 1,
   level_factor: [1, 1, 1, 1, 1.2, 1.5, 2, 3, 4, 6, 12],
+  box: [-78.05, 38.2, -76.02, 39.72],
   packs: [
-    { id: "beltway", name: "Inside the Beltway", bytes: GZ.byteLength, sha256: SHA, url: "/offline-packs/packs-20261113T050000Z/beltway.json.gz" },
+    { id: "beltway", name: "Inside the Beltway", bytes: GZ.byteLength, sha256: SHA, url: url("beltway"), area: { outline: BELTWAY, outside_beltway: false, whole: false } },
+    { id: "nova", name: "Northern Virginia", bytes: GZ2.byteLength, sha256: SHA2, url: url("nova"), area: { outline: NOVA, outside_beltway: true, whole: false } },
+    { id: "rest", name: "Southern Maryland", bytes: 9, sha256: "r", url: url("rest"), area: { outline: null, outside_beltway: false, whole: false } },
+    { id: "all", name: "Everything", bytes: GZ3.byteLength, sha256: SHA3, url: url("all"), area: { outline: null, outside_beltway: false, whole: true } },
     // Refused: not where the packs are served.
     { id: "evil", name: "Elsewhere", bytes: 1, sha256: "0", url: "https://example.com/x.json.gz" },
   ],
 };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const BYTES: Record<string, Buffer> = { [url("beltway")]: GZ, [url("nova")]: GZ2, [url("all")]: GZ3 };
+const served = (async (u: string) => (BYTES[u] ? new Response(BYTES[u]) : new Response("", { status: 404 }))) as unknown as typeof fetch;
 
-function memoryStore(fail?: Error): PackStore & { bytes: ArrayBuffer | null } {
-  const store = {
-    bytes: null as ArrayBuffer | null,
-    put: async (bytes: ArrayBuffer) => {
+function memoryStore(fail?: Error): PackStore & { bytes: Map<string, ArrayBuffer> } {
+  const bytes = new Map<string, ArrayBuffer>();
+  return {
+    bytes,
+    put: async (key, b) => {
       if (fail) throw fail;
-      store.bytes = bytes;
+      bytes.set(key, b);
     },
-    get: async () => store.bytes,
-    clear: async () => {
-      store.bytes = null;
-    },
+    get: async (key) => bytes.get(key) ?? null,
+    delete: async (key) => void bytes.delete(key),
   };
-  return store;
 }
 
 async function listed(): Promise<PackList> {
@@ -57,14 +86,18 @@ async function listed(): Promise<PackList> {
   assert.ok(list);
   return list;
 }
+const pack = (list: PackList, id: string) => list.packs.find((p) => p.id === id)!;
 
-test("the list: the packs served from /offline-packs/ only, and null with no signal or before any are built", async () => {
+test("the list: the packs served from /offline-packs/ only, each with its area, and null with no signal or before any are built", async () => {
   const list = await listed();
   assert.deepEqual(
     list.packs.map((p) => p.id),
-    ["beltway"],
+    ["beltway", "nova", "rest", "all"],
   );
-  assert.equal(list.buildId, "20261113T050000Z");
+  assert.equal(list.buildId, "20261115T125405Z");
+  assert.deepEqual(list.box, [-78.05, 38.2, -76.02, 39.72]);
+  assert.deepEqual(pack(list, "nova").area, { outline: NOVA, outsideBeltway: true, whole: false });
+  assert.equal(pack(list, "all").area?.whole, true);
   assert.equal(await fetchPackList(async () => json({ error: "not_built" }, 503)), null);
   assert.equal(
     await fetchPackList(async () => {
@@ -77,45 +110,180 @@ test("the list: the packs served from /offline-packs/ only, and null with no sig
 test("a pack is kept only when its checksum matches, and opens to the network for a ride", async () => {
   const list = await listed();
   const store = memoryStore();
-  assert.equal(await downloadPack(list.packs[0], list, async () => new Response(Buffer.from("not it")), store), "failed");
-  assert.equal(keptPack(), null);
-  assert.equal(await downloadPack(list.packs[0], list, async () => new Response(GZ), store), "kept");
-  assert.equal(keptPack()?.id, "beltway");
-  assert.equal(keptPack()?.bytes, GZ.byteLength);
-  const opened = await openPack(store);
+  assert.equal(await downloadPack(pack(list, "beltway"), list, async () => new Response(Buffer.from("not it")), store), "failed");
+  assert.deepEqual(keptPacks(), []);
+  assert.equal(await downloadPack(pack(list, "beltway"), list, served, store), "kept");
+  assert.deepEqual(
+    keptPacks().map((k) => [k.id, k.bytes]),
+    [["beltway", GZ.byteLength]],
+  );
+  const opened = await openPack("beltway", store);
   assert.deepEqual(opened?.graph, GRAPH);
   assert.deepEqual(opened?.levelFactor, LISTED.level_factor);
 });
 
-test("a failed download leaves the pack kept before; no room says so", async () => {
+test("several areas are kept side by side; one or all can be deleted", async () => {
   const list = await listed();
   const store = memoryStore();
-  await downloadPack(list.packs[0], list, async () => new Response(GZ), store);
-  assert.equal(await downloadPack(list.packs[0], list, async () => new Response("", { status: 502 }), store), "failed");
-  assert.equal(keptPack()?.id, "beltway");
-  assert.ok(store.bytes);
-  const full = memoryStore(new DOMException("full", "QuotaExceededError"));
-  assert.equal(await downloadPack(list.packs[0], list, async () => new Response(GZ), full), "no-room");
+  await downloadPack(pack(list, "beltway"), list, served, store);
+  await downloadPack(pack(list, "nova"), list, served, store);
+  assert.deepEqual(
+    keptPacks().map((k) => k.id),
+    ["beltway", "nova"],
+  );
+  await removePack("beltway", store);
+  assert.deepEqual(
+    keptPacks().map((k) => k.id),
+    ["nova"],
+  );
+  assert.deepEqual([...store.bytes.keys()], ["nova"]);
+  assert.equal(await openPack("beltway", store), null);
+  await removeAll(store);
+  assert.deepEqual(keptPacks(), []);
+  assert.equal(store.bytes.size, 0);
 });
 
-test("removed: nothing kept, nothing opened", async () => {
+test("the whole map, once kept, removes the separate areas (it holds them, in one smaller file)", async () => {
   const list = await listed();
   const store = memoryStore();
-  await downloadPack(list.packs[0], list, async () => new Response(GZ), store);
-  await removePack(store);
-  assert.equal(keptPack(), null);
-  assert.equal(store.bytes, null);
-  assert.equal(await openPack(store), null);
+  await downloadPack(pack(list, "beltway"), list, served, store);
+  await downloadPack(pack(list, "all"), list, served, store);
+  assert.deepEqual(
+    keptPacks().map((k) => k.id),
+    ["all"],
+  );
+  assert.deepEqual([...store.bytes.keys()], ["all"]);
+});
+
+test("a failed download leaves what was kept; no room says so", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  await downloadPack(pack(list, "beltway"), list, served, store);
+  assert.equal(await downloadPack({ ...pack(list, "beltway"), sha256: "newer" }, list, async () => new Response("", { status: 502 }), store), "failed");
+  assert.equal(keptPacks()[0]?.sha256, SHA);
+  assert.ok(store.bytes.get("beltway"));
+  const full = memoryStore(new DOMException("full", "QuotaExceededError"));
+  assert.equal(await downloadPack(pack(list, "nova"), list, served, full), "no-room");
+});
+
+test("the one pack v0.27.0 kept is still kept, and is replaced by the same area's download", async () => {
+  items.set("routemaker.regionPack", JSON.stringify({ id: "beltway", name: "Inside the Beltway", buildId: "20261113T050000Z", bytes: 5, sha256: "old", levelFactor: [1] }));
+  const store = memoryStore();
+  store.bytes.set("pack", asBuffer(GZ));
+  assert.deepEqual(
+    keptPacks().map((k) => [k.id, k.key]),
+    [["beltway", "pack"]],
+  );
+  assert.deepEqual((await openPack("beltway", store))?.graph, GRAPH);
+  const list = await listed();
+  await downloadPack(pack(list, "beltway"), list, served, store);
+  assert.deepEqual(
+    keptPacks().map((k) => [k.id, k.key, k.sha256]),
+    [["beltway", "beltway", SHA]],
+  );
+  assert.deepEqual([...store.bytes.keys()], ["beltway"]);
+  assert.equal(items.get("routemaker.regionPack"), undefined);
 });
 
 test("bytes that are not a pack open to nothing, not an error", async () => {
   const list = await listed();
   const store = memoryStore();
-  await downloadPack(list.packs[0], list, async () => new Response(GZ), store);
-  store.bytes = asBuffer(gzipSync("{}"));
-  assert.equal(await openPack(store), null);
-  store.bytes = asBuffer(Buffer.from("plain"));
-  assert.equal(await openPack(store), null);
+  await downloadPack(pack(list, "beltway"), list, served, store);
+  store.bytes.set("beltway", asBuffer(gzipSync("{}")));
+  assert.equal(await openPack("beltway", store), null);
+  store.bytes.set("beltway", asBuffer(Buffer.from("plain")));
+  assert.equal(await openPack("beltway", store), null);
+});
+
+test("one download at a time: the same pack joins the one under way, another waits its turn", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  let fetches = 0;
+  const slow = (async (u: string) => {
+    fetches += 1;
+    await new Promise((done) => setTimeout(done, 5));
+    return served(u);
+  }) as unknown as typeof fetch;
+  const first = downloadPack(pack(list, "beltway"), list, slow, store);
+  const again = downloadPack(pack(list, "beltway"), list, slow, store);
+  const second = downloadPack(pack(list, "nova"), list, slow, store);
+  assert.equal(again, first);
+  assert.deepEqual(downloads(), { active: "beltway", waiting: ["nova"] });
+  assert.equal(await first, "kept");
+  assert.equal(await second, "kept");
+  assert.equal(fetches, 2);
+  assert.deepEqual(downloads(), { active: null, waiting: [] });
+});
+
+test("a pack deleted while it downloads is not kept when it lands; Delete all stops the rest", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  const slow = (async (u: string) => {
+    await new Promise((done) => setTimeout(done, 5));
+    return served(u);
+  }) as unknown as typeof fetch;
+  const whole = downloadPack(pack(list, "all"), list, slow, store);
+  const area = downloadPack(pack(list, "beltway"), list, slow, store);
+  await removeAll(store);
+  assert.equal(await whole, "cancelled");
+  assert.equal(await area, "cancelled");
+  assert.deepEqual(keptPacks(), []);
+  assert.equal(store.bytes.size, 0);
+  const one = downloadPack(pack(list, "nova"), list, slow, store);
+  await removePack("nova", store);
+  assert.equal(await one, "cancelled");
+  assert.deepEqual(keptPacks(), []);
+});
+
+test("an area that lands after the whole map is kept is not kept beside it", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  await downloadPack(pack(list, "all"), list, served, store);
+  assert.equal(await downloadPack(pack(list, "beltway"), list, served, store), "cancelled");
+  assert.deepEqual(
+    keptPacks().map((k) => k.id),
+    ["all"],
+  );
+  assert.deepEqual([...store.bytes.keys()], ["all"]);
+});
+
+test("which area holds a place: the Beltway cut out of the areas around it, the rest the box less the others", async () => {
+  await listed();
+  const downtown: [number, number] = [-77.03, 38.9];
+  const manassas: [number, number] = [-77.47, 38.75];
+  const laPlata: [number, number] = [-76.6, 38.5];
+  assert.ok(covers("beltway", downtown));
+  assert.ok(!covers("nova", downtown), "the Beltway is cut out of Northern Virginia");
+  assert.ok(covers("nova", manassas));
+  assert.ok(covers("rest", laPlata) && !covers("rest", downtown) && !covers("rest", manassas));
+  assert.ok(covers("all", laPlata) && covers("all", downtown));
+  assert.ok(!covers("all", [-80, 38]), "outside the map");
+});
+
+test("a ride opens the kept pack that covers the rider, one at a time; the only one kept where the areas are not known", async () => {
+  const list = await listed();
+  const store = memoryStore();
+  await downloadPack(pack(list, "beltway"), list, served, store);
+  await downloadPack(pack(list, "nova"), list, served, store);
+  assert.equal(packFor([-77.03, 38.9]), "beltway");
+  assert.equal(packFor([-77.47, 38.75]), "nova");
+  assert.equal(packFor([-76.6, 38.5]), null, "no kept area holds Southern Maryland");
+  const ride = ridePacks(store);
+  const first = ride.open([-77.03, 38.9]);
+  assert.equal(ride.open([-77.02, 38.91]), first, "held while it still covers");
+  assert.deepEqual((await first)?.graph, GRAPH);
+  assert.deepEqual((await ride.open([-77.47, 38.75]))?.graph.names, ["Other"]);
+  // The whole map stands in where no kept area holds the rider.
+  await downloadPack(pack(list, "all"), list, served, store);
+  assert.equal(packFor([-76.6, 38.5]), "all");
+  // Kept before the areas were listed: the only one kept.
+  items.delete("routemaker.regionPackAreas");
+  assert.equal(packFor([-76.6, 38.5]), "all");
+});
+
+test("the map's date, from the build id", () => {
+  assert.equal(mapDateText("20261115T125405Z", "en-US"), "Map of Nov 15, 2026");
+  assert.equal(mapDateText("not a build"), "");
 });
 
 test("each area the server builds has its name in the page's words; any other keeps the server's", () => {
@@ -124,22 +292,4 @@ test("each area the server builds has its name in the page's words; any other ke
   assert.deepEqual(ids, ["beltway", "nova", "nw-exurbs", "baltimore", "central-va", "rest", "all"]);
   for (const id of ids) assert.notEqual(areaName(id, "x"), "x", id);
   assert.equal(areaName("shenandoah", "Shenandoah Valley"), "Shenandoah Valley");
-});
-
-test("one download at a time: a second ask for the same pack joins the first", async () => {
-  const list = await listed();
-  const store = memoryStore();
-  let fetches = 0;
-  const slow = async () => {
-    fetches += 1;
-    await new Promise((done) => setTimeout(done, 5));
-    return new Response(GZ);
-  };
-  const first = downloadPack(list.packs[0], list, slow, store);
-  assert.equal(downloading()?.done, first);
-  const second = downloadPack(list.packs[0], list, slow, store);
-  assert.equal(second, first);
-  assert.equal(await second, "kept");
-  assert.equal(fetches, 1);
-  assert.equal(downloading(), null);
 });
