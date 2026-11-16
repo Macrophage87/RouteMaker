@@ -226,6 +226,9 @@ class InProcessApi:
     def climbs_near(self, near, miles, **filters):
         return self._module.Api.climbs_near(self, near, miles, **filters)
 
+    def intervals_near(self, near, miles, **filters):
+        return self._module.Api.intervals_near(self, near, miles, **filters)
+
     def closures_map(self, box, permits):
         return self._module.Api.closures_map(self, box, permits)
 
