@@ -102,11 +102,10 @@ test("Ride fetches the network with each route and uses it when a re-plan fails 
   assert.match(ride, /if \(!found && failed === "network" && !via && !check && !done && !voided\(\)\) \{/);
   assert.match(ride, /const joinFrom = Math\.max\(progressM, closed\);/);
   assert.match(ride, /offlineWayBackRoute\(net\.network, routeRef\.current, here, joinFrom, keptPoints\)/);
-  // Off that network: the region pack kept in Settings, opened once for the ride, priced as the ride is where it can be.
-  assert.match(ride, /if \(!offline && keptPack\(\) && !voided\(\)\) \{\s+regionPackRef\.current \?\?= openPack\(\);/);
+  // Off that network: the kept region pack covering the rider (lib/regionPack.ts ridePacks, tested there), priced as the
+  // ride is where it can be, and opened ahead of need once the phone loses its signal.
+  assert.match(ride, /const opening = !offline && !voided\(\) \? regionPacks\.current\.open\(here\) : null;/);
   assert.match(ride, /levelFactor: net\?\.network\.levelFactor \?\? pack\.levelFactor/);
-  // A failed open is tried again; the pack is opened ahead of need once the phone loses its signal.
-  assert.match(ride, /if \(!pack\) regionPackRef\.current = null;/);
   assert.match(ride, /window\.addEventListener\("offline", open\);/);
   assert.match(ride, /note = REPLAN_OFFLINE;/);
   // Ridden only until the signal is back: then planned again on the server.

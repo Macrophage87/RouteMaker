@@ -11738,3 +11738,131 @@ button.route-note:focus-visible {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Settings > Riding's maps for no signal (RegionPackSetting.tsx): the line saying what is on this phone, Manage, and
+   the popout with the map of the areas, each area numbered as on the map. Area colours: one hue each, light fills with
+   a darker kept fill; the numbers carry the meaning, so colour alone never does. */
+:root {
+  --pack-area-1: #d1495b;
+  --pack-area-2: #2f6fd6;
+  --pack-area-3: #2a9d5c;
+  --pack-area-4: #8a4fbf;
+  --pack-area-5: #b86e00;
+  --pack-map-bg: #f3f4f6;
+}
+:root.theme-dark {
+  --pack-area-1: #f07a89;
+  --pack-area-2: #7aa7ff;
+  --pack-area-3: #5ccf8c;
+  --pack-area-4: #c39af0;
+  --pack-area-5: #f0a640;
+  --pack-map-bg: #262a32;
+}
+.region-pack-line {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+}
+.region-pack-summary {
+  font-weight: 400;
+  margin: 0;
+}
+.region-pack-row button.secondary {
+  min-height: 44px;
+}
+.region-pack-dialog .region-pack-onphone {
+  margin: 0 0 8px;
+}
+.region-pack-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 46vh;
+  background: var(--pack-map-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.region-pack-map path,
+.region-pack-map rect {
+  fill-opacity: 0.18;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.region-pack-map .kept {
+  fill-opacity: 0.5;
+  stroke-width: 2.5;
+}
+.region-pack-map .area-1,
+.region-pack-badge.area-1 { fill: var(--pack-area-1); stroke: var(--pack-area-1); background: var(--pack-area-1); }
+.region-pack-map .area-2,
+.region-pack-badge.area-2 { fill: var(--pack-area-2); stroke: var(--pack-area-2); background: var(--pack-area-2); }
+.region-pack-map .area-3,
+.region-pack-badge.area-3 { fill: var(--pack-area-3); stroke: var(--pack-area-3); background: var(--pack-area-3); }
+.region-pack-map .area-4,
+.region-pack-badge.area-4 { fill: var(--pack-area-4); stroke: var(--pack-area-4); background: var(--pack-area-4); }
+.region-pack-map .area-5,
+.region-pack-badge.area-5 { fill: var(--pack-area-5); stroke: var(--pack-area-5); background: var(--pack-area-5); }
+.region-pack-number circle {
+  fill-opacity: 1;
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.region-pack-number text {
+  fill: #fff;
+  stroke: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+.region-pack-town circle {
+  fill: var(--text);
+}
+.region-pack-town text {
+  fill: var(--text);
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: var(--pack-map-bg);
+  stroke-width: 3px;
+}
+.region-pack-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.region-pack-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.region-pack-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+:root.theme-dark .region-pack-badge,
+:root.theme-dark .region-pack-number text {
+  color: #16181d;
+  fill: #16181d;
+}
+.region-pack-words {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.region-pack-words .hint {
+  margin: 0;
+}
+.region-pack-area button {
+  min-height: 44px;
+}

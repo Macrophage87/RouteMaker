@@ -44,7 +44,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { rejoinsFirst, startsWayBack, steadyPoint, toStartRoute, wayBackRoute, wayBackShown } from "./lib/rejoin.ts";
 import { fetchOfflineNetwork, offlineWayBackRoute, type OfflineNetwork } from "./lib/offlineWayBack.ts";
-import { keptPack, openPack } from "./lib/regionPack.ts";
+import { ridePacks } from "./lib/regionPack.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -1763,14 +1763,13 @@ export function RideMode({
         // Never back onto a road the rider marked closed: joined past it, as the server's way back is.
         const joinFrom = Math.max(progressM, closed);
         let offline = net ? offlineWayBackRoute(net.network, routeRef.current, here, joinFrom, keptPoints) : null;
-        // Off that network (or none was fetched): the region pack downloaded in Settings, if one is kept (lib/regionPack.ts),
-        // opened the first time it is needed and held for the rest of the ride, priced as the ride is when its own
-        // prices were fetched.
-        if (!offline && keptPack() && !voided()) {
-          regionPackRef.current ??= openPack();
-          const pack = await regionPackRef.current;
-          // Not readable this time (storage busy, say): tried again at the next re-plan.
-          if (!pack) regionPackRef.current = null;
+        // Off that network (or none was fetched): the region pack downloaded in Settings that covers the rider, if one is
+        // kept (lib/regionPack.ts), opened the first time it is needed and held while it is the one that covers, priced
+        // as the ride is when its own prices were fetched. Not readable this time (storage busy, say): tried again at the
+        // next re-plan.
+        const opening = !offline && !voided() ? regionPacks.current.open(here) : null;
+        if (opening) {
+          const pack = await opening;
           if (pack && !voided()) {
             offline = offlineWayBackRoute(
               { graph: pack.graph, levelFactor: net?.network.levelFactor ?? pack.levelFactor },
@@ -2583,14 +2582,14 @@ export function RideMode({
   // with the kept map for each route ridden, kept in memory for the ride: with no signal, a failed re-plan finds the way
   // back to the line on the phone. None where it could not be fetched (no signal at the start, a map built before it).
   const offlineNet = useRef<{ route: RouteResponse; network: OfflineNetwork } | null>(null);
-  // The kept region pack, opened for this ride when a way back first needs it (null: none, or unreadable).
-  const regionPackRef = useRef<Promise<OfflineNetwork | null> | null>(null);
+  // The kept region packs: the one covering the rider opened for this ride when a way back first needs it.
+  const regionPacks = useRef(ridePacks());
   // Opened ahead of need, when the phone loses its signal (or starts without one), so a way back does not wait on
   // unzipping it; not before, so a ride with a signal never holds it in memory.
   useEffect(() => {
-    if (!keptPack()) return;
+    if (!regionPacks.current.any()) return;
     const open = () => {
-      if (!ended.current) regionPackRef.current ??= openPack();
+      if (!ended.current) void regionPacks.current.open(rideRef.current.goodFix?.point ?? rideRef.current.fix?.point);
     };
     if (typeof navigator !== "undefined" && navigator.onLine === false) open();
     window.addEventListener("offline", open);
