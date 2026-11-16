@@ -9212,8 +9212,9 @@ kept per browser as `routemaker.intervalsLayer`; not in Go, not on the Mass Ride
 `frontend/src/interval-data/intervals.json`: a pink glow under the stress line, with arrows where a
 stretch holds one way only. `GET /api/intervals-near` and the connector's `intervals_near` read the
 same file, so `docker/api.Dockerfile` copies it into the api image and a new file reaches the
-connector with the next api image. The file ships empty: the switch says the stretches arrive with
-the next map data update, and the endpoint lists none.
+connector with the next api image. The first file was written on 2026-11-16 (2,871 stretches;
+counts in `frontend/src/interval-data/README.md`). An unbuilt file (`"built": null`) makes the
+switch say the stretches arrive with the next map data update, and the endpoint answer 503.
 
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
@@ -9229,7 +9230,8 @@ reads the live table, the extract and the elevation tiles, as `build_climbs` doe
 
     flock <heavy.lock> docker compose exec -T rebuild ./manage.py build_intervals </dev/null
 
-Measured 2026-11-16 on the PC: the rebuild container peaked at about 1.6 GiB (WSL available never under 4.7 GB), 145 s.
+Measured 2026-11-16 on the PC: the rebuild container peaked at about 1.6 GiB (WSL "available"
+never under 4.7 GB), 145 s.
 
 It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
 to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's
