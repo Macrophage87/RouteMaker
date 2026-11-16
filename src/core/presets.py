@@ -480,8 +480,8 @@ def target_ceiling_m(target_m: float) -> float:
 # figure of the ranking and in the stress the worth rule counts (`Analysis.second_m`). It
 # is never a search target (the search excludes LTS 3 and worse only), and the routing
 # graph does not grade LTS 2 (item 240 (C), FOLLOWUP-DECIMAL-STRESS, stays in the
-# backlog), so no graph is rebuilt. Every other ride, Bikeshare included, keeps LTS 2 at
-# nothing.
+# backlog), so no graph is rebuilt. Every other ride, Bikeshare included, weighs LTS 2 at
+# the tiebreak share only (LTS2_TIEBREAK, 2026-11-14).
 @dataclass(frozen=True)
 class Exposure:
     lts3: float = 1.0
@@ -490,7 +490,8 @@ class Exposure:
     # Refuse a candidate with more LTS 4 and Avoid metres than the router's first
     # route (each leg's, and the whole trip's).
     hold_lts4: bool = False
-    # What a metre of LTS 2 counts, in metres of LTS 3 (FOLLOWUP-LTS2-WEIGHT).
+    # What a metre of LTS 2 counts, in metres of LTS 3 (FOLLOWUP-LTS2-WEIGHT): a tiebreaker
+    # on every ride (LTS2_TIEBREAK), more on the rides that weigh it (LTS2_WEIGHT).
     lts2: float = 0.0
     # Novice and Nervous (v0.7.0 plan): how many levels up the search reads every road
     # and junction before it prices them (`shifted_tier`, `shift_stress`): 1 there, so LTS 1
@@ -538,9 +539,34 @@ def shifted_severity(severity: str | None, shift: int) -> str | None:
 
 # OWNER-DECISIONS 240 (A): "about a quarter of LTS 3".
 LTS2_WEIGHT = 0.25
+# LTS 1, 1.5 and 2 as tiebreakers on every other ride (Stephen, 2026-11-14, after the re-rate
+# moved about 4,000 mi of quiet streets from 2 to 1 and 1.5: "make sure that the levels are
+# modest, intersections are often a bigger issue at that level anyway, but those low levels
+# might be useful for tiebreakers"). A metre of LTS 2 counts 3% of what a metre of LTS 3
+# adds, and 1.5 half that (`refine.stress_totals`). At Default (70 on the slider) that is
+# about a tenth of a quiet metre: a mile of LTS 2 in place of LTS 1 costs about what two
+# turns do (`refine.TURN_RANK_S`) and a fraction of one busy crossing's junction cost, so the
+# junctions and turns still decide and the level only breaks ties. Our default, unmeasured
+# against riders; docs/DEVELOPMENT.md, "LTS 1, 1.5 and 2 as tiebreakers on every ride".
+LTS2_TIEBREAK = 0.03
 
-EXPOSURE_STANDARD = Exposure()
-EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True)
+EXPOSURE_STANDARD = Exposure(lts2=LTS2_TIEBREAK)
+
+
+def gate_exposure(exposure: Exposure) -> Exposure:
+    """The weights a yes/no busier-than gate compares by (the hills slider's
+    `routing.calmer_or_own` and `routing.no_busier_than_middle`): the plan's own, less a
+    tiebreak-only LTS 2 share. A strict comparison would turn the tiebreak into a veto
+    (1 m more of LTS 2 refusing a route equal at LTS 3 and up); the rides that weigh LTS 2
+    for itself (LTS2_WEIGHT and more) keep it, as before."""
+    if 0 < exposure.lts2 <= LTS2_TIEBREAK:
+        return replace(exposure, lts2=0.0)
+    return exposure
+
+
+EXPOSURE_STRESS_AVERSE = Exposure(
+    lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True, lts2=LTS2_TIEBREAK
+)
 # The rides whose rider is not in control of the ride, or wants the calmest route
 # (Trailmaxxing, Cargo with passengers; items 240 (A) and 241): item 250's weights and
 # hold, and LTS 2 at a quarter of LTS 3.
@@ -1105,7 +1131,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 hills=CARGO_HILLS,
                 carrying=CARGO_CARRYING_STRESS,
                 # Items 250 and 240 (A) for Cargo with passengers; carrying cargo
-                # keeps 1, 2, 3 and LTS 2 at nothing.
+                # keeps 1, 2, 3 and LTS 2 at its tiebreak share (LTS2_TIEBREAK).
                 carrying_exposure={CARRYING_PEOPLE: EXPOSURE_NOT_IN_CONTROL},
                 assist_speed_kmh=CARGO_ASSIST_PLANNING_SPEED_KMH,
                 bicycle_type="Hybrid",
