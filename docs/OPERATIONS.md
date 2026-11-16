@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.27.1](#deploying-v0271)
 - [Deploying v0.27.0](#deploying-v0270)
 - [Deploying v0.26.0](#deploying-v0260)
 - [Deploying v0.25.1](#deploying-v0251)
@@ -8076,6 +8077,48 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.27.1
+
+A patch with the fixes finished for v0.28.0, on the owner's ask (2026-11-16): Map for no signal's
+popout with a map of the areas (#1296); Ride's "Next stop" and no early arrival on transit trips
+(#1292); a bike-open sidewalk that is the only link between two trails (#1293, takes effect at the
+next map rebuild); LTS 1, 1.5 and 2 as modest tiebreakers (#1290); a via point matching the way it
+sits on (#1297); region packs built by every cloud install (#1294) and served by the beta's nginx
+(#1295). The Virginia map (#1279) and the rating-data work (#1291) stay in v0.28.0.
+
+**No `lua/`, `valhalla/`, requirements or migration change.** What changes for a deploy:
+
+- the api: `GET /api/offline/packs` lists each pack's area (#1296); a new command
+  `manage.py build_offline_packs`, and `import_cloud_build --confirm` builds the packs after its
+  swap (#1294);
+- the beta's nginx template: the `/offline-packs/` location aliases the file by a named capture
+  (#1295). The beta was patched by hand on 2026-11-15; the ship re-renders it so the file matches;
+- `src/pipeline/run.py` and `routemaker/facility.py` (#1293): only at the next map rebuild.
+
+The nginx template stops the release agent's gate, so **the beta is a hand ship**.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.27.1
+  (annotated) on that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api and pipeline images `pre-rel-<short>`, keep `index.html`), fast-forward the checkout,
+  `docker compose build api rebuild`, then `docker compose up -d --no-deps --no-build
+  --force-recreate api worker rebuild` with no job todo or doing, then the front end. No router
+  restart, no map rebuild. If the PC's map has no packs yet, `docker compose exec api python
+  manage.py build_offline_packs`.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, the worker recreated, the front end built on the PC), with the nginx template
+  re-rendered, `--diff "$NGINX_SITE"` (only the `/offline-packs/` capture, or nothing if the hand
+  patch matches), installed, `sudo nginx -t && sudo nginx -s reload`. Then `smoke-test.sh --local`,
+  `smoke-test.sh --public <url> --open`, `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed
+  v0.27.1` and `auto-release.sh resume`.
+- [ ] **Beta check.** `GET /api/offline/packs` lists the packs with their areas; Settings, Riding,
+  Map for no signal, Manage shows the areas' map, and one area downloads.
+- [ ] **Spot checks.** Plan with a via point on a road beside a trail (Sligo Creek Parkway): the
+  route rides the road. A transit trip in Ride says "Next stop" after leaving a stop.
+- [ ] **Rollback.** The `pre-rel` api and pipeline images and the v0.27.0 front end. The nginx
+  capture can stay (it serves the same files). On the beta, the images and `index.html` alone.
 
 ## Deploying v0.27.0
 
