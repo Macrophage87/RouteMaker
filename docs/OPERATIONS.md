@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.27.1](#deploying-v0271)
 - [Deploying v0.27.0](#deploying-v0270)
 - [Deploying v0.26.0](#deploying-v0260)
 - [Deploying v0.25.1](#deploying-v0251)
@@ -8077,6 +8078,52 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.27.1
+
+A patch with the fixes finished for v0.28.0, on the owner's ask (2026-11-16): Map for no signal's
+popout with a map of the areas (#1296); Ride's "Next stop" and no early arrival on transit trips
+(#1292); a bike-open sidewalk that is the only link between two trails (#1293, takes effect at the
+next map rebuild); LTS 1, 1.5 and 2 as modest tiebreakers (#1290); a via point matching the way it
+sits on (#1297); region packs built by every cloud install (#1294) and served by the beta's nginx
+(#1295). The Virginia map (#1279) and the rating-data work (#1291) stay in v0.28.0.
+
+**No `lua/`, `valhalla/`, requirements or migration change.** What changes for a deploy:
+
+- the api: `GET /api/offline/packs` lists each pack's area (#1296); a new command
+  `manage.py build_offline_packs`, and `import_cloud_build --confirm` builds the packs after its
+  swap (#1294);
+- the beta's nginx template: the `/offline-packs/` location aliases the file by a named capture
+  (#1295). The beta was patched by hand on 2026-11-15; the ship re-renders it so the file matches;
+- `src/pipeline/run.py` and `routemaker/facility.py` (#1293): only at the next map rebuild.
+- the areas' new borders (#1296, "Region packs" below): the packs on the PC and the beta were
+  built to the old borders, so they keep them until the next map build packs them again. Until
+  then a ride near a moved border (Bowie, Laurel, Anne Arundel, the West Virginia panhandle) may
+  open a pack that lacks the roads there and falls back to its own mile.
+
+The nginx template stops the release agent's gate, so **the beta is a hand ship**.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.27.1
+  (annotated) on that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api and pipeline images `pre-rel-<short>`, keep `index.html`), fast-forward the checkout,
+  `docker compose build api rebuild`, then `docker compose up -d --no-deps --no-build
+  --force-recreate api worker rebuild` with no job todo or doing, then the front end. No router
+  restart, no map rebuild. If the PC's map has no packs yet, `docker compose exec api python
+  manage.py build_offline_packs`.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, the worker recreated, the front end built on the PC), with the nginx template
+  re-rendered, `--diff "$NGINX_SITE"` (only the `/offline-packs/` capture, or nothing if the hand
+  patch matches), installed, `sudo nginx -t && sudo nginx -s reload`. Then `smoke-test.sh --local`,
+  `smoke-test.sh --public <url> --open`, `"$RM_SRC/scripts/beta/auto-release.sh" mark-deployed
+  v0.27.1` and `auto-release.sh resume`.
+- [ ] **Beta check.** `GET /api/offline/packs` lists the packs with their areas; Settings, Riding,
+  Map for no signal, Manage shows the areas' map, and one area downloads.
+- [ ] **Spot checks.** Plan with a via point on a road beside a trail (Sligo Creek Parkway): the
+  route rides the road. A transit trip in Ride says "Next stop" after leaving a stop.
+- [ ] **Rollback.** The `pre-rel` api and pipeline images and the v0.27.0 front end. The nginx
+  capture can stay (it serves the same files). On the beta, the images and `index.html` alone.
+
 ## Deploying v0.27.0
 
 The road panel's big coloured level with its why and facts (#1258), its Setting line (#1259) and
@@ -10533,7 +10580,7 @@ Everything, the whole coverage box in one pack (Stephen, 2026-11-13: "Offer ever
 download"; the largest, so the biggest memory use on the phone in a ride with no signal). Each
 pack also takes the roads within a mile of its border.
 
-Borders (v0.28.0, Stephen, 2026-11-15): the Potomac divides Virginia and West Virginia
+Borders (v0.27.1, Stephen, 2026-11-15): the Potomac divides Virginia and West Virginia
 (Northern Virginia, which takes the Martinsburg and Charles Town panhandle) from Maryland ("so
 few crossings outside DC that it's reasonable to divide there"); Southern Maryland is Charles,
 Calvert and St. Mary's Counties and Prince George's south of Upper Marlboro's latitude (38.816);
@@ -10544,7 +10591,9 @@ northwest exurbs and Baltimore stay our draft. New borders take effect at the ne
 until then the list gives the new areas beside the old packs (a ride near a moved border may
 open a pack that lacks the roads there, and falls back to its own mile).
 
-- **Built after every map swap**, first thing in the rebuild's last stage, from the live
+- **Built after every map swap**: first thing in the rebuild's last stage, and (since
+  2026-11-15) by `import_cloud_build --confirm` after a cloud build's swap, on the PC and on
+  beta alike (before then a cloud install built none, so the API answered `not_built`). From the live
   `offline_way` table: `${DATA_ROOT}/tiles/offline-packs/packs-<build id>/<region>.json.gz`,
   then `manifest.json` beside it is replaced in one rename to name that folder. The folder is
   named `packs-...`, not a bare build id, so the tile pruning and the beta ship script never
@@ -10567,10 +10616,11 @@ open a pack that lacks the roads there, and falls back to its own mile).
   `/srv/tiles`; beta's nginx reads the folder directly. **Deploy steps:** on beta, render the
   nginx template again and reload nginx (the new `/offline-packs/` location); on compose,
   `docker compose up -d caddy` for the new mount.
-- To build the packs by hand for the live map (after a swap whose pack build failed), in
-  `python manage.py shell` in the rebuild container: `from pipeline import offline_packs`,
-  then `offline_packs.build_packs(<live schema>, <tiles dir>/offline-packs, <live build id>,
-  settings.COVERAGE_BBOX)`.
+- To build the packs by hand for the live map (after a swap whose pack build failed, or a
+  cloud build imported before 2026-11-15): `./manage.py build_offline_packs` in the rebuild
+  container. It packs the build the standard graph serves, from the live `offline_way` table,
+  and writes only `${DATA_ROOT}/tiles/offline-packs/`; the api picks the new manifest up with
+  no restart.
 - **On the phone** (`frontend/src/lib/regionPack.ts`, `RegionPackSetting.tsx`): Settings >
   Riding, "Map for no signal", one line saying what is on the phone and Manage, which opens a
   popout (Stephen, 2026-11-15: "download one or all, and delete one or all ... It should tell

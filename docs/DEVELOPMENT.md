@@ -3862,7 +3862,9 @@ the router with a 49 ft (15 m) `radius` (`routing.STOP_RADIUS_M`): Valhalla take
 way within that distance as a candidate and the route takes the cheapest, where before
 it had only the nearest. The stop on the Fairfax County Parkway Trail lay 15 ft (4.5 m)
 from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route left the
-trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. The search's own requests reuse
+trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. A via point is the exception (`routing.VIA_RADIUS_M`, 0): it is
+matched to the way it sits on, so a via dropped on a road beside a trail rides the road, not
+the cheaper trail (Stephen, 2026-11-16). The search's own requests reuse
 the plan's locations, so they match alike, and so do the stop-order leg costs and
 its matrix past ten stops (`stoporder`); `core.nearest` matches the rider the same way and
 keeps the nearest way at its fixed places. The cut points of a long plan (`refine.long_legs`) and the dedodge
@@ -6524,6 +6526,31 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
 
+### LTS 1, 1.5 and 2 as tiebreakers on every ride (2026-11-14)
+
+Stephen, 2026-11-14, after the re-rate moved about 4,000 mi of quiet streets from 2 to 1 and
+1.5: "make sure that the levels are modest, intersections are often a bigger issue at that
+level anyway, but those low levels might be useful for tiebreakers." Every ride that weighed
+LTS 2 at nothing now weighs it at `presets.LTS2_TIEBREAK` (0.03 of LTS 3), and 1.5 at half
+that (`refine.stress_totals`). It is the same `Exposure.lts2` knob as below, so it rides the
+same paths: the score's LTS 2 term (now at every calm rate, so it does not drop away just
+past 80, where the rate starts near 0), the exposure at the calm rate, and the top of the
+slider's second figure. At Default (70) a mile of LTS 2 in place of LTS 1 costs about 71 cost
+seconds, about two turns at `TURN_RANK_S` and a fraction of one busy crossing's junction
+cost; at 40 under one turn; at 90 about four. Planner only: the graph still prices LTS 1 and
+2 the same, LTS 2 never starts an exclusion or a trail seek (`seek_weights`), and no map is
+rebuilt. Trailmaxxing, Cargo with passengers and Tandem keep their quarter. The 0.03 is our
+default. Measured 2026-11-14 on the PC's re-rated map (v0.26.0 code with the term patched
+in): 10 trips (NoMa to USP, Union Station to Fredericksburg, and eight 2-10 mi city and
+suburban trips) at Default and at 90, at 0, 0.03 and 0.06. 39 of 40 plans with the term
+came out the same line as without it. The one that moved, NoMa to USP at Default (both
+weights), stayed 19.97 mi, moved 0.15 mi from LTS 2 to LTS 1, dropped its one red junction
+and one turn, and cut 24 s of waits; 99.2% of the line was unchanged. So it breaks ties and
+does not change corridors.
+Re-run 2026-11-15 on build 20261115T125405Z (new lane, side-path and alley ratings; v0.27.0
+code): all 40 plans with the term gave the same line as without it. It acts only on near
+ties, and none of these trips had one on that map.
+
 ### LTS 2 on Trailmaxxing and Cargo with passengers (FOLLOWUP-LTS2-WEIGHT, items 240 (A), 241)
 
 The owner, 2026-10-03, item 240: "A and B sound good." (A): "a small LTS 2 weight in the
@@ -6532,25 +6559,30 @@ calm-search score, about a quarter of LTS 3, on"
 Item 241's rationale applies: a rider who
 is not in control of the ride is stress-averse.
 
-- `presets.Exposure.lts2` (0 by default) and `presets.LTS2_WEIGHT` (0.25).
+- `presets.Exposure.lts2` (0 by default; `EXPOSURE_STANDARD` and `EXPOSURE_STRESS_AVERSE`
+  carry the 0.03 tiebreak since 2026-11-14) and `presets.LTS2_WEIGHT` (0.25).
   `presets.EXPOSURE_NOT_IN_CONTROL` is item 250's 1 / 8 / 16 with the hold, plus LTS 2 at
   0.25; Trailmaxxing and Cargo with passengers use it. Carrying cargo, Default at 100 and
-  every other ride keep LTS 2 at nothing. Bikeshare keeps item 250's weights without the
-  LTS 2 weight, since 240 (A) does not name it.
+  every other ride keep LTS 2 at the tiebreak share only. Bikeshare keeps item 250's weights
+  without the quarter, since 240 (A) does not name it.
 - Below the top of the slider the weight is in the score: `Analysis.exposure_m` (the
   weights dict now has a `"2"` key) is priced at the calm rate, so a metre of LTS 2 costs a
   quarter of what a metre of LTS 3 does. The Traffic-wins allowance and the seek's guards
-  weigh it the same way.
+  weigh it the same way. The hills slider's busier-than gates (`routing.calmer_or_own`,
+  `no_busier_than_middle`) leave the 0.03 tiebreak out (`presets.gate_exposure`), so it
+  never vetoes a route there.
 - At 80 and below, where the calm rate is 0, the exposure is not priced, so on its own the
   weight would never price a route where Cargo with passengers starts (review, blocking).
-  There the score adds a separate LTS 2 term instead: LTS 2 metres x the ride's weight x
+  So the score adds a separate LTS 2 term (at 80 and below at first; at every calm rate
+  since 2026-11-14, on top of the rate's own share): LTS 2 metres x the ride's weight x
   what a metre of LTS 3 adds to the router's own cost at the request's `use_roads`, in
   quiet metres (`refine.lts3_added_m`: the graded-stress model's middle LTS 3 figure,
   `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
   costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
   slider does not move, the calm search does not turn on, and the router's requests are
   unchanged: only the choice among the routes it returns (the crossing rounds') changes.
-  Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
+  Default, Bikeshare and carrying cargo weigh LTS 2 only at the tiebreak share above
+  (`LTS2_TIEBREAK`, 2026-11-14).
   The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
   kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
   with LTS 3's added cost toward the slider's busiest end, where `use_roads` is 1 and LTS 3

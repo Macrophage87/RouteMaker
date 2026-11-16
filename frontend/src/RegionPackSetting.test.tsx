@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { render } from "./testSupport/render.ts";
-import { RegionPackDialog } from "./RegionPackSetting.tsx";
+import { RegionPackDialog } from "./RegionPackDialog.tsx";
 import { downloadPack, type KeptPack, type PackList } from "./lib/regionPack.ts";
 
 const MB = 1024 * 1024;
@@ -71,7 +71,7 @@ test("while Download all runs, it says so and the areas wait (no area kept twice
   }) as unknown as typeof fetch;
   const done = downloadPack(LIST.packs[3], LIST, fetcher, { put: async () => undefined, get: async () => null, delete: async () => undefined });
   const screen = await popout(LIST, [kept("beltway", 10.8 * MB)]);
-  assert.ok(screen.button("Downloading…"));
+  assert.equal(screen.button("Downloading…").getAttribute("aria-disabled"), "true", "marked, not disabled, so focus stays");
   assert.equal(screen.button("Download Northern Virginia").getAttribute("aria-disabled"), "true");
   const del = screen.button("Delete Inside the Beltway");
   assert.equal(del.getAttribute("aria-disabled"), "false");

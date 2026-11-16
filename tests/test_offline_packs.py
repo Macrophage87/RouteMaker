@@ -217,9 +217,10 @@ def test_both_web_servers_serve_only_pack_files_to_this_site() -> None:
     nginx = (repo / "deploy" / "beta" / "nginx-routemaker.conf.template").read_text()
     location = nginx[nginx.index("location ~ ^/offline-packs/") :]
     location = location[: location.index("\n    }\n")]
-    assert r"(packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$" in location
+    assert r"(?P<rm_pack>packs-[0-9]+T[0-9]+Z(?:-[0-9]+)?/[a-z-]+\.json\.gz)$" in location
     assert "$rmbeta_basemap_foreign" in location
-    assert "alias @DATA_ROOT@/tiles/offline-packs/$1;" in location
+    # A named capture: the same-site map is a regex map, which resets $1 (#1295).
+    assert "alias @DATA_ROOT@/tiles/offline-packs/$rm_pack;" in location
 
 
 # v0.28.0 pass 1: where the places the wider box brings in fall, each in one area only.
