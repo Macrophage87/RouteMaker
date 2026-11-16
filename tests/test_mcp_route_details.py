@@ -811,6 +811,30 @@ def test_climbs_near_lists_the_steep_ones_long_enough_and_checks_them() -> None:
         server.call("climbs_near", {"near": [-77.05, 38.94], "pace_mph": -10})
 
 
+def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
+    places = _Places()
+    asked = []
+
+    def intervals_near(near, miles, **filters):
+        asked.append(filters)
+        flat = {"miles": 2.0, "grade_pct": 0.1, "both_ways": True}
+        up = {"miles": 1.0, "grade_pct": 4.0, "both_ways": False}
+        short = {"miles": 1.0, "grade_pct": 0.0, "both_ways": True}
+        return [{"name": n, **row} for n, row in (("Flat", flat), ("Up", up), ("Short", short))]
+
+    places.intervals_near = intervals_near
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 4})
+    assert asked[0] == {"paved_only": True, "quiet_only": True}
+    # 1 mi flat at 18 mph is 3.3 minutes; 1 mi up 4% is slower, so it holds 4 minutes.
+    assert [s["name"] for s in out["intervals"]] == ["Flat", "Up"]
+    assert out["intervals"][0]["effort_minutes"] == pytest.approx(6.7, abs=0.1)
+    server.call("intervals_near", {"near": [-77.05, 38.94], "include_busy": True})
+    assert asked[-1]["quiet_only"] is False
+    with pytest.raises(mcp.ToolError, match="on_minutes"):
+        server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 90})
+
+
 def test_climb_minutes_slow_with_the_grade() -> None:
     assert mcp.climb_minutes(1.5, 0.0, 18) == pytest.approx(5.0)
     assert mcp.climb_minutes(0.75, 5.0, 18) == pytest.approx(4.0, abs=0.1)

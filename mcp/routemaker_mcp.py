@@ -642,6 +642,22 @@ class Api:
             raise ToolError(f"the climb search failed ({status}): {message}")
         return payload.get("climbs", [])
 
+    def intervals_near(self, near: tuple[float, float], miles: float, **filters) -> list[dict]:
+        """GET /api/intervals-near: the interval-capable stretches near a point, nearest first,
+        or longest first with `longest`; `filters` as the endpoint takes them."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles}
+        params.update({k: str(v).lower() if isinstance(v, bool) else v for k, v in filters.items()})
+        status, payload, _ = patient_request(
+            self,
+            "GET",
+            "/api/intervals-near?" + urllib.parse.urlencode(params),
+            what="The interval stretch search",
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the interval stretch search failed ({status}): {message}")
+        return payload.get("intervals", [])
+
     def reach(self, body: dict) -> dict:
         """POST /api/reach: the reach rings (isochrones) for points, a ride type and its dials."""
         status, payload, _ = patient_request(
@@ -5466,6 +5482,38 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "intervals_near",
+        "title": "Interval stretches near a place",
+        "description": (
+            "List the stretches near a point where an interval effort can run unbroken (the"
+            " Intervals map layer): at least a mile, no signal, stop or yield sign, busy road to"
+            " cross or sharp turn, never LTS 4, and flat or uphill in the direction given. Each"
+            " has name, miles, rise, average grade, `both_ways` (else ride it start to end"
+            " only), start, end and `through` points along it, and `effort_minutes` at"
+            " pace_mph. Plan one with plan_route from its start through its `through` points"
+            " (as via points) to its end; recover by riding back or on. With on_minutes only"
+            " stretches long enough for one effort are listed. Stretches mostly on LTS 3"
+            " roads and gravel ones are left out unless asked."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {"type": "number", "exclusiveMinimum": 0, "default": 3},
+                "on_minutes": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "An effort's minutes: list stretches that hold one.",
+                },
+                "pace_mph": {"type": "number", "default": 18},
+                "include_busy": {"type": "boolean", "default": False},
+                "include_unpaved": {"type": "boolean", "default": False},
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "closures_near",
         "title": "Closures near a place",
         "description": (
@@ -6943,6 +6991,34 @@ class Server:
             "effort_fits": bool(out["efforts"]),
             "longest_clear_minutes": longest["effort_minutes"] if longest else 0.0,
             "breaks": out["breaks"],
+        }
+
+    # intervals_near
+    def intervals_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        try:
+            miles = min(15.0, max(0.5, float(args.get("within_miles") or 3)))
+            on_min = float(args.get("on_minutes") or 0)
+            pace = float(args.get("pace_mph") or 18)
+        except (TypeError, ValueError):
+            raise ToolError("within_miles, on_minutes and pace_mph are numbers") from None
+        if not 4 <= pace <= 35:
+            raise ToolError("pace_mph is 4 to 35")
+        if not 0 <= on_min <= 60:
+            raise ToolError("on_minutes is 0 to 60")
+        filters = {
+            "paved_only": not args.get("include_unpaved"),
+            "quiet_only": not args.get("include_busy"),
+        }
+        found = self.api.intervals_near(near, miles, **filters)
+        for stretch in found:
+            grade = 0.0 if stretch.get("both_ways") else stretch["grade_pct"]
+            stretch["effort_minutes"] = climb_minutes(stretch["miles"], grade, pace)
+        if on_min:
+            found = [s for s in found if s["effort_minutes"] >= on_min]
+        return {
+            "intervals": found,
+            "source": "Intervals layer: OpenStreetMap (ODbL) and USGS 3DEP elevation",
         }
 
     # closures_near
@@ -8612,6 +8688,7 @@ class Server:
             "metro_stations": self.metro_stations,
             "scenic_roads_near": self.scenic_roads_near,
             "climbs_near": self.climbs_near,
+            "intervals_near": self.intervals_near,
             "closures_near": self.closures_near,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
