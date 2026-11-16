@@ -155,7 +155,7 @@ painted lane, at `use_roads` 0.05 to 0.9:
 
 | Step | Marks | Added cost against the midpoint |
 |---|---|---|
-| 1.5 | none (LTS 1 and 2 cost the same in the graph) | exact |
+| 1.5 | none (LTS 1 and 2 cost the same in the graph; the planner's ranking adds a small tiebreak, half LTS 2's `LTS2_TIEBREAK`) | exact |
 | 2.5 | `lanes:forward` / `lanes:backward` 10, no `use_sidepath` | 0.1-0.55 of the midpoint at `use_roads` 0.6 and below (stress 40 and up): short of the midpoint, and below LTS 3 at every position but `use_roads` 1.0 (below) |
 | 3.5 | `use_sidepath` (LTS 3's penalty), `maxspeed:practical` the road's own speed but at least 90 km/h (56 mph), lanes 11 each way | 0.8-1.2 of the midpoint between LTS 3 and LTS 4 at every slider position |
 | 4.5 | LTS 4's own marks (140, 15 lanes); no alley mark | priced as LTS 4 |

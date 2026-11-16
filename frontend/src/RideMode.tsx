@@ -44,7 +44,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { rejoinsFirst, startsWayBack, steadyPoint, toStartRoute, wayBackRoute, wayBackShown } from "./lib/rejoin.ts";
 import { fetchOfflineNetwork, offlineWayBackRoute, type OfflineNetwork } from "./lib/offlineWayBack.ts";
-import { keptPack, openPack } from "./lib/regionPack.ts";
+import { ridePacks } from "./lib/regionPack.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -296,7 +296,7 @@ import {
   type RideTrip,
   walkLineTurns,
 } from "./lib/rideTrip.ts";
-import { gpsQuietHere, onwardActive, type OnwardPart, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
+import { gpsQuietHere, onwardActive, type OnwardPart, onwardStart, onwardStep, rideWhere, type OnwardState } from "./lib/onward.ts";
 import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { nextWalkTurn, walkModel, walkTurnLine } from "./lib/walkCues.ts";
@@ -1763,14 +1763,13 @@ export function RideMode({
         // Never back onto a road the rider marked closed: joined past it, as the server's way back is.
         const joinFrom = Math.max(progressM, closed);
         let offline = net ? offlineWayBackRoute(net.network, routeRef.current, here, joinFrom, keptPoints) : null;
-        // Off that network (or none was fetched): the region pack downloaded in Settings, if one is kept (lib/regionPack.ts),
-        // opened the first time it is needed and held for the rest of the ride, priced as the ride is when its own
-        // prices were fetched.
-        if (!offline && keptPack() && !voided()) {
-          regionPackRef.current ??= openPack();
-          const pack = await regionPackRef.current;
-          // Not readable this time (storage busy, say): tried again at the next re-plan.
-          if (!pack) regionPackRef.current = null;
+        // Off that network (or none was fetched): the region pack downloaded in Settings that covers the rider, if one is
+        // kept (lib/regionPack.ts), opened the first time it is needed and held while it is the one that covers, priced
+        // as the ride is when its own prices were fetched. Not readable this time (storage busy, say): tried again at the
+        // next re-plan.
+        const opening = !offline && !voided() ? regionPacks.current.open(here) : null;
+        if (opening) {
+          const pack = await opening;
           if (pack && !voided()) {
             offline = offlineWayBackRoute(
               { graph: pack.graph, levelFactor: net?.network.levelFactor ?? pack.levelFactor },
@@ -2126,6 +2125,14 @@ export function RideMode({
     () => onwardParts.map((part, i) => (part.kind === "walk" && isRailPart(onwardParts[i - 1]) ? exitAt(METRO_EXITS, part.model.coordinates[0]) : null)),
     [onwardParts],
   );
+  // The line's own Where am I?: shown as two short lines, said whole.
+  const lineWhere = useCallback(
+    (state: RideState) => ({
+      shown: whereAmIShown(modelRef.current, state, milesRef.current, arrivingAt),
+      spoken: whereAmI(modelRef.current, state, false, milesRef.current, arrivingAt),
+    }),
+    [arrivingAt],
+  );
   const followOnward = useCallback(
     (fix: RideFix | null) => {
       const now = Date.now();
@@ -2324,10 +2331,11 @@ export function RideMode({
       }
       if (sayWhereNext.current && out.state.progressM !== null) {
         sayWhereNext.current = false;
-        announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current, arrivingAt));
+        // Past the line, the part followed now, as Where am I? answers: never the line's "You have arrived" mid-trip.
+        announcer.current?.answer(rideWhere(out.state.arrived, onwardParts, onwardRef.current, () => lineWhere(out.state)).spoken);
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName, arrivingAt, followOnward, rideToStart, keepLeft, loopRide],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName, arrivingAt, followOnward, rideToStart, keepLeft, loopRide, onwardParts, lineWhere],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -2574,14 +2582,14 @@ export function RideMode({
   // with the kept map for each route ridden, kept in memory for the ride: with no signal, a failed re-plan finds the way
   // back to the line on the phone. None where it could not be fetched (no signal at the start, a map built before it).
   const offlineNet = useRef<{ route: RouteResponse; network: OfflineNetwork } | null>(null);
-  // The kept region pack, opened for this ride when a way back first needs it (null: none, or unreadable).
-  const regionPackRef = useRef<Promise<OfflineNetwork | null> | null>(null);
+  // The kept region packs: the one covering the rider opened for this ride when a way back first needs it.
+  const regionPacks = useRef(ridePacks());
   // Opened ahead of need, when the phone loses its signal (or starts without one), so a way back does not wait on
   // unzipping it; not before, so a ride with a signal never holds it in memory.
   useEffect(() => {
-    if (!keptPack()) return;
+    if (!regionPacks.current.any()) return;
     const open = () => {
-      if (!ended.current) regionPackRef.current ??= openPack();
+      if (!ended.current) void regionPacks.current.open(rideRef.current.goodFix?.point ?? rideRef.current.fix?.point);
     };
     if (typeof navigator !== "undefined" && navigator.onLine === false) open();
     window.addEventListener("offline", open);
@@ -2667,15 +2675,15 @@ export function RideMode({
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
     // Past the line, the part followed now (Stephen, 2026-11-04: "an erroneous you have arrived when pressing the map
     // center button" on the train): the train or bus's stops and time left, or the walk's next turn.
-    const after = !walk && rideRef.current.arrived ? onwardWhere(onwardParts, onwardRef.current) : null;
-    const spoken = walk ? walk.spoken : after ? after.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current, arrivingAt);
+    const where = walk ? null : rideWhere(rideRef.current.arrived, onwardParts, onwardRef.current, () => lineWhere(rideRef.current));
+    const spoken = walk ? walk.spoken : where!.spoken;
     // Shown as two short lines (whereAmIShown), said whole.
-    showToast(walk ? walk.shown : after ? after.shown.join("\n") : whereAmIShown(modelRef.current, rideRef.current, milesRef.current, arrivingAt).join("\n"));
+    showToast(walk ? walk.shown : where!.shown.join("\n"));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
-  }, [approach, showToast, arrivingAt, onwardParts]);
+  }, [approach, showToast, lineWhere, onwardParts]);
   // Where am I? and Re-centre are one button (the owner, 2026-10-20: "We can merge the where am I and the center on map
   // button functionality"): the map follows the rider again, and the answer is said and shown.
   const findMe = useCallback(() => {
