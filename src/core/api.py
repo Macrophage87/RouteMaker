@@ -4060,6 +4060,9 @@ def offline_packs_view(request, params: Query[OfflinePacksIn]):
             "bytes": pack["bytes"],
             "sha256": pack["sha256"],
             "url": f"/offline-packs/{found['dir']}/{pack['file']}",
+            # Where it covers, for the phone's map of the areas and its pick of the pack to
+            # open for a ride: from the regions as drawn now (core.offline_packs.area_of).
+            "area": offline_packs.area_of(pack["id"]),
         }
         for pack in found["packs"]
     ]
@@ -4070,6 +4073,9 @@ def offline_packs_view(request, params: Query[OfflinePacksIn]):
         "graph_v": found["graph_v"],
         "packs": packs,
         "level_factor": factors,
+        # The map's box, [west, south, east, north]: the area of the pack with no outline is
+        # this box less the outlined ones.
+        "box": list(settings.COVERAGE_BBOX),
     }
 
 
