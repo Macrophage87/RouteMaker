@@ -9,6 +9,7 @@ from dataclasses import replace
 import pytest
 
 from routemaker import describe as d
+from routemaker import geo
 from routemaker.intersections import Control, Event, Movement
 
 FT = 0.3048
@@ -2538,6 +2539,106 @@ class TestClearTurns:
             )
         ]
         assert d.describe(legs)[1]["turn"]["movement"] == "bear_left"
+
+
+def drawn(name, segments, use="cycleway"):
+    """One way drawn as its trace's vertices cut it: a piece per (metres, compass bearing),
+    the bearings unwrapped along the line (`Atom.bearing`); no node, so no `turn`."""
+    return [
+        d.Atom(metres, "1", "path", (name,), use, bearing, bearing, bearing=bearing)
+        for metres, bearing in segments
+    ]
+
+
+class TestJogAlongOneWay:
+    """The owner, 2026-11-16, north on the Metropolitan Branch Trail beside Blair Road: the
+    trail steps right then left at Aspen Street in the middle of one way, no node at either
+    corner, and Ride said nothing ("This bend didn't show up on the app. It's a common place
+    to miss")."""
+
+    def blair(self, middle=23.5, back=-96.0, first=(12.0, 25.0, 31.0, 38.0)):
+        # The trail's own vertices (OSM way 1425043937): north-north-west, a corner right
+        # drawn over four vertices in 7 m, 23.5 m east, a corner left, then on north.
+        bearing = -19.0
+        segments = [(150.0, bearing)]
+        for turn in first:
+            bearing += turn
+            segments.append((2.5, bearing))
+        segments[-1] = (middle, bearing)
+        bearing += back
+        segments.append((13.0, bearing))
+        segments.append((65.0, bearing - 13.0))
+        segments.append((400.0, bearing - 13.0))
+        return d.describe([drawn("Metropolitan Branch Trail", segments)])
+
+    def moves(self, entries):
+        return [e["turn"]["movement"] if e["turn"] else None for e in entries]
+
+    # The trail's vertices north from Van Buren Street (OSM way 1425043937, as mapped
+    # 2025-11-11): the step right is drawn along Aspen Street and back left along Sandy
+    # Spring Road, joined to neither, so the router finds no junction at either corner.
+    BLAIR_ROAD_MBT = (
+        (-77.0148521, 38.9698616),
+        (-77.0148969, 38.969941),
+        (-77.0156541, 38.9712817),
+        (-77.0162002, 38.9722601),
+        (-77.016206, 38.9722919),
+        (-77.0161962, 38.9723105),
+        (-77.0161762, 38.9723202),
+        (-77.0158276, 38.9723288),
+        (-77.0158551, 38.9724443),
+        (-77.0162053, 38.9730086),
+        (-77.016216, 38.9730501),
+        (-77.016206, 38.9731),
+        (-77.0161297, 38.9731813),
+    )
+
+    def test_regression_the_blair_road_jog_as_mapped_is_said(self):
+        # A regression test (the owner, 2026-11-16: "This was added before and now doesn't.
+        # Make this a regression test."): the trail's own line, unwrapped as the trace's.
+        points = self.BLAIR_ROAD_MBT
+        segments, bearing = [], None
+        for a, b in zip(points, points[1:], strict=False):
+            compass = geo.bearing_lonlat(a, b)
+            turn = 0.0 if bearing is None else (compass - bearing + 540) % 360 - 180
+            bearing = compass if bearing is None else bearing + turn
+            segments.append((geo.haversine_lonlat(a, b), bearing))
+        segments.append((300.0, bearing))
+        entries = d.describe([drawn("Metropolitan Branch Trail", segments)])
+        assert self.moves(entries) == [None, "right", "left"]
+        # Said where the trail turns along Aspen Street, about 0.2 mi on (Ride joins the two).
+        assert 0.15 < entries[1]["from_mi"] < 0.25
+
+    def test_a_jog_in_the_middle_of_one_trail_is_said_as_its_two_turns(self):
+        entries = self.blair()
+        assert self.moves(entries) == [None, "right", "left"]
+        assert "Right to stay on Metropolitan Branch Trail" in entries[1]["text"]
+        assert "Left to stay on Metropolitan Branch Trail" in entries[2]["text"]
+        assert all(e["turn"]["stay"] for e in entries[1:])
+
+    def test_a_single_sharp_bend_with_nothing_to_choose_is_still_not_said(self):
+        entries = d.describe([drawn("A Trail", [(300.0, 0.0), (300.0, 90.0)])])
+        assert self.moves(entries) == [None]
+
+    def test_two_corners_to_the_same_side_are_not_a_jog(self):
+        assert self.moves(self.blair(back=96.0)) == [None]
+
+    def test_gentle_bends_either_way_are_not_a_jog(self):
+        assert self.moves(self.blair(back=-40.0, first=(10.0, 15.0, 15.0))) == [None]
+
+    def test_corners_far_apart_are_two_bends_not_a_jog(self):
+        assert self.moves(self.blair(middle=80.0)) == [None]
+
+    def test_a_wiggle_shorter_than_a_jog_is_not_said(self):
+        assert self.moves(self.blair(middle=8.0)) == [None]
+
+    def test_a_long_curve_is_not_a_corner(self):
+        # 100 degrees of curve at 10 degrees every 5 m, then back: a winding trail.
+        segments = [(200.0, 0.0)]
+        segments += [(5.0, 10.0 * (n + 1)) for n in range(10)]
+        segments += [(5.0, 100.0 - 10.0 * (n + 1)) for n in range(10)]
+        segments.append((300.0, 0.0))
+        assert self.moves(d.describe([drawn("A Trail", segments)])) == [None]
 
 
 class TestClearTurnsOffCircles:

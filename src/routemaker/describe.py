@@ -576,11 +576,84 @@ def _said_turns(atoms: list[Atom], crossings: Collection[float] = ()) -> list[At
         ):
             side = "right" if atom.turn > 0 else "left"
             out[i] = replace(atom, fork=side if turn > BEAR_MAX_DEG else f"bear_{side}")
-    return _turns_at_paths(out, crossings)
+    return _jogs_along(_turns_at_paths(out, crossings))
+
+
+def _jogs_along(atoms: list[Atom]) -> list[Atom]:
+    """`atoms` with a sideways step along one way said as its two turns (`Atom.fork`), each
+    at its corner's sharpest vertex: a corner past BEAR_MAX_DEG to one side, then within
+    JOG_MIN_M to JOG_ALONG_MAX_M one past it back to the other, read from the line itself
+    (`Atom.bearing`), so a jog drawn in the middle of one way, with no node or other way at
+    either corner, is said too. A single bend with nothing to choose is still no question
+    (`_said_turns`), but after a jog the way runs on beside the line it left, a few metres
+    over, so straight on looks like the way on and the step aside is easy to ride past (the
+    owner, 2026-11-16, north on the Metropolitan Branch Trail beside Blair Road at Aspen
+    Street, where the trail steps right then left in the middle of one way: "This bend
+    didn't show up on the app. It's a common place to miss"). Ride says the two as one jog
+    (frontend/src/lib/navigate.ts joinJogs). Never across a way change, a roundabout or a
+    turn already said."""
+    at: list[float] = []
+    walked = 0.0
+    for atom in atoms:
+        at.append(walked)
+        walked += max(atom.metres, 0.0)
+    # Each vertex's turn: the change in bearing from the last piece with one.
+    bends: list[tuple[int, float]] = []
+    last: float | None = None
+    for i, atom in enumerate(atoms):
+        if atom.bearing is None:
+            continue
+        if last is not None and abs(atom.bearing - last) >= THROUGH_NODE_DEG:
+            bends.append((i, atom.bearing - last))
+        last = atom.bearing
+    # Corners: runs of bends to one side within JOG_CORNER_M of the run's first.
+    corners: list[tuple[int, int, float]] = []  # (first, sharpest, total)
+    k = 0
+    while k < len(bends):
+        first, turn = bends[k]
+        members = [bends[k]]
+        k += 1
+        while (
+            k < len(bends)
+            and (bends[k][1] > 0) == (turn > 0)
+            and at[bends[k][0]] - at[first] <= JOG_CORNER_M
+        ):
+            members.append(bends[k])
+            k += 1
+        sharpest = max(members, key=lambda b: abs(b[1]))[0]
+        corners.append((first, sharpest, sum(b[1] for b in members)))
+    out = list(atoms)
+    c = 0
+    while c + 1 < len(corners):
+        (first, a, one), (_, b, two) = corners[c], corners[c + 1]
+        if not (
+            BEAR_MAX_DEG < abs(one) < HAIRPIN_DEG
+            and BEAR_MAX_DEG < abs(two) < HAIRPIN_DEG
+            and (one > 0) != (two > 0)
+            and JOG_MIN_M <= at[b] - at[a] <= JOG_ALONG_MAX_M
+            and first > 0
+            and all(
+                _same_way(atoms[first - 1], x) and not x.roundabout and out[j].fork is None
+                for j, x in enumerate(atoms[first - 1 : b + 1], start=first - 1)
+            )
+        ):
+            c += 1
+            continue
+        out[a] = replace(atoms[a], fork="right" if one > 0 else "left")
+        out[b] = replace(atoms[b], fork="right" if two > 0 else "left")
+        c += 2
+    return out
 
 
 # A node turning less than this is a through node to `_turns_at_paths`' two-node rule.
 THROUGH_NODE_DEG = 5.0
+# A sideways step along one way (`_jogs_along`): two corners to opposite sides, each
+# sharper than BEAR_MAX_DEG, the second JOG_MIN_M to JOG_ALONG_MAX_M after the first.
+# A corner is the line's turn over vertices within JOG_CORNER_M of its first (a corner
+# drawn round with a few vertices is one corner). Our defaults, unmeasured: 40 m is the cue
+# bench's own reach for a bend left unsaid (frontend/src/lib/cueBench.ts BEND_CUE_M).
+JOG_ALONG_MAX_M = 40.0
+JOG_CORNER_M = 15.0
 
 
 def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Atom]:
