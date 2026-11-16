@@ -29,7 +29,7 @@ def file(tmp_path, monkeypatch):
         _row("far", -76.5),
     ]
     path = tmp_path / "intervals.json"
-    path.write_text(json.dumps({"version": 1, "intervals": rows}))
+    path.write_text(json.dumps({"version": 1, "built": "2026-11-16", "intervals": rows}))
     monkeypatch.setattr(near_mod, "INTERVALS_FILE", path)
     near_mod._cache.clear()
     return path
@@ -56,6 +56,10 @@ def test_no_file_is_unavailable(tmp_path, monkeypatch):
         near_mod.near(-77.0, 39.0, 5)
 
 
-def test_the_bundled_file_parses():
+def test_an_unbuilt_file_is_unavailable_not_empty(tmp_path, monkeypatch):
+    path = tmp_path / "intervals.json"
+    path.write_text(json.dumps({"version": 1, "built": None, "intervals": []}))
+    monkeypatch.setattr(near_mod, "INTERVALS_FILE", path)
     near_mod._cache.clear()
-    assert near_mod.load() is not None
+    with pytest.raises(near_mod.Unavailable):
+        near_mod.near(-77.0, 39.0, 5)

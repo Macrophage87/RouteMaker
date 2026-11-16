@@ -5492,8 +5492,8 @@ TOOLS = [
             " only), start, end and `through` points along it, and `effort_minutes` at"
             " pace_mph. Plan one with plan_route from its start through its `through` points"
             " (as via points) to its end; recover by riding back or on. With on_minutes only"
-            " stretches long enough for one effort are listed. Stretches mostly on LTS 3"
-            " roads and gravel ones are left out unless asked."
+            " stretches long enough for one effort are listed, longest first. Stretches"
+            " mostly on LTS 3 roads and gravel ones are left out unless asked."
         ),
         "inputSchema": {
             "type": "object",
@@ -7010,6 +7010,9 @@ class Server:
             "paved_only": not args.get("include_unpaved"),
             "quiet_only": not args.get("include_busy"),
         }
+        if on_min:
+            # Longest first before the site's cut, so long stretches a little further away are kept.
+            filters["longest"] = True
         found = self.api.intervals_near(near, miles, **filters)
         for stretch in found:
             grade = 0.0 if stretch.get("both_ways") else stretch["grade_pct"]

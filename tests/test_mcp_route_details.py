@@ -825,12 +825,12 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
     places.intervals_near = intervals_near
     server = mcp.Server(lambda: places, [], out_dir=Path("."))
     out = server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 4})
-    assert asked[0] == {"paved_only": True, "quiet_only": True}
+    assert asked[0] == {"paved_only": True, "quiet_only": True, "longest": True}
     # 1 mi flat at 18 mph is 3.3 minutes; 1 mi up 4% is slower, so it holds 4 minutes.
     assert [s["name"] for s in out["intervals"]] == ["Flat", "Up"]
     assert out["intervals"][0]["effort_minutes"] == pytest.approx(6.7, abs=0.1)
     server.call("intervals_near", {"near": [-77.05, 38.94], "include_busy": True})
-    assert asked[-1]["quiet_only"] is False
+    assert asked[-1]["quiet_only"] is False and "longest" not in asked[-1]
     with pytest.raises(mcp.ToolError, match="on_minutes"):
         server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 90})
 

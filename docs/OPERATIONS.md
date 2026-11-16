@@ -9217,7 +9217,8 @@ the next map data update, and the endpoint lists none.
 
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
-railway crossings, barriers, from the extract's node tags), at a busy road (LTS 3+) crossed, at
+railway crossings, barriers, from the extract's node tags; a stop or yield sign on a junction's own
+node only where the stretch is not the busier road), at a busy road (LTS 3+) crossed, at
 any road a path meets, at a sharp turn (60 degrees), and at a descent (2% held 150 m) for the
 direction it falls; LTS 4 and Avoid never count. The numbers are the connector's interval check's
 (`mcp/routemaker_mcp.py`, the owner's 2026-10-25 ask), except the 1 mile minimum, which is our
@@ -9227,6 +9228,10 @@ default (unmeasured). `JUNCTION_RULE = "every"` cuts at every road that joins in
 reads the live table, the extract and the elevation tiles, as `build_climbs` does):
 
     flock <heavy.lock> docker compose exec -T rebuild ./manage.py build_intervals </dev/null
+
+Its peak memory is not yet measured: it holds what `build_climbs` holds (about 3.2 GB) plus an
+index of the shared nodes (node keys packed as one int; a few hundred MB more is our estimate).
+Watch it the first time and note the peak here.
 
 It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
 to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's

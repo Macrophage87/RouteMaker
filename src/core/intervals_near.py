@@ -51,7 +51,9 @@ _cache: dict[str, tuple[tuple[int, int], tuple[Stretch, ...] | None]] = {}
 
 
 def parse(doc: object) -> tuple[Stretch, ...] | None:
-    if not isinstance(doc, dict) or doc.get("version") != FORMAT_VERSION:
+    # The file ships unbuilt ("built": null) until the build host writes it: that is no file,
+    # not a map with no stretches.
+    if not isinstance(doc, dict) or doc.get("version") != FORMAT_VERSION or not doc.get("built"):
         return None
     rows = doc.get("intervals")
     if not isinstance(rows, list):
@@ -94,7 +96,7 @@ def load(path: Path | str | None = None) -> tuple[Stretch, ...] | None:
     except (OSError, ValueError):
         stretches = None
     if stretches is None:
-        logger.warning("the intervals file %s could not be read", path)
+        logger.warning("the intervals file %s is unbuilt or could not be read", path)
     _cache[str(path)] = (key, stretches)
     return stretches
 

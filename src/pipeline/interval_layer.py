@@ -114,6 +114,12 @@ MINOR_HIGHWAYS = frozenset(
 MINOR_SERVICE = frozenset({"driveway", "parking_aisle", "drive-through", "emergency_access"})
 ROUNDABOUT = frozenset({"roundabout", "circular"})
 
+# A stop or yield sign on a junction's own node may be for the cross road only (OSM often
+# tags `stop=minor`, or nothing): there it breaks a stroke only when the stroke is not the
+# busier road. An all-way stop always does.
+PRIORITY_SIGNS = frozenset({"stop sign", "yield sign"})
+ALL_WAY = "all-way stop"
+
 PATH = climb_layer.PATH
 GRAVEL = climb_layer.GRAVEL
 
@@ -125,8 +131,8 @@ GRAVEL = climb_layer.GRAVEL
 class ExtractFacts:
     """What the stretches need from the extract beyond the segment table."""
 
-    # Node key (`climb_layer._node`) -> why it stops an effort.
-    stops: dict[tuple[int, int], str] = field(default_factory=dict)
+    # Node key (`node_key`) -> why it stops an effort.
+    stops: dict[int, str] = field(default_factory=dict)
     # Ways that never break one (driveways, footways ...), and roundabouts.
     minor: set[int] = field(default_factory=set)
     roundabouts: set[int] = field(default_factory=set)
@@ -135,6 +141,8 @@ class ExtractFacts:
 def node_stop(tags: dict[str, str]) -> str | None:
     """Why a node's tags stop an effort, or None."""
     why = STOP_HIGHWAY.get(tags.get("highway", ""))
+    if why in PRIORITY_SIGNS and tags.get("stop") == "all":
+        return ALL_WAY
     if why:
         return why
     if tags.get("crossing") == "traffic_signals" or tags.get("crossing:signals") == "yes":
@@ -170,26 +178,35 @@ def read_extract(pbf: Path | str, way_ids: Iterable[int]) -> ExtractFacts:
             continue
         why = node_stop(tags)
         if why and obj.location.valid():
-            out.stops[climb_layer._node((obj.location.lon, obj.location.lat))] = why
+            out.stops[node_key((obj.location.lon, obj.location.lat))] = why
     return out
 
 
 # --- Junctions --------------------------------------------------------------------
 
 
-def shared_vertices(
-    segments: Sequence[SegmentLine],
-) -> dict[tuple[int, int], list[tuple[int, int]]]:
+def node_key(point: tuple[float, float]) -> int:
+    """A node's place as one int (1e-7 degrees, as `climb_layer._node`): a fifth of a tuple's
+    memory, which matters over the network's millions of vertices."""
+    return (round(point[0] * 1e7) + 1_800_000_000) << 32 | (round(point[1] * 1e7) + 900_000_000)
+
+
+def shared_vertices(segments: Sequence[SegmentLine]) -> dict[int, list[tuple[int, int]]]:
     """Every node two or more segment vertices share: (segment index, vertex index) at each.
     The segments are cut by length, not at junctions, so a road crossing another mid-way
-    shares a vertex with it and no end. Counted first, so only shared nodes are held."""
-    keys = sorted(climb_layer._node(point) for segment in segments for point in segment.coords)
+    shares a vertex with it and no end. Counted first, so only shared nodes are held; a
+    later piece's first vertex is its way's previous piece's last, so it is not counted."""
+    keys = sorted(
+        node_key(point)
+        for segment in segments
+        for point in (segment.coords[1:] if segment.key[1] > 0 else segment.coords)
+    )
     shared = {a for a, b in zip(keys, keys[1:], strict=False) if a == b}
     del keys
-    out: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
+    out: dict[int, list[tuple[int, int]]] = defaultdict(list)
     for index, segment in enumerate(segments):
         for j, point in enumerate(segment.coords):
-            key = climb_layer._node(point)
+            key = node_key(point)
             if key in shared:
                 out[key].append((index, j))
     return out
@@ -222,26 +239,30 @@ def vertex_break(
     stroke: Stroke,
     i: int,
     segments: Sequence[SegmentLine],
-    at_vertex: dict[tuple[int, int], list[tuple[int, int]]],
+    at_vertex: dict[int, list[tuple[int, int]]],
     facts: ExtractFacts,
     rule: str = JUNCTION_RULE,
 ) -> str | None:
     """Why the stroke's interior vertex i breaks an effort, or None."""
     coords = stroke.coords
-    key = climb_layer._node(coords[i])
-    why = facts.stops.get(key)
-    if why:
-        return why
+    key = node_key(coords[i])
     own = {stroke.parts[stroke.edge_part[i - 1]][0], stroke.parts[stroke.edge_part[i]][0]}
     others = [(s, j) for s, j in at_vertex.get(key, ()) if s not in own]
+    roads = [(s, j) for s, j in others if _is_road(segments[s], facts)]
+    here = segments[stroke.parts[stroke.edge_part[i]][0]]
+    why = facts.stops.get(key)
+    if why in PRIORITY_SIGNS and roads:
+        # On the junction's own node: the cross road's sign where the stroke is the busier road.
+        if (here.tier or 0) <= max(segments[s].tier or 0 for s, _ in roads):
+            return why
+    elif why:
+        return why
     if not others:
         return None
     if any(segments[s].key[0] in facts.roundabouts for s, _ in others):
         return "roundabout"
-    roads = [(s, j) for s, j in others if _is_road(segments[s], facts)]
     if not roads:
         return None
-    here = segments[stroke.parts[stroke.edge_part[i]][0]]
     if not _is_road(here, facts):
         return "road crossing"  # a path meeting a road: the path gives way
     if rule == "every":
@@ -392,7 +413,7 @@ def stretches_on_stroke(
     stroke: Stroke,
     segments: Sequence[SegmentLine],
     ground: HgtElevation,
-    at_vertex: dict[tuple[int, int], list[tuple[int, int]]],
+    at_vertex: dict[int, list[tuple[int, int]]],
     facts: ExtractFacts,
     rule: str = JUNCTION_RULE,
 ) -> list[Stretch]:
@@ -404,8 +425,9 @@ def stretches_on_stroke(
     if total < MIN_LENGTH_M:
         return []
     samples = climb_layer.level_structures(climb_layer.sample(stroke, ground), stroke, segments)
-    # Cuts either way: stops, intersections and sharp turns (padded), never-ridden parts, no ground.
-    both: list[Span] = []
+    # Cuts either way: stops, intersections and sharp turns (padded), never-ridden parts, no ground,
+    # and the stroke's ends (a junction it turns at, a stop or a dead end), padded as a stop is.
+    both: list[Span] = [(0.0, PAD_M), (total - PAD_M, total)]
     for i in range(1, len(coords) - 1):
         if vertex_break(stroke, i, segments, at_vertex, facts, rule) or sharp_turn(coords, i):
             both.append((along[i] - PAD_M, along[i] + PAD_M))
@@ -438,8 +460,11 @@ def stretches_on_stroke(
             None,
         )
         if twin is not None:
-            used_back.add(twin)
             c, d = reading[-1][twin]
+            if min(b, d) - max(a, c) < MIN_LENGTH_M:
+                twin = None  # the shared part is too short: each reading stands alone
+        if twin is not None:
+            used_back.add(twin)
             found.append(
                 _stretch(stroke, segments, samples, sample_along, max(a, c), min(b, d), 1, True)
             )
