@@ -646,7 +646,10 @@ class Analysis:
             + self.hill_m
             - self.router_climb_m
         )
-        if ctx.rate == 0 and self.lts2_weight > 0:
+        if self.lts2_weight > 0:
+            # LTS 2's share of what a metre of LTS 3 adds in the router's own cost, at every
+            # calm rate (the rate's own share is already in `exposure_m`), so the tiebreaker
+            # does not drop away just above 80 on the slider, where the rate starts near 0.
             lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
             extra += self.lts2_weight * lts3_added_m(ctx) * lts2
         return (
@@ -697,11 +700,12 @@ def lts3_added_m(ctx: Context) -> float:
     """What a metre of LTS 3 adds in the router's own cost at this request's `use_roads`,
     in metres of quiet street: the graded-stress model's added cost (`calm.added_cost`,
     the middle of the five road types) over a quiet metre's (`QUIET_COST_FACTOR`), about
-    4 at 80 on the slider. The score's LTS 2 term at a calm rate of 0 (FOLLOWUP-LTS2-WEIGHT
-    review: Cargo with passengers starts at 80, where the rate is 0, so the weight never
-    priced a route there) charges a metre of LTS 2 the ride's share of it, a quarter
-    (OWNER-DECISIONS 240 (A)): about 1 quiet metre at 80. The router's requests are
-    unchanged; only the choice among the routes it returns."""
+    4 at 80 on the slider. The score's LTS 2 term (FOLLOWUP-LTS2-WEIGHT review: Cargo with
+    passengers starts at 80, where the rate is 0, so the weight never priced a route there;
+    at every calm rate since 2026-11-14) charges a metre of LTS 2 the ride's share of it: a
+    quarter on the rides that weigh LTS 2 (OWNER-DECISIONS 240 (A)), about 1 quiet metre at
+    80, and `presets.LTS2_TIEBREAK` (0.03) on every other ride, about 0.12. The router's
+    requests are unchanged; only the choice among the routes it returns."""
     options = ctx.costing.get("bicycle") or {}
     lts3, _lts4 = calm.added_cost(options.get("use_roads", VALHALLA_DEFAULT_USE_ROADS))
     return lts3 / QUIET_COST_FACTOR
@@ -1312,7 +1316,8 @@ def half_metres(pieces, classes) -> dict[str, float]:
 
 
 def half_weight(tier: str, weights: dict[str, float]) -> float:
-    """A half step's weight: the midpoint of its two levels' (461a). LTS 1 and 2 weigh 0."""
+    """A half step's weight: the midpoint of its two levels' (461a). LTS 1 weighs 0, so 1.5
+    is half of LTS 2's weight (its tiebreak share on most rides)."""
     if tier not in ("1", "2", "3", "4"):
         return weights.get(tier, 0.0)
     return (weights.get(tier, 0.0) + weights.get(str(int(tier) + 1), 0.0)) / 2

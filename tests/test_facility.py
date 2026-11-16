@@ -859,6 +859,59 @@ def test_a_short_link_mapped_in_pieces_is_kept_when_the_chain_joins_two_trails()
     assert facility_rules.short_paths_to_hide(at_trail) == {15}
 
 
+def test_a_sidewalk_run_that_is_the_only_link_between_two_trails_is_drawn() -> None:
+    """The owner, 2026-11-15, of the side path along Saint Elizabeths Rd SE (OSM
+    footway=sidewalk + bicycle=yes, ways 1001796647 and on) between the I-295 / Malcolm X
+    path and the Anacostia Riverwalk Trail: "a connector and it isn't shown anymore"."""
+    malcolm_x = {"highway": "cycleway", "name": "I-295 / Malcolm X Interchange Shared Use Path"}
+    riverwalk = {"highway": "cycleway", "name": "Anacostia Riverwalk Trail"}
+    side = {"highway": "footway", "footway": "sidewalk", "bicycle": "yes"}
+    crossing = {"highway": "footway", "footway": "crossing", "bicycle": "yes"}
+    plain = {"highway": "footway", "footway": "sidewalk"}
+    ways = [
+        (1, malcolm_x, [10, 11], _west_east(-77.01, 38.85, 900)),
+        (2, riverwalk, [20, 21], _west_east(-77.00, 38.86, 900)),
+        (3, side, [11, 30], _west_east(-77.0, 38.852, 500)),
+        (4, crossing, [30, 31], _west_east(-77.0, 38.854, 20)),
+        (5, side, [31, 20], _west_east(-77.0, 38.855, 300)),
+        # A longer way round over the same sidewalks: only the shortest run is drawn.
+        (6, side, [30, 40], _west_east(-77.0, 38.856, 300)),
+        (7, side, [40, 20], _west_east(-77.0, 38.857, 300)),
+        # A sidewalk spur off the run joins nothing.
+        (8, side, [31, 50], _west_east(-77.0, 38.858, 100)),
+    ]
+    assert facility_rules.trail_link_sidewalks(ways) == {3, 4, 5}
+    # A sidewalk not open to bicycles carries no link (routing would not ride it).
+    assert (
+        facility_rules.trail_link_sidewalks([*ways[:2], (3, plain, [11, 20], ways[2][3])]) == set()
+    )
+    # A way routing closes or the map hides neither carries nor anchors a link.
+    assert facility_rules.trail_link_sidewalks(ways, hidden={4}) == {3, 6, 7}
+    assert facility_rules.trail_link_sidewalks(ways, hidden={2}) == set()
+    # Two trails a drawn trail already joins need no sidewalk between them.
+    joined = [*ways, (9, riverwalk, [10, 21], _west_east(-77.02, 38.85, 900))]
+    assert facility_rules.trail_link_sidewalks(joined) == set()
+    # Too long a run is a walk along streets, not a link.
+    far = [*ways[:2], (3, side, [11, 20], _west_east(-77.0, 38.852, 2500))]
+    assert facility_rules.trail_link_sidewalks(far) == set()
+    assert facility_rules.TRAIL_LINK_SIDEWALK_M == 1600
+    # Three trails a web of sidewalks joins pairwise: one line per gap, shortest first.
+    third = {"highway": "cycleway", "name": "Suitland Parkway Trail"}
+    web = [
+        *ways[:2],
+        (10, third, [60, 61], _west_east(-76.99, 38.86, 900)),
+        (11, side, [11, 20], _west_east(-77.0, 38.852, 300)),
+        (12, side, [20, 60], _west_east(-77.0, 38.853, 400)),
+        (13, side, [11, 60], _west_east(-77.0, 38.854, 500)),
+    ]
+    assert facility_rules.trail_link_sidewalks(web) == {11, 12}
+    # An indoor crosswalk is no link.
+    indoor = [*ways[:2], (3, {**side, "indoor": "yes"}, [11, 20], ways[2][3])]
+    assert facility_rules.trail_link_sidewalks(indoor) == set()
+    # By its tags alone a sidewalk stays off the map; the rebuild draws the run (`map_class_of`).
+    assert facility_rules.map_class(side) is facility_rules.MapClass.HIDDEN
+
+
 def test_roads_inside_a_military_base_are_found_and_trails_along_it_are_not() -> None:
     """ "Don't show roads that most typical people can't ride on, such as within
     military bases, or the pentagon" (OWNER-DECISIONS 88)."""
