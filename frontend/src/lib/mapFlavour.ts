@@ -14,6 +14,7 @@
  * routeColours.ts (casingOnMap), lib/darkPaint.ts and stationIcons.ts (OUTLINE_DARK_MAP); darkMap.test.ts holds
  * each one to 3:1 on the dark map's surfaces, as the light map's are held on its own.
  */
+import { intervalsLayers } from "./intervals.ts";
 import { layers as protomapsLayers, namedFlavor, type Flavor } from "@protomaps/basemaps";
 import { accessibilityOn, setDarkMap, withClearRoadLabels } from "../stressStyle.js";
 import { BASEMAP_SOURCE_ID } from "./mapStyle.ts";
@@ -153,6 +154,7 @@ export function overlayLightPaint(): Array<{ id: string; paint?: Record<string, 
     ...(DC_MASK_LAYERS as unknown as Array<{ id: string; paint: Record<string, unknown> }>),
     { id: SCENIC_CASING_LAYER, paint: { "line-color": SCENIC_COLOUR } },
     ...(scenicPointLayers(false) as Array<{ id: string; paint?: Record<string, unknown> }>),
+    ...(intervalsLayers(false) as Array<{ id: string; paint?: Record<string, unknown> }>),
     { id: CHOICE_CASING_LAYER, paint: { "line-opacity": CHOICE_CASING_OPACITY } },
     ...(topoLayers(true, false) as Array<{ id: string; paint?: Record<string, unknown> }>),
     ...restrictedLightPaint(),
