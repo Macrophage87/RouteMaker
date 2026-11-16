@@ -580,7 +580,7 @@ def _said_turns(atoms: list[Atom], crossings: Collection[float] = ()) -> list[At
 
 
 def _jogs_along(atoms: list[Atom]) -> list[Atom]:
-    """`atoms` with a sideways step along one way said as its two turns (`Atom.fork`), each
+    """`atoms` with a sideways step along one path said as its two turns (`Atom.fork`), each
     at its corner's sharpest vertex: a corner past BEAR_MAX_DEG to one side, then within
     JOG_MIN_M to JOG_ALONG_MAX_M one past it back to the other, read from the line itself
     (`Atom.bearing`), so a jog drawn in the middle of one way, with no node or other way at
@@ -590,8 +590,9 @@ def _jogs_along(atoms: list[Atom]) -> list[Atom]:
     owner, 2026-11-16, north on the Metropolitan Branch Trail beside Blair Road at Aspen
     Street, where the trail steps right then left in the middle of one way: "This bend
     didn't show up on the app. It's a common place to miss"). Ride says the two as one jog
-    (frontend/src/lib/navigate.ts joinJogs). Never across a way change, a roundabout or a
-    turn already said."""
+    (frontend/src/lib/navigate.ts joinJogs). Paths only: a road is its own guide, where a
+    path beside one has the road and its sidewalk running on straight. Never across a way
+    change, a roundabout or a turn already said."""
     at: list[float] = []
     walked = 0.0
     for atom in atoms:
@@ -606,18 +607,15 @@ def _jogs_along(atoms: list[Atom]) -> list[Atom]:
         if last is not None and abs(atom.bearing - last) >= THROUGH_NODE_DEG:
             bends.append((i, atom.bearing - last))
         last = atom.bearing
-    # Corners: runs of bends to one side within JOG_CORNER_M of the run's first.
+    # Corners: the bends within JOG_CORNER_M of the first, added up, either side, so a
+    # kink drawn out and back in a metre adds up to nothing rather than two corners.
     corners: list[tuple[int, int, float]] = []  # (first, sharpest, total)
     k = 0
     while k < len(bends):
-        first, turn = bends[k]
+        first = bends[k][0]
         members = [bends[k]]
         k += 1
-        while (
-            k < len(bends)
-            and (bends[k][1] > 0) == (turn > 0)
-            and at[bends[k][0]] - at[first] <= JOG_CORNER_M
-        ):
+        while k < len(bends) and at[bends[k][0]] - at[first] <= JOG_CORNER_M:
             members.append(bends[k])
             k += 1
         sharpest = max(members, key=lambda b: abs(b[1]))[0]
@@ -632,10 +630,12 @@ def _jogs_along(atoms: list[Atom]) -> list[Atom]:
             and (one > 0) != (two > 0)
             and JOG_MIN_M <= at[b] - at[a] <= JOG_ALONG_MAX_M
             and first > 0
+            and atoms[first - 1].use in PATH_USES
             and all(
-                _same_way(atoms[first - 1], x) and not x.roundabout and out[j].fork is None
-                for j, x in enumerate(atoms[first - 1 : b + 1], start=first - 1)
+                _same_way(atoms[first - 1], x) and x.use in PATH_USES and not x.roundabout
+                for x in atoms[first - 1 : b + 1]
             )
+            and all(out[j].fork is None for j in range(first, b + 1))
         ):
             c += 1
             continue

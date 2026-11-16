@@ -2632,6 +2632,24 @@ class TestJogAlongOneWay:
     def test_a_wiggle_shorter_than_a_jog_is_not_said(self):
         assert self.moves(self.blair(middle=8.0)) == [None]
 
+    def test_a_kink_in_the_drawn_line_is_no_corner(self):
+        # Out 80 degrees and back over half a metre, then a single real bend 20 m on.
+        segments = [(200.0, 0.0), (0.5, 80.0), (20.0, 0.0), (300.0, 70.0)]
+        assert self.moves(d.describe([drawn("A Trail", segments)])) == [None]
+
+    def test_a_road_s_bend_is_not_said(self):
+        segments = [(200.0, 0.0), (25.0, 70.0), (300.0, 0.0)]
+        entries = d.describe(
+            [[replace(a, facility="none") for a in drawn("Oak Street", segments, "road")]]
+        )
+        assert self.moves(entries) == [None]
+
+    def test_a_jog_right_after_a_said_turn_onto_the_trail_is_said(self):
+        atoms = drawn("Metropolitan Branch Trail", [(200.0, 0.0), (23.0, 90.0), (300.0, 0.0)])
+        atoms[0] = replace(atoms[0], fork="left")
+        entries = d.describe([flat(path("Blair Road sidepath", 300, 90), atoms)])
+        assert self.moves(entries)[-2:] == ["right", "left"]
+
     def test_a_long_curve_is_not_a_corner(self):
         # 100 degrees of curve at 10 degrees every 5 m, then back: a winding trail.
         segments = [(200.0, 0.0)]
