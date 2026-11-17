@@ -380,7 +380,13 @@ test("a re-route sends each via point where the planned line passes it, not wher
   // A via point already on the line is the same pair, so nothing is asked again for it.
   const onLine = marks.via(at(500, 0));
   assert.equal(viaOnLine(model, [points[0], onLine, points[2]], marks)[1], onLine);
-  // A stop is sent where it was put: it is where the rider wants to be.
+  // A stop is sent where it was put: it is where the rider wants to be (even where the line places a via there).
   const stop = at(500, 15);
-  assert.equal(viaOnLine(rideModel(r, []), [points[0], stop, points[2]], marks)[1], stop);
+  assert.equal(viaOnLine(model, [points[0], stop, points[2]], marks)[1], stop);
+  // A ride's own shape point (a loop's way home) stays one, so it is never said as a via point skipped nor kept after End ride.
+  const shape = marks.shape(at(500, 15));
+  const movedShape = viaOnLine(model, [points[0], shape, points[2]], marks)[1];
+  close(haversineM(movedShape, at(500, 0)), 0, 0.5);
+  assert.equal(marks.isShape(movedShape), true);
+  assert.equal(marks.isVia(movedShape), true);
 });
