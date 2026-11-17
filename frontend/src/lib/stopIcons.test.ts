@@ -22,6 +22,7 @@ const NOTO_SHA256: Record<string, string> = {
   "noto-emoji-u1f6a7.svg": "cde40e90038b77fdeeefae35deb5c0f002e57d02619a4b2f9d0398da39a74103",
   "noto-emoji-u1f6bb.svg": "7c1684ce488d8cc18946f651a313fcbd5203387ffaac48c57e44fc95ad07b244",
   "noto-emoji-u2615.svg": "5830ae818458ee3c51208af6196a8a6c3d2a27e652aed2380c0b26a39d13d9dc",
+  "noto-emoji-u26a1.svg": "411cd100c1cfb2106ca16b7a27c1571ccc758af74a137506198e6dfc06d4dd0e",
   "noto-emoji-u26a0.svg": "040e0a04356c12994f61a7011f47c7f278394f039feb01b5f3b2f82be3c7cc1f",
   "noto-emoji-u23f1.svg": "2aae7bbb7c57bd411ac81416c66ff02056d141e6c6e09a317834fdbab774b3df",
   "noto-emoji-u1f3c1.svg": "127643a146f73cee9d2d8cec69e8cbc48080900067ea1539e56610c37fe22457",
