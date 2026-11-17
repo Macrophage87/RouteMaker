@@ -973,8 +973,9 @@ and <strong>Keep going</strong> appear just under End ride and Go round, as big 
 one (another line from the routes to choose from, or Go's More direct or Trailmaxxed), it first looks for a way back to that route ahead and
 shows (and, by your voice setting, says) "New route found. It rejoins your
 route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
-Reroute, Go round, Less traffic, Fewer hills or a Detour), it keeps every stop and every via point still ahead; a via point you
-rode past beside the line counts as passed, so you are never sent back to touch it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
+Reroute, Go round, Less traffic, Fewer hills or a Detour), it keeps every stop and every via point still ahead, except the next one if you came within about
+165 ft [50 m] of it and rode on: that counts as reached, so you are never sent back to touch it. Each via point is sent
+where your planned route passed it, so the new route keeps the trail you planned even with a road right beside it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
 planned route would have from where you are (past a closed road, say), it is left out too and the ride shows (and,
 by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
 way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
@@ -1041,7 +1042,8 @@ it. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 256" role="img" aria-labelledby="fig-use-layers-t fig-use-layers-d" focusable="false" style="min-width:547px">
 <title id="fig-use-layers-t">The Layers sheet</title>
-<desc id="fig-use-layers-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain. Plan also has Scenic and Potential closures, and Mass Ride has federal land.</desc>
+<desc id="fig-use-layers-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain (in Plan, Trails, terrain and training, with interval stretches). Plan
+also has Scenic and Potential closures, and Mass Ride has federal land.</desc>
 <defs><marker id="ah-use-layers" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="12" width="230" height="32" rx="6"/>
 <text class="tb" x="125.0" y="32.5" text-anchor="middle">Traffic stress</text>
@@ -1072,7 +1074,8 @@ it. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 568" role="img" aria-labelledby="fig-use-layers-n-t fig-use-layers-n-d" focusable="false">
 <title id="fig-use-layers-n-t">The Layers sheet</title>
-<desc id="fig-use-layers-n-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain. Plan also has Scenic and Potential closures, and Mass Ride has federal land.</desc>
+<desc id="fig-use-layers-n-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain (in Plan, Trails, terrain and training, with interval stretches). Plan
+also has Scenic and Potential closures, and Mass Ride has federal land.</desc>
 <defs><marker id="ah-use-layers-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="8" width="240" height="36" rx="6"/>
 <text class="tb" x="130.0" y="31.5" text-anchor="middle">Traffic stress</text>
@@ -1153,11 +1156,13 @@ names its line, such as Penn Line.</li>
 at each.</li>
 <li><strong>Places to see</strong>: museums, gardens, viewpoints and more. Off unless you turn it
 on.</li>
-<li><strong>Trails and terrain</strong>: trail ratings, climbs and topo lines; see
+<li><strong>Trails and terrain</strong> (in Plan, <strong>Trails, terrain and training</strong>, which adds
+Interval stretches beside Climbs): trail ratings, climbs and topo lines; see
 <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
 <li>In Plan, also <strong>Scenic</strong> and <strong>Potential closures</strong>, both off by default. Neither
 changes the route.</li>
-<li>In Plan, <strong>Interval stretches</strong> (off by default, kept on this device) glows pink under the stress
+<li>In Plan, <strong>Interval stretches</strong>, under Trails, terrain and training beside Climbs (off by
+default, kept on this device), glows pink under the stress
 line on stretches of a mile [1.6 km] or more (our default) for an interval effort: no signal, stop or give-way sign,
 barrier or railway crossing, no busy road (LTS 3 or higher) crossing it, no sharp turn, and flat or uphill. Arrows
 mark one that holds one way only. LTS 4 and Avoid roads are never one. It changes no route.</li>
@@ -1633,7 +1638,7 @@ default).</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.27.2. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.27.3. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
