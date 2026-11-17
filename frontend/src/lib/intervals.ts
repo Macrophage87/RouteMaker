@@ -3,7 +3,7 @@
  * Basically we're looking for long segments that have limited turns, no intersections, and are either flat or
  * uphill. We'd have this in the Plan panel and available for the MCP."
  *
- * One switch in Plan's Map layers, off by default and kept on this device; not in Go. The stretches are found once
+ * One switch in Plan's Trails and terrain section, beside Climbs, off by default and kept on this device; not in Go. The stretches are found once
  * per map build (`manage.py build_intervals`, src/pipeline/interval_layer.py: what counts is there) and shipped as
  * interval-data/intervals.json, fetched the first time the layer is turned on. Each is drawn as a wide pink
  * highlight under the stress line (the stress colour stays on top), with arrows along it where it holds one way
@@ -11,7 +11,7 @@
  * so a test renders it.
  */
 import { createElement as h, type ReactElement } from "react";
-import { LayerSection } from "./layerSection.ts";
+import { t } from "./i18n.ts";
 import { withDarkPaint } from "./darkPaint.ts";
 
 export const INTERVALS_LABEL = "Interval stretches";
@@ -152,12 +152,36 @@ export function intervalsStatusText(on: boolean, status: IntervalsStatus): strin
 
 export const INTERVALS_LEGEND_TEXT = "Pink glow: an interval stretch. Arrows: ride it that way only (the other way goes downhill).";
 
-/** The Map layers section: one switch, its hint, and its key while on. */
-export function IntervalsSection({ on, onChange, status = "" }: { on: boolean; onChange: (on: boolean) => void; status?: string }): ReactElement {
+/**
+ * Inside Plan's Trails and terrain section, beside Climbs (the owner, 2026-11-17: "a layer next to climbs"): its own
+ * switch, its hint, what it says while it cannot draw, and its key while on. The section switch counts it too
+ * (lib/terrainSection.ts).
+ */
+export function IntervalsControls({ on, onChange, status = "" }: { on: boolean; onChange: (on: boolean) => void; status?: string }): ReactElement {
   return h(
-    LayerSection,
-    { id: "intervals", title: INTERVALS_LABEL, headingId: "intervals-heading", layers: [{ key: "intervals", label: INTERVALS_LABEL, on }], onLayers: (next) => onChange(next.intervals), status },
-    h("p", { className: "hint", id: "intervals-hint" }, INTERVALS_HINT),
+    "div",
+    { className: "intervals-controls" },
+    h(
+      "div",
+      { className: "a11y-setting" },
+      h(
+        "button",
+        {
+          type: "button",
+          role: "switch",
+          id: "intervals-switch",
+          className: "switch",
+          "aria-checked": on,
+          "aria-labelledby": "intervals-label",
+          "aria-describedby": "intervals-hint",
+          onClick: () => onChange(!on),
+        },
+        h("span", { id: "intervals-label", className: "switch-label" }, INTERVALS_LABEL),
+        h("span", { className: "switch-state", "aria-hidden": "true" }, on ? t("On") : t("Off")),
+      ),
+      h("p", { className: "hint", id: "intervals-hint" }, INTERVALS_HINT),
+    ),
+    h("p", { className: "hint intervals-status", role: "status" }, status),
     on &&
       h(
         "ul",
@@ -168,7 +192,7 @@ export function IntervalsSection({ on, onChange, status = "" }: { on: boolean; o
           h(
             "svg",
             { width: 24, height: 12, "aria-hidden": "true", viewBox: "0 0 24 12" },
-            h("line", { x1: 2, y1: 6, x2: 22, y2: 6, stroke: INTERVALS_COLOUR, strokeOpacity: 0.5, strokeWidth: 8, strokeLinecap: "round" }),
+            h("line", { x1: 2, y1: 6, x2: 22, y2: 6, stroke: INTERVALS_COLOUR, strokeOpacity: INTERVALS_OPACITY, strokeWidth: 8, strokeLinecap: "round" }),
             h("line", { x1: 2, y1: 6, x2: 22, y2: 6, stroke: "#9aa0a6", strokeWidth: 3 }),
           ),
           h("span", { className: "stress-label" }, INTERVALS_LEGEND_TEXT),
