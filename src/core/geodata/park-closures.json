@@ -1,11 +1,11 @@
 {
- "updated": "2026-11-12",
+ "updated": "2026-11-16",
  "closures": [
   {
    "id": "wod-falls-church-crosswalks",
    "project": "NOVA Parks",
    "page": "https://www.novaparks.com/",
-   "advisory": "https://www.novaparks.com/alert/wod-november-17-24-trail-detours-will-be-in-place-for-construction-in-falls-church-at-grove",
+   "advisory": "https://www.novaparks.com/alert/wod-%E2%80%93-november-17-24-trail-detours-during-construction-in-falls-church-at-grove-ave-n-west-st",
    "posted": "2026-11-12",
    "road": "W&OD Trail in Falls Church, N. West St to Grove Ave",
    "reason": "Trail detoured while the W&OD's crosswalks at N. West St, Park Ave and Grove Ave are rebuilt (NOVA Parks: Nov 17-24, about a week).",
@@ -261,7 +261,8 @@
   ],
   "nova": [
    "185adfc0e60b",
-   "1c6ae07bf347"
+   "1c6ae07bf347",
+   "98429a615cd9"
   ]
  }
 }

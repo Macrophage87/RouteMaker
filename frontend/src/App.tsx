@@ -7709,7 +7709,8 @@ export function App() {
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
-                intervals: mode === "go" ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status) },
+                // Not on the Mass Ride map either, where it never draws (scenicShown).
+                intervals: mode === "go" || massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status) },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
                 stressKeyAsk,
                 bikeshare: {
