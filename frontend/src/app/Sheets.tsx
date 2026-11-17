@@ -58,7 +58,7 @@ import { WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { ClimbsLayerControls } from "../lib/climbsLegend.ts";
 import { ScenicSection } from "../lib/scenicLayer.ts";
-import { IntervalsControls } from "../lib/intervals.ts";
+import { IntervalsControls, type IntervalsMinutes } from "../lib/intervals.ts";
 import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { SteepGradeKey, steepGradesFor } from "../lib/steepGrades.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
@@ -166,7 +166,7 @@ export interface LayersSheetProps {
   /** The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   scenic: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
   /** The Intervals layer (lib/intervals.ts): one switch, off by default; null in Go, which leaves it out. */
-  intervals?: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
+  intervals?: { on: boolean; onChange: (on: boolean) => void; status: string; minutes?: IntervalsMinutes; onMinutesChange?: (minutes: IntervalsMinutes) => void } | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
   /** Go's stress bar tapped (the owner's P1): each new number opens the Traffic stress section, its colour key. */

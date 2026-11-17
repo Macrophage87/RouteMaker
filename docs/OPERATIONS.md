@@ -9282,6 +9282,13 @@ connector with the next api image. The first file was written on 2026-11-16 (2,8
 counts in `frontend/src/interval-data/README.md`). An unbuilt file (`"built": null`) makes the
 switch say the stretches arrive with the next map data update, and the endpoint answer 503.
 
+A stretch counts by time, not length (the owner, 2026-11-17: "It's the distance with the elevation
+gain that would add it ... Basically 3 minutes is the minimum"): at least 3 minutes at 18 mph on
+the flat, slowed on a climb as the connector's interval check slows it (`CLIMB_SLOWING`), so a
+steady climb needs less ground. Each entry carries its minutes (`t`); Plan's "Show intervals from"
+picks 3, 5, 8 or 12 minutes (kept per browser as `routemaker.intervalsMinutes`). A descent of 2%
+held 150 m still breaks one.
+
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
 railway crossings, barriers, from the extract's node tags; a stop or yield sign on a junction's own

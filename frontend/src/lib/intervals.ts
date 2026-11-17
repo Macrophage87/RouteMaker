@@ -13,10 +13,22 @@
 import { createElement as h, type ReactElement } from "react";
 import { t } from "./i18n.ts";
 import { withDarkPaint } from "./darkPaint.ts";
+import { METRES_PER_MILE } from "./format.ts";
 
 export const INTERVALS_LABEL = "Interval stretches";
 /** Read on every focus, so one short line. */
-export const INTERVALS_HINT = "A mile or more with no stops, busy crossings or sharp turns, flat or uphill.";
+export const INTERVALS_HINT = "3 minutes or more with no stops, busy crossings or sharp turns, flat or uphill.";
+/**
+ * The owner, 2026-11-17: "filter by time, essentially a 3', 5', 8', etc interval stretch ... 3 minutes is the minimum".
+ * Minutes at 18 mph on the flat, slowed on a climb (the file's `t`; src/pipeline/interval_layer.py).
+ */
+export const INTERVALS_MINUTES_LABEL = "Show intervals from";
+export const INTERVALS_MINUTES_OPTIONS = [3, 5, 8, 12] as const;
+export type IntervalsMinutes = (typeof INTERVALS_MINUTES_OPTIONS)[number];
+export const INTERVALS_MINUTES_KEY = "routemaker.intervalsMinutes";
+/** The build's pace and climb slowing, for a file written before it carried `t`. */
+const PACE_MPH = 18;
+const CLIMB_SLOWING = 0.12;
 export const INTERVALS_UNAVAILABLE = "Interval stretches are unavailable for now.";
 /** The file ships empty until the build host fills it (interval-data/README.md). */
 export const INTERVALS_NONE = "No interval stretches yet: they arrive with the next map data update.";
@@ -45,6 +57,13 @@ export interface IntervalStretch {
   name: string | null;
   surface: "road" | "path" | "gravel";
   busy: boolean;
+  /** Minutes to ride it at the build's pace (the quicker way where it holds both). */
+  minutes: number;
+}
+
+function effortMinutes(lengthM: number, riseM: number, bothWays: boolean): number {
+  const grade = bothWays ? 0 : Math.max(0, (riseM / lengthM) * 100);
+  return (lengthM / METRES_PER_MILE / (PACE_MPH / (1 + CLIMB_SLOWING * grade))) * 60;
 }
 
 export type IntervalsStatus = "loading" | "ready" | "empty" | "unavailable";
@@ -59,16 +78,20 @@ export function parseIntervals(doc: unknown): IntervalStretch[] | null {
     const line = Array.isArray(row?.line) ? (row.line as unknown[]).filter((p): p is [number, number] => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number")) : [];
     const lengthM = Number(row?.l);
     if (typeof row?.id !== "string" || line.length < 2 || !(lengthM > 0)) continue;
+    const bothWays = row.w === 1;
+    const riseM = Number(row.r) || 0;
+    const t = Number(row.t);
     out.push({
       id: row.id,
       lengthM,
-      riseM: Number(row.r) || 0,
+      riseM,
       gradePct: Number(row.g) || 0,
       line,
-      bothWays: row.w === 1,
+      bothWays,
       name: typeof row.n === "string" && row.n ? row.n : null,
       surface: row.s === "p" ? "path" : row.s === "g" ? "gravel" : "road",
       busy: row.b === 1,
+      minutes: t > 0 ? t : Math.round(effortMinutes(lengthM, riseM, bothWays) * 10) / 10,
     });
   }
   return out;
@@ -84,6 +107,11 @@ export async function loadIntervals(
   } catch {
     return null;
   }
+}
+
+/** The stretches that take at least `minutes` to ride. */
+export function intervalsAtLeast(stretches: readonly IntervalStretch[], minutes: number): IntervalStretch[] {
+  return stretches.filter((s) => s.minutes >= minutes);
 }
 
 /** The map's source: each stretch as a line in its riding direction, `one` where it holds one way only. */
@@ -144,6 +172,23 @@ export function saveIntervalsLayer(on: boolean, store: Store | null = defaultSto
   }
 }
 
+export function readIntervalsMinutes(store: Store | null = defaultStore()): IntervalsMinutes {
+  try {
+    const kept = Number(store?.getItem(INTERVALS_MINUTES_KEY));
+    return (INTERVALS_MINUTES_OPTIONS as readonly number[]).includes(kept) ? (kept as IntervalsMinutes) : INTERVALS_MINUTES_OPTIONS[0];
+  } catch {
+    return INTERVALS_MINUTES_OPTIONS[0];
+  }
+}
+
+export function saveIntervalsMinutes(minutes: IntervalsMinutes, store: Store | null = defaultStore()): void {
+  try {
+    store?.setItem(INTERVALS_MINUTES_KEY, String(minutes));
+  } catch {
+    // Not kept: the choice still works for this visit.
+  }
+}
+
 /** What the section says while on and the file is not there to draw. */
 export function intervalsStatusText(on: boolean, status: IntervalsStatus): string {
   if (!on) return "";
@@ -157,7 +202,19 @@ export const INTERVALS_LEGEND_TEXT = "Pink glow: an interval stretch. Arrows: ri
  * switch, its hint, what it says while it cannot draw, and its key while on. The section switch counts it too
  * (lib/terrainSection.ts).
  */
-export function IntervalsControls({ on, onChange, status = "" }: { on: boolean; onChange: (on: boolean) => void; status?: string }): ReactElement {
+export function IntervalsControls({
+  on,
+  onChange,
+  status = "",
+  minutes,
+  onMinutesChange,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  status?: string;
+  minutes?: IntervalsMinutes;
+  onMinutesChange?: (minutes: IntervalsMinutes) => void;
+}): ReactElement {
   return h(
     "div",
     { className: "intervals-controls" },
@@ -181,6 +238,19 @@ export function IntervalsControls({ on, onChange, status = "" }: { on: boolean; 
       ),
       h("p", { className: "hint", id: "intervals-hint" }, INTERVALS_HINT),
     ),
+    on &&
+      minutes !== undefined &&
+      onMinutesChange &&
+      h(
+        "div",
+        { className: "climbs-from" },
+        h("label", { htmlFor: "intervals-minutes" }, INTERVALS_MINUTES_LABEL),
+        h(
+          "select",
+          { id: "intervals-minutes", value: String(minutes), onChange: (event: { target: { value: string } }) => onMinutesChange(Number(event.target.value) as IntervalsMinutes) },
+          ...INTERVALS_MINUTES_OPTIONS.map((m) => h("option", { key: m, value: String(m) }, `${m} minutes`)),
+        ),
+      ),
     h("p", { className: "hint intervals-status", role: "status" }, status),
     on &&
       h(

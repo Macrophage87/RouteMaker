@@ -8,7 +8,7 @@ the connector's `intervals_near`), so `docker/api.Dockerfile` copies it into the
 
 | File | What | Source | Licence | Credit on the map |
 | --- | --- | --- | --- | --- |
-| `intervals.json` | every stretch an interval effort can run unbroken, a mile or more | the live segment table and the rebuild's extract (OpenStreetMap) and USGS 3DEP one-arcsecond elevation, by `manage.py build_intervals` (`pipeline.interval_layer`) | **ODbL 1.0** (a produced work of the OSM data); 3DEP is public domain | the map's existing "© OpenStreetMap contributors (ODbL)" and "USGS 3DEP" |
+| `intervals.json` | every stretch an interval effort can run unbroken, 3 minutes or more at 18 mph | the live segment table and the rebuild's extract (OpenStreetMap) and USGS 3DEP one-arcsecond elevation, by `manage.py build_intervals` (`pipeline.interval_layer`) | **ODbL 1.0** (a produced work of the OSM data); 3DEP is public domain | the map's existing "© OpenStreetMap contributors (ODbL)" and "USGS 3DEP" |
 
 What counts and the keys of each entry are in `pipeline.interval_layer`'s docstring; writing it
 again is in docs/OPERATIONS.md, "The Intervals layer".
