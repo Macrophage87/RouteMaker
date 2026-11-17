@@ -61,7 +61,7 @@ routes and keeping your 311 checklist on your other devices.
   Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
 - The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
   Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see and
-  Trails and terrain (and Federal land on a Mass Ride). In Plan, Trails and terrain is called
+  Trails and terrain (and Federal land on a Mass Ride). In Plan (not on a Mass Ride), Trails and terrain is called
   "Trails, terrain and training" and also holds Interval stretches, beside Climbs. Two more follow, both off by
   default: Scenic, and Potential closures (roads that work permits or planned work may close some day;
   routes never avoid them). Each row is the section's heading, a switch named for it, then a "layers" button that
@@ -332,7 +332,7 @@ method" have the same groups. Typing "transit",
 8. Climbs on the map
 --------------------
 
-Turn on "Climbs" in Layers, Trails and terrain. The number at a climb's top is its category; the shape around it
+Turn on "Climbs" in Layers, Trails and terrain ("Trails, terrain and training" in Plan). The number at a climb's top is its category; the shape around it
 is its steepness: a circle is gentle (under 4%), a square moderate (4 to 7.9%), a diamond steep
 (8% or more). "Show climbs from" hides the smaller ones. Tap a climb's top (in Go, its dashed line
 too) for its card; in Plan a tap on the dashed line adds a point there as before. The card has

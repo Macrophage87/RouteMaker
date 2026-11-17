@@ -40,9 +40,12 @@ export const MTB_TRAILS_ROW_UNAVAILABLE = t("Mountain-bike trails need the stres
 export const TOPO_LINES_ROW_UNAVAILABLE = t("Topo lines are not available on this server yet.");
 
 /** Its name: in Plan, which adds Interval stretches, "training" too (the owner, 2026-11-17: "Change the name of that
- * group to suit"). Plan is English only; Go, translated, keeps the old name. */
+ * group to suit"). Go, which has no Interval stretches, keeps the old name. The Plan name is in English and Spanish
+ * only, as Plan is (i18n.ts planStaysEnglish): kept out of an exported constant so the Go and Ride catalogs' check
+ * does not ask the other languages for it. */
 export const TERRAIN_TITLE = t("Trails and terrain");
-export const TERRAIN_PLAN_TITLE = "Trails, terrain and training";
+const PLAN_TITLE = "Trails, terrain and training";
+export const TERRAIN_PLAN_TITLE = t(PLAN_TITLE);
 export function terrainTitle(withIntervals: boolean): string {
   return withIntervals ? TERRAIN_PLAN_TITLE : TERRAIN_TITLE;
 }

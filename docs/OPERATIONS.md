@@ -8080,6 +8080,30 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.27.3
+
+A patch with everything merged into release/v0.28.0 since v0.27.2, on the owner's ask (2026-11-17,
+"Release everything in flight as a patch"): a jog along one way said in directions (#1310), a
+re-route sends via points at the planned line's place for them (#1312), a stop or via point passed
+within 50 m and left counts as reached (#1313), Interval stretches beside Climbs in Plan's "Trails,
+terrain and training" (#1314), six riding icons for stops and notes (#1315, #1316) and the NOVA
+park-closure link (#1302). Virginia prep (#1279) and the held rating work stay out.
+
+**No `lua/`, `valhalla/`, `docker/`, requirements, migration, compose or nginx change, and the
+lockfile's dependencies are those of v0.27.2** (same lock hash), so the beta's release agent takes
+it by itself; no map rebuild, no router restart.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.27.3`, then approve), or an annotated tag
+  v0.27.3 on that commit pushed from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing, then the
+  front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
+- [ ] **Beta check.** The app says 0.27.3; Plan, Map layers, "Trails, terrain and training" holds
+  Interval stretches beside Climbs; a stop's icon list has the six new icons.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.27.2 front end.
+
 ## Deploying v0.27.2
 
 A patch with the Interval stretches layer, on the owner's ask (2026-11-16, "Add as a patch then"):
