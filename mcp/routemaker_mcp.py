@@ -45,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.27.2"
+SERVER_VERSION = "0.27.3"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
@@ -1243,6 +1243,12 @@ NOTE_ICONS = {
     "restroom": "🚻",
     "bikeshop": "🔧",
     "pin": "📍",
+    "intervalstart": "⏱️",
+    "intervalend": "🏁",
+    "summit": "🏔️",
+    "turnaround": "↩️",
+    "regroup": "👥",
+    "sprint": "⚡",
 }
 KIND_ICON = {"caution": "warning", "interest": "pin"}
 NOTE_RE = re.compile(
