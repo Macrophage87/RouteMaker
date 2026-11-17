@@ -9,7 +9,7 @@ import type { DescriptionEntry, RouteResponse, RouteResult, StressSpan } from ".
 import { routeRequestBody } from "./api.ts";
 import { dialFields, startDials } from "./dials.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, shapesHome, viaOnLine, nearStops, nearStopsStep } from "./navigate.ts";
+import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, shapesHome, viaOnLine, leftNearStop, nearStopsStep } from "./navigate.ts";
 import { isRoundTrip } from "./loop.ts";
 import { ViaMarks, VIA_MARKS, stopsOnly, withVias, withViasOnLegs } from "./pointKinds.ts";
 import { REJOIN_ONWARD_M, rejoinTargets, rejoinsFirst, wayBackRoute } from "./rejoin.ts";
@@ -393,26 +393,45 @@ test("a re-route sends each via point where the planned line passes it, not wher
 
 // ---- A stop passed near and left is reached (Stephen, 2026-11-17: within 50 m, then away) ---------------------------
 
-test("a stop the rider came within 50 m of and rode away from, off the line, is reached; along the line it is not", () => {
-  const stop = at(1000, 0);
-  const points: LonLat[] = [at(0, 0), stop, at(2000, 2000)];
+/** planned() with a stop (point 1) at 1,000 m, the corner, and the end (point 2) at 2,000 m. */
+function withStop(): { r: RouteResponse; points: LonLat[] } {
+  const p = planned();
+  const description = [
+    stretch(0, 1000, "A Street"),
+    { ...stretch(1000, 1000, "Stop 1."), kind: "via", via: 1 },
+    ...(p.description ?? []).slice(1),
+  ];
+  return { r: route(p.geometry.coordinates as LonLat[], description, p.stress_spans ?? [], { leg_ends: [2, 4] }), points: [at(0, 0), at(1000, 0), at(1000, 1000)] };
+}
+
+test("the next stop the rider came within 50 m of and rode away from is reached; never a later one, never the end", () => {
+  const { r, points } = withStop();
+  const model = rideModel(r);
+  const near = new WeakSet<LonLat>();
   // Before: no such rule, so a re-route sent the rider back to the stop's exact spot.
-  const off = nearStops();
-  nearStopsStep(off, points, at(1020, 20), true); // 28 m away: near
-  assert.equal(off.left.has(stop), false);
-  nearStopsStep(off, points, at(1100, 20), true); // 102 m away, off the line: left, so reached
-  assert.equal(off.left.has(stop), true);
-  // The same ride along the planned line (a road that bends away and comes back to the stop later): not reached.
-  const along = nearStops();
-  nearStopsStep(along, points, at(1020, 20), false);
-  nearStopsStep(along, points, at(1100, 20), false);
-  assert.equal(along.left.has(stop), false);
-  // Never within 50 m: never reached, however far off the line. The start and the end are never counted.
-  const far = nearStops();
-  nearStopsStep(far, points, at(1000, 80), true);
-  nearStopsStep(far, points, at(1300, 80), true);
-  nearStopsStep(far, points, at(0, 20), true);
-  nearStopsStep(far, points, at(0, 500), true);
-  assert.equal(far.left.has(stop), false);
-  assert.equal(far.left.has(points[0]), false);
+  nearStopsStep(near, model, 900, points, false, at(1030, 20)); // 36 m from the stop, off the line
+  assert.equal(leftNearStop(near, points[1], at(1030, 20)), false, "still at it");
+  assert.equal(leftNearStop(near, points[1], at(1100, 60)), true, "117 m away: left, so reached");
+  // Never within 50 m: kept.
+  const far = new WeakSet<LonLat>();
+  nearStopsStep(far, model, 900, points, false, at(1000, 80));
+  assert.equal(leftNearStop(far, points[1], at(1300, 80)), false);
+  // A stop the route reaches later is not the next one while an earlier one is ahead: passing near it counts nothing.
+  const later = new WeakSet<LonLat>();
+  nearStopsStep(later, model, 100, [points[0], at(300, 0), points[1], points[2]], false, at(1000, 20));
+  assert.equal(leftNearStop(later, points[1], at(1300, 80)), false);
+  // The end is never taken as reached this way.
+  const end = new WeakSet<LonLat>();
+  nearStopsStep(end, model, 1500, points, false, at(1000, 990));
+  assert.equal(end.has(points[2]), false);
+});
+
+test("the way back does not join before a stop the re-route leaves out", () => {
+  const { r } = withStop();
+  const model = rideModel(r);
+  // Kept: only the end (2). The stop at 1,000 m no longer caps the targets, so they go on past it.
+  const capped = rejoinTargets(model, 500, at(600, 200));
+  assert.ok(capped.every((t) => t.atM <= 1001));
+  const past = rejoinTargets(model, 500, at(600, 200), -Infinity, [2]);
+  assert.ok(past.some((t) => t.atM > 1100));
 });

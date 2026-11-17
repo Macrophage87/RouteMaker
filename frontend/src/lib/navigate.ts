@@ -2593,31 +2593,24 @@ export function replanPoints(model: RideModel, progressM: number, here: LonLat, 
  */
 export const NEAR_STOP_M = 50;
 
-/** The stops and via points the rider is within NEAR_STOP_M of now (`inside`), and those they left from there (`left`). */
-export interface NearStops {
-  inside: WeakSet<LonLat>;
-  left: WeakSet<LonLat>;
-}
-
-export function nearStops(): NearStops {
-  return { inside: new WeakSet(), left: new WeakSet() };
+/**
+ * The next stop or via point the rider has not reached (replanKept's first, never the end) that a sure fix came within
+ * NEAR_STOP_M of, on or off the line: one per place in the plan's points. Only the next one, so a stop the route
+ * reaches on a later pass (a cafe for the way home, passed on the way out) is never counted.
+ */
+export function nearStopsStep(near: WeakSet<LonLat>, model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, here: LonLat): void {
+  const kept = replanKept(model, progressM, points, loop);
+  if (kept.length < 2) return;
+  const next = points[kept[0]];
+  if (next && haversineM(next, here) <= NEAR_STOP_M) near.add(next);
 }
 
 /**
- * One good fix (`here`) against the plan's stops and via points (`points` between the start and the end; a loop's
- * last, its start again, is the end): each within NEAR_STOP_M is inside; one the rider was inside and is now past
- * NEAR_STOP_M from, with the fix `off` the planned line (off route or alongside it), is left, so reached. Leaving one
- * along the planned line is not: a route that bends away from a stop and back to it later has not reached it.
+ * Whether a re-route from `here` takes `point` as reached: the rider came within NEAR_STOP_M of it (`nearStopsStep`)
+ * and is past NEAR_STOP_M from it now, so it is left.
  */
-export function nearStopsStep(state: NearStops, points: readonly LonLat[], here: LonLat, off: boolean): void {
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const point = points[i];
-    if (haversineM(point, here) <= NEAR_STOP_M) state.inside.add(point);
-    else if (state.inside.has(point)) {
-      state.inside.delete(point);
-      if (off) state.left.add(point);
-    }
-  }
+export function leftNearStop(near: WeakSet<LonLat>, point: LonLat, here: LonLat): boolean {
+  return near.has(point) && haversineM(point, here) > NEAR_STOP_M;
 }
 
 /**

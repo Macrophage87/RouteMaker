@@ -138,7 +138,7 @@ import {
   replanHeld,
   replanFromM,
   viaOnLine,
-  nearStops,
+  leftNearStop,
   nearStopsStep,
   skippableVia,
   viaSkipWorth,
@@ -1279,8 +1279,8 @@ export function RideMode({
   const autoReplan = useRef<number | null>(null);
   // Where the last new route was asked from, until the rider is on its line (lib/navigate.ts replanHeld).
   const replannedFrom = useRef<LonLat | null>(null);
-  // The stops and via points the rider came near and rode away from (NEAR_STOP_M): reached, so no re-route goes back.
-  const nearStopsRef = useRef(nearStops());
+  // The stops and via points the rider came near (NEAR_STOP_M): left again, a re-route takes them as reached.
+  const nearStopsRef = useRef(new WeakSet<LonLat>());
   const settingsId = useId();
   // More, the last side button (closed at Start): it opens a row of bubbles beside it (Stephen 2026-10-26: "Have many
   // of those options just expanded as more bubble buttons, not in settings"): Less traffic, Fewer hills, Skip this stop
@@ -1635,7 +1635,7 @@ export function RideMode({
         ? restartKept(modelRef.current, progressM, plan.current.points, plan.current.loop, done)
         : replanKept(modelRef.current, progressM, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
       // A stop or via point the rider came near and rode away from is reached (NEAR_STOP_M); a restart's own picks stand.
-      const keptPoints = done ? keptAll : keptAll.filter((i) => !nearStopsRef.current.left.has(plan.current.points[i]));
+      const keptPoints = done ? keptAll : keptAll.filter((i) => !leftNearStop(nearStopsRef.current, plan.current.points[i], here));
       // Each via point where the planned line passes it, so the re-route rides the way the planned route did (viaOnLine).
       const keptLeft = withoutStop(viaOnLine(modelRef.current, plan.current.points, VIA_MARKS), keptPoints, here, skip ?? -1);
       // A loop's way home keeps to the loop (lib/navigate.ts loopShapePoint): through the middle of what was planned for
@@ -2284,8 +2284,8 @@ export function RideMode({
         say(out.events);
         return;
       }
-      // Near a stop or via point and then away from it, off the line: reached (NEAR_STOP_M). From a sure fix only.
-      if (fix.accuracyM <= OFF_SURE_M) nearStopsStep(nearStopsRef.current, plan.current.points, fix.point, out.state.off || !!out.state.alongside);
+      // Near the next stop or via point (NEAR_STOP_M): once away from it again, a re-route takes it as reached. Sure fixes only.
+      if (fix.accuracyM <= OFF_SURE_M && out.state.progressM !== null) nearStopsStep(nearStopsRef.current, modelRef.current, out.state.progressM, plan.current.points, plan.current.loop, fix.point);
       // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
       if (!restartAsked.current && out.state.progressM !== null) {
         restartAsked.current = true;
