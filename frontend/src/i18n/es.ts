@@ -2698,6 +2698,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Summit": "Cumbre",
   "Turnaround": "Media vuelta",
   "Regroup": "Reagrupar",
+  "Sprint": "Esprint",
   "Icon on the map": "Icono en el mapa",
   "The route's notes are too long for its link: shorten this note or another.": "Las notas de la ruta son demasiado largas para su enlace: acorte esta nota u otra.",
   "Write a note first.": "Escriba una nota primero.",

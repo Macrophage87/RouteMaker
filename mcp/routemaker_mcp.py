@@ -1248,6 +1248,7 @@ NOTE_ICONS = {
     "summit": "🏔️",
     "turnaround": "↩️",
     "regroup": "👥",
+    "sprint": "⚡",
 }
 KIND_ICON = {"caution": "warning", "interest": "pin"}
 NOTE_RE = re.compile(
