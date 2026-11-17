@@ -23,6 +23,11 @@ export const NOTE_ICON_WORDS: Record<NoteIcon, string> = {
   restroom: t("Restroom"),
   bikeshop: t("Bike shop"),
   pin: t("Pin"),
+  intervalstart: t("Interval start"),
+  intervalend: t("Interval end"),
+  summit: t("Summit"),
+  turnaround: t("Turnaround"),
+  regroup: t("Regroup"),
 };
 export const NOTE_ICON_LABEL = t("Icon on the map");
 /** A stop's first icon choice: none, its number only. */

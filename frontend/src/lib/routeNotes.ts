@@ -23,7 +23,8 @@ export interface RouteNote {
 
 /**
  * The icons a note can show on the map, our default set (Stephen asked for "a choice of icon", 2026-11-10; the set is
- * ours). Emoji, so the map, the app's dialog and the assistant's view draw the same picture with no image files.
+ * ours; the riding five from "intervalstart" on, Stephen asked for 2026-11-17: "something for interval starts and stops,
+ * summits, etc."). Emoji, so the map, the app's dialog and the assistant's view draw the same picture with no image files.
  */
 export const NOTE_ICONS = {
   warning: "⚠️",
@@ -38,6 +39,11 @@ export const NOTE_ICONS = {
   restroom: "🚻",
   bikeshop: "🔧",
   pin: "📍",
+  intervalstart: "⏱️",
+  intervalend: "🏁",
+  summit: "🏔️",
+  turnaround: "↩️",
+  regroup: "👥",
 } as const;
 export type NoteIcon = keyof typeof NOTE_ICONS;
 /** Each kind's icon where none was chosen. */
