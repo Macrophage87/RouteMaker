@@ -6,6 +6,7 @@
  */
 import { climbsStatusText, CLIMBS_LABEL } from "./climbsLegend.ts";
 import type { ClimbsStatus } from "./climbs.ts";
+import { INTERVALS_LABEL } from "./intervals.ts";
 import type { SectionLayer } from "./layerSection.ts";
 import { MTB_TRAILS_LABEL } from "./mtbTrailsSwitch.ts";
 import { TOPO_LINES_LABEL } from "./topoLines.ts";
@@ -28,17 +29,30 @@ export interface TerrainState {
   /** False once a check found no topo archive on the server. */
   topoReady: boolean;
   climbsStatus: ClimbsStatus;
+  /** The Interval stretches switch (lib/intervals.ts), Plan's alone: absent in Go, which leaves it out. */
+  intervals?: boolean;
+  /** Its words while on and it cannot draw (intervalsStatusText). */
+  intervalsStatus?: string;
 }
 
 /** The row's words, while it is closed, for a layer the rider has on that cannot show. */
 export const MTB_TRAILS_ROW_UNAVAILABLE = t("Mountain-bike trails need the stress map, unavailable for now.");
 export const TOPO_LINES_ROW_UNAVAILABLE = t("Topo lines are not available on this server yet.");
 
+/** Its name: in Plan, which adds Interval stretches, "training" too (the owner, 2026-11-17: "Change the name of that
+ * group to suit"). Plan is English only; Go, translated, keeps the old name. */
+export const TERRAIN_TITLE = t("Trails and terrain");
+export const TERRAIN_PLAN_TITLE = "Trails, terrain and training";
+export function terrainTitle(withIntervals: boolean): string {
+  return withIntervals ? TERRAIN_PLAN_TITLE : TERRAIN_TITLE;
+}
+
 /** The layers the section switch turns on and off: the ones that can show. */
 export function terrainLayers(state: TerrainState): SectionLayer[] {
   return [
     ...(state.stressAvailable ? [{ key: "mtb", label: MTB_TRAILS_LABEL, on: state.mtb }] : []),
     { key: "climbs", label: CLIMBS_LABEL, on: state.climbs },
+    ...(state.intervals === undefined ? [] : [{ key: "intervals", label: INTERVALS_LABEL, on: state.intervals }]),
     ...(state.topoReady ? [{ key: "topo", label: TOPO_LINES_LABEL, on: state.topo }] : []),
   ];
 }
@@ -51,6 +65,7 @@ export function terrainStatus(open: boolean, state: TerrainState): string {
   if (open) return "";
   return [
     climbsStatusText(state.climbs, state.climbsStatus),
+    state.intervals ? (state.intervalsStatus ?? "") : "",
     state.mtb && !state.stressAvailable ? MTB_TRAILS_ROW_UNAVAILABLE : "",
     state.topo && !state.topoReady ? TOPO_LINES_ROW_UNAVAILABLE : "",
   ]
