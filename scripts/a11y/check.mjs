@@ -1084,8 +1084,9 @@ if (mine(5)) {
   const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
   const at = (name) => headings.indexOf(name);
   // UI-CLEANUP: the legend is its own sheet, behind Layers' Legend button; Layers is the switches.
-  check("mtb layer: under its own heading, Trails and terrain, after Rail stations; no legend in Layers",
-    at("Trails and terrain") > at("Rail stations") && at("Rail stations") > at("Traffic stress") && at("Legend") === -1, JSON.stringify(headings));
+  // In Plan the heading is "Trails, terrain and training" since Interval stretches joined it (v0.27.3, #1314).
+  check("mtb layer: under its own heading, Trails, terrain and training, after Rail stations; no legend in Layers",
+    at("Trails, terrain and training") > at("Rail stations") && at("Rail stations") > at("Traffic stress") && at("Legend") === -1, JSON.stringify(headings));
   await p.eval(`document.querySelector('${id}').focus(); true`);
   await p.key(" ", "Space", 32);
   await sleep(150);
@@ -1192,13 +1193,14 @@ if (mine(16)) for (const mobile of [false, true]) {
   // Six since Bikeshare and e-bikes (787abd98), Places to see and the repair stands (280b1d80, 2b38bf1c) joined;
   // seven with Scenic (v0.8.0), after Trails and terrain, off by default like the rest.
   // v0.9.1: DC permits, Plan's alone, off by default, after Scenic; Potential closures since v0.17.0 (#853).
-  // Nine with Interval stretches (v0.27.2, #1304), Plan's alone, off by default, before Potential closures.
-  check(`sections (${where}): nine, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
-    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails and terrain", "Scenic", "Interval stretches", "Potential closures"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
+  // Nine with Interval stretches (v0.27.2, #1304); eight again since it moved into Trails and terrain beside
+  // Climbs, that section named "Trails, terrain and training" in Plan (v0.27.3, #1314).
+  check(`sections (${where}): eight, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
+    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails, terrain and training", "Scenic", "Potential closures"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
   const ax = await axNode(p, "#terrain-section-switch");
   const chevron = await axNode(p, "[aria-controls=terrain-section-body]");
   check(`sections (${where}): the section's switch is a switch named for it, off; the disclosure a collapsed button named for its layers`,
-    ax?.role === "switch" && ax?.name === "Trails and terrain" && String(ax?.checked) === "false" && chevron?.role === "button" && chevron?.name === "Trails and terrain layers" && String(chevron?.expanded) === "false", JSON.stringify({ ax, chevron }));
+    ax?.role === "switch" && ax?.name === "Trails, terrain and training" && String(ax?.checked) === "false" && chevron?.role === "button" && chevron?.name === "Trails, terrain and training layers" && String(chevron?.expanded) === "false", JSON.stringify({ ax, chevron }));
   // The keyboard: the section switch, its disclosure, then the next section's switch while it is closed (from
   // Places to see, the section before Trails and terrain since it joined, so the steps below start on Trails).
   await p.eval("document.querySelector('#places-section-switch').focus(); true");
@@ -1210,9 +1212,9 @@ if (mine(16)) for (const mobile of [false, true]) {
   // Space on the section switch: every layer in it on (nothing remembered yet).
   await p.key(" ", "Space", 32);
   await sleep(250);
-  const inner = () => p.eval("['mtb-trails-switch', 'climbs-switch', 'topo-lines-switch'].map((id) => document.getElementById(id).getAttribute('aria-checked'))");
+  const inner = () => p.eval("['mtb-trails-switch', 'climbs-switch', 'intervals-switch', 'topo-lines-switch'].map((id) => document.getElementById(id).getAttribute('aria-checked'))");
   const allOn = await inner();
-  check(`sections (${where}): Space turns the section on, all its layers with it, the focus kept`, JSON.stringify(allOn) === '["true","true","true"]' && (await p.eval("document.activeElement?.id")) === "terrain-section-switch" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "on", JSON.stringify(allOn));
+  check(`sections (${where}): Space turns the section on, all its layers with it, the focus kept`, JSON.stringify(allOn) === '["true","true","true","true"]' && (await p.eval("document.activeElement?.id")) === "terrain-section-switch" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "on", JSON.stringify(allOn));
   // Enter on the disclosure opens it; the layers' own switches turn two off: some on.
   await p.tab();
   await p.enter();
@@ -1221,7 +1223,7 @@ if (mine(16)) for (const mobile of [false, true]) {
   check(`sections (${where}): Enter on the disclosure shows the layers, aria-expanded true, the focus kept`, opened.expanded === "true" && !opened.hidden && opened.focus === "terrain-section-body", JSON.stringify(opened));
   await p.tab();
   check(`sections (${where}): Tab from the open disclosure is the first layer's switch`, (await p.eval("document.activeElement?.id")) === "mtb-trails-switch", await focused(p));
-  await p.eval("document.getElementById('climbs-switch').click(); document.getElementById('topo-lines-switch').click(); true");
+  await p.eval("['climbs-switch', 'intervals-switch', 'topo-lines-switch'].forEach((id) => document.getElementById(id).click()); true");
   await sleep(250);
   const some = await axNode(p, "#terrain-section-switch");
   const someWords = await p.eval("document.querySelector('#terrain-section-switch .switch-state').textContent");
@@ -1236,10 +1238,10 @@ if (mine(16)) for (const mobile of [false, true]) {
   await sleep(250);
   const back = await inner();
   check(`sections (${where}): Off hides every layer and remembers; On turns back on only the ones that were`,
-    JSON.stringify(off) === '["false","false","false"]' && kept === '{"terrain":["mtb"]}' && JSON.stringify(back) === '["true","false","false"]', JSON.stringify({ off, kept, back }));
+    JSON.stringify(off) === '["false","false","false","false"]' && kept === '{"terrain":["mtb"]}' && JSON.stringify(back) === '["true","false","false","false"]', JSON.stringify({ off, kept, back }));
   await p.shot(`${SHOTS}/layers_sections_${where}.png`);
   // Leave the browser as the later sections expect it.
-  await p.eval("['routemaker.mtbTrails', 'routemaker.climbs', 'routemaker.topoLines', 'routemaker.layerSections'].forEach((k) => localStorage.removeItem(k)); true");
+  await p.eval("['routemaker.mtbTrails', 'routemaker.climbs', 'routemaker.intervalsLayer', 'routemaker.topoLines', 'routemaker.layerSections'].forEach((k) => localStorage.removeItem(k)); true");
   await p.close();
 }
 

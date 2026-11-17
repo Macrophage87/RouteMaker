@@ -167,10 +167,14 @@ export class ViaMarks {
     return next;
   }
 
-  /** A pair moved to `to` (a dragged marker): the same kind as the one it replaces, its leg drawn as it was. */
+  /**
+   * A pair moved to `to` (a dragged marker, or a re-route's via point put on the planned line): the same kind as the
+   * one it replaces, its leg drawn as it was, a ride's own shape point still one.
+   */
   moved(from: LonLat, to: LonLat): LonLat {
     if (this.isDrawn(from)) this.drawn(to);
     this.keepLabels(from, to);
+    if (this.isShape(from)) return this.shape(to);
     return this.isVia(from) ? this.via(to) : to;
   }
 }
