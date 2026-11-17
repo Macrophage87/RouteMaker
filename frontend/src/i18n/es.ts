@@ -474,6 +474,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Topo lines are not available on this server yet.": "Las curvas de nivel aún no están disponibles en este servidor.",
   "Not available on this server yet.": "Aún no disponible en este servidor.",
   "Trails and terrain": "Senderos y terreno",
+  "Trails, terrain and training": "Senderos, terreno y entrenamiento",
   "Mountain-bike trails need the stress map, unavailable for now.": "Los senderos de bicicleta de montaña necesitan el mapa de estrés, que no está disponible por ahora.",
   "Go round": "Rodear",
   "End mountain biking": "Terminar bici de montaña",
