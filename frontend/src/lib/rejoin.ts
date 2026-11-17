@@ -108,7 +108,7 @@ export async function wayBackRoute(
   // A kept point's index in the new plan's points: after the rider's position, in order.
   const renumber = new Map(kept.map((old, i) => [old, i + 1] as const));
   let failed: ErrorKind | null = null;
-  for (const target of rejoinTargets(model, progressM, here, notBeforeM)) {
+  for (const target of rejoinTargets(model, progressM, here, notBeforeM, kept)) {
     if (cancelled()) break;
     // Through the target and on to a point a little further along the line (`onward`), so the way back arrives going
     // the line's way: a plain end could be reached from ahead, and the rider sent back along the line to it and then
@@ -140,10 +140,11 @@ export const REJOIN_ONWARD_M = 50;
  * Where the way back may join the planned route, nearest first: the line's nearest point to `here` ahead
  * of the rider's last place on it (as wayBack finds it), a little past that, then further along. Never
  * past the next stop or via point not yet reached, so none is skipped; never before `notBeforeM` (the end of a
- * stretch the rider marked closed) and a little past it. Empty when none is left ahead.
+ * stretch the rider marked closed) and a little past it. Empty when none is left ahead. With `kept` (the re-plan's
+ * points, navigate.ts replanKept), a stop or via point it leaves out (one taken as reached) does not hold the way back.
  */
-export function rejoinTargets(model: RideModel, progressM: number, here: LonLat, notBeforeM = -Infinity): RejoinTarget[] {
-  const cap = Math.min(model.lengthM, nextStopM(model, progressM));
+export function rejoinTargets(model: RideModel, progressM: number, here: LonLat, notBeforeM = -Infinity, kept?: readonly number[]): RejoinTarget[] {
+  const cap = Math.min(model.lengthM, nextStopM(model, progressM, kept));
   if (!(cap > progressM)) return [];
   if (notBeforeM >= cap) return [];
   const nearest = snap(model, here, Math.max(progressM, notBeforeM), cap);
@@ -159,10 +160,11 @@ export function rejoinTargets(model: RideModel, progressM: number, here: LonLat,
 }
 
 /** The line's place for the next stop or via point the rider has not reached (replanPoints' test); the end where none. */
-function nextStopM(model: RideModel, progressM: number): number {
+function nextStopM(model: RideModel, progressM: number, kept?: readonly number[]): number {
+  const counts = (point: number | null | undefined) => !kept || point == null || kept.includes(point);
   let next = Infinity;
-  for (const c of model.cues) if (c.kind === "stop" && c.atM > progressM + ARRIVE_M) next = Math.min(next, c.atM);
-  for (const p of model.passes ?? []) if (p.atM > progressM + ARRIVE_M) next = Math.min(next, p.atM);
+  for (const c of model.cues) if (c.kind === "stop" && c.atM > progressM + ARRIVE_M && counts(c.point ?? c.stop)) next = Math.min(next, c.atM);
+  for (const p of model.passes ?? []) if (p.atM > progressM + ARRIVE_M && counts(p.point)) next = Math.min(next, p.atM);
   return next;
 }
 
