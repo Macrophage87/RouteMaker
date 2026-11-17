@@ -9286,7 +9286,7 @@ A stretch counts by time, not length (the owner, 2026-11-17: "It's the distance 
 gain that would add it ... Basically 3 minutes is the minimum"): at least 3 minutes at 18 mph on
 the flat, slowed on a climb as the connector's interval check slows it (`CLIMB_SLOWING`), so a
 steady climb needs less ground. Each entry carries its minutes (`t`); Plan's "Show intervals from"
-picks 3, 5, 8 or 12 minutes (kept per browser as `routemaker.intervalsMinutes`). A descent of 2%
+picks 3, 5, 8, 12 or 20 minutes (kept per browser as `routemaker.intervalsMinutes`). A descent of 2%
 held 150 m still breaks one. The shorter climbs appear only once `build_intervals` runs again: a
 file from before (no `t`, a mile minimum) still draws, its minutes worked out in the browser.
 
