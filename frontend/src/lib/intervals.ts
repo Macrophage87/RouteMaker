@@ -181,7 +181,7 @@ export function IntervalsControls({ on, onChange, status = "" }: { on: boolean; 
       ),
       h("p", { className: "hint", id: "intervals-hint" }, INTERVALS_HINT),
     ),
-    status && h("p", { className: "hint intervals-status", role: "status" }, status),
+    h("p", { className: "hint intervals-status", role: "status" }, status),
     on &&
       h(
         "ul",
