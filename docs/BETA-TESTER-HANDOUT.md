@@ -61,7 +61,8 @@ routes and keeping your 311 checklist on your other devices.
   Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
 - The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
   Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see and
-  Trails and terrain (and Federal land on a Mass Ride). In Plan two more follow, both off by
+  Trails and terrain (and Federal land on a Mass Ride). In Plan, Trails and terrain is called
+  "Trails, terrain and training" and also holds Interval stretches, beside Climbs. Two more follow, both off by
   default: Scenic, and Potential closures (roads that work permits or planned work may close some day;
   routes never avoid them). Each row is the section's heading, a switch named for it, then a "layers" button that
   says whether it is collapsed or expanded. The switch turns the whole section on or off; off

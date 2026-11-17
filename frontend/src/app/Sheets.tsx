@@ -25,7 +25,7 @@ import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibi
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
 import { MtbTrailsSwitch } from "../lib/mtbTrailsSwitch.ts";
 import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
-import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
+import { stressShowable, terrainLayers, terrainStatus, terrainTitle } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
@@ -252,7 +252,7 @@ export function LayersSheet(props: LayersSheetProps) {
           control (the Climbs layer's "Show climbs from") sits under its own switch, inside the section. */}
       <LayerSection
         id="terrain"
-        title={t("Trails and terrain")}
+        title={terrainTitle(Boolean(intervals))}
         headingId="terrain-heading"
         layers={terrainLayers(terrain)}
         onLayers={(next) => {

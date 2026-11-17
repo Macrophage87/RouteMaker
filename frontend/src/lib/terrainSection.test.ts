@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { LayerSection, sectionPress, sectionState } from "./layerSection.ts";
-import { MTB_TRAILS_ROW_UNAVAILABLE, TOPO_LINES_ROW_UNAVAILABLE, stressShowable, terrainLayers, terrainStatus, type TerrainState } from "./terrainSection.ts";
+import { MTB_TRAILS_ROW_UNAVAILABLE, TOPO_LINES_ROW_UNAVAILABLE, stressShowable, terrainLayers, terrainStatus, terrainTitle, type TerrainState } from "./terrainSection.ts";
 import { CLIMBS_LOADING } from "./climbsLegend.ts";
 import { MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT, MtbTrailsSwitch } from "./mtbTrailsSwitch.ts";
 
@@ -78,4 +78,11 @@ test("in Plan, Interval stretches sit beside Climbs and count in the section swi
   assert.equal(sectionState(terrainLayers({ ...all, intervals: true })), "some");
   assert.equal(terrainStatus(false, { ...all, intervals: true, intervalsStatus: "Unavailable." }), "Unavailable.");
   assert.equal(terrainStatus(false, { ...all, intervals: false, intervalsStatus: "Unavailable." }), "");
+});
+
+test("in Plan, with Interval stretches in it, the section says training too; Go keeps its name", async () => {
+  assert.equal(terrainTitle(true), "Trails, terrain and training");
+  assert.equal(terrainTitle(false), "Trails and terrain");
+  const html = renderToStaticMarkup(createElement(LayerSection, { id: "terrain", title: terrainTitle(true), layers: terrainLayers({ ...all, intervals: false }), onLayers: () => {} }));
+  assert.match(html, /<h3 id="terrain-heading">Trails, terrain and training<\/h3>/);
 });
