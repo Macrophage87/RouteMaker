@@ -25,7 +25,7 @@ import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibi
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
 import { MtbTrailsSwitch } from "../lib/mtbTrailsSwitch.ts";
 import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
-import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
+import { stressShowable, terrainLayers, terrainStatus, terrainTitle } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
@@ -58,7 +58,7 @@ import { WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { ClimbsLayerControls } from "../lib/climbsLegend.ts";
 import { ScenicSection } from "../lib/scenicLayer.ts";
-import { IntervalsSection } from "../lib/intervals.ts";
+import { IntervalsControls } from "../lib/intervals.ts";
 import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { SteepGradeKey, steepGradesFor } from "../lib/steepGrades.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
@@ -180,7 +180,7 @@ export const PLACES_LAYER_HINT = t("Museums, gardens, viewpoints and more. Place
 export function LayersSheet(props: LayersSheetProps) {
   const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, intervals, permits, stressKeyAsk } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
-  const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
+  const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus, ...(intervals ? { intervals: intervals.on, intervalsStatus: intervals.status } : {}) };
   return (
     <SheetFrame
       id="sheet-layers"
@@ -252,13 +252,14 @@ export function LayersSheet(props: LayersSheetProps) {
           control (the Climbs layer's "Show climbs from") sits under its own switch, inside the section. */}
       <LayerSection
         id="terrain"
-        title={t("Trails and terrain")}
+        title={terrainTitle(Boolean(intervals))}
         headingId="terrain-heading"
         layers={terrainLayers(terrain)}
         onLayers={(next) => {
           if ("mtb" in next && next.mtb !== showMtbTrails) setMtbTrails(next.mtb);
           if ("climbs" in next && next.climbs !== climbsOn) changeClimbsOn(next.climbs);
           if ("topo" in next && next.topo !== showTopoLines) setTopoLines(next.topo);
+          if (intervals && "intervals" in next && next.intervals !== intervals.on) intervals.onChange(next.intervals);
         }}
         // Each layer's own status or hint line is inside; closed, the section says it.
         status={(open) => terrainStatus(open, terrain)}
@@ -268,13 +269,13 @@ export function LayersSheet(props: LayersSheetProps) {
             sits under its own switch while it is on, as the climbs' does (ClimbsLayerControls). */}
         <MtbTrailLegend />
         <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} />
+        {/* The owner, 2026-11-17: Interval stretches "next to climbs"; Plan's alone (null in Go). */}
+        {intervals && <IntervalsControls {...intervals} />}
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>
 
       {/* v0.8.0: the Scenic layer, one switch, off by default, after Trails and terrain; Plan's alone. */}
       {scenic && <ScenicSection {...scenic} drawn={scenicDrawn} />}
-      {/* The owner, 2026-11-16: stretches an interval effort can run unbroken; Plan's alone, after Scenic. */}
-      {intervals && <IntervalsSection {...intervals} />}
       {/* v0.9.1: DDOT's permits, flagged only, one switch, off by default; Plan's alone. */}
       {permits && <PermitsSection {...permits} />}
 

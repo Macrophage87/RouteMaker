@@ -244,9 +244,8 @@ test("MapView shows or hides the layer in place when the switch changes, and App
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
   // The Trails and terrain section (lib/layerSection.ts): its switch turns the three on or off together; the
   // layer's own switch is the first inside.
-  assert.match(sheet, /<LayerSection\s+id="terrain"\s+title=\{t\("Trails and terrain"\)\}\s+headingId="terrain-heading"/);
-  // Its layers through lib/terrainSection.ts (the trails only with the stress map; terrainSection.test.ts).
-  assert.match(app, /const terrain = \{ mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable\(stress\), topoReady, climbsStatus \};/);
+  assert.match(sheet, /<LayerSection\s+id="terrain"\s+title=\{terrainTitle\(Boolean\(intervals\)\)\}\s+headingId="terrain-heading"/);
+  // Its layers through lib/terrainSection.ts: which count is checked by rendering there (terrainSection.test.ts).
   assert.match(sheet, /layers=\{terrainLayers\(terrain\)\}/);
   assert.match(sheet, /if \("mtb" in next && next\.mtb !== showMtbTrails\) setMtbTrails\(next\.mtb\);/);
   const terrain = sheet.slice(sheet.indexOf('<LayerSection\n        id="terrain"'));
