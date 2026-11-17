@@ -23,7 +23,8 @@ export const INTERVALS_HINT = "3 minutes or more with no stops, busy crossings o
  * Minutes at 18 mph on the flat, slowed on a climb (the file's `t`; src/pipeline/interval_layer.py).
  */
 export const INTERVALS_MINUTES_LABEL = "Show intervals from";
-export const INTERVALS_MINUTES_OPTIONS = [3, 5, 8, 12] as const;
+// 20: the owner, 2026-11-17, "go up to 20, thats a common interval".
+export const INTERVALS_MINUTES_OPTIONS = [3, 5, 8, 12, 20] as const;
 export type IntervalsMinutes = (typeof INTERVALS_MINUTES_OPTIONS)[number];
 export const INTERVALS_MINUTES_KEY = "routemaker.intervalsMinutes";
 /** The build's pace and climb slowing, for a file written before it carried `t`. */

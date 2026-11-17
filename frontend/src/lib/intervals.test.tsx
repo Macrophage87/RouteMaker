@@ -106,7 +106,7 @@ test("by time: a short steady climb holds 3 minutes as a longer flat road does, 
   const on = await render(<IntervalsControls on onChange={() => {}} minutes={3} onMinutesChange={(m) => asked.push(m)} />);
   const select = on.container.querySelector("select") as HTMLSelectElement;
   assert.equal(on.container.querySelector(`label[for="${select.id}"]`)?.textContent, "Show intervals from");
-  assert.deepEqual([...select.options].map((o) => o.textContent), ["3 minutes", "5 minutes", "8 minutes", "12 minutes"]);
+  assert.deepEqual([...select.options].map((o) => o.textContent), ["3 minutes", "5 minutes", "8 minutes", "12 minutes", "20 minutes"]);
   await act(async () => {
     select.value = "5";
     select.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
