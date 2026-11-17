@@ -49,8 +49,9 @@ def _kept_while_unchanged(load, default_dir):
 
     The overrides folder is about 430 MB of reviewed ratings. Every rebuild test read and
     checked all of it, two or three times per rebuild (about 28 s of a 31 s rebuild), which
-    is most of what took CI from 14 to 44 minutes. The first call in each test process still
-    reads and checks every file, and the loaders' own tests use their own folders."""
+    is most of what took CI's pytest step from 14 to 39 minutes. The first call in each test
+    process still reads and checks every file, and a bad file still fails (an error is never
+    kept)."""
     kept: dict[tuple, object] = {}
     # The checked-in folder, fixed now: a test that points the default elsewhere is not cached.
     home = Path(default_dir()).resolve()
@@ -59,10 +60,8 @@ def _kept_while_unchanged(load, default_dir):
     def kept_load(directory=None, *args, **kwargs):
         if Path(directory or default_dir()).resolve() != home:
             return load(directory, *args, **kwargs)
-        folder = home
-        files = tuple(
-            (p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in sorted(folder.glob("*.json"))
-        )
+        stats = ((p.name, p.stat()) for p in sorted(home.glob("*.json")))
+        files = tuple((name, st.st_mtime_ns, st.st_size) for name, st in stats)
         key = (files, args, tuple(sorted(kwargs.items())))
         if key not in kept:
             kept.clear()
