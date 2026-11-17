@@ -993,6 +993,9 @@ map's credits (301 is about data sources). It is credited where the font is, in 
   as pictures unless Settings > Display chooses the phone's own emoji. Inspected as the first was;
   sizes and sha256 in `fixtures/icons/README.md`, checked by `frontend/src/lib/stopIcons.test.ts`.
   Same licence and notice.
+- Six more, 2026-11-17 (Stephen: "something for interval starts and stops, summits, etc."): stopwatch,
+  chequered flag, snow-capped mountain, right arrow curving left, busts in silhouette and high voltage, for interval
+  start, interval end, summit, turnaround, regroup and sprint (his "Sprint sounds good too"). Same commit, same checks, same licence; sha256 in `fixtures/icons/README.md`.
 - Records: `fixtures/icons/README.md`; docs/DEVELOPMENT.md, "Avoid-rated junctions".
 
 ## The Mass Ride flow model (literature checked; video check pending: FOLLOWUP-FLOW-CALIBRATION)

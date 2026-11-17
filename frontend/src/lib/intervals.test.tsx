@@ -14,7 +14,7 @@ import {
   INTERVALS_NONE,
   INTERVALS_OPACITY,
   INTERVALS_PREF_KEY,
-  IntervalsSection,
+  IntervalsControls,
   intervalsGeoJson,
   intervalsLayers,
   intervalsStatusText,
@@ -73,19 +73,16 @@ test("off by default and kept on this device", () => {
   assert.equal(intervalsStatusText(false, "empty"), "");
 });
 
-test("the rider sees one switch, its hint, and the key while it is on", async () => {
+test("the rider sees one switch and its hint; the key only while it is on", async () => {
   const asked: boolean[] = [];
-  const off = await render(<IntervalsSection on={false} onChange={(on) => asked.push(on)} />);
+  const off = await render(<IntervalsControls on={false} onChange={(on) => asked.push(on)} />);
   const toggle = off.get("switch", "Interval stretches");
   assert.ok(toggle);
   await click(toggle);
   assert.deepEqual(asked, [true]);
+  assert.ok(off.text().includes(INTERVALS_HINT));
   assert.ok(!off.text().includes(INTERVALS_LEGEND_TEXT));
-});
-
-test("opened while on, it says what counts and shows its key", async () => {
-  const on = await render(<IntervalsSection on onChange={() => {}} />);
-  await click(on.button("Interval stretches layers"));
-  assert.ok(on.text().includes(INTERVALS_HINT));
+  const on = await render(<IntervalsControls on onChange={() => {}} status={INTERVALS_NONE} />);
   assert.ok(on.text().includes(INTERVALS_LEGEND_TEXT));
+  assert.ok(on.text().includes(INTERVALS_NONE));
 });
