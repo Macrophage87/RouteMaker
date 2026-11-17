@@ -9278,15 +9278,16 @@ kept per browser as `routemaker.intervalsLayer`; not in Go, not on the Mass Ride
 `frontend/src/interval-data/intervals.json`: a pink glow under the stress line, with arrows where a
 stretch holds one way only. `GET /api/intervals-near` and the connector's `intervals_near` read the
 same file, so `docker/api.Dockerfile` copies it into the api image and a new file reaches the
-connector with the next api image. The first file was written on 2026-11-16 (2,871 stretches;
-counts in `frontend/src/interval-data/README.md`). An unbuilt file (`"built": null`) makes the
+connector with the next api image. The first file was written on 2026-11-16 (2,871 stretches, a
+mile minimum); the minutes rule's on 2026-11-17 (5,614; counts in
+`frontend/src/interval-data/README.md`). An unbuilt file (`"built": null`) makes the
 switch say the stretches arrive with the next map data update, and the endpoint answer 503.
 
 A stretch counts by time, not length (the owner, 2026-11-17: "It's the distance with the elevation
 gain that would add it ... Basically 3 minutes is the minimum"): at least 3 minutes at 18 mph on
 the flat, slowed on a climb as the connector's interval check slows it (`CLIMB_SLOWING`), so a
 steady climb needs less ground. Each entry carries its minutes (`t`); Plan's "Show intervals from"
-picks 3, 5, 8 or 12 minutes (kept per browser as `routemaker.intervalsMinutes`). A descent of 2%
+picks 3, 5, 8, 12 or 20 minutes (kept per browser as `routemaker.intervalsMinutes`). A descent of 2%
 held 150 m still breaks one. The shorter climbs appear only once `build_intervals` runs again: a
 file from before (no `t`, a mile minimum) still draws, its minutes worked out in the browser.
 
@@ -9305,8 +9306,10 @@ reads the live table, the extract and the elevation tiles, as `build_climbs` doe
 
     flock <heavy.lock> docker compose exec -T rebuild ./manage.py build_intervals </dev/null
 
-Measured 2026-11-16 on the PC: the rebuild container peaked at about 1.6 GiB (WSL "available"
-never under 4.7 GB), 145 s.
+Measured 2026-11-17 on the PC (the minutes rule, 5,614 stretches): the rebuild container peaked at
+about 2.0 GiB (WSL "available" never under 4,047 MB), 179 s. A rebuild image built before #1304
+lacks `pipeline/interval_layer.py` and `core/management/commands/build_intervals.py`: `docker cp`
+both into the running rebuild container first and remove them after, until the next image build.
 
 It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
 to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's
