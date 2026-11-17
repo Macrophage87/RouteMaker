@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.27.3](#deploying-v0273)
 - [Deploying v0.27.2](#deploying-v0272)
 - [Deploying v0.27.1](#deploying-v0271)
 - [Deploying v0.27.0](#deploying-v0270)
