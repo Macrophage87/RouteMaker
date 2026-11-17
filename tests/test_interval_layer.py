@@ -79,6 +79,25 @@ class TestLengthAndGround:
         assert len(eastward) == 2 and all(s.length_m >= il.MIN_LENGTH_M for s in eastward)
         assert not any(s.both for s in out)
 
+    def test_a_short_climb_counts_by_its_minutes(self):
+        # The owner, 2026-11-17: "if it's a continuous uphill, you don't need as much distance".
+        # 1.2 km at 5%: 1,040 m after the ends, about 3.4 minutes up at 18 mph; flat, too short.
+        [s] = found([road(1, length_m=1200)], Ground(0.05))
+        assert not s.both and s.rise_m > 0 and s.minutes >= il.MIN_EFFORT_MIN
+        assert found([road(1, length_m=1200)]) == []
+
+    def test_a_both_ways_part_too_quick_downhill_holds_uphill_only(self):
+        # 1.6 km at 1.9% (under the 2% that breaks a descent): flat both ways, but only uphill takes
+        # 3 minutes, so it is written once, one way, up.
+        [s] = found([road(1, length_m=1600)], Ground(0.019))
+        assert not s.both and s.rise_m > 0 and s.line[0][0] < s.line[-1][0]
+
+    def test_minutes_follow_the_connector_s_slowing(self):
+        mile = il.METRES_PER_MILE
+        assert round(il.effort_minutes(mile, 0), 2) == round(60 / 18, 2)
+        assert round(il.effort_minutes(mile, mile * 0.05), 2) == round(60 / (18 / 1.6), 2)
+        assert il.effort_minutes(mile, -50) == il.effort_minutes(mile, 0)
+
     def test_lts4_is_never_part_of_one(self):
         assert found([road(1, tier=4)]) == []
 
@@ -202,6 +221,7 @@ class TestFile:
         [entry] = doc["intervals"]
         assert entry["l"] == 2840 and entry["r"] == 85 and entry["g"] == 3.0
         assert entry["s"] == "p" and entry["n"] == "Capital Crescent Trail" and "w" not in entry
+        assert entry["t"] == round(il.effort_minutes(2840, 85), 1)
         assert doc["counts"] == {"both_ways": 0, "one_way": 1}
         path = tmp_path / "intervals.json"
         il.write(path, doc)
