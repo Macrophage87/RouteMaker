@@ -9,7 +9,7 @@ import type { DescriptionEntry, RouteResponse, RouteResult, StressSpan } from ".
 import { routeRequestBody } from "./api.ts";
 import { dialFields, startDials } from "./dials.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, shapesHome, viaOnLine } from "./navigate.ts";
+import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, shapesHome, viaOnLine, nearStops, nearStopsStep } from "./navigate.ts";
 import { isRoundTrip } from "./loop.ts";
 import { ViaMarks, VIA_MARKS, stopsOnly, withVias, withViasOnLegs } from "./pointKinds.ts";
 import { REJOIN_ONWARD_M, rejoinTargets, rejoinsFirst, wayBackRoute } from "./rejoin.ts";
@@ -389,4 +389,30 @@ test("a re-route sends each via point where the planned line passes it, not wher
   close(haversineM(movedShape, at(500, 0)), 0, 0.5);
   assert.equal(marks.isShape(movedShape), true);
   assert.equal(marks.isVia(movedShape), true);
+});
+
+// ---- A stop passed near and left is reached (Stephen, 2026-11-17: within 50 m, then away) ---------------------------
+
+test("a stop the rider came within 50 m of and rode away from, off the line, is reached; along the line it is not", () => {
+  const stop = at(1000, 0);
+  const points: LonLat[] = [at(0, 0), stop, at(2000, 2000)];
+  // Before: no such rule, so a re-route sent the rider back to the stop's exact spot.
+  const off = nearStops();
+  nearStopsStep(off, points, at(1020, 20), true); // 28 m away: near
+  assert.equal(off.left.has(stop), false);
+  nearStopsStep(off, points, at(1100, 20), true); // 102 m away, off the line: left, so reached
+  assert.equal(off.left.has(stop), true);
+  // The same ride along the planned line (a road that bends away and comes back to the stop later): not reached.
+  const along = nearStops();
+  nearStopsStep(along, points, at(1020, 20), false);
+  nearStopsStep(along, points, at(1100, 20), false);
+  assert.equal(along.left.has(stop), false);
+  // Never within 50 m: never reached, however far off the line. The start and the end are never counted.
+  const far = nearStops();
+  nearStopsStep(far, points, at(1000, 80), true);
+  nearStopsStep(far, points, at(1300, 80), true);
+  nearStopsStep(far, points, at(0, 20), true);
+  nearStopsStep(far, points, at(0, 500), true);
+  assert.equal(far.left.has(stop), false);
+  assert.equal(far.left.has(points[0]), false);
 });

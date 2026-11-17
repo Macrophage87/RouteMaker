@@ -2585,6 +2585,42 @@ export function replanPoints(model: RideModel, progressM: number, here: LonLat, 
 }
 
 /**
+ * A stop or via point the rider came this close to (about 165 ft) and then rode away from, off the planned line, is
+ * taken as reached, so a re-route never sends the rider back for it (Stephen, 2026-11-17: "If you pass within 200m of a
+ * stop and then leave it, it's assumed that you've reached the stop", then "We could try 50m from that point"). His
+ * choice. A big place (Union Station: "We're not expecting people to go to the exact entrance") would count from its
+ * footprint's edge, which a plan's points do not carry yet.
+ */
+export const NEAR_STOP_M = 50;
+
+/** The stops and via points the rider is within NEAR_STOP_M of now (`inside`), and those they left from there (`left`). */
+export interface NearStops {
+  inside: WeakSet<LonLat>;
+  left: WeakSet<LonLat>;
+}
+
+export function nearStops(): NearStops {
+  return { inside: new WeakSet(), left: new WeakSet() };
+}
+
+/**
+ * One good fix (`here`) against the plan's stops and via points (`points` between the start and the end; a loop's
+ * last, its start again, is the end): each within NEAR_STOP_M is inside; one the rider was inside and is now past
+ * NEAR_STOP_M from, with the fix `off` the planned line (off route or alongside it), is left, so reached. Leaving one
+ * along the planned line is not: a route that bends away from a stop and back to it later has not reached it.
+ */
+export function nearStopsStep(state: NearStops, points: readonly LonLat[], here: LonLat, off: boolean): void {
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const point = points[i];
+    if (haversineM(point, here) <= NEAR_STOP_M) state.inside.add(point);
+    else if (state.inside.has(point)) {
+      state.inside.delete(point);
+      if (off) state.left.add(point);
+    }
+  }
+}
+
+/**
  * Points closer than this (metres) to the planned line's place for a via point are sent as they are (`viaOnLine`):
  * on the line already, so nothing changes. Our default, unmeasured.
  */
