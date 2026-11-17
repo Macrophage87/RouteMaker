@@ -86,6 +86,12 @@ class TestLengthAndGround:
         assert not s.both and s.rise_m > 0 and s.minutes >= il.MIN_EFFORT_MIN
         assert found([road(1, length_m=1200)]) == []
 
+    def test_a_both_ways_part_too_quick_downhill_holds_uphill_only(self):
+        # 1.6 km at 1.9% (under the 2% that breaks a descent): flat both ways, but only uphill takes
+        # 3 minutes, so it is written once, one way, up.
+        [s] = found([road(1, length_m=1600)], Ground(0.019))
+        assert not s.both and s.rise_m > 0 and s.line[0][0] < s.line[-1][0]
+
     def test_minutes_follow_the_connector_s_slowing(self):
         mile = il.METRES_PER_MILE
         assert round(il.effort_minutes(mile, 0), 2) == round(60 / 18, 2)

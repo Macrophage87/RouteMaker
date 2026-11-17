@@ -9287,7 +9287,8 @@ gain that would add it ... Basically 3 minutes is the minimum"): at least 3 minu
 the flat, slowed on a climb as the connector's interval check slows it (`CLIMB_SLOWING`), so a
 steady climb needs less ground. Each entry carries its minutes (`t`); Plan's "Show intervals from"
 picks 3, 5, 8 or 12 minutes (kept per browser as `routemaker.intervalsMinutes`). A descent of 2%
-held 150 m still breaks one.
+held 150 m still breaks one. The shorter climbs appear only once `build_intervals` runs again: a
+file from before (no `t`, a mile minimum) still draws, its minutes worked out in the browser.
 
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
@@ -9295,8 +9296,9 @@ railway crossings, barriers, from the extract's node tags; a stop or yield sign 
 node only where the stretch is not the busier road), at a busy road (LTS 3+) crossed, at
 any road a path meets, at a sharp turn (60 degrees), and at a descent (2% held 150 m) for the
 direction it falls; LTS 4 and Avoid never count. The numbers are the connector's interval check's
-(`mcp/routemaker_mcp.py`, the owner's 2026-10-25 ask), except the 1 mile minimum, which is our
-default (unmeasured). `JUNCTION_RULE = "every"` cuts at every road that joins instead.
+(`mcp/routemaker_mcp.py`, the owner's 2026-10-25 ask), and the 3 minute minimum is the owner's
+(2026-11-17); our only own number (unmeasured) is the 400 m floor (`MIN_LENGTH_M`), the shortest
+piece looked at. `JUNCTION_RULE = "every"` cuts at every road that joins instead.
 
 **Writing it**, on the build host after a swap, under the heavy-job lock with 3,000 MB free (it
 reads the live table, the extract and the elevation tiles, as `build_climbs` does):
