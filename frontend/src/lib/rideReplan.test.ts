@@ -9,7 +9,7 @@ import type { DescriptionEntry, RouteResponse, RouteResult, StressSpan } from ".
 import { routeRequestBody } from "./api.ts";
 import { dialFields, startDials } from "./dials.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, shapesHome } from "./navigate.ts";
+import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, shapesHome, viaOnLine } from "./navigate.ts";
 import { isRoundTrip } from "./loop.ts";
 import { ViaMarks, VIA_MARKS, stopsOnly, withVias, withViasOnLegs } from "./pointKinds.ts";
 import { REJOIN_ONWARD_M, rejoinTargets, rejoinsFirst, wayBackRoute } from "./rejoin.ts";
@@ -355,4 +355,32 @@ test("a loop's way home takes no shape point where its end ends a drawn leg", ()
   assert.equal(shapesHome({ ...ride, keptPoints: 2 }), false);
   const src = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(src, /const endDrawn = keptLeft\.length > 0 && VIA_MARKS\.isDrawn\(keptLeft\[keptLeft\.length - 1\]\);/);
+});
+
+// ---- A re-route's via points where the planned line passes them (Stephen, 2026-11-17, Piney Branch) ----------------
+
+test("a re-route sends each via point where the planned line passes it, not where it was put beside the line", () => {
+  // The via point was put 15 m north of A Street (on a road beside the path the planned route rode), 500 m along.
+  const marks = new ViaMarks();
+  const viaPut = marks.via(at(500, 15));
+  const points: LonLat[] = [at(0, 0), viaPut, at(1000, 1000)];
+  const r = route(
+    planned().geometry.coordinates as LonLat[],
+    [stretch(0, 500, "A Street"), { ...stretch(500, 500, "Via point."), kind: "via", via: 1 }, stretch(500, 1000, "A Street"), (planned().description ?? [])[1]],
+    [span(0, 1000, 1), span(1000, 2000, 3)],
+  );
+  const model = rideModel(r, [1]);
+  const sent = viaOnLine(model, points, marks);
+  // Before: the point as put, which the API (a via matched to its own way, 0 m) held to the road beside the path.
+  // Now: the line's own point there, still a via point; the start and the end as they were.
+  close(haversineM(sent[1], at(500, 0)), 0, 0.5);
+  assert.equal(marks.isVia(sent[1]), true);
+  assert.equal(sent[0], points[0]);
+  assert.equal(sent[2], points[2]);
+  // A via point already on the line is the same pair, so nothing is asked again for it.
+  const onLine = marks.via(at(500, 0));
+  assert.equal(viaOnLine(model, [points[0], onLine, points[2]], marks)[1], onLine);
+  // A stop is sent where it was put: it is where the rider wants to be.
+  const stop = at(500, 15);
+  assert.equal(viaOnLine(rideModel(r, []), [points[0], stop, points[2]], marks)[1], stop);
 });

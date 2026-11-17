@@ -137,6 +137,7 @@ import {
   endsOnStart,
   replanHeld,
   replanFromM,
+  viaOnLine,
   skippableVia,
   viaSkipWorth,
   viaSkippedNote,
@@ -1629,7 +1630,8 @@ export function RideMode({
       const keptPoints = done
         ? restartKept(modelRef.current, progressM, plan.current.points, plan.current.loop, done)
         : replanKept(modelRef.current, progressM, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
-      const keptLeft = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
+      // Each via point where the planned line passes it, so the re-route rides the way the planned route did (viaOnLine).
+      const keptLeft = withoutStop(viaOnLine(modelRef.current, plan.current.points, VIA_MARKS), keptPoints, here, skip ?? -1);
       // A loop's way home keeps to the loop (lib/navigate.ts loopShapePoint): through the middle of what was planned for
       // it, a via point, so the re-plan to the start is not the way out again. Only the end left ahead, and not for a
       // detour or a restart; left out again as a via point is, where it costs more than VIA_SKIP_EXTRA_S (below).

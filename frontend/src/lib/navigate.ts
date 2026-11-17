@@ -2584,6 +2584,33 @@ export function replanPoints(model: RideModel, progressM: number, here: LonLat, 
   return [here, ...replanKept(model, progressM, points, loop).map((i) => points[i])];
 }
 
+/**
+ * Points closer than this (metres) to the planned line's place for a via point are sent as they are (`viaOnLine`):
+ * on the line already, so nothing changes. Our default, unmeasured.
+ */
+export const VIA_ON_LINE_M = 1;
+
+/**
+ * The plan's points for a re-route (by the same index), each via point where the planned line passes it (`passes`) rather than where it was put:
+ * the API matches a via point to the way it sits on alone (routing.VIA_RADIUS_M, 0 m), so a via put on a parkway beside
+ * its side path held every re-route on the parkway, while the planned route (made when a via matched the cheapest way
+ * near it, or from a saved line) rode the path (Stephen, 2026-11-17: a re-route on Piney Branch "refused to have me go
+ * on the trail"). The planned line is the way the rider chose through the point, so a re-route keeps it. A stop, the
+ * end, and a point the line does not place are sent as they are; the marks (via, drawn leg) are kept (`moved`).
+ */
+export function viaOnLine(
+  model: Pick<RideModel, "coordinates" | "along" | "passes">,
+  points: readonly LonLat[],
+  marks: { isVia: (p: LonLat) => boolean; moved: (from: LonLat, to: LonLat) => LonLat },
+): LonLat[] {
+  return points.map((point, i) => {
+    const pass = marks.isVia(point) ? model.passes?.find((p) => p.point === i) : undefined;
+    if (!pass || model.coordinates.length < 2) return point;
+    const on = pointAt(model, pass.atM);
+    return haversineM(on, point) < VIA_ON_LINE_M ? point : marks.moved(point, [on[0], on[1]]);
+  });
+}
+
 /** How far along the line a rider off it may have got, for each metre they now are from their last place on it, as the crow flies. */
 export const REPLAN_REACH_FACTOR = 1.5;
 
