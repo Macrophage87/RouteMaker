@@ -5492,8 +5492,9 @@ TOOLS = [
         "title": "Interval stretches near a place",
         "description": (
             "List the stretches near a point where an interval effort can run unbroken (the"
-            " Intervals map layer): at least a mile, no signal, stop or yield sign, busy road to"
-            " cross or sharp turn, never LTS 4, and flat or uphill in the direction given. Each"
+            " Intervals map layer): at least 3 minutes at 18 mph (less ground up a climb), no"
+            " signal, stop or yield sign, busy road to cross or sharp turn, never LTS 4, and"
+            " flat or uphill in the direction given. Each"
             " has name, miles, rise, average grade, `both_ways` (else ride it start to end"
             " only), start, end and `through` points along it, and `effort_minutes` at"
             " pace_mph. Plan one with plan_route from its start through its `through` points"

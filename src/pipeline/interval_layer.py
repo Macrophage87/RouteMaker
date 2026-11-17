@@ -29,8 +29,11 @@ stop during the on sets"):
   have, and a one-way road ridden against its traffic (that way only).
 
 A stop, an intersection or a sharp turn cuts `PAD_M` either side: the slowing before and the
-getting going after. What is left and is at least `MIN_LENGTH_M` long is a stretch. A stretch
-that holds both ways is written once with `w`.
+getting going after. What is left is a stretch when riding it takes at least `MIN_EFFORT_MIN`
+minutes at `EFFORT_PACE_MPH` on the flat, slowed on a climb as the connector's interval check
+slows it (`effort_minutes`): the owner, 2026-11-17, "It's the distance with the elevation gain
+that would add it ... if it's a continuous uphill, you don't need as much distance". A stretch
+that holds both ways is written once with `w`, its minutes the quicker way's.
 
 Every threshold here is the interval check's, or our default (unmeasured), as marked.
 
@@ -47,6 +50,7 @@ The file, one stretch per entry, short keys (frontend/src/lib/intervals.ts reads
     n    its name from its roads (`climb_names.roads`); left out when it has none
     s    "p" a paved traffic-free path, "g" mostly unpaved; left out on a road
     b    1 when most of it is on roads rated LTS 3 (left out otherwise)
+    t    minutes to ride it at EFFORT_PACE_MPH, to a tenth (the quicker way for `w`)
 """
 
 from __future__ import annotations
@@ -64,8 +68,15 @@ from . import climb_layer, climb_names
 from .climb_layer import HgtElevation, Sample, SegmentLine, Stroke
 
 FORMAT_VERSION = 1
-# Our default (unmeasured): about three minutes at 20 mph, a short interval's length.
-MIN_LENGTH_M = 1609.344
+# The owner's shortest interval, 2026-11-17 ("a 3', 5', 8', etc interval stretch").
+MIN_EFFORT_MIN = 3.0
+# The connector's (mcp/routemaker_mcp.py, pace_mph's default and CLIMB_SLOWING): an effort's
+# speed on the flat, and how a grade slows it: pace / (1 + CLIMB_SLOWING * grade %).
+EFFORT_PACE_MPH = 18.0
+CLIMB_SLOWING = 0.12
+METRES_PER_MILE = 1609.344
+# Our default: no piece shorter than this is looked at (three minutes is longer even at 15%).
+MIN_LENGTH_M = 400.0
 # The interval check's (mcp/routemaker_mcp.py): a turn this sharp slows an effort, a descent
 # this steep held this far breaks one, and the slowing and getting going round a stop or turn
 # (0.05 mi).
@@ -331,6 +342,15 @@ def clear_spans(total: float, cuts: Iterable[Span], min_length: float = MIN_LENG
     return out
 
 
+def effort_minutes(length_m: float, rise_m: float, pace_mph: float = EFFORT_PACE_MPH) -> float:
+    """The minutes an effort takes over `length_m` rising `rise_m` (a fall rides as flat)."""
+    if length_m <= 0:
+        return 0.0
+    grade = max(0.0, rise_m / length_m * 100.0)
+    speed = pace_mph / (1 + CLIMB_SLOWING * grade)
+    return length_m / METRES_PER_MILE / speed * 60.0
+
+
 def descents(samples: Sequence[Sample], sign: int) -> list[Span]:
     """The spans where the ground falls DESCENT_PCT or more over DESCENT_MIN_M, riding along
     the stroke (sign +1) or against it (sign -1)."""
@@ -382,6 +402,12 @@ class Stretch:
     surface: str | None = None
     busy: bool = False
 
+    @property
+    def minutes(self) -> float:
+        """At EFFORT_PACE_MPH, its riding way; the quicker way where it holds both."""
+        rise = -abs(self.rise_m) if self.both else self.rise_m
+        return effort_minutes(self.length_m, rise)
+
     def entry(self) -> dict:
         line = [
             climb_layer._rounded(p)
@@ -402,6 +428,7 @@ class Stretch:
             out["s"] = self.surface
         if self.busy:
             out["b"] = 1
+        out["t"] = round(self.minutes, 1)
         return out
 
 
@@ -462,19 +489,19 @@ def stretches_on_stroke(
         )
         if twin is not None:
             c, d = reading[-1][twin]
-            if min(b, d) - max(a, c) < MIN_LENGTH_M:
-                twin = None  # the shared part is too short: each reading stands alone
-        if twin is not None:
-            used_back.add(twin)
-            found.append(
-                _stretch(stroke, segments, samples, sample_along, max(a, c), min(b, d), 1, True)
+            shared = _stretch(
+                stroke, segments, samples, sample_along, max(a, c), min(b, d), 1, True
             )
-        else:
-            found.append(_stretch(stroke, segments, samples, sample_along, a, b, 1, False))
+            if shared.minutes >= MIN_EFFORT_MIN:
+                used_back.add(twin)
+                found.append(shared)
+                continue
+            # The shared part is too short the quicker way: each reading stands alone.
+        found.append(_stretch(stroke, segments, samples, sample_along, a, b, 1, False))
     for k, (c, d) in enumerate(reading[-1]):
         if k not in used_back:
             found.append(_stretch(stroke, segments, samples, sample_along, c, d, -1, False))
-    return found
+    return [s for s in found if s.minutes >= MIN_EFFORT_MIN]
 
 
 def _stretch(stroke, segments, samples, sample_along, a, b, sign, both) -> Stretch:
@@ -530,7 +557,8 @@ def document(found: Sequence[Stretch], built: datetime | None = None) -> dict:
         "built": (built or datetime.now(UTC)).strftime("%Y-%m-%d"),
         "source": "OpenStreetMap contributors, ODbL 1.0; USGS 3DEP 1 arc-second, public domain",
         "rule": {
-            "min_m": round(MIN_LENGTH_M),
+            "min_minutes": MIN_EFFORT_MIN,
+            "pace_mph": EFFORT_PACE_MPH,
             "sharp_turn_deg": SHARP_TURN_DEG,
             "descent_pct": DESCENT_PCT,
             "descent_m": DESCENT_MIN_M,
