@@ -1243,6 +1243,11 @@ NOTE_ICONS = {
     "restroom": "🚻",
     "bikeshop": "🔧",
     "pin": "📍",
+    "intervalstart": "⏱️",
+    "intervalend": "🏁",
+    "summit": "🏔️",
+    "turnaround": "↩️",
+    "regroup": "👥",
 }
 KIND_ICON = {"caution": "warning", "interest": "pin"}
 NOTE_RE = re.compile(

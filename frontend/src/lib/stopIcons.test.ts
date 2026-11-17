@@ -23,6 +23,11 @@ const NOTO_SHA256: Record<string, string> = {
   "noto-emoji-u1f6bb.svg": "7c1684ce488d8cc18946f651a313fcbd5203387ffaac48c57e44fc95ad07b244",
   "noto-emoji-u2615.svg": "5830ae818458ee3c51208af6196a8a6c3d2a27e652aed2380c0b26a39d13d9dc",
   "noto-emoji-u26a0.svg": "040e0a04356c12994f61a7011f47c7f278394f039feb01b5f3b2f82be3c7cc1f",
+  "noto-emoji-u23f1.svg": "2aae7bbb7c57bd411ac81416c66ff02056d141e6c6e09a317834fdbab774b3df",
+  "noto-emoji-u1f3c1.svg": "127643a146f73cee9d2d8cec69e8cbc48080900067ea1539e56610c37fe22457",
+  "noto-emoji-u1f3d4.svg": "04e27209887a3794b0b318f63a2fe7edda62fadab9d53fed5076b017f6b46075",
+  "noto-emoji-u21a9.svg": "22482f5355753424d8981796b6ba639d1a45d4e61190ae457a02744043a04118",
+  "noto-emoji-u1f465.svg": "07de7af8ebd92ff8dbb559631a7e4139ff29b9d94f9f3ebbafb5346388ad5293",
 };
 
 test("a stop's icon travels in the link as si=index:icon; a via point or an unknown icon has none", () => {

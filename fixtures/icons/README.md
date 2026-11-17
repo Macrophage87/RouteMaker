@@ -44,3 +44,18 @@ files' own `#` gradient ids, no external reference. Committed exactly as downloa
 | `noto-emoji-u1f6bb.svg` | U+1F6BB restroom | 2,813 | `7c1684ce488d8cc18946f651a313fcbd5203387ffaac48c57e44fc95ad07b244` |
 | `noto-emoji-u2615.svg` | U+2615 hot beverage | 3,662 | `5830ae818458ee3c51208af6196a8a6c3d2a27e652aed2380c0b26a39d13d9dc` |
 | `noto-emoji-u26a0.svg` | U+26A0 warning sign | 2,324 | `040e0a04356c12994f61a7011f47c7f278394f039feb01b5f3b2f82be3c7cc1f` |
+
+## Riding icons (2026-11-17)
+
+Five more for notes and stops (Stephen 2026-11-17: "something for interval starts and stops, summits, etc."; the
+five are our pick): downloaded 2026-11-17 from the same commit, `2D/svg/emoji_u<code>.svg`, into an empty directory and
+read before they were copied in, as above. Committed exactly as downloaded. Same licence. (The national park mountain
+U+26F0 and the arrows U+1F504 were passed over: their files carry a large Illustrator data block.)
+
+| File | Emoji | Bytes | sha256 |
+| --- | --- | --- | --- |
+| `noto-emoji-u23f1.svg` | U+23F1 stopwatch | 6,866 | `2aae7bbb7c57bd411ac81416c66ff02056d141e6c6e09a317834fdbab774b3df` |
+| `noto-emoji-u1f3c1.svg` | U+1F3C1 chequered flag | 4,942 | `127643a146f73cee9d2d8cec69e8cbc48080900067ea1539e56610c37fe22457` |
+| `noto-emoji-u1f3d4.svg` | U+1F3D4 snow-capped mountain | 9,781 | `04e27209887a3794b0b318f63a2fe7edda62fadab9d53fed5076b017f6b46075` |
+| `noto-emoji-u21a9.svg` | U+21A9 right arrow curving left | 1,185 | `22482f5355753424d8981796b6ba639d1a45d4e61190ae457a02744043a04118` |
+| `noto-emoji-u1f465.svg` | U+1F465 busts in silhouette | 2,285 | `07de7af8ebd92ff8dbb559631a7e4139ff29b9d94f9f3ebbafb5346388ad5293` |
