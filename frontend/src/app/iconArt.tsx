@@ -21,11 +21,12 @@ import intervalend from "../icons/noto-emoji-u1f3c1.svg?url";
 import summit from "../icons/noto-emoji-u1f3d4.svg?url";
 import turnaround from "../icons/noto-emoji-u21a9.svg?url";
 import regroup from "../icons/noto-emoji-u1f465.svg?url";
+import sprint from "../icons/noto-emoji-u26a1.svg?url";
 import { useEffect, useState } from "react";
 import { NOTE_ICONS, type NoteIcon } from "../lib/routeNotes.ts";
 import { ICON_STYLE_EVENT, readIconStyle, type IconStyle } from "../lib/iconStyle.ts";
 
-export const NOTO_ICON_URLS: Record<NoteIcon, string> = { warning, pothole, traffic, construction, view, photo, water, food, coffee, restroom, bikeshop, pin, intervalstart, intervalend, summit, turnaround, regroup };
+export const NOTO_ICON_URLS: Record<NoteIcon, string> = { warning, pothole, traffic, construction, view, photo, water, food, coffee, restroom, bikeshop, pin, intervalstart, intervalend, summit, turnaround, regroup, sprint };
 
 /** The icon as an element, hidden from screen readers (the sign or the choice beside it carries the words). */
 export function iconArt(icon: NoteIcon, style: IconStyle = readIconStyle(), className = "icon-art"): HTMLElement {

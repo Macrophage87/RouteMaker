@@ -47,7 +47,7 @@ files' own `#` gradient ids, no external reference. Committed exactly as downloa
 
 ## Riding icons (2026-11-17)
 
-Five more for notes and stops (Stephen 2026-11-17: "something for interval starts and stops, summits, etc."; the
+Five more (and a sixth, sprint) for notes and stops (Stephen 2026-11-17: "something for interval starts and stops, summits, etc."; the
 five are our pick): downloaded 2026-11-17 from the same commit, `2D/svg/emoji_u<code>.svg`, into an empty directory and
 read before they were copied in, as above. Committed exactly as downloaded. Same licence. (The national park mountain
 U+26F0 and the arrows U+1F504 were passed over: their files carry a large Illustrator data block.)
@@ -59,3 +59,4 @@ U+26F0 and the arrows U+1F504 were passed over: their files carry a large Illust
 | `noto-emoji-u1f3d4.svg` | U+1F3D4 snow-capped mountain | 9,781 | `04e27209887a3794b0b318f63a2fe7edda62fadab9d53fed5076b017f6b46075` |
 | `noto-emoji-u21a9.svg` | U+21A9 right arrow curving left | 1,185 | `22482f5355753424d8981796b6ba639d1a45d4e61190ae457a02744043a04118` |
 | `noto-emoji-u1f465.svg` | U+1F465 busts in silhouette | 2,285 | `07de7af8ebd92ff8dbb559631a7e4139ff29b9d94f9f3ebbafb5346388ad5293` |
+| `noto-emoji-u26a1.svg` | U+26A1 high voltage (sprint; Stephen 2026-11-17 "Sprint sounds good too") | 1,607 | `411cd100c1cfb2106ca16b7a27c1571ccc758af74a137506198e6dfc06d4dd0e` |
