@@ -71,3 +71,11 @@ test("the trails' own switch, inside, follows the same rule: no unavailable hint
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   assert.match(sheets, /<MtbTrailsSwitch [^\n]*overlay=\{stressShowable\(stress\)\} \/>/);
 });
+
+test("in Plan, Interval stretches sit beside Climbs and count in the section switch; in Go they are left out", () => {
+  assert.deepEqual(keys({ ...all, intervals: false }), ["mtb", "climbs", "intervals", "topo"]);
+  assert.deepEqual(keys(all), ["mtb", "climbs", "topo"]);
+  assert.equal(sectionState(terrainLayers({ ...all, intervals: true })), "some");
+  assert.equal(terrainStatus(false, { ...all, intervals: true, intervalsStatus: "Unavailable." }), "Unavailable.");
+  assert.equal(terrainStatus(false, { ...all, intervals: false, intervalsStatus: "Unavailable." }), "");
+});

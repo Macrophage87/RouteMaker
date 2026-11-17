@@ -9247,7 +9247,8 @@ on your route" lists in words each climb the route rides uphill, start to summit
 
 The owner, 2026-11-16: "a layer that could identify interval-capable segments ... long segments that
 have limited turns, no intersections, and are either flat or uphill ... in the Plan panel and
-available for the MCP." Plan's Map layers has one switch, "Interval stretches" (off until turned on,
+available for the MCP." Plan's Map layers has one switch, "Interval stretches", inside Trails and
+terrain beside Climbs (the owner, 2026-11-17: "a layer next to climbs"; off until turned on,
 kept per browser as `routemaker.intervalsLayer`; not in Go, not on the Mass Ride map), that draws
 `frontend/src/interval-data/intervals.json`: a pink glow under the stress line, with arrows where a
 stretch holds one way only. `GET /api/intervals-near` and the connector's `intervals_near` read the
