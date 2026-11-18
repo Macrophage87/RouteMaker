@@ -52,7 +52,7 @@ test("in the phone app every file of the sheet takes the native path (a WebView 
   assert.equal(panel.match(/\bsaveFile\(/g)?.length, 1 + 1 + 1 + 3);
   assert.match(panel, /if \(nativeBridge\(\)\) \{\s*const first = await keepFile\(blobs\[0\]/);
   assert.match(panel, /const handed = await handFile\(bytes, fileName\);\s*if \(handed === null\) \{\s*saveFile\(body, type, fileName\);/);
-  for (const made of [/keepFile\(writeFit\(course\), "application\/vnd\.ant\.fit"/, /keepFile\(writeTcx\(course\), "application\/vnd\.garmin\.tcx\+xml"/, /keepFile\(blobs\[0\], "image\/png", names\[0\], lockScreenLine\(pages\)\)/, /keepFile\(queue\.blobs\[queue\.next\], "image\/png"/]) {
+  for (const made of [/keepFile\(writeFit\(part\), "application\/vnd\.ant\.fit"/, /keepFile\(writeTcx\(part\), "application\/vnd\.garmin\.tcx\+xml"/, /keepFile\(blobs\[0\], "image\/png", names\[0\], lockScreenLine\(pages\)\)/, /keepFile\(queue\.blobs\[queue\.next\], "image\/png"/]) {
     assert.match(panel, made);
   }
 });

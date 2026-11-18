@@ -20,7 +20,7 @@
  * that summary, in place of its own heading and toggle button. Without `fold` it is as it was.
  */
 import { AVOID_SYMBOL } from "./lib/avoidJunctions.ts";
-import { t } from "./lib/i18n.ts";
+import { serverTextAttributes, t } from "./lib/i18n.ts";
 import { useEffect, useId, useRef, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
@@ -162,7 +162,7 @@ export function RouteDescription({
   const items = steps.map((entry, i) => {
     const crossings = crossingsOf(entry);
     return (
-      <li key={i} className={`description-${entry.kind}`}>
+      <li key={i} className={`description-${entry.kind}`} {...serverTextAttributes()}>
         {/* An Avoid-rated junction (307, 310): the symbol is seen, not heard; the text names it (309). */}
         {entry.kind === "avoid" && (
           <span className="avoid-symbol" aria-hidden="true">
@@ -216,7 +216,7 @@ export function RouteDescription({
   const hazards = hazardLines(route);
   const hazardBlock = (hidden: boolean) =>
     hazards.length > 1 ? (
-      <div className="hazard-route" hidden={hidden}>
+      <div className="hazard-route" hidden={hidden} {...serverTextAttributes()}>
         <p className="hazard-route-heading" id={`${listId}-hazards`}>
           {hazards[0]}
         </p>

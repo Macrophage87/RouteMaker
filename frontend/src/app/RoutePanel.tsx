@@ -5,7 +5,7 @@
 // route in a few lines: the time, the distance, the stress bar, the warning line and Start. App.tsx keeps
 // the state and the effects; the questions, the errors and Start ride are as they were.
 import { choiceColours } from "../lib/routeChoice.ts";
-import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { useId, useMemo, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { GROUP_RIDE_NO_TRAILS, routeErrorShown, type BikeshareOption, type RouteError, type RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
@@ -33,7 +33,7 @@ import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
 import { avoidItems, avoidNoticeFor } from "../lib/avoidJunctions.ts";
-import { ElevationChart } from "../ElevationChart.tsx";
+import { ElevationChart, type ChartTools } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
@@ -71,6 +71,7 @@ import {
 } from "../lib/sharedRoutes.ts";
 import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts, surfaceGlanceParts } from "../lib/quickFigures.ts";
 import { facilityRows } from "../lib/facilityBar.ts";
+import { stretchEnds, worstStretches } from "../lib/worstStretches.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterAlongList } from "../lib/waterLegend.ts";
@@ -145,8 +146,11 @@ export interface GoRouteControls {
   addStop?: ReactNode;
   /** Go's "End at the bike rack" (lib/bikeParking.ts; Stephen, 2026-11-01), or null with no rack near the end. */
   endRack?: ReactNode;
-  /** A tap on Go's stress bar: Layers, with the Traffic stress section's colour key open (the owner's P1). */
-  onStressKey?: (opener: HTMLButtonElement) => void;
+  /**
+   * A tap on Go's stress bar: the map flies to the route's worst stretch (the 2026-11-12 backlog, Go item 9; it opened
+   * the colour key before, the owner's P1 of 2026-10-28; the key is in Layers, as every layer's is).
+   */
+  onWorst?: (line: LonLat[]) => void;
 }
 
 /**
@@ -284,6 +288,8 @@ export interface RouteSectionProps {
   setScrubPoint: (point: LonLat | null) => void;
   choose: (index: number) => void;
   startRide: () => void;
+  /** Start pressed before Ride mode's code is in (lib/rideCodeWait.ts): shown busy while it waits. */
+  startBusy?: boolean;
   /** Broadcast, beside Start: Share ride's link (the sharer leads), then the ride. Null without a share sheet. */
   // `onHold`: held (or right-clicked), its link as a QR code (lib/broadcastQr.ts).
   broadcastRide: { onPress: () => void; onHold: () => void; note: { text: string; count: number } } | null;
@@ -316,6 +322,8 @@ export interface RouteSectionProps {
   offline?: boolean;
   /** Plan's Check a route (CheckRoute.tsx) on a route that follows an opened file; null otherwise. */
   check?: ReactNode;
+  /** Plan's chart tools (ElevationChart.tsx): click to centre the map, pick a stretch and avoid it; null in Go. */
+  chartTools?: ChartTools | null;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -329,7 +337,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startBusy, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -405,7 +413,7 @@ export function RouteSection(props: RouteSectionProps) {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
-          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
+          ride={{ onStart: startRide, busy: startBusy, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
           water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
@@ -420,6 +428,7 @@ export function RouteSection(props: RouteSectionProps) {
           startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
           check={props.check ?? null}
+          chartTools={props.chartTools ?? null}
           barrierAvoid={props.barrierAvoid}
         />
       )}
@@ -704,12 +713,15 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
  * The stress bar and its key: patterns as well as colours, and the shares in words (312). In Go (the owner's P1,
  * 2026-10-28: "add paths and protected bike lanes to the chart") a slim strip under the bar marks the route's share on
  * a traffic-free path and on a protected lane, the line under them is plain words ("Mostly calm · 1.1 mi on paths and
- * protected lanes · busy road for 0.2 mi"), and a tap on the bar opens the colour key in Layers. A screen reader still
+ * protected lanes · busy road for 0.2 mi, worst on K Street"), and a tap on the bar flies the map to that worst stretch
+ * (the 2026-11-12 backlog, Go item 9; the colour key is in Layers). A screen reader still
  * hears every share: the bar's name, and the strip's. `line` takes the key's place, or the plain words', where the ride
  * type says it its own way (Group Ride, lib/quickFigures.ts groupRideLine; the audit's P6).
  */
-function StressFigure({ segments, go, line = null, surface = [] }: { segments: StressSegment[]; line?: string | null; surface?: readonly string[]; go?: { route: RouteResponse; peek: boolean; onKey?: (opener: HTMLButtonElement) => void } }) {
+export function StressFigure({ segments, go, line = null, surface = [] }: { segments: StressSegment[]; line?: string | null; surface?: readonly string[]; go?: { route: RouteResponse; peek: boolean; onWorst?: (line: LonLat[]) => void } }) {
   const keyHintId = useId();
+  const route = go?.route;
+  const worst = useMemo(() => (route ? (worstStretches(route, 1)[0] ?? null) : null), [route]);
   // One image to a screen reader, named with each share; the line under it says the same in text.
   const bar = (
     <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
@@ -761,14 +773,15 @@ function StressFigure({ segments, go, line = null, surface = [] }: { segments: S
         ))}
       </div>
     ) : null;
-  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route);
+  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route, worst?.street ?? null);
+  const onWorst = worst && go.onWorst;
   return (
     <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
       <figcaption id="stress-figure-caption" className="visually-hidden">
         {t("Traffic stress along the route")}
       </figcaption>
-      {go.onKey ? (
-        <button type="button" className="stress-key-button" aria-describedby={keyHintId} onClick={(event) => go.onKey?.(event.currentTarget)}>
+      {onWorst ? (
+        <button type="button" className="stress-key-button" aria-describedby={keyHintId} onClick={() => onWorst(stretchEnds(go.route, worst).line)}>
           {bar}
           {strip}
         </button>
@@ -778,9 +791,9 @@ function StressFigure({ segments, go, line = null, surface = [] }: { segments: S
           {strip}
         </>
       )}
-      {go.onKey && (
+      {onWorst && (
         <span id={keyHintId} className="visually-hidden">
-          {t("Shows the color key, in Layers.")}
+          {t("Shows the busiest stretch on the map.")}
         </span>
       )}
       {parts.length > 0 && (
@@ -835,6 +848,7 @@ export function RouteSummary({
   startsMs = null,
   weather = null,
   check = null,
+  chartTools = null,
   barrierAvoid = [],
 }: {
   /** Cargo and Tandem: the barriers this plan goes around (lib/barriers.ts), [lon, lat]. */
@@ -849,7 +863,7 @@ export function RouteSummary({
   federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
-  ride: { onStart: () => void; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
+  ride: { onStart: () => void; busy?: boolean; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -878,6 +892,8 @@ export function RouteSummary({
   weather?: WeatherReport | null;
   /** Plan's Check a route on an opened file (CheckRoute.tsx), under the warnings; null otherwise. */
   check?: ReactNode;
+  /** Plan's chart tools (ElevationChart.tsx); null in Go. A transit trip's joined chart has none. */
+  chartTools?: ChartTools | null;
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -933,7 +949,7 @@ export function RouteSummary({
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
   const start = rideable ? (
     <>
-      <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
+      <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-busy={ride.busy || undefined} aria-disabled={ride.busy || undefined} aria-describedby="start-ride-hint">
         <Icon name="play" />
         {startWord}
         <span className={goMode ? undefined : "visually-hidden"}>{rideWord}</span>
@@ -1167,7 +1183,7 @@ export function RouteSummary({
             onMissed={transitControls?.onMissed}
           />
         )}
-        {segments.length > 0 && <StressFigure segments={segments} line={groupLine} go={{ route, peek: go.peek, onKey: go.onStressKey }} />}
+        {segments.length > 0 && <StressFigure segments={segments} line={groupLine} go={{ route, peek: go.peek, onWorst: go.onWorst }} />}
         {/* The station options and the trip's steps after the time, distance and stress bar (the 2026-10-29 review:
             above them, they pushed the trip time off a half sheet). */}
         {!go.peek && go.options && <GoBikeOptions options={go.options} />}
@@ -1296,7 +1312,7 @@ export function RouteSummary({
           className="elevation-fold"
           name={ROUTE_FOLD_GROUP}
         >
-          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} />}
+          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} tools={trip === route ? (chartTools ?? undefined) : undefined} />}
           {/* The climbs on the route (the Climbs layer's list), in this fold (the mockup's table). */}
           {climbs && <ClimbsAlongList items={climbs} headingId="climbs-along-planner-heading" level="h4" />}
         </Fold>

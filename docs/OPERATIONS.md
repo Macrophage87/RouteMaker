@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.28.0](#deploying-v0280)
 - [Deploying v0.27.3](#deploying-v0273)
 - [Deploying v0.27.2](#deploying-v0272)
 - [Deploying v0.27.1](#deploying-v0271)
@@ -378,7 +379,7 @@ the order a request meets it:
 | Requests per client | 60 per fixed 60 s window, per address (IPv6 per /64) | 429, `Retry-After` the rest of the window |
 | Routes in flight per client | 1; a second only while at least 2 of the api's slots would stay free after it (so never, on the default pool of 3) | 429, `Retry-After: 2` |
 | Routes in flight, whole api | `WEB_CONCURRENCY` less 2, less `GEOCODE_CONCURRENCY` (3 at compose's default of 7 workers) | 503, `Retry-After: 5` |
-| Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
+| Points, coverage, preset | 2 to 200 points (each 25 counts as one plan on the routing limit), each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
 | Long ride | Past 93 mi (150 km) of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
@@ -8081,6 +8082,43 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.28.0
+
+The release train's v0.28.0: Plan's chart docked under the map with click-to-centre and "Try to
+avoid this stretch" (#1338), keyboard shortcuts with a ? sheet (#1336), saved routes with a
+sketch and figures (#1337), Go's search naming the station and the stress bar's worst stretch
+(#1335), an earlier first cue for a hard left off a road rated 3+ (#1332), steep-pitch marks for
+Cargo, Tandem and E-bike (#1331), Ride on cheap phones (#1341), Ride loaded on first use (#1333),
+route warnings in the rider's language (#1342), up to 200 points with course exports split only
+when a device needs it (#1340), and the Interval stretches by minutes, shaded by length, with a
+hover card, bollards counted and winding paths left out (#1322, #1324, #1328, #1343), with the
+file rebuilt on the PC on 2026-11-18 (5,614 stretches). Junction ratings and Virginia stay out.
+
+What changes for a deploy:
+
+- two migrations: `0066_stress_suggestion_pk_tiebreak` and `0067_saved_route_figures` (a
+  nullable JSON column on saved routes);
+- every `valhalla/*.json`: `service_limits` `max_locations` 50 to 210 (bicycle, pedestrian,
+  bikeshare) for #1340. A runtime setting only: the routers restart, no map rebuild. A plan of
+  more than 50 points may fail at the router until they have;
+- the front end: the lockfile changes and Ride is its own chunk (first load about 923 KB);
+- no `lua/`, compose, nginx or Dockerfile change, so the beta's release agent takes a tag made by
+  the Release workflow by itself, migrations and router restart included.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.28.0`, then approve).
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing
+  (migrations run), restart the routers, then the front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows the routers restarted.
+- [ ] **Beta check.** The app says 0.28.0; plan a route with 60 to 100 points (past the old router cap of 50), save it, reopen it;
+  Plan's chart sits under the map; Interval stretches shows Klingle Valley Trail. Then a 200-point
+  plan on a trail ride type (Mountain bike or Gravel) while `docker stats` runs on the beta host:
+  the routers' 320M limits hold (no router restarted or killed for memory), and the plan answers
+  or is refused with a message, never a 502.
+- [ ] **Rollback.** The `pre-rel` api image, the v0.27.3 front end, and the old `valhalla/*.json`
+  (the routers restart again). 0066 changes no schema and 0067 adds a nullable column, so the old code runs on them.
+
 ## Deploying v0.27.3
 
 A patch with everything merged into release/v0.28.0 since v0.27.2, on the owner's ask (2026-11-17,
@@ -9278,26 +9316,62 @@ kept per browser as `routemaker.intervalsLayer`; not in Go, not on the Mass Ride
 `frontend/src/interval-data/intervals.json`: a pink glow under the stress line, with arrows where a
 stretch holds one way only. `GET /api/intervals-near` and the connector's `intervals_near` read the
 same file, so `docker/api.Dockerfile` copies it into the api image and a new file reaches the
-connector with the next api image. The first file was written on 2026-11-16 (2,871 stretches;
-counts in `frontend/src/interval-data/README.md`). An unbuilt file (`"built": null`) makes the
+connector with the next api image. The first file was written on 2026-11-16 (2,871 stretches, a
+mile minimum); the minutes rule's on 2026-11-17 (5,614; counts in
+`frontend/src/interval-data/README.md`). An unbuilt file (`"built": null`) makes the
 switch say the stretches arrive with the next map data update, and the endpoint answer 503.
+
+A stretch counts by time, not length (the owner, 2026-11-17: "It's the distance with the elevation
+gain that would add it ... Basically 3 minutes is the minimum"): at least 3 minutes at 18 mph on
+the flat, slowed on a climb as the connector's interval check slows it (`CLIMB_SLOWING`), so a
+steady climb needs less ground. Each entry carries its minutes (`t`); Plan's "Show intervals from"
+picks 3, 5, 8, 12 or 20 minutes (kept per browser as `routemaker.intervalsMinutes`). A descent of 2%
+held 150 m still breaks one. The shorter climbs appear only once `build_intervals` runs again: a
+file from before (no `t`, a mile minimum) still draws, its minutes worked out in the browser.
+
+The pink deepens with the minutes (the owner, 2026-11-18: "color code by time length"): five shades
+from 3 to 5 minutes up to 20 or more, pink through magenta to plum so none reads as a stress colour, each 3:1 on the
+map at the drawn opacity (`INTERVALS_RAMP`; the dark map's brighter set in `lib/darkPaint.ts`). The
+mouse over a stretch shows a card (`lib/intervalHover.ts`): its distance, rise, minutes, which way,
+its bollards, then its elevation profile from `GET /api/intervals/{id}/profile`
+(`core.intervalprofile`, the router's heights start to end, as a climb's profile).
+
+Bollards (and blocks) no longer cut a stretch (the owner, 2026-11-18: "You'll be going at like 6 mph
+up a steep hill, you're unlikely to have issues with bollards"): each entry counts those it holds
+(`k`, left out at none), the card says how many, and the connector's `intervals_near` returns
+`bollards` and takes `no_bollards` to leave such stretches out ("It's really situationally
+dependent"). Gates, cycle barriers and the other barriers still cut. A file built before this rule
+has no `k` and still cuts at bollards until `build_intervals` runs again.
+
+A path that winds is left out (the owner, 2026-11-18: "You spend so much time turning here that you
+can't go at full speed"; "a gentle turn isn't an issue, its a cluster of short sharp ones"): a path
+or unpaved stretch whose line turns more than 200 degrees per km in tight bends, a bend being 30
+degrees or more of turning, either way, within 30 m (`WINDY_PATH_DEG_PER_KM`, `TIGHT_BEND_DEG`, `BEND_WINDOW_M`, our
+defaults, set on the 2026-11-17 file: the Anacostia trail by Kenilworth reads about 300 to 360,
+the Mount Vernon and Rock Creek trails at most about 170). A climb may wind more ("With some
+flexibility on uphill stretches too"): the limit grows with the speed squared, slowed as the
+minutes are, so 2.56 times on a 5% climb. Paved roads are not held to it. Applied to the
+committed file in place, it left out 8 stretches.
 
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
-railway crossings, barriers, from the extract's node tags; a stop or yield sign on a junction's own
+railway crossings, barriers other than bollards and blocks, from the extract's node tags; a stop or yield sign on a junction's own
 node only where the stretch is not the busier road), at a busy road (LTS 3+) crossed, at
 any road a path meets, at a sharp turn (60 degrees), and at a descent (2% held 150 m) for the
 direction it falls; LTS 4 and Avoid never count. The numbers are the connector's interval check's
-(`mcp/routemaker_mcp.py`, the owner's 2026-10-25 ask), except the 1 mile minimum, which is our
-default (unmeasured). `JUNCTION_RULE = "every"` cuts at every road that joins instead.
+(`mcp/routemaker_mcp.py`, the owner's 2026-10-25 ask), and the 3 minute minimum is the owner's
+(2026-11-17); our only own number (unmeasured) is the 400 m floor (`MIN_LENGTH_M`), the shortest
+piece looked at. `JUNCTION_RULE = "every"` cuts at every road that joins instead.
 
 **Writing it**, on the build host after a swap, under the heavy-job lock with 3,000 MB free (it
 reads the live table, the extract and the elevation tiles, as `build_climbs` does):
 
     flock <heavy.lock> docker compose exec -T rebuild ./manage.py build_intervals </dev/null
 
-Measured 2026-11-16 on the PC: the rebuild container peaked at about 1.6 GiB (WSL "available"
-never under 4.7 GB), 145 s.
+Measured 2026-11-17 on the PC (the minutes rule, 5,614 stretches): the rebuild container peaked at
+about 2.0 GiB (WSL "available" never under 4,047 MB), 179 s. A rebuild image built before #1304
+lacks `pipeline/interval_layer.py` and `core/management/commands/build_intervals.py`: `docker cp`
+both into the running rebuild container first and remove them after, until the next image build.
 
 It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
 to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's

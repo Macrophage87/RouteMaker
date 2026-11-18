@@ -1,6 +1,6 @@
 /**
- * The parts of the app a first open does not need (Roam, the review tools, Share live's QR code, the share card,
- * a ride's riders), loaded on first use instead of with App (backlog 2026-11-12, performance 3), and in the
+ * The parts of the app a first open does not need (Ride mode, Roam, the review tools, Share live's QR code, the share
+ * card, a ride's riders), loaded on first use instead of with App (backlog 2026-11-12, performance 3), and in the
  * background once the page is idle, so the first use seldom waits. Each is still in the service worker's precache
  * (/assets/*, sw/swCore.mjs), so the installed app and offline riding are unchanged.
  *
@@ -15,8 +15,12 @@ type Loader = () => Promise<unknown>;
 const RETRY_MS = 30_000;
 const loaders: Loader[] = [];
 
+/** A later part, with its code's state: `loaded()` once it is in, `load()` to ask for it (a press that must not show an
+ *  empty screen waits for it: App's Start and Resume). */
+export type LaterPart<P extends object> = ComponentType<P> & { loaded: () => boolean; load: () => Promise<unknown> };
+
 /** A component from a module loaded on first render, remembered for the idle preload. */
-export function later<P extends object>(load: () => Promise<ComponentType<P>>): ComponentType<P> {
+export function later<P extends object>(load: () => Promise<ComponentType<P>>): LaterPart<P> {
   let loaded: ComponentType<P> | null = null;
   let pending: Promise<ComponentType<P>> | null = null;
   const once = () =>
@@ -56,7 +60,7 @@ export function later<P extends object>(load: () => Promise<ComponentType<P>>): 
     });
     return loaded ? createElement(loaded, props) : null;
   }
-  return LaterPart;
+  return Object.assign(LaterPart, { loaded: () => loaded !== null, load: once });
 }
 
 /** Loads every later part, one after another, when the browser is idle; at most once. */

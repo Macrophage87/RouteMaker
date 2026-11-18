@@ -28,8 +28,8 @@ from django.test import override_settings
 from django.utils import timezone
 from test_ratelimit import in_one_window
 
+from core import api, presets, refine, route_hazards, routing, segment_info
 from core import junctions as core_junctions
-from core import presets, refine, route_hazards, routing, segment_info
 from routemaker import calm, flow, ridetime
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -1092,14 +1092,18 @@ class TestRefusedInput:
         body = {**good_body(preset), "depart_at": at}
         assert "docks as they are now" in refused_before_the_router(client, router, body)["error"]
 
-    def test_twenty_six_points(self, client, router) -> None:
-        points = [[-77.05 + i * 0.001, LAT] for i in range(26)]
+    def test_more_than_max_points(self, client, router) -> None:
+        points = [[-77.05 + i * 0.0001, LAT] for i in range(api.MAX_POINTS + 1)]
         refused_before_the_router(client, router, {"points": points, "preset": "default"})
 
-    def test_twenty_five_points_are_accepted(self, client, segments, router) -> None:
+    def test_max_points_are_accepted(self, client, segments, router) -> None:
+        # Stephen, 2026-11-18: the old ceiling of 25 is gone; MAX_POINTS is the abuse guard.
+        assert api.MAX_POINTS == 200
         router(standard_router())
-        points = [[-77.05 + i * 0.001, LAT] for i in range(25)]
-        assert post(client, {"points": points, "preset": "default"}).status_code == 200
+        points = [[-77.05 + i * 0.0001, LAT] for i in range(api.MAX_POINTS)]
+        body = {"points": points, "preset": "default"}
+        assert len(json.dumps(body)) < api.MAX_BODY_BYTES
+        assert post(client, body).status_code == 200
 
     @pytest.mark.parametrize(
         "point",
@@ -1341,6 +1345,60 @@ class TestRateLimit:
 
         other = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.8")
         assert other.status_code == 200
+
+    def test_many_points_count_as_several_plans(self, client, segments, router) -> None:
+        """Each leg is searched on its own, so a plan counts one per 25 points (Stephen,
+        2026-11-18, lifting the 25-point ceiling): a client cannot fan one request out into
+        hundreds of router calls sixty times a minute. A refusal counts nothing and calls
+        no router."""
+        from core.ratelimit import ROUTING
+
+        assert [api.plan_cost([0] * n) for n in (1, 25, 26, 50, 51, 200)] == [1, 1, 2, 2, 3, 8]
+        fake = router(standard_router())
+        fake.answers["route"] = [fake.answers["route"]] * 10
+        fake.answers["trace_attributes"] = [fake.answers["trace_attributes"]] * 400
+        points = [[-77.05 + i * 0.0001, LAT] for i in range(api.MAX_POINTS)]
+        cost = api.plan_cost(points)
+
+        def attempt(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"198.51.100.{11 + 100 * n}"}
+            fits = ROUTING.requests // cost
+            for _ in range(fits - 1):
+                # Spent without planning: a body the schema refuses still counts one, so
+                # spend the room the cheap way, leaving room for one plan of `cost` only.
+                for _ in range(cost):
+                    post(client, "{", **headers)
+            answered = post(client, {"points": points, "preset": "default"}, **headers)
+            calls_before = len(fake.calls)
+            refused = post(client, {"points": points, "preset": "default"}, **headers)
+            return answered.status_code, refused, calls_before
+
+        status, refused, calls_before = in_one_window(ROUTING.window_s, attempt)
+        assert status == 200
+        assert refused.status_code == 429
+        assert 1 <= int(refused["Retry-After"]) <= ROUTING.window_s
+        assert len(fake.calls) == calls_before
+
+    def test_a_refused_plan_of_many_points_counts_one(self, client, segments, router) -> None:
+        """Its points are counted only once the refusals (too long, Mass Ride outside DC,
+        confirm_long) have passed: a refused 200-point plan counts the decorator's one, not
+        eight (the v0.28.0 release review)."""
+        from core.ratelimit import ROUTING
+
+        router(standard_router())
+        # Zig-zags past CONFIRM_SPAN_M, under MAX_SPAN_M: a signed-out long ride, 409.
+        points = [[-77.05 + (i % 2) * 0.01, LAT] for i in range(api.MAX_POINTS)]
+        assert api.CONFIRM_SPAN_M < api.span_m(points) < api.MAX_SPAN_M
+        assert api.plan_cost(points) > 1
+
+        def attempt(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"198.51.100.{12 + 100 * n}"}
+            refused = post(client, {"points": points, "preset": "default"}, **headers)
+            for _ in range(ROUTING.requests - 2):
+                post(client, "{", **headers)
+            return refused.status_code, post(client, good_body(), **headers).status_code
+
+        assert in_one_window(ROUTING.window_s, attempt) == (409, 200)
 
     def test_malformed_json_spends_the_budget(self, client, router) -> None:
         """Otherwise a flood of bad bodies is free. Only a script can send a

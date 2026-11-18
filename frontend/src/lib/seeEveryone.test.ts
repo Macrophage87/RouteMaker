@@ -59,7 +59,7 @@ test("wired: the riders' dots reach App, the button sits on Ride's and Roam's si
   assert.match(app, /const showOnRideMap = useCallback\(\(point: LonLat\) => \{\s*stopEveryone\.current\(\);/);
   assert.match(app, /stopEveryone\.current = everyone\.stop;/);
   const { readdirSync } = await import("node:fs");
-  for (const file of readdirSync(new URL("../i18n/", import.meta.url))) {
+  for (const file of readdirSync(new URL("../i18n/", import.meta.url)).filter((f) => f.endsWith(".ts"))) {
     const catalog = read(`../i18n/${file}`);
     for (const phrase of ["See everyone on the ride", "Everyone"]) assert.match(catalog, new RegExp(`"${phrase}":`), `${file}: ${phrase}`);
   }

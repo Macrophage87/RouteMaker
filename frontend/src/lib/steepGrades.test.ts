@@ -14,6 +14,7 @@ import {
   STEEP_GRADE_SOURCE,
   STEEP_ICONS,
   SteepGradeKey,
+  SteepGradeSwatch,
   steepGradeFeatures,
   steepGradeIcon,
   steepGradeLayer,
@@ -112,8 +113,26 @@ test("the key says what each mark means, in words", () => {
   assert.match(html, /uphill or downhill/);
 });
 
-test("only Mass Ride and Novice and Nervous are keyed", () => {
-  assert.equal(steepGradesFor("mass-ride"), true);
-  assert.equal(steepGradesFor("novice"), true);
-  assert.equal(steepGradesFor("default"), false);
+test("Mass Ride, Novice and Nervous, Cargo, Tandem and E-bike are keyed; Default is not", () => {
+  for (const id of ["mass-ride", "novice", "cargo", "tandem", "ebike"]) assert.equal(steepGradesFor(id), true, id);
+  for (const id of ["default", "road", "bikeshare"]) assert.equal(steepGradesFor(id), false, id);
+});
+
+// v0.28.0: Cargo, Tandem and E-bike are marked but not routed round, and E-bike downhill only, so their key says so.
+test("the key tells each ride type what it is shown", () => {
+  const said = (preset: string) => renderToStaticMarkup(createElement(SteepGradeKey, { preset }));
+  assert.match(said("novice"), /Over 5%, uphill or downhill\. Routes avoid them where they can\./);
+  for (const preset of ["cargo", "tandem"]) {
+    assert.match(said(preset), /Over 5%, uphill or downhill\./, preset);
+    assert.doesNotMatch(said(preset), /Routes avoid them/, preset);
+  }
+  assert.match(said("ebike"), /Over 5%, downhill only\..*Over 8%, downhill only\./);
+  assert.doesNotMatch(said("ebike"), /uphill|Routes avoid them/);
+  // The key's ramps fall on E-bike (downhill marks only) and rise elsewhere, as the map's marks do.
+  const ramps = (preset: string) => [...said(preset).matchAll(/<polygon points="([^"]+)"/g)].map((m) => m[1]);
+  const down = renderToStaticMarkup(createElement(SteepGradeSwatch, { level: "steep", direction: "down", size: 20 })).match(/points="([^"]+)"/)![1];
+  const up = renderToStaticMarkup(createElement(SteepGradeSwatch, { level: "steep", direction: "up", size: 20 })).match(/points="([^"]+)"/)![1];
+  assert.deepEqual(ramps("ebike"), [down, down]);
+  assert.deepEqual(ramps("cargo"), [up, up]);
+  for (const preset of ["novice", "cargo", "ebike"]) assert.match(said(preset), /Very steep grade.*Over 8%/, preset);
 });

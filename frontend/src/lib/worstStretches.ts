@@ -96,7 +96,7 @@ export function worstStretches(route: Pick<RouteResponse, "stress_spans" | "desc
 }
 
 /** The street most of a stretch is on: the description's stretch entries that overlap it, longest overlap. */
-function streetOf(route: Pick<RouteResponse, "description">, fromM: number, toM: number): string | null {
+export function streetOf(route: Pick<RouteResponse, "description">, fromM: number, toM: number): string | null {
   const byStreet = new Map<string, number>();
   for (const entry of route.description ?? []) {
     if (entry.kind !== "stretch" || !entry.street) continue;
