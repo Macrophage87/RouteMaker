@@ -27,9 +27,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 # Held-Karp is 2^k * k^2 steps for k stops: about 1.4 million at 13, measured
-# at about a quarter of a second in Python. Twenty-three stops (the API's 25
-# points less the two ends) would be about 4.4 billion, so past this the local
-# search takes over.
+# at about a quarter of a second in Python. Twenty-three stops (Best order's 25
+# points less the two ends; api.STOP_ORDER_MAX_POINTS) would be about 4.4 billion,
+# so past this the local search takes over.
 EXACT_MAX_STOPS = 13
 
 # The local search starts from the rider's order, the nearest-neighbour order

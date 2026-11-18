@@ -86,9 +86,9 @@ test("the mapping lands each old position on the same use_roads (core.presets.us
   }
 });
 
-test("points outside the coverage box are dropped, and at most twenty-five kept", () => {
-  const many = Array.from({ length: 30 }, (_, i) => `${-77 + i / 100},38.9`).join(";");
-  assert.equal(decodePlan(`#p=${many}`).points.length, 25);
+test("points outside the coverage box are dropped, and at most MAX_POINTS (200) kept", () => {
+  const many = Array.from({ length: 240 }, (_, i) => `${-77 + i / 1000},38.9`).join(";");
+  assert.equal(decodePlan(`#p=${many}`).points.length, 200);
   assert.deepEqual(decodePlan("#p=-77,38.9;-70,38.9").points, [[-77, 38.9]]);
 });
 

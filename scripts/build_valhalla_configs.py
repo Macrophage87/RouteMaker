@@ -98,11 +98,16 @@ OVERRIDES: dict = {
         "service_defaults": {"radius": 0, "minimum_reachability": 50},
     },
     "service_limits": {
+        # max_locations: the route API's MAX_POINTS (200, Stephen 2026-11-18: "remove this
+        # limit") and room for a loop's way back; upstream's default is 50. Run plans on foot
+        # and a bikeshare trip's rides on bikeshare, so those two take the same.
         "bicycle": {
             "max_distance": 500000.0,
-            "max_locations": 50,
+            "max_locations": 210,
             "max_matrix_distance": 200000.0,
         },
+        "pedestrian": {"max_locations": 210},
+        "bikeshare": {"max_locations": 210},
         "max_exclude_locations": 200,
         # The default caps total perimeter at 10 km and rejects the whole request
         # past it rather than degrading, so a busy week of closures would start

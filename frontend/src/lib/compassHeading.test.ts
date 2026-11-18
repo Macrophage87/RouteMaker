@@ -170,9 +170,7 @@ test("askCompass: asks where the browser has a permission (iPhones), never throw
 
 test("the compass is asked for in Start ride's and Roam's press, and the map hands over to GPS", () => {
   const here = fileURLToPath(new URL(".", import.meta.url));
-  const ride = readFileSync(`${here}../RideMode.tsx`, "utf8");
-  assert.match(ride, /export function startRideGesture[^}]*askCompass\(\)/s);
-  assert.match(ride, /export function primeRideVoice[^}]*askCompass\(\)/s);
+  // Start ride's two presses ask for it: rendered in src/rideStart.test.ts.
   const map = readFileSync(`${here}../MapView.tsx`, "utf8");
   assert.match(map, /watchCompassAwhile\(browserCompassEnv\(\)/);
   assert.match(map, /\}, browserCompassLifetime\(\)\);/);

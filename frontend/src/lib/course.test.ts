@@ -18,6 +18,8 @@ import {
   courseFileName,
   courseLine,
   courseName,
+  courseParts,
+  partsLine,
   thin,
 } from "./course.ts";
 import { TCX_CUE_TYPES, TCX_NS, escapeXml, writeTcx } from "./tcx.ts";
@@ -151,7 +153,68 @@ test("where the cues the course must keep pass the budget alone, nothing is drop
   assert.equal(course.cues.length, 8);
   assert.equal(course.trim.protectedCues, 4);
   assert.equal(course.trim.protectedOver, true);
-  assert.equal(courseLine(course), "TCX course for Tiny: 4 of its cues must be kept, more than the 3 the device shows; split the route in two.");
+  assert.equal(courseLine(course), "TCX course for Tiny: 4 of its cues must be kept, more than the 3 the device shows; download the course instead, which comes in parts.");
+});
+
+test("a course whose kept cues pass the budget comes in parts that each fit, cut at the stop, losing no cue it must keep", () => {
+  const four: DeviceProfile = { ...GENERIC, label: "Three", maxCues: 3 };
+  const whole = compileCourse(sampleRoute(), four, "fit");
+  assert.equal(whole.trim.protectedOver, true);
+  const parts = courseParts(whole);
+  assert.ok(parts.length >= 2);
+  for (const part of parts) {
+    assert.ok(part.cues.length <= four.maxCues, `part ${part.trim.part?.index}: ${part.cues.length} cues`);
+    assert.equal(part.cues[0].type, "start");
+    assert.equal(part.cues[0].vertex, 0);
+    assert.equal(part.cues[part.cues.length - 1].type, "finish");
+    assert.equal(part.cues[part.cues.length - 1].vertex, part.records.length - 1);
+    assert.equal(part.records[0].distM, 0);
+    assert.equal(part.records[0].timeS, 0);
+    assert.equal(part.trim.protectedOver, false);
+    assert.ok(part.trim.bytes > 0);
+    assert.ok(Array.from(part.name).length <= Array.from(whole.name).length);
+  }
+  assert.deepEqual(parts.map((p) => p.trim.part), parts.map((_, i) => ({ index: i + 1, of: parts.length })));
+  assert.match(parts[0].name, / 1\/\d$/);
+  // Every cue the whole must keep is in one part, in order; a stop it was cut at is that part's finish, under the
+  // stop's own name. The turns a part has no room for are trimmed, as a whole course's are.
+  const names = parts.flatMap((p) => p.cues.map((c) => c.name));
+  const musts = ["Dupont Cir", "Stop 1"];
+  assert.deepEqual(names.filter((n) => musts.includes(n)), musts);
+  // The parts join end to end: their distances add up to the whole.
+  assert.ok(Math.abs(parts.reduce((m, p) => m + p.totalM, 0) - whole.totalM) < 1);
+  // With room, a part is cut at a stop among its cues and keeps the turns that fit.
+  const avoid = sampleRoute().description!.find((e) => e.kind === "avoid")!;
+  const more = sampleRoute({ description: [...sampleRoute().description!, { ...avoid, from_m: 2500, to_m: 2500, street: "K Street" }] });
+  const wide = compileCourse(more, { ...GENERIC, label: "Four", maxCues: 4 }, "fit");
+  assert.equal(wide.trim.protectedOver, true);
+  const wideParts = courseParts(wide);
+  assert.equal(wideParts.length, 2);
+  assert.ok(wideParts.every((p) => p.cues.length <= 4));
+  assert.equal(wideParts[0].cues[wideParts[0].cues.length - 1].name, "Stop 1", "cut at the stop");
+  assert.ok(wideParts[0].cues.some((c) => c.type === "left"), "a part with room keeps a turn");
+  // A course that fits is one part, itself.
+  const fits = compileCourse(sampleRoute(), GENERIC, "fit");
+  assert.deepEqual(courseParts(fits), [fits]);
+  assert.equal(partsLine(parts), `FIT course for Three: 4 of its cues must be kept, more than the 3 the device shows, so it comes in ${parts.length} parts, a file each.`);
+  assert.equal(courseFileName(sampleRoute(), "fit", 2).endsWith("-part-2.fit"), true);
+});
+
+test("cues a course must keep on one record are parted across the cut, so every part still fits", () => {
+  // Two Avoid warnings on the same record, the one a part has room for and the next: a cut half way between them
+  // falls on that record, and every cue up to it would go in one part, over the budget (the v0.28.0 release review).
+  const avoid = sampleRoute().description!.find((e) => e.kind === "avoid")!;
+  const both = ["K Street", "L Street"].map((street) => ({ ...avoid, from_m: 2500, to_m: 2500, street }));
+  const route = sampleRoute({ description: [...sampleRoute().description!, ...both] });
+  const three: DeviceProfile = { ...GENERIC, label: "Three", maxCues: 3 };
+  const whole = compileCourse(route, three, "fit");
+  assert.equal(whole.trim.protectedOver, true);
+  const parts = courseParts(whole);
+  for (const part of parts) assert.ok(part.cues.length <= three.maxCues, `part ${part.trim.part?.index}: ${part.cues.map((c) => c.name).join(", ")}`);
+  const names = parts.flatMap((p) => p.cues.map((c) => c.name));
+  for (const must of ["Dupont Cir", "Stop 1", "K St", "L St"]) {
+    assert.equal(names.filter((n) => n === must).length, 1, must);
+  }
 });
 
 test("over the point budget the line is thinned, never moving a cue's record, and the line says so", () => {

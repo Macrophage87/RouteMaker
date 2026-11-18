@@ -283,6 +283,31 @@ class TestFewerTurnsAndAllPaved:
             ratelimit.ROUTING.requests
         ]
 
+    def test_a_plan_of_many_points_with_no_room_has_no_option(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        """Past 25 points one option costs more than the decorator's two: where there is no
+        room for more, none is planned, so Neighbours is no cheap way past the many-point
+        charge (the v0.28.0 release review)."""
+        from core.models import RateLimitWindow
+
+        fake = router(standard_router())
+        fake.answers["route"] = [fake.answers["route"]] * 10
+        fake.answers["trace_attributes"] = [fake.answers["trace_attributes"]] * 200
+        (lon0, lat0), (lon1, lat1) = VERTICES[0], VERTICES[-1]
+        points = [[lon0 + (lon1 - lon0) * i / 50, lat0 + (lat1 - lat0) * i / 50] for i in range(51)]
+        assert api.plan_cost(points) > api.NEIGHBOURS_COST
+        post(client, body_for(stress=70))
+        RateLimitWindow.objects.update(hits=ratelimit.ROUTING.requests - 2)
+        answer = post(client, {**body_for(stress=70), "points": points}).json()
+        assert answer["options"] == []
+        assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [
+            ratelimit.ROUTING.requests
+        ]
+
     @pytest.mark.parametrize("preset", sorted(presets.TRANSIT_PRESETS))
     def test_none_on_a_transit_ride_type(
         self,

@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { MapView } from "../MapView.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import { liveValue, useLiveValue, type LiveValue } from "../lib/liveValue.ts";
-import type { RideView } from "../RideMode.tsx";
+import type { RideView } from "../rideStart.ts";
 
 /** The rider on the map in a ride or Roam: a GPS fix, about once a second. */
 export type LiveRider = RideView["rider"];
@@ -12,24 +12,28 @@ const NO_RIDER: LiveValue<LiveRider> = liveValue<LiveRider>(null);
 type MapProps = ComponentProps<typeof MapView>;
 
 /**
- * The map, with the rider's position and the elevation chart's scrub point read from their stores (lib/liveValue.ts):
- * a GPS fix or a scrub re-renders the map alone, not App (fe-perf-1). `riderFrom` is the ride's or Roam's store while
- * on the bike, else null, when the accuracy circle is the located point's (`hereCircle`).
+ * The map, with the rider's position, the ride's bottom panel's height and the elevation chart's scrub point read from
+ * their stores (lib/liveValue.ts): a GPS fix, a note in the ride's panel or a scrub re-renders the map alone, not App
+ * (fe-perf-1). `riderFrom` is the ride's or Roam's store while on the bike, else null, when the accuracy circle is the
+ * located point's (`hereCircle`).
  */
 export function LiveMap({
   riderFrom,
   scrubFrom,
+  ridePanelFrom,
   hereCircle,
   ...props
-}: Omit<MapProps, "rider" | "accuracy" | "scrubPoint"> & {
+}: Omit<MapProps, "rider" | "accuracy" | "scrubPoint" | "ridePanelH"> & {
   riderFrom: LiveValue<LiveRider> | null;
   scrubFrom: LiveValue<LonLat | null>;
+  ridePanelFrom: LiveValue<number>;
   hereCircle: MapProps["accuracy"];
 }) {
   const rider = useLiveValue(riderFrom ?? NO_RIDER);
   const scrubPoint = useLiveValue(scrubFrom);
+  const ridePanelH = useLiveValue(ridePanelFrom);
   const accuracy = riderFrom ? (rider ? { centre: rider.point, radiusM: rider.accuracyM } : null) : hereCircle;
-  return <MapView {...props} rider={rider} accuracy={accuracy} scrubPoint={scrubPoint} />;
+  return <MapView {...props} rider={rider} accuracy={accuracy} scrubPoint={scrubPoint} ridePanelH={ridePanelH} />;
 }
 
 /**
