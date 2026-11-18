@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "草稿翻译，尚未经母语人士核对。",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "草稿翻译，尚未经母语人士核对。Plan 仍为英文。",
   "your location": "您的位置",
+  "Spot a wrong word? Tell us on {discord}.": "发现用词有误？请在{discord}上告诉我们。",
   "the start": "起点",
   "mile {mile} ({km} km)": "第{mile}英里（{km}公里）",
 

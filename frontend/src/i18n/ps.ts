@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "لومړنۍ ژباړه، تر اوسه د مورنۍ ژبې ویونکي نه ده کتلې.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "لومړنۍ ژباړه، تر اوسه د مورنۍ ژبې ویونکي نه ده کتلې. Plan په انګلیسي پاتې کېږي.",
   "your location": "ستاسو ځای",
+  "Spot a wrong word? Tell us on {discord}.": "غلطه کلمه مو ولیده؟ په {discord} کې راته ووایاست.",
   "the start": "پیل ځای",
   "mile {mile} ({km} km)": "مایل {mile} ({km} کیلومتره)",
 

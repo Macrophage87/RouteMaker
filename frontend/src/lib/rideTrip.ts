@@ -26,7 +26,7 @@ import { isBike, type Bike, type Dials } from "./dials.ts";
 import { ridesHidden } from "./nativeShell.ts";
 import { pointAlong } from "./lightTimes.ts";
 import { drawOf, transitOf } from "./transit.ts";
-import { serverWordsIn, t } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
 import { sourceWord, wallClockOf } from "./departure.ts";
 import { onwardOf, walkPart, type OnwardPart } from "./onward.ts";
 import { walkModel, walkStart, walkStep } from "./walkCues.ts";
@@ -268,12 +268,12 @@ export function withoutSpare(text: string): string {
 }
 
 /**
- * A plan step's sentence as the ride screen shows and says it: the API's own where it words the language in force
- * (English, Spanish: lib/i18n.ts serverWordsIn), else worded here from the step's fields in the language in force, so
- * the hand-off from the bike to the train is not English in the other 19.
+ * A plan step's sentence as the ride screen shows and says it: the API's own in English and Spanish, else worded here
+ * from the step's fields with the app's catalog, so the hand-off from the bike to the train reads the same as the
+ * rest of Go and Ride in the other 19.
  */
 export function stepText(step: TransitStep): string {
-  if (serverWordsIn()) return step.text;
+  if (language() === "en" || language() === "es") return step.text;
   const m = Math.max(1, Math.round(step.seconds / 60));
   const lift = /\bby the elevator\b/.test(step.text);
   switch (step.mode) {

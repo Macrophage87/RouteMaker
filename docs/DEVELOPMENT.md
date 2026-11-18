@@ -9981,10 +9981,17 @@ written. Miles come first in every language.
   `planLanguageAttributes` marks Plan's containers English and left to right, so they are not
   mirrored. Turn sentences keep left and right as written. A test checks that no catalog swaps
   them.
-- The server's sentences (the route description, hazards, work zones, signal cards) come in the
-  request's `lang` (`RouteIn.lang`). `routemaker.lang` has the same `t`, with Spanish's list in
-  `routemaker.lang_es`. A language with no server catalog is answered wholly in English
-  (`speaking`), and the app reads those sentences in an English voice.
+- The server's sentences (the route description, hazards, work zones, steep grades, climbs,
+  signal cards) come in the request's `lang` (`RouteIn.lang`). `routemaker.lang` has the same `t`,
+  with a list per language: `routemaker.lang_es` and `routemaker.lang_<code>` for the other 19
+  (2026-11-18, backlog 2026-11-12 languages item 6; Claude drafts like the app's). A language with
+  no server catalog is answered wholly in English (`speaking`). Transit steps in the 19 are still
+  worded by the app from the step's fields (`lib/rideTrip.ts stepText`). The app keeps a copy of
+  the server's lists (`frontend/src/i18n/server/<code>.ts`, written by `scripts/translation_sheet.py
+  sync`, fetched with the catalog) only to read those sentences back to English for the voice on a
+  phone with no voice for the language (`englishOf`).
+- Reporting a wrong word: under the language picker, the draft note gains "Spot a wrong word? Tell
+  us on Discord." with the link (the owner, 2026-11-12).
 
 **The checks.** `frontend/src/lib/i18n.test.ts`: every phrase the code marks has its Spanish with
 the same `{places}`, every language has every Go and Ride phrase and turn sentence, and Plan is
@@ -9992,10 +9999,20 @@ marked English for the 19. `frontend/src/lib/i18nLint.test.ts` parses every `.ts
 on English that does not go through `t()`: JSX text, a string child, `aria-label`, `title`,
 `placeholder` or `alt`, or a string passed to `announce`, `setNotice` and the other sayers.
 Something that must stay as written (a brand, a symbol) goes on its `ALLOWED` list with a reason.
-On the server, `tests/test_lang.py` checks the Spanish list against every phrase the code passes.
+On the server, `tests/test_lang.py` checks the Spanish list, and each of the other 19, against
+every phrase the code passes.
+
+**A native speaker's fixes.** `scripts/translation_sheet.py export <code>` writes one CSV per
+language (Excel and Google Sheets open it): every app and route phrase with its English, the draft,
+where it shows (the catalog's section heading), and two columns to fill, "Your fix" and "Checked".
+`import <code> <sheet.csv>` refuses a fix whose `{places}` differ from the English's, writes the
+rest into `frontend/src/i18n/<code>.ts` and `src/routemaker/lang_<code>.py`, keeps the checked
+phrases in `frontend/src/i18n/checked/<code>.json` (the next export marks them) and re-runs
+`sync`. Review the diff before committing; `tests/test_translation_sheet.py` covers the round trip.
 
 **Adding or changing a phrase.** Write the English through `t()`, add its Spanish to `es.ts`
-(and to `lang_es.py` for a server sentence), then run the two front-end tests: for a Go or Ride
+(and, for a server sentence, to `lang_es.py` and the other 19 `lang_<code>.py`, then run
+`scripts/translation_sheet.py sync`), then run the two front-end tests: for a Go or Ride
 phrase they name each catalog that still lacks it. Changing the English of a phrase orphans
 every translation of it, so change all the catalogs in the same commit.
 
