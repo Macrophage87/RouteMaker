@@ -205,6 +205,11 @@ class TestBreaks:
         # speed." A zigzag of 50 degree bends every 40 m, each gentler than a sharp turn.
         wiggle = [(k * 36.3, (k % 2) * 16.9) for k in range(0, 111)]
         assert found([seg(1, *wiggle, trail=True)]) == []
+        # A tighter zigzag, a bend every 12 m, its left and right in one window, reads windier.
+        tight = [east(k * 10.9, (k % 2) * 5.1) for k in range(0, 101)]
+        assert il.tight_turning_per_km(tight, 1200) > il.tight_turning_per_km(
+            [east(*p) for p in wiggle], 4000
+        )
         assert len(found([seg(1, *wiggle, tier=1)])) == 1
         straight = found([road(1, length_m=4000, trail=True)])
         assert len(straight) == 1 and straight[0].surface == il.PATH

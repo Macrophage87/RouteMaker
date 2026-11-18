@@ -9308,12 +9308,12 @@ has no `k` and still cuts at bollards until `build_intervals` runs again.
 A path that winds is left out (the owner, 2026-11-18: "You spend so much time turning here that you
 can't go at full speed"; "a gentle turn isn't an issue, its a cluster of short sharp ones"): a path
 or unpaved stretch whose line turns more than 200 degrees per km in tight bends, a bend being 30
-degrees or more within 30 m (`WINDY_PATH_DEG_PER_KM`, `TIGHT_BEND_DEG`, `BEND_WINDOW_M`, our
+degrees or more of turning, either way, within 30 m (`WINDY_PATH_DEG_PER_KM`, `TIGHT_BEND_DEG`, `BEND_WINDOW_M`, our
 defaults, set on the 2026-11-17 file: the Anacostia trail by Kenilworth reads about 300 to 360,
 the Mount Vernon and Rock Creek trails at most about 170). A climb may wind more ("With some
 flexibility on uphill stretches too"): the limit grows with the speed squared, slowed as the
 minutes are, so 2.56 times on a 5% climb. Paved roads are not held to it. Applied to the
-committed file in place, it left out 9 stretches.
+committed file in place, it left out 8 stretches.
 
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,

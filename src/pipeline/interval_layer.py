@@ -498,7 +498,8 @@ def tight_turning_per_km(line: Sequence[tuple[float, float]], length_m: float) -
     turned = 0.0
     for i in range(len(heading) - 1):
         lo, hi = max(0, i - half + 1), min(len(heading) - 1, i + half)
-        if _turn(heading[lo], heading[hi]) >= tight:
+        # All the turning in the window, both ways: an S-bend's left and right add, not cancel.
+        if sum(_turn(heading[j], heading[j + 1]) for j in range(lo, hi)) >= tight:
             turned += _turn(heading[i], heading[i + 1])
     return math.degrees(turned) / (length_m / 1000.0)
 
