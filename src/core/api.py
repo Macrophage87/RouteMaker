@@ -2418,8 +2418,9 @@ class TrailLevelSpanOut(Schema):
 
 class SteepGradeOut(Schema):
     """A steep stretch on a Mass Ride, a Novice and Nervous, Cargo or Tandem ride, or an E-bike
-    ride's descent (v0.12.5, v0.28.0; `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
-    red), read in the riding direction, in whole metres along the router's elevation profile."""
+    ride's descent (v0.12.5, v0.28.0; `routemaker.steep_grades`): past 5% either way ("steep", an
+    orange marker) or 8% ("very_steep", red), read in the riding direction, in whole metres along
+    the router's elevation profile."""
 
     from_m: int
     to_m: int
