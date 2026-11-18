@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.28.1](#deploying-v0281)
 - [Deploying v0.28.0](#deploying-v0280)
 - [Deploying v0.27.3](#deploying-v0273)
 - [Deploying v0.27.2](#deploying-v0272)
@@ -8082,6 +8083,30 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.28.1
+
+A patch with the interval fixes, on the owner's ask (2026-11-18, "Add as a patch"): a stretch lying
+half or more along a longer one ridden the same way is left out of the file, a path with more than
+180 degrees of tight bends in 200 m is left out, and the hover card says its minutes as a rough
+guess with the speed they assume, in Spanish too (#1347). The committed `intervals.json` already
+has both rules applied (5,596 stretches); no PC build step.
+
+**No `lua/`, `valhalla/`, `docker/`, requirements, migration, compose or nginx change, and the
+lockfile's dependencies are those of v0.28.0**, so the beta's release agent takes it by itself; no
+map rebuild, no router restart.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.28.1`, then approve).
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing, then the
+  front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
+- [ ] **Beta check.** The app says 0.28.1; Plan, Interval stretches at Hains Point shows one
+  stretch, Ohio Drive, one way (arrows), with no sidepath stretch beside it; the Mount Vernon Trail
+  from Daingerfield Island north toward the airport has none; the hover card reads "a rough guess
+  at ... mph".
+- [ ] **Rollback.** The `pre-rel` api image and the v0.28.0 front end.
+
 ## Deploying v0.28.0
 
 The release train's v0.28.0: Plan's chart docked under the map with click-to-centre and "Try to
@@ -9352,6 +9377,17 @@ the Mount Vernon and Rock Creek trails at most about 170). A climb may wind more
 flexibility on uphill stretches too"): the limit grows with the speed squared, slowed as the
 minutes are, so 2.56 times on a 5% climb. Paved roads are not held to it. Applied to the
 committed file in place, it left out 8 stretches.
+
+A bunch of tight bends counts too (the owner, 2026-11-18, the Mount Vernon Trail by Daingerfield
+Island: "a narrow strip with tight turns. It's not usable as an interval"): more than 180 degrees
+within any 200 m (`WINDY_CLUSTER_DEG`, `BEND_CLUSTER_M`, our defaults; that stretch reads 256, the
+next on the trail 131), with the same room on a climb. And a stretch lying half or more within
+25 m of a longer one ridden the same way (a loop road's sidepath, as at Hains Point) is left out
+of the file, the longer kept (`without_overlaps`, `OVERLAP_M`, `OVERLAP_SHARE`, our defaults; a
+road read one way and back keeps both). Applied to the committed v0.28.0 file in place: 2 windy,
+16 overlapping, 5,596 stretches left. The card's minutes are said as a rough guess, with the
+speed they assume (18 mph on the flat, slower up a climb): the owner, "Real climbing speed varies
+by person, so basically make it a reasonable guess for interval speed, and say so".
 
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,

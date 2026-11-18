@@ -32,8 +32,10 @@ stop during the on sets"):
 A path stretch that winds (the owner, 2026-11-18: "very windy, narrow paths, which aren't suited
 for intervals"; "a gentle turn isn't an issue, its a cluster of short sharp ones") is left out
 whole: one whose line turns more than `WINDY_PATH_DEG_PER_KM` per km in tight bends
-(`tight_turning_per_km`), each gentler than a sharp turn but never letting up; more on a climb,
-ridden slower (`Stretch.windy_limit`). That holds for
+(`tight_turning_per_km`), each gentler than a sharp turn but never letting up, or more than
+`WINDY_CLUSTER_DEG` bunched within `BEND_CLUSTER_M` (`tight_cluster_deg`); more on a climb, ridden
+slower (`Stretch.windy_limit`). A stretch lying mostly along a longer one ridden the same way (a
+road's sidepath, a loop found twice) is left out of the file (`without_overlaps`). That holds for
 paths and unpaved ways (`s`); paved roads are not held to it, wide enough to ride a bend at speed.
 
 A stop, an intersection or a sharp turn cuts `PAD_M` either side: the slowing before and the
@@ -105,6 +107,17 @@ TIGHT_BEND_DEG = 30.0
 BEND_WINDOW_M = 30.0
 BEND_STEP_M = 5.0
 WINDY_PATH_DEG_PER_KM = 200.0
+# Our default, from the owner's call of 2026-11-18 on the Mount Vernon Trail by Daingerfield
+# Island ("a narrow strip with tight turns. It's not usable as an interval"): a path is windy too
+# where its tight bends bunch, WINDY_CLUSTER_DEG of them within BEND_CLUSTER_M. That stretch reads
+# 256; the next on the Mount Vernon Trail 131. About 1 in 60 path stretches.
+WINDY_CLUSTER_DEG = 180.0
+BEND_CLUSTER_M = 200.0
+# Our default: a stretch lying mostly (OVERLAP_SHARE of it) within OVERLAP_M of a longer one
+# ridden the same way, a road's sidepath or a loop found twice, is that one again and left out
+# (the owner, 2026-11-18: "Some intervals overlap each other", Hains Point).
+OVERLAP_M = 25.0
+OVERLAP_SHARE = 0.5
 # The interval check's: a road this busy to cross breaks an effort; one this stressful is
 # never ridden in one (LTS 4 and Avoid).
 BUSY_TIER = 3
@@ -446,8 +459,19 @@ class Stretch:
         return WINDY_PATH_DEG_PER_KM * (1.0 + CLIMB_SLOWING * max(0.0, grade)) ** 2
 
     @property
+    def tight_cluster_deg(self) -> float:
+        """The most its line turns in tight bends within BEND_CLUSTER_M."""
+        return tight_cluster_deg(climb_layer._simplify(self.line, climb_layer.SIMPLIFY_M))
+
+    @property
     def windy_path(self) -> bool:
-        return self.surface in (PATH, GRAVEL) and self.tight_turning_per_km > self.windy_limit
+        if self.surface not in (PATH, GRAVEL):
+            return False
+        room = self.windy_limit / WINDY_PATH_DEG_PER_KM
+        return (
+            self.tight_turning_per_km > self.windy_limit
+            or self.tight_cluster_deg > WINDY_CLUSTER_DEG * room
+        )
 
     @property
     def minutes(self) -> float:
@@ -481,13 +505,13 @@ class Stretch:
         return out
 
 
-def tight_turning_per_km(line: Sequence[tuple[float, float]], length_m: float) -> float:
-    """Degrees a lon/lat line turns in tight bends, per km of `length_m`. The line is read every
-    `BEND_STEP_M`; a step's turn counts where the heading changes `TIGHT_BEND_DEG` or more across
-    the `BEND_WINDOW_M` round it, so a long gentle curve adds nothing and a wiggle adds all of
-    it."""
-    if length_m <= 0 or len(line) < 3:
-        return 0.0
+def tight_bends(line: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    """(metres along, degrees) of each step of a lon/lat line that turns in a tight bend. The line
+    is read every `BEND_STEP_M`; a step's turn counts where the heading changes `TIGHT_BEND_DEG` or
+    more across the `BEND_WINDOW_M` round it, so a long gentle curve adds nothing and a wiggle
+    adds all of it."""
+    if len(line) < 3:
+        return []
     k = math.cos(math.radians(line[0][1])) * 111_320.0
     points = _resampled([(x * k, y * 111_320.0) for x, y in line], BEND_STEP_M)
     heading = [
@@ -495,13 +519,34 @@ def tight_turning_per_km(line: Sequence[tuple[float, float]], length_m: float) -
     ]
     half = max(1, round(BEND_WINDOW_M / BEND_STEP_M / 2))
     tight = math.radians(TIGHT_BEND_DEG)
-    turned = 0.0
+    bends = []
     for i in range(len(heading) - 1):
         lo, hi = max(0, i - half + 1), min(len(heading) - 1, i + half)
         # All the turning in the window, both ways: an S-bend's left and right add, not cancel.
         if sum(_turn(heading[j], heading[j + 1]) for j in range(lo, hi)) >= tight:
-            turned += _turn(heading[i], heading[i + 1])
-    return math.degrees(turned) / (length_m / 1000.0)
+            bends.append(((i + 1) * BEND_STEP_M, math.degrees(_turn(heading[i], heading[i + 1]))))
+    return bends
+
+
+def tight_turning_per_km(line: Sequence[tuple[float, float]], length_m: float) -> float:
+    """Degrees a lon/lat line turns in tight bends (`tight_bends`), per km of `length_m`."""
+    if length_m <= 0:
+        return 0.0
+    return sum(deg for _, deg in tight_bends(line)) / (length_m / 1000.0)
+
+
+def tight_cluster_deg(line: Sequence[tuple[float, float]]) -> float:
+    """The most a lon/lat line turns in tight bends within any BEND_CLUSTER_M of it."""
+    bends = tight_bends(line)
+    best = held = 0.0
+    first = 0
+    for at, deg in bends:
+        held += deg
+        while at - bends[first][0] > BEND_CLUSTER_M:
+            held -= bends[first][1]
+            first += 1
+        best = max(best, held)
+    return best
 
 
 def _turn(a: float, b: float) -> float:
@@ -647,7 +692,7 @@ def document(found: Sequence[Stretch], built: datetime | None = None) -> dict:
     for stretch in sorted(found, key=lambda s: -s.length_m):
         entry = stretch.entry()
         unique.setdefault(entry["id"], entry)
-    entries = list(unique.values())
+    entries = without_overlaps(list(unique.values()))
     both = sum(1 for e in entries if e.get("w"))
     return {
         "version": FORMAT_VERSION,
@@ -662,10 +707,65 @@ def document(found: Sequence[Stretch], built: datetime | None = None) -> dict:
             "junctions": JUNCTION_RULE,
             "windy_path_deg_per_km": WINDY_PATH_DEG_PER_KM,
             "tight_bend": [TIGHT_BEND_DEG, BEND_WINDOW_M],
+            "windy_cluster": [WINDY_CLUSTER_DEG, BEND_CLUSTER_M],
+            "overlap": [OVERLAP_M, OVERLAP_SHARE],
         },
         "counts": {"both_ways": both, "one_way": len(entries) - both},
         "intervals": entries,
     }
+
+
+def without_overlaps(entries: Sequence[dict]) -> list[dict]:
+    """The entries, longest first, less each lying mostly (OVERLAP_SHARE) within OVERLAP_M of a
+    longer one kept that is ridden the same way there (or either is both ways)."""
+    cell = 2 * OVERLAP_M
+    kept: list[dict] = []
+    near: dict[tuple[int, int], list[tuple[tuple, tuple, bool]]] = defaultdict(list)
+
+    def planar(p: Sequence[float]) -> tuple[float, float]:
+        return (p[0] * math.cos(math.radians(p[1])) * 111_320.0, p[1] * 111_320.0)
+
+    def covered(q: tuple[float, float], heading: float, either: bool) -> bool:
+        cx, cy = int(q[0] // cell), int(q[1] // cell)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for a, b, both in near.get((cx + dx, cy + dy), ()):
+                    if _to_segment(q, a, b) > OVERLAP_M:
+                        continue
+                    other = math.atan2(b[1] - a[1], b[0] - a[0])
+                    if either or both or _turn(heading, other) < math.pi / 2:
+                        return True
+        return False
+
+    for entry in sorted(entries, key=lambda e: -e["l"]):
+        points = _resampled([planar(p) for p in entry["line"]], 10.0)
+        either = bool(entry.get("w"))
+        pairs = list(zip(points, points[1:], strict=False))
+        hits = sum(covered(a, math.atan2(b[1] - a[1], b[0] - a[0]), either) for a, b in pairs)
+        if pairs and hits >= OVERLAP_SHARE * len(pairs):
+            continue
+        kept.append(entry)
+        line = [planar(p) for p in entry["line"]]
+        for a, b in zip(line, line[1:], strict=False):
+            steps = max(1, int(math.dist(a, b) // cell) + 1)
+            for t in range(steps + 1):
+                x = a[0] + (b[0] - a[0]) * t / steps
+                y = a[1] + (b[1] - a[1]) * t / steps
+                key = (int(x // cell), int(y // cell))
+                if not near[key] or near[key][-1][:2] != (a, b):
+                    near[key].append((a, b, either))
+    return kept
+
+
+def _to_segment(q: tuple[float, float], a: tuple, b: tuple) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = dx * dx + dy * dy
+    t = (
+        0.0
+        if length == 0
+        else max(0.0, min(1.0, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / length))
+    )
+    return math.hypot(q[0] - a[0] - t * dx, q[1] - a[1] - t * dy)
 
 
 def write(path: Path | str, doc: dict) -> None:
