@@ -6013,12 +6013,26 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
   the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
-- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position and the elevation chart's
-  scrub point read from their own stores (`lib/liveValue.ts`), and `LiveRiderPoint`, the
-  same for a ride group's dot. A GPS fix (about once a second) or a scrub re-renders the map
-  alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
+- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position, the ride's bottom panel's
+  height and the elevation chart's scrub point read from their own stores
+  (`lib/liveValue.ts`), and `LiveRiderPoint`, the same for a ride group's dot. A GPS fix
+  (about once a second), a note coming or going in the ride's panel or a scrub re-renders the
+  map alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
   stops, Detour's letters) in `rideView` and re-renders only when they change
   (`lib/rideViewKept.ts`). Unlike the pass-throughs above, these two read their stores.
+- Ride on a cheap phone: `scripts/perf/rideProfile.mjs` rides the a11y check's mocked route
+  on a phone-sized page with the CPU slowed 4x (a mid-range Android), a fix a second, and
+  lists each component's renders and own time per second, then the same with no fix. Build
+  with `frontend/scripts/vite.profile.mjs` (production React with its timers, names kept) and
+  serve it with `vite preview` for numbers a phone would see; `--lone-failures` plays a patchy
+  GPS (a failure between fixes), `--why` lists the state and props that drew App and
+  RideMode, `--cpu` where the main thread's time goes. Measured 2026-11-18 on
+  release/v0.28.0: with a good GPS RideMode renders once a fix at under 5 ms a second of the
+  slowed CPU and App not at all, and most of the rest is the map's follow camera; with a patchy
+  GPS a lone failure used to show the GPS note and take it away a second later, drawing
+  RideMode 4 times and App with the hidden planner twice a fix (622 ms of main thread a
+  second); now the note waits until fixes have stopped for 5 s (`lib/rideWatch.ts`
+  `failureShown`) and the panel's height goes through `LiveMap` (244 ms a second).
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
 no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders

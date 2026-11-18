@@ -196,7 +196,7 @@ import {
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { BatteryNote } from "./BatteryNote.tsx";
 import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, failureShown, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideBuzz, rideGeoEnv, rideSpeech, rideWake, ridesHidden, showTurnCard, speaksAloud } from "./lib/nativeShell.ts";
@@ -2389,7 +2389,9 @@ export function RideMode({
             notify(LOCATE_MESSAGES[reason]);
             gpsSaid.current = reason;
           }
-          setGps(LOCATE_MESSAGES[reason]);
+          // Shown only once fixes have stopped for a few seconds (lib/rideWatch.ts failureShown): a lone failure between
+          // good fixes showed the note and took it away a second later, a flicker that redrew the ride's panel and the map.
+          if (failureShown(reason, rideRef.current.fix !== null, Date.now() - lastFixAt.current)) setGps(LOCATE_MESSAGES[reason]);
           if (reason === "denied" || reason === "insecure" || reason === "unsupported") {
             stopWatch.current?.();
             stopWatch.current = null;
