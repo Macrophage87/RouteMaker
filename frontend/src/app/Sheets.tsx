@@ -31,7 +31,7 @@ import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
 import { RegionPackSetting } from "../RegionPackSetting.tsx";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
-import { RideSettingsFields } from "../RideMode.tsx";
+import { RideSettingsFields } from "../RideSettingsFields.tsx";
 import { ThemeSetting, UnitsSetting } from "../DisplaySettings.tsx";
 import { ICON_STYLE_HELP, ICON_STYLE_LABEL, readIconStyle, writeIconStyle } from "../lib/iconStyle.ts";
 import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
