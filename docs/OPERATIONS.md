@@ -9353,6 +9353,17 @@ flexibility on uphill stretches too"): the limit grows with the speed squared, s
 minutes are, so 2.56 times on a 5% climb. Paved roads are not held to it. Applied to the
 committed file in place, it left out 8 stretches.
 
+A bunch of tight bends counts too (the owner, 2026-11-18, the Mount Vernon Trail by Daingerfield
+Island: "a narrow strip with tight turns. It's not usable as an interval"): more than 180 degrees
+within any 200 m (`WINDY_CLUSTER_DEG`, `BEND_CLUSTER_M`, our defaults; that stretch reads 256, the
+next on the trail 131), with the same room on a climb. And a stretch lying half or more within
+25 m of a longer one ridden the same way (a loop road's sidepath, as at Hains Point) is left out
+of the file, the longer kept (`without_overlaps`, `OVERLAP_M`, `OVERLAP_SHARE`, our defaults; a
+road read one way and back keeps both). Applied to the committed v0.28.0 file in place: 2 windy,
+16 overlapping, 5,596 stretches left. The card's minutes are said as a rough guess, with the
+speed they assume (18 mph on the flat, slower up a climb): the owner, "Real climbing speed varies
+by person, so basically make it a reasonable guess for interval speed, and say so".
+
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
 railway crossings, barriers other than bollards and blocks, from the extract's node tags; a stop or yield sign on a junction's own
