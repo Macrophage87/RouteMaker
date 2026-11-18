@@ -2381,8 +2381,8 @@ class TrailLevelSpanOut(Schema):
 
 
 class SteepGradeOut(Schema):
-    """A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5;
-    `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
+    """A steep stretch on a Mass Ride, a Novice and Nervous, Cargo or Tandem ride, or an E-bike
+    ride's descent (v0.12.5, v0.28.0; `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
     red), read in the riding direction, in whole metres along the router's elevation profile."""
 
     from_m: int
@@ -2897,8 +2897,9 @@ class RouteBody(Schema):
     # The rated mountain-bike trails it rides (2026-11-07), in riding order, for the ride's
     # stress ribbon. Additive: empty where it rides none, null from an older answer.
     trail_levels: list[TrailLevelSpanOut] | None = None
-    # Steep grades either way (v0.12.5), in riding order, on a Mass Ride or a Novice and
-    # Nervous ride. Additive: null on every other ride type, empty where there are none.
+    # Steep grades (v0.12.5), in riding order, on a Mass Ride, Novice and Nervous, Cargo or
+    # Tandem ride, and downhill on an E-bike (v0.28.0). Additive: null on every other ride
+    # type, empty where there are none.
     steep_grades: list[SteepGradeOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.

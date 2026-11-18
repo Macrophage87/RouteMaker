@@ -211,8 +211,9 @@ export function LayersSheet(props: LayersSheetProps) {
         <StressSectionKey massMap={massMap} stress={stress} stressVisible={stressVisible} preset={preset} zoom={zoom} facilitiesShown={facilitiesShown} />
         {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
         <JunctionLegend />
-        {/* v0.12.5: steep grades, marked on a Mass Ride's or a Novice ride's route only, so keyed on those alone. */}
-        {steepGradesFor(preset) && <SteepGradeKey />}
+        {/* v0.12.5: steep grades, marked on a Mass Ride's, Novice, Cargo, Tandem or E-bike ride's route only (v0.28.0),
+            so keyed on those alone. */}
+        {steepGradesFor(preset) && <SteepGradeKey preset={preset} />}
         {/* v0.10.0: the route's hazard marks, drawn on a route only, with or without the stress map. Last in the
             section (the owner, 2026-10-20: "put it at the bottom"). */}
         <RouteHazardKey />
