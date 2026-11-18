@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.28.0](#deploying-v0280)
 - [Deploying v0.27.3](#deploying-v0273)
 - [Deploying v0.27.2](#deploying-v0272)
 - [Deploying v0.27.1](#deploying-v0271)
@@ -8080,6 +8081,40 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.28.0
+
+The release train's v0.28.0: Plan's chart docked under the map with click-to-centre and "Try to
+avoid this stretch" (#1338), keyboard shortcuts with a ? sheet (#1336), saved routes with a
+sketch and figures (#1337), Go's search naming the station and the stress bar's worst stretch
+(#1335), an earlier first cue for a hard left off a road rated 3+ (#1332), steep-pitch marks for
+Cargo, Tandem and E-bike (#1331), Ride on cheap phones (#1341), Ride loaded on first use (#1333),
+route warnings in the rider's language (#1342), up to 200 points with course exports split only
+when a device needs it (#1340), and the Interval stretches by minutes, shaded by length, with a
+hover card, bollards counted and winding paths left out (#1322, #1324, #1328, #1343), with the
+file rebuilt on the PC on 2026-11-18 (5,614 stretches). Junction ratings and Virginia stay out.
+
+What changes for a deploy:
+
+- two migrations: `0066_stress_suggestion_pk_tiebreak` and `0067_saved_route_figures` (a
+  nullable JSON column on saved routes);
+- every `valhalla/*.json`: `service_limits` `max_locations` 50 to 210 (bicycle, pedestrian,
+  bikeshare) for #1340. A runtime setting only: the routers restart, no map rebuild. A plan of
+  more than 50 points may fail at the router until they have;
+- the front end: the lockfile changes and Ride is its own chunk (first load about 923 KB);
+- no `lua/`, compose, nginx or Dockerfile change, so the beta's release agent takes a tag made by
+  the Release workflow by itself, migrations and router restart included.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.28.0`, then approve).
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing
+  (migrations run), restart the routers, then the front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows the routers restarted.
+- [ ] **Beta check.** The app says 0.28.0; plan a route with 60 to 100 points (past the old router cap of 50), save it, reopen it;
+  Plan's chart sits under the map; Interval stretches shows Klingle Valley Trail.
+- [ ] **Rollback.** The `pre-rel` api image, the v0.27.3 front end, and the old `valhalla/*.json`
+  (the routers restart again). 0066 changes no schema and 0067 adds a nullable column, so the old code runs on them.
 
 ## Deploying v0.27.3
 
