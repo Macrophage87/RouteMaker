@@ -8100,7 +8100,7 @@ What changes for a deploy:
   nullable JSON column on saved routes);
 - every `valhalla/*.json`: `service_limits` `max_locations` 50 to 210 (bicycle, pedestrian,
   bikeshare) for #1340. A runtime setting only: the routers restart, no map rebuild. A plan of
-  26 points or more fails at the router until they have;
+  more than 50 points may fail at the router until they have;
 - the front end: the lockfile changes and Ride is its own chunk (first load about 923 KB);
 - no `lua/`, compose, nginx or Dockerfile change, so the beta's release agent takes a tag made by
   the Release workflow by itself, migrations and router restart included.
@@ -8111,10 +8111,10 @@ What changes for a deploy:
   checkout, `docker compose build api`, recreate api and worker with no job todo or doing
   (migrations run), restart the routers, then the front end.
 - [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows the routers restarted.
-- [ ] **Beta check.** The app says 0.28.0; plan a route with 30 to 40 points, save it, reopen it;
+- [ ] **Beta check.** The app says 0.28.0; plan a route with 60 to 100 points (past the old router cap of 50), save it, reopen it;
   Plan's chart sits under the map; Interval stretches shows Klingle Valley Trail.
 - [ ] **Rollback.** The `pre-rel` api image, the v0.27.3 front end, and the old `valhalla/*.json`
-  (the routers restart again). The two migrations only add, so the old code runs on them.
+  (the routers restart again). 0066 changes no schema and 0067 adds a nullable column, so the old code runs on them.
 
 ## Deploying v0.27.3
 
