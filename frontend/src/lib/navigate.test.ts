@@ -3279,6 +3279,15 @@ test("hard left: a left or bear left off a road rated 3+ is first said about 40 
   );
   // On foot, no change: a walker crosses at the corner.
   assert.equal(advance(offBusy, 1.4, true), advance(offQuiet, 1.4, true));
+  // A short stub of a busy road at the junction (20 m) is not the road turned off: Staples Street decides.
+  const stub = rideModel(
+    straightRoute([
+      stretch(0, 900, "Staples Street Northeast.", { street: "Staples Street Northeast", tier: 1 }),
+      stretch(900, 920, "Unnamed road.", { street: null, tier: 4 }),
+      stretch(920, 1800, "Left onto 14th Street Northeast.", { street: "14th Street Northeast", tier: 1, turn: turning("left", "14th Street Northeast") }),
+    ]),
+  );
+  assert.equal(stub.cues.find((c) => c.kind === "turn")?.hardLeft, undefined);
   // Ridden at 5 m/s: the first cue for the left off Georgia Avenue comes 250 m before it, not 150 m.
   const saidBy = (toM: number) => ride(model, "full", 0, toM).events.some((e) => e.cue?.index === offBusy.index);
   assert.equal(saidBy(640), false);

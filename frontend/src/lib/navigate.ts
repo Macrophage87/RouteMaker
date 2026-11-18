@@ -315,6 +315,8 @@ export const ADVANCE_MIN_M = 150;
 export const HARD_LEFT_ADVANCE_S = 40;
 export const HARD_LEFT_MIN_M = 250;
 export const HARD_LEFT_FROM_TIER = 3;
+/** Stretches shorter than this before a turn (a junction's stub, a crossing) are not the road the rider turns off. */
+export const HARD_LEFT_STUB_M = 40;
 /** The second cue: about 10 s ahead, never closer than 150 ft. */
 export const PREPARE_S = 10;
 export const PREPARE_MIN_M = 45;
@@ -1155,8 +1157,15 @@ export function rideModel(
   let lastNamed: LastNamed = null;
   for (const [i, entry] of entries.entries()) {
     const fromM = toLine(entry.from_m);
-    // The stretch the rider is on before this entry, for a hard left (HARD_LEFT_FROM_TIER).
-    const offTier = stretches.length ? stretches[stretches.length - 1].tier : null;
+    // The road the rider is on before this entry, for a hard left (HARD_LEFT_FROM_TIER): the last stretch at least
+    // HARD_LEFT_STUB_M long, past a junction's short stubs.
+    let offTier: number | null = null;
+    for (let k = stretches.length - 1; k >= 0; k--) {
+      if (stretches[k].toM - stretches[k].fromM >= HARD_LEFT_STUB_M) {
+        offTier = stretches[k].tier;
+        break;
+      }
+    }
     if (entry.kind === "stretch") stretches.push({ fromM, toM: toLine(entry.to_m), street: entry.street, tier: entry.tier, facility: entry.facility });
     // A via point (v0.7.0): its place is kept for the re-plan, but it is no cue and has no number. The rider rides on
     // through it, so the stretch after it is read against the one before, a busy road or a new trail said as anywhere
@@ -1218,7 +1227,7 @@ export function rideModel(
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
         ...(kind === "turn" && toward(entry) ? { toward: toward(entry) as string } : {}),
         ...(kind === "turn" && entry.turn?.stay === true && !entry.turn.cross && !entry.turn.across ? { stay: true } : {}),
-        ...(kind === "turn" && (entry.turn?.movement === "left" || entry.turn?.movement === "bear_left") && (offTier ?? 0) >= HARD_LEFT_FROM_TIER
+        ...(kind === "turn" && !entry.turn?.cross && (entry.turn?.movement === "left" || entry.turn?.movement === "bear_left") && (offTier ?? 0) >= HARD_LEFT_FROM_TIER
           ? { hardLeft: true }
           : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
