@@ -2,7 +2,7 @@
  * The hover card of an interval stretch (the owner, 2026-11-18: "Allow a mouseover with elevation profile as well, it
  * should also give distance and a rough estimate of interval time", and "Mark bollards on the interval card and have
  * it noted"): as a climb's (lib/featureHover.ts), a small card at the mouse with the stretch's name, its length, rise,
- * the minutes it takes at the build's 18 mph (slowed on a climb), which way it holds and any bollards on it; then its
+ * a rough guess at the minutes it takes (the build's 18 mph, slowed on a climb, and that speed), which way it holds and any bollards on it; then its
  * elevation profile (GET /api/intervals/{id}/profile, the router's USGS 3DEP heights, start to end), once the mouse
  * has rested on it. Mouse only, as the climbs' hover; nothing here changes a route.
  */
@@ -30,7 +30,10 @@ export function intervalHoverWords(p: Record<string, unknown>): HoverWords {
   const parts = [
     formatDistance(lengthM),
     riseM >= 1 ? t("rises {climb} at {grade}%", { climb: formatClimb(riseM), grade: grade.toFixed(1) }) : t("flat"),
-    t("about {minutes} min at {speed}", { minutes: minutes.toFixed(1), speed: formatSpeed(BUILD_KMH) }),
+    // A guess, said as one (the owner, 2026-11-18: "Real climbing speed varies by person, so basically make it a
+    // reasonable guess for interval speed, and say so"): the file's minutes, 18 mph on the flat and slower up a
+    // climb, and the speed that is.
+    t("about {minutes} min, a rough guess at {speed}", { minutes: minutes.toFixed(1), speed: formatSpeed(minutes > 0 ? lengthM / 1000 / (minutes / 60) : BUILD_KMH) }),
     one ? t("this way only (the arrows)") : t("either way"),
   ];
   if (bollards > 0) parts.push(bollards === 1 ? t("1 bollard to ride through") : t("{count} bollards to ride through", { count: bollards }));
