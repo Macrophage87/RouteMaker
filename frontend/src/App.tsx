@@ -6818,11 +6818,16 @@ export function App() {
     ) : null,
     // A tap on the stress bar (the 2026-11-12 backlog, Go item 9): the map flies to the route's worst stretch, framed
     // clear of the sheet. The colour key is in Layers.
+    // A full sheet covers the map, so it goes to half first and the stretch is framed once it has.
     onWorst: (line: LonLat[]) => {
-      const map = mapRef.current;
-      if (!map || line.length === 0) return;
-      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      map.fitBounds(frameAround(line), { padding: framePadding(), maxZoom: 17, duration: still ? 0 : 400 });
+      if (line.length === 0) return;
+      if (goSheet === "full") setGoSheet("half");
+      requestAnimationFrame(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        map.fitBounds(frameAround(line), { padding: framePadding(), maxZoom: 17, duration: still ? 0 : 400 });
+      });
     },
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the

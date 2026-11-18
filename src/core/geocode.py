@@ -121,9 +121,7 @@ STATIONS = frozenset({("railway", "station"), ("railway", "halt"), ("public_tran
 # A typed name that ends with one of these asks for a station ("Takoma Metro", "Union
 # station"): when rows were found but none is a station named in what was typed, Photon is asked
 # once more for stations so named, and they go first. Our default, unmeasured.
-STATION_WORDS = frozenset(
-    {"metro", "station", "stop", "subway", "train", "rail", "estación", "estacion"}
-)
+STATION_WORDS = frozenset({"metro", "station", "subway", "estación", "estacion"})
 # How many stations that ask takes.
 STATION_ASK_LIMIT = 3
 
@@ -881,13 +879,20 @@ def results(answer: dict, *, reverse: bool, near: tuple[float, float] | None = N
         # SAME_POINT_M) make a row a repeat: two Starbucks 417 m apart share a
         # label and are two places (round-1 review), so a label alone folds
         # nothing.
-        # A row folded into another still counts as that place for the rows after it:
-        # "Washington Union Station" the station folds into "Union Station", and then
-        # "Washington Union Station" the attraction folds into it too.
+        # A station's twin folded into a row still counts as that station for the rows
+        # after it: "Washington Union Station" the station folds into "Union Station",
+        # and "Washington Union Station" the attraction folds into it too, in either
+        # order. Only the kept row itself folds a same-name repeat, so same-name places
+        # never chain 300 m at a time into one row (the PR review).
         seen = {**osm, "name": name, "lon": point[0], "lat": point[1]}
-        group = next((g for g in groups if any(_same_place(m, name, osm, point) for m in g)), None)
-        if group is not None:
-            group.append(seen)
+        hits = [i for i, g in enumerate(groups) if _in_group(g, name, osm, point)]
+        if hits:
+            first, *rest = hits
+            groups[first].append(seen)
+            for i in reversed(rest):
+                groups[first].extend(groups.pop(i))
+                out.pop(i)
+                extents.pop(i)
             continue
         groups.append([seen])
         row = {
@@ -917,8 +922,19 @@ def _same_place(row: dict, name: str, osm: dict, point: tuple[float, float]) -> 
         return True
     # A station and an attraction, a building or a hall of the same name beside it are the
     # same place too; a street of that name is not.
-    streets = "highway" in (row["osm_key"], osm["osm_key"])
+    # Nor is a neighbourhood or town of the station's name ("Takoma").
+    streets = bool({"highway", "place"} & {row["osm_key"], osm["osm_key"]})
     return apart <= SAME_PLACE_M and not streets and _is_station(row) != _is_station(osm)
+
+
+def _in_group(group: list[dict], name: str, osm: dict, point: tuple[float, float]) -> bool:
+    """Whether a row is a repeat of a group's place: of its kept row (the first), or a
+    station twin of any row folded into it."""
+    if _same_place(group[0], name, osm, point):
+        return True
+    return any(
+        (_is_station(m) or _is_station(osm)) and _same_place(m, name, osm, point) for m in group[1:]
+    )
 
 
 def _is_station(osm: dict) -> bool:
