@@ -125,7 +125,7 @@ import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type EndedRiding, type RideView } from "./rideStart.ts";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RIDE_NEEDS_SIGNAL, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type EndedRiding, type RideView } from "./rideStart.ts";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import type { RebalanceDocked } from "./lib/rebalanceDock.ts";
@@ -303,9 +303,9 @@ import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from ".
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
-// Ride mode, its graphs and its detours: loaded on first use, and first of the parts below once the page is idle, so a
-// Start soon after opening seldom waits. What App needs at Start (the voice's unlock inside the press, the start and
-// end sentences) is in rideStart.ts.
+// Ride mode, its graphs and its detours: loaded on first use, and once the page is idle. What App needs at Start (the
+// voice's unlock inside the press, the start and end sentences) is in rideStart.ts. A Start or Resume before the code
+// is in waits for it (beginRide, resumeLeft), so a ride never shows without its screen.
 const RideMode = later(() => import("./RideMode.tsx").then((m) => m.RideMode));
 const ReviewMode = later(() => import("./ReviewMode.tsx").then((m) => m.ReviewMode));
 import type { ListKey } from "./lib/review.ts";
@@ -4115,6 +4115,12 @@ export function App() {
     const route = left ? firstTripOf(asked) : asked;
     const ridePoints = left ? askedPoints.slice(0, 2) : askedPoints;
     if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
+    // Ride mode's code not in yet (a Start soon after the first open): the same press carries on once it is, the voice
+    // already unlocked; where it cannot come, the rider stays in Plan and is told.
+    if (!RideMode.loaded()) {
+      RideMode.load().then(() => beginRide(prefs, true, rest), () => announce(RIDE_NEEDS_SIGNAL));
+      return;
+    }
     // Anonymous daily totals (lib/usage.ts): a new ride counts once; Ride the rest is the same ride.
     if (!rest) countUse(window.location.origin, route.preset === "run" ? "run" : walksLine(route) ? "walk" : "ride");
     const leg = rideLegOf(route, ridePoints, rest ? false : routedLoop);
@@ -5126,11 +5132,16 @@ export function App() {
   // Not over a ride link opened to follow (Stephen 2026-10-30: "when a ride was in progress, it discarded the ride share
   // and asked to restart the ride"): the link is what the rider tapped, so it joins that ride; Resume would drop it.
   const [leftAsk, setLeftAsk] = useState(() => (SHARED_RIDE && SHARED_LEAD ? null : leftRide(VIA_MARKS, Date.now())));
-  const resumeLeft = () => {
+  const resumeLeft = (_?: unknown, unlocked = false) => {
     const left = leftAsk;
-    setLeftAsk(null);
     if (!left) return;
-    startRideGesture(ridePrefs);
+    if (!unlocked) startRideGesture(ridePrefs);
+    // As beginRide: Resume waits for Ride mode's code, its question still open where the code cannot come.
+    if (!RideMode.loaded()) {
+      RideMode.load().then(() => resumeLeft(undefined, true), () => announce(RIDE_NEEDS_SIGNAL));
+      return;
+    }
+    setLeftAsk(null);
     endedRide.current = null;
     setRideEnded(null);
     // A trip's riding leg worked out again from the whole trip; past its line, the walk or train followed carries on.

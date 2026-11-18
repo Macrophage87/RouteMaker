@@ -76,6 +76,9 @@ export function voiceTurnedOn(before: RidePrefs, next: RidePrefs, voice: Pick<Vo
 /** Said politely when Start's closure check takes more than a moment (CLOSURE_SLOW_MS). */
 export const CHECKING_CLOSURES = t("Checking closures…");
 export const CLOSURE_SLOW_MS = 600;
+/** Said where Start or Resume found Ride mode's code not yet on the phone and it could not be fetched (no service worker
+ *  yet, and no signal): the rider stays where they were, never on a ride with no ride screen. */
+export const RIDE_NEEDS_SIGNAL = t("The ride needs a connection to start. Try again once you have signal.");
 
 /** What App shows on the map for the ride. */
 export interface RideView {

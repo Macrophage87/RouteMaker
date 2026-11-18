@@ -1962,6 +1962,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Eş yükselti eğrileri açık.",
   "Topo lines off.": "Eş yükselti eğrileri kapalı.",
   "Topo lines need a connection. Try again once you have signal.": "Eş yükselti eğrileri için bağlantı gerekir. Sinyal olunca yeniden deneyin.",
+  "The ride needs a connection to start. Try again once you have signal.": "Sürüşü başlatmak için bağlantı gerekir. Sinyal olunca yeniden deneyin.",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Zaman dar. Kalkışa {count}, {source}; kalan pay {spare}.",
   "live": "canlı",
   "scheduled": "tarifeye göre",

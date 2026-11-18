@@ -1962,6 +1962,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Горизонтали включены.",
   "Topo lines off.": "Горизонтали выключены.",
   "Topo lines need a connection. Try again once you have signal.": "Для горизонталей нужно подключение. Попробуйте снова, когда появится сигнал.",
+  "The ride needs a connection to start. Try again once you have signal.": "Чтобы начать поездку, нужно подключение. Попробуйте снова, когда появится сигнал.",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Впритык. Отправление через {count}, {source}; запас времени {spare}.",
   "live": "в реальном времени",
   "scheduled": "по расписанию",

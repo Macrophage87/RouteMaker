@@ -1962,6 +1962,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "የከፍታ መስመሮች በርተዋል።",
   "Topo lines off.": "የከፍታ መስመሮች ጠፍተዋል።",
   "Topo lines need a connection. Try again once you have signal.": "የከፍታ መስመሮች ግንኙነት ያስፈልጋቸዋል። ሲግናል ሲያገኙ እንደገና ይሞክሩ።",
+  "The ride needs a connection to start. Try again once you have signal.": "ጉዞውን ለመጀመር ግንኙነት ያስፈልጋል። ሲግናል ሲያገኙ እንደገና ይሞክሩ።",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "ጊዜው ጠባብ ነው። መነሻ በ{count} ውስጥ፣ {source}፤ ትርፍ ጊዜ {spare}።",
   "live": "ቀጥታ",
   "scheduled": "በመርሐ ግብር",

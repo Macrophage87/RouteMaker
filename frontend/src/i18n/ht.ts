@@ -1962,6 +1962,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Liy topo limen.",
   "Topo lines off.": "Liy topo etenn.",
   "Topo lines need a connection. Try again once you have signal.": "Liy topo bezwen koneksyon. Eseye ankò lè w gen siyal.",
+  "The ride needs a connection to start. Try again once you have signal.": "Woulib la bezwen koneksyon pou l kòmanse. Eseye ankò lè w gen siyal.",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Li sere. L ap pati nan {count}, {source}; tan an plis {spare}.",
   "live": "an dirèk",
   "scheduled": "dapre orè",
