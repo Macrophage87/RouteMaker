@@ -26,7 +26,7 @@ import { isBike, type Bike, type Dials } from "./dials.ts";
 import { ridesHidden } from "./nativeShell.ts";
 import { pointAlong } from "./lightTimes.ts";
 import { drawOf, transitOf } from "./transit.ts";
-import { language, t } from "./i18n.ts";
+import { englishOf, language, t } from "./i18n.ts";
 import { sourceWord, wallClockOf } from "./departure.ts";
 import { onwardOf, walkPart, type OnwardPart } from "./onward.ts";
 import { walkModel, walkStart, walkStep } from "./walkCues.ts";
@@ -275,7 +275,8 @@ export function withoutSpare(text: string): string {
 export function stepText(step: TransitStep): string {
   if (language() === "en" || language() === "es") return step.text;
   const m = Math.max(1, Math.round(step.seconds / 60));
-  const lift = /\bby the elevator\b/.test(step.text);
+  // The server words the step in the language too: read it back to its English to find the elevator.
+  const lift = /\bby the elevator\b/.test(englishOf(step.text) ?? step.text);
   switch (step.mode) {
     case "walk":
       return step.to ? t("Walk {m} min to {place}.", { m, place: step.to }) : t("Walk {m} min.", { m });

@@ -102,3 +102,30 @@ def test_a_fix_that_loses_a_place_is_refused(copy):
     problems = sheet.import_sheet("ko", path)
     assert len(problems) == 1 and "{places}" in problems[0]
     assert sheet.app_path("ko").read_text() == before
+
+
+def test_the_apps_copy_follows_an_import(copy):
+    """The copy is read from the file, so a fix shows in it even after lang_es was imported."""
+    path = sheet.export("es", copy / "out")
+    rows = _rows(path)
+    for row in rows:
+        if row["Key"] == "route" and row["English"] == "Right onto {street}":
+            row["Your fix"] = "Doble a la derecha hacia {street}"
+    _write(path, rows)
+    assert sheet.import_sheet("es", path) == []
+    assert '"Right onto {street}": "Doble a la derecha hacia {street}"' in sheet.server_ts("es")
+
+
+def test_an_excel_save_is_read_or_named(copy):
+    path = sheet.export("fr", copy / "out")
+    rows = _rows(path)
+    # Semicolons, as Excel saves in some countries: read.
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=sheet.COLUMNS, delimiter=";")
+        writer.writeheader()
+        writer.writerows(rows)
+    assert sheet.import_sheet("fr", path) == []
+    # Not UTF-8 (Excel's plain CSV): one plain line saying how to save it.
+    path.write_bytes("Key,English\napp,Caf\xe9\n".encode("cp1252"))
+    problems = sheet.import_sheet("fr", path)
+    assert len(problems) == 1 and "CSV UTF-8" in problems[0]

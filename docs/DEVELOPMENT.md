@@ -9989,7 +9989,9 @@ written. Miles come first in every language.
   worded by the app from the step's fields (`lib/rideTrip.ts stepText`). The app keeps a copy of
   the server's lists (`frontend/src/i18n/server/<code>.ts`, written by `scripts/translation_sheet.py
   sync`, fetched with the catalog) only to read those sentences back to English for the voice on a
-  phone with no voice for the language (`englishOf`).
+  phone with no voice for the language (`englishOf`). Inside Plan, which is marked English, the
+  Directions and hazard lists are marked back to the rider's language with `dir="auto"`
+  (`serverTextAttributes`), so a screen reader reads them in their own voice.
 - Reporting a wrong word: under the language picker, the draft note gains "Spot a wrong word? Tell
   us on Discord." with the link (the owner, 2026-11-12).
 
@@ -10008,7 +10010,8 @@ where it shows (the catalog's section heading), and two columns to fill, "Your f
 `import <code> <sheet.csv>` refuses a fix whose `{places}` differ from the English's, writes the
 rest into `frontend/src/i18n/<code>.ts` and `src/routemaker/lang_<code>.py`, keeps the checked
 phrases in `frontend/src/i18n/checked/<code>.json` (the next export marks them) and re-runs
-`sync`. Review the diff before committing; `tests/test_translation_sheet.py` covers the round trip.
+`sync`. From Excel the sheet must be saved as "CSV UTF-8" (the import says so otherwise; a
+semicolon-separated save is read). Review the diff before committing; `tests/test_translation_sheet.py` covers the round trip.
 
 **Adding or changing a phrase.** Write the English through `t()`, add its Spanish to `es.ts`
 (and, for a server sentence, to `lang_es.py` and the other 19 `lang_<code>.py`, then run

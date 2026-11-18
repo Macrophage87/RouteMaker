@@ -288,6 +288,14 @@ export function planStaysEnglish(lang: Language = current): boolean {
   return lang !== "en" && lang !== "es";
 }
 
+/**
+ * The route's own sentences inside Plan (its Directions and hazard lines): the server words them in the rider's
+ * language, so where Plan is marked English they are marked back, for screen readers and right to left (`dir="auto"`).
+ */
+export function serverTextAttributes(lang: Language = current): { lang?: string; dir?: "auto" } {
+  return planStaysEnglish(lang) ? { lang: LOCALE[lang], dir: "auto" } : {};
+}
+
 /** Plan's English mark (planStaysEnglish), spread onto its containers. */
 export function planLanguageAttributes(lang: Language = current): { lang?: string; dir?: "ltr" } {
   return planStaysEnglish(lang) ? { lang: "en-US", dir: "ltr" } : {};
