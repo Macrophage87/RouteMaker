@@ -55,6 +55,7 @@ def record(
     object_id,
     outcome: str,
     detail: str = "",
+    pk=None,
 ):
     """Write one audit row. `actor` is a User, or None for a worker.
 
@@ -88,7 +89,9 @@ def record(
     from .models import AuditLogEntry
 
     actor_pk = getattr(actor, "pk", None)
+    # `pk`: an id out of line (core.signed_out_suggestions, a ride's send); else the next one.
     return AuditLogEntry.objects.create(
+        pk=pk,
         actor=actor if actor_pk else None,
         actor_user_id=actor_pk,
         action=str(action)[:ACTION_MAX],

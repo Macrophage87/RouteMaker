@@ -95,7 +95,7 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, plansFromStart, reversedPoints, withLoop } from "./lib/loop.ts";
+import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, loopWay, loopWays, withLoopWay, planStartDials, plansFromStart, reversedPoints, withLoop } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
@@ -289,6 +289,8 @@ import { leaveNowArriveMs } from "./lib/arrival.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { fitStart, offersStartTime, startMs } from "./lib/startTime.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
+import { PlanKeysDialog } from "./PlanKeysDialog.tsx";
+import { characterKey, keyFreeAt, planKeyFor, planKeySaid, pointRowAt, readPlanKeys, stepPoint, writePlanKeys, type PlanKey } from "./lib/planKeys.ts";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
 import { EditRouteSheet, FoodChips, FoodSheet, GpxSheet, RoutesSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
@@ -297,7 +299,7 @@ import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
-import { BACK_LABEL, POPUP_VIEWS, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
+import { BACK_LABEL, POPUP_VIEWS, ROUTE_FOLD_GROUP, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
@@ -557,8 +559,6 @@ export function App() {
   const [reviewList, setReviewList] = useState<ListKey | undefined>(undefined);
   // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
   const [goSheet, setGoSheet] = useState<"peek" | "half" | "full">("half");
-  // Go's stress bar tapped: a new number opens Layers' Traffic stress section, its colour key (the owner's P1).
-  const [stressKeyAsk, setStressKeyAsk] = useState(0);
   // The rider and bike weight (OWNER-DECISIONS 313-318): kept apart from `dials`, which
   // the link carries, and added only to the request (planDials).
   const weightStore = useRef<WeightStore | null>(null);
@@ -6646,6 +6646,109 @@ export function App() {
     mode === "go" && !riding && (goBig !== null || can.undo || can.redo || points.length > 0)
       ? { onUndo: can.undo ? undo : null, onRedo: can.redo ? redo : null, big: goBig, onClear: points.length > 0 ? clearPlan : null }
       : null;
+  // Plan's keyboard shortcuts (lib/planKeys.ts; the "?" sheet lists them, and turns the character keys off).
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [keysOn, setKeysOn] = useState(readPlanKeys);
+  useEffect(() => setKeysOpen(false), [mode, riding]);
+  const planKeyRef = useRef<(key: PlanKey) => void>(() => {});
+  planKeyRef.current = (key: PlanKey) => {
+    const rows = removeRefs.current.slice(0, points.length);
+    const at = pointRowAt(document.activeElement);
+    switch (key.kind) {
+      case "help":
+        setKeysOpen(true);
+        return;
+      case "search": {
+        const box = pointsSearchRef.current?.querySelector<HTMLInputElement>("input:not([type=hidden])") ?? null;
+        if (box) box.focus();
+        else announce(planKeySaid.noSearch());
+        return;
+      }
+      case "route":
+        if (routingNow) return;
+        if (routeNow.unavailable === null) pressRoute();
+        else announce(routeNow.unavailable);
+        return;
+      case "reverse":
+        if (points.length < 2) announce(planKeySaid.twoPoints());
+        else reverse();
+        return;
+      case "loop": {
+        if (!loop) {
+          announce(planKeySaid.noLoop());
+          return;
+        }
+        const ways = loopWays(preset).filter(({ way }) => !(loop.implied && way === "one-way"));
+        const now = ways.findIndex(({ way }) => way === loopWay(dials, loop.implied));
+        const next = ways[(now + 1) % ways.length];
+        if (!next) return;
+        commitDials(withLoopWay(dials, next.way, loop.implied));
+        announce(next.label);
+        return;
+      }
+      case "save": {
+        const save = document.querySelector<HTMLElement>(".plan-map-bar .save-route-open");
+        if (save) save.click();
+        else announce(shown && !stale ? planKeySaid.chooseFirst() : planKeySaid.routeToSave());
+        return;
+      }
+      case "export":
+        if (shown && !stale) downloadRoute(announce);
+        else announce(planKeySaid.routeToExport());
+        return;
+      case "previous":
+      case "next": {
+        const index = stepPoint(at, points.length, key.kind === "next" ? 1 : -1);
+        if (index === null) {
+          announce(planKeySaid.noPoints());
+          return;
+        }
+        const point = points[index];
+        if (point) mapRef.current?.easeTo({ center: point });
+        const row = rows[index];
+        if (row?.offsetParent) row.focus();
+        else announce(namePoints(points, VIA_MARKS.isVia, loopVias)[index]?.name ?? "");
+        return;
+      }
+      case "remove":
+        // keyFreeAt let it through only on a point's row.
+        if (at !== null && at < points.length) removeAt(at);
+        return;
+      case "fold": {
+        const folds = Array.from(document.querySelectorAll<HTMLDetailsElement>(`details[name="${ROUTE_FOLD_GROUP}"]`)).filter((fold) => fold.offsetParent !== null || fold.getClientRects().length > 0);
+        const fold = folds[key.index];
+        if (!fold) {
+          announce(folds.length === 0 ? planKeySaid.noFolds() : planKeySaid.folds(folds.length));
+          return;
+        }
+        fold.open = true;
+        const summary = fold.querySelector<HTMLElement>("summary");
+        summary?.focus();
+        summary?.scrollIntoView?.({ block: "nearest" });
+        return;
+      }
+    }
+  };
+  useEffect(() => {
+    if (mode !== "plan" || riding) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      const key = planKeyFor(event);
+      if (!key || (!keysOn && characterKey(key))) return;
+      // A dialog shown (the sheet's own too) or a card over the plan has its keys to itself; one inside a closed
+      // sheet (Settings' rider weight) does not count.
+      if ([...document.querySelectorAll("dialog[open], [aria-modal='true']")].some((el) => el.getClientRects().length > 0)) return;
+      if (!keyFreeAt(key, event.target as Element | null)) return;
+      event.preventDefault();
+      planKeyRef.current(key);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, riding, keysOn]);
+  const switchKeys = (on: boolean) => {
+    setKeysOn(on);
+    writePlanKeys(on);
+  };
   const planPanel = (
     <PlanPanel
       key="plan"
@@ -6714,6 +6817,7 @@ export function App() {
         federalPlanner,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere: !narrow && !planFirst,
         undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive: mode !== "go", tips, setTips, tipsId,
+        onKeys: mode === "plan" ? () => setKeysOpen(true) : undefined,
       }}
     />
   );
@@ -6854,10 +6958,18 @@ export function App() {
         onBestOrder={() => void bestOrder()}
       />
     ) : null,
-    // A tap on the stress bar (the owner's P1): Layers, its Traffic stress section open on the colour key.
-    onStressKey: (opener: HTMLButtonElement) => {
-      setStressKeyAsk((n) => n + 1);
-      openView("layers", opener);
+    // A tap on the stress bar (the 2026-11-12 backlog, Go item 9): the map flies to the route's worst stretch, framed
+    // clear of the sheet. The colour key is in Layers.
+    // A full sheet covers the map, so it goes to half first and the stretch is framed once it has.
+    onWorst: (line: LonLat[]) => {
+      if (line.length === 0) return;
+      if (goSheet === "full") setGoSheet("half");
+      requestAnimationFrame(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        map.fitBounds(frameAround(line), { padding: framePadding(), maxZoom: 17, duration: still ? 0 : 400 });
+      });
     },
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
@@ -7229,6 +7341,7 @@ export function App() {
           )}
         </LiveRiderPoint>
       )}
+      <PlanKeysDialog open={keysOpen && mode === "plan" && !riding} on={keysOn} onSwitch={switchKeys} onClose={() => setKeysOpen(false)} />
       <LoadRouteDialog
         open={loadOpen === "plan" ? barLoad : loadOpen === "go" && mode === "go" && !riding}
         onClose={() => setLoadOpen(null)}
@@ -7770,7 +7883,6 @@ export function App() {
                 // Not on the Mass Ride map either, where it never draws (scenicShown).
                 intervals: mode === "go" || massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
-                stressKeyAsk,
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,

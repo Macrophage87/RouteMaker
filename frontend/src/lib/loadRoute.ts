@@ -5,7 +5,7 @@
  * route's name and one short line; a tap opens it. Renaming, deleting and versions stay in Save & load.
  */
 import { formatDistance } from "./format.ts";
-import { rowDetails, type SavedSummary } from "./savedRoutes.ts";
+import { rowDetails, type SavedFigures, type SavedSummary } from "./savedRoutes.ts";
 import { draftDetails, type DraftSummary } from "./drafts.ts";
 import type { KeptRoute } from "./offlineRoutes.ts";
 import { PRESETS, isTransit, presetSaid, type PresetId } from "./presets.ts";
@@ -41,7 +41,7 @@ export function archivedSaid(name: string): string {
 export const SEARCH_FROM = 6;
 
 export type LoadRow =
-  | { kind: "saved"; key: string; name: string; detail: string; id: number; tags: string[]; archived: boolean; replacedBy: string | null }
+  | { kind: "saved"; key: string; name: string; detail: string; id: number; tags: string[]; archived: boolean; replacedBy: string | null; figures: SavedFigures | null }
   | { kind: "draft"; key: string; name: string; detail: string; id: string }
   | { kind: "kept"; key: string; name: string; detail: string; kept: KeptRoute };
 
@@ -75,6 +75,7 @@ export function loadRows(saved: readonly SavedSummary[], kept: readonly KeptRout
         tags: r.tags ?? [],
         archived: Boolean(r.archived_at),
         replacedBy: (r.replaced_by != null && names.get(r.replaced_by)) || null,
+        figures: r.figures ?? null,
       },
     }));
   if (archived) return dated.map((d) => d.row);
