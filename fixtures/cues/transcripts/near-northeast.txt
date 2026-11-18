@@ -27,7 +27,7 @@
   238 s    851 m  #3 left Staples St NE prepare: "In 140 feet, left onto Staples Street Northeast." -> said
   247 s    883 m  #3 left Staples St NE now (urgent): "Left now onto Staples Street Northeast." -> said
   304 s   1087 m  #4 busy unnamed Rd advance: "In 500 feet, heavy traffic." -> said
-  309 s   1105 m  #5 left 14th St NE bike Ln advance: "In 500 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane. Busy junction." -> said
+  305 s   1091 m  #5 left 14th St NE bike Ln advance: "In 500 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane. Busy junction." -> held 1.2 s
   339 s   1212 m  #5 left 14th St NE bike Ln prepare: "In 140 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane." -> said
   347 s   1241 m  #5 left 14th St NE bike Ln now (urgent): "Cross Florida Avenue Northeast now, then left onto 14th Street Northeast bike lane." -> said
   367 s   1313 m  #7 right Maryland Ave NE advance: "In 500 feet, right onto Maryland Avenue Northeast." -> said
@@ -56,7 +56,7 @@
   157 s    842 m  #3 left Staples St NE prepare: "In 170 feet, left onto Staples Street Northeast." -> said
   165 s    885 m  #3 left Staples St NE now (urgent): "Left now onto Staples Street Northeast." -> said
   203 s   1089 m  #4 busy unnamed Rd advance: "In 500 feet, heavy traffic." -> said
-  206 s   1105 m  #5 left 14th St NE bike Ln advance: "In 500 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane. Busy junction." -> said
+  204 s   1094 m  #5 left 14th St NE bike Ln advance: "In 500 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane. Busy junction." -> held 1.2 s
   224 s   1202 m  #5 left 14th St NE bike Ln prepare: "In 170 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane." -> said, cut 6.7 s in
   231 s   1239 m  #5 left 14th St NE bike Ln now (urgent): "Cross Florida Avenue Northeast now, then left onto 14th Street Northeast bike lane." -> said
   244 s   1309 m  #6 crossing H St NE prepare: "In 160 feet, cross H Street Northeast." -> said
@@ -85,7 +85,7 @@
   102 s    821 m  #3 left Staples St NE prepare: "In 250 feet, left onto Staples Street Northeast." -> said
   110 s    885 m  #3 left Staples St NE now (urgent): "Left now onto Staples Street Northeast." -> said
   127 s   1022 m  #4 busy unnamed Rd advance: "In 700 feet, heavy traffic." -> said
-  129 s   1038 m  #5 left 14th St NE bike Ln advance: "In 700 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane. Busy junction." -> held 0.2 s
+  128 s   1030 m  #5 left 14th St NE bike Ln advance: "In 700 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane. Busy junction." -> held 1.2 s
   146 s   1175 m  #5 left 14th St NE bike Ln prepare: "In 250 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane." -> said
   154 s   1239 m  #5 left 14th St NE bike Ln now (urgent): "Cross Florida Avenue Northeast now, then left onto 14th Street Northeast bike lane." -> said
   155 s   1247 m  #7 right Maryland Ave NE advance: "In 700 feet, right onto Maryland Avenue Northeast." -> held 5.4 s
@@ -124,9 +124,9 @@
   139 s    746 m  #3 left Staples St NE advance: "In 500 feet, left onto Staples Street Northeast." -> said
   157 s    842 m  #3 left Staples St NE prepare: "In 170 feet, left onto Staples Street Northeast." -> said
   166 s    891 m  #3 left Staples St NE now (urgent): "About here: Left now onto Staples Street Northeast." -> said
+  188 s   1009 m  #5 left 14th St NE bike Ln advance: "In about 800 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane." -> said
   191 s           note: "GPS is weak: turn cues paused."
   203 s   1089 m  #4 busy unnamed Rd advance: "In 500 feet, heavy traffic." -> said
-  206 s   1105 m  #5 left 14th St NE bike Ln advance: "In 500 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane. Busy junction." -> said
   224 s   1202 m  #5 left 14th St NE bike Ln prepare: "In 170 feet, cross Florida Avenue Northeast, then left onto 14th Street Northeast bike lane." -> said, cut 6.7 s in
   231 s   1239 m  #5 left 14th St NE bike Ln now (urgent): "Cross Florida Avenue Northeast now, then left onto 14th Street Northeast bike lane." -> said
   244 s   1309 m  #6 crossing H St NE prepare: "In 160 feet, cross H Street Northeast." -> said

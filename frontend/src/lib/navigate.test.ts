@@ -20,6 +20,8 @@ import {
   cueShort,
   whereAmIShown,
   ADVANCE_MIN_M,
+  HARD_LEFT_ADVANCE_S,
+  HARD_LEFT_MIN_M,
   END_FIX_MAX_AGE_MS,
   END_PART_WAY_M,
   END_LEFT_MIN_M,
@@ -65,6 +67,7 @@ import {
   replanPoints,
   onHalfStep,
   rideModel,
+  phasesFor,
   cueWords,
   signalsCard,
   REPLAN_UTURN,
@@ -3244,4 +3247,40 @@ test("on an iPhone or iPad (no app yet) the ride lines never send the rider to a
     assert.match(line, /^On iPhone[,:] .*30 mi.*lock-screen cue images/);
   }
   assert.match(IPHONE_RIDE_LINE, /screen on/);
+});
+
+test("hard left: a left or bear left off a road rated 3+ is first said about 40 s out (800 ft floor); other turns as before", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Georgia Avenue Northwest.", { street: "Georgia Avenue Northwest", tier: 3 }),
+      stretch(900, 1800, "Left onto Shepherd Street Northwest.", { street: "Shepherd Street Northwest", tier: 1, turn: turning("left", "Shepherd Street Northwest") }),
+      stretch(1800, 2700, "Left onto 9th Street Northwest.", { street: "9th Street Northwest", tier: 1, turn: turning("left", "9th Street Northwest") }),
+      stretch(2700, 3600, "Bear left onto Rock Creek Church Road.", { street: "Rock Creek Church Road", tier: 3, turn: turning("bear_left", "Rock Creek Church Road") }),
+      stretch(3600, 4500, "Right onto Upshur Street Northwest.", { street: "Upshur Street Northwest", tier: 2, turn: turning("right", "Upshur Street Northwest") }),
+    ]),
+  );
+  const [offBusy, offQuiet, bearOnto, rightOffBusy] = model.cues;
+  assert.equal(offBusy.hardLeft, true);
+  assert.equal(offQuiet.hardLeft, undefined);
+  // Onto a busy road is not off one: the stretch before decides.
+  assert.equal(bearOnto.hardLeft, undefined);
+  assert.equal(rightOffBusy.hardLeft, undefined);
+  const advance = (cue: (typeof model.cues)[number], speedMs: number, onFoot = false) =>
+    phasesFor("full", cue, speedMs, onFoot).find((p) => p.phase === "advance")?.withinM;
+  // 15 mph (6.7 m/s): 40 s, about 270 m, where a plain turn is 27 s, about 180 m.
+  assert.equal(advance(offBusy, 6.7), HARD_LEFT_ADVANCE_S * 6.7);
+  assert.equal(advance(offQuiet, 6.7), 27 * 6.7);
+  // Slow: never closer than HARD_LEFT_MIN_M (about 800 ft).
+  assert.equal(advance(offBusy, 2), HARD_LEFT_MIN_M);
+  // The 10 s and "now" cues are unchanged.
+  assert.deepEqual(
+    phasesFor("full", offBusy, 6.7).filter((p) => p.phase !== "advance"),
+    phasesFor("full", offQuiet, 6.7).filter((p) => p.phase !== "advance"),
+  );
+  // On foot, no change: a walker crosses at the corner.
+  assert.equal(advance(offBusy, 1.4, true), advance(offQuiet, 1.4, true));
+  // Ridden at 5 m/s: the first cue for the left off Georgia Avenue comes 250 m before it, not 150 m.
+  const saidBy = (toM: number) => ride(model, "full", 0, toM).events.some((e) => e.cue?.index === offBusy.index);
+  assert.equal(saidBy(640), false);
+  assert.equal(saidBy(660), true);
 });
