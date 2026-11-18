@@ -1,4 +1,8 @@
-# Pinned loosely here and exactly in the image build; see Operations in the plan.
+# Pinned loosely here and exactly in the image build; see Operations in the plan. The constraint
+# below holds an install of this file alone to the image's versions: on its own, django>=5.0
+# fetched Django 6, whose admin redirects a hidden row instead of refusing it, and five
+# test_admin_scoping tests failed with no code change.
+-c docker/requirements.txt
 django>=5.0
 django-ninja
 psycopg2-binary

@@ -626,7 +626,7 @@ test("Ride the rest starts by itself only on a fresh fix at the stop off the tra
   assert.equal(restAutoReady(rest, null, now), false);
 });
 
-test("the hand-off from the bike to the train is in the rider's language where the server words only English and Spanish", () => {
+test("the hand-off from the bike to the train is in the rider's language, worded by the app in the 19", () => {
   const boarding = PLAN.steps[3];
   // English (and Spanish): the server's own sentence.
   assert.equal(stepText(boarding), boarding.text);
@@ -646,7 +646,8 @@ test("the hand-off from the bike to the train is in the rider's language where t
     );
     // Whether the time is the timetable's or a live prediction stays said in every language.
     assert.match(stepText({ ...bus, source: "live" as const }).replace(/\s/gu, " "), /Départ à 19:42 en temps réel\./u);
-    assert.equal(stepText({ ...PLAN.steps[2], text: "About 2 min into the station by the elevator." }), "Environ 1 min pour entrer dans la station par l'ascenseur.");
+    // The server's French step (src/routemaker/lang_fr.py) still says the elevator.
+    assert.equal(stepText({ ...PLAN.steps[2], text: "Environ 2 min pour entrer dans la station, par l'ascenseur." }), "Environ 1 min pour entrer dans la station par l'ascenseur.");
     assert.equal(stepText(PLAN.steps[0]), "Marchez 1 min jusqu'à la station de vélos en libre-service 4th & E St NW et prenez un vélo classique.");
   } finally {
     setLanguageForTest("en");

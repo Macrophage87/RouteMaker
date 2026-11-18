@@ -495,31 +495,20 @@ test("Voice: a language the phone has no voice for speaks the English; the scree
   }
 });
 
-test("Voice: the server's English sentences in a language it does not word are said in the English voice", () => {
-  setCatalogForTest("fr", { "Left onto {street}.": "Tournez à gauche sur {street}.", "Ride started.": "Trajet commencé." });
+test("Voice: the route's sentences come in the rider's language and stay with its voice; with no voice, read back to English", () => {
+  // The server words hazards in each of DC's languages (src/routemaker/lang_<code>.py), copied to src/i18n/server/.
+  setCatalogForTest("fr", { "Left onto {street}.": "Tournez à gauche sur {street}." }, { "Rails in the road": "Rails sur la chaussée" });
   setLanguageForTest("fr");
   try {
     const spoken: UtteranceLike[] = [];
     const synth = { speak: (u: UtteranceLike) => void spoken.push(u), cancel: () => {}, speaking: false };
     const utterance = (text: string): UtteranceLike => ({ text, lang: "", onend: null });
-    const voices = () => [{ lang: "en-US" }, { lang: "fr-FR" }];
-    // A road hazard as the server words it: English, in the English voice, not the French one.
-    new Voice({ synth, utterance, voices }).speak("Rails cross the road ahead.", true);
-    assert.deepEqual([spoken[0].text, spoken[0].lang, spoken[0].voice], ["Rails cross the road ahead.", "en-US", undefined]);
-    // The app's own French, in the French voice; an ASCII phrase that reads back to the catalog too.
-    new Voice({ synth, utterance, voices }).speak("Tournez à gauche sur R Street.", true);
-    new Voice({ synth, utterance, voices }).speak("Trajet commencé.", true);
-    assert.deepEqual([spoken[1].lang, spoken[1].voice?.lang, spoken[2].lang], ["fr-FR", "fr-FR", "fr-FR"]);
-  } finally {
-    setLanguageForTest("en");
-  }
-  // Spanish: the server words it, so ASCII Spanish stays with the Spanish voice.
-  setLanguageForTest("es");
-  try {
-    const spoken: UtteranceLike[] = [];
-    const synth = { speak: (u: UtteranceLike) => void spoken.push(u), cancel: () => {}, speaking: false };
-    new Voice({ synth, utterance: (text) => ({ text, lang: "", onend: null }), voices: () => [{ lang: "en-US" }, { lang: "es-US" }] }).speak("Rieles cruzan la calle adelante.", true);
-    assert.deepEqual([spoken[0].lang, spoken[0].voice?.lang], ["es-US", "es-US"]);
+    // An ASCII French sentence from the server stays with the French voice.
+    new Voice({ synth, utterance, voices: () => [{ lang: "en-US" }, { lang: "fr-FR" }] }).speak("Rails sur la chaussee.", true);
+    assert.deepEqual([spoken[0].lang, spoken[0].voice?.lang], ["fr-FR", "fr-FR"]);
+    // A phone with no French voice: the server's phrase is read back and said in English.
+    new Voice({ synth, utterance, voices: () => [{ lang: "en-US" }] }).speak("Rails sur la chaussée", true);
+    assert.deepEqual([spoken[1].text, spoken[1].lang], ["Rails in the road", "en-US"]);
   } finally {
     setLanguageForTest("en");
   }

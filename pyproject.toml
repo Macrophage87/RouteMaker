@@ -1,6 +1,6 @@
 [project]
 name = "routemaker"
-version = "0.27.3"
+version = "0.28.0"
 description = "Route planning and navigation for a wide variety of cycling applications, DC to Baltimore"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -49,3 +49,5 @@ select = ["E", "F", "I", "UP", "B"]
 "scripts/beta/cd_logic.py" = ["UP045", "E501"]
 "scripts/route_scorecard.py" = ["UP007", "UP045"]
 "src/routemaker/scorecard.py" = ["UP007", "UP045", "B905"]
+# The route's sentences in each language, one phrase a line (scripts/translation_sheet.py).
+"src/routemaker/lang_*.py" = ["E501"]
