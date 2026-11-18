@@ -155,7 +155,7 @@ test("a resumed ride is on the broadcast it followed or led again: its id, leade
 
 test("Resume puts the page back on the kept broadcast; Broadcast from the ride screen keeps its link with the ride", () => {
   const app = src("../App.tsx");
-  const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
+  const resume = app.slice(app.indexOf("const resumeLeft = ("), app.indexOf("const dropLeft = () => {"));
   assert.match(resume, /const on = resumedBroadcast\(left\);[\s\S]*setSharedOpen\(open\)/);
   assert.match(resume, /answer: left\.route/);
   assert.match(app, /if \(led && riding && rideStart\?\.kept\) \{\s*keepLeftRideLeads\(link\);\s*setRideStart\(\(before\) => \(before \? \{ \.\.\.before, leads: link \}/);
@@ -272,7 +272,7 @@ test("Undo after End ride past a trip's line rides on with the train or walk; Re
   const undo = app.slice(app.indexOf("const undoEndRide = () => {"), app.indexOf("const finishRide = () => {"));
   assert.match(undo, /setRideStart\(\{ \.\.\.ended\.start, past: ended\.past \}\);/);
   assert.doesNotMatch(undo, /past: null/);
-  const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
+  const resume = app.slice(app.indexOf("const resumeLeft = ("), app.indexOf("const dropLeft = () => {"));
   assert.match(resume, /tripStopsLeft\.current = left\.stopsLeft \?\? null;\s*tripCheck\.current = checkTripOf\(left\.route, left\.points\);/);
   assert.match(app, /tripCheck\.current = checkTripOf\(route, ridePoints\);/);
 });
@@ -344,7 +344,7 @@ test("a Rebalance Ride's chosen drop-off is kept with the trip, so Resume rides 
   assert.match(ride, /if \(plannedTrip\?\.docked\) \{\s*const dock = t\("Dock at \{place\}\.", \{ place: plannedTrip\.docked \}\);\s*return \{ \.\.\.plannedTrip, finish: \{ shown: dock, spoken: dock \} \};/);
   assert.match(ride, /if \(keepLeft\) keepLeftRideDocked\(\{ name: choice\.name, route: found \?\? routeRef\.current, points \}\);/);
   const app = src("../App.tsx");
-  const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
+  const resume = app.slice(app.indexOf("const resumeLeft = ("), app.indexOf("const dropLeft = () => {"));
   assert.match(resume, /trip: leg\.trip \? \{ \.\.\.leg\.trip, approach: null, docked: docked\.name \} : null, planned: left\.route/);
   const undo = app.slice(app.indexOf("const undoEndRide = () => {"), app.indexOf("const finishRide = () => {"));
   assert.match(undo, /route: start\.planned!, docked/);

@@ -16,7 +16,8 @@ an effort is broken by (the connector's interval check's own rules, mcp/routemak
 stop during the on sets"):
 
 - **a stop**: a signal, a stop or give-way sign, a mini roundabout, a railway crossing or a
-  barrier (a gate, bollards) on a node of the stroke, from the extract's node tags; and a
+  barrier (a gate, a chain, a cycle barrier) on a node of the stroke, from the extract's node
+  tags (a bollard or block is ridden through and only counted, `k`); and a
   roundabout (`junction=roundabout`), whose ways are never part of a stretch;
 - **an intersection** (`JUNCTION_RULE`): where the stroke is a road, a road crossing it (arms on
   both sides) that is busy (LTS 3 or higher); where it is a path, any road it meets. With
@@ -28,9 +29,19 @@ stop during the on sets"):
 - **an LTS 4 road or Avoid** (`NEVER_TIER`), a mountain-bike trail, ground the tiles do not
   have, and a one-way road ridden against its traffic (that way only).
 
+A path stretch that winds (the owner, 2026-11-18: "very windy, narrow paths, which aren't suited
+for intervals"; "a gentle turn isn't an issue, its a cluster of short sharp ones") is left out
+whole: one whose line turns more than `WINDY_PATH_DEG_PER_KM` per km in tight bends
+(`tight_turning_per_km`), each gentler than a sharp turn but never letting up; more on a climb,
+ridden slower (`Stretch.windy_limit`). That holds for
+paths and unpaved ways (`s`); paved roads are not held to it, wide enough to ride a bend at speed.
+
 A stop, an intersection or a sharp turn cuts `PAD_M` either side: the slowing before and the
-getting going after. What is left and is at least `MIN_LENGTH_M` long is a stretch. A stretch
-that holds both ways is written once with `w`.
+getting going after. What is left is a stretch when riding it takes at least `MIN_EFFORT_MIN`
+minutes at `EFFORT_PACE_MPH` on the flat, slowed on a climb as the connector's interval check
+slows it (`effort_minutes`): the owner, 2026-11-17, "It's the distance with the elevation gain
+that would add it ... if it's a continuous uphill, you don't need as much distance". A stretch
+that holds both ways is written once with `w`, its minutes the quicker way's.
 
 Every threshold here is the interval check's, or our default (unmeasured), as marked.
 
@@ -47,12 +58,15 @@ The file, one stretch per entry, short keys (frontend/src/lib/intervals.ts reads
     n    its name from its roads (`climb_names.roads`); left out when it has none
     s    "p" a paved traffic-free path, "g" mostly unpaved; left out on a road
     b    1 when most of it is on roads rated LTS 3 (left out otherwise)
+    t    minutes to ride it at EFFORT_PACE_MPH, to a tenth (the quicker way for `w`)
+    k    how many bollards or blocks it passes (left out when none)
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -64,8 +78,15 @@ from . import climb_layer, climb_names
 from .climb_layer import HgtElevation, Sample, SegmentLine, Stroke
 
 FORMAT_VERSION = 1
-# Our default (unmeasured): about three minutes at 20 mph, a short interval's length.
-MIN_LENGTH_M = 1609.344
+# The owner's shortest interval, 2026-11-17 ("a 3', 5', 8', etc interval stretch").
+MIN_EFFORT_MIN = 3.0
+# The connector's (mcp/routemaker_mcp.py, pace_mph's default and CLIMB_SLOWING): an effort's
+# speed on the flat, and how a grade slows it: pace / (1 + CLIMB_SLOWING * grade %).
+EFFORT_PACE_MPH = 18.0
+CLIMB_SLOWING = 0.12
+METRES_PER_MILE = 1609.344
+# Our default: no piece shorter than this is looked at (three minutes is longer even at 15%).
+MIN_LENGTH_M = 400.0
 # The interval check's (mcp/routemaker_mcp.py): a turn this sharp slows an effort, a descent
 # this steep held this far breaks one, and the slowing and getting going round a stop or turn
 # (0.05 mi).
@@ -75,6 +96,15 @@ DESCENT_MIN_M = 150.0
 PAD_M = 80.0
 # Our default: the bearing either side of a vertex is read this far out, as the climbs' is.
 TURN_REACH_M = 20.0
+# Our defaults (unmeasured; set on the 2026-11-17 file). A bend is tight where the heading turns
+# TIGHT_BEND_DEG or more across BEND_WINDOW_M (a radius under about 57 m, too tight to hold 18 mph
+# on a path's width and sightlines), read every BEND_STEP_M. A path turning more than
+# WINDY_PATH_DEG_PER_KM in tight bends winds too much for an effort. The Anacostia trail's wiggles
+# by Kenilworth turn about 300 to 360; the Mount Vernon and Rock Creek trails at most about 170.
+TIGHT_BEND_DEG = 30.0
+BEND_WINDOW_M = 30.0
+BEND_STEP_M = 5.0
+WINDY_PATH_DEG_PER_KM = 200.0
 # The interval check's: a road this busy to cross breaks an effort; one this stressful is
 # never ridden in one (LTS 4 and Avoid).
 BUSY_TIER = 3
@@ -99,15 +129,19 @@ STOP_BARRIERS = frozenset(
         "lift_gate",
         "swing_gate",
         "sliding_gate",
-        "bollard",
         "cycle_barrier",
         "kissing_gate",
         "stile",
         "chain",
-        "block",
         "turnstile",
     }
 )
+# Bollards and blocks keep cars out and are ridden through, so they do not break a stretch;
+# a stretch notes how many it passes (the owner, 2026-11-18: "Mark bollards on the interval
+# card and have it noted ... You'll be going at like 6 mph up a steep hill, you're unlikely
+# to have issues with bollards"). The connector's interval check never counted them.
+PASS_BARRIERS = frozenset({"bollard", "block"})
+BOLLARD = "bollard"
 # Ways that join without breaking an effort, whatever the rule: no one on them has priority.
 MINOR_HIGHWAYS = frozenset(
     {"footway", "steps", "path", "cycleway", "bridleway", "pedestrian", "track", "corridor"}
@@ -152,6 +186,8 @@ def node_stop(tags: dict[str, str]) -> str | None:
         return "railway crossing"
     if tags.get("barrier") in STOP_BARRIERS:
         return "barrier"
+    if tags.get("barrier") in PASS_BARRIERS:
+        return BOLLARD
     return None
 
 
@@ -252,6 +288,8 @@ def vertex_break(
     roads = [(s, j) for s, j in others if _is_road(segments[s], facts)]
     here = segments[stroke.parts[stroke.edge_part[i]][0]]
     why = facts.stops.get(key)
+    if why == BOLLARD:
+        why = None  # ridden through; the stretch notes it (`Stretch.bollards`)
     if why in PRIORITY_SIGNS and roads:
         # On the junction's own node: the cross road's sign where the stroke is the busier road.
         if (here.tier or 0) <= max(segments[s].tier or 0 for s, _ in roads):
@@ -331,6 +369,15 @@ def clear_spans(total: float, cuts: Iterable[Span], min_length: float = MIN_LENG
     return out
 
 
+def effort_minutes(length_m: float, rise_m: float, pace_mph: float = EFFORT_PACE_MPH) -> float:
+    """The minutes an effort takes over `length_m` rising `rise_m` (a fall rides as flat)."""
+    if length_m <= 0:
+        return 0.0
+    grade = max(0.0, rise_m / length_m * 100.0)
+    speed = pace_mph / (1 + CLIMB_SLOWING * grade)
+    return length_m / METRES_PER_MILE / speed * 60.0
+
+
 def descents(samples: Sequence[Sample], sign: int) -> list[Span]:
     """The spans where the ground falls DESCENT_PCT or more over DESCENT_MIN_M, riding along
     the stroke (sign +1) or against it (sign -1)."""
@@ -381,6 +428,32 @@ class Stretch:
     name: str | None = None
     surface: str | None = None
     busy: bool = False
+    # Bollards (and blocks) along it, ridden through (PASS_BARRIERS).
+    bollards: int = 0
+
+    @property
+    def tight_turning_per_km(self) -> float:
+        """Degrees its line turns in tight bends per km, read on the line as the file has it."""
+        line = climb_layer._simplify(self.line, climb_layer.SIMPLIFY_M)
+        return tight_turning_per_km(line, self.length_m)
+
+    @property
+    def windy_limit(self) -> float:
+        """WINDY_PATH_DEG_PER_KM, more on a climb (the owner, 2026-11-18: "With some flexibility
+        on uphill stretches too"): a bend is taken at the effort's speed, slowed on a climb as its
+        minutes are (CLIMB_SLOWING), and the grip a bend needs goes with the speed squared."""
+        grade = 0.0 if self.both or self.length_m <= 0 else self.rise_m / self.length_m * 100.0
+        return WINDY_PATH_DEG_PER_KM * (1.0 + CLIMB_SLOWING * max(0.0, grade)) ** 2
+
+    @property
+    def windy_path(self) -> bool:
+        return self.surface in (PATH, GRAVEL) and self.tight_turning_per_km > self.windy_limit
+
+    @property
+    def minutes(self) -> float:
+        """At EFFORT_PACE_MPH, its riding way; the quicker way where it holds both."""
+        rise = -abs(self.rise_m) if self.both else self.rise_m
+        return effort_minutes(self.length_m, rise)
 
     def entry(self) -> dict:
         line = [
@@ -402,7 +475,52 @@ class Stretch:
             out["s"] = self.surface
         if self.busy:
             out["b"] = 1
+        out["t"] = round(self.minutes, 1)
+        if self.bollards:
+            out["k"] = self.bollards
         return out
+
+
+def tight_turning_per_km(line: Sequence[tuple[float, float]], length_m: float) -> float:
+    """Degrees a lon/lat line turns in tight bends, per km of `length_m`. The line is read every
+    `BEND_STEP_M`; a step's turn counts where the heading changes `TIGHT_BEND_DEG` or more across
+    the `BEND_WINDOW_M` round it, so a long gentle curve adds nothing and a wiggle adds all of
+    it."""
+    if length_m <= 0 or len(line) < 3:
+        return 0.0
+    k = math.cos(math.radians(line[0][1])) * 111_320.0
+    points = _resampled([(x * k, y * 111_320.0) for x, y in line], BEND_STEP_M)
+    heading = [
+        math.atan2(b[1] - a[1], b[0] - a[0]) for a, b in zip(points, points[1:], strict=False)
+    ]
+    half = max(1, round(BEND_WINDOW_M / BEND_STEP_M / 2))
+    tight = math.radians(TIGHT_BEND_DEG)
+    turned = 0.0
+    for i in range(len(heading) - 1):
+        lo, hi = max(0, i - half + 1), min(len(heading) - 1, i + half)
+        # All the turning in the window, both ways: an S-bend's left and right add, not cancel.
+        if sum(_turn(heading[j], heading[j + 1]) for j in range(lo, hi)) >= tight:
+            turned += _turn(heading[i], heading[i + 1])
+    return math.degrees(turned) / (length_m / 1000.0)
+
+
+def _turn(a: float, b: float) -> float:
+    return abs((b - a + math.pi) % (2 * math.pi) - math.pi)
+
+
+def _resampled(points: list[tuple[float, float]], step: float) -> list[tuple[float, float]]:
+    """Points every `step` metres along a planar line, its first point first."""
+    out = [points[0]]
+    want = step
+    done = 0.0
+    for (ax, ay), (bx, by) in zip(points, points[1:], strict=False):
+        length = math.hypot(bx - ax, by - ay)
+        while length > 0 and want <= done + length:
+            t = (want - done) / length
+            out.append((ax + (bx - ax) * t, ay + (by - ay) * t))
+            want += step
+        done += length
+    return out
 
 
 def stretch_id(start: tuple[float, float], end: tuple[float, float], both: bool) -> str:
@@ -446,6 +564,9 @@ def stretches_on_stroke(
     step = climb_layer.SAMPLE_STEP_M
     both.extend((s.along_m - step, s.along_m + step) for s in samples if s.elevation is None)
     sample_along = [s.along_m for s in samples]
+    bollards = [
+        along[i] for i in range(len(coords)) if facts.stops.get(node_key(coords[i])) == BOLLARD
+    ]
     found: list[Stretch] = []
     reading = {
         sign: clear_spans(total, both + one_way[sign] + descents(samples, sign)) for sign in (1, -1)
@@ -462,22 +583,24 @@ def stretches_on_stroke(
         )
         if twin is not None:
             c, d = reading[-1][twin]
-            if min(b, d) - max(a, c) < MIN_LENGTH_M:
-                twin = None  # the shared part is too short: each reading stands alone
-        if twin is not None:
-            used_back.add(twin)
-            found.append(
-                _stretch(stroke, segments, samples, sample_along, max(a, c), min(b, d), 1, True)
+            shared = _stretch(
+                stroke, segments, samples, sample_along, bollards, max(a, c), min(b, d), 1, True
             )
-        else:
-            found.append(_stretch(stroke, segments, samples, sample_along, a, b, 1, False))
+            if shared.minutes >= MIN_EFFORT_MIN:
+                used_back.add(twin)
+                found.append(shared)
+                continue
+            # The shared part is too short the quicker way: each reading stands alone.
+        found.append(_stretch(stroke, segments, samples, sample_along, bollards, a, b, 1, False))
     for k, (c, d) in enumerate(reading[-1]):
         if k not in used_back:
-            found.append(_stretch(stroke, segments, samples, sample_along, c, d, -1, False))
-    return found
+            found.append(
+                _stretch(stroke, segments, samples, sample_along, bollards, c, d, -1, False)
+            )
+    return [s for s in found if s.minutes >= MIN_EFFORT_MIN and not s.windy_path]
 
 
-def _stretch(stroke, segments, samples, sample_along, a, b, sign, both) -> Stretch:
+def _stretch(stroke, segments, samples, sample_along, bollards, a, b, sign, both) -> Stretch:
     line = climb_layer._line_between(stroke, a, b)
     start, end = _height(samples, sample_along, a), _height(samples, sample_along, b)
     rise = 0.0 if start is None or end is None else end - start
@@ -498,6 +621,7 @@ def _stretch(stroke, segments, samples, sample_along, a, b, sign, both) -> Stret
         name=climb_names.climb_name(roads, None),
         surface=climb_layer.surface_class(used, stroke, segments),
         busy=climb_layer.busy(used, stroke, segments),
+        bollards=sum(1 for x in bollards if a <= x <= b),
     )
 
 
@@ -530,11 +654,14 @@ def document(found: Sequence[Stretch], built: datetime | None = None) -> dict:
         "built": (built or datetime.now(UTC)).strftime("%Y-%m-%d"),
         "source": "OpenStreetMap contributors, ODbL 1.0; USGS 3DEP 1 arc-second, public domain",
         "rule": {
-            "min_m": round(MIN_LENGTH_M),
+            "min_minutes": MIN_EFFORT_MIN,
+            "pace_mph": EFFORT_PACE_MPH,
             "sharp_turn_deg": SHARP_TURN_DEG,
             "descent_pct": DESCENT_PCT,
             "descent_m": DESCENT_MIN_M,
             "junctions": JUNCTION_RULE,
+            "windy_path_deg_per_km": WINDY_PATH_DEG_PER_KM,
+            "tight_bend": [TIGHT_BEND_DEG, BEND_WINDOW_M],
         },
         "counts": {"both_ways": both, "one_way": len(entries) - both},
         "intervals": entries,

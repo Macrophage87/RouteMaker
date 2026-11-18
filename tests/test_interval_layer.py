@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import math
 
+import pytest
+
 from pipeline import interval_layer as il
 from pipeline.climb_layer import SegmentLine
 
@@ -79,6 +81,25 @@ class TestLengthAndGround:
         assert len(eastward) == 2 and all(s.length_m >= il.MIN_LENGTH_M for s in eastward)
         assert not any(s.both for s in out)
 
+    def test_a_short_climb_counts_by_its_minutes(self):
+        # The owner, 2026-11-17: "if it's a continuous uphill, you don't need as much distance".
+        # 1.2 km at 5%: 1,040 m after the ends, about 3.4 minutes up at 18 mph; flat, too short.
+        [s] = found([road(1, length_m=1200)], Ground(0.05))
+        assert not s.both and s.rise_m > 0 and s.minutes >= il.MIN_EFFORT_MIN
+        assert found([road(1, length_m=1200)]) == []
+
+    def test_a_both_ways_part_too_quick_downhill_holds_uphill_only(self):
+        # 1.6 km at 1.9% (under the 2% that breaks a descent): flat both ways, but only uphill takes
+        # 3 minutes, so it is written once, one way, up.
+        [s] = found([road(1, length_m=1600)], Ground(0.019))
+        assert not s.both and s.rise_m > 0 and s.line[0][0] < s.line[-1][0]
+
+    def test_minutes_follow_the_connector_s_slowing(self):
+        mile = il.METRES_PER_MILE
+        assert round(il.effort_minutes(mile, 0), 2) == round(60 / 18, 2)
+        assert round(il.effort_minutes(mile, mile * 0.05), 2) == round(60 / (18 / 1.6), 2)
+        assert il.effort_minutes(mile, -50) == il.effort_minutes(mile, 0)
+
     def test_lts4_is_never_part_of_one(self):
         assert found([road(1, tier=4)]) == []
 
@@ -96,6 +117,14 @@ class TestBreaks:
         facts = il.ExtractFacts(stops={il.node_key(east(2000)): "signal"})
         out = found([road(1, length_m=5000)], facts=facts)
         assert spans(out) == [(2000 - 2 * il.PAD_M, True), (3000 - 2 * il.PAD_M, True)]
+
+    def test_a_bollard_is_ridden_through_and_counted(self):
+        # The owner, 2026-11-18: "Mark bollards on the interval card and have it noted".
+        facts = il.ExtractFacts(stops={il.node_key(east(1500)): il.BOLLARD})
+        [s] = found([road(1)], facts=facts)
+        assert s.both and s.bollards == 1 and s.entry()["k"] == 1
+        assert il.node_stop({"barrier": "bollard"}) == il.BOLLARD
+        assert il.node_stop({"barrier": "gate"}) == "barrier"
 
     def test_a_quiet_cross_street_does_not(self):
         cross = seg(2, (1500, -300), (1500, 0), (1500, 300), tier=1)
@@ -171,6 +200,41 @@ class TestBreaks:
         ]
         assert len(found([seg(1, *line)])) == 1
 
+    def test_a_windy_path_is_left_out_and_a_windy_road_is_not(self):
+        # The owner, 2026-11-18: "You spend so much time turning here that you can't go at full
+        # speed." A zigzag of 50 degree bends every 40 m, each gentler than a sharp turn.
+        wiggle = [(k * 36.3, (k % 2) * 16.9) for k in range(0, 111)]
+        assert found([seg(1, *wiggle, trail=True)]) == []
+        # A tighter zigzag, a bend every 12 m, its left and right in one window, reads windier.
+        tight = [east(k * 10.9, (k % 2) * 5.1) for k in range(0, 101)]
+        assert il.tight_turning_per_km(tight, 1200) > il.tight_turning_per_km(
+            [east(*p) for p in wiggle], 4000
+        )
+        assert len(found([seg(1, *wiggle, tier=1)])) == 1
+        straight = found([road(1, length_m=4000, trail=True)])
+        assert len(straight) == 1 and straight[0].surface == il.PATH
+        assert straight[0].tight_turning_per_km == 0.0
+
+    def test_a_climb_may_wind_more(self):
+        # "With some flexibility on uphill stretches too": slower up a 5% climb, 1.6 times, so
+        # 2.56 times the bends.
+        flat = il.Stretch(line=[], length_m=1000, rise_m=0, both=False, surface=il.PATH)
+        climb = il.Stretch(line=[], length_m=1000, rise_m=50, both=False, surface=il.PATH)
+        assert flat.windy_limit == il.WINDY_PATH_DEG_PER_KM
+        assert climb.windy_limit == pytest.approx(il.WINDY_PATH_DEG_PER_KM * 2.56)
+
+    def test_a_long_gentle_curve_is_not_windy(self):
+        # "a gentle turn isn't an issue, its a cluster of short sharp ones": a quarter circle of
+        # 600 m radius turns 90 degrees in 940 m, never 30 degrees in 30 m.
+        arc = [
+            east(600 * math.sin(math.radians(a)), 600 - 600 * math.cos(math.radians(a)))
+            for a in range(0, 91, 2)
+        ]
+        assert il.tight_turning_per_km(arc, 942) == 0.0
+        # A right angle in one corner, then straight: one tight bend of 90 degrees in 200 m.
+        corner = [east(0, 0), east(100, 0), east(100, 100)]
+        assert il.tight_turning_per_km(corner, 200) == pytest.approx(450, abs=1)
+
     def test_a_roundabout_is_never_ridden(self):
         facts = il.ExtractFacts(roundabouts={1})
         assert found([road(1)], facts=facts) == []
@@ -202,6 +266,7 @@ class TestFile:
         [entry] = doc["intervals"]
         assert entry["l"] == 2840 and entry["r"] == 85 and entry["g"] == 3.0
         assert entry["s"] == "p" and entry["n"] == "Capital Crescent Trail" and "w" not in entry
+        assert entry["t"] == round(il.effort_minutes(2840, 85), 1)
         assert doc["counts"] == {"both_ways": 0, "one_way": 1}
         path = tmp_path / "intervals.json"
         il.write(path, doc)

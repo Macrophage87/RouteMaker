@@ -25,7 +25,7 @@ def file(tmp_path, monkeypatch):
     rows = [
         _row("near", -77.0),
         _row("busy", -77.0, b=1),
-        _row("gravel", -76.99, s="g", w=1),
+        _row("gravel", -76.99, s="g", w=1, k=2),
         _row("far", -76.5),
     ]
     path = tmp_path / "intervals.json"
@@ -48,6 +48,9 @@ def test_filters(file):
     found = near_mod.near(-77.0, 39.0, 5, paved_only=True, quiet_only=True)
     assert [s["id"] for s in found] == ["near"]
     assert near_mod.near(-77.0, 39.0, 5, min_miles=5) == []
+    # Bollards are counted and left out only where asked (the owner, 2026-11-18).
+    assert [s["bollards"] for s in near_mod.near(-77.0, 39.0, 5)] == [0, 0, 2]
+    assert [s["id"] for s in near_mod.near(-77.0, 39.0, 5, no_bollards=True)] == ["near", "busy"]
 
 
 def test_no_file_is_unavailable(tmp_path, monkeypatch):
