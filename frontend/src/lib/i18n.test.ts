@@ -28,6 +28,7 @@ import {
   writeLanguageChoice,
   type Language,
   planLanguageAttributes,
+  serverTextAttributes,
 } from "./i18n.ts";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL, ACCESS_OFF_SAID, ACCESS_ON_SAID, ACCESS_SENTENCE_WHERE } from "./accessMode.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
@@ -581,6 +582,13 @@ test("Plan is marked English and left to right for the 19 languages, not for Eng
   assert.deepEqual(planLanguageAttributes("en"), {});
   assert.deepEqual(planLanguageAttributes("es"), {});
   for (const lang of ["ar", "fa", "ps", "th", "zh"] as const) assert.deepEqual(planLanguageAttributes(lang), { lang: "en-US", dir: "ltr" });
+});
+
+test("inside Plan, the route's own sentences are marked back to the rider's language for the 19", () => {
+  assert.deepEqual(serverTextAttributes("en"), {});
+  assert.deepEqual(serverTextAttributes("es"), {});
+  assert.deepEqual(serverTextAttributes("ar"), { lang: "ar", dir: "auto" });
+  assert.deepEqual(serverTextAttributes("zh"), { lang: "zh-Hans-CN", dir: "auto" });
 });
 
 test("Plan's panel and map bar carry the English mark, so a draft phone's Plan is marked English and left to right", () => {
