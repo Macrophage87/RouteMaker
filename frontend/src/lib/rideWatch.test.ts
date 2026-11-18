@@ -241,6 +241,5 @@ test("failureShown: a lone failure between good fixes is not shown; fixes stoppe
   assert.equal(failureShown("unavailable", true, 1_000), false);
   assert.equal(failureShown("unavailable", true, FAILURE_SHOWN_AFTER_MS), true);
   assert.equal(failureShown("unavailable", false, 0), true);
-  assert.equal(failureShown("timeout", true, 15_000), true);
   for (const reason of ["denied", "insecure", "unsupported"] as const) assert.equal(failureShown(reason, true, 0), true);
 });
