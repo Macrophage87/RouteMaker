@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Bản dịch nháp, chưa được người bản ngữ kiểm tra.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Bản dịch nháp, chưa được người bản ngữ kiểm tra. Plan vẫn bằng tiếng Anh.",
   "your location": "vị trí của bạn",
+  "Spot a wrong word? Tell us on {discord}.": "Thấy từ sai? Hãy báo cho chúng tôi trên {discord}.",
   "the start": "điểm xuất phát",
   "mile {mile} ({km} km)": "dặm {mile} ({km} km)",
 

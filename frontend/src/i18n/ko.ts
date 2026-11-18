@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "초벌 번역이며 아직 원어민이 검토하지 않았습니다.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "초벌 번역이며 아직 원어민이 검토하지 않았습니다. Plan은 영어로 유지됩니다.",
   "your location": "현재 위치",
+  "Spot a wrong word? Tell us on {discord}.": "잘못된 단어를 발견하셨나요? {discord}에서 알려 주세요.",
   "the start": "출발점",
   "mile {mile} ({km} km)": "{mile}마일 지점 ({km}km)",
 

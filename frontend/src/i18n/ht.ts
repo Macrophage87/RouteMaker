@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Tradiksyon pwovizwa, yon moun ki pale lang lan poko verifye l.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Tradiksyon pwovizwa, yon moun ki pale lang lan poko verifye l. Plan rete an angle.",
   "your location": "kote ou ye",
+  "Spot a wrong word? Tell us on {discord}.": "Ou wè yon mo ki pa bon? Di nou sa sou {discord}.",
   "the start": "depa a",
   "mile {mile} ({km} km)": "mil {mile} ({km} km)",
 

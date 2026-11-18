@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "ረቂቕ ትርጉም፣ ገና ብወዲ ቋንቋ ኣይተረጋገጸን።",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "ረቂቕ ትርጉም፣ ገና ብወዲ ቋንቋ ኣይተረጋገጸን። Plan ብእንግሊዝኛ ይጸንሕ።",
   "your location": "ዘለኹምዎ ቦታ",
+  "Spot a wrong word? Tell us on {discord}.": "ጌጋ ቃል ረኺብኩም? ኣብ {discord} ንገሩና።",
   "the start": "መበገሲ",
   "mile {mile} ({km} km)": "ማይል {mile} ({km} ኪ.ሜ.)",
 
