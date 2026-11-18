@@ -29,6 +29,13 @@ stop during the on sets"):
 - **an LTS 4 road or Avoid** (`NEVER_TIER`), a mountain-bike trail, ground the tiles do not
   have, and a one-way road ridden against its traffic (that way only).
 
+A path stretch that winds (the owner, 2026-11-18: "very windy, narrow paths, which aren't suited
+for intervals"; "a gentle turn isn't an issue, its a cluster of short sharp ones") is left out
+whole: one whose line turns more than `WINDY_PATH_DEG_PER_KM` per km in tight bends
+(`tight_turning_per_km`), each gentler than a sharp turn but never letting up; more on a climb,
+ridden slower (`Stretch.windy_limit`). That holds for
+paths and unpaved ways (`s`); paved roads are not held to it, wide enough to ride a bend at speed.
+
 A stop, an intersection or a sharp turn cuts `PAD_M` either side: the slowing before and the
 getting going after. What is left is a stretch when riding it takes at least `MIN_EFFORT_MIN`
 minutes at `EFFORT_PACE_MPH` on the flat, slowed on a climb as the connector's interval check
@@ -59,6 +66,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -88,6 +96,15 @@ DESCENT_MIN_M = 150.0
 PAD_M = 80.0
 # Our default: the bearing either side of a vertex is read this far out, as the climbs' is.
 TURN_REACH_M = 20.0
+# Our defaults (unmeasured; set on the 2026-11-17 file). A bend is tight where the heading turns
+# TIGHT_BEND_DEG or more across BEND_WINDOW_M (a radius under about 57 m, too tight to hold 18 mph
+# on a path's width and sightlines), read every BEND_STEP_M. A path turning more than
+# WINDY_PATH_DEG_PER_KM in tight bends winds too much for an effort. The Anacostia trail's wiggles
+# by Kenilworth turn about 300 to 360; the Mount Vernon and Rock Creek trails at most about 170.
+TIGHT_BEND_DEG = 30.0
+BEND_WINDOW_M = 30.0
+BEND_STEP_M = 5.0
+WINDY_PATH_DEG_PER_KM = 200.0
 # The interval check's: a road this busy to cross breaks an effort; one this stressful is
 # never ridden in one (LTS 4 and Avoid).
 BUSY_TIER = 3
@@ -415,6 +432,24 @@ class Stretch:
     bollards: int = 0
 
     @property
+    def tight_turning_per_km(self) -> float:
+        """Degrees its line turns in tight bends per km, read on the line as the file has it."""
+        line = climb_layer._simplify(self.line, climb_layer.SIMPLIFY_M)
+        return tight_turning_per_km(line, self.length_m)
+
+    @property
+    def windy_limit(self) -> float:
+        """WINDY_PATH_DEG_PER_KM, more on a climb (the owner, 2026-11-18: "With some flexibility
+        on uphill stretches too"): a bend is taken at the effort's speed, slowed on a climb as its
+        minutes are (CLIMB_SLOWING), and the grip a bend needs goes with the speed squared."""
+        grade = 0.0 if self.both or self.length_m <= 0 else self.rise_m / self.length_m * 100.0
+        return WINDY_PATH_DEG_PER_KM * (1.0 + CLIMB_SLOWING * max(0.0, grade)) ** 2
+
+    @property
+    def windy_path(self) -> bool:
+        return self.surface in (PATH, GRAVEL) and self.tight_turning_per_km > self.windy_limit
+
+    @property
     def minutes(self) -> float:
         """At EFFORT_PACE_MPH, its riding way; the quicker way where it holds both."""
         rise = -abs(self.rise_m) if self.both else self.rise_m
@@ -444,6 +479,48 @@ class Stretch:
         if self.bollards:
             out["k"] = self.bollards
         return out
+
+
+def tight_turning_per_km(line: Sequence[tuple[float, float]], length_m: float) -> float:
+    """Degrees a lon/lat line turns in tight bends, per km of `length_m`. The line is read every
+    `BEND_STEP_M`; a step's turn counts where the heading changes `TIGHT_BEND_DEG` or more across
+    the `BEND_WINDOW_M` round it, so a long gentle curve adds nothing and a wiggle adds all of
+    it."""
+    if length_m <= 0 or len(line) < 3:
+        return 0.0
+    k = math.cos(math.radians(line[0][1])) * 111_320.0
+    points = _resampled([(x * k, y * 111_320.0) for x, y in line], BEND_STEP_M)
+    heading = [
+        math.atan2(b[1] - a[1], b[0] - a[0]) for a, b in zip(points, points[1:], strict=False)
+    ]
+    half = max(1, round(BEND_WINDOW_M / BEND_STEP_M / 2))
+    tight = math.radians(TIGHT_BEND_DEG)
+    turned = 0.0
+    for i in range(len(heading) - 1):
+        lo, hi = max(0, i - half + 1), min(len(heading) - 1, i + half)
+        # All the turning in the window, both ways: an S-bend's left and right add, not cancel.
+        if sum(_turn(heading[j], heading[j + 1]) for j in range(lo, hi)) >= tight:
+            turned += _turn(heading[i], heading[i + 1])
+    return math.degrees(turned) / (length_m / 1000.0)
+
+
+def _turn(a: float, b: float) -> float:
+    return abs((b - a + math.pi) % (2 * math.pi) - math.pi)
+
+
+def _resampled(points: list[tuple[float, float]], step: float) -> list[tuple[float, float]]:
+    """Points every `step` metres along a planar line, its first point first."""
+    out = [points[0]]
+    want = step
+    done = 0.0
+    for (ax, ay), (bx, by) in zip(points, points[1:], strict=False):
+        length = math.hypot(bx - ax, by - ay)
+        while length > 0 and want <= done + length:
+            t = (want - done) / length
+            out.append((ax + (bx - ax) * t, ay + (by - ay) * t))
+            want += step
+        done += length
+    return out
 
 
 def stretch_id(start: tuple[float, float], end: tuple[float, float], both: bool) -> str:
@@ -520,7 +597,7 @@ def stretches_on_stroke(
             found.append(
                 _stretch(stroke, segments, samples, sample_along, bollards, c, d, -1, False)
             )
-    return [s for s in found if s.minutes >= MIN_EFFORT_MIN]
+    return [s for s in found if s.minutes >= MIN_EFFORT_MIN and not s.windy_path]
 
 
 def _stretch(stroke, segments, samples, sample_along, bollards, a, b, sign, both) -> Stretch:
@@ -583,6 +660,8 @@ def document(found: Sequence[Stretch], built: datetime | None = None) -> dict:
             "descent_pct": DESCENT_PCT,
             "descent_m": DESCENT_MIN_M,
             "junctions": JUNCTION_RULE,
+            "windy_path_deg_per_km": WINDY_PATH_DEG_PER_KM,
+            "tight_bend": [TIGHT_BEND_DEG, BEND_WINDOW_M],
         },
         "counts": {"both_ways": both, "one_way": len(entries) - both},
         "intervals": entries,
