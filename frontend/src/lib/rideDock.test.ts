@@ -219,14 +219,13 @@ test("following track-up, the rider is held two thirds of the way down the map, 
 
 test("in a ride the map's scales and credits sit at the bottom left, above the bottom panel when it shows", () => {
   assert.match(css, /\.app\.riding:has\(\.ride\) \.maplibregl-ctrl-bottom-right \{\s*left: 0;\s*right: auto;\s*bottom: var\(--ride-sheet-h, 0px\);/);
-  assert.match(ride, /<div ref=\{sheetRef\} className="ride-controls">/);
-  assert.match(ride, /const px = sheet \? Math\.round\(sheet\.getBoundingClientRect\(\)\.height\) : 0;\s*root\.style\.setProperty\("--ride-sheet-h", `\$\{px\}px`\);/);
+  // The panel's height on the page and to the map: RideMode.test.tsx renders it.
 });
 
 test("the bottom panel's height reaches the map, so the arrow moves up as soon as a graph or a note shows (Stephen 2026-11-03)", () => {
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(ride, /sheetHeight\.current\?\.\(px\);/);
+  // RideMode hands the height on (RideMode.test.tsx renders it); App's wiring to the map's store is still read here.
   // Through its own store (app/LiveMap.tsx), so a note coming or going redraws the map, not App.
   assert.match(app, /onSheetHeight=\{ridePanel\.set\}/);
   assert.match(app, /ridePanelFrom=\{ridePanel\}/);

@@ -48,6 +48,12 @@ export function stopsThatMove(points: readonly LonLat[], loop: boolean): number 
   return Math.max(0, points.length - (lastMoves(points, loop) ? 1 : 2));
 }
 
+/** Whether Plan offers Best order for these stops and ends: two or more that may move, up to ORDER_MAX_POINTS, never on
+ *  a Mass Ride. */
+export function bestOrderOffered(stops: readonly LonLat[], loop: boolean, massRide = false): boolean {
+  return !massRide && stopsThatMove(stops, loop) >= 2 && stops.length <= ORDER_MAX_POINTS;
+}
+
 /** Whether an answer fits these points: every point once, the start first, and the end last unless it is a stop. */
 export function fitsOrder(order: readonly number[], points: readonly LonLat[], loop: boolean): boolean {
   const n = points.length;

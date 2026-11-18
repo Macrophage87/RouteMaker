@@ -6,6 +6,9 @@ import assert from "node:assert/strict";
 import { render } from "../testSupport/render.ts";
 import { INTERVAL_TITLE, intervalAt, intervalEnds, intervalHoverChart, intervalHoverWords } from "./intervalHover.ts";
 import { INTERVALS_LINE_LAYER } from "./intervals.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
+
+await loadLanguage("es");
 
 const DRAWN = { id: "s1", one: true, n: "Klingle Valley Trail", l: 1033, r: 58, t: 3.6, k: 2, x0: -77.07, y0: 38.93, x1: -77.06, y1: 38.935 };
 
@@ -26,6 +29,20 @@ test("an unnamed flat stretch either way, with no bollards, says so and nothing 
   assert.match(words.detail, /either way/);
   assert.doesNotMatch(words.detail, /bollard/);
   assert.match(intervalHoverWords({ ...DRAWN, k: 1 }).detail, /1 bollard to ride through/);
+});
+
+test("in Spanish the card's words are Spanish (Plan is English and Spanish)", () => {
+  setLanguageForTest("es");
+  try {
+    const words = intervalHoverWords({ ...DRAWN, n: "" });
+    assert.match(words.detail, /sube .* al 5\.6%/);
+    assert.match(words.detail, /unos 3\.6 min a /);
+    assert.match(words.detail, /solo en este sentido/);
+    assert.match(words.detail, /2 bolardos que atravesar/);
+    assert.match(intervalHoverWords({ ...DRAWN, r: 0, one: false, k: 1 }).detail, /llano.*en ambos sentidos.*1 bolardo que atravesar/);
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("the profile is asked for once, drawn with the steepest grade, and none is drawn where there is none", async () => {

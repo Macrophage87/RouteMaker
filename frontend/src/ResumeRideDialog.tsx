@@ -10,6 +10,7 @@ export function ResumeRideDialog({
   open,
   destination = null,
   onResume,
+  busy = false,
   onNotNow,
   onLater,
 }: {
@@ -17,6 +18,8 @@ export function ResumeRideDialog({
   /** The ride's destination's name, where the map has one: the question names the ride. */
   destination?: string | null;
   onResume: () => void;
+  /** Resume pressed before Ride mode's code is in (lib/rideCodeWait.ts): Resume ride shows busy while it waits. */
+  busy?: boolean;
   onNotNow: () => void;
   onLater: () => void;
 }) {
@@ -53,7 +56,7 @@ export function ResumeRideDialog({
           <h2 id={headingId}>{resumeHeading(destination)}</h2>
           <p id={leadId}>{RESUME_LEAD}</p>
           <div className="closure-choices">
-            <button type="button" ref={resumeRef} className="primary" onClick={onResume}>
+            <button type="button" ref={resumeRef} className="primary" onClick={onResume} aria-busy={busy || undefined} aria-disabled={busy || undefined}>
               {RESUME_RIDE}
             </button>
             <button type="button" className="secondary" onClick={onNotNow}>

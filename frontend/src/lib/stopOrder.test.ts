@@ -10,6 +10,7 @@ import {
   ORDER_MAX_POINTS,
   STILL_FINDING_ORDER_SAID,
   applyAnswer,
+  bestOrderOffered,
   bestOrderSaid,
   fitsOrder,
   reorderedPoints,
@@ -271,13 +272,22 @@ test("an answer is not used when the points, ride type or dials changed meanwhil
   assert.deepEqual(refused, { say: "Best order not found. Busy." });
 });
 
+test("Best order is offered for two stops that move up to 25 stops and ends, hidden past them and on a Mass Ride", () => {
+  const along = (n: number): LonLat[] => Array.from({ length: n }, (_, i) => [-77.05 + i * 0.001, 38.9]);
+  assert.equal(bestOrderOffered(along(3), false), false, "one stop between the ends: nothing to order");
+  assert.equal(bestOrderOffered(along(4), false), true);
+  assert.equal(bestOrderOffered(along(25), false), true);
+  assert.equal(bestOrderOffered(along(26), false), false, "past ORDER_MAX_POINTS");
+  assert.equal(bestOrderOffered(along(26), true), false);
+  assert.equal(bestOrderOffered(along(10), false, true), false, "never on a Mass Ride");
+});
+
 test("the button is in the point tools, only with two or more stops, and says when it is still working", () => {
   const app = appSource();
   assert.equal(BEST_ORDER_LABEL, "Best order");
   assert.equal(STILL_FINDING_ORDER_SAID, "Still finding the best order.");
   // Up to Best order's 25 stops and ends (ORDER_MAX_POINTS; a plan may hold 200 since 2026-11-18).
   assert.equal(ORDER_MAX_POINTS, 25);
-  assert.match(app, /const orderStops = stopsOnly\(points, VIA_MARKS\.isVia, loopVias\)\.points;\s*const orderShown = !isMassRide\(preset\) && stopsThatMove\(orderStops, loopVias\) >= 2 && orderStops\.length <= ORDER_MAX_POINTS;/);
   assert.match(app, /\{orderShown && \(\s*<button[\s\S]{0,600}aria-disabled=\{ordering \? true : undefined\}\s*>\s*\{BEST_ORDER_LABEL\}/);
   // A second press while one is being found is answered, not sent.
   assert.match(app, /if \(orderingRef\.current\) \{\s*announce\(STILL_FINDING_ORDER_SAID\);\s*return;/);
