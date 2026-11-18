@@ -109,6 +109,24 @@ SAME_PLACE_M = 300
 # hunt, G6). A notice board in a park is a separate node metres away.
 SAME_POINT_M = 2
 
+# A railway's line - its track, mapped in pieces - is not somewhere to ride to. Photon finds
+# it by its area's names, so "Takoma Metro" gave three rows all titled "Metro - Red Line"
+# (the 2026-11-12 backlog, Go item 8), and a pick read "to Metro - Red Line". Such a way is
+# never a row; its station is (STATION_WORDS).
+RAIL_LINES = frozenset(
+    {"rail", "subway", "light_rail", "tram", "narrow_gauge", "monorail", "funicular"}
+)
+# A station: Photon's tag for it, for the station ask and for folding its twins.
+STATIONS = frozenset({("railway", "station"), ("railway", "halt"), ("public_transport", "station")})
+# A typed name that ends with one of these asks for a station ("Takoma Metro", "Union
+# station"): when rows were found but none is a station named in what was typed, Photon is asked
+# once more for stations so named, and they go first. Our default, unmeasured.
+STATION_WORDS = frozenset(
+    {"metro", "station", "stop", "subway", "train", "rail", "estación", "estacion"}
+)
+# How many stations that ask takes.
+STATION_ASK_LIMIT = 3
+
 # An area found by a search - a park, a refuge, a campus, a battlefield - is one
 # point at its middle (Photon keeps a way or relation at its centroid), which the
 # router snaps to whatever road edge is nearest, whatever its stress and even a
@@ -463,6 +481,35 @@ def search(
                 _same_place(town, row["name"], row, (row["lon"], row["lat"])) for town in towns
             )
         ]
+    wanted = station_part(q)
+    # Not when nothing was found: Photon does not know the words, and a second ask
+    # would only cost a call.
+    if wanted is not None and found and not any(_named_station(row, q) for row in found):
+        try:
+            stations = results(
+                _get(
+                    "/api",
+                    {
+                        **params,
+                        "q": expand_abbreviations(wanted),
+                        "limit": STATION_ASK_LIMIT,
+                        "osm_tag": sorted(f"{key}:{value}" for key, value in STATIONS),
+                    },
+                ),
+                reverse=False,
+                near=near,
+            )
+        except Unavailable:
+            stations = []
+        stations = [row for row in stations if _named_station(row, q)]
+        found = stations + [
+            row
+            for row in found
+            if not any(
+                _same_place(station, row["name"], row, (row["lon"], row["lat"]))
+                for station in stations
+            )
+        ]
     split = address_part(q)
     if not found and split is not None:
         # One more question, the address alone; the place at it is found by its number.
@@ -810,6 +857,7 @@ def results(answer: dict, *, reverse: bool, near: tuple[float, float] | None = N
     goes to its way in nearest `near` (lon, lat) where one is given (`_go_in`)."""
     out: list[dict] = []
     extents: list = []
+    groups: list[list[dict]] = []
     for feature in answer.get("features", []):
         if not isinstance(feature, dict):
             continue
@@ -823,12 +871,25 @@ def results(answer: dict, *, reverse: bool, near: tuple[float, float] | None = N
         if not name:
             continue
         osm = _osm(properties)
+        if (
+            osm["osm_key"] == "railway"
+            and osm["osm_value"] in RAIL_LINES
+            and osm["osm_type"] != "N"
+        ):
+            continue
         # Only one name, one kind of tag and 300 m (or one name at one point,
         # SAME_POINT_M) make a row a repeat: two Starbucks 417 m apart share a
         # label and are two places (round-1 review), so a label alone folds
         # nothing.
-        if any(_same_place(row, name, osm, point) for row in out):
+        # A row folded into another still counts as that place for the rows after it:
+        # "Washington Union Station" the station folds into "Union Station", and then
+        # "Washington Union Station" the attraction folds into it too.
+        seen = {**osm, "name": name, "lon": point[0], "lat": point[1]}
+        group = next((g for g in groups if any(_same_place(m, name, osm, point) for m in g)), None)
+        if group is not None:
+            group.append(seen)
             continue
+        groups.append([seen])
         row = {
             "name": name,
             "label": label,
@@ -847,10 +908,42 @@ def results(answer: dict, *, reverse: bool, near: tuple[float, float] | None = N
 
 
 def _same_place(row: dict, name: str, osm: dict, point: tuple[float, float]) -> bool:
-    if row["name"].casefold() != name.casefold():
-        return False
     apart = haversine(Point(row["lon"], row["lat"]), Point(*point))
-    return apart <= SAME_POINT_M or (row["osm_key"] == osm["osm_key"] and apart <= SAME_PLACE_M)
+    if row["name"].casefold() != name.casefold():
+        # One station mapped twice under its short and its long name ("Union Station" and
+        # "Washington Union Station", 150 m apart) is one place to a rider.
+        return apart <= SAME_PLACE_M and _one_station(row, name, osm)
+    if apart <= SAME_POINT_M or row["osm_key"] == osm["osm_key"] and apart <= SAME_PLACE_M:
+        return True
+    # A station and an attraction, a building or a hall of the same name beside it are the
+    # same place too; a street of that name is not.
+    streets = "highway" in (row["osm_key"], osm["osm_key"])
+    return apart <= SAME_PLACE_M and not streets and _is_station(row) != _is_station(osm)
+
+
+def _is_station(osm: dict) -> bool:
+    return (osm.get("osm_key"), osm.get("osm_value")) in STATIONS
+
+
+def _one_station(row: dict, name: str, osm: dict) -> bool:
+    """Two stations, one name inside the other as whole words."""
+    if not (_is_station(row) and _is_station(osm)):
+        return False
+    a, b = sorted((row["name"].casefold(), name.casefold()), key=len)
+    return re.search(rf"(?<!\w){re.escape(a)}(?!\w)", b) is not None
+
+
+def station_part(q: str) -> str | None:
+    """The station a query asks for by a station word ("Takoma Metro" is Takoma), or None."""
+    words = lead_name(q).split()
+    if len(words) < 2 or words[-1].casefold() not in STATION_WORDS:
+        return None
+    return " ".join(words[:-1])
+
+
+def _named_station(row: dict, typed: str) -> bool:
+    """A station whose name is all in what was typed ("Takoma" in "Takoma Metro")."""
+    return _is_station(row) and _named_in(row["name"], typed)
 
 
 def _extent(properties: dict) -> tuple[float, float, float, float] | None:
