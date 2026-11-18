@@ -1,4 +1,5 @@
-"""Steep grades on a Mass Ride or a Novice and Nervous ride: marked on the map and priced.
+"""Steep grades on a Mass Ride or a Novice and Nervous ride: marked on the map and priced;
+on a Cargo, Tandem or E-bike ride: marked only.
 
 The owner, 2026-10-26: "For mass rides put an elevation warning (orange marker) on any
 incline in either direction above 5% grade and provide a penalty, above 8% this becomes a red
@@ -17,6 +18,14 @@ Each stretch costs the route choice its metres at STEEP_S_PER_M or VERY_STEEP_S_
 seconds of flat riding a metre, uphill or downhill alike: a hidden routing price on top of
 the climb's own cost (`routemaker.hill_cost`) and the brake-riding descent cost
 (`routemaker.climbs.descent_cost_s`), never a shown time. Pure: no database, no router.
+
+v0.28.0 (backlog 2026-11-12, accessibility item 12, picked by the owner 2026-11-18): Cargo,
+Tandem and E-bike get the same marks at the same 5% and 8% (one key means one thing on every
+ride type), but no added price: their climbs and descents are already priced by their weight,
+assist and brake grade (`presets.BRAKE_GRADES`). Cargo and Tandem are marked both ways (a
+loaded bike or a tandem climbs slowly and brakes hard); E-bike downhill only (its motor takes
+the climbs; a heavier, faster bike brakes on the way down). Which ride types and which
+directions are our defaults, unmeasured (`WARN_ONLY`).
 """
 
 from __future__ import annotations
@@ -43,6 +52,21 @@ VERY_STEEP_S_PER_M = 4.0
 
 UP, DOWN = "up", "down"
 LEVEL_STEEP, LEVEL_VERY_STEEP = "steep", "very_steep"
+
+# The ride types that warn of steep grades without pricing them, and the directions each is
+# warned of (our defaults, unmeasured; see the module's note).
+WARN_ONLY = {
+    "cargo": frozenset({UP, DOWN}),
+    "tandem": frozenset({UP, DOWN}),
+    "ebike": frozenset({DOWN}),
+}
+
+
+def warned_directions(preset: str) -> frozenset[str]:
+    """The directions a ride type is warned of steep grades in; empty where it is not."""
+    if preset in RIDE_TYPES:
+        return frozenset({UP, DOWN})
+    return WARN_ONLY.get(preset, frozenset())
 
 
 @dataclass(frozen=True)
@@ -82,9 +106,12 @@ def _runs(items: list[tuple[float, int]], at_least: int) -> list[tuple[int, int]
     return out
 
 
-def stretches(profile: Sequence[tuple[float, float | None]]) -> list[Stretch]:
+def stretches(
+    profile: Sequence[tuple[float, float | None]],
+    directions: frozenset[str] = frozenset({UP, DOWN}),
+) -> list[Stretch]:
     """The profile's steep stretches (`core.routing.grade_profile`, or the chart's samples),
-    in the order ridden."""
+    in the order ridden, in `directions` only."""
     samples = [(float(m), h) for m, h in profile]
     grade_at = profile_rules.grades(samples)
     # Runs of samples steep the same way, split at a gap in the heights.
@@ -105,7 +132,7 @@ def stretches(profile: Sequence[tuple[float, float | None]]) -> list[Stretch]:
         close()
         run, sign = ([i], this) if this else ([], 0)
     close()
-    return found
+    return [s for s in found if s.direction in directions]
 
 
 def _split(

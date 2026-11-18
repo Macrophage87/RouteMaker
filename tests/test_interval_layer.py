@@ -116,6 +116,14 @@ class TestBreaks:
         out = found([road(1, length_m=5000)], facts=facts)
         assert spans(out) == [(2000 - 2 * il.PAD_M, True), (3000 - 2 * il.PAD_M, True)]
 
+    def test_a_bollard_is_ridden_through_and_counted(self):
+        # The owner, 2026-11-18: "Mark bollards on the interval card and have it noted".
+        facts = il.ExtractFacts(stops={il.node_key(east(1500)): il.BOLLARD})
+        [s] = found([road(1)], facts=facts)
+        assert s.both and s.bollards == 1 and s.entry()["k"] == 1
+        assert il.node_stop({"barrier": "bollard"}) == il.BOLLARD
+        assert il.node_stop({"barrier": "gate"}) == "barrier"
+
     def test_a_quiet_cross_street_does_not(self):
         cross = seg(2, (1500, -300), (1500, 0), (1500, 300), tier=1)
         assert spans(found([road(1, tier=1), cross])) == [(3000 - 2 * il.PAD_M, True)]

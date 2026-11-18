@@ -169,8 +169,6 @@ export interface LayersSheetProps {
   intervals?: { on: boolean; onChange: (on: boolean) => void; status: string; minutes?: IntervalsMinutes; onMinutesChange?: (minutes: IntervalsMinutes) => void } | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
-  /** Go's stress bar tapped (the owner's P1): each new number opens the Traffic stress section, its colour key. */
-  stressKeyAsk?: number;
 }
 
 export const PLACES_LAYER_TITLE = t("Places to see");
@@ -178,7 +176,7 @@ export const PLACES_LAYER_HINT = t("Museums, gardens, viewpoints and more. Place
 
 /** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, intervals, permits, stressKeyAsk } = props;
+  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, intervals, permits } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus, ...(intervals ? { intervals: intervals.on, intervalsStatus: intervals.status } : {}) };
   return (
@@ -200,7 +198,6 @@ export function LayersSheet(props: LayersSheetProps) {
         switchId="show-stress"
         layers={stress === "available" ? [{ key: "stress", label: massMap ? CAPACITY_LEGEND_TITLE : t("Traffic stress"), on: stressVisible }] : []}
         onLayers={(next) => setStressVisible(next.stress)}
-        openAsk={stressKeyAsk}
         status={stress === "checking" ? STRESS_CHECKING : stress === "unavailable" ? STRESS_UNAVAILABLE : ""}
       >
         {/* Not one of the section's layers: shown with or without the stress map, as it also changes the
@@ -211,8 +208,9 @@ export function LayersSheet(props: LayersSheetProps) {
         <StressSectionKey massMap={massMap} stress={stress} stressVisible={stressVisible} preset={preset} zoom={zoom} facilitiesShown={facilitiesShown} />
         {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
         <JunctionLegend />
-        {/* v0.12.5: steep grades, marked on a Mass Ride's or a Novice ride's route only, so keyed on those alone. */}
-        {steepGradesFor(preset) && <SteepGradeKey />}
+        {/* v0.12.5: steep grades, marked on a Mass Ride's, Novice, Cargo, Tandem or E-bike ride's route only (v0.28.0),
+            so keyed on those alone. */}
+        {steepGradesFor(preset) && <SteepGradeKey preset={preset} />}
         {/* v0.10.0: the route's hazard marks, drawn on a route only, with or without the stress map. Last in the
             section (the owner, 2026-10-20: "put it at the bottom"). */}
         <RouteHazardKey />
@@ -1058,8 +1056,8 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
 
 /**
  * Go's quick ride type chips and the More button, each chip a toggle button. P3: one row that scrolls sideways
- * (styles.css .ride-chips), the ride type in use first and pressed (lib/myGo.ts goRideChips), so it is always in
- * view; the row goes back to its start when the ride type changes. Where the rider has moved the sliders from the
+ * (styles.css .ride-chips), the ride type in use first and pressed (lib/myGo.ts goRideChips), then "Ride type &
+ * settings", so both are always in view; the row goes back to its start when the ride type changes. Where the rider has moved the sliders from the
  * ride type's start (`changed`), its chip says so: "(changed)" shown, the whole of it heard.
  */
 export function RideChips({
@@ -1089,35 +1087,39 @@ export function RideChips({
     rowRef.current?.scrollTo?.({ left: 0 });
   }, [preset]);
   const ownId = own ?? ids[0];
+  const chip = (id: PresetId) => (
+    <button
+      key={id}
+      type="button"
+      className="chip ride-type-chip"
+      aria-pressed={preset === id}
+      onClick={() => onPick(id)}
+      aria-describedby={ownHint && id === ownId ? "ride-own-hint" : undefined}
+    >
+      <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
+      <PresetName id={id} />
+      {changed && preset === id && (
+        <>
+          <span className="ride-changed" aria-hidden="true">
+            {t("(changed)")}
+          </span>
+          <span className="visually-hidden">{t(", settings changed from this ride type's start")}</span>
+        </>
+      )}
+    </button>
+  );
   return (
     <div ref={rowRef} className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
-      {ids.map((id) => (
-        <button
-          key={id}
-          type="button"
-          className="chip ride-type-chip"
-          aria-pressed={preset === id}
-          onClick={() => onPick(id)}
-          aria-describedby={ownHint && id === ownId ? "ride-own-hint" : undefined}
-        >
-          <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
-          <PresetName id={id} />
-          {changed && preset === id && (
-            <>
-              <span className="ride-changed" aria-hidden="true">
-                {t("(changed)")}
-              </span>
-              <span className="visually-hidden">{t(", settings changed from this ride type's start")}</span>
-            </>
-          )}
-        </button>
-      ))}
+      {ids.slice(0, 1).map(chip)}
+      {/* Second, after the ride type in use (the 2026-11-12 backlog, Go item 12): fourth, it started past a 390 px
+          screen's edge, and every other ride type and setting was behind a sideways swipe. */}
       {more && (
         <button type="button" className="chip ride-more" onClick={(event) => more(event.currentTarget)} aria-describedby="ride-more-hint">
           <Icon name="more" size={18} />
           {t("Ride type & settings")}
         </button>
       )}
+      {ids.slice(1).map(chip)}
       {more && (
         <span id="ride-more-hint" hidden>
           {t("Every ride type and setting.")}

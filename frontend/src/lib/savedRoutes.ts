@@ -18,7 +18,7 @@ import { PAGE_NOTES } from "./routeNotes.ts";
 import type { RouteResponse } from "./api.ts";
 import { locale, t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
-import { formatDistance } from "./format.ts";
+import { formatClimb, formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
 import { VIA_MARKS, viaIndices } from "./pointKinds.ts";
@@ -40,6 +40,15 @@ export interface SavedInputs {
   points: LonLat[];
   preset: PresetId;
   dials: Partial<Dials>;
+}
+
+/** A saved route's row figures (core.route_sketch): its line's shape, climb and quiet share, each null where not known. */
+export interface SavedFigures {
+  /** The line as whole-number points in a 100-wide square, north up; drawn by RouteSketch.tsx. */
+  sketch: [number, number][] | null;
+  climb_m: number | null;
+  /** The share ridden at traffic stress 1 or 2, percent (as Bike loop says it). */
+  quiet_pct: number | null;
 }
 
 export interface SavedSummary {
@@ -64,6 +73,8 @@ export interface SavedSummary {
   replaced_by?: number | null;
   /** On a save at a full account: the archived route deleted to make room for it. */
   made_room?: { id: number; name: string };
+  /** Its sketch, climb and quiet share; null until the server makes them, absent from an older server. */
+  figures?: SavedFigures | null;
 }
 
 export interface SavedRoute extends SavedSummary {
@@ -280,17 +291,32 @@ export function countLine(n: number, max = MAX_SAVED): string {
 }
 
 /**
- * A row's details: "4.7 mi (7.6 km) · Gravel · Saved Oct 15, 2026" (US units first). The ride type a plan was saved with
- * is named (backlog 2026-11-12, Plan); a file's is not, since a file is the line it holds whatever the type.
+ * The figures that tell routes apart (backlog 2026-11-12, Plan item 9), as Bike loop's shapes say them: "4.7 mi
+ * (7.6 km), 266 ft (81 m) climb, 78% quiet". A figure not known (a file's line has no planned climb or stress) is
+ * left out.
  */
-export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source" | "fixed"> & { preset?: string }): string {
+export function figuresLine(route: Pick<SavedSummary, "distance_m" | "figures">): string {
+  const parts = [formatDistance(route.distance_m)];
+  const climb = route.figures?.climb_m;
+  if (typeof climb === "number") parts.push(t("{climb} climb", { climb: formatClimb(climb) }));
+  const quiet = route.figures?.quiet_pct;
+  if (typeof quiet === "number") parts.push(t("{pct}% quiet", { pct: quiet }));
+  return parts.join(", ");
+}
+
+/**
+ * A row's details: "4.7 mi (7.6 km), 266 ft (81 m) climb, 78% quiet · Gravel · Saved Oct 15, 2026" (US units first).
+ * The ride type a plan was saved with is named (backlog 2026-11-12, Plan); a file's is not, since a file is the line
+ * it holds whatever the type.
+ */
+export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source" | "fixed" | "figures"> & { preset?: string }): string {
   const date = new Date(route.created_at);
   const when = Number.isNaN(date.getTime()) ? "" : ` · ${t("Saved {date}", { date: date.toLocaleDateString(locale(), { month: "short", day: "numeric", year: "numeric" }) })}`;
   // A ride type saved under an older name (Riding with kids) is named as it is called now.
   const preset = route.preset ? (PRESET_ALIASES[route.preset] ?? route.preset) : "";
   const ride = route.source !== "gpx" && preset ? ` · ${presetSaid(preset as PresetId)}` : "";
   const kind = `${ride}${route.source === "gpx" ? " · GPX file" : ""}${route.fixed ? ` · ${t("Fixed")}` : ""}`;
-  return `${formatDistance(route.distance_m)}${kind}${when}`;
+  return `${figuresLine(route)}${kind}${when}`;
 }
 
 // ---- versions: a route saved again with changes keeps what it was, up to 20 (Plan's My routes) -------

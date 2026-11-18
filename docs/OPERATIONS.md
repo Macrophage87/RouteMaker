@@ -9291,9 +9291,23 @@ picks 3, 5, 8, 12 or 20 minutes (kept per browser as `routemaker.intervalsMinute
 held 150 m still breaks one. The shorter climbs appear only once `build_intervals` runs again: a
 file from before (no `t`, a mile minimum) still draws, its minutes worked out in the browser.
 
+The pink deepens with the minutes (the owner, 2026-11-18: "color code by time length"): five shades
+from 3 to 5 minutes up to 20 or more, pink through magenta to plum so none reads as a stress colour, each 3:1 on the
+map at the drawn opacity (`INTERVALS_RAMP`; the dark map's brighter set in `lib/darkPaint.ts`). The
+mouse over a stretch shows a card (`lib/intervalHover.ts`): its distance, rise, minutes, which way,
+its bollards, then its elevation profile from `GET /api/intervals/{id}/profile`
+(`core.intervalprofile`, the router's heights start to end, as a climb's profile).
+
+Bollards (and blocks) no longer cut a stretch (the owner, 2026-11-18: "You'll be going at like 6 mph
+up a steep hill, you're unlikely to have issues with bollards"): each entry counts those it holds
+(`k`, left out at none), the card says how many, and the connector's `intervals_near` returns
+`bollards` and takes `no_bollards` to leave such stretches out ("It's really situationally
+dependent"). Gates, cycle barriers and the other barriers still cut. A file built before this rule
+has no `k` and still cuts at bollards until `build_intervals` runs again.
+
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
-railway crossings, barriers, from the extract's node tags; a stop or yield sign on a junction's own
+railway crossings, barriers other than bollards and blocks, from the extract's node tags; a stop or yield sign on a junction's own
 node only where the stretch is not the busier road), at a busy road (LTS 3+) crossed, at
 any road a path meets, at a sharp turn (60 degrees), and at a descent (2% held 150 m) for the
 direction it falls; LTS 4 and Avoid never count. The numbers are the connector's interval check's
