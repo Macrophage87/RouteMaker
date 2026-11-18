@@ -39,8 +39,9 @@ is dated by the day too and keeps the road only as a one-way code mixed with the
 (a ride's retry, or Keep riding and End ride again, is refused as "already sent", not counted
 twice); and the audit row names no suggestion and is dated by the day. Rows of each kind are
 made one a send, in step, so a row's exact time would otherwise date the suggestion. For the same
-reason a ride's suggestion and count row take random ids (`random_id`) rather than the next in
-line, so their ids keep no order of sending.
+reason a ride's suggestion, count row and audit row take random ids (`random_id`) rather than
+the next in line, and lists of suggestions break ties in their dates by id, so neither ids nor
+a list's order keep the order of sending.
 """
 
 from __future__ import annotations
@@ -251,9 +252,11 @@ def create(
             "" if from_ride else suggestion.pk, AuditLogEntry.Outcome.ALLOWED,
         )  # fmt: skip
         if from_ride and entry is not None:
-            # Its audit row too: one a send, in step with the suggestions, so dated by the day; in
-            # the same transaction, so the exact time is never committed.
-            AuditLogEntry.objects.filter(pk=entry.pk).update(at=ride_day(now))
+            # Its audit row too: one a send, in step with the suggestions, so dated by the day and
+            # given a random id; in the same transaction, so neither is ever committed.
+            AuditLogEntry.objects.filter(pk=entry.pk).update(
+                id=random_id(AuditLogEntry), at=ride_day(now)
+            )
     return suggestion
 
 

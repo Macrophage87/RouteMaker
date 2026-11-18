@@ -1527,7 +1527,7 @@ class StressSuggestion(models.Model):
 
     class Meta:
         db_table = "stress_suggestion"
-        ordering = ["-created_at"]
+        ordering = ["-created_at", "-pk"]
         indexes = [models.Index(fields=["status", "-created_at"], name="stress_suggestion_open")]
         # One open suggestion per rider per road, held by the database: the check in
         # core.suggestions counts rows, which locks nothing against a second send at once.
