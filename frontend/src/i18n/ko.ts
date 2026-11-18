@@ -2229,6 +2229,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "북부 버지니아",
   "Northwest exurbs": "북서부 교외",
   "Baltimore and suburbs": "볼티모어와 교외",
+  "Central Virginia": "버지니아 중부",
   "Everything": "지도 전체",
   "It is on {street}.": "{street}에 있습니다.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "iPhone에서 '라이드 시작'은 {distance}까지의 라이드용입니다. 더 긴 라이드는 잠금 화면용 안내 이미지를 저장하거나, 자전거 컴퓨터용으로 'GPX 다운로드'를 하세요.",

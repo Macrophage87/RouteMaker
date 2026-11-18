@@ -68,6 +68,7 @@ const AREA_NAMES: Readonly<Record<string, string>> = {
   nova: t("Northern Virginia"),
   "nw-exurbs": t("Northwest exurbs"),
   baltimore: t("Baltimore and suburbs"),
+  "central-va": t("Central Virginia"),
   rest: t("Southern Maryland"),
   all: t("Everything"),
 };

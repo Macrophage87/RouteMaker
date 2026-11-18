@@ -2229,6 +2229,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "Virginia Utara",
   "Northwest exurbs": "Pinggiran barat laut",
   "Baltimore and suburbs": "Baltimore dan sekitarnya",
+  "Central Virginia": "Virginia Tengah",
   "Everything": "Seluruh peta",
   "It is on {street}.": "Rutenya ada di {street}.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "Di iPhone, Mulai perjalanan untuk perjalanan hingga {distance}. Untuk perjalanan lebih jauh, simpan gambar petunjuk layar kunci atau Unduh GPX untuk komputer sepeda.",

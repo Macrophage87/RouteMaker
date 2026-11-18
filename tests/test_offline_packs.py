@@ -30,6 +30,7 @@ def test_the_regions_are_his_riding_areas_and_cover_the_map() -> None:
         "nova",
         "nw-exurbs",
         "baltimore",
+        "central-va",
         "rest",
         "all",
     ]
@@ -220,3 +221,37 @@ def test_both_web_servers_serve_only_pack_files_to_this_site() -> None:
     assert "$rmbeta_basemap_foreign" in location
     # A named capture: the same-site map is a regex map, which resets $1 (#1295).
     assert "alias @DATA_ROOT@/tiles/offline-packs/$rm_pack;" in location
+
+
+# v0.28.0 pass 1: where the places the wider box brings in fall, each in one area only.
+PASS_1_PLACES = {
+    "Richmond": ((-77.436, 37.541), "central-va"),
+    "Williamsburg": ((-76.707, 37.271), "central-va"),
+    "Charlottesville": ((-78.477, 38.030), "central-va"),
+    "Madison": ((-78.258, 38.380), "central-va"),
+    "Kinsale, Northern Neck": ((-76.580, 38.030), "central-va"),
+    "Winchester": ((-78.163, 39.186), "nova"),
+    "Front Royal": ((-78.194, 38.918), "nova"),
+    "Luray": ((-78.460, 38.665), "nova"),
+    "Capon Bridge, West Virginia": ((-78.434, 39.298), "nova"),
+    "Hancock, Maryland": ((-78.180, 39.699), "nw-exurbs"),
+    "Point Lookout, Maryland": ((-76.322, 38.045), "rest"),
+}
+
+
+@db
+@pytest.mark.parametrize("place", sorted(PASS_1_PLACES))
+def test_the_pass_1_places_fall_in_one_area(place, settings) -> None:
+    (lon, lat), want = PASS_1_PLACES[place]
+    found = []
+    with connection.cursor() as cursor:
+        for region in offline_packs.REGIONS:
+            if region.whole:
+                continue
+            cursor.execute(
+                "SELECT ST_Contains(ST_GeomFromText(%s, 4326), ST_SetSRID(ST_MakePoint(%s, %s), 4326))",
+                [builder.region_wkt(region, settings.COVERAGE_BBOX), lon, lat],
+            )
+            if cursor.fetchone()[0]:
+                found.append(region.id)
+    assert found == [want], place

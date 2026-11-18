@@ -2229,6 +2229,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "شمالي ویرجینیا",
   "Northwest exurbs": "شمال لویدیځ ښارګوټي",
   "Baltimore and suburbs": "بالتیمور او شاوخوا",
+  "Central Virginia": "منځنۍ ویرجینیا",
   "Everything": "ټوله نقشه",
   "It is on {street}.": "په {street} کې ده.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "په iPhone کې «سفر پیلول» تر {distance} پورې سفرونو لپاره دی. د اوږد سفر لپاره د قلف پردې لارښود انځورونه خوندي کړئ، یا د بایسکل کمپیوټر لپاره «GPX ښکته کول».",

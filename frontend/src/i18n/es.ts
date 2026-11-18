@@ -2813,6 +2813,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Northern Virginia": "Norte de Virginia",
   "Northwest exurbs": "Afueras del noroeste",
   "Baltimore and suburbs": "Baltimore y alrededores",
+  "Central Virginia": "Virginia central",
   "Everything": "Todo el mapa",
   "It is on {street}.": "Está en {street}.",
   // Plan's day and start time (lib/startTime.ts, 2026-11-13).

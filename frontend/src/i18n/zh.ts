@@ -2229,6 +2229,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "北弗吉尼亚",
   "Northwest exurbs": "西北郊区",
   "Baltimore and suburbs": "巴尔的摩及郊区",
+  "Central Virginia": "弗吉尼亚州中部",
   "Everything": "整个地图",
   "It is on {street}.": "在{street}上。",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "在iPhone上，“开始骑行”仅适用于{distance}以内的骑行。更长的骑行，请保存锁屏提示图片，或“下载GPX”用于自行车码表。",

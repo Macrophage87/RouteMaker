@@ -2229,6 +2229,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "ሰሜን ቨርጂንያ",
   "Northwest exurbs": "ሰሜን ምዕራብ ወሰናት",
   "Baltimore and suburbs": "ባልቲሞርን ከባቢኣን",
+  "Central Virginia": "ማእከላይ ቨርጂንያ",
   "Everything": "ምሉእ ካርታ",
   "It is on {street}.": "ኣብ {street} እዩ።",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "ኣብ iPhone «ጉዕዞ ጀምር» ክሳብ {distance} ንዝኾኑ ጉዕዞታት እዩ። ንነዊሕ ጉዕዞ፣ ስእልታት መምርሒ ናይ ዝተዓጽወ ስክሪን ዓቅቡ፣ ወይ ንኮምፒተር ብሽክለታ «GPX ኣውርድ»።",

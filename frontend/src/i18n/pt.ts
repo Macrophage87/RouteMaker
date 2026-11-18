@@ -2229,6 +2229,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "Norte da Virgínia",
   "Northwest exurbs": "Subúrbios do noroeste",
   "Baltimore and suburbs": "Baltimore e arredores",
+  "Central Virginia": "Virgínia central",
   "Everything": "O mapa inteiro",
   "It is on {street}.": "Ela passa por {street}.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "No iPhone, Iniciar pedal é para pedais de até {distance}. Para um pedal mais longo, salve as imagens de instruções para a tela de bloqueio ou Baixar GPX para um ciclocomputador.",

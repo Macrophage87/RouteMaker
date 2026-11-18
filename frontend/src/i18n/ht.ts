@@ -2229,6 +2229,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Northern Virginia": "Nò Vijini",
   "Northwest exurbs": "Savann nòdwès",
   "Baltimore and suburbs": "Baltimore ak alantou",
+  "Central Virginia": "Sant Vijini",
   "Everything": "Tout kat la",
   "It is on {street}.": "Li sou {street}.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "Sou iPhone, Kòmanse woulib se pou woulib jiska {distance}. Pou yon woulib pi long, anrejistre imaj endikasyon pou ekran fèmen an oswa Telechaje GPX pou yon òdinatè bisiklèt.",

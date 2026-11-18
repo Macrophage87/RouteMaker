@@ -74,15 +74,16 @@ test("a code typed in the box: the place, its code as its name, a town after it 
   // A spot in Baltimore (39.25, -76.61): its short code from the middle of the map and from a start there.
   const baltimore = decodePlusCode("87F5793Q+5W")!;
   near(baltimore, [-76.6101875, 39.2529375]);
-  near(parsePlusCode("793Q+5W Baltimore")?.point, baltimore);
   near(parsePlusCode("793Q+5W", [-76.6, 39.3])?.point, baltimore);
-  // The map's west edge (39.6, -77.9) is more than half a degree from its middle: a short code there is placed by
-  // the start or the view; from the middle alone it would land a degree south and east.
+  // Since v0.28.0 (the map reaches Richmond and Charlottesville) Baltimore, like the map's north-west corner
+  // (39.6, -77.9), is more than half a degree from the map's middle: a short code there is placed by the start or
+  // the view; from the middle alone it lands a degree south (and west or east). The town after it is not read.
+  near(parsePlusCode("793Q+5W Baltimore")?.point, [baltimore[0] - 1, baltimore[1] - 1]);
   const west = decodePlusCode("87F4J422+22")!;
   near(west, [-77.8999375, 39.6000625]);
   near(parsePlusCode("J422+22", [-77.8, 39.5])?.point, west);
   near(parsePlusCode("J422+22")?.point, [west[0] + 1, west[1] - 1]);
-  assert.ok(Math.abs(COVERAGE_CENTRE[1] - 38.96) < 0.01);
+  assert.ok(Math.abs(COVERAGE_CENTRE[1] - 38.41) < 0.01);
   // Not a place: a region (padding, or no digits after a short code's separator), or not a code at all.
   assert.equal(parsePlusCode("87C40000+"), null);
   assert.equal(parsePlusCode("VXQ7+"), null);

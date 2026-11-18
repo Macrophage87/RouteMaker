@@ -703,13 +703,14 @@ def bulk_south_revisit_route(base_lon: float) -> list[Point]:
 def test_the_bulk_south_routes_mean_latitude_is_nowhere_near_its_revisit() -> None:
     """The premise, stated separately so a failure below says which half moved.
 
-    The mean sits within half a degree of the southern end while the pair to be
-    found is at the northern one, and the pair is inside the radius by the
+    The mean sits within a fifth of the box's height of the southern end (half a
+    degree before v0.28.0 grew the box to 2.6 degrees) while the pair to be found is
+    at the northern one, and the pair is inside the radius by the
     definition.
     """
     points = bulk_south_revisit_route(-77.0)
     mean_lat = sum(p.lat for p in points) / len(points)
-    assert mean_lat - BULK_LAT < 0.5
+    assert mean_lat - BULK_LAT < 0.2 * (COVERAGE_LAT_NORTH - BULK_LAT)
     assert COVERAGE_LAT_NORTH - mean_lat > 1.0
 
     outbound = next(p for p in points if p.lat > COVERAGE_LAT_NORTH)

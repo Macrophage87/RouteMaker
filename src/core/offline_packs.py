@@ -44,9 +44,24 @@ class Region:
 # Our draft borders, approximate, drawn along the Beltway, the Potomac and the county lines
 # riders cross least; the one-mile overlap covers a border's roads on both sides. Our default,
 # unmeasured: sizes are measured after the first rebuild that builds them.
-# Northern Virginia: the Virginia and West Virginia shore of the Potomac, then the coverage box.
+# Northern Virginia: the Virginia and West Virginia shore of the Potomac (west of -78.05 from the
+# Census Bureau's TIGERweb Maryland boundary, simplified to about 300 m), then the coverage box.
 # fmt: off
 _POTOMAC_SOUTH = (
+    (-78.760, 39.582), (-78.746, 39.580), (-78.740, 39.586), (-78.734, 39.587),
+    (-78.725, 39.564), (-78.695, 39.554), (-78.690, 39.546), (-78.676, 39.540),
+    (-78.653, 39.535), (-78.623, 39.540), (-78.603, 39.532), (-78.592, 39.537),
+    (-78.588, 39.528), (-78.565, 39.519), (-78.523, 39.525), (-78.503, 39.519),
+    (-78.467, 39.517), (-78.461, 39.524), (-78.462, 39.536), (-78.449, 39.540),
+    (-78.461, 39.546), (-78.461, 39.551), (-78.450, 39.550), (-78.438, 39.539),
+    (-78.435, 39.542), (-78.438, 39.553), (-78.425, 39.545), (-78.417, 39.549),
+    (-78.426, 39.559), (-78.454, 39.574), (-78.457, 39.588), (-78.443, 39.591),
+    (-78.407, 39.579), (-78.395, 39.585), (-78.425, 39.608), (-78.434, 39.618),
+    (-78.430, 39.623), (-78.421, 39.624), (-78.376, 39.608), (-78.372, 39.612),
+    (-78.383, 39.623), (-78.382, 39.628), (-78.374, 39.630), (-78.356, 39.626),
+    (-78.353, 39.631), (-78.359, 39.637), (-78.355, 39.641), (-78.266, 39.619),
+    (-78.254, 39.640), (-78.224, 39.661), (-78.233, 39.674), (-78.202, 39.677),
+    (-78.191, 39.690), (-78.177, 39.696), (-78.105, 39.682), (-78.081, 39.671),
     (-78.050, 39.645), (-78.036, 39.636), (-78.010, 39.603), (-77.977, 39.600),
     (-77.958, 39.609), (-77.951, 39.604), (-77.952, 39.593), (-77.946, 39.585),
     (-77.939, 39.587), (-77.936, 39.595), (-77.935, 39.608), (-77.944, 39.615),
@@ -86,7 +101,8 @@ _POTOMAC_SOUTH = (
     (-77.056, 38.317), (-77.043, 38.309), (-77.029, 38.311), (-77.026, 38.303),
     (-77.002, 38.282), (-77.001, 38.275), (-76.981, 38.274), (-76.962, 38.256),
     (-76.957, 38.237), (-76.967, 38.227), (-76.962, 38.214), (-76.937, 38.202),
-    (-76.918, 38.200), (-78.050, 38.200), (-78.050, 39.645),
+    (-76.918, 38.200), (-78.050, 38.200), (-78.050, 38.550), (-78.760, 38.550),
+    (-78.760, 39.582),
 )
 # fmt: on
 # The northwest exurbs: its eastern border, then the Maryland bank of the Potomac (the river is
@@ -114,7 +130,21 @@ _NW_EXURBS = (
     (-77.944, 39.615), (-77.935, 39.608), (-77.936, 39.595), (-77.939, 39.587),
     (-77.946, 39.585), (-77.952, 39.593), (-77.951, 39.604), (-77.958, 39.609),
     (-77.977, 39.600), (-78.010, 39.603), (-78.036, 39.636), (-78.050, 39.645),
-    (-78.050, 39.720), (-77.000, 39.720),
+    (-78.081, 39.671), (-78.105, 39.682), (-78.177, 39.696), (-78.191, 39.690),
+    (-78.202, 39.677), (-78.233, 39.674), (-78.224, 39.661), (-78.254, 39.640),
+    (-78.266, 39.619), (-78.355, 39.641), (-78.359, 39.637), (-78.353, 39.631),
+    (-78.356, 39.626), (-78.374, 39.630), (-78.382, 39.628), (-78.383, 39.623),
+    (-78.372, 39.612), (-78.376, 39.608), (-78.421, 39.624), (-78.430, 39.623),
+    (-78.434, 39.618), (-78.425, 39.608), (-78.395, 39.585), (-78.407, 39.579),
+    (-78.443, 39.591), (-78.457, 39.588), (-78.454, 39.574), (-78.426, 39.559),
+    (-78.417, 39.549), (-78.425, 39.545), (-78.438, 39.553), (-78.435, 39.542),
+    (-78.438, 39.539), (-78.450, 39.550), (-78.461, 39.551), (-78.461, 39.546),
+    (-78.449, 39.540), (-78.462, 39.536), (-78.461, 39.524), (-78.467, 39.517),
+    (-78.503, 39.519), (-78.523, 39.525), (-78.565, 39.519), (-78.588, 39.528),
+    (-78.592, 39.537), (-78.603, 39.532), (-78.623, 39.540), (-78.653, 39.535),
+    (-78.676, 39.540), (-78.690, 39.546), (-78.695, 39.554), (-78.725, 39.564),
+    (-78.734, 39.587), (-78.740, 39.586), (-78.746, 39.580), (-78.760, 39.582),
+    (-78.760, 39.720), (-77.000, 39.720),
 )
 # fmt: on
 
@@ -170,8 +200,10 @@ REGIONS: tuple[Region, ...] = (
     Region(
         id="nova",
         name="Northern Virginia",
-        # Everything south of the Potomac in the coverage box: Virginia and the West Virginia
-        # panhandle (Martinsburg, Charles Town), the river being the line riders cross least
+        # Everything south of the Potomac in the coverage box down to 38.2 N (38.55 N west of
+        # -78.05, where Central Virginia takes over): Virginia and the West Virginia panhandle
+        # (Martinsburg, Charles Town, and since v0.28.0 Winchester, Front Royal, Luray and western
+        # Hampshire County to the box's -78.76 edge), the river being the line riders cross least
         # outside DC (Stephen, 2026-11-15: "Divide the map along the Potomac. There are so few
         # crossings outside DC that it's reasonable to divide there"). The Virginia and West
         # Virginia shore from the Census Bureau's 2023 cartographic state boundaries (1:500,000,
@@ -197,6 +229,25 @@ REGIONS: tuple[Region, ...] = (
         # Maryland (Stephen, 2026-11-15: "Bowie and the like should be nearer to Baltimore. The
         # dividing line would be somewhere around Upper Marlboro ... Or just use county borders").
         outline=_BALTIMORE,
+    ),
+    Region(
+        id="central-va",
+        name="Central Virginia",
+        # Virginia south of Northern Virginia's 38.2 N edge (v0.28.0 pass 1): Richmond,
+        # Petersburg, Williamsburg and the Capital Trail, Fredericksburg's south side, the Northern
+        # Neck, and Charlottesville with the US 29 side up through Madison to 38.55 N, west of
+        # -78.05. East of the Potomac's last bend (-76.918) the top runs down to 37.9 N at the Bay,
+        # under Point Lookout, so St. Mary's County stays in Southern Maryland.
+        outline=(
+            (-78.760, 37.100),
+            (-76.020, 37.100),
+            (-76.020, 37.900),
+            (-76.918, 38.200),
+            (-78.050, 38.200),
+            (-78.050, 38.550),
+            (-78.760, 38.550),
+            (-78.760, 37.100),
+        ),
     ),
     Region(
         id="rest",
