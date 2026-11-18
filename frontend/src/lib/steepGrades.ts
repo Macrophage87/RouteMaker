@@ -203,18 +203,19 @@ export function steepGradesFor(preset: string): boolean {
 
 /** The key's two rows for a ride type: what the orange row says depends on whether it is routed round and which way. */
 export function steepKeyRows(preset: string) {
+  const downOnly = STEEP_GRADE_MARK_ONLY.get(preset) === "down";
+  const direction: SteepDirection = downOnly ? "down" : "up";
   const steep = STEEP_GRADE_RIDE_TYPES.has(preset)
     ? "Over 5%, uphill or downhill. Routes avoid them where they can."
-    : STEEP_GRADE_MARK_ONLY.get(preset) === "down"
+    : downOnly
       ? "Over 5%, downhill only."
       : "Over 5%, uphill or downhill.";
+  const verySteep = downOnly ? "Over 8%, downhill only." : "Over 8%. The ramp rises for uphill and falls for downhill.";
   return [
-    { level: "steep" as const, name: "Steep grade", shape: "orange square", text: steep },
-    { level: "very_steep" as const, name: "Very steep grade", shape: "red square", text: "Over 8%. The ramp rises for uphill and falls for downhill." },
+    { level: "steep" as const, name: "Steep grade", shape: "orange square", text: steep, direction },
+    { level: "very_steep" as const, name: "Very steep grade", shape: "red square", text: verySteep, direction },
   ];
 }
-
-export const STEEP_KEY_ROWS = steepKeyRows("mass-ride");
 
 /** The mark as a small inline picture, for the key. Seen, not heard. */
 export function SteepGradeSwatch({ level, direction = "up", size = 16 }: { level: SteepLevel; direction?: SteepDirection; size?: number }): ReactElement {
@@ -240,7 +241,7 @@ export function SteepGradeKey({ preset = "mass-ride" }: { preset?: string } = {}
       h(
         "li",
         { key: row.level },
-        h(SteepGradeSwatch, { level: row.level, size: 20 }),
+        h(SteepGradeSwatch, { level: row.level, direction: row.direction, size: 20 }),
         h("span", null, h("span", { className: "route-hazard-name" }, row.name), h("span", { className: "hint" }, ` (${row.shape}): `), row.text),
       ),
     ),

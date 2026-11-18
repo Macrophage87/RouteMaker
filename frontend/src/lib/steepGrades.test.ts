@@ -14,6 +14,7 @@ import {
   STEEP_GRADE_SOURCE,
   STEEP_ICONS,
   SteepGradeKey,
+  SteepGradeSwatch,
   steepGradeFeatures,
   steepGradeIcon,
   steepGradeLayer,
@@ -125,7 +126,13 @@ test("the key tells each ride type what it is shown", () => {
     assert.match(said(preset), /Over 5%, uphill or downhill\./, preset);
     assert.doesNotMatch(said(preset), /Routes avoid them/, preset);
   }
-  assert.match(said("ebike"), /Over 5%, downhill only\./);
-  assert.doesNotMatch(said("ebike"), /uphill or downhill|Routes avoid them/);
+  assert.match(said("ebike"), /Over 5%, downhill only\..*Over 8%, downhill only\./);
+  assert.doesNotMatch(said("ebike"), /uphill|Routes avoid them/);
+  // The key's ramps fall on E-bike (downhill marks only) and rise elsewhere, as the map's marks do.
+  const ramps = (preset: string) => [...said(preset).matchAll(/<polygon points="([^"]+)"/g)].map((m) => m[1]);
+  const down = renderToStaticMarkup(createElement(SteepGradeSwatch, { level: "steep", direction: "down", size: 20 })).match(/points="([^"]+)"/)![1];
+  const up = renderToStaticMarkup(createElement(SteepGradeSwatch, { level: "steep", direction: "up", size: 20 })).match(/points="([^"]+)"/)![1];
+  assert.deepEqual(ramps("ebike"), [down, down]);
+  assert.deepEqual(ramps("cargo"), [up, up]);
   for (const preset of ["novice", "cargo", "ebike"]) assert.match(said(preset), /Very steep grade.*Over 8%/, preset);
 });
