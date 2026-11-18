@@ -9292,7 +9292,7 @@ held 150 m still breaks one. The shorter climbs appear only once `build_interval
 file from before (no `t`, a mile minimum) still draws, its minutes worked out in the browser.
 
 The pink deepens with the minutes (the owner, 2026-11-18: "color code by time length"): five shades
-from 3 to 5 minutes up to 20 or more, one hue so it never reads as a stress colour, each 3:1 on the
+from 3 to 5 minutes up to 20 or more, pink through magenta to plum so none reads as a stress colour, each 3:1 on the
 map at the drawn opacity (`INTERVALS_RAMP`; the dark map's brighter set in `lib/darkPaint.ts`). The
 mouse over a stretch shows a card (`lib/intervalHover.ts`): its distance, rise, minutes, which way,
 its bollards, then its elevation profile from `GET /api/intervals/{id}/profile`

@@ -146,10 +146,11 @@ def near(
     paved_only: bool = False,
     quiet_only: bool = False,
     longest: bool = False,
+    no_bollards: bool = False,
 ) -> list[dict]:
     """The stretches within `miles` (at most MAX_RADIUS_MI) of the point, at least `min_miles`
-    long, paved only or off busy roads only where asked; nearest first, or longest first.
-    Raises Unavailable without the file."""
+    long, paved only, off busy roads only or without bollards only where asked; nearest first,
+    or longest first. Raises Unavailable without the file."""
     stretches = load()
     if stretches is None:
         raise Unavailable("there is no intervals file")
@@ -163,6 +164,8 @@ def near(
         if paved_only and s.surface == "g":
             continue
         if quiet_only and s.busy:
+            continue
+        if no_bollards and s.bollards:
             continue
         if not any(abs(a - lon) <= dlon and abs(b - lat) <= dlat for a, b in s.line):
             continue

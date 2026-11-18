@@ -836,6 +836,8 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
     assert out["intervals"][1]["bollards"] == 2
     quick = server.call("intervals_near", {"near": [-77.05, 38.94], "no_bollards": True})
     assert "Up" not in [s["name"] for s in quick["intervals"]]
+    # Asked of the site, so its cut of 25 keeps clear stretches a little further away.
+    assert asked[-1]["no_bollards"] is True
     with pytest.raises(mcp.ToolError, match="on_minutes"):
         server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 90})
 

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 import { act } from "react";
 import { click, render } from "../testSupport/render.ts";
-import { contrastRatio } from "../stressStyle.js";
+import { HALF_PALETTES, PALETTES, contrastRatio } from "../stressStyle.js";
 import {
   INTERVALS_COLOUR,
   INTERVALS_DARK_COLOUR,
@@ -72,6 +72,12 @@ test("the layers are valid, the arrows only on one-way stretches, and the pink r
   assert.deepEqual(DARK_PAINT["intervals-arrows"]["text-color"], intervalsColour(INTERVALS_DARK_RAMP));
   for (const shade of INTERVALS_DARK_RAMP) for (const bg of ["#111827", "#1b1e24"]) assert.ok(contrastRatio(drawn(shade, bg), bg) >= 3, `${shade} on ${bg}`);
   assert.equal(INTERVALS_DARK_RAMP[0], INTERVALS_DARK_COLOUR);
+  // No shade reads as a stress level (the review of #1328: a maroon end read as LTS 4): every shade is well clear of
+  // every palette's line colours, whole and half steps, by plain RGB distance.
+  const rgb = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const apart = (a: string, b: string) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i]));
+  const stress = [...Object.values(PALETTES), ...Object.values(HALF_PALETTES)].flatMap((p) => Object.values(p as Record<string, { color: string }>).map((t) => t.color));
+  for (const shade of [...INTERVALS_RAMP, ...INTERVALS_DARK_RAMP]) for (const level of stress) assert.ok(apart(shade, level) >= 30, `${shade} near ${level}`);
   // A stretch under 5 minutes takes the first shade, one of 20 or more the last.
   assert.deepEqual(intervalsColour(INTERVALS_RAMP).slice(1, 3), [["to-number", ["get", "t"], 0], INTERVALS_RAMP[0]]);
   assert.deepEqual(intervalsColour(INTERVALS_RAMP).slice(-2), [20, INTERVALS_RAMP[4]]);

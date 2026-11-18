@@ -11922,18 +11922,18 @@ button.route-note:focus-visible {
 }
 
 :root.theme-dark .intervals-swatch-1 {
-  stroke: #f9a8d4;
+  stroke: #e879f9;
 }
 
 :root.theme-dark .intervals-swatch-2 {
-  stroke: #fbcfe8;
+  stroke: #f0abfc;
 }
 
 :root.theme-dark .intervals-swatch-3 {
-  stroke: #fce7f3;
+  stroke: #f5c2fd;
 }
 
 :root.theme-dark .intervals-swatch-4 {
-  stroke: #ffffff;
+  stroke: #fad5ff;
 }
 

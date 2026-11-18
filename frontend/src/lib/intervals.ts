@@ -41,14 +41,15 @@ export const INTERVALS_OPACITY = 0.7;
 export const INTERVALS_COLOUR = "#be185d";
 export const INTERVALS_DARK_COLOUR = "#f472b6";
 /**
- * Shaded by how long a stretch takes (the owner, 2026-11-18: "color code by time length of the intervals"): one pink,
- * light for the shortest and deep for the longest, so it never reads as a stress colour. A band starts at its
+ * Shaded by how long a stretch takes (the owner, 2026-11-18: "color code by time length of the intervals"): pink for
+ * the shortest, deepening through magenta to plum for the longest, never toward maroon or red, so no shade reads as a
+ * stress colour (each stays clear of every stress style's colours, intervals.test.tsx). A band starts at its
  * minutes (the picker's own steps). Every shade keeps 3:1 against the map at the drawn opacity (WCAG 1.4.11). On the
  * dark map "deep" is brighter (lib/darkPaint.ts holds the same ramp).
  */
 export const INTERVALS_BANDS = [3, 5, 8, 12, 20] as const;
-export const INTERVALS_RAMP = [INTERVALS_COLOUR, "#9d174d", "#831843", "#6b0f37", "#500724"] as const;
-export const INTERVALS_DARK_RAMP = [INTERVALS_DARK_COLOUR, "#f9a8d4", "#fbcfe8", "#fce7f3", "#ffffff"] as const;
+export const INTERVALS_RAMP = [INTERVALS_COLOUR, "#b0157a", "#9c1477", "#7a1a80", "#601466"] as const;
+export const INTERVALS_DARK_RAMP = [INTERVALS_DARK_COLOUR, "#e879f9", "#f0abfc", "#f5c2fd", "#fad5ff"] as const;
 
 /** A step expression on a stretch's minutes (`t`): the first shade below 5 minutes, the last from 20. */
 export function intervalsColour(ramp: readonly string[]): unknown[] {

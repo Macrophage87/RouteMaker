@@ -7441,6 +7441,9 @@ class IntervalsNearIn(Schema):
     paved_only: bool = Field(default=False, description="Leave out gravel stretches.")
     quiet_only: bool = Field(default=False, description="Leave out stretches mostly on LTS 3.")
     longest: bool = Field(default=False, description="Longest first, not nearest first.")
+    no_bollards: bool = Field(
+        default=False, description="Leave out stretches with bollards on them."
+    )
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -7490,6 +7493,7 @@ def intervals_near_point(request, params: Query[IntervalsNearIn], response: Http
             paved_only=params.paved_only,
             quiet_only=params.quiet_only,
             longest=params.longest,
+            no_bollards=params.no_bollards,
         )
     except intervals_near.Unavailable:
         return Status(503, {"error": "this server has no intervals file"})

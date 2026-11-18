@@ -7025,6 +7025,9 @@ class Server:
         if on_min:
             # Longest first before the site's cut, so long stretches a little further away are kept.
             filters["longest"] = True
+        if args.get("no_bollards"):
+            # Before the site's cut of 25, so clear stretches a little further away are kept.
+            filters["no_bollards"] = True
         found = self.api.intervals_near(near, miles, **filters)
         for stretch in found:
             grade = 0.0 if stretch.get("both_ways") else stretch["grade_pct"]
@@ -7032,7 +7035,7 @@ class Server:
         if on_min:
             found = [s for s in found if s["effort_minutes"] >= on_min]
         # The owner, 2026-11-18: bollards are noted, not a break ("It's really situationally
-        # dependent"): the caller chooses.
+        # dependent"): the caller chooses. Filtered here too for a site that predates the filter.
         if args.get("no_bollards"):
             found = [s for s in found if not s.get("bollards")]
         return {

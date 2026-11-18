@@ -25,7 +25,7 @@ export const CHOICE_CASING_DARK_OPACITY = 1;
 
 export type PaintTable = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 
-const INTERVALS_DARK_STEPS = ["step", ["to-number", ["get", "t"], 0], "#f472b6", 5, "#f9a8d4", 8, "#fbcfe8", 12, "#fce7f3", 20, "#ffffff"];
+const INTERVALS_DARK_STEPS = ["step", ["to-number", ["get", "t"], 0], "#f472b6", 5, "#e879f9", 8, "#f0abfc", 12, "#f5c2fd", 20, "#fad5ff"];
 
 export const DARK_PAINT: PaintTable = {
   "coverage-mask": { "fill-color": MASK_DARK, "fill-opacity": 0.45 },
