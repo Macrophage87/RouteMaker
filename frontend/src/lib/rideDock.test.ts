@@ -227,8 +227,9 @@ test("the bottom panel's height reaches the map, so the arrow moves up as soon a
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(ride, /sheetHeight\.current\?\.\(px\);/);
-  assert.match(app, /onSheetHeight=\{setRidePanelH\}/);
-  assert.match(app, /ridePanelH=\{ridePanelH\}/);
+  // Through its own store (app/LiveMap.tsx), so a note coming or going redraws the map, not App.
+  assert.match(app, /onSheetHeight=\{ridePanel\.set\}/);
+  assert.match(app, /ridePanelFrom=\{ridePanel\}/);
   assert.match(map, /\}, \[props\.rider, props\.follow, props\.headingUp, props\.followReset, props\.ridePanelH\]\);/);
 });
 
