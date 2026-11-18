@@ -2713,7 +2713,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Interval stretch": "Tramo para intervalos",
   "rises {climb} at {grade}%": "sube {climb} al {grade}%",
   "flat": "llano",
-  "about {minutes} min at {speed}": "unos {minutes} min a {speed}",
+  "about {minutes} min, a rough guess at {speed}": "unos {minutes} min, un cálculo aproximado a {speed}",
   "this way only (the arrows)": "solo en este sentido (las flechas)",
   "either way": "en ambos sentidos",
   "1 bollard to ride through": "1 bolardo que atravesar",
