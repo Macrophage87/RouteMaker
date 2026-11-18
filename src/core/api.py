@@ -4265,10 +4265,11 @@ def route_neighbours(request, body: RouteIn):
     if extra > 0:
         client = ratelimit.client_key(ratelimit.client_address(request))
         if not ratelimit.take(ratelimit.ROUTING, client, extra).allowed:
-            # Only what the decorator's count already paid for, and never fewer than one: a
-            # plan of more than 50 points costs more than the decorator's two, and an answer
-            # of none would spend them for nothing.
-            wanted = wanted[: max(1, NEIGHBOURS_COST // plan_cost(body.points))]
+            # Only what the decorator's count already paid for. A plan of more than 25 points
+            # costs more than the decorator's two, so there none is planned: one plan of up to
+            # 200 points for two would be a cheap way past the many-point charge (the v0.28.0
+            # release review).
+            wanted = wanted[: NEIGHBOURS_COST // plan_cost(body.points)]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
     bodies = {

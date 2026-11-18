@@ -283,15 +283,15 @@ class TestFewerTurnsAndAllPaved:
             ratelimit.ROUTING.requests
         ]
 
-    def test_a_plan_of_many_points_with_no_room_still_has_one_option(
+    def test_a_plan_of_many_points_with_no_room_has_no_option(
         self,
         client,
         segments,  # noqa: F811
         router,  # noqa: F811
     ) -> None:
-        """Past 50 points one option costs more than the decorator's two: where there is no
-        room for more, the first is still planned, never an answer of none for the two spent
-        (the v0.28.0 release review)."""
+        """Past 25 points one option costs more than the decorator's two: where there is no
+        room for more, none is planned, so Neighbours is no cheap way past the many-point
+        charge (the v0.28.0 release review)."""
         from core.models import RateLimitWindow
 
         fake = router(standard_router())
@@ -303,7 +303,7 @@ class TestFewerTurnsAndAllPaved:
         post(client, body_for(stress=70))
         RateLimitWindow.objects.update(hits=ratelimit.ROUTING.requests - 2)
         answer = post(client, {**body_for(stress=70), "points": points}).json()
-        assert [o["kind"] for o in answer["options"]] == ["direct"]
+        assert answer["options"] == []
         assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [
             ratelimit.ROUTING.requests
         ]

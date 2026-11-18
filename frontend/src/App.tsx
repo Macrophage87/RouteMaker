@@ -8066,6 +8066,8 @@ export function App() {
                     aria-busy={rideOpening === "start" || undefined}
                     aria-disabled={rideOpening === "start" || undefined}
                     onClick={() => {
+                      // A press while Ride's code is still loading is ignored, the sheet left open.
+                      if (rideOpening) return;
                       showPlanner(false);
                       startRideChecked();
                     }}
