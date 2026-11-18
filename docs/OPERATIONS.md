@@ -8102,8 +8102,9 @@ map rebuild, no router restart.
   front end.
 - [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
 - [ ] **Beta check.** The app says 0.28.1; Plan, Interval stretches at Hains Point shows one
-  stretch per way, none by Daingerfield Island on the Mount Vernon Trail; the hover card reads
-  "a rough guess at ... mph".
+  stretch, Ohio Drive, one way (arrows), with no sidepath stretch beside it; the Mount Vernon Trail
+  from Daingerfield Island north toward the airport has none; the hover card reads "a rough guess
+  at ... mph".
 - [ ] **Rollback.** The `pre-rel` api image and the v0.28.0 front end.
 
 ## Deploying v0.28.0
