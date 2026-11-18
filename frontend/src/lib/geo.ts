@@ -8,8 +8,11 @@ export type LonLat = [number, number];
  */
 export const COVERAGE_BBOX: readonly [number, number, number, number] = [-78.05, 38.2, -76.02, 39.72];
 
-/** The API's ceiling on points per request (2 to 25). */
-export const MAX_POINTS = 25;
+/**
+ * The API's ceiling on points per request (core/api.py MAX_POINTS): 2 to 200. Stephen, 2026-11-18, of the old 25:
+ * "remove this limit"; 200 is only the abuse guard, a point about every 0.6 mi on the longest ride allowed.
+ */
+export const MAX_POINTS = 200;
 
 const EARTH_RADIUS_M = 6_371_008.8;
 

@@ -38,7 +38,10 @@ is dated by the day too and keeps the road only as a one-way code mixed with the
 (`ride_road_code`), so the row names no road, yet one-a-road still holds, whichever form sent it
 (a ride's retry, or Keep riding and End ride again, is refused as "already sent", not counted
 twice); and the audit row names no suggestion and is dated by the day. Rows of each kind are
-made one a send, in step, so a row's exact time would otherwise date the suggestion.
+made one a send, in step, so a row's exact time would otherwise date the suggestion. For the same
+reason a ride's suggestion, count row and audit row take random ids (`random_id`) rather than
+the next in line, and lists of suggestions break ties in their dates by id, so neither ids nor
+a list's order keep the order of sending.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+import secrets
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -78,6 +82,10 @@ TICKET_MAX_AGE_S = 2 * 3600
 DEVICE_SALT = b"routemaker/signed-out-device/v1"
 RIDE_ROAD_SALT = b"routemaker/signed-out-ride-road/v1"
 REMOVED = "[removed]"
+# A ride's rows take a random id in this range: far above any the table's own sequence will
+# reach, and below 2**53, so a browser reads it exactly.
+RANDOM_ID_FLOOR = 2**52
+RANDOM_ID_CEILING = 2**53
 # A ride's send keeps the day in Washington's time (core.report_log.DAY_ZONE, the 311 log's).
 DAY_ZONE = ZoneInfo("America/New_York")
 
@@ -214,9 +222,13 @@ def create(
         # A ride's count row is dated by the day too: rows and suggestions are made one each per
         # send, in step, so a row's time would date the suggestion it was made with.
         SignedOutSend.objects.create(
-            device=device, osm_way_id=road, created_at=ride_day(now) if from_ride else now
+            pk=random_id(SignedOutSend) if from_ride else None,
+            device=device,
+            osm_way_id=road,
+            created_at=ride_day(now) if from_ride else now,
         )
         suggestion = StressSuggestion.objects.create(
+            pk=random_id(StressSuggestion) if from_ride else None,
             created_at=ride_day(now) if from_ride else now,
             suggester=None,
             suggester_user_id=None,
@@ -233,17 +245,26 @@ def create(
             reasons=chosen,
             reason=reason_words(chosen, other),
         )
-    # A ride's send: the audit row's time would be the send's, so it names no suggestion.
+    # A ride's send: the audit row's time would be the send's, so it names no suggestion; and,
+    # one a send in step with the suggestions, it takes a random id when made.
     with transaction.atomic():
         entry = audit.record(
             None, "stress_suggest_signed_out", "stress_suggestion",
             "" if from_ride else suggestion.pk, AuditLogEntry.Outcome.ALLOWED,
+            pk=random_id(AuditLogEntry) if from_ride else None,
         )  # fmt: skip
         if from_ride and entry is not None:
-            # Its audit row too: one a send, in step with the suggestions, so dated by the day; in
-            # the same transaction, so the exact time is never committed.
+            # Dated by the day too, in the same transaction, so the exact time is never committed.
             AuditLogEntry.objects.filter(pk=entry.pk).update(at=ride_day(now))
     return suggestion
+
+
+def random_id(model) -> int:
+    """An unused id for a ride's row, drawn at random from `RANDOM_ID_FLOOR` up."""
+    while True:
+        pk = RANDOM_ID_FLOOR + secrets.randbelow(RANDOM_ID_CEILING - RANDOM_ID_FLOOR)
+        if not model.objects.filter(pk=pk).exists():
+            return pk
 
 
 def ride_road_code(device: str, way_id: int) -> int:

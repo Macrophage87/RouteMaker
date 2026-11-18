@@ -818,7 +818,7 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
     def intervals_near(near, miles, **filters):
         asked.append(filters)
         flat = {"miles": 2.0, "grade_pct": 0.1, "both_ways": True}
-        up = {"miles": 1.0, "grade_pct": 4.0, "both_ways": False}
+        up = {"miles": 1.0, "grade_pct": 4.0, "both_ways": False, "bollards": 2}
         short = {"miles": 1.0, "grade_pct": 0.0, "both_ways": True}
         return [{"name": n, **row} for n, row in (("Flat", flat), ("Up", up), ("Short", short))]
 
@@ -831,6 +831,13 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
     assert out["intervals"][0]["effort_minutes"] == pytest.approx(6.7, abs=0.1)
     server.call("intervals_near", {"near": [-77.05, 38.94], "include_busy": True})
     assert asked[-1]["quiet_only"] is False and "longest" not in asked[-1]
+    # Bollards are returned, and left out only where asked (the owner, 2026-11-18: "so people
+    # can choose. It's really situationally dependent").
+    assert out["intervals"][1]["bollards"] == 2
+    quick = server.call("intervals_near", {"near": [-77.05, 38.94], "no_bollards": True})
+    assert "Up" not in [s["name"] for s in quick["intervals"]]
+    # Asked of the site, so its cut of 25 keeps clear stretches a little further away.
+    assert asked[-1]["no_bollards"] is True
     with pytest.raises(mcp.ToolError, match="on_minutes"):
         server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 90})
 
@@ -863,6 +870,21 @@ def test_the_best_order_is_the_shortest_round_the_checkpoints() -> None:
     many = [at(rng.uniform(0, 5), rng.uniform(0, 5)) for _ in range(20)]
     (order,) = mcp.best_orders(many, tries=1)
     assert sorted(order) == list(range(20)) and order[0] == 0 and order[-1] == 19
+
+
+def test_best_order_takes_at_most_the_sites_stop_order_points() -> None:
+    """The site's Best order ceiling (core/api.py STOP_ORDER_MAX_POINTS): 200 points took 30 s
+    of CPU in the 2-opt (the v0.28.0 release review). Refused at once, before any plan."""
+    from core import api
+
+    assert mcp.STOP_ORDER_MAX_POINTS == api.STOP_ORDER_MAX_POINTS
+    places = _Places()
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    points = [at(i * 0.1) for i in range(mcp.STOP_ORDER_MAX_POINTS + 1)]
+    with pytest.raises(mcp.ToolError, match="at most 25 points"):
+        server.call("plan_route", {"points": points, "best_order": True})
+    assert places.routes == []
+    assert len(mcp.best_orders(points[:-1], tries=1)[0]) == mcp.STOP_ORDER_MAX_POINTS
 
 
 def test_plan_route_rides_the_checkpoints_in_the_quickest_order() -> None:

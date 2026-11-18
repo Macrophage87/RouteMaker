@@ -61,8 +61,10 @@ LINE_MAX_POINTS = 100_000
 # The whole save, line and answer together. A day's ride with its full answer is a few hundred
 # kilobytes; the cap keeps 200 of them per account within reason.
 ROUTE_MAX_BYTES = 4 * 1024 * 1024
-INPUT_POINTS_MAX = 25
-HASH_MAX = 2048
+# A plan's points (the route API's MAX_POINTS, 200 since 2026-11-18) and its link, which carries
+# them at about 20 characters each.
+INPUT_POINTS_MAX = 200
+HASH_MAX = 8192
 
 
 def _depth(value, level: int = 0) -> int:

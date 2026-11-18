@@ -20,6 +20,8 @@ import { withViasOnLegs } from "./pointKinds.ts";
 import { t } from "./i18n.ts";
 
 export const BEST_ORDER_LABEL = t("Best order");
+/** The most stops and ends Best order takes (core/api.py STOP_ORDER_MAX_POINTS): offered only up to it. */
+export const ORDER_MAX_POINTS = 25;
 
 /** What the API answers (core.api.StopOrderOut). */
 export interface StopOrder {
@@ -44,6 +46,12 @@ const lastMoves = reverseKeepsStart;
 /** How many points Best order may move: those between the start and the end, or every one after a loop's start. */
 export function stopsThatMove(points: readonly LonLat[], loop: boolean): number {
   return Math.max(0, points.length - (lastMoves(points, loop) ? 1 : 2));
+}
+
+/** Whether Plan offers Best order for these stops and ends: two or more that may move, up to ORDER_MAX_POINTS, never on
+ *  a Mass Ride. */
+export function bestOrderOffered(stops: readonly LonLat[], loop: boolean, massRide = false): boolean {
+  return !massRide && stopsThatMove(stops, loop) >= 2 && stops.length <= ORDER_MAX_POINTS;
 }
 
 /** Whether an answer fits these points: every point once, the start first, and the end last unless it is a stop. */

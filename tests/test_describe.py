@@ -2632,6 +2632,18 @@ class TestJogAlongOneWay:
     def test_a_wiggle_shorter_than_a_jog_is_not_said(self):
         assert self.moves(self.blair(middle=8.0)) == [None]
 
+    def test_a_tight_s_bend_is_not_a_jog(self):
+        # Two curves meeting, each drawn over vertices 3 m apart: right 90 then left 90 with
+        # no straight between. Before: said as right, then left (the v0.27.3 review).
+        segments = [(200.0, 0.0)] + [(3.0, 15.0 * k) for k in range(1, 7)]
+        segments += [(3.0, 90.0 - 15.0 * k) for k in range(1, 7)] + [(300.0, 0.0)]
+        assert self.moves(d.describe([drawn("A Trail", segments)])) == [None]
+
+    def test_corners_that_do_not_come_back_beside_the_line_are_not_a_jog(self):
+        # Right 100, a straight 20 m, then left only 65: the way on heads 35 degrees off.
+        segments = [(200.0, 0.0), (20.0, 100.0), (300.0, 35.0)]
+        assert self.moves(d.describe([drawn("A Trail", segments)])) == [None]
+
     def test_a_kink_in_the_drawn_line_is_no_corner(self):
         # Out 80 degrees and back over half a metre, then a single real bend 20 m on.
         segments = [(200.0, 0.0), (0.5, 80.0), (20.0, 0.0), (300.0, 70.0)]
