@@ -2829,7 +2829,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Calmer way: {extra} longer, {level} at worst.": "Camino más tranquilo: {extra} más largo, {level} en lo peor.",
   // ---- A stretch picked on Plan's chart (lib/chartStretch.ts, ChartStretch.tsx; Plan) ----
   "Picked stretch": "Tramo elegido",
-  "Enter centres the map there; Shift with the arrow keys picks a stretch, and Escape lets it go.": "Intro centra el mapa ahí; Mayús con las flechas elige un tramo, y Escape lo suelta.",
+  "Enter centres the map there; Shift with the arrow keys, or a click then Shift+click, picks a stretch, and Escape lets it go.": "Intro centra el mapa ahí; Mayús con las flechas, o un clic y luego Mayús+clic, elige un tramo, y Escape lo suelta.",
   "{climb} of climb": "{climb} de subida",
   "steepest {grade}%": "máxima pendiente {grade}%",
   "stress not rated": "estrés sin calificar",

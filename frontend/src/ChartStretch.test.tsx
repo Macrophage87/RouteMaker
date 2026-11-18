@@ -132,7 +132,43 @@ test("on Plan's chart, Enter centres the map there and Shift with the arrow keys
   await press(slider, "Escape");
   assert.doesNotMatch(screen.text(), /Picked/);
   assert.match(slider.getAttribute("aria-describedby") ?? "", /keys/);
-  assert.match(screen.text(), /Shift with the arrow keys picks a stretch/);
+  assert.match(screen.text(), /Shift with the arrow keys, or a click then Shift\+click, picks a stretch/);
+});
+
+test("on Plan's chart, a click centres the map and a Shift+click picks the stretch from it, with no drag (WCAG 2.5.7)", async () => {
+  const centred: LonLat[] = [];
+  const picked: [number, number][] = [];
+  const screen = await render(
+    <ElevationChart
+      route={ROUTE}
+      profile={PROFILE}
+      tools={{
+        onCentre: (p) => centred.push(p),
+        stretch: (fromM, toM) => {
+          picked.push([fromM, toM]);
+          return <p>Picked {Math.round(fromM)} to {Math.round(toM)}</p>;
+        },
+      }}
+    />,
+  );
+  const slider = screen.get("slider", /along the route/);
+  slider.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1000, bottom: 100, width: 1000, height: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+  const clickAt = (clientX: number, shiftKey = false) =>
+    act(async () => {
+      for (const type of ["pointerdown", "pointerup"])
+        slider.dispatchEvent(new window.PointerEvent(type, { clientX, shiftKey, button: 0, pointerType: "mouse", pointerId: 1, bubbles: true, cancelable: true }) as unknown as Event);
+    });
+  await clickAt(250);
+  assert.equal(centred.length, 1, "a click centres the map");
+  assert.doesNotMatch(screen.text(), /Picked/);
+  await clickAt(750, true);
+  assert.equal(centred.length, 1, "a Shift+click leaves the map where it is");
+  assert.match(screen.text(), /Picked \d+ to \d+/);
+  const [from, to] = picked[picked.length - 1];
+  assert.ok(from > 0 && to > from, `from the click to the Shift+click: ${from} to ${to}`);
+  await clickAt(500);
+  assert.equal(centred.length, 2);
+  assert.doesNotMatch(screen.text(), /Picked/, "a plain click lets the stretch go");
 });
 
 test("Go's chart and a chart without Plan's tools pick nothing and centre nothing", async () => {
