@@ -1,5 +1,6 @@
 /**
- * Steep grades on a Mass Ride or a Novice and Nervous ride (v0.12.5; routemaker/steep_grades.py). The owner,
+ * Steep grades on a Mass Ride or a Novice and Nervous ride (v0.12.5; routemaker/steep_grades.py), and from v0.28.0
+ * marked, not routed round, on Cargo and Tandem (both ways) and E-bike (downhill). The owner,
  * 2026-10-26: "For mass rides put an elevation warning (orange marker) on any incline in either direction above 5%
  * grade and provide a penalty, above 8% this becomes a red marker with an even steeper penalty. Have the warning
  * marker indicate the direction of the incline (uphill/downhill)" and "Do this for novice rides as well."
@@ -186,17 +187,35 @@ export function steepGradesSaid(route: Partial<Pick<RouteResponse, "steep_grades
   return `This route has ${n} steep ${n === 1 ? "grade" : "grades"} past 5%${past8}: the steepest is ${steepest.grade_pct}% ${way}. The map marks each.`;
 }
 
-/** The ride types that warn of steep grades (routemaker/steep_grades.py RIDE_TYPES). */
+/** The ride types that warn of steep grades and route round them (routemaker/steep_grades.py RIDE_TYPES). */
 export const STEEP_GRADE_RIDE_TYPES: ReadonlySet<string> = new Set(["mass-ride", "novice"]);
+/** The ride types marked but not routed round them (v0.28.0, steep_grades.py WARN_ONLY): Cargo and Tandem both ways,
+ * E-bike downhill only. Our defaults, unmeasured. */
+export const STEEP_GRADE_MARK_ONLY: ReadonlyMap<string, "both" | "down"> = new Map([
+  ["cargo", "both"],
+  ["tandem", "both"],
+  ["ebike", "down"],
+]);
 
 export function steepGradesFor(preset: string): boolean {
-  return STEEP_GRADE_RIDE_TYPES.has(preset);
+  return STEEP_GRADE_RIDE_TYPES.has(preset) || STEEP_GRADE_MARK_ONLY.has(preset);
 }
 
-export const STEEP_KEY_ROWS = [
-  { level: "steep" as const, name: "Steep grade", shape: "orange square", text: "Over 5%, uphill or downhill. Routes avoid them where they can." },
-  { level: "very_steep" as const, name: "Very steep grade", shape: "red square", text: "Over 8%. The ramp rises for uphill and falls for downhill." },
-];
+/** The key's two rows for a ride type: what the orange row says depends on whether it is routed round and which way. */
+export function steepKeyRows(preset: string) {
+  const downOnly = STEEP_GRADE_MARK_ONLY.get(preset) === "down";
+  const direction: SteepDirection = downOnly ? "down" : "up";
+  const steep = STEEP_GRADE_RIDE_TYPES.has(preset)
+    ? "Over 5%, uphill or downhill. Routes avoid them where they can."
+    : downOnly
+      ? "Over 5%, downhill only."
+      : "Over 5%, uphill or downhill.";
+  const verySteep = downOnly ? "Over 8%, downhill only." : "Over 8%. The ramp rises for uphill and falls for downhill.";
+  return [
+    { level: "steep" as const, name: "Steep grade", shape: "orange square", text: steep, direction },
+    { level: "very_steep" as const, name: "Very steep grade", shape: "red square", text: verySteep, direction },
+  ];
+}
 
 /** The mark as a small inline picture, for the key. Seen, not heard. */
 export function SteepGradeSwatch({ level, direction = "up", size = 16 }: { level: SteepLevel; direction?: SteepDirection; size?: number }): ReactElement {
@@ -214,15 +233,15 @@ export function SteepGradeSwatch({ level, direction = "up", size = 16 }: { level
 }
 
 /** The key's two entries, laid out as the route hazard key (lib/routeHazards.ts RouteHazardKey). */
-export function SteepGradeKey(): ReactElement {
+export function SteepGradeKey({ preset = "mass-ride" }: { preset?: string } = {}): ReactElement {
   return h(
     "ul",
     { className: "route-hazard-key", "aria-label": "Steep grades key" },
-    ...STEEP_KEY_ROWS.map((row) =>
+    ...steepKeyRows(preset).map((row) =>
       h(
         "li",
         { key: row.level },
-        h(SteepGradeSwatch, { level: row.level, size: 20 }),
+        h(SteepGradeSwatch, { level: row.level, direction: row.direction, size: 20 }),
         h("span", null, h("span", { className: "route-hazard-name" }, row.name), h("span", { className: "hint" }, ` (${row.shape}): `), row.text),
       ),
     ),

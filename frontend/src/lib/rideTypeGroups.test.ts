@@ -197,14 +197,9 @@ test("P3: one grouping everywhere: Common, Transportation, Adventure, Group (fav
   assert.match(src("../SettingRow.tsx"), /<optgroup key=\{group\.label\} label=\{group\.label\}>/);
 });
 
-test("P3: Go's chips are one sideways row, the one in use first, marked when its sliders moved", () => {
-  const sheets = src("../app/Sheets.tsx");
-  const chips = sheets.slice(sheets.indexOf("export function RideChips("));
-  assert.match(chips, /\{t\("Ride type & settings"\)\}/);
-  assert.doesNotMatch(sheets, /More ride types"\)/);
-  // "(changed)" is shown; the whole of it is heard.
-  assert.match(chips, /<span className="ride-changed" aria-hidden="true">\s*\{t\("\(changed\)"\)\}\s*<\/span>\s*<span className="visually-hidden">\{t\(", settings changed from this ride type's start"\)\}<\/span>/);
-  assert.match(chips, /rowRef\.current\?\.scrollTo\?\.\(\{ left: 0 \}\);\s*\}, \[preset\]\);/);
+// The chips themselves (the one in use first, then Ride type & settings, "(changed)") are rendered in
+// app/RideChips.test.tsx.
+test("P3: Go's chips are one sideways row", () => {
   const css = src("../styles.css");
   assert.match(css, /\.chip-row\.ride-chips \{\s*flex-wrap: nowrap;\s*overflow-x: auto;/);
   assert.match(css, /\.chip-row\.ride-chips \.chip \{\s*flex: none;\s*white-space: nowrap;/);

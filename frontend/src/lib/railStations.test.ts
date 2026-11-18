@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { haversineM, type LonLat } from "./geo.ts";
+import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import {
   LINE_KEYS,
   METRO_LINES,
@@ -331,7 +331,7 @@ test("a station can start a plan, end one that has a start, and be a via once th
   assert.deepEqual(stationRoles(0), ["start"]);
   assert.deepEqual(stationRoles(1), ["start", "end"]);
   assert.deepEqual(stationRoles(2), ["start", "end", "via"]);
-  assert.deepEqual(stationRoles(25), ["start", "end"]);
+  assert.deepEqual(stationRoles(MAX_POINTS), ["start", "end"]);
 });
 
 test("start and end replace the plan's ends; a via goes on the leg it lengthens least", () => {

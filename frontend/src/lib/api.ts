@@ -921,7 +921,7 @@ export interface MassHazardSpan {
   road: string;
 }
 
-/** A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5; core.api.SteepGradeOut), past 5% or 8% either way, in the riding direction; metres along the router's elevation profile. */
+/** A steep stretch on a Mass Ride, Novice and Nervous, Cargo or Tandem ride, or an E-bike's descent (v0.12.5, v0.28.0; core.api.SteepGradeOut), past 5% or 8%, in the riding direction; metres along the router's elevation profile. */
 export interface SteepGradeSpan {
   from_m: number;
   to_m: number;

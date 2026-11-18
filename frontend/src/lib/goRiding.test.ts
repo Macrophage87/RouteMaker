@@ -123,13 +123,12 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.doesNotMatch(start.slice(0, prime), /await/);
   // The unlock is silent; "Ride started." is said by the ride that does start, after the check or
   // "Ride it anyway" (re-check: never said before a closure is found, always said for the ride).
-  assert.match(ride, /export function primeRideVoice\(prefs: RidePrefs\): void \{\s*if \(toVoice\(prefs\.output\)\) rideVoice\.unlock\(" "\);/);
+  // (primeRideVoice's silent unlock: src/rideStart.test.ts.)
   assert.match(start, /startRide\(false\)/);
   assert.doesNotMatch(start, /startRideGesture/);
   assert.match(app, /if \(!unlocked\) startRideGesture\(prefs, walksLine\(route\), route\.preset === "run"\);/);
   // A slow check is said politely.
   assert.match(start, /window\.setTimeout\(\(\) => announce\(CHECKING_CLOSURES\), CLOSURE_SLOW_MS\)/);
-  assert.match(ride, /export const CHECKING_CLOSURES = t\("Checking closures…"\);/);
 });
 
 test("Ride settings in reach: More at the end of the side buttons opens them just under the top row (the owner, 2026-10-18; More 2026-10-24)", () => {

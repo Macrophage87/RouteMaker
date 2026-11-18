@@ -25,6 +25,8 @@ export const CHOICE_CASING_DARK_OPACITY = 1;
 
 export type PaintTable = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 
+const INTERVALS_DARK_STEPS = ["step", ["to-number", ["get", "t"], 0], "#f472b6", 5, "#e879f9", 8, "#f0abfc", 12, "#f5c2fd", 20, "#fad5ff"];
+
 export const DARK_PAINT: PaintTable = {
   "coverage-mask": { "fill-color": MASK_DARK, "fill-opacity": 0.45 },
   "coverage-edge": { "line-color": MASK_EDGE_DARK },
@@ -34,9 +36,10 @@ export const DARK_PAINT: PaintTable = {
   // A viewpoint is a white ring with a teal edge: the edge is what meets the map.
   "scenic-viewpoints": { "circle-stroke-color": SCENIC_DARK_COLOUR },
   "route-choice-casing": { "line-opacity": CHOICE_CASING_DARK_OPACITY },
-  // The Intervals layer's pink (lib/intervals.ts INTERVALS_DARK_COLOUR, kept here so this file imports nothing of it).
-  "intervals-line": { "line-color": "#f472b6" },
-  "intervals-arrows": { "text-color": "#f472b6", "text-halo-color": "#111827" },
+  // The Intervals layer's pinks by minutes (lib/intervals.ts INTERVALS_DARK_RAMP and intervalsColour, kept here so
+  // this file imports nothing of it): brighter for longer efforts.
+  "intervals-line": { "line-color": INTERVALS_DARK_STEPS },
+  "intervals-arrows": { "text-color": INTERVALS_DARK_STEPS, "text-halo-color": "#111827" },
 };
 
 /** A layer as it is added now: its dark-map paint over its own while the dark map shows. */
