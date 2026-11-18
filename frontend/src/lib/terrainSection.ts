@@ -29,7 +29,7 @@ export interface TerrainState {
   /** False once a check found no topo archive on the server. */
   topoReady: boolean;
   climbsStatus: ClimbsStatus;
-  /** The Interval stretches switch (lib/intervals.ts), Plan's alone: absent in Go, which leaves it out. */
+  /** The Interval stretches switch (lib/intervals.ts): absent on the Mass Ride map, which leaves it out. */
   intervals?: boolean;
   /** Its words while on and it cannot draw (intervalsStatusText). */
   intervalsStatus?: string;
