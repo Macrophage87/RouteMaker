@@ -1596,7 +1596,7 @@ export function MapView(props: Props) {
       map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
       map.addLayer(routeHazardLayer() as never);
       map.addLayer(routeHazardRepeatLayer() as never);
-      // Steep grades on a Mass Ride or a Novice ride (v0.12.5, lib/steepGrades.ts): orange and red squares, the ramp
+      // Steep grades on a Mass Ride, Novice, Cargo, Tandem or E-bike ride (v0.12.5, v0.28.0, lib/steepGrades.ts): orange and red squares, the ramp
       // rising or falling as the rider meets it, over the route only.
       for (const { level, direction } of STEEP_ICONS) {
         const name = steepIconName(level, direction);

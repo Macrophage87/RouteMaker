@@ -10076,6 +10076,11 @@ Mass Ride, "Do this for novice rides as well". `routemaker.steep_grades` is the 
   line (`frontend/src/lib/steepGrades.ts`), as a ramp sign that rises or falls with the direction,
   with its grade as words from zoom 13 (`STEEP_GRADE_LABEL_ZOOM`). The route's announcement counts
   them, and the elevation chart shows each one.
+- v0.28.0 (backlog 2026-11-12, accessibility item 12): Cargo and Tandem get the same marks both
+  ways and E-bike on descents only (`WARN_ONLY`, `warned_directions`; front end
+  `STEEP_GRADE_MARK_ONLY`), at the same 5% and 8%, with no added price: their climbs and descents
+  are already priced by weight, assist and brake grade. The Layers key says which way and whether
+  routes avoid them (`steepKeyRows`). Ride types and directions are our defaults, unmeasured.
 - Tests: `tests/test_steep_grades.py` and `frontend/src/lib/steepGrades.test.ts`.
 
 ## Phone app (v0.8.0)
