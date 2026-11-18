@@ -97,6 +97,7 @@ from . import (
     follow,
     gbfs,
     geocode,
+    intervalprofile,
     intervals_near,
     map_match,
     micromobility,
@@ -2380,8 +2381,8 @@ class TrailLevelSpanOut(Schema):
 
 
 class SteepGradeOut(Schema):
-    """A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5;
-    `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
+    """A steep stretch on a Mass Ride, a Novice and Nervous, Cargo or Tandem ride, or an E-bike
+    ride's descent (v0.12.5, v0.28.0; `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
     red), read in the riding direction, in whole metres along the router's elevation profile."""
 
     from_m: int
@@ -2896,8 +2897,9 @@ class RouteBody(Schema):
     # The rated mountain-bike trails it rides (2026-11-07), in riding order, for the ride's
     # stress ribbon. Additive: empty where it rides none, null from an older answer.
     trail_levels: list[TrailLevelSpanOut] | None = None
-    # Steep grades either way (v0.12.5), in riding order, on a Mass Ride or a Novice and
-    # Nervous ride. Additive: null on every other ride type, empty where there are none.
+    # Steep grades (v0.12.5), in riding order, on a Mass Ride, Novice and Nervous, Cargo or
+    # Tandem ride, and downhill on an E-bike (v0.28.0). Additive: null on every other ride
+    # type, empty where there are none.
     steep_grades: list[SteepGradeOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
@@ -7440,6 +7442,9 @@ class IntervalsNearIn(Schema):
     paved_only: bool = Field(default=False, description="Leave out gravel stretches.")
     quiet_only: bool = Field(default=False, description="Leave out stretches mostly on LTS 3.")
     longest: bool = Field(default=False, description="Longest first, not nearest first.")
+    no_bollards: bool = Field(
+        default=False, description="Leave out stretches with bollards on them."
+    )
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -7459,6 +7464,7 @@ class IntervalNearOut(Schema):
     through: list[list[float]] = Field(description="Points along it: via points for a plan.")
     surface: str = Field(description='"road", "path" or "gravel".')
     busy: bool = Field(description="Most of it is on LTS 3 roads.")
+    bollards: int = Field(default=0, description="Bollards or blocks along it, ridden through.")
     away_mi: float
 
 
@@ -7488,6 +7494,7 @@ def intervals_near_point(request, params: Query[IntervalsNearIn], response: Http
             paved_only=params.paved_only,
             quiet_only=params.quiet_only,
             longest=params.longest,
+            no_bollards=params.no_bollards,
         )
     except intervals_near.Unavailable:
         return Status(503, {"error": "this server has no intervals file"})
@@ -7619,6 +7626,59 @@ def climb_profile(request, climb_id: str, response: HttpResponse):
         return refusal
     if body is None:
         return Status(404, {"error": "There is no elevation for this climb."})
+    response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
+    return Status(200, body)
+
+
+class IntervalProfileOut(Schema):
+    """One stretch of the Intervals layer, as its hover card draws it
+    (`core.intervalprofile`): the file's figures, the steepest grade, and the heights along it
+    from its start to its end, as the route chart's `profile`."""
+
+    id: str
+    length_m: int
+    rise_m: float
+    avg_grade_pct: float
+    minutes: float = Field(description="Minutes to ride it at 18 mph, slowed on a climb.")
+    both_ways: bool
+    bollards: int = Field(description="Bollards or blocks along it, ridden through.")
+    max_grade_pct: float | None
+    interval_m: int
+    m: list[int] = Field(description="Metres from the stretch's start to each sample.")
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+
+
+@api.get(
+    "/intervals/{stretch_id}/profile",
+    response={200: IntervalProfileOut, 404: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="One interval stretch's elevation profile, start to end (the map's hover card)",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.CLIMB_PROFILE),
+    errors_as_json,
+)
+def interval_profile(request, stretch_id: str, response: HttpResponse):
+    """Read-only: a stretch is named by its id in the Intervals layer's file, never by a line,
+    and its heights are the router's (USGS 3DEP), as a climb's are."""
+    if not (1 <= len(stretch_id) <= 32 and stretch_id.isalnum()):
+        return Status(404, {"error": "There is no such stretch."})
+    try:
+        stretch = intervalprofile.find(stretch_id)
+        if stretch is None:
+            return Status(404, {"error": "There is no such stretch."})
+        body = intervalprofile.profile(stretch)
+    except intervalprofile.Unavailable as error:
+        logger.warning("interval profile unavailable: %s", error)
+        refusal = JsonResponse(
+            {"error": "The stretch's elevation is not available right now. Try again shortly."},
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    if body is None:
+        return Status(404, {"error": "There is no elevation for this stretch."})
     response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
     return Status(200, body)
 
@@ -8351,6 +8411,8 @@ def _route_summary(row) -> dict:
         "archived_at": row.archived_at.isoformat() if row.archived_at else None,
         "opened_at": row.opened_at.isoformat() if row.opened_at else None,
         "replaced_by": row.replaced_by_id,
+        # The row's sketch, climb and quiet share (core.route_sketch); null before they are made.
+        "figures": row.figures,
     }
 
 
@@ -8390,11 +8452,31 @@ def saved_routes_list(request):
     rows = SavedRoute.objects.filter(user=request.user).order_by(
         Coalesce("opened_at", "created_at").desc(), "-pk"
     )
+    listed = list(rows.defer("line", "answer", "gpx"))
+    # A route saved before its figures were kept gets them now, once: its line and answer read
+    # this one time (core.route_sketch).
+    unmade = [r.pk for r in listed if r.figures is None]
+    if unmade:
+        from . import route_sketch
+
+        made = {}
+        # A few at a time (a full account's first read after the figures came is 200 lines).
+        found = SavedRoute.objects.filter(pk__in=unmade).only("pk", "line", "answer")
+        for full in found.iterator(chunk_size=20):
+            made[full.pk] = route_sketch.figures(full.line, full.answer)
+            # An update, not a save: the route's own updated_at stays as the rider left it. Only
+            # while still unmade, so a version saved meanwhile keeps its own figures.
+            SavedRoute.objects.filter(pk=full.pk, figures__isnull=True).update(
+                figures=made[full.pk]
+            )
+        for r in listed:
+            if r.pk in made:
+                r.figures = made[r.pk]
     return _private(
         JsonResponse(
             {
                 # The summary reads none of the heavy fields; a route's GPX alone may be 4 MB.
-                "routes": [_route_summary(r) for r in rows.defer("line", "answer", "gpx")],
+                "routes": [_route_summary(r) for r in listed],
                 "max": SavedRoute.MAX_PER_ACCOUNT,
             }
         )
