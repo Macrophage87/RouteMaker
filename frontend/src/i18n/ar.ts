@@ -1964,6 +1964,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "خطوط الكنتور مفعّلة.",
   "Topo lines off.": "خطوط الكنتور متوقفة.",
   "Topo lines need a connection. Try again once you have signal.": "خطوط الكنتور تحتاج إلى اتصال. حاول مرة أخرى عند توفر الإشارة.",
+  "The ride needs a connection to start. Try again once you have signal.": "يحتاج بدء الرحلة إلى اتصال. حاول مرة أخرى عند توفر الإشارة.",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "الوقت ضيق. المغادرة بعد {count}، {source}؛ الوقت الإضافي {spare}.",
   "live": "مباشر",
   "scheduled": "حسب الجدول",

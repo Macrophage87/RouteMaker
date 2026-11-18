@@ -18,13 +18,11 @@ test("a walk's settings leave out the riding ones: Roads, not trails and the car
 });
 
 test("a walk starts and ends in walk words: Walk started., End walk (N5)", () => {
-  assert.match(ride, /export const WALK_STARTED = t\("Walk started\."\);/);
   assert.match(ride, /export const END_WALK_NAME = t\("End walk"\);/);
-  assert.match(ride, /rideVoice\.unlock\(run \? RUN_STARTED : walk \? WALK_STARTED : RIDE_STARTED\)/);
+  // Walk started. and Run started. in the press: src/rideStart.test.ts.
   assert.match(app, /if \(!unlocked\) startRideGesture\(prefs, walksLine\(route\), route\.preset === "run"\);/);
   assert.match(ride, /<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{endName\} \/>/);
   // A run (2026-11-02) in run words: Run started., End run.
-  assert.match(ride, /export const RUN_STARTED = t\("Run started\."\);/);
   assert.match(ride, /export const END_RUN_NAME = t\("End run"\);/);
 });
 

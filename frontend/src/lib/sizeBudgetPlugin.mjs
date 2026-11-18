@@ -16,12 +16,11 @@ import { appPreloads } from "./appPreloadPlugin.mjs";
 /** The limits, in KB (1,000 bytes) gzipped. Our default (2026-11-13), see the comment above. */
 export const BUDGET_KB = {
   // The loader, React, MapLibre, App and what App imports at once, with their stylesheets.
-  // 962 since v0.28.0: Plan's chart tools (Plan experience item 5) add 1.1 KB the chart itself needs at once (its
-  // click, drag and keys, the dock's styles, App's two handlers); the stretch panel and its planning load on first use.
-  firstLoad: 962,
-  // App's own chunk. 362 since v0.27.1: Map for no signal's areas and their pick on a ride (#1296) need 0.4 KB more
-  // with the popout itself moved to first use; the first load stays under its 960.
-  app: 362,
+  // 930 since v0.28.0: Ride mode moved to first use (39 KB less); with v0.28.0's other changes (Plan's chart tools among
+  // them) the first load measured 923 KB.
+  firstLoad: 930,
+  // App's own chunk. 329 since v0.28.0: 323 KB measured with Ride mode on first use (it was 356 before); 362 in v0.27.1.
+  app: 329,
 };
 
 /** The chunks and stylesheets a first open downloads: the entry, what it imports at once, and App's (appPreloads). */
