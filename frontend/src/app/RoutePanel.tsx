@@ -288,6 +288,8 @@ export interface RouteSectionProps {
   setScrubPoint: (point: LonLat | null) => void;
   choose: (index: number) => void;
   startRide: () => void;
+  /** Start pressed before Ride mode's code is in (lib/rideCodeWait.ts): shown busy while it waits. */
+  startBusy?: boolean;
   /** Broadcast, beside Start: Share ride's link (the sharer leads), then the ride. Null without a share sheet. */
   // `onHold`: held (or right-clicked), its link as a QR code (lib/broadcastQr.ts).
   broadcastRide: { onPress: () => void; onHold: () => void; note: { text: string; count: number } } | null;
@@ -335,7 +337,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startBusy, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -411,7 +413,7 @@ export function RouteSection(props: RouteSectionProps) {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
-          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
+          ride={{ onStart: startRide, busy: startBusy, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
           water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
@@ -861,7 +863,7 @@ export function RouteSummary({
   federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
-  ride: { onStart: () => void; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
+  ride: { onStart: () => void; busy?: boolean; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -947,7 +949,7 @@ export function RouteSummary({
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
   const start = rideable ? (
     <>
-      <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
+      <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-busy={ride.busy || undefined} aria-disabled={ride.busy || undefined} aria-describedby="start-ride-hint">
         <Icon name="play" />
         {startWord}
         <span className={goMode ? undefined : "visually-hidden"}>{rideWord}</span>

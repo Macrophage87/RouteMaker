@@ -872,6 +872,21 @@ def test_the_best_order_is_the_shortest_round_the_checkpoints() -> None:
     assert sorted(order) == list(range(20)) and order[0] == 0 and order[-1] == 19
 
 
+def test_best_order_takes_at_most_the_sites_stop_order_points() -> None:
+    """The site's Best order ceiling (core/api.py STOP_ORDER_MAX_POINTS): 200 points took 30 s
+    of CPU in the 2-opt (the v0.28.0 release review). Refused at once, before any plan."""
+    from core import api
+
+    assert mcp.STOP_ORDER_MAX_POINTS == api.STOP_ORDER_MAX_POINTS
+    places = _Places()
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    points = [at(i * 0.1) for i in range(mcp.STOP_ORDER_MAX_POINTS + 1)]
+    with pytest.raises(mcp.ToolError, match="at most 25 points"):
+        server.call("plan_route", {"points": points, "best_order": True})
+    assert places.routes == []
+    assert len(mcp.best_orders(points[:-1], tries=1)[0]) == mcp.STOP_ORDER_MAX_POINTS
+
+
 def test_plan_route_rides_the_checkpoints_in_the_quickest_order() -> None:
     places = _Places()
     # A row east: the start at 0, the finish at 4, checkpoints given 3, 1, 2.

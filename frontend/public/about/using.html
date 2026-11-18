@@ -379,8 +379,9 @@ time and distance, the stress bar, any warnings, the route card with <strong>Add
 button on one row under it, then the ride types. A plain line says how the
 route rides, such as "Mostly calm · 1.1 mi on paths and protected lanes · busy road for 0.2 mi", with the gravel
 and dirt miles added where it has 0.05 mi [80 m] or more of unpaved riding (Plan's line too), over a bar of its
-stress levels, half steps ridden in their own colors, and a slim strip for its traffic-free paths and protected lanes; pressing them opens Layers at the
-Traffic stress key, and a screen reader hears every level's share, half steps included. A National Weather Service alert is one line under
+stress levels, half steps ridden in their own colors, and a slim strip for its traffic-free paths and protected lanes; a tap on the bar flies the map to the
+route's worst stretch (LTS 3 or more), and the line names its street, as in "busy road for 0.2 mi, worst on K
+Street". The color key is in Layers. A screen reader hears every level's share, half steps included. A National Weather Service alert is one line under
 the totals, red for a Severe or Extreme one. <strong>Details</strong> has the rest, with the sources behind
 <strong>Data sources</strong>. The time, distance and stress bar come first, before any Bikeshare stations; Go's
 Bikeshare fold and its routes list start closed (the routes chip opens it), so the half sheet fits one phone screen.
@@ -607,6 +608,14 @@ route.</li>
 <li><strong>Undo</strong> and <strong>Redo</strong> cover every change to the points (Ctrl+Z, and
 Ctrl+Shift+Z or Ctrl+Y). They, <strong>Route</strong> and <strong>Clear</strong> (the bin) are on the bar over
 the map; <strong>Reset</strong> is the planner's own button.</li>
+<li><strong>Keyboard shortcuts</strong>, on a computer: <strong>?</strong> lists them (also under Points,
+<strong>Tips</strong>). <strong>/</strong> goes to the search box, <strong>Enter</strong> routes, <strong>R</strong>
+reverses the points, <strong>L</strong> steps through one way, loop and out and back, <strong>[</strong> and
+<strong>]</strong> move to the previous or next point, <strong>Delete</strong> removes the point in focus,
+<strong>S</strong> saves, <strong>E</strong> downloads the GPX, and <strong>1</strong> to <strong>5</strong> open
+a fold of the route summary. None acts while you type in a box. The list's <strong>Use single-key
+shortcuts</strong> switch turns the one-character keys off (kept on this device); see
+<a href="/about/accessibility.html#screen-reader">Accessibility</a>.</li>
 <li><strong>Manual mode</strong> draws straight lines between points you place, for a stretch the
 router won't take; turning it on during a loop turns the loop off, and "Loop off." shows under the bar. See
 <a href="/about/routing.html">Routing</a>.</li>
@@ -673,6 +682,12 @@ sit in their own card on the right of the map, and the planner on the left keeps
 its settings and the Route button. On the map, the route line carries the name of each street or path it follows, in Plan, Go and
 rides. A white dot marks every mile along it (every kilometer in metric), and every fifth is a larger dot with its
 number, counted as the turn list counts; the dots show as you zoom in, the numbered ones sooner.</p>
+<p><strong>The chart in Plan.</strong> Click the elevation chart (or press Enter on it) to center the map there.
+Pick a stretch with the mouse, or Shift with the arrow keys, to see its miles, climb, steepest grade and worst
+stress; Escape or <strong>Clear</strong> lets it go. On a busy stretch (LTS 3 or more) or a steep one (5% or more),
+<strong>Try to avoid this stretch</strong> looks for a calmer or flatter way round, says what it adds, and shows it
+on the map; <strong>Use this way</strong> takes it. On a screen at least 1200 px wide, Elevation and climbs docks
+full width under the map while it is open. Not on Mass Ride or a transit trip.</p>
 <p><strong>Weather.</strong> In Go and Plan, the route's warnings include any National
 Weather Service alert in force along it while you would ride it, leaving now (a plan set for another time is
 not checked), each with an <strong>NWS notice</strong> link to the
@@ -1169,7 +1184,8 @@ default, kept on this device), glows pink under the stress
 line on stretches of 3 minutes or more at 18 mph on the flat (the owner's choice; a climb slows the pace, so
 it needs less ground) for an interval effort: no signal, stop or give-way sign, gate or railway crossing, no busy
 road (LTS 3 or higher) crossing it, no sharp turn, and flat or uphill. Bollards and blocks are ridden through and
-counted. The pink deepens with the minutes, from pink through magenta to plum (pink to lavender on the dark map), in
+counted. A path or unpaved way that winds in a run of tight bends is left out (our default); a gentle curve, or a
+paved road, is not. The pink deepens with the minutes, from pink through magenta to plum (pink to lavender on the dark map), in
 five bands the key lists: 3 to 5, 5 to 8, 8 to 12, 12 to 20 and 20 or more. Arrows mark one that holds one way only.
 LTS 4 and Avoid roads are never one. With it on, <strong>Show intervals from</strong> picks 3, 5, 8, 12 or 20 minutes,
 kept on this device. With a mouse, resting on a stretch shows a card: its length, rise and grade, about how many
@@ -1322,7 +1338,10 @@ the bottom, opens your saved and kept routes in a popup of their own, with <stro
 <ul>
 <li><strong>Save route</strong> (signed in) puts the route in <strong>My routes</strong>, up to 200.
 My routes is its own popup, opened by the <strong>My routes</strong> button at the bottom of Save &amp; load: it
-lists your saved routes, the routes kept on this device and, in Plan, your shared links. Each saved route has a
+lists your saved routes, the routes kept on this device and, in Plan, your shared links. Each saved route's row,
+here and in Load route, shows a small sketch of its line (the start a filled dot, the end a ring) and its miles, climb and
+share quiet (LTS 1 or 2), such as "4.7 mi [7.6 km], 266 ft [81 m] climb, 78% quiet"; a figure not known is left
+out. Each saved route has a
 <strong>More</strong> button that opens its GPX, Rename, Versions and Tags (both in Plan) and Delete. A row
 shows its tags, and Archived if it is. A search box finds a route by its name or tags. In Plan, once the route is up to date and you've picked it (when there is more than one line
 to choose from), the big button at the top of the map, where <strong>Update route</strong> sits, becomes <strong>Save route</strong>, with <strong>Start ride</strong>

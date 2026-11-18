@@ -1965,6 +1965,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines off.": "Garis kontur nonaktif.",
   "Topo lines need a connection. Try again once you have signal.": "Garis kontur memerlukan koneksi. Coba lagi setelah ada sinyal.",
   "The ride needs a connection to start. Try again once you have signal.": "Perjalanan memerlukan koneksi untuk dimulai. Coba lagi setelah ada sinyal.",
+  "Opening Ride…": "Membuka Perjalanan…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Waktunya mepet. Berangkat dalam {count}, {source}; waktu tersisa {spare}.",
   "live": "langsung",
   "scheduled": "terjadwal",

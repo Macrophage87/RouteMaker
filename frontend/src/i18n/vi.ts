@@ -1965,6 +1965,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines off.": "Đã tắt đường đồng mức.",
   "Topo lines need a connection. Try again once you have signal.": "Đường đồng mức cần kết nối. Hãy thử lại khi có sóng.",
   "The ride needs a connection to start. Try again once you have signal.": "Cần có kết nối để bắt đầu chuyến đi. Hãy thử lại khi có sóng.",
+  "Opening Ride…": "Đang mở Chuyến đi…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Sát giờ rồi. Khởi hành sau {count}, {source}; còn dư {spare}.",
   "live": "trực tiếp",
   "scheduled": "theo lịch",

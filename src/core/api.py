@@ -3889,9 +3889,6 @@ def _waited_s(request) -> float:
 
 
 def _route_answer(request, body: RouteIn, response: HttpResponse):
-    charged = _charge_points(request, body)
-    if charged is not None:
-        return charged
     # Never during a ride: its re-plan starts where the rider is, which may be just over the line,
     # and refusing it would leave the ride no way back into DC.
     refused = None if body.ride_replan else routing.mass_ride_outside_dc(body.preset, body.points)
@@ -3902,6 +3899,33 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
     span = span_m(routing.loop_points(body.points, loop))
     if span > MAX_SPAN_M:
         return Status(400, {"error": too_long()})
+    if body.preset == presets.RUN and span_m(body.points) > RUN_MAX_SPAN_M:
+        return Status(400, {"error": "A run is planned up to 50 mi (80 km) in straight lines."})
+    # Run plans a long ride without asking.
+    if (
+        body.preset != presets.RUN
+        and span > CONFIRM_SPAN_M
+        and not body.confirm_long
+        and not signed_in(request)
+    ):
+        return Status(
+            409,
+            {
+                "error": (
+                    f"This is a long ride, about {round(span / METRES_PER_MILE)} mi "
+                    f"({round(span / 1000)} km) in straight lines. "
+                    "Planning it takes longer; send the request again with confirm_long "
+                    "set to plan it."
+                ),
+                "code": "confirm_long",
+                "span_km": round(span / 1000),
+            },
+        )
+    # The points are counted only once every refusal above has passed, so nothing is counted
+    # for a refused request past the one plan the decorator counted.
+    charged = _charge_points(request, body)
+    if charged is not None:
+        return charged
     if body.preset == presets.RUN:
         return _run_answer(request, body)
     if span <= CONFIRM_SPAN_M:
@@ -3924,20 +3948,6 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
             finally:
                 ratelimit.release(held)
         return _plan(request, body, response, long_ride=False)
-    if not body.confirm_long and not signed_in(request):
-        return Status(
-            409,
-            {
-                "error": (
-                    f"This is a long ride, about {round(span / METRES_PER_MILE)} mi "
-                    f"({round(span / 1000)} km) in straight lines. "
-                    "Planning it takes longer; send the request again with confirm_long "
-                    "set to plan it."
-                ),
-                "code": "confirm_long",
-                "span_km": round(span / 1000),
-            },
-        )
     held, refusal = ratelimit.acquire(request, _long_slots(request))
     if refusal is not None:
         return refusal
@@ -4255,7 +4265,10 @@ def route_neighbours(request, body: RouteIn):
     if extra > 0:
         client = ratelimit.client_key(ratelimit.client_address(request))
         if not ratelimit.take(ratelimit.ROUTING, client, extra).allowed:
-            # Only what the decorator's count already paid for.
+            # Only what the decorator's count already paid for. A plan of more than 25 points
+            # costs more than the decorator's two, so there none is planned: one plan of up to
+            # 200 points for two would be a cheap way past the many-point charge (the v0.28.0
+            # release review).
             wanted = wanted[: NEIGHBOURS_COST // plan_cost(body.points)]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
@@ -5037,9 +5050,8 @@ RUN_MAX_SPAN_M = 80_000
 
 
 def _run_answer(request, body: RouteIn):
-    """Run (`core.run_plan`): the answer, or the refusal where no way on foot was found."""
-    if span_m(body.points) > RUN_MAX_SPAN_M:
-        return Status(400, {"error": "A run is planned up to 50 mi (80 km) in straight lines."})
+    """Run (`core.run_plan`): the answer, or the refusal where no way on foot was found (its
+    length is refused before, in `_route_answer`)."""
     try:
         return Status(200, _run_body(body, getattr(request, "routing_started", None)))
     except run_plan.RunTimedOut as late:

@@ -11,9 +11,10 @@ import { ElevationProfileChart, profileEnds, type ChartProfile } from "./climbCa
 import { KMH_PER_MPH, formatClimb, formatDistance, formatSpeed, unitsFirstDeep } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import type { HoverWords } from "./featureHover.ts";
+import { t } from "./i18n.ts";
 import { INTERVALS_LINE_LAYER } from "./intervals.ts";
 
-export const INTERVAL_TITLE = "Interval stretch";
+export const INTERVAL_TITLE = t("Interval stretch");
 /** The pace the stretch file times a stretch at (src/pipeline/interval_layer.py, 18 mph). */
 const BUILD_KMH = 18 * KMH_PER_MPH;
 
@@ -28,11 +29,11 @@ export function intervalHoverWords(p: Record<string, unknown>): HoverWords {
   const grade = lengthM > 0 ? (riseM / lengthM) * 100 : 0;
   const parts = [
     formatDistance(lengthM),
-    riseM >= 1 ? `rises ${formatClimb(riseM)} at ${grade.toFixed(1)}%` : "flat",
-    `about ${minutes.toFixed(1)} min at ${formatSpeed(BUILD_KMH)}`,
-    one ? "this way only (the arrows)" : "either way",
+    riseM >= 1 ? t("rises {climb} at {grade}%", { climb: formatClimb(riseM), grade: grade.toFixed(1) }) : t("flat"),
+    t("about {minutes} min at {speed}", { minutes: minutes.toFixed(1), speed: formatSpeed(BUILD_KMH) }),
+    one ? t("this way only (the arrows)") : t("either way"),
   ];
-  if (bollards > 0) parts.push(`${bollards} ${bollards === 1 ? "bollard" : "bollards"} to ride through`);
+  if (bollards > 0) parts.push(bollards === 1 ? t("1 bollard to ride through") : t("{count} bollards to ride through", { count: bollards }));
   return { key: `interval|${String(p.id)}`, title: name ?? INTERVAL_TITLE, detail: parts.join(", ") };
 }
 
@@ -79,8 +80,8 @@ export function intervalHoverChart(id: string, line: readonly LonLat[] | null, f
     const profile = await made;
     if (profile === null) return null;
     const ends = line && line.length >= 2 ? profileEnds(line[0], line[line.length - 1]) : null;
-    const steepest = profile.max_grade_pct === null ? "" : `, steepest ${profile.max_grade_pct.toFixed(0)}%`;
-    const summary = `Elevation along the stretch${steepest}.${ends ? ` ${ends.words}` : ""}`;
+    const along = profile.max_grade_pct === null ? t("Elevation along the stretch.") : t("Elevation along the stretch, steepest {grade}%.", { grade: profile.max_grade_pct.toFixed(0) });
+    const summary = `${along}${ends ? ` ${ends.words}` : ""}`;
     return h(ElevationProfileChart, { profile, summary, uid: `hover-interval-${id.replace(/[^A-Za-z0-9_-]/g, "")}`, ends });
   };
 }

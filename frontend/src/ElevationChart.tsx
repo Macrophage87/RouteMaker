@@ -20,7 +20,8 @@
  * as a table. Everything it says is made in lib/profileChart.ts.
  *
  * Plan's tools (`tools`, the 2026-11-12 backlog's Plan experience item 5): a click centres the map there (Enter, from
- * the keyboard), and a drag with a mouse or pen picks a stretch (Shift with the arrow keys; Escape lets it go), whose
+ * the keyboard), and a drag with a mouse or pen picks a stretch (or a click, then Shift+click at the other end; Shift
+ * with the arrow keys; Escape lets it go), whose
  * miles, climb and stress, and a way round it, App shows under the plot (ChartStretch.tsx, loaded on first use). A touch
  * keeps the scrub. On a computer the plot, its reading and the stretch dock under the map at full width while the fold
  * is open (styles.css, .pc-dock); the plot then draws one viewBox unit to DOCK_SCALE px, as wide as the dock is.
@@ -218,7 +219,7 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
   const tableName = calm ? t("Climbs and rolling stress as tables") : t("Climbs as a table");
   const prompt = t("Move along the chart, or use the arrow keys, to read the route at a point.");
   const promptTouch = t("Move along the chart to read the route at a point.");
-  const keys = `${t("Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.")}${tools ? ` ${t("Enter centres the map there; Shift with the arrow keys picks a stretch, and Escape lets it go.")}` : ""}`;
+  const keys = `${t("Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.")}${tools ? ` ${t("Enter centres the map there; Shift with the arrow keys, or a click then Shift+click, picks a stretch, and Escape lets it go.")}` : ""}`;
   const picked = sel && Math.abs(sel.b - sel.a) > 0 ? { from: Math.min(sel.a, sel.b), to: Math.max(sel.a, sel.b) } : null;
 
   const defs = (
@@ -300,6 +301,12 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
           drag.current = null;
           setDragging(false);
           if (d && !d.moved) {
+            // Shift+click, the one-pointer way to pick (WCAG 2.5.7): from the last click (or the stretch's start) to
+            // here, the map left where it is; a plain click centres it and lets a stretch go.
+            if (event.shiftKey) {
+              setSel({ a: sel ? sel.a : (at ?? 0), b: m });
+              return;
+            }
             setSel(null);
             centre(m);
           }

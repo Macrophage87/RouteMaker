@@ -1379,6 +1379,27 @@ class TestRateLimit:
         assert 1 <= int(refused["Retry-After"]) <= ROUTING.window_s
         assert len(fake.calls) == calls_before
 
+    def test_a_refused_plan_of_many_points_counts_one(self, client, segments, router) -> None:
+        """Its points are counted only once the refusals (too long, Mass Ride outside DC,
+        confirm_long) have passed: a refused 200-point plan counts the decorator's one, not
+        eight (the v0.28.0 release review)."""
+        from core.ratelimit import ROUTING
+
+        router(standard_router())
+        # Zig-zags past CONFIRM_SPAN_M, under MAX_SPAN_M: a signed-out long ride, 409.
+        points = [[-77.05 + (i % 2) * 0.01, LAT] for i in range(api.MAX_POINTS)]
+        assert api.CONFIRM_SPAN_M < api.span_m(points) < api.MAX_SPAN_M
+        assert api.plan_cost(points) > 1
+
+        def attempt(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"198.51.100.{12 + 100 * n}"}
+            refused = post(client, {"points": points, "preset": "default"}, **headers)
+            for _ in range(ROUTING.requests - 2):
+                post(client, "{", **headers)
+            return refused.status_code, post(client, good_body(), **headers).status_code
+
+        assert in_one_window(ROUTING.window_s, attempt) == (409, 200)
+
     def test_malformed_json_spends_the_budget(self, client, router) -> None:
         """Otherwise a flood of bad bodies is free. Only a script can send a
         JSON-typed body, so counting it costs no visitor anything."""

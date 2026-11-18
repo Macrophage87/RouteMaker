@@ -200,6 +200,23 @@ test("a course whose kept cues pass the budget comes in parts that each fit, cut
   assert.equal(courseFileName(sampleRoute(), "fit", 2).endsWith("-part-2.fit"), true);
 });
 
+test("cues a course must keep on one record are parted across the cut, so every part still fits", () => {
+  // Two Avoid warnings on the same record, the one a part has room for and the next: a cut half way between them
+  // falls on that record, and every cue up to it would go in one part, over the budget (the v0.28.0 release review).
+  const avoid = sampleRoute().description!.find((e) => e.kind === "avoid")!;
+  const both = ["K Street", "L Street"].map((street) => ({ ...avoid, from_m: 2500, to_m: 2500, street }));
+  const route = sampleRoute({ description: [...sampleRoute().description!, ...both] });
+  const three: DeviceProfile = { ...GENERIC, label: "Three", maxCues: 3 };
+  const whole = compileCourse(route, three, "fit");
+  assert.equal(whole.trim.protectedOver, true);
+  const parts = courseParts(whole);
+  for (const part of parts) assert.ok(part.cues.length <= three.maxCues, `part ${part.trim.part?.index}: ${part.cues.map((c) => c.name).join(", ")}`);
+  const names = parts.flatMap((p) => p.cues.map((c) => c.name));
+  for (const must of ["Dupont Cir", "Stop 1", "K St", "L St"]) {
+    assert.equal(names.filter((n) => n === must).length, 1, must);
+  }
+});
+
 test("over the point budget the line is thinned, never moving a cue's record, and the line says so", () => {
   // A straight line thins to its ends and the cues' records.
   const few: DeviceProfile = { ...GENERIC, label: "Few", maxPoints: 20 };
