@@ -2831,6 +2831,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Looking for a way round…": "Buscando un camino alternativo…",
   "No better way round nearby.": "No hay un camino alternativo mejor cerca.",
   "Could not look for a way round just now.": "No se pudo buscar un camino alternativo ahora mismo.",
+  "One of your stops is on this stretch: move it off, then try again.": "Una de sus paradas está en este tramo: muévala fuera y vuelva a intentarlo.",
+  "Press Update route first: the chart is of the route before your last change.": "Pulse primero Actualizar ruta: el gráfico es de la ruta antes de su último cambio.",
+  "The route now takes the way round {street}.": "La ruta ahora toma el camino alternativo para evitar {street}.",
   "The file's busiest stretches by our ratings, worst first: busier and longer counts more. Each calmer way is planned on your ride type at the calmest traffic setting, between points just outside the stretch. Use this way puts it into the route, and a download is then the route with it. Undo takes it out; press Update route after.":
     "Los tramos del archivo con más tráfico según nuestras calificaciones, el peor primero: cuenta más el que tiene más tráfico y es más largo. Cada camino más tranquilo se planifica con su tipo de recorrido en el ajuste de tráfico más tranquilo, entre puntos justo fuera del tramo. Usar este camino lo pone en la ruta, y al descargar se obtiene la ruta con él. Deshacer lo quita; después pulse Actualizar ruta.",
   "On iPhone, Start ride is for rides up to {distance}. For a longer ride, save the lock-screen cue images or Download GPX for a bike computer.": "En iPhone, Iniciar recorrido es para recorridos de hasta {distance}. Para uno más largo, guarda las imágenes de indicaciones para la pantalla de bloqueo o usa Descargar GPX para un ciclocomputador.",

@@ -64,6 +64,7 @@ test("a busy stretch says its miles, climb and stress, and a way round at the ca
   const screen = await render(stretch(1100, 1900, around(2, [10, 11, 12]), asked, used));
   assert.match(screen.text(), /Mile 0\.7 to 1\.2: 0\.5 mi .*LTS 4 at worst\./);
   await click(screen.button("Try to avoid this stretch"));
+  assert.match(document.activeElement?.outerHTML ?? "", /pc-stretch-way/, "the focus goes to what is found, not the page");
   await settle();
   assert.equal(asked.length, 1);
   assert.equal(asked[0].stress, 100, "planned at the calmest traffic setting");

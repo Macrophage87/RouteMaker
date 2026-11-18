@@ -59,7 +59,9 @@ test("taking a way round drops the points inside the stretch and puts vias on th
   const r = route({ leg_ends: [130, 300, 399] });
   const way: LonLat[] = [LINE[75], [-77.035, 38.905], LINE[195]];
   const via = (p: LonLat): LonLat => [p[0], p[1]];
-  const next = viasAround([a, inside, later, end], r, { fromM: 1000, toM: 2000 }, way, false, via);
+  const isVia = (p: LonLat) => p === inside;
+  const next = viasAround([a, inside, later, end], r, { fromM: 1000, toM: 2000 }, way, false, via, isVia);
+  assert.ok(next !== "stop");
   assert.ok(next);
   assert.equal(next.length, 3 + WAY_VIAS, "the start, two vias, the later point and the end");
   assert.deepEqual(next[0], a);
@@ -71,8 +73,14 @@ test("taking a way round drops the points inside the stretch and puts vias on th
 test("a stretch on a loop's closing leg puts the vias after the last point", () => {
   const r = route({ leg_ends: [130, 399] });
   const way: LonLat[] = [LINE[250], [-77.01, 38.905], LINE[390]];
-  const next = viasAround([LINE[0], LINE[130]], { ...r, geometry: { type: "LineString", coordinates: LINE } } as RouteResponse, { fromM: 3000, toM: 4000 }, way, true, (p) => p);
-  assert.ok(next);
+  const next = viasAround([LINE[0], LINE[130]], { ...r, geometry: { type: "LineString", coordinates: LINE } } as RouteResponse, { fromM: 3000, toM: 4000 }, way, true, (p) => p, () => false);
+  assert.ok(next && next !== "stop");
   assert.equal(next.length, 2 + WAY_VIAS);
   assert.deepEqual(next.slice(0, 2), [LINE[0], LINE[130]]);
+});
+
+test("a stop the rider placed inside the stretch is never dropped: nothing changes, and the answer says why", () => {
+  const r = route({ leg_ends: [130, 300, 399] });
+  const way: LonLat[] = [LINE[75], [-77.035, 38.905], LINE[195]];
+  assert.equal(viasAround([LINE[0], LINE[130], LINE[300], LINE[399]], r, { fromM: 1000, toM: 2000 }, way, false, (p) => p, () => false), "stop");
 });

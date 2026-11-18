@@ -173,9 +173,10 @@ function pointAlong(line: readonly LonLat[], along: Float64Array, atM: number): 
 }
 
 /**
- * The plan's points once a way round is taken on a planned route: the points the route reaches inside the stretch
- * padded go (as Check a route's pointsKept), and WAY_VIAS via points spaced along the way round take their place,
- * in the leg the stretch is in. `mark` makes a point a via (pointKinds VIA_MARKS.via). Null over MAX_POINTS.
+ * The plan's points once a way round is taken on a planned route: the via points the route reaches inside the stretch
+ * padded go, and WAY_VIAS via points spaced along the way round take their place, in the leg the stretch is in. `mark`
+ * makes a point a via and `isVia` tells one (pointKinds VIA_MARKS). The rider's own stops are never dropped: with one
+ * inside the stretch (the start apart), the answer is "stop" and nothing changes. Null over MAX_POINTS.
  */
 export function viasAround(
   points: readonly LonLat[],
@@ -184,7 +185,8 @@ export function viasAround(
   way: readonly LonLat[],
   loop: boolean,
   mark: (point: LonLat) => LonLat,
-): LonLat[] | null {
+  isVia: (point: LonLat) => boolean,
+): LonLat[] | null | "stop" {
   if (points.length < 2 || way.length < 2) return null;
   const coordinates = route.geometry.coordinates as LonLat[];
   const ridden = legPoints(points, loop);
@@ -200,16 +202,21 @@ export function viasAround(
   const closing = ridden.length > points.length;
   const out: LonLat[] = [];
   let put = false;
+  let stop = false;
   points.forEach((p, i) => {
     const at = i === 0 ? 0 : along[ends[i - 1]];
     const last = i === points.length - 1;
-    if (i > 0 && !last && at > from && at < to) return;
+    const inside = i > 0 && at > from && at < to;
+    // The ride's end inside the stretch: the way round ends at it (the vias go before it), unless the ride goes on round.
+    if (inside && !last && isVia(p)) return;
+    if (inside && (!last || closing)) stop = true;
     if (i > 0 && !put && (at >= to || (last && !closing))) {
       out.push(...vias);
       put = true;
     }
     out.push(p);
   });
+  if (stop) return "stop";
   if (!put) out.push(...vias);
   return out.length > MAX_POINTS ? null : out;
 }
@@ -221,3 +228,9 @@ export const STRETCH_PLANNING = t("Looking for a way round…");
 export const STRETCH_NO_WAY = t("No better way round nearby.");
 export const STRETCH_FAILED = t("Could not look for a way round just now.");
 export const STRETCH_CLEAR = t("Clear");
+export const STRETCH_STOP = t("One of your stops is on this stretch: move it off, then try again.");
+export const STRETCH_REPLAN = t("Press Update route first: the chart is of the route before your last change.");
+/** Said once a way round is taken: "The route now takes the way round Big Road." */
+export function takenSaid(street: string | null): string {
+  return t("The route now takes the way round {street}.", { street: street ?? t("an unnamed way") });
+}

@@ -140,6 +140,7 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
   useEffect(() => setSel(null), [route]);
   // Docked (styles.css .pc-dock, position fixed), the viewBox is as wide as the dock at DOCK_SCALE; else WIDTH.
   const dockRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(WIDTH);
   useLayoutEffect(() => {
     const dock = dockRef.current;
@@ -252,6 +253,7 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
       {/* Plan's dock (styles.css): the plot, its reading and a picked stretch, under the map on a computer. */}
       <div className={tools ? "pc-dock" : "pc-undocked"} ref={dockRef}>
       <div
+        ref={plotRef}
         className="pc-plot"
         role="slider"
         tabIndex={0}
@@ -451,7 +453,14 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
           </>
         )}
       </p>
-      {tools && picked && !dragging && tools.stretch(picked.from, picked.to, () => setSel(null))}
+      {tools &&
+        picked &&
+        !dragging &&
+        tools.stretch(picked.from, picked.to, () => {
+          setSel(null);
+          // Clear goes with the stretch: the focus goes back to the chart, where the stretch was picked.
+          plotRef.current?.focus();
+        })}
       </div>
       {!compact && (
         <>

@@ -4452,15 +4452,25 @@ export function App() {
     if (rideRef.current.imported?.verbatim && shown?.follows_file) return takeCalmerWay(stretch, way);
     const route = shown;
     const routed = routedPoints;
-    if (!route || !dropStillValid(routed, pointsRef.current)) return;
-    const [{ viasAround }, { usedSaid }] = await Promise.all([import("./lib/chartStretch.ts"), import("./lib/worstStretches.ts")]);
-    const next = viasAround(routed, route, stretch, way, loopVias, (p) => VIA_MARKS.via(p));
-    if (!next) {
-      setNotice(t("A route can have at most {count} points.", { count: MAX_POINTS }));
+    if (!route) return;
+    const { STRETCH_REPLAN, STRETCH_STOP, takenSaid, viasAround } = await import("./lib/chartStretch.ts");
+    if (stale || !dropStillValid(routed, pointsRef.current)) {
+      announce(STRETCH_REPLAN);
+      setNotice(STRETCH_REPLAN);
       return;
     }
+    const next = viasAround(routed, route, stretch, way, loopVias, (p) => VIA_MARKS.via(p), (p) => VIA_MARKS.isVia(p));
+    if (next === null || next === "stop") {
+      const said = next === "stop" ? STRETCH_STOP : t("A route can have at most {count} points.", { count: MAX_POINTS });
+      announce(said);
+      setNotice(said);
+      return;
+    }
+    setNotice(null);
     commit(next);
-    announce(usedSaid(stretch.street));
+    // Planned at once, as Check a route's Use this way is: one press, no Update route after it.
+    setRouteAsk((n) => n + 1);
+    announce(takenSaid(stretch.street));
     routeHeadingRef.current?.focus();
   };
   // A click on Plan's chart (Enter from the keyboard): the map centred on that spot, clear of the panels and the dock.

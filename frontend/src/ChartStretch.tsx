@@ -51,7 +51,14 @@ export function ChartStretch({ route, profile, fromM, toM, onClear, preset, dial
   useEffect(() => {
     live.current += 1;
     setWay(null);
-  }, [route, fromM, toM]);
+  }, [route, fromM, toM, preset, dials]);
+  // The facts said once the region is in the page (a region that arrives filled is often not read), and again for
+  // each new stretch.
+  const line = factsLine(facts);
+  const [said, setSaid] = useState("");
+  useEffect(() => setSaid(line), [line]);
+  // Try goes once pressed: the focus goes to the line that says what was found, not to the page.
+  const wayRef = useRef<HTMLParagraphElement>(null);
   // The way round, drawn on the map while it is offered (Check a route's dashed green).
   useEffect(() => {
     const map = getMap();
@@ -68,6 +75,7 @@ export function ChartStretch({ route, profile, fromM, toM, onClear, preset, dial
   const look = () => {
     const ask = (live.current += 1);
     setWay("planning");
+    wayRef.current?.focus();
     void planAround(route, profile, facts, preset, dials, plan)
       .catch((): WayRound => ({ kind: "failed" }))
       .then((found) => {
@@ -75,11 +83,14 @@ export function ChartStretch({ route, profile, fromM, toM, onClear, preset, dial
       });
   };
 
-  const said = way === null ? "" : way === "planning" ? STRETCH_PLANNING : way.kind === "found" ? wayLine(way) : way.kind === "none" ? STRETCH_NO_WAY : STRETCH_FAILED;
+  const wayText = way === null ? "" : way === "planning" ? STRETCH_PLANNING : way.kind === "found" ? wayLine(way) : way.kind === "none" ? STRETCH_NO_WAY : STRETCH_FAILED;
   return (
     <div className="pc-stretch" role="group" aria-label={t("Picked stretch")}>
-      <p className="pc-stretch-facts" role="status">
-        {factsLine(facts)}
+      <p className="pc-stretch-facts" aria-hidden="true">
+        {line}
+      </p>
+      <p className="visually-hidden" role="status">
+        {said}
       </p>
       <div className="pc-stretch-actions">
         {(why.busy || why.steep) && way === null && (
@@ -96,8 +107,8 @@ export function ChartStretch({ route, profile, fromM, toM, onClear, preset, dial
           {STRETCH_CLEAR}
         </button>
       </div>
-      <p className={way === "planning" ? "loading pc-stretch-way" : "hint pc-stretch-way"} role="status">
-        {said}
+      <p className={way === "planning" ? "loading pc-stretch-way" : "hint pc-stretch-way"} role="status" tabIndex={-1} ref={wayRef}>
+        {wayText}
       </p>
     </div>
   );
