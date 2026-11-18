@@ -6011,6 +6011,8 @@ def _plan(
     # Steep grades warned of and priced either way (`routemaker.steep_grades`): a Mass Ride
     # and a Novice and Nervous ride, wherever the hills slider sits.
     steep_ride = preset_name in steep_grades.RIDE_TYPES
+    # The directions it is warned of them in: those two, and unpriced, Cargo, Tandem and E-bike.
+    steep_warned = steep_grades.warned_directions(preset_name)
     # How the route choice prices climbing (`HillPrice`): the rider's weight and speed, the
     # slider's steepness scale, the router's own charge to take off, the avoid half's descents.
     hill_price = HillPrice(
@@ -7058,11 +7060,12 @@ def _plan(
             # The rated mountain-bike trails it rides (2026-11-07), for the ride's stress
             # ribbon; [] where none.
             "trail_levels": trail_levels,
-            # Steep grades either way past 5% and 8% (v0.12.5, `routemaker.steep_grades`), in
-            # riding order, metres along the router's profile; null off a Mass Ride or Novice.
+            # Steep grades past 5% and 8% (v0.12.5, `routemaker.steep_grades`), in riding
+            # order, metres along the router's profile: either way on a Mass Ride, Novice,
+            # Cargo or Tandem ride, downhill on an E-bike (v0.28.0); null on other ride types.
             "steep_grades": (
-                steep_grades.public(steep_grades.stretches(grade_profile(trip)))
-                if steep_ride
+                steep_grades.public(steep_grades.stretches(grade_profile(trip), steep_warned))
+                if steep_warned
                 else None
             ),
             # A Mass Ride's approved hazards in riding order (325); null on other ride types.

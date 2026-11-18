@@ -60,6 +60,7 @@ import { SAVED_SAID, SAVE_SHORT, changeRoute, listRoutes, readRoute, tagsInUse, 
 import { DRAFT_DELETE, DRAFT_UNREACHABLE, deleteDraft, draftDeleteLabel, draftDeletedSaid, draftSaveLabel, listDrafts, saveDraft, type DraftSummary } from "./lib/drafts.ts";
 import { readShared, type SharedRoute } from "./lib/sharedRoutes.ts";
 import { t } from "./lib/i18n.ts";
+import { RouteSketch } from "./RouteSketch.tsx";
 
 /** How long Undo stays after Archive. */
 const UNDO_MS = 8000;
@@ -454,6 +455,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
               {shown.map((row) => (
                 <li key={row.key} className="load-route-item" data-route={row.kind === "saved" || row.kind === "draft" ? row.id : undefined}>
                   <button type="button" className="load-route-row" onClick={() => pick(row)}>
+                    <RouteSketch figures={row.kind === "saved" ? row.figures : null} />
                     <span className="load-route-name">{row.name}</span>
                     <span className="load-route-detail">
                       {row.detail}

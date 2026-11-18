@@ -307,6 +307,16 @@ export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
 /** Seconds ahead, at the current speed, of a turn's first cue; never closer than ADVANCE_MIN_M (500 ft). */
 export const ADVANCE_S = 27;
 export const ADVANCE_MIN_M = 150;
+/**
+ * A hard left (Stephen's v0.28.0 pick, "Earlier cues for hard lefts"): a left or bear left off a road rated 3 or higher
+ * means looking back and moving across traffic, so its first cue comes about 40 s out, never closer than about 800 ft.
+ * Our defaults, not measured; the 10 s and "now" cues are unchanged.
+ */
+export const HARD_LEFT_ADVANCE_S = 40;
+export const HARD_LEFT_MIN_M = 250;
+export const HARD_LEFT_FROM_TIER = 3;
+/** Stretches shorter than this before a turn (a junction's stub, a crossing) are not the road the rider turns off. */
+export const HARD_LEFT_STUB_M = 40;
 /** The second cue: about 10 s ahead, never closer than 150 ft. */
 export const PREPARE_S = 10;
 export const PREPARE_MIN_M = 45;
@@ -547,6 +557,8 @@ export interface Cue {
    * is across Georgia Avenue, on your left."
    */
   farSide?: string;
+  /** A left or bear left off a stretch rated HARD_LEFT_FROM_TIER or higher: its first cue comes earlier (HARD_LEFT_ADVANCE_S). */
+  hardLeft?: boolean;
 }
 
 export interface RideModel {
@@ -1145,6 +1157,15 @@ export function rideModel(
   let lastNamed: LastNamed = null;
   for (const [i, entry] of entries.entries()) {
     const fromM = toLine(entry.from_m);
+    // The road the rider is on before this entry, for a hard left (HARD_LEFT_FROM_TIER): the last stretch at least
+    // HARD_LEFT_STUB_M long, past a junction's short stubs.
+    let offTier: number | null = null;
+    for (let k = stretches.length - 1; k >= 0; k--) {
+      if (stretches[k].toM - stretches[k].fromM >= HARD_LEFT_STUB_M) {
+        offTier = stretches[k].tier;
+        break;
+      }
+    }
     if (entry.kind === "stretch") stretches.push({ fromM, toM: toLine(entry.to_m), street: entry.street, tier: entry.tier, facility: entry.facility });
     // A via point (v0.7.0): its place is kept for the re-plan, but it is no cue and has no number. The rider rides on
     // through it, so the stretch after it is read against the one before, a busy road or a new trail said as anywhere
@@ -1206,6 +1227,9 @@ export function rideModel(
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
         ...(kind === "turn" && toward(entry) ? { toward: toward(entry) as string } : {}),
         ...(kind === "turn" && entry.turn?.stay === true && !entry.turn.cross && !entry.turn.across ? { stay: true } : {}),
+        ...(kind === "turn" && !entry.turn?.cross && (entry.turn?.movement === "left" || entry.turn?.movement === "bear_left") && (offTier ?? 0) >= HARD_LEFT_FROM_TIER
+          ? { hardLeft: true }
+          : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
@@ -1791,7 +1815,10 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
 export function phasesFor(level: Verbosity, cue: Cue, speedMs: number, onFoot = false): { phase: Phase; withinM: number }[] {
   if (!says(level, cue)) return [];
   const v = Math.max(speedMs, MIN_SPEED_MS);
-  const advance = Math.max(onFoot ? WALK_ADVANCE_MIN_M : ADVANCE_MIN_M, ADVANCE_S * v);
+  const advance =
+    cue.hardLeft && !onFoot
+      ? Math.max(HARD_LEFT_MIN_M, HARD_LEFT_ADVANCE_S * v)
+      : Math.max(onFoot ? WALK_ADVANCE_MIN_M : ADVANCE_MIN_M, ADVANCE_S * v);
   // A destination across a busy road (D26): said early too, at every level that says more than arrival.
   if (cue.kind === "end" && cue.farSide && level !== "quiet") return [{ phase: "advance", withinM: advance }, { phase: "arrive", withinM: ARRIVE_M }];
   if (cue.kind === "stop" || cue.kind === "end") return [{ phase: "arrive", withinM: ARRIVE_M }];
