@@ -818,7 +818,7 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
     def intervals_near(near, miles, **filters):
         asked.append(filters)
         flat = {"miles": 2.0, "grade_pct": 0.1, "both_ways": True}
-        up = {"miles": 1.0, "grade_pct": 4.0, "both_ways": False}
+        up = {"miles": 1.0, "grade_pct": 4.0, "both_ways": False, "bollards": 2}
         short = {"miles": 1.0, "grade_pct": 0.0, "both_ways": True}
         return [{"name": n, **row} for n, row in (("Flat", flat), ("Up", up), ("Short", short))]
 
@@ -831,6 +831,11 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
     assert out["intervals"][0]["effort_minutes"] == pytest.approx(6.7, abs=0.1)
     server.call("intervals_near", {"near": [-77.05, 38.94], "include_busy": True})
     assert asked[-1]["quiet_only"] is False and "longest" not in asked[-1]
+    # Bollards are returned, and left out only where asked (the owner, 2026-11-18: "so people
+    # can choose. It's really situationally dependent").
+    assert out["intervals"][1]["bollards"] == 2
+    quick = server.call("intervals_near", {"near": [-77.05, 38.94], "no_bollards": True})
+    assert "Up" not in [s["name"] for s in quick["intervals"]]
     with pytest.raises(mcp.ToolError, match="on_minutes"):
         server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 90})
 

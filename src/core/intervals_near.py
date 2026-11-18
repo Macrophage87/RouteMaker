@@ -45,6 +45,10 @@ class Stretch:
     name: str | None = None
     surface: str = ""
     busy: bool = False
+    # Minutes to ride it at the build's pace (the file's `t`; pipeline.interval_layer).
+    minutes: float = 0.0
+    # Bollards or blocks it passes, ridden through (the file's `k`).
+    bollards: int = 0
 
 
 _cache: dict[str, tuple[tuple[int, int], tuple[Stretch, ...] | None]] = {}
@@ -72,6 +76,8 @@ def parse(doc: object) -> tuple[Stretch, ...] | None:
                 name=row.get("n") or None,
                 surface=str(row.get("s") or ""),
                 busy=bool(row.get("b")),
+                minutes=float(row.get("t") or 0.0),
+                bollards=int(row.get("k") or 0),
             )
         except (KeyError, TypeError, ValueError):
             continue
@@ -177,6 +183,7 @@ def near(
             "through": _through(s.line),
             "surface": surface(s),
             "busy": s.busy,
+            "bollards": s.bollards,
             "away_mi": round(away / METRES_PER_MILE, 1),
         }
         for away, s in found[:MAX_STRETCHES]

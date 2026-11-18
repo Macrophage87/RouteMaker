@@ -97,6 +97,7 @@ from . import (
     follow,
     gbfs,
     geocode,
+    intervalprofile,
     intervals_near,
     map_match,
     micromobility,
@@ -7459,6 +7460,7 @@ class IntervalNearOut(Schema):
     through: list[list[float]] = Field(description="Points along it: via points for a plan.")
     surface: str = Field(description='"road", "path" or "gravel".')
     busy: bool = Field(description="Most of it is on LTS 3 roads.")
+    bollards: int = Field(default=0, description="Bollards or blocks along it, ridden through.")
     away_mi: float
 
 
@@ -7619,6 +7621,59 @@ def climb_profile(request, climb_id: str, response: HttpResponse):
         return refusal
     if body is None:
         return Status(404, {"error": "There is no elevation for this climb."})
+    response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
+    return Status(200, body)
+
+
+class IntervalProfileOut(Schema):
+    """One stretch of the Intervals layer, as its hover card draws it
+    (`core.intervalprofile`): the file's figures, the steepest grade, and the heights along it
+    from its start to its end, as the route chart's `profile`."""
+
+    id: str
+    length_m: int
+    rise_m: float
+    avg_grade_pct: float
+    minutes: float = Field(description="Minutes to ride it at 18 mph, slowed on a climb.")
+    both_ways: bool
+    bollards: int = Field(description="Bollards or blocks along it, ridden through.")
+    max_grade_pct: float | None
+    interval_m: int
+    m: list[int] = Field(description="Metres from the stretch's start to each sample.")
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+
+
+@api.get(
+    "/intervals/{stretch_id}/profile",
+    response={200: IntervalProfileOut, 404: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="One interval stretch's elevation profile, start to end (the map's hover card)",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.CLIMB_PROFILE),
+    errors_as_json,
+)
+def interval_profile(request, stretch_id: str, response: HttpResponse):
+    """Read-only: a stretch is named by its id in the Intervals layer's file, never by a line,
+    and its heights are the router's (USGS 3DEP), as a climb's are."""
+    if not (1 <= len(stretch_id) <= 32 and stretch_id.isalnum()):
+        return Status(404, {"error": "There is no such stretch."})
+    try:
+        stretch = intervalprofile.find(stretch_id)
+        if stretch is None:
+            return Status(404, {"error": "There is no such stretch."})
+        body = intervalprofile.profile(stretch)
+    except intervalprofile.Unavailable as error:
+        logger.warning("interval profile unavailable: %s", error)
+        refusal = JsonResponse(
+            {"error": "The stretch's elevation is not available right now. Try again shortly."},
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    if body is None:
+        return Status(404, {"error": "There is no elevation for this stretch."})
     response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
     return Status(200, body)
 

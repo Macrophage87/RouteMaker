@@ -11906,3 +11906,34 @@ button.route-note:focus-visible {
   fill-opacity: 1;
   stroke: none;
 }
+
+/* The Intervals key (lib/intervals.ts): a short swatch and its words, never the stress key's three columns, which
+   squeezed the words into the 52 px figure column (the owner's screenshot, 2026-11-18). Its minute bands take the
+   dark map's brighter pinks in the dark theme (lib/darkPaint.ts). */
+.legend.intervals-legend li {
+  grid-template-columns: 24px 1fr;
+}
+
+.legend.intervals-legend li > .stress-label {
+  grid-column: 2;
+}
+:root.theme-dark .intervals-swatch-0 {
+  stroke: #f472b6;
+}
+
+:root.theme-dark .intervals-swatch-1 {
+  stroke: #f9a8d4;
+}
+
+:root.theme-dark .intervals-swatch-2 {
+  stroke: #fbcfe8;
+}
+
+:root.theme-dark .intervals-swatch-3 {
+  stroke: #fce7f3;
+}
+
+:root.theme-dark .intervals-swatch-4 {
+  stroke: #ffffff;
+}
+
