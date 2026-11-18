@@ -6734,7 +6734,7 @@ export function App() {
           return;
         }
         const point = points[index];
-        if (point) mapRef.current?.easeTo({ center: point });
+        if (point) mapRef.current?.easeTo({ center: point, duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400 });
         const row = rows[index];
         if (row?.offsetParent) row.focus();
         else announce(namePoints(points, VIA_MARKS.isVia, loopVias)[index]?.name ?? "");
