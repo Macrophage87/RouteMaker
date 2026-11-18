@@ -267,16 +267,22 @@ export function calmWaysText(facility: RouteResponse["facility_m"] | undefined):
 /**
  * Go's line under the stress bar (the owner's P1, 2026-10-28), in place of the shares ("LTS 1: 75%, LTS 4: 21%"):
  * "Mostly calm · 1.1 mi (1.8 km) on paths and protected lanes · busy road for 0.2 mi (0.3 km)", each part left out
- * where it is nothing, then its unpaved riding by kind where it has some (surfaceGlanceParts: "1.2 mi gravel"). Its
+ * where it is nothing, then its unpaved riding by kind where it has some (surfaceGlanceParts: "1.2 mi gravel"). The busy
+ * part names the worst stretch's street where `worstStreet` gives one ("busy road for 0.2 mi, worst on K Street"). Its
  * parts, shown joined by " · " and said joined by commas; the shares stay the bar's name for
  * a screen reader (stressBarLabel).
  */
-export function stressPlainParts(route: Pick<RouteResponse, "stress_m" | "facility_m"> & Partial<Pick<RouteResponse, "stress_spans">>): string[] {
+export function stressPlainParts(
+  route: Pick<RouteResponse, "stress_m" | "facility_m"> & Partial<Pick<RouteResponse, "stress_spans">>,
+  worstStreet: string | null = null,
+): string[] {
   const busy = busyMetres(route.stress_m);
+  const distance = formatDistance(busy);
   return [
     calmWords(route.stress_m),
     calmWaysText(route.facility_m),
-    busy >= PLAIN_MIN_M ? t("busy road for {distance}", { distance: formatDistance(busy) }) : null,
+    // The worst stretch's street (lib/worstStretches.ts), where it has one: the 2026-11-12 backlog, Go item 9.
+    busy < PLAIN_MIN_M ? null : worstStreet ? t("busy road for {distance}, worst on {street}", { distance, street: worstStreet }) : t("busy road for {distance}", { distance }),
     ...surfaceGlanceParts(route.stress_spans),
   ].filter((part): part is string => part !== null);
 }

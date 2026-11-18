@@ -8880,6 +8880,38 @@ details.fold > summary .icon {
   margin-top: 0;
 }
 
+/* Plan's keyboard shortcuts sheet (PlanKeysDialog.tsx): the keys left, what each does right. */
+.plan-keys {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  margin: 0 0 12px;
+}
+.plan-keys > div {
+  display: contents;
+}
+.plan-keys dt {
+  white-space: nowrap;
+}
+.plan-keys dd {
+  margin: 0;
+}
+.plan-keys kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-align: center;
+  font-family: inherit;
+}
+.plan-keys-switch {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .closure-choices {
   display: flex;
   flex-wrap: wrap;
@@ -10804,7 +10836,11 @@ summary.closure-notices-heading {
 }
 .load-route-row {
   display: grid;
-  gap: 2px;
+  /* The route's sketch (RouteSketch.tsx) beside its name and figures; a row without one keeps the column, so names line up. */
+  grid-template-columns: 48px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
   width: 100%;
   min-height: 52px;
   padding: 8px 4px;
@@ -10824,6 +10860,41 @@ summary.closure-notices-heading {
 .load-route-detail {
   font-size: 14px;
   color: var(--text-muted);
+}
+.load-route-row > .route-sketch {
+  grid-row: 1 / span 2;
+}
+.load-route-row > .load-route-name,
+.load-route-row > .load-route-detail {
+  grid-column: 2;
+}
+/* A saved route's sketch (backlog 2026-11-12, Plan item 9): its line's shape, start filled, end a ring. */
+.route-sketch {
+  display: block;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+}
+/* No sketch (a draft, a route kept on this device): the column stays, empty. */
+span.route-sketch {
+  background: transparent;
+}
+.route-sketch-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.route-sketch-start {
+  fill: var(--text);
+}
+.route-sketch-end {
+  fill: var(--bg);
+  stroke: var(--text);
+  stroke-width: 4;
 }
 /* Organizing (the owner, 2026-11-07): the tag chips, each row's Archive or Restore, Undo and the Archived link. */
 /* The chips wrap onto more rows rather than scroll sideways, where later ones would sit off-screen with nothing to say

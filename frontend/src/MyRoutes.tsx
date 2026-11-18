@@ -38,6 +38,7 @@ import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { NEW_LINK, SHARED_LINKS, TURN_OFF, keepSaid, listSharedLinks, regenerateSharedLink, revokeSharedLink, type SharedLink } from "./lib/sharedRoutes.ts";
 import { formatDistance } from "./lib/format.ts";
 import { alertLine } from "./lib/closureReview.ts";
+import { RouteSketch } from "./RouteSketch.tsx";
 import { matchSaid, matching } from "./lib/routeSearch.ts";
 
 export interface MyRoutesProps {
@@ -183,6 +184,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                   </form>
                 ) : (
                   <>
+                    <RouteSketch figures={r.figures} />
                     <button
                       type="button"
                       className="link my-route-open"

@@ -425,7 +425,7 @@ def open_reports(limit: int = 100) -> list[StressSuggestion]:
         StressSuggestion.objects.filter(
             kind=StressSuggestion.Kind.CLOSURE,
             status__in=(StressSuggestion.Status.PENDING, StressSuggestion.Status.SENT),
-        ).order_by("created_at")[:limit]
+        ).order_by("created_at", "pk")[:limit]
     )
 
 
