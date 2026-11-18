@@ -8411,6 +8411,8 @@ def _route_summary(row) -> dict:
         "archived_at": row.archived_at.isoformat() if row.archived_at else None,
         "opened_at": row.opened_at.isoformat() if row.opened_at else None,
         "replaced_by": row.replaced_by_id,
+        # The row's sketch, climb and quiet share (core.route_sketch); null before they are made.
+        "figures": row.figures,
     }
 
 
@@ -8450,11 +8452,31 @@ def saved_routes_list(request):
     rows = SavedRoute.objects.filter(user=request.user).order_by(
         Coalesce("opened_at", "created_at").desc(), "-pk"
     )
+    listed = list(rows.defer("line", "answer", "gpx"))
+    # A route saved before its figures were kept gets them now, once: its line and answer read
+    # this one time (core.route_sketch).
+    unmade = [r.pk for r in listed if r.figures is None]
+    if unmade:
+        from . import route_sketch
+
+        made = {}
+        # A few at a time (a full account's first read after the figures came is 200 lines).
+        found = SavedRoute.objects.filter(pk__in=unmade).only("pk", "line", "answer")
+        for full in found.iterator(chunk_size=20):
+            made[full.pk] = route_sketch.figures(full.line, full.answer)
+            # An update, not a save: the route's own updated_at stays as the rider left it. Only
+            # while still unmade, so a version saved meanwhile keeps its own figures.
+            SavedRoute.objects.filter(pk=full.pk, figures__isnull=True).update(
+                figures=made[full.pk]
+            )
+        for r in listed:
+            if r.pk in made:
+                r.figures = made[r.pk]
     return _private(
         JsonResponse(
             {
                 # The summary reads none of the heavy fields; a route's GPX alone may be 4 MB.
-                "routes": [_route_summary(r) for r in rows.defer("line", "answer", "gpx")],
+                "routes": [_route_summary(r) for r in listed],
                 "max": SavedRoute.MAX_PER_ACCOUNT,
             }
         )
