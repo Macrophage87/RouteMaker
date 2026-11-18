@@ -15,14 +15,29 @@ import { t } from "./i18n.ts";
 import { withDarkPaint } from "./darkPaint.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
-export const INTERVALS_LABEL = "Interval stretches";
+/*
+ * The layer's words are in English and Spanish only, as Plan is (i18n.ts planStaysEnglish; the v0.27.3 review found them
+ * English on a Spanish page). Each English is kept in a constant not exported, as lib/terrainSection.ts does its Plan
+ * title, so the Go and Ride catalogs' check (Sheets.tsx imports this module) does not ask the other 18 languages for it.
+ */
+const LABEL = "Interval stretches";
+const HINT = "3 minutes or more with no stops, busy crossings or sharp turns, flat or uphill.";
+const MINUTES_LABEL = "Show intervals from";
+const UNAVAILABLE = "Interval stretches are unavailable for now.";
+const NONE = "No interval stretches yet: they arrive with the next map data update.";
+const LEGEND_TEXT = "Pink glow: an interval stretch, deeper for longer efforts. Arrows: ride it that way only (the other way goes downhill).";
+const LEGEND_NAME = "Interval stretches legend";
+const BAND = "{from} to {to} min";
+const BAND_LAST = "{from} min or more";
+
+export const INTERVALS_LABEL = t(LABEL);
 /** Read on every focus, so one short line. */
-export const INTERVALS_HINT = "3 minutes or more with no stops, busy crossings or sharp turns, flat or uphill.";
+export const INTERVALS_HINT = t(HINT);
 /**
  * The owner, 2026-11-17: "filter by time, essentially a 3', 5', 8', etc interval stretch ... 3 minutes is the minimum".
  * Minutes at 18 mph on the flat, slowed on a climb (the file's `t`; src/pipeline/interval_layer.py).
  */
-export const INTERVALS_MINUTES_LABEL = "Show intervals from";
+export const INTERVALS_MINUTES_LABEL = t(MINUTES_LABEL);
 // 20: the owner, 2026-11-17, "go up to 20, thats a common interval".
 export const INTERVALS_MINUTES_OPTIONS = [3, 5, 8, 12, 20] as const;
 export type IntervalsMinutes = (typeof INTERVALS_MINUTES_OPTIONS)[number];
@@ -30,9 +45,9 @@ export const INTERVALS_MINUTES_KEY = "routemaker.intervalsMinutes";
 /** The build's pace and climb slowing, for a file written before it carried `t`. */
 const PACE_MPH = 18;
 const CLIMB_SLOWING = 0.12;
-export const INTERVALS_UNAVAILABLE = "Interval stretches are unavailable for now.";
+export const INTERVALS_UNAVAILABLE = t(UNAVAILABLE);
 /** The file ships empty until the build host fills it (interval-data/README.md). */
-export const INTERVALS_NONE = "No interval stretches yet: they arrive with the next map data update.";
+export const INTERVALS_NONE = t(NONE);
 export const INTERVALS_PREF_KEY = "routemaker.intervalsLayer";
 
 /** Deep pink: not a stress colour, not the Scenic teal, the rails' violet nor the route's blue. 6:1 on white. */
@@ -40,6 +55,30 @@ export const INTERVALS_PREF_KEY = "routemaker.intervalsLayer";
 export const INTERVALS_OPACITY = 0.7;
 export const INTERVALS_COLOUR = "#be185d";
 export const INTERVALS_DARK_COLOUR = "#f472b6";
+/**
+ * Shaded by how long a stretch takes (the owner, 2026-11-18: "color code by time length of the intervals"): pink for
+ * the shortest, deepening through magenta to plum for the longest, never toward maroon or red, so no shade reads as a
+ * stress colour (each stays clear of every stress style's colours, intervals.test.tsx). A band starts at its
+ * minutes (the picker's own steps). Every shade keeps 3:1 against the map at the drawn opacity (WCAG 1.4.11). On the
+ * dark map "deep" is brighter (lib/darkPaint.ts holds the same ramp).
+ */
+export const INTERVALS_BANDS = [3, 5, 8, 12, 20] as const;
+export const INTERVALS_RAMP = [INTERVALS_COLOUR, "#b0157a", "#9c1477", "#7a1a80", "#601466"] as const;
+export const INTERVALS_DARK_RAMP = [INTERVALS_DARK_COLOUR, "#e879f9", "#f0abfc", "#f5c2fd", "#fad5ff"] as const;
+
+/** A step expression on a stretch's minutes (`t`): the first shade below 5 minutes, the last from 20. */
+export function intervalsColour(ramp: readonly string[]): unknown[] {
+  const out: unknown[] = ["step", ["to-number", ["get", "t"], 0], ramp[0]];
+  INTERVALS_BANDS.slice(1).forEach((m, i) => out.push(m, ramp[i + 1]));
+  return out;
+}
+
+/** "3 to 5 min" ... "20 min or more": the key's words for each band. */
+export function intervalsBandLabel(i: number): string {
+  const from = INTERVALS_BANDS[i];
+  const to = INTERVALS_BANDS[i + 1];
+  return to === undefined ? t(BAND_LAST, { from }) : t(BAND, { from, to });
+}
 export const INTERVALS_SOURCE = "intervals";
 export const INTERVALS_LINE_LAYER = "intervals-line";
 export const INTERVALS_ARROW_LAYER = "intervals-arrows";
@@ -60,6 +99,8 @@ export interface IntervalStretch {
   busy: boolean;
   /** Minutes to ride it at the build's pace (the quicker way where it holds both). */
   minutes: number;
+  /** Bollards or blocks it passes, ridden through (the file's `k`). */
+  bollards: number;
 }
 
 function effortMinutes(lengthM: number, riseM: number, bothWays: boolean): number {
@@ -93,6 +134,7 @@ export function parseIntervals(doc: unknown): IntervalStretch[] | null {
       surface: row.s === "p" ? "path" : row.s === "g" ? "gravel" : "road",
       busy: row.b === 1,
       minutes: t > 0 ? t : Math.round(effortMinutes(lengthM, riseM, bothWays) * 10) / 10,
+      bollards: Number(row.k) > 0 ? Number(row.k) : 0,
     });
   }
   return out;
@@ -119,7 +161,7 @@ export function intervalsAtLeast(stretches: readonly IntervalStretch[], minutes:
 export function intervalsGeoJson(stretches: readonly IntervalStretch[]): object {
   return {
     type: "FeatureCollection",
-    features: stretches.map((s) => ({ type: "Feature", properties: { id: s.id, one: !s.bothWays }, geometry: { type: "LineString", coordinates: s.line } })),
+    features: stretches.map((s) => ({ type: "Feature", properties: { id: s.id, one: !s.bothWays, n: s.name ?? "", l: s.lengthM, r: s.riseM, t: s.minutes, k: s.bollards, x0: s.line[0][0], y0: s.line[0][1], x1: s.line[s.line.length - 1][0], y1: s.line[s.line.length - 1][1] }, geometry: { type: "LineString", coordinates: s.line } })),
   };
 }
 
@@ -131,7 +173,7 @@ export function intervalsLayers(dark?: boolean): Record<string, unknown>[] {
     source: INTERVALS_SOURCE,
     minzoom: INTERVALS_MIN_ZOOM,
     layout: { "line-join": "round", "line-cap": "round" },
-    paint: { "line-color": INTERVALS_COLOUR, "line-opacity": INTERVALS_OPACITY, "line-width": ["interpolate", ["linear"], ["zoom"], INTERVALS_MIN_ZOOM, 5, 14, 12, 17, 18] },
+    paint: { "line-color": intervalsColour(INTERVALS_RAMP), "line-opacity": INTERVALS_OPACITY, "line-width": ["interpolate", ["linear"], ["zoom"], INTERVALS_MIN_ZOOM, 5, 14, 12, 17, 18] },
   };
   const arrows = {
     id: INTERVALS_ARROW_LAYER,
@@ -140,7 +182,7 @@ export function intervalsLayers(dark?: boolean): Record<string, unknown>[] {
     minzoom: 12,
     filter: ["==", ["get", "one"], true],
     layout: { "symbol-placement": "line", "symbol-spacing": 90, "text-field": "›", "text-font": [FONT], "text-size": 22, "text-keep-upright": false, "text-allow-overlap": true },
-    paint: { "text-color": INTERVALS_COLOUR, "text-halo-color": "#ffffff", "text-halo-width": 2 },
+    paint: { "text-color": intervalsColour(INTERVALS_RAMP), "text-halo-color": "#ffffff", "text-halo-width": 2 },
   };
   return [withDarkPaint(line, dark), withDarkPaint(arrows, dark)];
 }
@@ -196,7 +238,7 @@ export function intervalsStatusText(on: boolean, status: IntervalsStatus): strin
   return status === "unavailable" ? INTERVALS_UNAVAILABLE : status === "empty" ? INTERVALS_NONE : "";
 }
 
-export const INTERVALS_LEGEND_TEXT = "Pink glow: an interval stretch. Arrows: ride it that way only (the other way goes downhill).";
+export const INTERVALS_LEGEND_TEXT = t(LEGEND_TEXT);
 
 /**
  * Inside Plan's Trails and terrain section, beside Climbs (the owner, 2026-11-17: "a layer next to climbs"): its own
@@ -249,24 +291,36 @@ export function IntervalsControls({
         h(
           "select",
           { id: "intervals-minutes", value: String(minutes), onChange: (event: { target: { value: string } }) => onMinutesChange(Number(event.target.value) as IntervalsMinutes) },
-          ...INTERVALS_MINUTES_OPTIONS.map((m) => h("option", { key: m, value: String(m) }, `${m} minutes`)),
+          ...INTERVALS_MINUTES_OPTIONS.map((m) => h("option", { key: m, value: String(m) }, t("{n} minutes", { n: m }))),
         ),
       ),
     h("p", { className: "hint intervals-status", role: "status" }, status),
     on &&
       h(
         "ul",
-        { className: "legend intervals-legend", "aria-label": "Interval stretches legend" },
+        { className: "legend intervals-legend", "aria-label": t(LEGEND_NAME) },
         h(
           "li",
           { key: "glow" },
           h(
             "svg",
             { width: 24, height: 12, "aria-hidden": "true", viewBox: "0 0 24 12" },
-            h("line", { x1: 2, y1: 6, x2: 22, y2: 6, stroke: INTERVALS_COLOUR, strokeOpacity: INTERVALS_OPACITY, strokeWidth: 8, strokeLinecap: "round" }),
+            h("line", { x1: 2, y1: 6, x2: 22, y2: 6, className: "intervals-swatch-0", stroke: INTERVALS_COLOUR, strokeOpacity: INTERVALS_OPACITY, strokeWidth: 8, strokeLinecap: "round" }),
             h("line", { x1: 2, y1: 6, x2: 22, y2: 6, stroke: "#9aa0a6", strokeWidth: 3 }),
           ),
           h("span", { className: "stress-label" }, INTERVALS_LEGEND_TEXT),
+        ),
+        ...INTERVALS_BANDS.map((_, i) =>
+          h(
+            "li",
+            { key: `band-${i}`, className: "intervals-band" },
+            h(
+              "svg",
+              { width: 24, height: 12, "aria-hidden": "true", viewBox: "0 0 24 12" },
+              h("line", { x1: 2, y1: 6, x2: 22, y2: 6, className: `intervals-swatch-${i}`, stroke: INTERVALS_RAMP[i], strokeOpacity: INTERVALS_OPACITY, strokeWidth: 8, strokeLinecap: "round" }),
+            ),
+            h("span", { className: "stress-label" }, intervalsBandLabel(i)),
+          ),
         ),
       ),
   );

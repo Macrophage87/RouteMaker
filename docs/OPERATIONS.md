@@ -378,7 +378,7 @@ the order a request meets it:
 | Requests per client | 60 per fixed 60 s window, per address (IPv6 per /64) | 429, `Retry-After` the rest of the window |
 | Routes in flight per client | 1; a second only while at least 2 of the api's slots would stay free after it (so never, on the default pool of 3) | 429, `Retry-After: 2` |
 | Routes in flight, whole api | `WEB_CONCURRENCY` less 2, less `GEOCODE_CONCURRENCY` (3 at compose's default of 7 workers) | 503, `Retry-After: 5` |
-| Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
+| Points, coverage, preset | 2 to 200 points (each 25 counts as one plan on the routing limit), each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
 | Long ride | Past 93 mi (150 km) of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
@@ -9291,9 +9291,33 @@ picks 3, 5, 8, 12 or 20 minutes (kept per browser as `routemaker.intervalsMinute
 held 150 m still breaks one. The shorter climbs appear only once `build_intervals` runs again: a
 file from before (no `t`, a mile minimum) still draws, its minutes worked out in the browser.
 
+The pink deepens with the minutes (the owner, 2026-11-18: "color code by time length"): five shades
+from 3 to 5 minutes up to 20 or more, pink through magenta to plum so none reads as a stress colour, each 3:1 on the
+map at the drawn opacity (`INTERVALS_RAMP`; the dark map's brighter set in `lib/darkPaint.ts`). The
+mouse over a stretch shows a card (`lib/intervalHover.ts`): its distance, rise, minutes, which way,
+its bollards, then its elevation profile from `GET /api/intervals/{id}/profile`
+(`core.intervalprofile`, the router's heights start to end, as a climb's profile).
+
+Bollards (and blocks) no longer cut a stretch (the owner, 2026-11-18: "You'll be going at like 6 mph
+up a steep hill, you're unlikely to have issues with bollards"): each entry counts those it holds
+(`k`, left out at none), the card says how many, and the connector's `intervals_near` returns
+`bollards` and takes `no_bollards` to leave such stretches out ("It's really situationally
+dependent"). Gates, cycle barriers and the other barriers still cut. A file built before this rule
+has no `k` and still cuts at bollards until `build_intervals` runs again.
+
+A path that winds is left out (the owner, 2026-11-18: "You spend so much time turning here that you
+can't go at full speed"; "a gentle turn isn't an issue, its a cluster of short sharp ones"): a path
+or unpaved stretch whose line turns more than 200 degrees per km in tight bends, a bend being 30
+degrees or more of turning, either way, within 30 m (`WINDY_PATH_DEG_PER_KM`, `TIGHT_BEND_DEG`, `BEND_WINDOW_M`, our
+defaults, set on the 2026-11-17 file: the Anacostia trail by Kenilworth reads about 300 to 360,
+the Mount Vernon and Rock Creek trails at most about 170). A climb may wind more ("With some
+flexibility on uphill stretches too"): the limit grows with the speed squared, slowed as the
+minutes are, so 2.56 times on a 5% climb. Paved roads are not held to it. Applied to the
+committed file in place, it left out 8 stretches.
+
 **What counts** is in `pipeline.interval_layer`'s docstring: a stroke (one road as a rider follows it,
 `pipeline.climb_layer.strokes`), cut at stops (signals, stop and yield signs, mini roundabouts,
-railway crossings, barriers, from the extract's node tags; a stop or yield sign on a junction's own
+railway crossings, barriers other than bollards and blocks, from the extract's node tags; a stop or yield sign on a junction's own
 node only where the stretch is not the busier road), at a busy road (LTS 3+) crossed, at
 any road a path meets, at a sharp turn (60 degrees), and at a descent (2% held 150 m) for the
 direction it falls; LTS 4 and Avoid never count. The numbers are the connector's interval check's

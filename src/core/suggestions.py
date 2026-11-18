@@ -360,7 +360,7 @@ def open_suggestions(limit: int = 100) -> list[StressSuggestion]:
         waiting = waiting.exclude(
             Q(signed_out=True) & ~Q(osm_way_id__in=enough) & ~Q(osm_way_id__in=signed_in)
         )
-    rows = list(waiting.prefetch_related("reviews").order_by("created_at")[:OPEN_READ])
+    rows = list(waiting.prefetch_related("reviews").order_by("created_at", "pk")[:OPEN_READ])
     by_road: dict[int, list[StressSuggestion]] = {}
     for row in rows:
         by_road.setdefault(row.osm_way_id, []).append(row)

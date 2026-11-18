@@ -97,6 +97,7 @@ from . import (
     follow,
     gbfs,
     geocode,
+    intervalprofile,
     intervals_near,
     map_match,
     micromobility,
@@ -128,11 +129,11 @@ from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
-# The largest body worth parsing. Twenty-five points with generous precision
-# and whitespace is well under 2 KB; Django's own ceiling is 2.5 MB, which is a
-# thousand times what this endpoint can use and all of it parsed before the
-# point count is checked.
-MAX_BODY_BYTES = 8 * 1024
+# The largest body worth parsing. MAX_POINTS points with generous precision and
+# whitespace, and a via index for each, are about 10 KB; Django's own ceiling is
+# 2.5 MB, which is a hundred times what this endpoint can use and all of it parsed
+# before the point count is checked.
+MAX_BODY_BYTES = 16 * 1024
 # A route request may also carry an opened file's line to follow (`RouteIn.follow`): its
 # encoded text, every character of which JSON may escape as two.
 ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
@@ -140,7 +141,19 @@ ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
 # A start alone is a Run's loop of a target distance (`core.run_plan.target_loop`); every other
 # plan needs a start and a destination (`RouteIn.dials_fit_the_preset`).
 MIN_POINTS = 1
-MAX_POINTS = 25
+# Stephen, 2026-11-18, of the old ceiling of 25: "remove this limit". What binds a rider is the
+# span (MAX_SPAN_M, 124 mi in straight lines); this is only the public API's abuse guard, a point
+# about every 0.6 mi on the longest ride allowed. The routers take a few more locations than this
+# (service_limits max_locations, scripts/build_valhalla_configs.py) so a loop's way back fits.
+MAX_POINTS = 200
+# Each leg is searched on its own (about five router calls a leg, measured on beta 2026-11-18:
+# 13 calls for 2 points, 69 for 12, 118 for 25), so a request counts against the routing limit
+# as one plan for each POINTS_PER_PLAN points it carries (`plan_cost`): up to 25 points is one,
+# as before, and 200 is eight.
+POINTS_PER_PLAN = 25
+# Best order (POST /api/stop-order) keeps the old ceiling: its search grows far faster than a
+# plan (frontend lib/stopOrder.ts ORDER_MAX_POINTS).
+STOP_ORDER_MAX_POINTS = 25
 # The stops a Bikeshare or transit trip takes (Stephen, 2026-11-03): each leg is a search of its
 # own inside the one plan's budget, so a few.
 MAX_TRIP_STOPS = 3
@@ -184,6 +197,30 @@ def too_long() -> str:
         f"({MAX_SPAN_M // 1000} km) in straight lines, which is too "
         "long to plan in one request; split it into shorter parts"
     )
+
+
+def plan_cost(points: list) -> int:
+    """What a plan through `points` counts against the routing limit: one for each
+    POINTS_PER_PLAN points or part of them (`POINTS_PER_PLAN`)."""
+    return max(1, -(-len(points) // POINTS_PER_PLAN))
+
+
+def _charge_points(request, body) -> HttpResponse | None:
+    """Count a plan's points past the first POINTS_PER_PLAN against the routing limit (the
+    decorator counted one plan already), or a 429 where the client has not the room. Nothing
+    is counted for a refused request (`ratelimit.take`)."""
+    extra = plan_cost(body.points) - 1
+    if extra <= 0:
+        return None
+    client = ratelimit.client_key(ratelimit.client_address(request))
+    decision = ratelimit.take(ratelimit.ROUTING, client, extra)
+    if decision.allowed:
+        return None
+    refused = JsonResponse(
+        {"error": "Too many requests from this address; try again shortly."}, status=429
+    )
+    refused["Retry-After"] = str(decision.retry_after_s)
+    return refused
 
 
 # The router's own request limits can refuse a route under MAX_SPAN_M, so this
@@ -2380,8 +2417,8 @@ class TrailLevelSpanOut(Schema):
 
 
 class SteepGradeOut(Schema):
-    """A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5;
-    `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
+    """A steep stretch on a Mass Ride, a Novice and Nervous, Cargo or Tandem ride, or an E-bike
+    ride's descent (v0.12.5, v0.28.0; `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
     red), read in the riding direction, in whole metres along the router's elevation profile."""
 
     from_m: int
@@ -2896,8 +2933,9 @@ class RouteBody(Schema):
     # The rated mountain-bike trails it rides (2026-11-07), in riding order, for the ride's
     # stress ribbon. Additive: empty where it rides none, null from an older answer.
     trail_levels: list[TrailLevelSpanOut] | None = None
-    # Steep grades either way (v0.12.5), in riding order, on a Mass Ride or a Novice and
-    # Nervous ride. Additive: null on every other ride type, empty where there are none.
+    # Steep grades (v0.12.5), in riding order, on a Mass Ride, Novice and Nervous, Cargo or
+    # Tandem ride, and downhill on an E-bike (v0.28.0). Additive: null on every other ride
+    # type, empty where there are none.
     steep_grades: list[SteepGradeOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
@@ -3762,7 +3800,7 @@ def _replacing_wait_s(request) -> float:
         502: ErrorOut,
         503: BusyOut,
     },
-    summary="Plan a route through two to twenty-five points on a preset",
+    summary="Plan a route through two to 200 points on a preset",
     description=(
         "Optional headers (Go's full plans, frontend lib/routeScheduler.ts): `X-Plan-Id` names"
         " the plan, so POST /api/route/cancel can stop it, which answers 409 with `code`"
@@ -3850,6 +3888,9 @@ def _waited_s(request) -> float:
 
 
 def _route_answer(request, body: RouteIn, response: HttpResponse):
+    charged = _charge_points(request, body)
+    if charged is not None:
+        return charged
     # Never during a ride: its re-plan starts where the rider is, which may be just over the line,
     # and refusing it would leave the ride no way back into DC.
     refused = None if body.ride_replan else routing.mass_ride_outside_dc(body.preset, body.points)
@@ -4208,11 +4249,13 @@ def route_neighbours(request, body: RouteIn):
     # Trailmaxxed, then Fewer turns and All paved): where the client has not the room, the
     # last ones are left out, never the request refused, and nothing is counted for them
     # (`ratelimit.take`), so the client's next plan is not refused for options it never got.
-    extra = len(wanted) - NEIGHBOURS_COST
+    # A plan of many points counts as several (`plan_cost`), each option alike.
+    extra = len(wanted) * plan_cost(body.points) - NEIGHBOURS_COST
     if extra > 0:
         client = ratelimit.client_key(ratelimit.client_address(request))
         if not ratelimit.take(ratelimit.ROUTING, client, extra).allowed:
-            wanted = wanted[:NEIGHBOURS_COST]
+            # Only what the decorator's count already paid for.
+            wanted = wanted[: NEIGHBOURS_COST // plan_cost(body.points)]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
     bodies = {
@@ -6342,6 +6385,12 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         # OWNER-DECISIONS 449: hidden and off for Mass Ride, whose field rides the
         # route in the order the organiser set.
         return Status(400, {"error": "Mass Ride keeps its stops in the order given"})
+    if len(body.points) > STOP_ORDER_MAX_POINTS:
+        # The local search is not cut by its budget inside a round: 200 points took 86 s
+        # on straight lines alone (review of #1340), past gunicorn's 60 s.
+        return Status(
+            400, {"error": f"Best order takes at most {STOP_ORDER_MAX_POINTS} stops and ends"}
+        )
     # A loop is as long as its way back too, as for /route.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     if span_m(routing.loop_points(body.points, loop)) > MAX_SPAN_M:
@@ -7440,6 +7489,9 @@ class IntervalsNearIn(Schema):
     paved_only: bool = Field(default=False, description="Leave out gravel stretches.")
     quiet_only: bool = Field(default=False, description="Leave out stretches mostly on LTS 3.")
     longest: bool = Field(default=False, description="Longest first, not nearest first.")
+    no_bollards: bool = Field(
+        default=False, description="Leave out stretches with bollards on them."
+    )
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -7459,6 +7511,7 @@ class IntervalNearOut(Schema):
     through: list[list[float]] = Field(description="Points along it: via points for a plan.")
     surface: str = Field(description='"road", "path" or "gravel".')
     busy: bool = Field(description="Most of it is on LTS 3 roads.")
+    bollards: int = Field(default=0, description="Bollards or blocks along it, ridden through.")
     away_mi: float
 
 
@@ -7488,6 +7541,7 @@ def intervals_near_point(request, params: Query[IntervalsNearIn], response: Http
             paved_only=params.paved_only,
             quiet_only=params.quiet_only,
             longest=params.longest,
+            no_bollards=params.no_bollards,
         )
     except intervals_near.Unavailable:
         return Status(503, {"error": "this server has no intervals file"})
@@ -7619,6 +7673,59 @@ def climb_profile(request, climb_id: str, response: HttpResponse):
         return refusal
     if body is None:
         return Status(404, {"error": "There is no elevation for this climb."})
+    response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
+    return Status(200, body)
+
+
+class IntervalProfileOut(Schema):
+    """One stretch of the Intervals layer, as its hover card draws it
+    (`core.intervalprofile`): the file's figures, the steepest grade, and the heights along it
+    from its start to its end, as the route chart's `profile`."""
+
+    id: str
+    length_m: int
+    rise_m: float
+    avg_grade_pct: float
+    minutes: float = Field(description="Minutes to ride it at 18 mph, slowed on a climb.")
+    both_ways: bool
+    bollards: int = Field(description="Bollards or blocks along it, ridden through.")
+    max_grade_pct: float | None
+    interval_m: int
+    m: list[int] = Field(description="Metres from the stretch's start to each sample.")
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+
+
+@api.get(
+    "/intervals/{stretch_id}/profile",
+    response={200: IntervalProfileOut, 404: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="One interval stretch's elevation profile, start to end (the map's hover card)",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.CLIMB_PROFILE),
+    errors_as_json,
+)
+def interval_profile(request, stretch_id: str, response: HttpResponse):
+    """Read-only: a stretch is named by its id in the Intervals layer's file, never by a line,
+    and its heights are the router's (USGS 3DEP), as a climb's are."""
+    if not (1 <= len(stretch_id) <= 32 and stretch_id.isalnum()):
+        return Status(404, {"error": "There is no such stretch."})
+    try:
+        stretch = intervalprofile.find(stretch_id)
+        if stretch is None:
+            return Status(404, {"error": "There is no such stretch."})
+        body = intervalprofile.profile(stretch)
+    except intervalprofile.Unavailable as error:
+        logger.warning("interval profile unavailable: %s", error)
+        refusal = JsonResponse(
+            {"error": "The stretch's elevation is not available right now. Try again shortly."},
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    if body is None:
+        return Status(404, {"error": "There is no elevation for this stretch."})
     response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
     return Status(200, body)
 
@@ -8351,6 +8458,8 @@ def _route_summary(row) -> dict:
         "archived_at": row.archived_at.isoformat() if row.archived_at else None,
         "opened_at": row.opened_at.isoformat() if row.opened_at else None,
         "replaced_by": row.replaced_by_id,
+        # The row's sketch, climb and quiet share (core.route_sketch); null before they are made.
+        "figures": row.figures,
     }
 
 
@@ -8390,11 +8499,31 @@ def saved_routes_list(request):
     rows = SavedRoute.objects.filter(user=request.user).order_by(
         Coalesce("opened_at", "created_at").desc(), "-pk"
     )
+    listed = list(rows.defer("line", "answer", "gpx"))
+    # A route saved before its figures were kept gets them now, once: its line and answer read
+    # this one time (core.route_sketch).
+    unmade = [r.pk for r in listed if r.figures is None]
+    if unmade:
+        from . import route_sketch
+
+        made = {}
+        # A few at a time (a full account's first read after the figures came is 200 lines).
+        found = SavedRoute.objects.filter(pk__in=unmade).only("pk", "line", "answer")
+        for full in found.iterator(chunk_size=20):
+            made[full.pk] = route_sketch.figures(full.line, full.answer)
+            # An update, not a save: the route's own updated_at stays as the rider left it. Only
+            # while still unmade, so a version saved meanwhile keeps its own figures.
+            SavedRoute.objects.filter(pk=full.pk, figures__isnull=True).update(
+                figures=made[full.pk]
+            )
+        for r in listed:
+            if r.pk in made:
+                r.figures = made[r.pk]
     return _private(
         JsonResponse(
             {
                 # The summary reads none of the heavy fields; a route's GPX alone may be 4 MB.
-                "routes": [_route_summary(r) for r in rows.defer("line", "answer", "gpx")],
+                "routes": [_route_summary(r) for r in listed],
                 "max": SavedRoute.MAX_PER_ACCOUNT,
             }
         )

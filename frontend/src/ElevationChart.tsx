@@ -18,8 +18,14 @@
  * keyboard's (or a click's) position only, never the hover, so a focused screen reader is not
  * flooded by a moving mouse. A text alternative stands beside the picture: a summary, and the climbs
  * as a table. Everything it says is made in lib/profileChart.ts.
+ *
+ * Plan's tools (`tools`, the 2026-11-12 backlog's Plan experience item 5): a click centres the map there (Enter, from
+ * the keyboard), and a drag with a mouse or pen picks a stretch (Shift with the arrow keys; Escape lets it go), whose
+ * miles, climb and stress, and a way round it, App shows under the plot (ChartStretch.tsx, loaded on first use). A touch
+ * keeps the scrub. On a computer the plot, its reading and the stretch dock under the map at full width while the fold
+ * is open (styles.css, .pc-dock); the plot then draws one viewBox unit to DOCK_SCALE px, as wide as the dock is.
  */
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { t } from "./lib/i18n.ts";
 import type { RouteProfile } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
@@ -77,6 +83,17 @@ const LAYOUT = {
   calm: { height: 216, elevTop: 10, elevBottom: 84, markerY: 109, calmTop: 120, calmBottom: 180, axisY: 202 },
 } as const;
 
+/** A docked plot draws a viewBox unit to this many px (our default): its 11-unit labels near the phone chart's 10 px. */
+const DOCK_SCALE = 0.9;
+/** A pointer that moves this many px with the button down picks a stretch; less is a click (our default, unmeasured). */
+const DRAG_PX = 5;
+
+/** Plan's chart tools: the map centred on a spot, and what shows for a stretch picked (App's ChartStretch). */
+export interface ChartTools {
+  onCentre: (point: LonLat) => void;
+  stretch: (fromM: number, toM: number, clear: () => void) => ReactNode;
+}
+
 interface ChartProps {
   route: TripRoute;
   profile: RouteProfile;
@@ -90,6 +107,8 @@ interface ChartProps {
    * rolling stress, the key, the source and the tables are Plan's.
    */
   compact?: boolean;
+  /** Plan's click to centre and stretch picking, on a route that is not a transit trip; absent elsewhere. */
+  tools?: ChartTools;
 }
 
 /** The route chart: a Mass Ride's three charts, or every other ride type's elevation and stress. */
@@ -97,7 +116,7 @@ export function ElevationChart(props: ChartProps) {
   return chartKind(props.route) === "mass" ? <MassRideCharts {...props} /> : <StressChart {...props} />;
 }
 
-function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
+function StressChart({ route, profile, onScrub, compact = false, tools }: ChartProps) {
   const kind = "stress" as const;
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
   const total = axisLength(route, profile);
@@ -114,6 +133,25 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   const targets = useMemo(() => jumpTargets(profile), [profile]);
   const heard = useRef(onScrub);
   heard.current = onScrub;
+  // The stretch picked: `a` where it was started, `b` where it is now; null for none. Gone with a new route.
+  const [sel, setSel] = useState<{ a: number; b: number } | null>(null);
+  const drag = useRef<{ m: number; x: number; moved: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => setSel(null), [route]);
+  // Docked (styles.css .pc-dock, position fixed), the viewBox is as wide as the dock at DOCK_SCALE; else WIDTH.
+  const dockRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(WIDTH);
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    if (!dock || typeof ResizeObserver === "undefined") return;
+    const fit = () => setWidth(getComputedStyle(dock).position === "fixed" ? Math.max(WIDTH, Math.round(dock.clientWidth / DOCK_SCALE)) : WIDTH);
+    const watch = new ResizeObserver(fit);
+    watch.observe(dock);
+    fit();
+    return () => watch.disconnect();
+  }, []);
+  const right = RIGHT + width - WIDTH;
 
   // The map marker follows the scrub; it goes when the chart does.
   useEffect(() => {
@@ -128,10 +166,10 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   const range = useMemo(() => elevationRange(profile), [profile]);
   const elevTop = layout.elevTop;
   const elevBottom = layout.elevBottom;
-  const x = useMemo(() => linear(0, total, LEFT, RIGHT), [total]);
+  const x = useMemo(() => linear(0, total, LEFT, right), [total, right]);
   const plot: Plot = useMemo(
-    () => ({ x, y: linear(range.lo, range.hi, elevBottom, elevTop), left: LEFT, right: RIGHT, top: elevTop, bottom: elevBottom }),
-    [x, range, elevTop, elevBottom],
+    () => ({ x, y: linear(range.lo, range.hi, elevBottom, elevTop), left: LEFT, right, top: elevTop, bottom: elevBottom }),
+    [x, range, elevTop, elevBottom, right],
   );
 
   const area = useMemo(() => elevationArea(profile, plot), [profile, plot]);
@@ -149,15 +187,28 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
 
   const metresAt = (event: PointerEvent<HTMLDivElement>): number => {
     const box = event.currentTarget.getBoundingClientRect();
-    const px = box.width > 0 ? ((event.clientX - box.left) / box.width) * WIDTH : LEFT;
-    return Math.min(Math.max(((px - LEFT) / (RIGHT - LEFT)) * total, 0), total);
+    const px = box.width > 0 ? ((event.clientX - box.left) / box.width) * width : LEFT;
+    return Math.min(Math.max(((px - LEFT) / (right - LEFT)) * total, 0), total);
+  };
+  const centre = (m: number) => {
+    const point = tripPointAt(route, m, total);
+    if (point) tools?.onCentre(point);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
-    const next = positionAfterKey(event.key, at ?? 0, total, { climbs: targets.climbs }, event.shiftKey);
+    if (tools && (event.key === "Enter" || (event.key === "Escape" && sel))) {
+      event.preventDefault();
+      if (event.key === "Enter") centre(at ?? 0);
+      else setSel(null);
+      return;
+    }
+    // Shift with a key that moves picks a stretch from where the position was (C and I keep their Shift).
+    const picks = tools && event.shiftKey && !/^[cCiI]$/.test(event.key);
+    const next = positionAfterKey(event.key, at ?? 0, total, { climbs: targets.climbs }, picks ? false : event.shiftKey);
     if (next === null) return;
     event.preventDefault();
     setHover(null);
+    if (picks) setSel((was) => ({ a: was ? was.a : (at ?? 0), b: next }));
     setAt(next);
   };
 
@@ -167,7 +218,8 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   const tableName = calm ? t("Climbs and rolling stress as tables") : t("Climbs as a table");
   const prompt = t("Move along the chart, or use the arrow keys, to read the route at a point.");
   const promptTouch = t("Move along the chart to read the route at a point.");
-  const keys = t("Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.");
+  const keys = `${t("Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift+C go to the next and previous climb.")}${tools ? ` ${t("Enter centres the map there; Shift with the arrow keys picks a stretch, and Escape lets it go.")}` : ""}`;
+  const picked = sel && Math.abs(sel.b - sel.a) > 0 ? { from: Math.min(sel.a, sel.b), to: Math.max(sel.a, sel.b) } : null;
 
   const defs = (
     <defs>
@@ -198,7 +250,10 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
       <p className="pc-summary visually-hidden" id={`${uid}-summary`}>
         {summary}
       </p>
+      {/* Plan's dock (styles.css): the plot, its reading and a picked stretch, under the map on a computer. */}
+      <div className={tools ? "pc-dock" : "pc-undocked"} ref={dockRef}>
       <div
+        ref={plotRef}
         className="pc-plot"
         role="slider"
         tabIndex={0}
@@ -218,16 +273,44 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
           setFocused(false);
           setHover(null);
         }}
-        onPointerMove={(event) => setHover(metresAt(event))}
-        onPointerDown={(event) => setHover(metresAt(event))}
+        onPointerMove={(event) => {
+          const m = metresAt(event);
+          setHover(m);
+          const d = drag.current;
+          if (d && (d.moved || Math.abs(event.clientX - d.x) > DRAG_PX)) {
+            d.moved = true;
+            setDragging(true);
+            setSel({ a: d.m, b: m });
+          }
+        }}
+        onPointerDown={(event) => {
+          const m = metresAt(event);
+          setHover(m);
+          if (tools && event.pointerType !== "touch" && event.button === 0) {
+            drag.current = { m, x: event.clientX, moved: false };
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }
+        }}
         onPointerLeave={() => setHover(null)}
         onPointerUp={(event) => {
-          setAt(metresAt(event));
+          const m = metresAt(event);
+          setAt(m);
           if (event.pointerType !== "mouse") setHover(null);
+          const d = drag.current;
+          drag.current = null;
+          setDragging(false);
+          if (d && !d.moved) {
+            setSel(null);
+            centre(m);
+          }
         }}
-        onPointerCancel={() => setHover(null)}
+        onPointerCancel={() => {
+          setHover(null);
+          drag.current = null;
+          setDragging(false);
+        }}
       >
-        <svg viewBox={`0 0 ${WIDTH} ${layout.height}`} className="pc-svg" aria-hidden="true" focusable="false">
+        <svg viewBox={`0 0 ${width} ${layout.height}`} className="pc-svg" aria-hidden="true" focusable="false">
           {defs}
           {/* The elevation axis: top and bottom, feet first. */}
           <text className="pc-axis-text" x={2} y={elevTop + 8}>
@@ -242,7 +325,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
               {metres(range.lo)}
             </tspan>
           </text>
-          <line className="pc-axis" x1={LEFT} y1={elevBottom} x2={RIGHT} y2={elevBottom} />
+          <line className="pc-axis" x1={LEFT} y1={elevBottom} x2={right} y2={elevBottom} />
           <path className="pc-area" d={area} />
           {bands.map((b, i) => (
             <g key={`${b.band}-${i}`}>
@@ -266,8 +349,8 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
                   {tick}
                 </text>
               ))}
-              <line className="pc-axis" x1={LEFT} y1={calmLayout.calmBottom} x2={RIGHT} y2={calmLayout.calmBottom} />
-              <line className="pc-calm-one" x1={LEFT} y1={calmY(1)} x2={RIGHT} y2={calmY(1)} />
+              <line className="pc-axis" x1={LEFT} y1={calmLayout.calmBottom} x2={right} y2={calmLayout.calmBottom} />
+              <line className="pc-calm-one" x1={LEFT} y1={calmY(1)} x2={right} y2={calmY(1)} />
               {calmArea.map((shape, i) => {
                 const cls = spanClass({ tier: shape.band.tier, facility: "none" });
                 return (
@@ -282,7 +365,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
               {calmAvoids.map((r, i) => {
                 const real = Math.max(x(r.to_m) - x(r.from_m), 0);
                 const w = Math.max(real, AVOID_MIN_WIDTH);
-                const x0 = Math.min(Math.max(x(r.from_m) - (w - real) / 2, LEFT), RIGHT - w);
+                const x0 = Math.min(Math.max(x(r.from_m) - (w - real) / 2, LEFT), right - w);
                 const h = 12;
                 const y0 = calmLayout.calmBottom - h;
                 return (
@@ -308,11 +391,11 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
                 const cls = spanClass({ tier, facility: "none" });
                 return (
                   <g key={i}>
-                    <line className="pc-calm-guide-casing" x1={LEFT} y1={calmY(at)} x2={RIGHT} y2={calmY(at)} />
-                    <line className="pc-calm-guide" x1={LEFT} y1={calmY(at)} x2={RIGHT} y2={calmY(at)} />
-                    <rect x={RIGHT - textW - 13} y={calmY(at) - 9} width={10} height={7} fill={cls.color} />
-                    <rect className="pc-calm-swatch" x={RIGHT - textW - 13} y={calmY(at) - 9} width={10} height={7} fill={`url(#${uid}-t${tier})`} />
-                    <text x={RIGHT} y={calmY(at) - 2} className="pc-guide-text" textAnchor="end">
+                    <line className="pc-calm-guide-casing" x1={LEFT} y1={calmY(at)} x2={right} y2={calmY(at)} />
+                    <line className="pc-calm-guide" x1={LEFT} y1={calmY(at)} x2={right} y2={calmY(at)} />
+                    <rect x={right - textW - 13} y={calmY(at) - 9} width={10} height={7} fill={cls.color} />
+                    <rect className="pc-calm-swatch" x={right - textW - 13} y={calmY(at) - 9} width={10} height={7} fill={`url(#${uid}-t${tier})`} />
+                    <text x={right} y={calmY(at) - 2} className="pc-guide-text" textAnchor="end">
                       {label}
                     </text>
                   </g>
@@ -329,7 +412,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
               {sections.map((s, i) => (
                 <StripRect key={i} section={s} x0={x(s.from_m)} w={Math.max(x(s.to_m) - x(s.from_m), 0)} uid={uid} />
               ))}
-              <rect className="pc-strip-frame" x={LEFT} y={LAYOUT.stress.stripTop} width={RIGHT - LEFT} height={12} fill="none" />
+              <rect className="pc-strip-frame" x={LEFT} y={LAYOUT.stress.stripTop} width={right - LEFT} height={12} fill="none" />
             </g>
           )}
 
@@ -340,6 +423,8 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
             </text>
           ))}
 
+          {/* The stretch picked: a band through every track. */}
+          {picked && <rect className="pc-sel" x={x(picked.from)} y={elevTop - 2} width={Math.max(x(picked.to) - x(picked.from), 1)} height={(calmLayout ? calmLayout.calmBottom : LAYOUT.stress.stripBottom + 2) - elevTop + 2} />}
           {/* The scrub marker: a line through every track, and a ring on the line it reads. */}
           {active !== null && (
             <g className="pc-marker">
@@ -368,6 +453,15 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
           </>
         )}
       </p>
+      {tools &&
+        picked &&
+        !dragging &&
+        tools.stretch(picked.from, picked.to, () => {
+          setSel(null);
+          // Clear goes with the stretch: the focus goes back to the chart, where the stretch was picked.
+          plotRef.current?.focus();
+        })}
+      </div>
       {!compact && (
         <>
           {/* The key behind one line (P10): eight lines of it came before the tables. */}

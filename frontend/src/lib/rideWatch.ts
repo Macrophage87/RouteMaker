@@ -33,6 +33,19 @@ export function rideWatchOptions(onBoard: boolean): WatchOptions {
   return onBoard ? ON_BOARD_WATCH_OPTIONS : WATCH_OPTIONS;
 }
 
+/** How long fixes must have stopped before a watch's failure shows in the ride (our default, unmeasured: about five missed fixes). */
+export const FAILURE_SHOWN_AFTER_MS = 5_000;
+
+/**
+ * Whether a watch's failure shows in the ride: at once where the watch has stopped for good or no fix has come yet,
+ * else only once no fix has come for FAILURE_SHOWN_AFTER_MS. A lone failure between good fixes is common, and showing
+ * it made the note blink in and out with the next fix.
+ */
+export function failureShown(reason: LocateFailure, hadFix: boolean, msSinceFix: number): boolean {
+  if (reason === "denied" || reason === "insecure" || reason === "unsupported") return true;
+  return !hadFix || msSinceFix >= FAILURE_SHOWN_AFTER_MS;
+}
+
 /**
  * Swap a running watch for a new one: the new watch starts first and only then is the old one stopped, so no fix is
  * lost at the hand-off (for a moment both deliver). Answers the new watch's stop function.

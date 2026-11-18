@@ -191,7 +191,7 @@ import {
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { BatteryNote } from "./BatteryNote.tsx";
 import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { FAILURE_SHOWN_AFTER_MS, WAITING_FOR_GPS, failureShown, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { rideBuzz, rideGeoEnv, rideWake, ridesHidden, showTurnCard, speaksAloud } from "./lib/nativeShell.ts";
 import { cardAtM, noteCard, turnCard } from "./lib/turnCard.ts";
@@ -1963,6 +1963,9 @@ export function RideMode({
 
   // The last real fix (never a heartbeat's), and how long the rider has stayed put since arriving (lib/ridePause.ts).
   const lastRealFix = useRef<RideFix | null>(null);
+  // When the last real fix came (Date.now()), never moved by the heartbeat: a watch failure shows by it (failureShown).
+  const realFixAt = useRef(0);
+  const failureLater = useRef(0);
   const stay = useRef<Stay | null>(null);
   const everyTick = useRef((now: number) => void now);
 
@@ -2060,6 +2063,7 @@ export function RideMode({
       }
       gpsSaid.current = null;
       lastRealFix.current = fix;
+      realFixAt.current = Date.now();
       lastFixAt.current = Date.now();
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       // Poor fixes since the last good one: the GPS is weak, not just quiet (estimateStep reckons only then).
@@ -2165,7 +2169,7 @@ export function RideMode({
         return;
       }
       // Near the next stop or via point (NEAR_STOP_M): once away from it again, a re-route takes it as reached. Sure fixes only.
-      if (fix.accuracyM <= OFF_SURE_M && out.state.progressM !== null) nearStopsStep(nearStopsRef.current, modelRef.current, out.state.progressM, plan.current.points, plan.current.loop, fix.point);
+      if (fix.accuracyM <= OFF_SURE_M && out.state.progressM !== null) nearStopsStep(nearStopsRef.current, modelRef.current, out.state.progressM, plan.current.points, plan.current.loop, fix.point, out.state.off);
       // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
       if (!restartAsked.current && out.state.progressM !== null) {
         restartAsked.current = true;
@@ -2269,7 +2273,18 @@ export function RideMode({
             notify(LOCATE_MESSAGES[reason]);
             gpsSaid.current = reason;
           }
-          setGps(LOCATE_MESSAGES[reason]);
+          // Shown only once real fixes have stopped for a few seconds (lib/rideWatch.ts failureShown): a lone failure
+          // between good fixes showed the note and took it away a second later, a flicker that redrew the ride's panel
+          // and the map. A failure too soon is looked at again then, in case no other comes.
+          const shown = () => failureShown(reason, rideRef.current.fix !== null, Date.now() - realFixAt.current);
+          window.clearTimeout(failureLater.current);
+          if (shown()) setGps(LOCATE_MESSAGES[reason]);
+          else {
+            failureLater.current = window.setTimeout(() => {
+              // Paused or underground since, nothing is shown, as the failure itself would not have been.
+              if (!ended.current && !pausedRef.current && !gpsQuietRef.current && shown()) setGps(LOCATE_MESSAGES[reason]);
+            }, FAILURE_SHOWN_AFTER_MS - (Date.now() - realFixAt.current));
+          }
           if (reason === "denied" || reason === "insecure" || reason === "unsupported") {
             stopWatch.current?.();
             stopWatch.current = null;

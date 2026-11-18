@@ -101,6 +101,32 @@ def test_the_spanish_has_the_same_places(english):
     assert sorted(_PLACE.findall(ES[english])) == sorted(_PLACE.findall(english))
 
 
+# The way words the other languages say through their catalogs (lang.way_said); Spanish has
+# its own rules (lang.way_es).
+WAY_KEYS = {
+    "the road",
+    "the path",
+    "the sidewalk",
+    "the service road",
+    "the alley",
+    "the parking aisle",
+    "the protected bike lane on {street}",
+    "the bike lane on {street}",
+    "{way} beside {road}",
+}
+
+
+@pytest.mark.parametrize("code", [c for c in lang.LANGUAGES if c not in ("en", "es")])
+def test_every_language_words_the_route(code):
+    """The route's warnings in the rider's language (backlog 2026-11-12, languages item 6):
+    each of the 19 has every phrase the code passes, and none it no longer does."""
+    needed = literal_keys() | built_keys() | WAY_KEYS
+    have = set(lang.catalog(code))
+    assert not needed - have, f"{code}: no translation for {sorted(needed - have)[:5]}"
+    assert not have - needed, f"{code}: phrases no code passes {sorted(have - needed)[:5]}"
+    assert all(text.strip() for text in lang.catalog(code).values())
+
+
 def test_no_phrase_is_left_over():
     # A phrase the code no longer passes is dead weight a reviewer would still read.
     assert set(ES) <= literal_keys() | built_keys()
@@ -111,10 +137,10 @@ def test_english_unless_asked():
     assert lang.t("Continue onto {street}", street="B") == "Continue onto B"
     with lang.speaking("xx"):
         assert lang.language() == "en"
-    # A language the app has but this server has no sentences for yet: wholly English.
+    # Each of DC's languages is worded in its own (backlog 2026-11-12, languages item 6).
     with lang.speaking("am"):
-        assert not lang.catalog("am")
-        assert lang.language() == "en"
+        assert lang.language() == "am"
+        assert lang.t("Continue onto {street}", street="B") != "Continue onto B"
     with lang.speaking("es"):
         assert lang.t("Continue onto {street}", street="B") == "Continúe por B"
         assert lang.t("not in the list") == "not in the list"
@@ -270,8 +296,9 @@ def test_a_language_the_server_does_not_word_is_english():
     from core.api import RouteIn
 
     assert RouteIn._known_language("de") == "en"
-    # French is a Go and Ride language with no server catalog (only lang_es.py): English.
-    assert RouteIn._known_language("fr") == "en"
+    # Each of DC's languages has its catalog (src/routemaker/lang_<code>.py).
+    assert RouteIn._known_language("fr") == "fr"
+    assert RouteIn._known_language("am") == "am"
     assert RouteIn._known_language("es") == "es"
 
 

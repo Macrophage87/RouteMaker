@@ -55,7 +55,7 @@ EARTH_RADIUS_MI = 3958.7613
 # The middle of DC, the default centre a loop goes around (the Zero Milestone, Ellipse).
 DC_CENTRE = (-77.0365, 38.8949)
 # The site's own limits (core/api.py MAX_POINTS, COVERAGE_BBOX).
-MAX_POINTS = 25
+MAX_POINTS = 200
 MAX_DRAFTS = 200  # drafts kept in memory
 # A draft's name: what the rider finds it by in the app's Load route and in my_drafts.
 DRAFT_NAME_SCHEMA = {
@@ -1573,7 +1573,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         return values[0] if values else None
 
     points = [point for point in fragment_points(params) if inside_coverage(point)]
-    points = points[:MAX_POINTS]  # the page opens the first 25 too
+    points = points[:MAX_POINTS]  # the page opens the first MAX_POINTS too
     if len(points) < 2:
         raise ToolError("that link holds no route (it needs at least a start and an end)")
     vias = sorted(
@@ -5494,9 +5494,9 @@ TOOLS = [
             "List the stretches near a point where an interval effort can run unbroken (the"
             " Intervals map layer): at least 3 minutes at 18 mph (less ground up a climb), no"
             " signal, stop or yield sign, busy road to cross or sharp turn, never LTS 4, and"
-            " flat or uphill in the direction given. Each"
-            " has name, miles, rise, average grade, `both_ways` (else ride it start to end"
-            " only), start, end and `through` points along it, and `effort_minutes` at"
+            " flat or uphill in the direction given. Each has name, miles, rise, average grade,"
+            " `bollards` (ridden through), `both_ways` (else ride it start to end only), start,"
+            " end and `through` points along it, and `effort_minutes` at"
             " pace_mph. Plan one with plan_route from its start through its `through` points"
             " (as via points) to its end; recover by riding back or on. With on_minutes only"
             " stretches long enough for one effort are listed, longest first. Stretches"
@@ -5515,6 +5515,11 @@ TOOLS = [
                 "pace_mph": {"type": "number", "default": 18},
                 "include_busy": {"type": "boolean", "default": False},
                 "include_unpaved": {"type": "boolean", "default": False},
+                "no_bollards": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Leave out stretches that pass bollards (for a fast effort).",
+                },
             },
             "required": ["near"],
         },
@@ -5553,7 +5558,7 @@ TOOLS = [
         "name": "plan_route",
         "title": "Plan a route",
         "description": (
-            "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
+            "Plan a bike route on RouteMaker through 2 to 200 points (start, stops or via points,"
             " end) and summarise it: distance, time, climbing, the share on each traffic-stress"
             " level (LTS 1 calmest to 4, and Avoid) and on paths and lanes. The route is a draft:"
             " it comes back with a draft_id and a link that opens this exact route in the app"
@@ -7020,12 +7025,19 @@ class Server:
         if on_min:
             # Longest first before the site's cut, so long stretches a little further away are kept.
             filters["longest"] = True
+        if args.get("no_bollards"):
+            # Before the site's cut of 25, so clear stretches a little further away are kept.
+            filters["no_bollards"] = True
         found = self.api.intervals_near(near, miles, **filters)
         for stretch in found:
             grade = 0.0 if stretch.get("both_ways") else stretch["grade_pct"]
             stretch["effort_minutes"] = climb_minutes(stretch["miles"], grade, pace)
         if on_min:
             found = [s for s in found if s["effort_minutes"] >= on_min]
+        # The owner, 2026-11-18: bollards are noted, not a break ("It's really situationally
+        # dependent"): the caller chooses. Filtered here too for a site that predates the filter.
+        if args.get("no_bollards"):
+            found = [s for s in found if not s.get("bollards")]
         return {
             "intervals": found,
             "source": "Intervals layer: OpenStreetMap (ODbL) and USGS 3DEP elevation",

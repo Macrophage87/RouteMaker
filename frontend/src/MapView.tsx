@@ -22,6 +22,7 @@ import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
 import { attachTrailHighlight, withTrailHighlight } from "./lib/trailHighlight.ts";
 import { climbHoverChart, climbHoverWords, trailHoverChart, trailHoverWords } from "./lib/featureHover.ts";
+import { intervalAt, intervalEnds, intervalHoverChart, intervalHoverWords } from "./lib/intervalHover.ts";
 import * as maplibregl from "maplibre-gl";
 import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { Protocol } from "pmtiles";
@@ -1101,12 +1102,20 @@ export function MapView(props: Props) {
           free && hoverPoint && climb === null && !under.line && featureCardPress([water, stopCards(map)], hoverPoint) === null
             ? mtbTrailAt(map, hoverPoint, MOUSE_HIT_PX, overlayLayerIds())
             : null;
+        // An interval stretch last (the owner, 2026-11-18: "a mouseover with elevation profile ... distance and a rough
+        // estimate of interval time"): hover only, a click still plans or opens what is under it.
+        const interval =
+          free && hoverPoint && climb === null && trail === null && !under.line ? intervalAt(map, hoverPoint, MOUSE_HIT_PX) : null;
         if (climb && hoverPoint) {
           const { lng, lat } = map.unproject([hoverPoint.x, hoverPoint.y]);
           featureHover.show(climbHoverWords(climb), [lng, lat], climbHoverChart(climb));
         } else if (trail) {
           const words = trailHoverWords(trail.properties, trail.way);
           featureHover.show(words, trail.point, trailHoverChart(window.location.origin, trail.point, lightUp(words.key)));
+        } else if (interval && hoverPoint) {
+          const { lng, lat } = map.unproject([hoverPoint.x, hoverPoint.y]);
+          const p = interval.properties;
+          featureHover.show(intervalHoverWords(p), [lng, lat], intervalHoverChart(String(p.id), intervalEnds(p)));
         } else featureHover.hide();
         runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
           drawHandle: (at) => showEdit(at as LonLat | null),
@@ -1114,7 +1123,7 @@ export function MapView(props: Props) {
           setCursor: (cursor) => {
             canvas.style.cursor = cursor;
           },
-        }, trail !== null || climb !== null);
+        }, trail !== null || climb !== null || interval !== null);
       });
     });
     const onCanvasLeave = () => {
@@ -1587,7 +1596,7 @@ export function MapView(props: Props) {
       map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
       map.addLayer(routeHazardLayer() as never);
       map.addLayer(routeHazardRepeatLayer() as never);
-      // Steep grades on a Mass Ride or a Novice ride (v0.12.5, lib/steepGrades.ts): orange and red squares, the ramp
+      // Steep grades on a Mass Ride, Novice, Cargo, Tandem or E-bike ride (v0.12.5, v0.28.0, lib/steepGrades.ts): orange and red squares, the ramp
       // rising or falling as the rider meets it, over the route only.
       for (const { level, direction } of STEEP_ICONS) {
         const name = steepIconName(level, direction);
