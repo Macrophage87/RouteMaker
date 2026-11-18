@@ -2285,7 +2285,7 @@ export function RideMode({
         return;
       }
       // Near the next stop or via point (NEAR_STOP_M): once away from it again, a re-route takes it as reached. Sure fixes only.
-      if (fix.accuracyM <= OFF_SURE_M && out.state.progressM !== null) nearStopsStep(nearStopsRef.current, modelRef.current, out.state.progressM, plan.current.points, plan.current.loop, fix.point);
+      if (fix.accuracyM <= OFF_SURE_M && out.state.progressM !== null) nearStopsStep(nearStopsRef.current, modelRef.current, out.state.progressM, plan.current.points, plan.current.loop, fix.point, out.state.off);
       // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
       if (!restartAsked.current && out.state.progressM !== null) {
         restartAsked.current = true;
