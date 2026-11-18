@@ -96,7 +96,7 @@ import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, loopWay, loopWays, withLoopWay, planStartDials, plansFromStart, reversedPoints, withLoop } from "./lib/loop.ts";
-import { FINDING_ORDER_SAID, ORDER_MAX_POINTS, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
+import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, bestOrderOffered, requestStopOrder } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
   drawnLegs,
@@ -3430,7 +3430,7 @@ export function App() {
   // Never on a Mass Ride (OWNER-DECISIONS 449), whose field rides the stops in the order set.
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
   const orderStops = stopsOnly(points, VIA_MARKS.isVia, loopVias).points;
-  const orderShown = !isMassRide(preset) && stopsThatMove(orderStops, loopVias) >= 2 && orderStops.length <= ORDER_MAX_POINTS;
+  const orderShown = bestOrderOffered(orderStops, loopVias, isMassRide(preset));
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
   // chip's place a stop; never during a ride. A two-point ride type takes stops only where each stop starts a new trip
   // (stopsAsTrips: Walk, the transit types, and Bikeshare since v0.22.0; Rebalance Ride has no destination).
@@ -3471,7 +3471,7 @@ export function App() {
     const ride = rideRef.current;
     const loop = loopStops(ride.preset, ride.dials.loop);
     const stops = stopsOnly(current, VIA_MARKS.isVia, loop);
-    if (isMassRide(ride.preset) || stopsThatMove(stops.points, loop) < 2 || stops.points.length > ORDER_MAX_POINTS) return;
+    if (!bestOrderOffered(stops.points, loop, isMassRide(ride.preset))) return;
     orderingRef.current = true;
     setOrdering(true);
     announce(FINDING_ORDER_SAID);
