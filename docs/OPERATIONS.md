@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.28.1](#deploying-v0281)
 - [Deploying v0.28.0](#deploying-v0280)
 - [Deploying v0.27.3](#deploying-v0273)
 - [Deploying v0.27.2](#deploying-v0272)
@@ -8081,6 +8082,29 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.28.1
+
+A patch with the interval fixes, on the owner's ask (2026-11-18, "Add as a patch"): a stretch lying
+half or more along a longer one ridden the same way is left out of the file, a path with more than
+180 degrees of tight bends in 200 m is left out, and the hover card says its minutes as a rough
+guess with the speed they assume, in Spanish too (#1347). The committed `intervals.json` already
+has both rules applied (5,596 stretches); no PC build step.
+
+**No `lua/`, `valhalla/`, `docker/`, requirements, migration, compose or nginx change, and the
+lockfile's dependencies are those of v0.28.0**, so the beta's release agent takes it by itself; no
+map rebuild, no router restart.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.28.1`, then approve).
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing, then the
+  front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
+- [ ] **Beta check.** The app says 0.28.1; Plan, Interval stretches at Hains Point shows one
+  stretch per way, none by Daingerfield Island on the Mount Vernon Trail; the hover card reads
+  "a rough guess at ... mph".
+- [ ] **Rollback.** The `pre-rel` api image and the v0.28.0 front end.
 
 ## Deploying v0.28.0
 
