@@ -245,18 +245,17 @@ def create(
             reasons=chosen,
             reason=reason_words(chosen, other),
         )
-    # A ride's send: the audit row's time would be the send's, so it names no suggestion.
+    # A ride's send: the audit row's time would be the send's, so it names no suggestion; and,
+    # one a send in step with the suggestions, it takes a random id when made.
     with transaction.atomic():
         entry = audit.record(
             None, "stress_suggest_signed_out", "stress_suggestion",
             "" if from_ride else suggestion.pk, AuditLogEntry.Outcome.ALLOWED,
+            pk=random_id(AuditLogEntry) if from_ride else None,
         )  # fmt: skip
         if from_ride and entry is not None:
-            # Its audit row too: one a send, in step with the suggestions, so dated by the day and
-            # given a random id; in the same transaction, so neither is ever committed.
-            AuditLogEntry.objects.filter(pk=entry.pk).update(
-                id=random_id(AuditLogEntry), at=ride_day(now)
-            )
+            # Dated by the day too, in the same transaction, so the exact time is never committed.
+            AuditLogEntry.objects.filter(pk=entry.pk).update(at=ride_day(now))
     return suggestion
 
 

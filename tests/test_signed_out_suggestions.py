@@ -375,3 +375,14 @@ class TestFromRide:
         entries = AuditLogEntry.objects.filter(action="stress_suggest_signed_out")
         assert entries.count() == 3
         assert all(quick.RANDOM_ID_FLOOR <= e.pk < quick.RANDOM_ID_CEILING for e in entries)
+
+    def test_a_ride_send_leaves_no_gap_in_the_audit_ids(self, live) -> None:
+        send(address="203.0.113.1")
+        send(address="203.0.113.2", reasons=(quick.CLOSED,), step=3, from_ride=True)
+        send(address="203.0.113.3", way=OTHER_ROAD, step=3, reasons=("fast_traffic",))
+        ids = sorted(
+            AuditLogEntry.objects.filter(action="stress_suggest_signed_out").values_list(
+                "pk", flat=True
+            )
+        )
+        assert ids[1] == ids[0] + 1 and ids[2] >= quick.RANDOM_ID_FLOOR
