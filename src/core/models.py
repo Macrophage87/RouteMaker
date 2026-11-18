@@ -1527,7 +1527,7 @@ class StressSuggestion(models.Model):
 
     class Meta:
         db_table = "stress_suggestion"
-        ordering = ["-created_at"]
+        ordering = ["-created_at", "-pk"]
         indexes = [models.Index(fields=["status", "-created_at"], name="stress_suggestion_open")]
         # One open suggestion per rider per road, held by the database: the check in
         # core.suggestions counts rows, which locks nothing against a second send at once.
@@ -2111,6 +2111,11 @@ class SavedRoute(models.Model):
     # 2026-11-07: "at 200 routes, then propose deleting the route that has the longest time since
     # last open or creation").
     opened_at = models.DateTimeField(null=True, blank=True)
+    # The row's figures (core.route_sketch, backlog 2026-11-12 Plan item 9): a small sketch of the
+    # line, its climb and its share of quiet riding, for Load route and My routes. Made from the
+    # line and answer whenever they are saved; null on a route saved before them, filled when
+    # the list is next read.
+    figures = models.JSONField(null=True, blank=True)
 
     TAGS_MAX = 8
     TAG_MAX = 30
@@ -2121,6 +2126,18 @@ class SavedRoute(models.Model):
 
     def __str__(self) -> str:
         return f"Saved route {self.pk} for account {self.user_id}"
+
+    def save(self, *args, **kwargs):
+        # Every path that writes the line or answer (a save, a new version, a restore) makes the
+        # figures again, so they never describe a line the route no longer has.
+        fields = kwargs.get("update_fields")
+        if fields is None or {"line", "answer"} & set(fields):
+            from . import route_sketch
+
+            self.figures = route_sketch.figures(self.line, self.answer)
+            if fields is not None and "figures" not in fields:
+                kwargs["update_fields"] = [*fields, "figures"]
+        super().save(*args, **kwargs)
 
 
 class GarminLink(models.Model):

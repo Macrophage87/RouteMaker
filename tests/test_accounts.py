@@ -282,7 +282,7 @@ class TestRoutes:
             {"line": [[-80.5, 40.0], [-80.6, 40.1]]},
             {"line": [[-77.0, "38.9"], [-77.1, 38.8]]},
             {"distance_m": 0},
-            {"inputs": {"points": [[-77.0, 38.9]] * 26}},
+            {"inputs": {"points": [[-77.0, 38.9]] * 201}},
             {"inputs": {"secret": 1}},
             {"source": "strava"},
         ],

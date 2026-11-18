@@ -722,7 +722,9 @@ class TestFollowedRoute:
 
     def test_the_body_may_be_large_enough_for_a_whole_line(self, client, segments, router) -> None:
         router(traced_router())
-        line = [(-77.05 + i * 2e-5, 38.9 + (i % 7) * 1e-5) for i in range(follow.MAX_POINTS)]
+        # A zigzag of about 11 m: wide enough that the whole line is past the plain body limit
+        # (16 KB since #1340).
+        line = [(-77.05 + i * 2e-5, 38.9 + (i % 7) * 1e-4) for i in range(follow.MAX_POINTS)]
         body = json.dumps(follow_body(follow=encode_polyline6(line)))
         assert len(body.encode()) > api.MAX_BODY_BYTES
         assert post(client, body).status_code == 200

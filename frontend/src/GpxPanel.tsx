@@ -23,7 +23,7 @@ import { MATCHING_SAID, MATCH_ACTION, MATCH_HINT, fitLine, matchFailedSaid, matc
 import { VIA_MARKS, stopNames, viaIndices } from "./lib/pointKinds.ts";
 import { fidelity } from "./lib/trackMatch.ts";
 import type { FileDownload } from "./lib/gpxVerbatim.ts";
-import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./lib/course.ts";
+import { compileCourse, courseFileName, courseLine, courseParts, partsLine, type CourseFormat } from "./lib/course.ts";
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
@@ -243,10 +243,17 @@ export async function downloadCourse(route: RouteResponse, routedPoints: LonLat[
     return (await keepFile(made.bytes, "application/pdf", cueSheetFileName(route, kind), cueSheetLine(route, kind, vias, made.pages, stops))).line;
   }
   const course = compileCourse(route, deviceProfile(profile), format, vias, stops);
-  const fileName = courseFileName(route, format);
-  const kept = format === "fit"
-    ? await keepFile(writeFit(course), "application/vnd.ant.fit", fileName, courseLine(course))
-    : await keepFile(writeTcx(course), "application/vnd.garmin.tcx+xml", fileName, courseLine(course));
+  // More cues it must keep than the device shows: a file for each part that fits (courseParts).
+  const parts = courseParts(course);
+  const line = parts.length > 1 ? partsLine(parts) : courseLine(course);
+  let kept = { line, kept: true };
+  for (const part of parts) {
+    const fileName = courseFileName(route, format, parts.length > 1 ? part.trim.part?.index : undefined);
+    kept = format === "fit"
+      ? await keepFile(writeFit(part), "application/vnd.ant.fit", fileName, line)
+      : await keepFile(writeTcx(part), "application/vnd.garmin.tcx+xml", fileName, line);
+    if (!kept.kept) break;
+  }
   return kept.line;
 }
 
@@ -256,7 +263,7 @@ export async function downloadCourse(route: RouteResponse, routedPoints: LonLat[
  * cannot be reached, or is no longer connected, the file goes as below, after the reason. A second press while one send runs is ignored. Otherwise (lib/sendToGarmin.ts) it is a
  * FIT course for a Garmin Edge, handed to the phone for Garmin Connect; the line says what happened, with what
  * fitting it left out, if anything. A course with more cues it must keep than the unit shows is not handed on: its
- * line says to split the route.
+ * line says to download the course, which comes in parts (courseParts).
  */
 let sending = false;
 
@@ -284,7 +291,7 @@ async function sendOnce(route: RouteResponse, routedPoints: LonLat[], savedRoute
     ended = `${outcome.asFile} `;
   }
   const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia), stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
-  // Not handed on: the line says to split the route, and nothing claims a file went.
+  // Not handed on: the line says to download the course in parts, and nothing claims a file went.
   if (course.trim.protectedOver) return courseLine(course);
   const line = await sendCourse(writeFit(course), courseFileName(route, "fit"), browserSendEnv((bytes, type, name) => saveFile(bytes, type, name)));
   return ended + (courseTrimmed(course) ? `${line} ${courseLine(course)}` : line);
@@ -304,7 +311,7 @@ function lineWithHeights(route: RouteResponse): ([number, number] | [number, num
  * profile, with its turn cues, added to the rider's Wahoo app, named as saved; a saved route sent again updates
  * it. Where Wahoo refuses it, cannot be reached, or is no longer connected, the FIT course is saved instead, after
  * the reason, for the Wahoo app to open (in the phone app, handed to Android's "Open with" list). A course with more
- * cues it must keep than the unit shows is not sent: its line says to split the route.
+ * cues it must keep than the unit shows is not sent: its line says to download the course, which comes in parts.
  */
 let sendingWahoo = false;
 

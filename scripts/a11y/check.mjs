@@ -4895,8 +4895,9 @@ if (mine(14)) {
 // Featured routes joined them last in v0.12.1 (#456); Saved routes before it (Stephen 2026-10-26). The 2026-10-28 audit:
   // Food is "Eat" (P2: it lists places to eat), and More ride types "Ride type & settings" (P3: hills and traffic are there);
   // Sights is "Places to see" and Saved routes "Load route" (P12).
-  check("go: the sheet has Where to?, the place chips Home, Eat, Water and Restroom (no Work), then More with Metro, Repair, Places to see, Load route and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and Ride type & settings",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Eat", "Water", "Restroom", "More", "Metro", "Repair", "Places to see", "Load route", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "Ride type & settings"]), JSON.stringify(go));
+  // Ride type & settings second, beside the rider's own (#1335, v0.28.0: no sideways swipe to reach it).
+  check("go: the sheet has Where to?, the place chips Home, Eat, Water and Restroom (no Work), then More with Metro, Repair, Places to see, Load route and Featured routes, and the ride types Default, Ride type & settings, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Eat", "Water", "Restroom", "More", "Metro", "Repair", "Places to see", "Load route", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Ride type & settings", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus"]), JSON.stringify(go));
   // More > Load route (Stephen 2026-10-26; P12: it was Saved routes): Load route's popup, one title; Escape gives the focus back.
   await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
   await sleep(200);

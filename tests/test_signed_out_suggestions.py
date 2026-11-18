@@ -12,6 +12,7 @@ from django.utils import timezone
 from test_stress_edits import LAT, LON, WAY, make_user
 from test_suggestions import live, router
 
+from core import reviewed_closures as closures
 from core import signed_out_suggestions as quick
 from core import stress_edits, suggestions
 from core.models import AuditLogEntry, SignedOutSend, StressSuggestion
@@ -334,3 +335,54 @@ class TestFromRide:
             **headers,
         )
         assert bad.status_code in (400, 422)
+
+    def test_a_ride_sends_rows_keep_no_order_of_sending(self, live) -> None:
+        # Its suggestion and count row take random ids, not the next in line: their ids say
+        # nothing of when they were sent, nor which count row went with which suggestion.
+        first = send(address="203.0.113.1")
+        rides = [
+            send(address=f"203.0.113.{n}", reasons=(quick.CLOSED,), step=3, from_ride=True)
+            for n in (2, 3, 4)
+        ]
+        last = send(address="203.0.113.5", way=OTHER_ROAD, step=3, reasons=("fast_traffic",))
+        panel_counts = SignedOutSend.objects.filter(osm_way_id__gt=0).order_by("pk")
+        ride_counts = SignedOutSend.objects.filter(osm_way_id__lt=0)
+        assert len(panel_counts) == 2 and len(ride_counts) == 3
+        for row in rides:
+            assert not first.pk < row.pk < last.pk
+            assert quick.RANDOM_ID_FLOOR <= row.pk < quick.RANDOM_ID_CEILING
+        for row in ride_counts:
+            assert not panel_counts[0].pk < row.pk < panel_counts[1].pk
+            assert quick.RANDOM_ID_FLOOR <= row.pk < quick.RANDOM_ID_CEILING
+        # Still in reach of a browser's numbers, and the road panel's sends as before.
+        assert quick.RANDOM_ID_CEILING <= 2**53
+        assert last.pk == first.pk + 1 and panel_counts[1].pk == panel_counts[0].pk + 1
+
+    def test_lists_and_the_audit_keep_no_order_of_sending_either(self, live, monkeypatch) -> None:
+        # A ride's rows share a date (midnight), so a list sorted by date breaks the tie by id,
+        # never by when the row was written; and its audit row takes a random id too.
+        draws = iter(range(10**6, 0, -1000))  # each id drawn lower than the one before
+        monkeypatch.setattr(quick.secrets, "randbelow", lambda _n: next(draws))
+        sent = [
+            send(address=f"203.0.113.{n}", reasons=(quick.CLOSED,), step=3, from_ride=True)
+            for n in (2, 3, 4)
+        ]
+        newest_id_first = sorted(sent, key=lambda r: r.pk)
+        assert [r.pk for r in newest_id_first] == [r.pk for r in reversed(sent)]
+        assert [r.pk for r in closures.open_reports()] == [r.pk for r in newest_id_first]
+        # The default order, newest first: by id within the day, so the reverse of the above.
+        assert [r.pk for r in StressSuggestion.objects.all()] == [r.pk for r in sent]
+        entries = AuditLogEntry.objects.filter(action="stress_suggest_signed_out")
+        assert entries.count() == 3
+        assert all(quick.RANDOM_ID_FLOOR <= e.pk < quick.RANDOM_ID_CEILING for e in entries)
+
+    def test_a_ride_send_leaves_no_gap_in_the_audit_ids(self, live) -> None:
+        send(address="203.0.113.1")
+        send(address="203.0.113.2", reasons=(quick.CLOSED,), step=3, from_ride=True)
+        send(address="203.0.113.3", way=OTHER_ROAD, step=3, reasons=("fast_traffic",))
+        ids = sorted(
+            AuditLogEntry.objects.filter(action="stress_suggest_signed_out").values_list(
+                "pk", flat=True
+            )
+        )
+        assert ids[1] == ids[0] + 1 and ids[2] >= quick.RANDOM_ID_FLOOR

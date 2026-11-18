@@ -137,3 +137,24 @@ def test_the_steep_choice_takes_the_dearer_route_round_a_steep_drop():
 
 def test_only_mass_ride_and_novice():
     assert steep_grades.RIDE_TYPES == {"mass-ride", "novice"}
+
+
+# v0.28.0 (backlog 2026-11-12, accessibility item 12): Cargo, Tandem and E-bike are marked, not
+# priced; E-bike downhill only. Our defaults.
+def test_cargo_tandem_and_ebike_are_warned_but_not_priced():
+    both = {steep_grades.UP, steep_grades.DOWN}
+    assert steep_grades.warned_directions("mass-ride") == both
+    assert steep_grades.warned_directions("novice") == both
+    assert steep_grades.warned_directions("cargo") == both
+    assert steep_grades.warned_directions("tandem") == both
+    assert steep_grades.warned_directions("ebike") == {steep_grades.DOWN}
+    assert steep_grades.warned_directions("default") == frozenset()
+    assert not set(steep_grades.WARN_ONLY) & steep_grades.RIDE_TYPES
+
+
+def test_an_ebike_is_shown_the_descent_and_not_the_climb():
+    hill = _profile(FLAT + [0.07] * 10 + FLAT + [-0.07] * 10 + FLAT)
+    ebike = steep_grades.stretches(hill, steep_grades.warned_directions("ebike"))
+    assert [s.direction for s in ebike] == [steep_grades.DOWN]
+    cargo = steep_grades.stretches(hill, steep_grades.warned_directions("cargo"))
+    assert [s.direction for s in cargo] == [steep_grades.UP, steep_grades.DOWN]
