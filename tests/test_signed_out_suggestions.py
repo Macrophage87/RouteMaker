@@ -334,3 +334,25 @@ class TestFromRide:
             **headers,
         )
         assert bad.status_code in (400, 422)
+
+    def test_a_ride_sends_rows_keep_no_order_of_sending(self, live) -> None:
+        # Its suggestion and count row take random ids, not the next in line: their ids say
+        # nothing of when they were sent, nor which count row went with which suggestion.
+        first = send(address="203.0.113.1")
+        rides = [
+            send(address=f"203.0.113.{n}", reasons=(quick.CLOSED,), step=3, from_ride=True)
+            for n in (2, 3, 4)
+        ]
+        last = send(address="203.0.113.5", way=OTHER_ROAD, step=3, reasons=("fast_traffic",))
+        panel_counts = SignedOutSend.objects.filter(osm_way_id__gt=0).order_by("pk")
+        ride_counts = SignedOutSend.objects.filter(osm_way_id__lt=0)
+        assert len(panel_counts) == 2 and len(ride_counts) == 3
+        for row in rides:
+            assert not first.pk < row.pk < last.pk
+            assert quick.RANDOM_ID_FLOOR <= row.pk < quick.RANDOM_ID_CEILING
+        for row in ride_counts:
+            assert not panel_counts[0].pk < row.pk < panel_counts[1].pk
+            assert quick.RANDOM_ID_FLOOR <= row.pk < quick.RANDOM_ID_CEILING
+        # Still in reach of a browser's numbers, and the road panel's sends as before.
+        assert quick.RANDOM_ID_CEILING <= 2**53
+        assert last.pk == first.pk + 1 and panel_counts[1].pk == panel_counts[0].pk + 1
