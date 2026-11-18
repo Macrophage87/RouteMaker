@@ -2139,7 +2139,7 @@ export function App() {
     if (!now || now === document.body || now === focusAtPress.current || now.classList.contains("access-link")) toolsToggleRef.current?.focus();
   }, []);
 
-  // The points notice ("outside the area", "at most 25 points") is a status in the Points section; while a
+  // The points notice ("outside the area", "at most 200 points") is a status in the Points section; while a
   // bar sheet or the phone's hidden sheet hides the planner it would say nothing, so it is said through
   // the app-level region then, and only then (no second reading while the planner shows it; recheck S1).
   const plannerShownNow = useRef(true);

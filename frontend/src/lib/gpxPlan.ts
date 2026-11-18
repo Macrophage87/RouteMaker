@@ -16,11 +16,16 @@
  * Corners beat points placed mid-block between them, and routing-led rounds
  * beat spending all 25 points on shape at once, most on the long trail rides.
  */
+/**
+ * The points an opened file is planned through, kept at the 25 the fifteen reference routes were measured with,
+ * though a plan may now hold up to MAX_POINTS (geo.ts): the rounds above, not the room, end the fitting.
+ */
+export const IMPORT_MAX_POINTS = 25;
 export const IMPORT_START_POINTS = 15;
 export const REFINE_ROUNDS = 3;
 export const REFINE_ADD = 5;
 export const REFINE_GOAL = 0.97;
-import { COVERAGE_BBOX, MAX_POINTS, haversineM, insideCoverage, type LonLat } from "./geo.ts";
+import { COVERAGE_BBOX, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { PLAN_TYPE_PREFIX, parseDialsComment, type GpxFile, type GpxRoute } from "./gpx.ts";
 import { DEFAULT_PRESET, resolvePreset, type PresetId } from "./presets.ts";
 import { isCarrying, isWhen, offersEasyMtb, type Dials } from "./dials.ts";
@@ -310,7 +315,7 @@ function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<Imported
   return { preset: id, dials };
 }
 
-export function planFromGpx(file: GpxFile, maxPoints: number = MAX_POINTS): ImportedPlan {
+export function planFromGpx(file: GpxFile, maxPoints: number = IMPORT_MAX_POINTS): ImportedPlan {
   const notes: ImportNote[] = [];
   if (file.skipped > 0) notes.push({ kind: "skipped", count: file.skipped });
 
@@ -405,7 +410,7 @@ export function nextRefinement(
   points: readonly LonLat[],
   route: readonly LonLat[],
   roundsDone: number,
-  maxPoints: number = MAX_POINTS,
+  maxPoints: number = IMPORT_MAX_POINTS,
 ): LonLat[] | null {
   if (roundsDone >= REFINE_ROUNDS || points.length >= maxPoints || reference.length < 2 || route.length < 2) return null;
   if (fidelity(reference, route).trackCovered >= REFINE_GOAL) return null;
@@ -547,7 +552,7 @@ export function nextFitStep(
   fit: Fit,
   route: readonly LonLat[],
   legEnds: readonly number[] | undefined,
-  maxPoints: number = MAX_POINTS,
+  maxPoints: number = IMPORT_MAX_POINTS,
 ): Fit | null {
   const score = fitScore(fidelity(reference, route));
   const again = fit.best !== null && samePoints(fit.points, fit.best.points);

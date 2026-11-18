@@ -79,6 +79,8 @@ export interface CourseTrim {
   toleranceM: number;
   /** The written file's size in bytes. */
   bytes: number;
+  /** A part of a course cut to fit (`courseParts`): which, of how many. */
+  part?: { index: number; of: number };
 }
 
 export interface Course {
@@ -466,7 +468,7 @@ export function courseLine(course: Pick<Course, "format" | "trim">): string {
   const { profile, cuesBefore, cuesKept, protectedCues, protectedOver, pointsBefore, pointsKept, toleranceM } = course.trim;
   const head = `${course.format.toUpperCase()} course for ${profile.label}`;
   if (protectedOver) {
-    return `${head}: ${count(protectedCues)} of its cues must be kept, more than the ${count(profile.maxCues)} the device shows; split the route in two.`;
+    return `${head}: ${count(protectedCues)} of its cues must be kept, more than the ${count(profile.maxCues)} the device shows; download the course instead, which comes in parts.`;
   }
   const parts: string[] = [];
   if (cuesKept < cuesBefore) parts.push(`kept ${count(cuesKept)} of ${count(cuesBefore)} cues, least important left out`);
@@ -482,7 +484,100 @@ export function courseLine(course: Pick<Course, "format" | "trim">): string {
   return `${head}: ${parts.join("; ")}.`;
 }
 
+/**
+ * A course whose cues it must keep are more than the device shows (`trim.protectedOver`), cut into parts that each
+ * fit: the backlog's "Split here", only where it is needed (Stephen, 2026-11-18: "Only do this if it's actually
+ * required"). Any other course is one part, itself. Each part is a course of its own: its own start, its own finish,
+ * distances and times from its own start, and its own climb; it is cut at a stop where one falls in its share of the
+ * cues, else half way between two cues. Nothing is dropped, so every cue the whole course has is in one part.
+ */
+export function courseParts(course: Course): Course[] {
+  const { profile } = course.trim;
+  if (!course.trim.protectedOver || course.records.length < 2) return [course];
+  const last = course.records.length - 1;
+  const middle = course.cues.filter((c) => c.type !== "start" && c.type !== "finish");
+  const room = Math.max(1, profile.maxCues - 2);
+  const spans: { from: number; to: number; cues: CourseCue[]; stop?: CourseCue }[] = [];
+  let from = 0;
+  let rest = middle;
+  while (rest.length > room) {
+    const share = rest.slice(0, room);
+    const stopAt = share.map((c) => c.type).lastIndexOf("stop");
+    let to: number;
+    let taken: number;
+    let stop: CourseCue | undefined;
+    if (stopAt >= 0 && share[stopAt].vertex > from) {
+      // The stop is the part's finish, and the next part's start.
+      to = share[stopAt].vertex;
+      taken = stopAt + 1;
+      stop = share[stopAt];
+    } else {
+      to = Math.floor((share[room - 1].vertex + rest[room].vertex) / 2);
+      taken = room;
+      // Cues on one record cannot be parted: the cut goes after them.
+      if (to <= from) to = Math.min(last, Math.max(from + 1, share[room - 1].vertex));
+    }
+    const cues = rest.slice(0, taken).filter((c) => c.vertex <= to);
+    spans.push({ from, to, cues: stop ? cues.filter((c) => c !== stop) : cues, stop });
+    rest = rest.slice(cues.length);
+    from = to;
+    if (from >= last) break;
+  }
+  spans.push({ from, to: last, cues: rest });
+  const nameChars = Array.from(course.name).length;
+  return spans.map((span, i) => {
+    const suffix = ` ${i + 1}/${spans.length}`;
+    const records = course.records.slice(span.from, span.to + 1).map((r) => ({
+      ...r,
+      distM: r.distM - course.records[span.from].distM,
+      timeS: r.timeS - course.records[span.from].timeS,
+    }));
+    const end = records[records.length - 1];
+    const cues: CourseCue[] = [
+      { type: "start", vertex: 0, name: i === 0 ? "Start" : `Part ${i + 1}`, text: i === 0 ? "Start." : `Part ${i + 1} of ${spans.length}.` },
+      ...span.cues.map((c) => ({ ...c, vertex: c.vertex - span.from })),
+      span.stop
+        ? { ...span.stop, type: "finish", vertex: records.length - 1 }
+        : { type: "finish", vertex: records.length - 1, name: i === spans.length - 1 ? "Finish" : `End ${i + 1}`, text: i === spans.length - 1 ? "Finish." : `End of part ${i + 1}; part ${i + 2} starts here.` },
+    ];
+    const [climbM, descentM] = climbAndDescent(records);
+    const part: Course = {
+      ...course,
+      name: Array.from(course.name).slice(0, Math.max(0, nameChars - suffix.length)).join("").trimEnd() + suffix,
+      records,
+      cues,
+      totalM: end.distM,
+      totalS: end.timeS,
+      climbM,
+      descentM,
+      trim: { ...course.trim, cuesBefore: cues.length, cuesKept: cues.length, protectedOver: false, pointsBefore: records.length, pointsKept: records.length, part: { index: i + 1, of: spans.length } },
+    };
+    part.trim.bytes = course.format === "fit" ? writeFit(part).length : UTF8.encode(writeTcx(part)).length;
+    return part;
+  });
+}
+
+/** Climb and descent along a part's records, counted past a 3 m hysteresis so the profile's noise does not add up. */
+function climbAndDescent(records: readonly CourseRecord[]): [number, number] {
+  let climb = 0;
+  let descent = 0;
+  let base: number | null = null;
+  for (const { ele } of records) {
+    if (ele == null) continue;
+    if (base == null) base = ele;
+    else if (ele - base >= 3) { climb += ele - base; base = ele; }
+    else if (base - ele >= 3) { descent += base - ele; base = ele; }
+  }
+  return [Math.round(climb), Math.round(descent)];
+}
+
+/** What a course that came in parts says: why, and how many files. */
+export function partsLine(parts: readonly Pick<Course, "format" | "trim">[]): string {
+  const { profile, protectedCues } = parts[0].trim;
+  return `${parts[0].format.toUpperCase()} course for ${profile.label}: ${count(protectedCues)} of its cues must be kept, more than the ${count(profile.maxCues)} the device shows, so it comes in ${parts.length} parts, a file each.`;
+}
+
 /** The file's name: the GPX export's (gpxText.ts exportFileName), with the format's extension. */
-export function courseFileName(route: Pick<RouteResponse, "preset" | "distance_m">, format: CourseFormat): string {
-  return exportFileName(route).replace(/\.gpx$/, `.${format}`);
+export function courseFileName(route: Pick<RouteResponse, "preset" | "distance_m">, format: CourseFormat, part?: number): string {
+  return exportFileName(route).replace(/\.gpx$/, part ? `-part-${part}.${format}` : `.${format}`);
 }
