@@ -582,7 +582,9 @@ def _said_turns(atoms: list[Atom], crossings: Collection[float] = ()) -> list[At
 def _jogs_along(atoms: list[Atom]) -> list[Atom]:
     """`atoms` with a sideways step along one path said as its two turns (`Atom.fork`), each
     at its corner's sharpest vertex: a corner past BEAR_MAX_DEG to one side, then within
-    JOG_MIN_M to JOG_ALONG_MAX_M one past it back to the other, read from the line itself
+    JOG_MIN_M to JOG_ALONG_MAX_M one past it back to the other, with a straight step between
+    and the way on beside the way before (JOG_STRAIGHT_M, JOG_PARALLEL_DEG: a tight S-bend
+    is two curves meeting and is not said), read from the line itself
     (`Atom.bearing`), so a jog drawn in the middle of one way, with no node or other way at
     either corner, is said too. A single bend with nothing to choose is still no question
     (`_said_turns`), but after a jog the way runs on beside the line it left, a few metres
@@ -609,7 +611,7 @@ def _jogs_along(atoms: list[Atom]) -> list[Atom]:
         last = atom.bearing
     # Corners: the bends within JOG_CORNER_M of the first, added up, either side, so a
     # kink drawn out and back in a metre adds up to nothing rather than two corners.
-    corners: list[tuple[int, int, float]] = []  # (first, sharpest, total)
+    corners: list[tuple[int, int, int, float]] = []  # (first, sharpest, last, total)
     k = 0
     while k < len(bends):
         first = bends[k][0]
@@ -619,16 +621,20 @@ def _jogs_along(atoms: list[Atom]) -> list[Atom]:
             members.append(bends[k])
             k += 1
         sharpest = max(members, key=lambda b: abs(b[1]))[0]
-        corners.append((first, sharpest, sum(b[1] for b in members)))
+        corners.append((first, sharpest, members[-1][0], sum(b[1] for b in members)))
     out = list(atoms)
     c = 0
     while c + 1 < len(corners):
-        (first, a, one), (_, b, two) = corners[c], corners[c + 1]
+        (first, a, end, one), (second, b, _, two) = corners[c], corners[c + 1]
         if not (
             BEAR_MAX_DEG < abs(one) < HAIRPIN_DEG
             and BEAR_MAX_DEG < abs(two) < HAIRPIN_DEG
             and (one > 0) != (two > 0)
             and JOG_MIN_M <= at[b] - at[a] <= JOG_ALONG_MAX_M
+            # A step aside, not an S-bend: a straight piece between the corners, and the
+            # way on runs beside the line it left.
+            and at[second] - at[end] >= JOG_STRAIGHT_M
+            and abs(one + two) <= JOG_PARALLEL_DEG
             and first > 0
             and atoms[first - 1].use in PATH_USES
             and all(
@@ -654,6 +660,12 @@ THROUGH_NODE_DEG = 5.0
 # bench's own reach for a bend left unsaid (frontend/src/lib/cueBench.ts BEND_CUE_M).
 JOG_ALONG_MAX_M = 40.0
 JOG_CORNER_M = 15.0
+# A jog, not a tight S-bend (two curves meeting, with nothing to ride past): the step aside
+# runs straight at least JOG_STRAIGHT_M between the corners, and the way on is within
+# JOG_PARALLEL_DEG of the way before. Our defaults, unmeasured; the Blair Road jog has a
+# 23.5 m step and comes back within 3 degrees.
+JOG_STRAIGHT_M = 10.0
+JOG_PARALLEL_DEG = 30.0
 
 
 def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Atom]:

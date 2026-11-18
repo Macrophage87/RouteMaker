@@ -45,6 +45,10 @@ class Stretch:
     name: str | None = None
     surface: str = ""
     busy: bool = False
+    # Minutes to ride it at the build's pace (the file's `t`; pipeline.interval_layer).
+    minutes: float = 0.0
+    # Bollards or blocks it passes, ridden through (the file's `k`).
+    bollards: int = 0
 
 
 _cache: dict[str, tuple[tuple[int, int], tuple[Stretch, ...] | None]] = {}
@@ -72,6 +76,8 @@ def parse(doc: object) -> tuple[Stretch, ...] | None:
                 name=row.get("n") or None,
                 surface=str(row.get("s") or ""),
                 busy=bool(row.get("b")),
+                minutes=float(row.get("t") or 0.0),
+                bollards=int(row.get("k") or 0),
             )
         except (KeyError, TypeError, ValueError):
             continue
@@ -140,10 +146,11 @@ def near(
     paved_only: bool = False,
     quiet_only: bool = False,
     longest: bool = False,
+    no_bollards: bool = False,
 ) -> list[dict]:
     """The stretches within `miles` (at most MAX_RADIUS_MI) of the point, at least `min_miles`
-    long, paved only or off busy roads only where asked; nearest first, or longest first.
-    Raises Unavailable without the file."""
+    long, paved only, off busy roads only or without bollards only where asked; nearest first,
+    or longest first. Raises Unavailable without the file."""
     stretches = load()
     if stretches is None:
         raise Unavailable("there is no intervals file")
@@ -157,6 +164,8 @@ def near(
         if paved_only and s.surface == "g":
             continue
         if quiet_only and s.busy:
+            continue
+        if no_bollards and s.bollards:
             continue
         if not any(abs(a - lon) <= dlon and abs(b - lat) <= dlat for a, b in s.line):
             continue
@@ -177,6 +186,7 @@ def near(
             "through": _through(s.line),
             "surface": surface(s),
             "busy": s.busy,
+            "bollards": s.bollards,
             "away_mi": round(away / METRES_PER_MILE, 1),
         }
         for away, s in found[:MAX_STRETCHES]

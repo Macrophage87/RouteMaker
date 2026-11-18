@@ -95,8 +95,8 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, plansFromStart, reversedPoints, withLoop } from "./lib/loop.ts";
-import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
+import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, loopWay, loopWays, withLoopWay, planStartDials, plansFromStart, reversedPoints, withLoop } from "./lib/loop.ts";
+import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, bestOrderOffered, requestStopOrder } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
   drawnLegs,
@@ -125,7 +125,8 @@ import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type EndedRiding, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RIDE_NEEDS_SIGNAL, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type EndedRiding, type RideView } from "./rideStart.ts";
+import { rideCodeWaiter } from "./lib/rideCodeWait.ts";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import type { RebalanceDocked } from "./lib/rebalanceDock.ts";
@@ -259,7 +260,7 @@ import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { IntervalsOverlay, useIntervals } from "./app/IntervalsOverlay.tsx";
-import { intervalsStatusText, readIntervalsLayer, saveIntervalsLayer } from "./lib/intervals.ts";
+import { intervalsAtLeast, intervalsStatusText, readIntervalsLayer, readIntervalsMinutes, saveIntervalsLayer, saveIntervalsMinutes, type IntervalsMinutes } from "./lib/intervals.ts";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
   findingSaid,
@@ -289,6 +290,8 @@ import { leaveNowArriveMs } from "./lib/arrival.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { fitStart, offersStartTime, startMs } from "./lib/startTime.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
+import { PlanKeysDialog } from "./PlanKeysDialog.tsx";
+import { characterKey, keyFreeAt, planKeyFor, planKeySaid, pointRowAt, readPlanKeys, stepPoint, writePlanKeys, type PlanKey } from "./lib/planKeys.ts";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
 import { EditRouteSheet, FoodChips, FoodSheet, GpxSheet, RoutesSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
@@ -297,12 +300,16 @@ import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
-import { BACK_LABEL, POPUP_VIEWS, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
+import { BACK_LABEL, POPUP_VIEWS, ROUTE_FOLD_GROUP, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+// Ride mode, its graphs and its detours: loaded on first use, and once the page is idle. What App needs at Start (the
+// voice's unlock inside the press, the start and end sentences) is in rideStart.ts. A Start or Resume before the code
+// is in waits for it (beginRide, resumeLeft), so a ride never shows without its screen.
+const RideMode = later(() => import("./RideMode.tsx").then((m) => m.RideMode));
 const ReviewMode = later(() => import("./ReviewMode.tsx").then((m) => m.ReviewMode));
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
@@ -352,6 +359,8 @@ import type { ShareCardSource } from "./ShareCardDialog.tsx";
 const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => m.ShareCardDialog));
 // Check a route (Plan, an opened file only): loaded on first use, its module with it.
 const CheckRoute = later(() => import("./CheckRoute.tsx").then((m) => m.CheckRoute));
+// The stretch picked on Plan's chart (ChartStretch.tsx, Plan experience item 5): loaded on first use too.
+const ChartStretch = later(() => import("./ChartStretch.tsx").then((m) => m.ChartStretch));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { BARRIER_PRESETS, NO_BARRIERS, barrierAvoidFor, barrierAvoidPoints, barrierAvoidSaid, toggleBarrierAvoid, type BarrierAvoid } from "./lib/barriers.ts";
@@ -555,8 +564,6 @@ export function App() {
   const [reviewList, setReviewList] = useState<ListKey | undefined>(undefined);
   // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
   const [goSheet, setGoSheet] = useState<"peek" | "half" | "full">("half");
-  // Go's stress bar tapped: a new number opens Layers' Traffic stress section, its colour key (the owner's P1).
-  const [stressKeyAsk, setStressKeyAsk] = useState(0);
   // The rider and bike weight (OWNER-DECISIONS 313-318): kept apart from `dials`, which
   // the link carries, and added only to the request (planDials).
   const weightStore = useRef<WeightStore | null>(null);
@@ -924,6 +931,12 @@ export function App() {
     setIntervalsOnState(on);
     saveIntervalsLayer(on);
   };
+  // Its "At least" minutes (the owner, 2026-11-17: "a 3', 5', 8', etc interval stretch"), kept on this device.
+  const [intervalsMinutes, setIntervalsMinutesState] = useState<IntervalsMinutes>(() => readIntervalsMinutes());
+  const changeIntervalsMinutes = (minutes: IntervalsMinutes) => {
+    setIntervalsMinutesState(minutes);
+    saveIntervalsMinutes(minutes);
+  };
   useEffect(() => {
     if (placesOn || scenicOn) ensurePlaces();
   }, [placesOn, scenicOn, ensurePlaces]);
@@ -976,6 +989,7 @@ export function App() {
   // The Intervals layer draws in Plan only, off the Mass Ride map, as Scenic.
   const intervalsShown = scenicShown(intervalsOn, mode, massMap);
   const intervals = useIntervals(intervalsShown);
+  const intervalsDrawn = useMemo(() => (intervals.data ? intervalsAtLeast(intervals.data, intervalsMinutes) : null), [intervals.data, intervalsMinutes]);
   // The approved rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3; lib/massHazards.ts): asked for when
   // the Mass Ride map shows, and again after an admin approves one; never shown on another ride type (325).
   const [hazards, setHazards] = useState<HazardCollection | null>(null);
@@ -1249,8 +1263,9 @@ export function App() {
   // See everyone is on (below): the map frames the riders by choice, so a screen left alone keeps that view.
   const seeAllNow = useRef(false);
   const [followReset, setFollowReset] = useState(0);
-  // The ride's bottom panel's height (RideMode onSheetHeight), for the follow camera (MapView ridePanelH).
-  const [ridePanelH, setRidePanelH] = useState(0);
+  // The ride's bottom panel's height (RideMode onSheetHeight), for the follow camera (MapView ridePanelH): in its own
+  // store, read by the map alone (app/LiveMap.tsx), so a note coming or going in the panel does not draw App again.
+  const [ridePanel] = useState(() => liveValue(0));
   // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
   // option, kept on this device. Turning the map never moves the keyboard focus.
   const [headingUp, setHeadingUpState] = useState(() => readHeadingUp());
@@ -2132,7 +2147,7 @@ export function App() {
     if (!now || now === document.body || now === focusAtPress.current || now.classList.contains("access-link")) toolsToggleRef.current?.focus();
   }, []);
 
-  // The points notice ("outside the area", "at most 25 points") is a status in the Points section; while a
+  // The points notice ("outside the area", "at most 200 points") is a status in the Points section; while a
   // bar sheet or the phone's hidden sheet hides the planner it would say nothing, so it is said through
   // the app-level region then, and only then (no second reading while the planner shows it; recheck S1).
   const plannerShownNow = useRef(true);
@@ -3414,7 +3429,8 @@ export function App() {
   // short ride's tools (More tips says when it appears).
   // Never on a Mass Ride (OWNER-DECISIONS 449), whose field rides the stops in the order set.
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
-  const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
+  const orderStops = stopsOnly(points, VIA_MARKS.isVia, loopVias).points;
+  const orderShown = bestOrderOffered(orderStops, loopVias, isMassRide(preset));
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
   // chip's place a stop; never during a ride. A two-point ride type takes stops only where each stop starts a new trip
   // (stopsAsTrips: Walk, the transit types, and Bikeshare since v0.22.0; Rebalance Ride has no destination).
@@ -3455,7 +3471,7 @@ export function App() {
     const ride = rideRef.current;
     const loop = loopStops(ride.preset, ride.dials.loop);
     const stops = stopsOnly(current, VIA_MARKS.isVia, loop);
-    if (isMassRide(ride.preset) || stopsThatMove(stops.points, loop) < 2) return;
+    if (!bestOrderOffered(stops.points, loop, isMassRide(ride.preset))) return;
     orderingRef.current = true;
     setOrdering(true);
     announce(FINDING_ORDER_SAID);
@@ -4092,6 +4108,13 @@ export function App() {
     const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
     return checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
   };
+  // A Start or Resume pressed before Ride mode's code is in (src/app/later.tsx): one wait at a time, a second press
+  // ignored; once in, the press carries on through this render's own function (the plan or question as they are now,
+  // so a question since dropped stays dropped); where the code cannot come, the rider stays and is told. While it
+  // waits, the pressed Start or Resume shows busy and "Opening Ride…" is said (lib/rideCodeWait.ts).
+  const [rideOpening, setRideOpening] = useState<"start" | "resume" | null>(null);
+  const rideLatest = useRef<{ begin: typeof beginRide; resume: typeof resumeLeft } | null>(null);
+  const afterRideCode = useMemo(() => rideCodeWaiter<"start" | "resume">(() => RideMode.load(), { waiting: setRideOpening, announce, failed: RIDE_NEEDS_SIGNAL }), [announce]);
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const asked = rest?.route ?? shown;
     if (!asked) return;
@@ -4103,6 +4126,14 @@ export function App() {
     else if (!rest || rest.roam) tripStopsLeft.current = null;
     const route = left ? firstTripOf(asked) : asked;
     const ridePoints = left ? askedPoints.slice(0, 2) : askedPoints;
+    // Ride mode's code not in yet (a Start soon after the first open): the press unlocks the voice silently, as before
+    // the closure check, and carries on once the code is in, "Ride started." said then; where it cannot come, the rider
+    // stays in Plan and is told.
+    if (!RideMode.loaded()) {
+      if (!unlocked) primeRideVoice(prefs);
+      afterRideCode("start", () => rideLatest.current?.begin(prefs, unlocked, rest));
+      return;
+    }
     if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
     // Anonymous daily totals (lib/usage.ts): a new ride counts once; Ride the rest is the same ride.
     if (!rest) countUse(window.location.origin, route.preset === "run" ? "run" : walksLine(route) ? "walk" : "ride");
@@ -4437,6 +4468,36 @@ export function App() {
     // The button goes with the list while the route is planned again: the focus waits on the Route heading.
     routeHeadingRef.current?.focus();
   };
+  // The chart's picked stretch taken round (ChartStretch.tsx): on a file the plan follows, as Use this way above; on
+  // any other plan, via points on the way round in place of the points inside it (lib/chartStretch.ts viasAround).
+  const avoidStretch = async (stretch: WorstStretch, way: LonLat[]) => {
+    if (rideRef.current.imported?.verbatim && shown?.follows_file) return takeCalmerWay(stretch, way);
+    const route = shown;
+    const routed = routedPoints;
+    if (!route) return;
+    const { STRETCH_REPLAN, STRETCH_STOP, takenSaid, viasAround } = await import("./lib/chartStretch.ts");
+    if (stale || !dropStillValid(routed, pointsRef.current)) {
+      announce(STRETCH_REPLAN);
+      setNotice(STRETCH_REPLAN);
+      return;
+    }
+    const next = viasAround(routed, route, stretch, way, loopVias, (p) => VIA_MARKS.via(p), (p) => VIA_MARKS.isVia(p));
+    if (next === null || next === "stop") {
+      const said = next === "stop" ? STRETCH_STOP : t("A route can have at most {count} points.", { count: MAX_POINTS });
+      announce(said);
+      setNotice(said);
+      return;
+    }
+    setNotice(null);
+    commit(next);
+    // Planned at once, as Check a route's Use this way is: one press, no Update route after it.
+    setRouteAsk((n) => n + 1);
+    announce(takenSaid(stretch.street));
+    routeHeadingRef.current?.focus();
+  };
+  // A click on Plan's chart (Enter from the keyboard): the map centred on that spot, clear of the panels and the dock.
+  const centreOn = (point: LonLat) =>
+    mapRef.current?.easeTo({ center: point, padding: framePadding(), duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400 });
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
   const downloadRoute = (said?: (line: string) => void) => {
@@ -5115,11 +5176,18 @@ export function App() {
   // Not over a ride link opened to follow (Stephen 2026-10-30: "when a ride was in progress, it discarded the ride share
   // and asked to restart the ride"): the link is what the rider tapped, so it joins that ride; Resume would drop it.
   const [leftAsk, setLeftAsk] = useState(() => (SHARED_RIDE && SHARED_LEAD ? null : leftRide(VIA_MARKS, Date.now())));
-  const resumeLeft = () => {
+  const resumeLeft = (_?: unknown, unlocked = false) => {
     const left = leftAsk;
-    setLeftAsk(null);
     if (!left) return;
-    startRideGesture(ridePrefs);
+    // As beginRide: Resume waits for Ride mode's code (the voice unlocked silently meanwhile), its question still open
+    // where the code cannot come.
+    if (!RideMode.loaded()) {
+      if (!unlocked) primeRideVoice(ridePrefs);
+      afterRideCode("resume", () => rideLatest.current?.resume(undefined, unlocked));
+      return;
+    }
+    if (!unlocked) startRideGesture(ridePrefs);
+    setLeftAsk(null);
     endedRide.current = null;
     setRideEnded(null);
     // A trip's riding leg worked out again from the whole trip; past its line, the walk or train followed carries on.
@@ -5165,6 +5233,7 @@ export function App() {
     setRideView(null);
     setRiding(true);
   };
+  rideLatest.current = { begin: beginRide, resume: resumeLeft };
   const dropLeft = () => {
     setLeftAsk(null);
     forgetLeftRide();
@@ -5426,7 +5495,11 @@ export function App() {
     const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
     const card = out && getComputedStyle(out).position === "fixed" ? out.getBoundingClientRect() : null;
     const right = Math.max(card && card.width > 0 ? window.innerWidth - card.left + 40 : 60, spotCard && spotCard.width > 0 ? window.innerWidth - spotCard.left + 40 : 0);
-    return { top: 60, bottom: 60, right, left: (panel?.right ?? 0) + 40 };
+    // Plan's chart docked under the map (ElevationChart.tsx, .pc-dock): clear of it too.
+    const dock = document.querySelector<HTMLElement>(".pc-dock");
+    const docked = dock && getComputedStyle(dock).position === "fixed" ? dock.getBoundingClientRect() : null;
+    const bottom = docked && docked.height > 0 ? window.innerHeight - docked.top + 30 : 60;
+    return { top: 60, bottom, right, left: (panel?.right ?? 0) + 40 };
   }, []);
 
   // On a phone, the map's bottom under the sheet: the map may move far enough for the area's edge to show above it.
@@ -6603,6 +6676,109 @@ export function App() {
     mode === "go" && !riding && (goBig !== null || can.undo || can.redo || points.length > 0)
       ? { onUndo: can.undo ? undo : null, onRedo: can.redo ? redo : null, big: goBig, onClear: points.length > 0 ? clearPlan : null }
       : null;
+  // Plan's keyboard shortcuts (lib/planKeys.ts; the "?" sheet lists them, and turns the character keys off).
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [keysOn, setKeysOn] = useState(readPlanKeys);
+  useEffect(() => setKeysOpen(false), [mode, riding]);
+  const planKeyRef = useRef<(key: PlanKey) => void>(() => {});
+  planKeyRef.current = (key: PlanKey) => {
+    const rows = removeRefs.current.slice(0, points.length);
+    const at = pointRowAt(document.activeElement);
+    switch (key.kind) {
+      case "help":
+        setKeysOpen(true);
+        return;
+      case "search": {
+        const box = pointsSearchRef.current?.querySelector<HTMLInputElement>("input:not([type=hidden])") ?? null;
+        if (box) box.focus();
+        else announce(planKeySaid.noSearch());
+        return;
+      }
+      case "route":
+        if (routingNow) return;
+        if (routeNow.unavailable === null) pressRoute();
+        else announce(routeNow.unavailable);
+        return;
+      case "reverse":
+        if (points.length < 2) announce(planKeySaid.twoPoints());
+        else reverse();
+        return;
+      case "loop": {
+        if (!loop) {
+          announce(planKeySaid.noLoop());
+          return;
+        }
+        const ways = loopWays(preset).filter(({ way }) => !(loop.implied && way === "one-way"));
+        const now = ways.findIndex(({ way }) => way === loopWay(dials, loop.implied));
+        const next = ways[(now + 1) % ways.length];
+        if (!next) return;
+        commitDials(withLoopWay(dials, next.way, loop.implied));
+        announce(next.label);
+        return;
+      }
+      case "save": {
+        const save = document.querySelector<HTMLElement>(".plan-map-bar .save-route-open");
+        if (save) save.click();
+        else announce(shown && !stale ? planKeySaid.chooseFirst() : planKeySaid.routeToSave());
+        return;
+      }
+      case "export":
+        if (shown && !stale) downloadRoute(announce);
+        else announce(planKeySaid.routeToExport());
+        return;
+      case "previous":
+      case "next": {
+        const index = stepPoint(at, points.length, key.kind === "next" ? 1 : -1);
+        if (index === null) {
+          announce(planKeySaid.noPoints());
+          return;
+        }
+        const point = points[index];
+        if (point) mapRef.current?.easeTo({ center: point, duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400 });
+        const row = rows[index];
+        if (row?.offsetParent) row.focus();
+        else announce(namePoints(points, VIA_MARKS.isVia, loopVias)[index]?.name ?? "");
+        return;
+      }
+      case "remove":
+        // keyFreeAt let it through only on a point's row.
+        if (at !== null && at < points.length) removeAt(at);
+        return;
+      case "fold": {
+        const folds = Array.from(document.querySelectorAll<HTMLDetailsElement>(`details[name="${ROUTE_FOLD_GROUP}"]`)).filter((fold) => fold.offsetParent !== null || fold.getClientRects().length > 0);
+        const fold = folds[key.index];
+        if (!fold) {
+          announce(folds.length === 0 ? planKeySaid.noFolds() : planKeySaid.folds(folds.length));
+          return;
+        }
+        fold.open = true;
+        const summary = fold.querySelector<HTMLElement>("summary");
+        summary?.focus();
+        summary?.scrollIntoView?.({ block: "nearest" });
+        return;
+      }
+    }
+  };
+  useEffect(() => {
+    if (mode !== "plan" || riding) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      const key = planKeyFor(event);
+      if (!key || (!keysOn && characterKey(key))) return;
+      // A dialog shown (the sheet's own too) or a card over the plan has its keys to itself; one inside a closed
+      // sheet (Settings' rider weight) does not count.
+      if ([...document.querySelectorAll("dialog[open], [aria-modal='true']")].some((el) => el.getClientRects().length > 0)) return;
+      if (!keyFreeAt(key, event.target as Element | null)) return;
+      event.preventDefault();
+      planKeyRef.current(key);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, riding, keysOn]);
+  const switchKeys = (on: boolean) => {
+    setKeysOn(on);
+    writePlanKeys(on);
+  };
   const planPanel = (
     <PlanPanel
       key="plan"
@@ -6671,6 +6847,7 @@ export function App() {
         federalPlanner,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere: !narrow && !planFirst,
         undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive: mode !== "go", tips, setTips, tipsId,
+        onKeys: mode === "plan" ? () => setKeysOpen(true) : undefined,
       }}
     />
   );
@@ -6811,10 +6988,18 @@ export function App() {
         onBestOrder={() => void bestOrder()}
       />
     ) : null,
-    // A tap on the stress bar (the owner's P1): Layers, its Traffic stress section open on the colour key.
-    onStressKey: (opener: HTMLButtonElement) => {
-      setStressKeyAsk((n) => n + 1);
-      openView("layers", opener);
+    // A tap on the stress bar (the 2026-11-12 backlog, Go item 9): the map flies to the route's worst stretch, framed
+    // clear of the sheet. The colour key is in Layers.
+    // A full sheet covers the map, so it goes to half first and the stretch is framed once it has.
+    onWorst: (line: LonLat[]) => {
+      if (line.length === 0) return;
+      if (goSheet === "full") setGoSheet("half");
+      requestAnimationFrame(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        map.fitBounds(frameAround(line), { padding: framePadding(), maxZoom: 17, duration: still ? 0 : 400 });
+      });
     },
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
@@ -6841,7 +7026,7 @@ export function App() {
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startBusy: rideOpening === "start", broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
         barrierAvoid: planDials.barrierAvoid,
         // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
@@ -6849,6 +7034,21 @@ export function App() {
           mode === "plan" && imported && fileShown()?.follows_file ? (
             <CheckRoute route={shown as RouteResponse} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={imported.verbatim ? (stretch, way) => void takeCalmerWay(stretch, way) : undefined} />
           ) : null,
+        // Plan's chart tools (Plan experience item 5): click to centre the map, pick a stretch, try a way round it.
+        chartTools:
+          mode === "plan" && shown
+            ? {
+                onCentre: centreOn,
+                stretch: (fromM: number, toM: number, clear: () => void) => {
+                  const profile = usableProfile(shown);
+                  // A file the plan follows without its own line has nothing to take a way round into.
+                  const take = !(imported && fileShown()?.follows_file) || imported.verbatim;
+                  return profile ? (
+                    <ChartStretch route={shown} profile={profile} fromM={fromM} toM={toM} onClear={clear} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={take ? (stretch, way) => void avoidStretch(stretch, way) : undefined} />
+                  ) : null;
+                },
+              }
+            : null,
       }}
     />
   );
@@ -7025,7 +7225,7 @@ export function App() {
           everyone.stop();
         }}
         followReset={followReset}
-        ridePanelH={ridePanelH}
+        ridePanelFrom={ridePanel}
         junctionFocus={junctionFocus}
         scrubFrom={scrubPoint}
         lettered={riding ? (rideView?.lettered ?? null) : roaming && roamLettered ? roamLettered.places : lettered}
@@ -7111,7 +7311,7 @@ export function App() {
       {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !onBike} />
       {/* Plan's alone, as Scenic (lib/intervals.ts). */}
-      <IntervalsOverlay getMap={getMap} on={intervalsShown} data={intervals.data} />
+      <IntervalsOverlay getMap={getMap} on={intervalsShown} data={intervalsDrawn} />
       <BikeshareDocksOverlay
         active={docksActive}
         getMap={getMap}
@@ -7171,6 +7371,7 @@ export function App() {
           )}
         </LiveRiderPoint>
       )}
+      <PlanKeysDialog open={keysOpen && mode === "plan" && !riding} on={keysOn} onSwitch={switchKeys} onClose={() => setKeysOpen(false)} />
       <LoadRouteDialog
         open={loadOpen === "plan" ? barLoad : loadOpen === "go" && mode === "go" && !riding}
         onClose={() => setLoadOpen(null)}
@@ -7213,6 +7414,7 @@ export function App() {
         open={leftAsk !== null && !riding && !roaming}
         destination={leftAsk && !leftAsk.loop ? (leftAsk.destination ?? namer.name(leftAsk.points[leftAsk.points.length - 1])?.name ?? null) : null}
         onResume={resumeLeft}
+        busy={rideOpening === "resume"}
         onNotNow={dropLeft}
         onLater={() => setLeftAsk(null)}
       />
@@ -7371,7 +7573,7 @@ export function App() {
           {/* Start ride beside it (the owner, 2026-10-21: "We might also want to allow for a start route too"), on a
               route a browser can ride, as Go's bar. */}
           {barSave && shown && rideableRoute(shown) && (
-            <button type="button" className="secondary plan-bar-route plan-bar-start" onClick={startRideChecked} aria-label={t("Start ride")}>
+            <button type="button" className="secondary plan-bar-route plan-bar-start" onClick={startRideChecked} aria-label={t("Start ride")} aria-busy={rideOpening === "start" || undefined} aria-disabled={rideOpening === "start" || undefined}>
               <Icon name="play" size={20} />
               {firstWordAndRest(t("Start ride"))[0]}
               <span className="plan-bar-wide">{firstWordAndRest(t("Start ride"))[1]}</span>
@@ -7521,7 +7723,7 @@ export function App() {
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
           riderDots={rideDots}
-          onSheetHeight={setRidePanelH}
+          onSheetHeight={ridePanel.set}
         />
       )}
       {roaming && (
@@ -7710,9 +7912,8 @@ export function App() {
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
                 // Not on the Mass Ride map either, where it never draws (scenicShown).
-                intervals: mode === "go" || massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status) },
+                intervals: mode === "go" || massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
-                stressKeyAsk,
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,
@@ -7862,7 +8063,11 @@ export function App() {
                   <button
                     type="button"
                     className="start-button"
+                    aria-busy={rideOpening === "start" || undefined}
+                    aria-disabled={rideOpening === "start" || undefined}
                     onClick={() => {
+                      // A press while Ride's code is still loading is ignored, the sheet left open.
+                      if (rideOpening) return;
                       showPlanner(false);
                       startRideChecked();
                     }}

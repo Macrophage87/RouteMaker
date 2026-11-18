@@ -64,3 +64,21 @@ test("Once renders a part from the first time it is wanted, and keeps it mounted
   await screen.rerender(shown(false));
   assert.equal(screen.text(), "Share card", "closed: still mounted, as the dialog was before it was split out");
 });
+
+test("a press can wait for a part's code: loaded() says whether it is in, load() asks once and can be asked again", async () => {
+  const { Part, asked } = part();
+  assert.equal(Part.loaded(), false);
+  let failed = false;
+  const first = Part.load().catch(() => (failed = true));
+  Part.load().catch(() => undefined);
+  assert.equal(asked.length, 1, "one load for both asks");
+  await asked[0].fail();
+  await first;
+  assert.equal(failed, true, "a load that does not arrive is the press's to answer (App says the ride needs a connection)");
+  assert.equal(Part.loaded(), false);
+  const second = Part.load();
+  assert.equal(asked.length, 2, "asked again after a failure");
+  await asked[1].ok();
+  await second;
+  assert.equal(Part.loaded(), true);
+});
