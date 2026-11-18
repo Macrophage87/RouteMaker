@@ -4133,13 +4133,15 @@ export function App() {
     else if (!rest || rest.roam) tripStopsLeft.current = null;
     const route = left ? firstTripOf(asked) : asked;
     const ridePoints = left ? askedPoints.slice(0, 2) : askedPoints;
-    if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
-    // Ride mode's code not in yet (a Start soon after the first open): the same press carries on once it is, the voice
-    // already unlocked; where it cannot come, the rider stays in Plan and is told.
+    // Ride mode's code not in yet (a Start soon after the first open): the press unlocks the voice silently, as before
+    // the closure check, and carries on once the code is in, "Ride started." said then; where it cannot come, the rider
+    // stays in Plan and is told.
     if (!RideMode.loaded()) {
-      afterRideCode(() => rideLatest.current?.begin(prefs, true, rest));
+      if (!unlocked) primeRideVoice(prefs);
+      afterRideCode(() => rideLatest.current?.begin(prefs, unlocked, rest));
       return;
     }
+    if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
     // Anonymous daily totals (lib/usage.ts): a new ride counts once; Ride the rest is the same ride.
     if (!rest) countUse(window.location.origin, route.preset === "run" ? "run" : walksLine(route) ? "walk" : "ride");
     const leg = rideLegOf(route, ridePoints, rest ? false : routedLoop);
@@ -5154,12 +5156,14 @@ export function App() {
   const resumeLeft = (_?: unknown, unlocked = false) => {
     const left = leftAsk;
     if (!left) return;
-    if (!unlocked) startRideGesture(ridePrefs);
-    // As beginRide: Resume waits for Ride mode's code, its question still open where the code cannot come.
+    // As beginRide: Resume waits for Ride mode's code (the voice unlocked silently meanwhile), its question still open
+    // where the code cannot come.
     if (!RideMode.loaded()) {
-      afterRideCode(() => rideLatest.current?.resume(undefined, true));
+      if (!unlocked) primeRideVoice(ridePrefs);
+      afterRideCode(() => rideLatest.current?.resume(undefined, unlocked));
       return;
     }
+    if (!unlocked) startRideGesture(ridePrefs);
     setLeftAsk(null);
     endedRide.current = null;
     setRideEnded(null);
