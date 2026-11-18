@@ -4103,6 +4103,25 @@ export function App() {
     const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
     return checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
   };
+  // A Start or Resume pressed before Ride mode's code is in (src/app/later.tsx): one wait at a time, a second press
+  // ignored; once in, the press carries on through this render's own function (the plan or question as they are now,
+  // so a question since dropped stays dropped); where the code cannot come, the rider stays and is told.
+  const rideCodeWait = useRef(false);
+  const rideLatest = useRef<{ begin: typeof beginRide; resume: typeof resumeLeft } | null>(null);
+  const afterRideCode = (go: () => void) => {
+    if (rideCodeWait.current) return;
+    rideCodeWait.current = true;
+    RideMode.load().then(
+      () => {
+        rideCodeWait.current = false;
+        go();
+      },
+      () => {
+        rideCodeWait.current = false;
+        announce(RIDE_NEEDS_SIGNAL);
+      },
+    );
+  };
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const asked = rest?.route ?? shown;
     if (!asked) return;
@@ -4118,7 +4137,7 @@ export function App() {
     // Ride mode's code not in yet (a Start soon after the first open): the same press carries on once it is, the voice
     // already unlocked; where it cannot come, the rider stays in Plan and is told.
     if (!RideMode.loaded()) {
-      RideMode.load().then(() => beginRide(prefs, true, rest), () => announce(RIDE_NEEDS_SIGNAL));
+      afterRideCode(() => rideLatest.current?.begin(prefs, true, rest));
       return;
     }
     // Anonymous daily totals (lib/usage.ts): a new ride counts once; Ride the rest is the same ride.
@@ -5138,7 +5157,7 @@ export function App() {
     if (!unlocked) startRideGesture(ridePrefs);
     // As beginRide: Resume waits for Ride mode's code, its question still open where the code cannot come.
     if (!RideMode.loaded()) {
-      RideMode.load().then(() => resumeLeft(undefined, true), () => announce(RIDE_NEEDS_SIGNAL));
+      afterRideCode(() => rideLatest.current?.resume(undefined, true));
       return;
     }
     setLeftAsk(null);
@@ -5187,6 +5206,7 @@ export function App() {
     setRideView(null);
     setRiding(true);
   };
+  rideLatest.current = { begin: beginRide, resume: resumeLeft };
   const dropLeft = () => {
     setLeftAsk(null);
     forgetLeftRide();
