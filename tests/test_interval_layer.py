@@ -223,6 +223,32 @@ class TestBreaks:
         assert flat.windy_limit == il.WINDY_PATH_DEG_PER_KM
         assert climb.windy_limit == pytest.approx(il.WINDY_PATH_DEG_PER_KM * 2.56)
 
+    def test_a_cluster_of_bends_on_an_otherwise_straight_path_is_windy(self):
+        # The owner, 2026-11-18, on the Mount Vernon Trail: "a narrow strip with tight turns. It's
+        # not usable as an interval". Straight 2 km but for five 45 degree bends in 150 m.
+        line = [east(x, 0) for x in range(0, 901, 100)]
+        line += [east(900 + k * 30, (k % 2) * 25) for k in range(1, 6)]
+        line += [east(1050 + x, 25) for x in range(100, 1001, 100)]
+        assert il.tight_turning_per_km(line, 2100) < il.WINDY_PATH_DEG_PER_KM
+        assert il.tight_cluster_deg(line) > il.WINDY_CLUSTER_DEG
+        path = il.Stretch(line=line, length_m=2100, rise_m=0, both=False, surface=il.PATH)
+        assert path.windy_path
+
+    def test_a_stretch_along_a_longer_one_the_same_way_is_left_out(self):
+        # Hains Point (the owner, 2026-11-18: "Some intervals overlap each other"): the loop road
+        # and its sidepath 10 m off; a road the other way, one way each, keeps both.
+        def entry(id_, y, length, w=None, back=False):
+            xs = list(range(0, length + 1, 100))
+            line = [list(east(x, y)) for x in (reversed(xs) if back else xs)]
+            return {"id": id_, "l": length, "line": line, **({"w": 1} if w else {})}
+
+        road = entry("road", 0, 3000)
+        side = entry("side", 10, 1600, w=True)
+        back = entry("back", 0, 2000, back=True)
+        away = entry("away", 200, 2000)
+        kept = [e["id"] for e in il.without_overlaps([side, road, back, away])]
+        assert kept == ["road", "back", "away"]
+
     def test_a_long_gentle_curve_is_not_windy(self):
         # "a gentle turn isn't an issue, its a cluster of short sharp ones": a quarter circle of
         # 600 m radius turns 90 degrees in 940 m, never 30 degrees in 30 m.
