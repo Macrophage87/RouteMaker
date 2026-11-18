@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { useState } from "react";
 import { click, render } from "./testSupport/render.ts";
 import { PlanKeysDialog } from "./PlanKeysDialog.tsx";
-import { characterKey, keyFreeAt, planKeyFor, readPlanKeys, stepPoint, writePlanKeys } from "./lib/planKeys.ts";
+import { characterKey, keyFreeAt, planKeyFor, pointRowAt, readPlanKeys, stepPoint, writePlanKeys } from "./lib/planKeys.ts";
 
 const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) =>
   planKeyFor({ key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
@@ -28,6 +28,11 @@ test("each key of the spec asks for its action, and a key with Ctrl, Cmd or Alt 
   assert.equal(key("Enter", { ctrlKey: true }), null, "Ctrl+Enter is the plan panel's");
   assert.equal(key("r", { altKey: true }), null);
   assert.equal(key("i"), null, "I is the map's road info");
+  assert.equal(key("Backspace"), null, "Backspace is not a shortcut");
+  assert.equal(key("R", { shiftKey: true }), null);
+  assert.deepEqual(key("/", { shiftKey: true }), { kind: "search" }, "Shift+7 types / on a German keyboard");
+  assert.deepEqual(key("[", { ctrlKey: true, altKey: true }), { kind: "previous" }, "AltGr+8 types [ there");
+  assert.equal(key("[", { ctrlKey: true }), null);
 });
 
 test("the off switch covers the character keys only; Enter and Delete stay (WCAG 2.1.4)", () => {
@@ -38,30 +43,47 @@ test("the off switch covers the character keys only; Enter and Delete stay (WCAG
   assert.equal(characterKey({ kind: "remove" }), false);
 });
 
-test("no shortcut acts in a text box, and Enter leaves a button its own press", async () => {
+test("no shortcut acts in a text box or a map card, Enter leaves a button its own press, and Delete only a point's row", async () => {
   const screen = await render(
     <div>
       <input aria-label="From" />
       <button type="button">Swap</button>
-      <ul className="points">
+      <ol className="points">
         <li>
           <button type="button">Remove start</button>
         </li>
-      </ul>
+        <li>
+          <span className="point-steps">
+            <button type="button">Up</button>
+          </span>
+        </li>
+        <li>
+          <button type="button">Remove end</button>
+        </li>
+      </ol>
+      <div className="maplibregl-popup">
+        <button type="button">Go around it</button>
+      </div>
       <p>Plain text</p>
     </div>,
   );
   const box = screen.container.querySelector("input");
   const swap = screen.button("Swap");
-  const remove = screen.button("Remove start");
   const plain = screen.container.querySelector("p");
   assert.equal(keyFreeAt({ kind: "reverse" }, box), false);
   assert.equal(keyFreeAt({ kind: "search" }, box), false);
   assert.equal(keyFreeAt({ kind: "route" }, swap), false);
   assert.equal(keyFreeAt({ kind: "reverse" }, swap), true);
   assert.equal(keyFreeAt({ kind: "route" }, plain), true);
-  assert.equal(keyFreeAt({ kind: "remove" }, remove), true, "Delete on a point's row removes that point");
-  assert.equal(keyFreeAt({ kind: "remove" }, swap), false);
+  assert.equal(keyFreeAt({ kind: "export" }, screen.button("Go around it")), false, "a closure card's button");
+  assert.equal(keyFreeAt({ kind: "remove" }, screen.button("Remove end")), true);
+  assert.equal(pointRowAt(screen.button("Remove start")), 0);
+  assert.equal(pointRowAt(screen.button("Remove end")), 2, "the row's place in the list is the point's");
+  assert.equal(pointRowAt(screen.button("Up")), null, "a stop being moved is not removed");
+  assert.equal(keyFreeAt({ kind: "remove" }, screen.button("Up")), false);
+  assert.equal(keyFreeAt({ kind: "remove" }, swap), false, "Delete away from the list removes nothing");
+  assert.equal(keyFreeAt({ kind: "remove" }, plain), false);
+  assert.equal(keyFreeAt({ kind: "remove" }, document.body), false);
 });
 
 test("[ and ] step through the points, from either end when none is picked yet", () => {

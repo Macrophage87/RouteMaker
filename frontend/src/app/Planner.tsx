@@ -213,7 +213,7 @@ export function PointsSection(props: PointsSectionProps) {
         </button>
         {/* Plan's keys (lib/planKeys.ts), on a computer: "?" opens the same sheet. */}
         {onKeys && !touch && (
-          <button type="button" className="link plan-keys-open" aria-haspopup="dialog" aria-keyshortcuts="?" onClick={onKeys}>
+          <button type="button" className="link plan-keys-open" aria-haspopup="dialog" onClick={onKeys}>
             {t("Keyboard shortcuts")}
           </button>
         )}

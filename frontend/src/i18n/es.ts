@@ -2876,7 +2876,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Reverse the points": "Invertir los puntos",
   "Next way to end: one way, loop, out and back": "Siguiente forma de terminar: solo ida, circuito, ida y vuelta",
   "Previous or next point": "Punto anterior o siguiente",
-  "Remove the selected point": "Quitar el punto seleccionado",
+  "Remove the point in focus": "Quitar el punto que tiene el foco",
   "Save the route": "Guardar la ruta",
   "Download the route as GPX": "Descargar la ruta como GPX",
   "Open a fold of the route summary": "Abrir una sección del resumen de la ruta",
@@ -2890,7 +2890,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Route first, then save.": "Primero traza la ruta y luego guárdala.",
   "Route first, then download it.": "Primero traza la ruta y luego descárgala.",
   "No points yet.": "Todavía no hay puntos.",
-  "Pick a point first with [ or ].": "Primero elige un punto con [ o ].",
   "Route first: the folds are in the route summary.": "Primero traza la ruta: las secciones están en su resumen.",
   "The route summary has {count} folds.": "El resumen de la ruta tiene {count} secciones.",
 };

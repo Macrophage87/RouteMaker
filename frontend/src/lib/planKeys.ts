@@ -22,7 +22,7 @@ export const PLAN_KEY_ROWS: ReadonlyArray<{ keys: readonly string[]; what: strin
   { keys: ["R"], what: t("Reverse the points") },
   { keys: ["L"], what: t("Next way to end: one way, loop, out and back") },
   { keys: ["[", "]"], what: t("Previous or next point") },
-  { keys: ["Delete"], what: t("Remove the selected point") },
+  { keys: ["Delete"], what: t("Remove the point in focus") },
   { keys: ["S"], what: t("Save the route") },
   { keys: ["E"], what: t("Download the route as GPX") },
   { keys: ["1", "–", "5"], what: t("Open a fold of the route summary") },
@@ -42,7 +42,6 @@ export const planKeySaid = {
   routeToSave: () => t("Route first, then save."),
   routeToExport: () => t("Route first, then download it."),
   noPoints: () => t("No points yet."),
-  pickPoint: () => t("Pick a point first with [ or ]."),
   noFolds: () => t("Route first: the folds are in the route summary."),
   folds: (count: number) => t("The route summary has {count} folds.", { count }),
 };
@@ -79,25 +78,23 @@ export function characterKey(key: PlanKey): boolean {
   return key.kind !== "route" && key.kind !== "remove";
 }
 
+/** Keys typed with Shift or AltGr on some layouts ("/" is Shift+7 on a German keyboard, "[" AltGr+8). */
+const SYMBOLS: Record<string, PlanKey> = {
+  "/": { kind: "search" },
+  "[": { kind: "previous" },
+  "]": { kind: "next" },
+  "?": { kind: "help" },
+};
+
 /** What a key press asks of Plan, or null when it is not one of the shortcuts. */
 export function planKeyFor(event: KeyLike): PlanKey | null {
-  if (event.ctrlKey || event.metaKey || event.altKey) return null;
-  // "?" is Shift+/ on most layouts: the key, not the Shift, decides.
-  if (event.key === "?") return { kind: "help" };
-  if (event.shiftKey) return null;
-  switch (event.key) {
-    case "/":
-      return { kind: "search" };
-    case "Enter":
-      return { kind: "route" };
-    case "Delete":
-    case "Backspace":
-      return { kind: "remove" };
-    case "[":
-      return { kind: "previous" };
-    case "]":
-      return { kind: "next" };
-  }
+  if (event.metaKey) return null;
+  // A symbol is matched by the character typed: Shift, or AltGr (which reports Ctrl+Alt), may be how it is typed.
+  const symbol = SYMBOLS[event.key];
+  if (symbol) return event.ctrlKey === event.altKey ? symbol : null;
+  if (event.ctrlKey || event.altKey || event.shiftKey) return null;
+  if (event.key === "Enter") return { kind: "route" };
+  if (event.key === "Delete") return { kind: "remove" };
   switch (event.key.toLowerCase()) {
     case "r":
       return { kind: "reverse" };
@@ -112,6 +109,17 @@ export function planKeyFor(event: KeyLike): PlanKey | null {
   return null;
 }
 
+/**
+ * The point whose row in Plan's list has the focus, or null: the one Delete removes. Never a row being changed or
+ * moved (its own keys are in use there), and never a point picked earlier and left: only what the focus is on now.
+ */
+export function pointRowAt(target: Element | null): number | null {
+  const row = target && typeof target.closest === "function" ? target.closest(".points > li") : null;
+  if (!row || row.classList.contains("point-editing") || row.querySelector(".point-steps")) return null;
+  const index = Array.prototype.indexOf.call(row.parentElement?.children ?? [], row) as number;
+  return index >= 0 ? index : null;
+}
+
 /** Controls whose own keys a shortcut must not take: a letter types ahead in a list, Enter presses a button. */
 const OWN_KEYS = "button, a[href], select, summary, [role=button], [role=link], [role=option], [role=listbox], [role=combobox], [role=menuitem], [role=radio], [role=checkbox], [role=tab], [role=slider], input";
 
@@ -122,14 +130,16 @@ const OWN_KEYS = "button, a[href], select, summary, [role=button], [role=link], 
 export function keyFreeAt(key: PlanKey, target: Element | null): boolean {
   if (!target || typeof target.closest !== "function") return true;
   if (typesText(target as HTMLElement)) return false;
+  // A map card (a closure's, a junction's) keeps its keys.
+  if (target.closest(".maplibregl-popup")) return false;
   if (target.closest("select, [role=listbox], [role=combobox], [role=slider]")) return false;
   if (key.kind === "route") return !target.closest(OWN_KEYS);
-  // Delete on a point's own row is meant for that point (its Remove or grip has the focus).
-  if (key.kind === "remove") return !target.closest(OWN_KEYS) || !!target.closest(".points li");
+  // Delete acts only on a point's own row: the point it removes is the one the focus is on.
+  if (key.kind === "remove") return pointRowAt(target) !== null;
   return true;
 }
 
-/** The next point to step to with [ or ] from `from` (null: none chosen yet), among `count` points. */
+/** The next point to step to with [ or ] from `from` (null: no row has the focus), among `count` points. */
 export function stepPoint(from: number | null, count: number, direction: -1 | 1): number | null {
   if (count <= 0) return null;
   if (from === null || from < 0 || from >= count) return direction === 1 ? 0 : count - 1;

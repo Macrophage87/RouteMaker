@@ -290,7 +290,7 @@ import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTime
 import { fitStart, offersStartTime, startMs } from "./lib/startTime.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { PlanKeysDialog } from "./PlanKeysDialog.tsx";
-import { characterKey, keyFreeAt, planKeyFor, planKeySaid, readPlanKeys, stepPoint, writePlanKeys, type PlanKey } from "./lib/planKeys.ts";
+import { characterKey, keyFreeAt, planKeyFor, planKeySaid, pointRowAt, readPlanKeys, stepPoint, writePlanKeys, type PlanKey } from "./lib/planKeys.ts";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
 import { EditRouteSheet, FoodChips, FoodSheet, GpxSheet, RoutesSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
@@ -6617,12 +6617,9 @@ export function App() {
   const [keysOn, setKeysOn] = useState(readPlanKeys);
   useEffect(() => setKeysOpen(false), [mode, riding]);
   const planKeyRef = useRef<(key: PlanKey) => void>(() => {});
-  // The point [ and ] last stepped to; Delete takes the point whose row has the focus, else this one.
-  const steppedPoint = useRef<number | null>(null);
   planKeyRef.current = (key: PlanKey) => {
     const rows = removeRefs.current.slice(0, points.length);
-    const focusedRow = rows.findIndex((button) => !!button && !!document.activeElement && !!button.closest("li")?.contains(document.activeElement));
-    const at = focusedRow >= 0 ? focusedRow : steppedPoint.current;
+    const at = pointRowAt(document.activeElement);
     switch (key.kind) {
       case "help":
         setKeysOpen(true);
@@ -6672,7 +6669,6 @@ export function App() {
           announce(planKeySaid.noPoints());
           return;
         }
-        steppedPoint.current = index;
         const point = points[index];
         if (point) mapRef.current?.easeTo({ center: point });
         const row = rows[index];
@@ -6681,12 +6677,8 @@ export function App() {
         return;
       }
       case "remove":
-        if (at === null || at >= points.length) {
-          announce(planKeySaid.pickPoint());
-          return;
-        }
-        steppedPoint.current = null;
-        removeAt(at);
+        // keyFreeAt let it through only on a point's row.
+        if (at !== null && at < points.length) removeAt(at);
         return;
       case "fold": {
         const folds = Array.from(document.querySelectorAll<HTMLDetailsElement>(`details[name="${ROUTE_FOLD_GROUP}"]`)).filter((fold) => fold.offsetParent !== null || fold.getClientRects().length > 0);
