@@ -516,8 +516,14 @@ export function courseParts(course: Course): Course[] {
     let to = stop ? stop.cue.vertex : Math.floor((share[room - 1].cue.vertex + musts[room].cue.vertex) / 2);
     // Cues on one record cannot be parted: the cut goes after them.
     if (to <= from) to = Math.min(last, Math.max(from + 1, share[room - 1].cue.vertex));
-    // In route order: up to the stop, or every cue before the cut.
-    const taken = stop ? rest.slice(0, rest.indexOf(stop) + 1) : rest.filter((c) => c.cue.vertex <= to);
+    // In route order: up to the stop, or every cue before the cut, but never more cues it must keep than its room:
+    // where those past its share are on the cut's record, they start the next part, which begins on that record.
+    const before = rest.filter((c) => c.cue.vertex <= to);
+    const taken = stop
+      ? rest.slice(0, rest.indexOf(stop) + 1)
+      : before.filter(kept).length > room
+        ? rest.slice(0, rest.indexOf(share[room - 1]) + 1)
+        : before;
     spans.push({ from, to, cues: taken.filter((c) => c !== stop), stop: stop?.cue });
     rest = rest.filter((c) => !taken.includes(c));
     from = to;

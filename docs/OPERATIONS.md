@@ -8112,7 +8112,10 @@ What changes for a deploy:
   (migrations run), restart the routers, then the front end.
 - [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows the routers restarted.
 - [ ] **Beta check.** The app says 0.28.0; plan a route with 60 to 100 points (past the old router cap of 50), save it, reopen it;
-  Plan's chart sits under the map; Interval stretches shows Klingle Valley Trail.
+  Plan's chart sits under the map; Interval stretches shows Klingle Valley Trail. Then a 200-point
+  plan on a trail ride type (Mountain bike or Gravel) while `docker stats` runs on the beta host:
+  the routers' 320M limits hold (no router restarted or killed for memory), and the plan answers
+  or is refused with a message, never a 502.
 - [ ] **Rollback.** The `pre-rel` api image, the v0.27.3 front end, and the old `valhalla/*.json`
   (the routers restart again). 0066 changes no schema and 0067 adds a nullable column, so the old code runs on them.
 

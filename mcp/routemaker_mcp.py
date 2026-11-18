@@ -56,6 +56,10 @@ EARTH_RADIUS_MI = 3958.7613
 DC_CENTRE = (-77.0365, 38.8949)
 # The site's own limits (core/api.py MAX_POINTS, COVERAGE_BBOX).
 MAX_POINTS = 200
+# Best order keeps the old ceiling (core/api.py STOP_ORDER_MAX_POINTS, frontend
+# lib/stopOrder.ts ORDER_MAX_POINTS): its search grows far faster than a plan, and 200 points
+# took 30 s of CPU (the v0.28.0 release review).
+STOP_ORDER_MAX_POINTS = 25
 MAX_DRAFTS = 200  # drafts kept in memory
 # A draft's name: what the rider finds it by in the app's Load route and in my_drafts.
 DRAFT_NAME_SCHEMA = {
@@ -2646,7 +2650,14 @@ def _two_opt(points: list, order: list[int]) -> list[int]:
 def best_orders(points: list, tries: int = ORDER_TRIES) -> list[list[int]]:
     """Up to `tries` orders of all the points (indices; the first and last fixed), shortest by
     straight line first: the best, then the best of its one-move changes (a stretch reversed,
-    a checkpoint moved), which riding may favour where a river or a highway is in the way."""
+    a checkpoint moved), which riding may favour where a river or a highway is in the way.
+    At most STOP_ORDER_MAX_POINTS points."""
+    if len(points) > STOP_ORDER_MAX_POINTS:
+        raise ToolError(
+            f"best_order takes at most {STOP_ORDER_MAX_POINTS} points (the start, the finish"
+            " and the checkpoints between); this route has"
+            f" {len(points)}: plan it in the order given, or order it in parts"
+        )
     n = len(points) - 2
     if n <= 1:
         return [list(range(len(points)))]
@@ -5623,7 +5634,7 @@ TOOLS = [
                         " last (finish) and visit the points between in the quickest order."
                         " The shortest orders by straight line are planned and the quickest"
                         " ridden one kept; `checkpoint_order` says the order. Not with"
-                        " via_points or loop."
+                        " via_points or loop. At most 25 points."
                     ),
                 },
                 "via_points": {
