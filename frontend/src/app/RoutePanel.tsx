@@ -33,7 +33,7 @@ import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
 import { avoidItems, avoidNoticeFor } from "../lib/avoidJunctions.ts";
-import { ElevationChart } from "../ElevationChart.tsx";
+import { ElevationChart, type ChartTools } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
@@ -316,6 +316,8 @@ export interface RouteSectionProps {
   offline?: boolean;
   /** Plan's Check a route (CheckRoute.tsx) on a route that follows an opened file; null otherwise. */
   check?: ReactNode;
+  /** Plan's chart tools (ElevationChart.tsx): click to centre the map, pick a stretch and avoid it; null in Go. */
+  chartTools?: ChartTools | null;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -420,6 +422,7 @@ export function RouteSection(props: RouteSectionProps) {
           startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
           check={props.check ?? null}
+          chartTools={props.chartTools ?? null}
           barrierAvoid={props.barrierAvoid}
         />
       )}
@@ -835,6 +838,7 @@ export function RouteSummary({
   startsMs = null,
   weather = null,
   check = null,
+  chartTools = null,
   barrierAvoid = [],
 }: {
   /** Cargo and Tandem: the barriers this plan goes around (lib/barriers.ts), [lon, lat]. */
@@ -878,6 +882,8 @@ export function RouteSummary({
   weather?: WeatherReport | null;
   /** Plan's Check a route on an opened file (CheckRoute.tsx), under the warnings; null otherwise. */
   check?: ReactNode;
+  /** Plan's chart tools (ElevationChart.tsx); null in Go. A transit trip's joined chart has none. */
+  chartTools?: ChartTools | null;
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -1296,7 +1302,7 @@ export function RouteSummary({
           className="elevation-fold"
           name={ROUTE_FOLD_GROUP}
         >
-          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} />}
+          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} tools={trip === route ? (chartTools ?? undefined) : undefined} />}
           {/* The climbs on the route (the Climbs layer's list), in this fold (the mockup's table). */}
           {climbs && <ClimbsAlongList items={climbs} headingId="climbs-along-planner-heading" level="h4" />}
         </Fold>

@@ -10432,6 +10432,67 @@ summary.closure-notices-heading {
   }
 }
 
+/*
+ * Plan's chart docked under the map on a computer (the 2026-11-12 backlog, Plan experience item 5): while the
+ * Elevation fold is open, the plot, its reading and a picked stretch sit at full width under the map, between the
+ * planner and the route card, clear of the map's credits and scale below. Placement only, as the route card's: the
+ * chart stays in the fold in the DOM, and its key, sources and tables stay in the fold. ElevationChart.tsx widens the
+ * plot's viewBox to the dock's width.
+ */
+@media (min-width: 1200px) {
+  .app:not(.go-mode) .panel.open .planner-view:not([hidden]) > .route-section:has(.summary) .elevation-fold[open] .pc-dock {
+    position: fixed;
+    left: calc(var(--panel-w) + 24px);
+    right: calc(var(--out-w, 0px) + 12px);
+    bottom: 40px;
+    max-height: 45vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+  }
+}
+
+.pc-dock .pc-plot {
+  user-select: none;
+}
+
+/* The stretch picked on Plan's chart: a band through every track, in the accent, under the marker. */
+.pc-sel {
+  fill: var(--accent);
+  fill-opacity: 0.18;
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.pc-stretch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.pc-stretch p {
+  margin: 0;
+}
+
+.pc-stretch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pc-stretch-actions button {
+  min-height: 44px;
+}
+
 /* Broadcast, beside Start (Stephen 2026-10-22: "a small button next to start"): Start keeps the row's width. */
 .go-start {
   display: flex;
