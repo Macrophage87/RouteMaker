@@ -16,7 +16,8 @@ an effort is broken by (the connector's interval check's own rules, mcp/routemak
 stop during the on sets"):
 
 - **a stop**: a signal, a stop or give-way sign, a mini roundabout, a railway crossing or a
-  barrier (a gate, bollards) on a node of the stroke, from the extract's node tags; and a
+  barrier (a gate, a chain, a cycle barrier) on a node of the stroke, from the extract's node
+  tags (a bollard or block is ridden through and only counted, `k`); and a
   roundabout (`junction=roundabout`), whose ways are never part of a stretch;
 - **an intersection** (`JUNCTION_RULE`): where the stroke is a road, a road crossing it (arms on
   both sides) that is busy (LTS 3 or higher); where it is a path, any road it meets. With
@@ -51,6 +52,7 @@ The file, one stretch per entry, short keys (frontend/src/lib/intervals.ts reads
     s    "p" a paved traffic-free path, "g" mostly unpaved; left out on a road
     b    1 when most of it is on roads rated LTS 3 (left out otherwise)
     t    minutes to ride it at EFFORT_PACE_MPH, to a tenth (the quicker way for `w`)
+    k    how many bollards or blocks it passes (left out when none)
 """
 
 from __future__ import annotations
@@ -110,15 +112,19 @@ STOP_BARRIERS = frozenset(
         "lift_gate",
         "swing_gate",
         "sliding_gate",
-        "bollard",
         "cycle_barrier",
         "kissing_gate",
         "stile",
         "chain",
-        "block",
         "turnstile",
     }
 )
+# Bollards and blocks keep cars out and are ridden through, so they do not break a stretch;
+# a stretch notes how many it passes (the owner, 2026-11-18: "Mark bollards on the interval
+# card and have it noted ... You'll be going at like 6 mph up a steep hill, you're unlikely
+# to have issues with bollards"). The connector's interval check never counted them.
+PASS_BARRIERS = frozenset({"bollard", "block"})
+BOLLARD = "bollard"
 # Ways that join without breaking an effort, whatever the rule: no one on them has priority.
 MINOR_HIGHWAYS = frozenset(
     {"footway", "steps", "path", "cycleway", "bridleway", "pedestrian", "track", "corridor"}
@@ -163,6 +169,8 @@ def node_stop(tags: dict[str, str]) -> str | None:
         return "railway crossing"
     if tags.get("barrier") in STOP_BARRIERS:
         return "barrier"
+    if tags.get("barrier") in PASS_BARRIERS:
+        return BOLLARD
     return None
 
 
@@ -263,6 +271,8 @@ def vertex_break(
     roads = [(s, j) for s, j in others if _is_road(segments[s], facts)]
     here = segments[stroke.parts[stroke.edge_part[i]][0]]
     why = facts.stops.get(key)
+    if why == BOLLARD:
+        why = None  # ridden through; the stretch notes it (`Stretch.bollards`)
     if why in PRIORITY_SIGNS and roads:
         # On the junction's own node: the cross road's sign where the stroke is the busier road.
         if (here.tier or 0) <= max(segments[s].tier or 0 for s, _ in roads):
@@ -401,6 +411,8 @@ class Stretch:
     name: str | None = None
     surface: str | None = None
     busy: bool = False
+    # Bollards (and blocks) along it, ridden through (PASS_BARRIERS).
+    bollards: int = 0
 
     @property
     def minutes(self) -> float:
@@ -429,6 +441,8 @@ class Stretch:
         if self.busy:
             out["b"] = 1
         out["t"] = round(self.minutes, 1)
+        if self.bollards:
+            out["k"] = self.bollards
         return out
 
 
@@ -473,6 +487,9 @@ def stretches_on_stroke(
     step = climb_layer.SAMPLE_STEP_M
     both.extend((s.along_m - step, s.along_m + step) for s in samples if s.elevation is None)
     sample_along = [s.along_m for s in samples]
+    bollards = [
+        along[i] for i in range(len(coords)) if facts.stops.get(node_key(coords[i])) == BOLLARD
+    ]
     found: list[Stretch] = []
     reading = {
         sign: clear_spans(total, both + one_way[sign] + descents(samples, sign)) for sign in (1, -1)
@@ -490,21 +507,23 @@ def stretches_on_stroke(
         if twin is not None:
             c, d = reading[-1][twin]
             shared = _stretch(
-                stroke, segments, samples, sample_along, max(a, c), min(b, d), 1, True
+                stroke, segments, samples, sample_along, bollards, max(a, c), min(b, d), 1, True
             )
             if shared.minutes >= MIN_EFFORT_MIN:
                 used_back.add(twin)
                 found.append(shared)
                 continue
             # The shared part is too short the quicker way: each reading stands alone.
-        found.append(_stretch(stroke, segments, samples, sample_along, a, b, 1, False))
+        found.append(_stretch(stroke, segments, samples, sample_along, bollards, a, b, 1, False))
     for k, (c, d) in enumerate(reading[-1]):
         if k not in used_back:
-            found.append(_stretch(stroke, segments, samples, sample_along, c, d, -1, False))
+            found.append(
+                _stretch(stroke, segments, samples, sample_along, bollards, c, d, -1, False)
+            )
     return [s for s in found if s.minutes >= MIN_EFFORT_MIN]
 
 
-def _stretch(stroke, segments, samples, sample_along, a, b, sign, both) -> Stretch:
+def _stretch(stroke, segments, samples, sample_along, bollards, a, b, sign, both) -> Stretch:
     line = climb_layer._line_between(stroke, a, b)
     start, end = _height(samples, sample_along, a), _height(samples, sample_along, b)
     rise = 0.0 if start is None or end is None else end - start
@@ -525,6 +544,7 @@ def _stretch(stroke, segments, samples, sample_along, a, b, sign, both) -> Stret
         name=climb_names.climb_name(roads, None),
         surface=climb_layer.surface_class(used, stroke, segments),
         busy=climb_layer.busy(used, stroke, segments),
+        bollards=sum(1 for x in bollards if a <= x <= b),
     )
 
 
