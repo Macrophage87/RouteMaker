@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0065_sign_in_identity"),
+        ("core", "0066_stress_suggestion_pk_tiebreak"),
     ]
 
     operations = [

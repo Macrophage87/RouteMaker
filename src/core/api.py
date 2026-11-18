@@ -8460,10 +8460,15 @@ def saved_routes_list(request):
         from . import route_sketch
 
         made = {}
-        for full in SavedRoute.objects.filter(pk__in=unmade).only("pk", "line", "answer"):
+        # A few at a time (a full account's first read after the figures came is 200 lines).
+        found = SavedRoute.objects.filter(pk__in=unmade).only("pk", "line", "answer")
+        for full in found.iterator(chunk_size=20):
             made[full.pk] = route_sketch.figures(full.line, full.answer)
-            # An update, not a save: the route's own updated_at stays as the rider left it.
-            SavedRoute.objects.filter(pk=full.pk).update(figures=made[full.pk])
+            # An update, not a save: the route's own updated_at stays as the rider left it. Only
+            # while still unmade, so a version saved meanwhile keeps its own figures.
+            SavedRoute.objects.filter(pk=full.pk, figures__isnull=True).update(
+                figures=made[full.pk]
+            )
         for r in listed:
             if r.pk in made:
                 r.figures = made[r.pk]
