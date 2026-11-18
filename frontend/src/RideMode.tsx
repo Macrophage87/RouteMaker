@@ -2401,7 +2401,8 @@ export function RideMode({
           if (shown()) setGps(LOCATE_MESSAGES[reason]);
           else {
             failureLater.current = window.setTimeout(() => {
-              if (!ended.current && shown()) setGps(LOCATE_MESSAGES[reason]);
+              // Paused or underground since, nothing is shown, as the failure itself would not have been.
+              if (!ended.current && !pausedRef.current && !gpsQuietRef.current && shown()) setGps(LOCATE_MESSAGES[reason]);
             }, FAILURE_SHOWN_AFTER_MS - (Date.now() - realFixAt.current));
           }
           if (reason === "denied" || reason === "insecure" || reason === "unsupported") {
