@@ -11330,6 +11330,11 @@ button.route-note {
   background: #facc15;
   border: 3px solid #111827;
 }
+/* A yellow picture (the sprint bolt, the warning sign) on the yellow disc: a dark edge, so its shape shows (WCAG 1.4.11,
+   3:1 for a graphic; the bolt alone was about 1.1:1, the edge is about 12:1). */
+.route-note-caution .route-note-sign > .icon-art {
+  filter: drop-shadow(0 0 0.75px #111827) drop-shadow(0 0 0.75px #111827);
+}
 .route-note-interest .route-note-sign {
   background: #ffffff;
   border: 3px solid #1d4ed8;
