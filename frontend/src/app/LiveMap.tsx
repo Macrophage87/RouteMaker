@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { MapView } from "../MapView.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import { liveValue, useLiveValue, type LiveValue } from "../lib/liveValue.ts";
-import type { RideView } from "../RideMode.tsx";
+import type { RideView } from "../rideStart.ts";
 
 /** The rider on the map in a ride or Roam: a GPS fix, about once a second. */
 export type LiveRider = RideView["rider"];

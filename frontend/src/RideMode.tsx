@@ -86,7 +86,7 @@ import { checkClosures } from "./lib/closureCheck.ts";
 import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, keepLeftRideReplans, rideReplans, seeLeftRide, unseeLeftRide, type RideReplans } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
-import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
+import { placeLetter } from "./lib/letteredPlaces.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance, unitsFirst } from "./lib/format.ts";
 import { subscribeUnits, units } from "./lib/units.ts";
@@ -127,7 +127,6 @@ import {
   REPLAN_FINDING,
   REPLAN_STILL_WAITING,
   ReplanGate,
-  VERBOSITY_LABELS,
   crossArrow,
   nextAction,
   planAfterEnd,
@@ -170,7 +169,6 @@ import {
   type RideFix,
   type RideModel,
   type RideState,
-  type Verbosity,
   endWords,
   ARRIVED_SAID,
   OFF_ROUTE_KEPT_SAID,
@@ -178,17 +176,14 @@ import {
 import { statsPause, statsStart, statsStep, withClosedStretch, type RideStats } from "./lib/rideStats.ts";
 import {
   Announcer,
-  OUTPUT_LABELS,
   RIDE_TEXT_BUTTON,
   ScreenWake,
-  Voice,
   chimeOf,
   phoneKind,
   toScreenReader,
   readRideIconsOnly,
   toVoice,
   wakeSaid as wakeWords,
-  type CueOutput,
   type RidePrefs,
   type RideTextSize,
   type Said,
@@ -198,8 +193,7 @@ import { BatteryNote } from "./BatteryNote.tsx";
 import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
-import { askCompass } from "./lib/compassHeading.ts";
-import { rideBuzz, rideGeoEnv, rideSpeech, rideWake, ridesHidden, showTurnCard, speaksAloud } from "./lib/nativeShell.ts";
+import { rideBuzz, rideGeoEnv, rideWake, ridesHidden, showTurnCard, speaksAloud } from "./lib/nativeShell.ts";
 import { cardAtM, noteCard, turnCard } from "./lib/turnCard.ts";
 import { cueMark } from "./lib/cueTone.ts";
 import { rideCueLog } from "./lib/cueRecorder.ts";
@@ -275,8 +269,6 @@ import { TOPO_LINES_ROW_UNAVAILABLE } from "./lib/terrainSection.ts";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
-import { SettingRow, SettingSelect } from "./SettingRow.tsx";
-import { shortLabel } from "./lib/shortLabel.ts";
 import { EASE_AT_END, EASE_NAME, EASE_SAME, EASE_SHOWN, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
 import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, weatherPoints, weatherToShow } from "./lib/weather.ts";
@@ -312,6 +304,47 @@ import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
+import {
+  CHECKING_CLOSURES,
+  CLOSURE_SLOW_MS,
+  RIDE_ENDED_FROM_HERE_NOTE,
+  RIDE_ENDED_NO_FIX_NOTE,
+  RIDE_ENDED_SAID,
+  RIDE_STARTED,
+  RUN_STARTED,
+  START_NOTE_MS,
+  VOICE_ON,
+  WALK_STARTED,
+  primeRideVoice,
+  rideVoice,
+  startRideGesture,
+  voiceTurnedOn,
+  type EndedPlan,
+  type EndedRiding,
+  type RideView,
+} from "./rideStart.ts";
+import { RideSettingsFields } from "./RideSettingsFields.tsx";
+// Moved out so App and Settings need not load this file at once (src/rideStart.ts); still exported from here.
+export {
+  CHECKING_CLOSURES,
+  CLOSURE_SLOW_MS,
+  RIDE_ENDED_FROM_HERE_NOTE,
+  RIDE_ENDED_NO_FIX_NOTE,
+  RIDE_ENDED_SAID,
+  RIDE_STARTED,
+  RUN_STARTED,
+  START_NOTE_MS,
+  VOICE_ON,
+  WALK_STARTED,
+  RideSettingsFields,
+  primeRideVoice,
+  rideVoice,
+  startRideGesture,
+  voiceTurnedOn,
+  type EndedPlan,
+  type EndedRiding,
+  type RideView,
+};
 import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
 import { RebalanceDockCard, type DockAsk } from "./RebalanceDockCard.tsx";
 import { DOCK_AWAY_M, DOCK_CHOOSE_LEDE, DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice, type RebalanceDocked } from "./lib/rebalanceDock.ts";
@@ -326,21 +359,6 @@ const AHEAD_HYSTERESIS_PX = 6;
 const SHEET_SIDES_PX = 28;
 const AHEAD_MAX_W = 520;
 
-/**
- * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
- * Speech in a browser; in the phone app (v0.8.0), the native voice, which goes on with the screen locked.
- */
-// What became of each sentence goes to the ride's cue log (lib/cueRecorder.ts): no words or places are kept there.
-export const rideVoice = new Voice({ ...rideSpeech(), trace: (what, text) => rideCueLog.voice(what, text, Date.now()) });
-
-/** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
-export const RIDE_STARTED = t("Ride started.");
-/** As a walk starts (Walk, Walk + 🚆🚌: its button says "Start walk"). */
-export const WALK_STARTED = t("Walk started.");
-/** As a run starts (Run, 2026-11-02: its button says "Start run"). */
-export const RUN_STARTED = t("Run started.");
-/** How long after the start its note (startNote) is said: after "Ride started.". */
-export const START_NOTE_MS = 1_500;
 /** The top row's words made smaller a step at a time where a word does not fit (the owner, 2026-10-31), to at most half size. */
 const TOP_FIT_STEP = 0.05;
 const TOP_FIT_MIN = 0.5;
@@ -403,16 +421,6 @@ export const RIDE_CHANGE_TITLE = t("Change the route");
 export const RIDE_BROADCAST_NAME = t("Share live");
 /** More > Riders: the riders panel, its count now on Broadcast. */
 export const RIDERS_NAME = t("Riders");
-/** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
-export type EndedPlan = ReturnType<typeof planAfterEnd>;
-/** The ride as it stood at End ride, after its re-plans (RideMode `onEnd`): what Keep riding carries on with. */
-export interface EndedRiding {
-  route: RouteResponse;
-  points: LonLat[];
-  loop: boolean;
-  dials: Dials;
-  replans: RideReplans;
-}
 /** The plan End ride leaves, without the ride's own via points (a loop's shape point, VIA_MARKS.shape): only the rider's. */
 export function withoutShapes(ended: EndedPlan): EndedPlan {
   return ended && typeof ended === "object" ? { points: ended.points.filter((p) => !VIA_MARKS.isShape(p)) } : ended;
@@ -425,12 +433,6 @@ export const NO_PLACE_311 = t("Your place on the route is not known yet, so noth
 export function loggedSaid(entry: LogEntry): string {
   return t("Logged for 311: {kind}.", { kind: kindShown(entry.kind) });
 }
-/** Said as the ride ends, by the voice and the page's polite region; the figures are on the summary card. */
-export const RIDE_ENDED_SAID = t("Ride ended.");
-/** Shown and said with the ride's summary in Plan where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
-export const RIDE_ENDED_FROM_HERE_NOTE = t("The route now starts where you are.");
-/** Part way in Plan with no recent location: the plan keeps its start, and the rider is told. */
-export const RIDE_ENDED_NO_FIX_NOTE = t("Route start unchanged.");
 
 /**
  * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
@@ -478,50 +480,7 @@ export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER
 /** Its first point, the one shown in the ride's settings; the rest is under "About Ride mode". */
 export const RIDE_SAFETY_SHORT = t("Ride with care: the route can have mistakes.");
 
-/** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
-export function startRideGesture(prefs: RidePrefs, walk = false, run = false): void {
-  if (toVoice(prefs.output)) rideVoice.unlock(run ? RUN_STARTED : walk ? WALK_STARTED : RIDE_STARTED);
-  // iPhones give the compass for the map's first heading only once allowed, asked inside this press (lib/compassHeading.ts).
-  askCompass();
-}
 
-/** Start's press, before its closure check: unlocks the voice silently (iOS speaks only after a
- * gesture has spoken once), so "Ride started." is said only when the ride does start. */
-export function primeRideVoice(prefs: RidePrefs): void {
-  if (toVoice(prefs.output)) rideVoice.unlock(" ");
-  askCompass();
-}
-
-export const VOICE_ON = t("Voice on.");
-
-/** Called inside the press that changes the ride's outputs: a voice newly chosen is unlocked there (iOS). */
-export function voiceTurnedOn(before: RidePrefs, next: RidePrefs, voice: Pick<Voice, "unlock"> = rideVoice): void {
-  if (!toVoice(before.output) && toVoice(next.output)) voice.unlock(VOICE_ON);
-}
-
-/** Said politely when Start's closure check takes more than a moment (CLOSURE_SLOW_MS). */
-export const CHECKING_CLOSURES = t("Checking closures…");
-export const CLOSURE_SLOW_MS = 600;
-
-/** What App shows on the map for the ride. */
-export interface RideView {
-  route: RouteResponse;
-  /** The other line (v0.8.2): the standard way through a marked closure, or its detour while on the standard way. */
-  other?: LonLat[] | null;
-  rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
-  /** Where the next train or bus is while the rider waits at a Metro or Metrobus boarding (v0.9.0). */
-  vehicle?: VehicleMark | null;
-  /** The stops still ahead, drawn on the ride's map with their names (2026-10-24). */
-  stops?: RideStopMark[];
-  /** The places Detour found, lettered as their rows, while its menu is open or after a row's Show on map (2026-10-28). */
-  lettered?: LetteredPlace[] | null;
-  /** A lettered pin pressed: Detour opens on its row. */
-  onLettered?: (index: number) => void;
-  /** The train or bus waited for or ridden past the line, its stops ahead (lib/onBoard.ts onBoardPath). */
-  transitPath?: OnBoardPath | null;
-  /** Off the route with the way back shown (lib/rejoin.ts wayBackShown): the planned line's nearest point ahead. */
-  wayBackTo?: LonLat | null;
-}
 
 /** A train's part (a bus stop has no exits to name). */
 function isRailPart(part: OnwardPart | undefined): boolean {
@@ -789,85 +748,6 @@ export function LiveRegion({ said, urgent }: { said: { text: string; count: numb
   );
 }
 
-export function RideSettingsFields({
-  prefs,
-  onChange,
-  idBase,
-  compact = false,
-}: {
-  prefs: RidePrefs;
-  onChange: (prefs: RidePrefs) => void;
-  idBase: string;
-  /** Settings: two pickers, with what each level says behind an (i); the ride's own settings keep the radios. */
-  compact?: boolean;
-}) {
-  if (compact) {
-    const levels = Object.keys(VERBOSITY_LABELS) as Verbosity[];
-    return (
-      <>
-        <SettingRow infoId={`${idBase}-output-info`} about="say cues with">
-          <SettingSelect
-            label={t("Say cues with")}
-            value={prefs.output}
-            options={(Object.keys(OUTPUT_LABELS) as CueOutput[]).map((output) => [output, OUTPUT_LABELS[output]] as const)}
-            onChange={(output) => onChange({ ...prefs, output, chosen: true })}
-          />
-        </SettingRow>
-        <SettingRow
-          infoId={`${idBase}-level-info`}
-          about="how much to say"
-          info={
-            <ul className="setting-info-list">
-              {levels.map((level) => (
-                <li key={level}>{VERBOSITY_LABELS[level]}</li>
-              ))}
-            </ul>
-          }
-        >
-          <SettingSelect
-            label={t("How much to say")}
-            value={prefs.verbosity}
-            options={levels.map((level) => [level, shortLabel(VERBOSITY_LABELS[level])] as const)}
-            onChange={(verbosity) => onChange({ ...prefs, verbosity, chosen: true })}
-            describedBy={`${idBase}-level-info`}
-          />
-        </SettingRow>
-      </>
-    );
-  }
-  return (
-    <>
-      <fieldset className="ride-choice">
-        <legend>{t("Say cues with")}</legend>
-        {(Object.keys(OUTPUT_LABELS) as CueOutput[]).map((output) => (
-          <label key={output} className="radio">
-            <input
-              type="radio"
-              name={`${idBase}-output`}
-              checked={prefs.output === output}
-              onChange={() => onChange({ ...prefs, output, chosen: true })}
-            />
-            {OUTPUT_LABELS[output]}
-          </label>
-        ))}
-      </fieldset>
-      <fieldset className="ride-choice">
-        <legend>{t("How much to say")}</legend>
-        {(Object.keys(VERBOSITY_LABELS) as Verbosity[]).map((level) => (
-          <label key={level} className="radio">
-            <input
-              type="radio"
-              name={`${idBase}-level`}
-              checked={prefs.verbosity === level}
-              onChange={() => onChange({ ...prefs, verbosity: level, chosen: true })}
-            />
-            {VERBOSITY_LABELS[level]}
-          </label>
-        ))}
-      </fieldset>
-    </>
-  );
-}
 
 /** The way back to the planned route, said: "The planned route is 300 feet to the left." */
 /** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
