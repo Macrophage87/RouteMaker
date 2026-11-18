@@ -363,6 +363,11 @@ button[aria-disabled="true"] {
   cursor: not-allowed;
 }
 
+/* Waiting on its work (Start while Ride mode's code arrives, lib/rideCodeWait.ts). */
+button[aria-busy="true"] {
+  cursor: progress;
+}
+
 button.link,
 .panel-toggle {
   background: transparent;

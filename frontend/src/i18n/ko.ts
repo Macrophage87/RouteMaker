@@ -1965,6 +1965,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines off.": "등고선 끔.",
   "Topo lines need a connection. Try again once you have signal.": "등고선에는 연결이 필요합니다. 신호가 잡히면 다시 시도하세요.",
   "The ride needs a connection to start. Try again once you have signal.": "주행을 시작하려면 연결이 필요합니다. 신호가 잡히면 다시 시도하세요.",
+  "Opening Ride…": "라이드 여는 중…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "빠듯합니다. 출발까지 {count}, {source}; 여유 시간 {spare}.",
   "live": "실시간",
   "scheduled": "시간표 기준",

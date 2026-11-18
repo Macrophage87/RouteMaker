@@ -126,6 +126,7 @@ import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stat
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
 import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RIDE_NEEDS_SIGNAL, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type EndedRiding, type RideView } from "./rideStart.ts";
+import { rideCodeWaiter } from "./lib/rideCodeWait.ts";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import type { RebalanceDocked } from "./lib/rebalanceDock.ts";
@@ -4109,23 +4110,11 @@ export function App() {
   };
   // A Start or Resume pressed before Ride mode's code is in (src/app/later.tsx): one wait at a time, a second press
   // ignored; once in, the press carries on through this render's own function (the plan or question as they are now,
-  // so a question since dropped stays dropped); where the code cannot come, the rider stays and is told.
-  const rideCodeWait = useRef(false);
+  // so a question since dropped stays dropped); where the code cannot come, the rider stays and is told. While it
+  // waits, the pressed Start or Resume shows busy and "Opening Ride…" is said (lib/rideCodeWait.ts).
+  const [rideOpening, setRideOpening] = useState<"start" | "resume" | null>(null);
   const rideLatest = useRef<{ begin: typeof beginRide; resume: typeof resumeLeft } | null>(null);
-  const afterRideCode = (go: () => void) => {
-    if (rideCodeWait.current) return;
-    rideCodeWait.current = true;
-    RideMode.load().then(
-      () => {
-        rideCodeWait.current = false;
-        go();
-      },
-      () => {
-        rideCodeWait.current = false;
-        announce(RIDE_NEEDS_SIGNAL);
-      },
-    );
-  };
+  const afterRideCode = useMemo(() => rideCodeWaiter<"start" | "resume">(() => RideMode.load(), { waiting: setRideOpening, announce, failed: RIDE_NEEDS_SIGNAL }), [announce]);
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const asked = rest?.route ?? shown;
     if (!asked) return;
@@ -4142,7 +4131,7 @@ export function App() {
     // stays in Plan and is told.
     if (!RideMode.loaded()) {
       if (!unlocked) primeRideVoice(prefs);
-      afterRideCode(() => rideLatest.current?.begin(prefs, unlocked, rest));
+      afterRideCode("start", () => rideLatest.current?.begin(prefs, unlocked, rest));
       return;
     }
     if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
@@ -5194,7 +5183,7 @@ export function App() {
     // where the code cannot come.
     if (!RideMode.loaded()) {
       if (!unlocked) primeRideVoice(ridePrefs);
-      afterRideCode(() => rideLatest.current?.resume(undefined, unlocked));
+      afterRideCode("resume", () => rideLatest.current?.resume(undefined, unlocked));
       return;
     }
     if (!unlocked) startRideGesture(ridePrefs);
@@ -7037,7 +7026,7 @@ export function App() {
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startBusy: rideOpening === "start", broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
         barrierAvoid: planDials.barrierAvoid,
         // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
@@ -7425,6 +7414,7 @@ export function App() {
         open={leftAsk !== null && !riding && !roaming}
         destination={leftAsk && !leftAsk.loop ? (leftAsk.destination ?? namer.name(leftAsk.points[leftAsk.points.length - 1])?.name ?? null) : null}
         onResume={resumeLeft}
+        busy={rideOpening === "resume"}
         onNotNow={dropLeft}
         onLater={() => setLeftAsk(null)}
       />
@@ -7583,7 +7573,7 @@ export function App() {
           {/* Start ride beside it (the owner, 2026-10-21: "We might also want to allow for a start route too"), on a
               route a browser can ride, as Go's bar. */}
           {barSave && shown && rideableRoute(shown) && (
-            <button type="button" className="secondary plan-bar-route plan-bar-start" onClick={startRideChecked} aria-label={t("Start ride")}>
+            <button type="button" className="secondary plan-bar-route plan-bar-start" onClick={startRideChecked} aria-label={t("Start ride")} aria-busy={rideOpening === "start" || undefined} aria-disabled={rideOpening === "start" || undefined}>
               <Icon name="play" size={20} />
               {firstWordAndRest(t("Start ride"))[0]}
               <span className="plan-bar-wide">{firstWordAndRest(t("Start ride"))[1]}</span>
@@ -8073,6 +8063,8 @@ export function App() {
                   <button
                     type="button"
                     className="start-button"
+                    aria-busy={rideOpening === "start" || undefined}
+                    aria-disabled={rideOpening === "start" || undefined}
                     onClick={() => {
                       showPlanner(false);
                       startRideChecked();

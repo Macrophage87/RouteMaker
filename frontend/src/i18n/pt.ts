@@ -1965,6 +1965,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines off.": "Curvas de nível desativadas.",
   "Topo lines need a connection. Try again once you have signal.": "As curvas de nível precisam de conexão. Tente de novo quando tiver sinal.",
   "The ride needs a connection to start. Try again once you have signal.": "O percurso precisa de conexão para começar. Tente de novo quando tiver sinal.",
+  "Opening Ride…": "Abrindo Pedal…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Está apertado. Sai em {count}, {source}; folga de {spare}.",
   "live": "em tempo real",
   "scheduled": "pela tabela",

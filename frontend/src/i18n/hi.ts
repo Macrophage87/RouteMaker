@@ -1965,6 +1965,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines off.": "समोच्च रेखाएँ बंद।",
   "Topo lines need a connection. Try again once you have signal.": "समोच्च रेखाओं के लिए कनेक्शन चाहिए। सिग्नल मिलने पर फिर कोशिश करें।",
   "The ride needs a connection to start. Try again once you have signal.": "सवारी शुरू करने के लिए कनेक्शन चाहिए। सिग्नल मिलने पर फिर कोशिश करें।",
+  "Opening Ride…": "सवारी खुल रही है…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "समय कम है। {count} में रवाना होगी, {source}; बचा समय {spare}।",
   "live": "लाइव",
   "scheduled": "समय-सारिणी के अनुसार",

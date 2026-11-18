@@ -2493,6 +2493,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Topo lines off.": "Curvas de nivel desactivadas.",
   "Topo lines need a connection. Try again once you have signal.": "Las curvas de nivel necesitan conexión. Inténtalo de nuevo cuando tengas señal.",
   "The ride needs a connection to start. Try again once you have signal.": "El recorrido necesita conexión para empezar. Inténtalo de nuevo cuando tengas señal.",
+  "Opening Ride…": "Abriendo Recorrido…",
   "Ride ended": "Recorrido terminado",
   "Your account's saved settings are in use on this device.": "Los ajustes guardados de tu cuenta se usan en este dispositivo.",
   "Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.": "La planificación de Paseo masivo cubre solo DC por ahora. Fuera del Distrito de Columbia el mapa aparece en gris y no se muestran cifras de ciclistas por minuto.",
