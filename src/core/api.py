@@ -129,11 +129,11 @@ from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
-# The largest body worth parsing. Twenty-five points with generous precision
-# and whitespace is well under 2 KB; Django's own ceiling is 2.5 MB, which is a
-# thousand times what this endpoint can use and all of it parsed before the
-# point count is checked.
-MAX_BODY_BYTES = 8 * 1024
+# The largest body worth parsing. MAX_POINTS points with generous precision and
+# whitespace, and a via index for each, are about 10 KB; Django's own ceiling is
+# 2.5 MB, which is a hundred times what this endpoint can use and all of it parsed
+# before the point count is checked.
+MAX_BODY_BYTES = 16 * 1024
 # A route request may also carry an opened file's line to follow (`RouteIn.follow`): its
 # encoded text, every character of which JSON may escape as two.
 ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
@@ -141,7 +141,19 @@ ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
 # A start alone is a Run's loop of a target distance (`core.run_plan.target_loop`); every other
 # plan needs a start and a destination (`RouteIn.dials_fit_the_preset`).
 MIN_POINTS = 1
-MAX_POINTS = 25
+# Stephen, 2026-11-18, of the old ceiling of 25: "remove this limit". What binds a rider is the
+# span (MAX_SPAN_M, 124 mi in straight lines); this is only the public API's abuse guard, a point
+# about every 0.6 mi on the longest ride allowed. The routers take a few more locations than this
+# (service_limits max_locations, scripts/build_valhalla_configs.py) so a loop's way back fits.
+MAX_POINTS = 200
+# Each leg is searched on its own (about five router calls a leg, measured on beta 2026-11-18:
+# 13 calls for 2 points, 69 for 12, 118 for 25), so a request counts against the routing limit
+# as one plan for each POINTS_PER_PLAN points it carries (`plan_cost`): up to 25 points is one,
+# as before, and 200 is eight.
+POINTS_PER_PLAN = 25
+# Best order (POST /api/stop-order) keeps the old ceiling: its search grows far faster than a
+# plan (frontend lib/stopOrder.ts ORDER_MAX_POINTS).
+STOP_ORDER_MAX_POINTS = 25
 # The stops a Bikeshare or transit trip takes (Stephen, 2026-11-03): each leg is a search of its
 # own inside the one plan's budget, so a few.
 MAX_TRIP_STOPS = 3
@@ -185,6 +197,30 @@ def too_long() -> str:
         f"({MAX_SPAN_M // 1000} km) in straight lines, which is too "
         "long to plan in one request; split it into shorter parts"
     )
+
+
+def plan_cost(points: list) -> int:
+    """What a plan through `points` counts against the routing limit: one for each
+    POINTS_PER_PLAN points or part of them (`POINTS_PER_PLAN`)."""
+    return max(1, -(-len(points) // POINTS_PER_PLAN))
+
+
+def _charge_points(request, body) -> HttpResponse | None:
+    """Count a plan's points past the first POINTS_PER_PLAN against the routing limit (the
+    decorator counted one plan already), or a 429 where the client has not the room. Nothing
+    is counted for a refused request (`ratelimit.take`)."""
+    extra = plan_cost(body.points) - 1
+    if extra <= 0:
+        return None
+    client = ratelimit.client_key(ratelimit.client_address(request))
+    decision = ratelimit.take(ratelimit.ROUTING, client, extra)
+    if decision.allowed:
+        return None
+    refused = JsonResponse(
+        {"error": "Too many requests from this address; try again shortly."}, status=429
+    )
+    refused["Retry-After"] = str(decision.retry_after_s)
+    return refused
 
 
 # The router's own request limits can refuse a route under MAX_SPAN_M, so this
@@ -3764,7 +3800,7 @@ def _replacing_wait_s(request) -> float:
         502: ErrorOut,
         503: BusyOut,
     },
-    summary="Plan a route through two to twenty-five points on a preset",
+    summary="Plan a route through two to 200 points on a preset",
     description=(
         "Optional headers (Go's full plans, frontend lib/routeScheduler.ts): `X-Plan-Id` names"
         " the plan, so POST /api/route/cancel can stop it, which answers 409 with `code`"
@@ -3852,6 +3888,9 @@ def _waited_s(request) -> float:
 
 
 def _route_answer(request, body: RouteIn, response: HttpResponse):
+    charged = _charge_points(request, body)
+    if charged is not None:
+        return charged
     # Never during a ride: its re-plan starts where the rider is, which may be just over the line,
     # and refusing it would leave the ride no way back into DC.
     refused = None if body.ride_replan else routing.mass_ride_outside_dc(body.preset, body.points)
@@ -4210,11 +4249,13 @@ def route_neighbours(request, body: RouteIn):
     # Trailmaxxed, then Fewer turns and All paved): where the client has not the room, the
     # last ones are left out, never the request refused, and nothing is counted for them
     # (`ratelimit.take`), so the client's next plan is not refused for options it never got.
-    extra = len(wanted) - NEIGHBOURS_COST
+    # A plan of many points counts as several (`plan_cost`), each option alike.
+    extra = len(wanted) * plan_cost(body.points) - NEIGHBOURS_COST
     if extra > 0:
         client = ratelimit.client_key(ratelimit.client_address(request))
         if not ratelimit.take(ratelimit.ROUTING, client, extra).allowed:
-            wanted = wanted[:NEIGHBOURS_COST]
+            # Only what the decorator's count already paid for.
+            wanted = wanted[: NEIGHBOURS_COST // plan_cost(body.points)]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
     bodies = {
@@ -6344,6 +6385,12 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         # OWNER-DECISIONS 449: hidden and off for Mass Ride, whose field rides the
         # route in the order the organiser set.
         return Status(400, {"error": "Mass Ride keeps its stops in the order given"})
+    if len(body.points) > STOP_ORDER_MAX_POINTS:
+        # The local search is not cut by its budget inside a round: 200 points took 86 s
+        # on straight lines alone (review of #1340), past gunicorn's 60 s.
+        return Status(
+            400, {"error": f"Best order takes at most {STOP_ORDER_MAX_POINTS} stops and ends"}
+        )
     # A loop is as long as its way back too, as for /route.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     if span_m(routing.loop_points(body.points, loop)) > MAX_SPAN_M:

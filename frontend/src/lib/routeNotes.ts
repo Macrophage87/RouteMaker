@@ -71,7 +71,7 @@ export const NOTE_NEAR_M = 60;
 
 /**
  * The notes' share of the link, in characters as the address writes them (our default): with the most points the
- * whole link stays under the server's 2048 for a saved or shared route (core/accounts.py HASH_MAX). Words in Chinese
+ * whole link stays well under the server's 8192 for a saved or shared route (core/accounts.py HASH_MAX). Words in Chinese
  * or Amharic take nine characters each in the address, so fewer of them fit.
  */
 export const NOTES_LINK_MAX = 1200;

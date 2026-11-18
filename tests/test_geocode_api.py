@@ -683,11 +683,14 @@ class TestLimits:
         assert spent == 0
 
     def test_a_plan_of_twenty_five_points_can_be_named_at_once(self) -> None:
-        """A shared link opens with up to 25 points, and each is named."""
-        from core.api import MAX_POINTS
+        """A shared link of up to 25 points (a plan's old ceiling, and one plan's worth on the
+        routing limit) is named at once. A longer one, up to MAX_POINTS (200) since 2026-11-18,
+        is named over the next minutes: the page names one point at a time and asks again
+        after a 429 (frontend lib/geocode.ts PlaceNamer)."""
+        from core.api import POINTS_PER_PLAN
 
-        assert ratelimit.REVERSE_BURST.requests >= MAX_POINTS
-        assert ratelimit.REVERSE.requests >= MAX_POINTS
+        assert ratelimit.REVERSE_BURST.requests >= POINTS_PER_PLAN
+        assert ratelimit.REVERSE.requests >= POINTS_PER_PLAN
 
     def test_the_sixth_search_in_a_second_is_429(self, client, photon) -> None:
         fake = photon(answer())

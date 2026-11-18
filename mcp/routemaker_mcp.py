@@ -55,7 +55,7 @@ EARTH_RADIUS_MI = 3958.7613
 # The middle of DC, the default centre a loop goes around (the Zero Milestone, Ellipse).
 DC_CENTRE = (-77.0365, 38.8949)
 # The site's own limits (core/api.py MAX_POINTS, COVERAGE_BBOX).
-MAX_POINTS = 25
+MAX_POINTS = 200
 MAX_DRAFTS = 200  # drafts kept in memory
 # A draft's name: what the rider finds it by in the app's Load route and in my_drafts.
 DRAFT_NAME_SCHEMA = {
@@ -1573,7 +1573,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         return values[0] if values else None
 
     points = [point for point in fragment_points(params) if inside_coverage(point)]
-    points = points[:MAX_POINTS]  # the page opens the first 25 too
+    points = points[:MAX_POINTS]  # the page opens the first MAX_POINTS too
     if len(points) < 2:
         raise ToolError("that link holds no route (it needs at least a start and an end)")
     vias = sorted(
@@ -5558,7 +5558,7 @@ TOOLS = [
         "name": "plan_route",
         "title": "Plan a route",
         "description": (
-            "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
+            "Plan a bike route on RouteMaker through 2 to 200 points (start, stops or via points,"
             " end) and summarise it: distance, time, climbing, the share on each traffic-stress"
             " level (LTS 1 calmest to 4, and Avoid) and on paths and lanes. The route is a draft:"
             " it comes back with a draft_id and a link that opens this exact route in the app"
