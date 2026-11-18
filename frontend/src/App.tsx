@@ -555,8 +555,6 @@ export function App() {
   const [reviewList, setReviewList] = useState<ListKey | undefined>(undefined);
   // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
   const [goSheet, setGoSheet] = useState<"peek" | "half" | "full">("half");
-  // Go's stress bar tapped: a new number opens Layers' Traffic stress section, its colour key (the owner's P1).
-  const [stressKeyAsk, setStressKeyAsk] = useState(0);
   // The rider and bike weight (OWNER-DECISIONS 313-318): kept apart from `dials`, which
   // the link carries, and added only to the request (planDials).
   const weightStore = useRef<WeightStore | null>(null);
@@ -6818,10 +6816,18 @@ export function App() {
         onBestOrder={() => void bestOrder()}
       />
     ) : null,
-    // A tap on the stress bar (the owner's P1): Layers, its Traffic stress section open on the colour key.
-    onStressKey: (opener: HTMLButtonElement) => {
-      setStressKeyAsk((n) => n + 1);
-      openView("layers", opener);
+    // A tap on the stress bar (the 2026-11-12 backlog, Go item 9): the map flies to the route's worst stretch, framed
+    // clear of the sheet. The colour key is in Layers.
+    // A full sheet covers the map, so it goes to half first and the stretch is framed once it has.
+    onWorst: (line: LonLat[]) => {
+      if (line.length === 0) return;
+      if (goSheet === "full") setGoSheet("half");
+      requestAnimationFrame(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        map.fitBounds(frameAround(line), { padding: framePadding(), maxZoom: 17, duration: still ? 0 : 400 });
+      });
     },
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
@@ -7719,7 +7725,6 @@ export function App() {
                 // Not on the Mass Ride map either, where it never draws (scenicShown).
                 intervals: mode === "go" || massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
-                stressKeyAsk,
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,
