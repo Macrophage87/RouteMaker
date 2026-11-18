@@ -535,6 +535,9 @@ test("Go's stress line in plain words (the owner's P1): how calm, the paths and 
     "1.1 mi (1.8 km) on paths and protected lanes",
     "busy road for 0.2 mi (0.3 km)",
   ]);
+  // The worst stretch's street, where it has one (the 2026-11-12 backlog, Go item 9).
+  assert.equal(stressPlainParts({ stress_m: { "1": 1500, "4": 322 }, facility_m: {} }, "K Street")[1], "busy road for 0.2 mi (0.3 km), worst on K Street");
+  assert.deepEqual(stressPlainParts({ stress_m: { "1": 1000 }, facility_m: { none: 1000 } }, "K Street"), ["All calm"], "no street with no busy road");
   assert.deepEqual(stressPlainParts({ stress_m: { "1": 1000 }, facility_m: { none: 1000 } }), ["All calm"]);
   assert.deepEqual(stressPlainParts({ stress_m: {}, facility_m: undefined }), []);
   // The strip under the bar: the path, then the protected lane, as facilityRows has them; read as words.
@@ -549,19 +552,8 @@ test("Go's stress line in plain words (the owner's P1): how calm, the paths and 
   assert.deepEqual(calmWayShares([{ key: "protected", metres: 0, fraction: 0, percent: 0 }]), []);
 });
 
-test("Go's stress figure: the bar and the strip are one button to the colour key; the shares stay the bar's name", () => {
-  assert.match(app, /<figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">/);
-  assert.match(app, /<button type="button" className="stress-key-button" aria-describedby=\{keyHintId\} onClick=\{\(event\) => go\.onKey\?\.\(event\.currentTarget\)\}>\s*\{bar\}\s*\{strip\}/);
-  assert.match(app, /<div className="stress-bar calm-ways" role="img" aria-label=\{calmWaysLabel\(ways\)\}>/);
-  // Shown with " · ", said with commas; at peek said only.
-  assert.match(app, /<span aria-hidden="true">\{parts\.join\(" · "\)\}<\/span>\s*<span className="visually-hidden">\{`\$\{parts\.join\(", "\)\}\.`\}<\/span>/);
-  assert.match(app, /<StressFigure segments=\{segments\} line=\{groupLine\} go=\{\{ route, peek: go\.peek, onKey: go\.onStressKey \}\} \/>/);
-  // A tap opens Layers, its Traffic stress section open (lib/layerSection.ts openAsk).
-  assert.match(app, /onStressKey: \(opener: HTMLButtonElement\) => \{\s*setStressKeyAsk\(\(n\) => n \+ 1\);\s*openView\("layers", opener\);/);
-  assert.match(app, /openAsk=\{stressKeyAsk\}/);
-  const section = readFileSync(new URL("./layerSection.ts", import.meta.url), "utf8");
-  assert.match(section, /useEffect\(\(\) => \{\s*if \(openAsk > 0\) setOpen\(true\);\s*\}, \[openAsk\]\);/);
-});
+// Go's stress figure (the bar, the strip, the line and the tap to the worst stretch) is rendered in
+// app/StressFigure.test.tsx.
 
 test("the route's folds: Elevation and climbs, Stress and facilities, Directions, Junctions to watch, Other routes, Water and restrooms", () => {
   assert.equal(foldTitle("Junctions to watch", 4), "Junctions to watch (4)");
@@ -964,7 +956,7 @@ test("the Layers sheet holds the switches in the mockup's order, each section wi
   // the junctions' are in the traffic stress section, before the next section.
   assert.ok(!app.includes('id="sheet-legend"') && !app.includes("legend-button") && !app.includes("openLegend"));
   const stress = sheet.slice(sheet.indexOf('switchId="show-stress"'), sheet.indexOf("<FederalLandFor"));
-  assert.match(stress, /<StressSectionKey [^\n]*\/>[\s\S]*<JunctionLegend \/>\s*\{\/\*[\s\S]*?\*\/\}\s*\{steepGradesFor\(preset\) && <SteepGradeKey \/>\}\s*\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*<\/LayerSection>/);
+  assert.match(stress, /<StressSectionKey [^\n]*\/>[\s\S]*<JunctionLegend \/>\s*\{\/\*[\s\S]*?\*\/\}\s*\{steepGradesFor\(preset\) && <SteepGradeKey preset=\{preset\} \/>\}\s*\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*<\/LayerSection>/);
   assert.match(app, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
   assert.match(sheet, /\{!federalShown\(preset, true\) && <p className="hint mass-ride-layers">\{MASS_RIDE_LAYERS_NOTE\}<\/p>\}/);
   assert.equal(MASS_RIDE_LAYERS_NOTE, "Mass Ride has its own layers, such as federal land.");
@@ -1230,5 +1222,4 @@ test("Group Ride's stress line: quiet roads and the turns the directions give (t
   assert.equal(groupRideLine({ description: [leg("left")], stress_m: { "1": 80, "3": 20 } } as never), "80% quiet roads · 1 turn");
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /const groupLine = preset === "group-ride" \? groupRideLine\(route\) : null;/);
-  assert.match(panel, /<StressFigure segments=\{segments\} line=\{groupLine\} go=\{\{ route, peek: go\.peek, onKey: go\.onStressKey \}\} \/>/);
 });

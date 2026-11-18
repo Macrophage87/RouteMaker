@@ -57,7 +57,7 @@ test("in a loop a click on an inner leg still goes into that leg", () => {
 
 test("the cap holds in a loop", () => {
   let route: LonLat[] = [A];
-  for (let i = 0; i < 40; i += 1) route = addPoint(route, [-77 + i / 1000, 38.9], true);
+  for (let i = 0; i < MAX_POINTS + 15; i += 1) route = addPoint(route, [-77 + i / 10000, 38.9], true);
   assert.equal(route.length, MAX_POINTS);
 });
 

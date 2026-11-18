@@ -42,6 +42,57 @@ def pytest_collection_finish(session) -> None:
     gc.freeze()
 
 
+def _kept_while_unchanged(load, default_dir):
+    """`load(directory=None, ...)`, its answer kept while the checked-in overrides folder is
+    unchanged: the same files with the same sizes and times. Any other folder (a test's own
+    tmp_path) is read every time, so a test that writes its files sees them.
+
+    The overrides folder is about 430 MB of reviewed ratings. Every rebuild test read and
+    checked all of it, two or three times per rebuild (about 28 s of a 31 s rebuild), which
+    is most of what took CI's pytest step from 14 to 39 minutes. The first call in each test
+    process still reads and checks every file, and a bad file still fails (an error is never
+    kept)."""
+    kept: dict[tuple, object] = {}
+    # The checked-in folder, fixed now: a test that points the default elsewhere is not cached.
+    home = Path(default_dir()).resolve()
+
+    @functools.wraps(load)
+    def kept_load(directory=None, *args, **kwargs):
+        if Path(directory or default_dir()).resolve() != home:
+            return load(directory, *args, **kwargs)
+        stats = ((p.name, p.stat()) for p in sorted(home.glob("*.json")))
+        files = tuple((name, st.st_mtime_ns, st.st_size) for name, st in stats)
+        key = (files, args, tuple(sorted(kwargs.items())))
+        if key not in kept:
+            kept.clear()
+            kept[key] = load(directory, *args, **kwargs)
+        # A fresh outer dict, as a fresh load returns: a caller that adds or drops an entry
+        # changes its own copy. The values are not changed by any caller (fingerprints are
+        # read, a WithheldBlock is a tuple).
+        return dict(kept[key])
+
+    return kept_load
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _overrides_read_once():
+    from pipeline import rematch
+    from routemaker import agency_roads
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            rematch,
+            "load_fingerprints",
+            _kept_while_unchanged(rematch.load_fingerprints, lambda: rematch.OVERRIDES_DIR),
+        )
+        mp.setattr(
+            agency_roads,
+            "withheld_blocks",
+            _kept_while_unchanged(agency_roads.withheld_blocks, lambda: agency_roads.OVERRIDES_DIR),
+        )
+        yield
+
+
 @pytest.fixture(autouse=True)
 def _no_long_trail_sentinels(settings):
     """The rebuild's long-trail sentinels name real W&OD and C&O ways and

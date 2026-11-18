@@ -99,6 +99,8 @@ export interface PointsSectionProps {
   tips: boolean;
   setTips: Dispatch<SetStateAction<boolean>>;
   tipsId: string;
+  /** Opens the keyboard shortcuts' sheet (Plan only, on a computer); undefined: no entry in Tips. */
+  onKeys?: () => void;
 }
 
 /**
@@ -119,7 +121,7 @@ function HintLines({ lines }: { lines: readonly string[] }) {
 }
 
 export function PointsSection(props: PointsSectionProps) {
-  const { bikeLoop, pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
+  const { bikeLoop, pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId, onKeys } = props;
   // A finger as the main pointer: the Info's tips say tap and press and hold, not click (P8).
   const touch = looksLikePhone();
   return (
@@ -209,6 +211,12 @@ export function PointsSection(props: PointsSectionProps) {
         <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
           {t(ACCESS_LABEL)}
         </button>
+        {/* Plan's keys (lib/planKeys.ts), on a computer: "?" opens the same sheet. */}
+        {onKeys && !touch && (
+          <button type="button" className="link plan-keys-open" aria-haspopup="dialog" onClick={onKeys}>
+            {t("Keyboard shortcuts")}
+          </button>
+        )}
         <InstallOffer idBase="tips-install" compact onSay={announce} />
       </div>
       {loop && (

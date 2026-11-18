@@ -18,7 +18,7 @@ import random
 import pytest
 from test_route_api import FakeRouter
 
-from core import presets, routing, stoporder
+from core import api, presets, routing, stoporder
 from routemaker import stoporder as solver
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
@@ -700,6 +700,16 @@ class TestEndpoint:
         response = post(client, {"points": POINTS, "preset": "mass-ride"})
         assert response.status_code == 400
         assert "Mass Ride keeps its stops in the order given" in response.json()["error"]
+        assert fake.calls == []
+
+    def test_more_than_twenty_five_points_are_refused(self, client, router) -> None:
+        """A plan may hold 200 points since 2026-11-18, but Best order keeps 25: its local
+        search took 86 s on 200 points (review of #1340). Refused before the router."""
+        fake = router(FakeRouter({}))
+        many = [[-77.05 + i * 0.0001, 38.9] for i in range(api.STOP_ORDER_MAX_POINTS + 1)]
+        response = post(client, {"points": many, "preset": "default"})
+        assert response.status_code == 400
+        assert "at most 25" in response.json()["error"]
         assert fake.calls == []
 
     def test_the_body_is_checked_as_a_route_requests_is(self, client, router) -> None:
