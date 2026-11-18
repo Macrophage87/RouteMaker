@@ -6028,12 +6028,26 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
   the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
-- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position and the elevation chart's
-  scrub point read from their own stores (`lib/liveValue.ts`), and `LiveRiderPoint`, the
-  same for a ride group's dot. A GPS fix (about once a second) or a scrub re-renders the map
-  alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
+- `app/LiveMap.tsx`: `LiveMap`, the map with the rider's position, the ride's bottom panel's
+  height and the elevation chart's scrub point read from their own stores
+  (`lib/liveValue.ts`), and `LiveRiderPoint`, the same for a ride group's dot. A GPS fix
+  (about once a second), a note coming or going in the ride's panel or a scrub re-renders the
+  map alone, not App and the hidden planner. App keeps a ride's slower parts (the route, the
   stops, Detour's letters) in `rideView` and re-renders only when they change
   (`lib/rideViewKept.ts`). Unlike the pass-throughs above, these two read their stores.
+- Ride on a cheap phone: `scripts/perf/rideProfile.mjs` rides the a11y check's mocked route
+  on a phone-sized page with the CPU slowed 4x (a mid-range Android), a fix a second, and
+  lists each component's renders and own time per second, then the same with no fix. Build
+  with `frontend/scripts/vite.profile.mjs` (production React with its timers, names kept) and
+  serve it with `vite preview` for numbers a phone would see; `--lone-failures` plays a patchy
+  GPS (a failure between fixes), `--why` lists the state and props that drew App and
+  RideMode, `--cpu` where the main thread's time goes. Measured 2026-11-18 on
+  release/v0.28.0: with a good GPS RideMode renders once a fix at under 5 ms a second of the
+  slowed CPU and App not at all, and most of the rest is the map's follow camera; with a patchy
+  GPS a lone failure used to show the GPS note and take it away a second later, drawing
+  RideMode 4 times and App with the hidden planner twice a fix (622 ms of main thread a
+  second); now the note waits until fixes have stopped for 5 s (`lib/rideWatch.ts`
+  `failureShown`) and the panel's height goes through `LiveMap` (244 ms a second).
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
 no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders
@@ -9996,10 +10010,19 @@ written. Miles come first in every language.
   `planLanguageAttributes` marks Plan's containers English and left to right, so they are not
   mirrored. Turn sentences keep left and right as written. A test checks that no catalog swaps
   them.
-- The server's sentences (the route description, hazards, work zones, signal cards) come in the
-  request's `lang` (`RouteIn.lang`). `routemaker.lang` has the same `t`, with Spanish's list in
-  `routemaker.lang_es`. A language with no server catalog is answered wholly in English
-  (`speaking`), and the app reads those sentences in an English voice.
+- The server's sentences (the route description, hazards, work zones, steep grades, climbs,
+  signal cards) come in the request's `lang` (`RouteIn.lang`). `routemaker.lang` has the same `t`,
+  with a list per language: `routemaker.lang_es` and `routemaker.lang_<code>` for the other 19
+  (2026-11-18, backlog 2026-11-12 languages item 6; Claude drafts like the app's). A language with
+  no server catalog is answered wholly in English (`speaking`). Transit steps in the 19 are still
+  worded by the app from the step's fields (`lib/rideTrip.ts stepText`). The app keeps a copy of
+  the server's lists (`frontend/src/i18n/server/<code>.ts`, written by `scripts/translation_sheet.py
+  sync`, fetched with the catalog) only to read those sentences back to English for the voice on a
+  phone with no voice for the language (`englishOf`). Inside Plan, which is marked English, the
+  Directions and hazard lists are marked back to the rider's language with `dir="auto"`
+  (`serverTextAttributes`), so a screen reader reads them in their own voice.
+- Reporting a wrong word: under the language picker, the draft note gains "Spot a wrong word? Tell
+  us on Discord." with the link (the owner, 2026-11-12).
 
 **The checks.** `frontend/src/lib/i18n.test.ts`: every phrase the code marks has its Spanish with
 the same `{places}`, every language has every Go and Ride phrase and turn sentence, and Plan is
@@ -10007,10 +10030,21 @@ marked English for the 19. `frontend/src/lib/i18nLint.test.ts` parses every `.ts
 on English that does not go through `t()`: JSX text, a string child, `aria-label`, `title`,
 `placeholder` or `alt`, or a string passed to `announce`, `setNotice` and the other sayers.
 Something that must stay as written (a brand, a symbol) goes on its `ALLOWED` list with a reason.
-On the server, `tests/test_lang.py` checks the Spanish list against every phrase the code passes.
+On the server, `tests/test_lang.py` checks the Spanish list, and each of the other 19, against
+every phrase the code passes.
+
+**A native speaker's fixes.** `scripts/translation_sheet.py export <code>` writes one CSV per
+language (Excel and Google Sheets open it): every app and route phrase with its English, the draft,
+where it shows (the catalog's section heading), and two columns to fill, "Your fix" and "Checked".
+`import <code> <sheet.csv>` refuses a fix whose `{places}` differ from the English's, writes the
+rest into `frontend/src/i18n/<code>.ts` and `src/routemaker/lang_<code>.py`, keeps the checked
+phrases in `frontend/src/i18n/checked/<code>.json` (the next export marks them) and re-runs
+`sync`. From Excel the sheet must be saved as "CSV UTF-8" (the import says so otherwise; a
+semicolon-separated save is read). Review the diff before committing; `tests/test_translation_sheet.py` covers the round trip.
 
 **Adding or changing a phrase.** Write the English through `t()`, add its Spanish to `es.ts`
-(and to `lang_es.py` for a server sentence), then run the two front-end tests: for a Go or Ride
+(and, for a server sentence, to `lang_es.py` and the other 19 `lang_<code>.py`, then run
+`scripts/translation_sheet.py sync`), then run the two front-end tests: for a Go or Ride
 phrase they name each catalog that still lacks it. Changing the English of a phrase orphans
 every translation of it, so change all the catalogs in the same commit.
 

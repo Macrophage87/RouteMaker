@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Tradiksyon pwovizwa, yon moun ki pale lang lan poko verifye l.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Tradiksyon pwovizwa, yon moun ki pale lang lan poko verifye l. Plan rete an angle.",
   "your location": "kote ou ye",
+  "Spot a wrong word? Tell us on {discord}.": "Ou wè yon mo ki pa bon? Di nou sa sou {discord}.",
   "the start": "depa a",
   "mile {mile} ({km} km)": "mil {mile} ({km} km)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Liy topo limen.",
   "Topo lines off.": "Liy topo etenn.",
   "Topo lines need a connection. Try again once you have signal.": "Liy topo bezwen koneksyon. Eseye ankò lè w gen siyal.",
+  "The ride needs a connection to start. Try again once you have signal.": "Woulib la bezwen koneksyon pou l kòmanse. Eseye ankò lè w gen siyal.",
+  "Opening Ride…": "N ap louvri Woulib…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Li sere. L ap pati nan {count}, {source}; tan an plis {spare}.",
   "live": "an dirèk",
   "scheduled": "dapre orè",

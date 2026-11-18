@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Traduction provisoire, pas encore vérifiée par un locuteur natif.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Traduction provisoire, pas encore vérifiée par un locuteur natif. Plan reste en anglais.",
   "your location": "votre position",
+  "Spot a wrong word? Tell us on {discord}.": "Un mot qui cloche ? Dites-le-nous sur {discord}.",
   "the start": "le départ",
   "mile {mile} ({km} km)": "mille {mile} ({km} km)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Courbes de niveau activées.",
   "Topo lines off.": "Courbes de niveau désactivées.",
   "Topo lines need a connection. Try again once you have signal.": "Les courbes de niveau nécessitent une connexion. Réessayez quand vous aurez du réseau.",
+  "The ride needs a connection to start. Try again once you have signal.": "Le trajet nécessite une connexion pour démarrer. Réessayez quand vous aurez du réseau.",
+  "Opening Ride…": "Ouverture de la sortie…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Ça va être juste. Départ dans {count}, {source} ; marge {spare}.",
   "live": "en temps réel",
   "scheduled": "selon l'horaire",

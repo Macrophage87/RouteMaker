@@ -33,7 +33,7 @@ import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
 import { avoidItems, avoidNoticeFor } from "../lib/avoidJunctions.ts";
-import { ElevationChart } from "../ElevationChart.tsx";
+import { ElevationChart, type ChartTools } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
@@ -288,6 +288,8 @@ export interface RouteSectionProps {
   setScrubPoint: (point: LonLat | null) => void;
   choose: (index: number) => void;
   startRide: () => void;
+  /** Start pressed before Ride mode's code is in (lib/rideCodeWait.ts): shown busy while it waits. */
+  startBusy?: boolean;
   /** Broadcast, beside Start: Share ride's link (the sharer leads), then the ride. Null without a share sheet. */
   // `onHold`: held (or right-clicked), its link as a QR code (lib/broadcastQr.ts).
   broadcastRide: { onPress: () => void; onHold: () => void; note: { text: string; count: number } } | null;
@@ -320,6 +322,8 @@ export interface RouteSectionProps {
   offline?: boolean;
   /** Plan's Check a route (CheckRoute.tsx) on a route that follows an opened file; null otherwise. */
   check?: ReactNode;
+  /** Plan's chart tools (ElevationChart.tsx): click to centre the map, pick a stretch and avoid it; null in Go. */
+  chartTools?: ChartTools | null;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -333,7 +337,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startBusy, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, arriveMs, weather } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -409,7 +413,7 @@ export function RouteSection(props: RouteSectionProps) {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
-          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
+          ride={{ onStart: startRide, busy: startBusy, onBroadcast: broadcastRide?.onPress ?? null, onBroadcastHold: broadcastRide?.onHold ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
           water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
@@ -424,6 +428,7 @@ export function RouteSection(props: RouteSectionProps) {
           startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
           check={props.check ?? null}
+          chartTools={props.chartTools ?? null}
           barrierAvoid={props.barrierAvoid}
         />
       )}
@@ -843,6 +848,7 @@ export function RouteSummary({
   startsMs = null,
   weather = null,
   check = null,
+  chartTools = null,
   barrierAvoid = [],
 }: {
   /** Cargo and Tandem: the barriers this plan goes around (lib/barriers.ts), [lon, lat]. */
@@ -857,7 +863,7 @@ export function RouteSummary({
   federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
-  ride: { onStart: () => void; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
+  ride: { onStart: () => void; busy?: boolean; onBroadcast?: (() => void) | null; onBroadcastHold?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -886,6 +892,8 @@ export function RouteSummary({
   weather?: WeatherReport | null;
   /** Plan's Check a route on an opened file (CheckRoute.tsx), under the warnings; null otherwise. */
   check?: ReactNode;
+  /** Plan's chart tools (ElevationChart.tsx); null in Go. A transit trip's joined chart has none. */
+  chartTools?: ChartTools | null;
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -941,7 +949,7 @@ export function RouteSummary({
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
   const start = rideable ? (
     <>
-      <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
+      <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-busy={ride.busy || undefined} aria-disabled={ride.busy || undefined} aria-describedby="start-ride-hint">
         <Icon name="play" />
         {startWord}
         <span className={goMode ? undefined : "visually-hidden"}>{rideWord}</span>
@@ -1304,7 +1312,7 @@ export function RouteSummary({
           className="elevation-fold"
           name={ROUTE_FOLD_GROUP}
         >
-          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} />}
+          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} tools={trip === route ? (chartTools ?? undefined) : undefined} />}
           {/* The climbs on the route (the Climbs layer's list), in this fold (the mockup's table). */}
           {climbs && <ClimbsAlongList items={climbs} headingId="climbs-along-planner-heading" level="h4" />}
         </Fold>

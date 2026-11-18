@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Черновой перевод, ещё не проверен носителем языка.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Черновой перевод, ещё не проверен носителем языка. Plan остаётся на английском.",
   "your location": "ваше местоположение",
+  "Spot a wrong word? Tell us on {discord}.": "Заметили ошибку в переводе? Напишите нам в {discord}.",
   "the start": "начало",
   "mile {mile} ({km} km)": "миля {mile} ({km} км)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Горизонтали включены.",
   "Topo lines off.": "Горизонтали выключены.",
   "Topo lines need a connection. Try again once you have signal.": "Для горизонталей нужно подключение. Попробуйте снова, когда появится сигнал.",
+  "The ride needs a connection to start. Try again once you have signal.": "Чтобы начать поездку, нужно подключение. Попробуйте снова, когда появится сигнал.",
+  "Opening Ride…": "Открываем поездку…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Впритык. Отправление через {count}, {source}; запас времени {spare}.",
   "live": "в реальном времени",
   "scheduled": "по расписанию",

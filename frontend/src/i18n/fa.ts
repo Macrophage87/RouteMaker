@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "ترجمه پیش‌نویس، هنوز توسط گویشور بومی بررسی نشده است.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "ترجمه پیش‌نویس، هنوز توسط گویشور بومی بررسی نشده است. Plan به انگلیسی می‌ماند.",
   "your location": "موقعیت شما",
+  "Spot a wrong word? Tell us on {discord}.": "واژه‌ای اشتباه دیدید؟ در {discord} به ما بگویید.",
   "the start": "نقطه شروع",
   "mile {mile} ({km} km)": "مایل {mile} ({km} کیلومتر)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "خطوط تراز روشن شد.",
   "Topo lines off.": "خطوط تراز خاموش شد.",
   "Topo lines need a connection. Try again once you have signal.": "خطوط تراز به اتصال نیاز دارند. وقتی آنتن داشتید دوباره امتحان کنید.",
+  "The ride needs a connection to start. Try again once you have signal.": "شروع سواری به اتصال نیاز دارد. وقتی آنتن داشتید دوباره امتحان کنید.",
+  "Opening Ride…": "در حال باز کردن سواری…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "وقت تنگ است. حرکت تا {count} دیگر، {source}؛ وقت اضافه {spare}.",
   "live": "زنده",
   "scheduled": "طبق برنامه",

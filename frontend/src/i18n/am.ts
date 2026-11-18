@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "ረቂቅ ትርጉም፣ ገና በአፍ መፍቻ ተናጋሪ አልተረጋገጠም።",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "ረቂቅ ትርጉም፣ ገና በአፍ መፍቻ ተናጋሪ አልተረጋገጠም። Plan በእንግሊዝኛ ይቆያል።",
   "your location": "አካባቢዎ",
+  "Spot a wrong word? Tell us on {discord}.": "የተሳሳተ ቃል አዩ? በ{discord} ይንገሩን።",
   "the start": "መነሻው",
   "mile {mile} ({km} km)": "ማይል {mile} ({km} ኪ.ሜ.)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "የከፍታ መስመሮች በርተዋል።",
   "Topo lines off.": "የከፍታ መስመሮች ጠፍተዋል።",
   "Topo lines need a connection. Try again once you have signal.": "የከፍታ መስመሮች ግንኙነት ያስፈልጋቸዋል። ሲግናል ሲያገኙ እንደገና ይሞክሩ።",
+  "The ride needs a connection to start. Try again once you have signal.": "ጉዞውን ለመጀመር ግንኙነት ያስፈልጋል። ሲግናል ሲያገኙ እንደገና ይሞክሩ።",
+  "Opening Ride…": "ጉዞን በመክፈት ላይ…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "ጊዜው ጠባብ ነው። መነሻ በ{count} ውስጥ፣ {source}፤ ትርፍ ጊዜ {spare}።",
   "live": "ቀጥታ",
   "scheduled": "በመርሐ ግብር",

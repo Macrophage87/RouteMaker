@@ -31,7 +31,7 @@ import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
 import { RegionPackSetting } from "../RegionPackSetting.tsx";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
-import { RideSettingsFields } from "../RideMode.tsx";
+import { RideSettingsFields } from "../RideSettingsFields.tsx";
 import { ThemeSetting, UnitsSetting } from "../DisplaySettings.tsx";
 import { ICON_STYLE_HELP, ICON_STYLE_LABEL, readIconStyle, writeIconStyle } from "../lib/iconStyle.ts";
 import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
@@ -82,39 +82,8 @@ import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announ
 import type { Status } from "./RoutePanel.tsx";
 import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
 import { dataAgeSaid } from "../lib/dataAge.ts";
-import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
-
-/** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
-const LANGUAGE_HINT = "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.";
-/**
- * Every language but English is a Claude draft (the owner, 2026-10-28): said under the picker, in the language, until
- * a native speaker has checked it. Spanish covers the whole app; the others Go and Ride, Plan staying in English.
- */
-const DRAFT_NOTE = "Draft translation, not yet checked by a native speaker. Plan stays in English.";
-const DRAFT_NOTE_ES = "Draft translation, not yet checked by a native speaker.";
-
-/** Settings > Display > Language: the choice is held here too, so a pick that needs no reload still shows. */
-function LanguageSetting() {
-  const [choice, setChoice] = useState<LanguageChoice>(() => readLanguageChoice());
-  return (
-    <>
-    <SettingRow infoId="settings-language-info" about={t("Language")} info={t(LANGUAGE_HINT)}>
-      <SettingSelect<LanguageChoice>
-        label={t("Language")}
-        value={choice}
-        options={[["", t("Phone default")] as const, ...LANGUAGES.map((lang) => [lang, LANGUAGE_NAME[lang]] as const)]}
-        onChange={(next) => {
-          setChoice(next);
-          chooseLanguage(next);
-        }}
-        describedBy="settings-language-info"
-        optionLang={Object.fromEntries(LANGUAGES.map((lang) => [lang, locale(lang)]))}
-      />
-    </SettingRow>
-    {language() !== "en" && <p className="hint">{language() === "es" ? t(DRAFT_NOTE_ES) : t(DRAFT_NOTE)}</p>}
-    </>
-  );
-}
+import { t } from "../lib/i18n.ts";
+import { LanguageSetting } from "./LanguageSetting.tsx";
 
 /** How the sheets go back: to the planner, or to the sheet that opened them (Suggest for Review). */
 export interface SheetNav {

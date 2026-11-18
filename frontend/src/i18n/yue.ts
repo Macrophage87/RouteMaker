@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "草稿翻譯，尚未經母語人士核對。",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "草稿翻譯，尚未經母語人士核對。Plan 仍為英文。",
   "your location": "您的位置",
+  "Spot a wrong word? Tell us on {discord}.": "睇到用錯字？喺{discord}話俾我哋知。",
   "the start": "起點",
   "mile {mile} ({km} km)": "第{mile}英里（{km}公里）",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "已開啟等高線。",
   "Topo lines off.": "已關閉等高線。",
   "Topo lines need a connection. Try again once you have signal.": "等高線要有網絡連線。有訊號時再試。",
+  "The ride needs a connection to start. Try again once you have signal.": "開始踩車要有網絡連線。有訊號時再試。",
+  "Opening Ride…": "開緊踩車…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "好趕。開車仲有{count}（{source}），仲有{spare}時間。",
   "live": "實時",
   "scheduled": "按時間表",

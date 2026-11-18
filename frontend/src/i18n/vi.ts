@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Bản dịch nháp, chưa được người bản ngữ kiểm tra.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Bản dịch nháp, chưa được người bản ngữ kiểm tra. Plan vẫn bằng tiếng Anh.",
   "your location": "vị trí của bạn",
+  "Spot a wrong word? Tell us on {discord}.": "Thấy từ sai? Hãy báo cho chúng tôi trên {discord}.",
   "the start": "điểm xuất phát",
   "mile {mile} ({km} km)": "dặm {mile} ({km} km)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Đã bật đường đồng mức.",
   "Topo lines off.": "Đã tắt đường đồng mức.",
   "Topo lines need a connection. Try again once you have signal.": "Đường đồng mức cần kết nối. Hãy thử lại khi có sóng.",
+  "The ride needs a connection to start. Try again once you have signal.": "Cần có kết nối để bắt đầu chuyến đi. Hãy thử lại khi có sóng.",
+  "Opening Ride…": "Đang mở Chuyến đi…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Sát giờ rồi. Khởi hành sau {count}, {source}; còn dư {spare}.",
   "live": "trực tiếp",
   "scheduled": "theo lịch",

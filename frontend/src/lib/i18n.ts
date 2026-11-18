@@ -107,6 +107,35 @@ const LOADERS: Partial<Record<Language, () => Promise<Readonly<Record<string, st
 };
 const CATALOGS: Partial<Record<Language, Readonly<Record<string, string>>>> = {};
 
+/**
+ * The route's own sentences in each language (src/routemaker/lang_<code>.py, copied to src/i18n/server/ by
+ * scripts/translation_sheet.py sync): the server words hazards, work zones and climbs in the rider's language, and
+ * these read them back to English for the voice on a phone with no voice for it (englishOf). Fetched with the catalog.
+ */
+const SERVER_LOADERS: Partial<Record<Language, () => Promise<Readonly<Record<string, string>>>>> = {
+  es: () => import("../i18n/server/es.ts").then((m) => m.SERVER),
+  am: () => import("../i18n/server/am.ts").then((m) => m.SERVER),
+  ar: () => import("../i18n/server/ar.ts").then((m) => m.SERVER),
+  bn: () => import("../i18n/server/bn.ts").then((m) => m.SERVER),
+  yue: () => import("../i18n/server/yue.ts").then((m) => m.SERVER),
+  fa: () => import("../i18n/server/fa.ts").then((m) => m.SERVER),
+  fr: () => import("../i18n/server/fr.ts").then((m) => m.SERVER),
+  ht: () => import("../i18n/server/ht.ts").then((m) => m.SERVER),
+  hi: () => import("../i18n/server/hi.ts").then((m) => m.SERVER),
+  id: () => import("../i18n/server/id.ts").then((m) => m.SERVER),
+  ja: () => import("../i18n/server/ja.ts").then((m) => m.SERVER),
+  ko: () => import("../i18n/server/ko.ts").then((m) => m.SERVER),
+  zh: () => import("../i18n/server/zh.ts").then((m) => m.SERVER),
+  ps: () => import("../i18n/server/ps.ts").then((m) => m.SERVER),
+  pt: () => import("../i18n/server/pt.ts").then((m) => m.SERVER),
+  ru: () => import("../i18n/server/ru.ts").then((m) => m.SERVER),
+  th: () => import("../i18n/server/th.ts").then((m) => m.SERVER),
+  ti: () => import("../i18n/server/ti.ts").then((m) => m.SERVER),
+  tr: () => import("../i18n/server/tr.ts").then((m) => m.SERVER),
+  vi: () => import("../i18n/server/vi.ts").then((m) => m.SERVER),
+};
+const SERVER_CATALOGS: Partial<Record<Language, Readonly<Record<string, string>>>> = {};
+
 function isLanguage(raw: unknown): raw is Language {
   return typeof raw === "string" && (LANGUAGES as readonly string[]).includes(raw);
 }
@@ -208,15 +237,20 @@ export async function loadLanguage(lang: Language = current): Promise<void> {
   const load = LOADERS[lang];
   if (!load || CATALOGS[lang]) return;
   try {
-    CATALOGS[lang] = await load();
+    const [catalog, server] = await Promise.all([load(), SERVER_LOADERS[lang]?.().catch(() => undefined)]);
+    CATALOGS[lang] = catalog;
+    if (server) SERVER_CATALOGS[lang] = server;
   } catch {
     // Offline before the worker kept it: English this visit, as for any phrase not yet translated.
   }
 }
 
-/** For tests: a catalog as if loadLanguage had fetched it. */
-export function setCatalogForTest(lang: Language, catalog: Readonly<Record<string, string>>): void {
+/** For tests: a catalog (and the route's sentences) as if loadLanguage had fetched them. */
+export function setCatalogForTest(lang: Language, catalog: Readonly<Record<string, string>>, server?: Readonly<Record<string, string>>): void {
   CATALOGS[lang] = catalog;
+  if (server) SERVER_CATALOGS[lang] = server;
+  else delete SERVER_CATALOGS[lang];
+  REVERSE.delete(lang);
 }
 
 /** A language's catalog, or null for English or one not loaded: to read a phrase back to its English. */
@@ -255,11 +289,11 @@ export function planStaysEnglish(lang: Language = current): boolean {
 }
 
 /**
- * Whether the server words the route's own sentences (hazards, work zones, signal cards) in this language: English
- * and Spanish (src/routemaker/lang.py has a catalog for them). For the others the server answers in English (lang.py `speaking`).
+ * The route's own sentences inside Plan (its Directions and hazard lines): the server words them in the rider's
+ * language, so where Plan is marked English they are marked back, for screen readers and right to left (`dir="auto"`).
  */
-export function serverWordsIn(lang: Language = current): boolean {
-  return lang === "en" || lang === "es";
+export function serverTextAttributes(lang: Language = current): { lang?: string; dir?: "auto" } {
+  return planStaysEnglish(lang) ? { lang: LOCALE[lang], dir: "auto" } : {};
 }
 
 /** Plan's English mark (planStaysEnglish), spread onto its containers. */
@@ -293,7 +327,8 @@ function reverseOf(lang: Language): Reverse | null {
   let found = REVERSE.get(lang);
   if (!found) {
     found = { exact: new Map(), patterns: [] };
-    for (const [english, text] of Object.entries(catalog)) {
+    // The app's own phrases first, then the route's sentences the server sent (an app phrase wins a tie).
+    for (const [english, text] of [...Object.entries(catalog), ...Object.entries(SERVER_CATALOGS[lang] ?? {})]) {
       const names = [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
       if (!names.length) {
         if (!found.exact.has(text)) found.exact.set(text, english);

@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Terjemahan sementara, belum diperiksa oleh penutur asli.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Terjemahan sementara, belum diperiksa oleh penutur asli. Plan tetap dalam bahasa Inggris.",
   "your location": "lokasi Anda",
+  "Spot a wrong word? Tell us on {discord}.": "Menemukan kata yang salah? Beri tahu kami di {discord}.",
   "the start": "titik awal",
   "mile {mile} ({km} km)": "mil {mile} ({km} km)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "Garis kontur aktif.",
   "Topo lines off.": "Garis kontur nonaktif.",
   "Topo lines need a connection. Try again once you have signal.": "Garis kontur memerlukan koneksi. Coba lagi setelah ada sinyal.",
+  "The ride needs a connection to start. Try again once you have signal.": "Perjalanan memerlukan koneksi untuk dimulai. Coba lagi setelah ada sinyal.",
+  "Opening Ride…": "Membuka Perjalanan…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "Waktunya mepet. Berangkat dalam {count}, {source}; waktu tersisa {spare}.",
   "live": "langsung",
   "scheduled": "terjadwal",

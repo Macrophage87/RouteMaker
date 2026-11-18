@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "초벌 번역이며 아직 원어민이 검토하지 않았습니다.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "초벌 번역이며 아직 원어민이 검토하지 않았습니다. Plan은 영어로 유지됩니다.",
   "your location": "현재 위치",
+  "Spot a wrong word? Tell us on {discord}.": "잘못된 단어를 발견하셨나요? {discord}에서 알려 주세요.",
   "the start": "출발점",
   "mile {mile} ({km} km)": "{mile}마일 지점 ({km}km)",
 
@@ -1963,6 +1964,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Topo lines on.": "등고선 켬.",
   "Topo lines off.": "등고선 끔.",
   "Topo lines need a connection. Try again once you have signal.": "등고선에는 연결이 필요합니다. 신호가 잡히면 다시 시도하세요.",
+  "The ride needs a connection to start. Try again once you have signal.": "주행을 시작하려면 연결이 필요합니다. 신호가 잡히면 다시 시도하세요.",
+  "Opening Ride…": "라이드 여는 중…",
   "Cutting it close. Departs in {count}, {source}; time to spare {spare}.": "빠듯합니다. 출발까지 {count}, {source}; 여유 시간 {spare}.",
   "live": "실시간",
   "scheduled": "시간표 기준",
