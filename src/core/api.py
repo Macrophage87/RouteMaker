@@ -151,6 +151,9 @@ MAX_POINTS = 200
 # as one plan for each POINTS_PER_PLAN points it carries (`plan_cost`): up to 25 points is one,
 # as before, and 200 is eight.
 POINTS_PER_PLAN = 25
+# Best order (POST /api/stop-order) keeps the old ceiling: its search grows far faster than a
+# plan (frontend lib/stopOrder.ts ORDER_MAX_POINTS).
+STOP_ORDER_MAX_POINTS = 25
 # The stops a Bikeshare or transit trip takes (Stephen, 2026-11-03): each leg is a search of its
 # own inside the one plan's budget, so a few.
 MAX_TRIP_STOPS = 3
@@ -6382,6 +6385,12 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         # OWNER-DECISIONS 449: hidden and off for Mass Ride, whose field rides the
         # route in the order the organiser set.
         return Status(400, {"error": "Mass Ride keeps its stops in the order given"})
+    if len(body.points) > STOP_ORDER_MAX_POINTS:
+        # The local search is not cut by its budget inside a round: 200 points took 86 s
+        # on straight lines alone (review of #1340), past gunicorn's 60 s.
+        return Status(
+            400, {"error": f"Best order takes at most {STOP_ORDER_MAX_POINTS} stops and ends"}
+        )
     # A loop is as long as its way back too, as for /route.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     if span_m(routing.loop_points(body.points, loop)) > MAX_SPAN_M:

@@ -91,6 +91,8 @@ export interface Course {
   notes: string;
   records: CourseRecord[];
   cues: CourseCue[];
+  /** Each cue's priority (Infinity: must be kept), only where the cues must be cut into parts (courseParts). */
+  priorities?: number[];
   /** Seconds since 1970 of the first record: a fixed base, never the clock. */
   baseUnixS: number;
   totalM: number;
@@ -394,6 +396,8 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
     for (const c of order.slice(0, all.length - room)) dropped.add(c.i);
   }
   const cues = all.filter((_, i) => !dropped.has(i)).map(({ priority: _priority, ...cue }) => cue);
+  // Kept for courseParts, which trims each part as this trims a whole course.
+  const priorities = protectedCount > room ? all.map((c) => c.priority) : undefined;
 
   const courseChars = format === "tcx" ? Math.min(TCX_COURSE_NAME_CHARS, profile.courseNameChars) : profile.courseNameChars;
   const name = courseName(route, courseChars, format);
@@ -413,6 +417,7 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
       notes,
       records,
       cues: cues.map((c) => ({ ...c, vertex: index.get(c.vertex) ?? 0 })),
+      ...(priorities ? { priorities } : {}),
       baseUnixS: COURSE_BASE_UNIX_S,
       totalM: lineM,
       totalS,
@@ -488,38 +493,33 @@ export function courseLine(course: Pick<Course, "format" | "trim">): string {
  * A course whose cues it must keep are more than the device shows (`trim.protectedOver`), cut into parts that each
  * fit: the backlog's "Split here", only where it is needed (Stephen, 2026-11-18: "Only do this if it's actually
  * required"). Any other course is one part, itself. Each part is a course of its own: its own start, its own finish,
- * distances and times from its own start, and its own climb; it is cut at a stop where one falls in its share of the
- * cues, else half way between two cues. Nothing is dropped, so every cue the whole course has is in one part.
+ * distances and times from its own start, and its own climb; each part takes as many of the cues that must be kept as fit, cut at the
+ * last stop among them, else half way between two of them, and then drops its least important cues, as a whole
+ * course does, where it is still over the budget. Every cue that must be kept is in one part.
  */
 export function courseParts(course: Course): Course[] {
   const { profile } = course.trim;
   if (!course.trim.protectedOver || course.records.length < 2) return [course];
   const last = course.records.length - 1;
-  const middle = course.cues.filter((c) => c.type !== "start" && c.type !== "finish");
+  const priorities = course.priorities ?? course.cues.map(() => PROTECTED);
+  const middle = course.cues.map((cue, i) => ({ cue, priority: priorities[i] })).filter(({ cue }) => cue.type !== "start" && cue.type !== "finish");
+  const kept = (c: { priority: number }) => c.priority === PROTECTED;
+  // Each part holds as many cues it must keep as fit beside its own start and finish; the turns are trimmed after.
   const room = Math.max(1, profile.maxCues - 2);
-  const spans: { from: number; to: number; cues: CourseCue[]; stop?: CourseCue }[] = [];
+  const spans: { from: number; to: number; cues: typeof middle; stop?: CourseCue }[] = [];
   let from = 0;
   let rest = middle;
-  while (rest.length > room) {
-    const share = rest.slice(0, room);
-    const stopAt = share.map((c) => c.type).lastIndexOf("stop");
-    let to: number;
-    let taken: number;
-    let stop: CourseCue | undefined;
-    if (stopAt >= 0 && share[stopAt].vertex > from) {
-      // The stop is the part's finish, and the next part's start.
-      to = share[stopAt].vertex;
-      taken = stopAt + 1;
-      stop = share[stopAt];
-    } else {
-      to = Math.floor((share[room - 1].vertex + rest[room].vertex) / 2);
-      taken = room;
-      // Cues on one record cannot be parted: the cut goes after them.
-      if (to <= from) to = Math.min(last, Math.max(from + 1, share[room - 1].vertex));
-    }
-    const cues = rest.slice(0, taken).filter((c) => c.vertex <= to);
-    spans.push({ from, to, cues: stop ? cues.filter((c) => c !== stop) : cues, stop });
-    rest = rest.slice(cues.length);
+  while (rest.filter(kept).length > room) {
+    const musts = rest.filter(kept);
+    const share = musts.slice(0, room);
+    const stop = [...share].reverse().find((c) => c.cue.type === "stop" && c.cue.vertex > from);
+    let to = stop ? stop.cue.vertex : Math.floor((share[room - 1].cue.vertex + musts[room].cue.vertex) / 2);
+    // Cues on one record cannot be parted: the cut goes after them.
+    if (to <= from) to = Math.min(last, Math.max(from + 1, share[room - 1].cue.vertex));
+    // In route order: up to the stop, or every cue before the cut.
+    const taken = stop ? rest.slice(0, rest.indexOf(stop) + 1) : rest.filter((c) => c.cue.vertex <= to);
+    spans.push({ from, to, cues: taken.filter((c) => c !== stop), stop: stop?.cue });
+    rest = rest.filter((c) => !taken.includes(c));
     from = to;
     if (from >= last) break;
   }
@@ -533,16 +533,29 @@ export function courseParts(course: Course): Course[] {
       timeS: r.timeS - course.records[span.from].timeS,
     }));
     const end = records[records.length - 1];
+    // Over the device's budget: the least important dropped first, as compileCourse does for a whole course.
+    const over = span.cues.length + 2 - profile.maxCues;
+    const dropped = new Set(
+      over > 0
+        ? span.cues
+            .map((c, j) => ({ j, priority: c.priority }))
+            .filter((c) => c.priority !== PROTECTED)
+            .sort((a, b) => a.priority - b.priority || a.j - b.j)
+            .slice(0, over)
+            .map((c) => c.j)
+        : [],
+    );
     const cues: CourseCue[] = [
       { type: "start", vertex: 0, name: i === 0 ? "Start" : `Part ${i + 1}`, text: i === 0 ? "Start." : `Part ${i + 1} of ${spans.length}.` },
-      ...span.cues.map((c) => ({ ...c, vertex: c.vertex - span.from })),
+      ...span.cues.filter((_, j) => !dropped.has(j)).map(({ cue }) => ({ ...cue, vertex: cue.vertex - span.from })),
       span.stop
         ? { ...span.stop, type: "finish", vertex: records.length - 1 }
         : { type: "finish", vertex: records.length - 1, name: i === spans.length - 1 ? "Finish" : `End ${i + 1}`, text: i === spans.length - 1 ? "Finish." : `End of part ${i + 1}; part ${i + 2} starts here.` },
     ];
     const [climbM, descentM] = climbAndDescent(records);
+    const { priorities: _priorities, ...whole } = course;
     const part: Course = {
-      ...course,
+      ...whole,
       name: Array.from(course.name).slice(0, Math.max(0, nameChars - suffix.length)).join("").trimEnd() + suffix,
       records,
       cues,
@@ -550,7 +563,7 @@ export function courseParts(course: Course): Course[] {
       totalS: end.timeS,
       climbM,
       descentM,
-      trim: { ...course.trim, cuesBefore: cues.length, cuesKept: cues.length, protectedOver: false, pointsBefore: records.length, pointsKept: records.length, part: { index: i + 1, of: spans.length } },
+      trim: { ...course.trim, cuesBefore: span.cues.length + 2, cuesKept: cues.length, protectedOver: false, pointsBefore: records.length, pointsKept: records.length, part: { index: i + 1, of: spans.length } },
     };
     part.trim.bytes = course.format === "fit" ? writeFit(part).length : UTF8.encode(writeTcx(part)).length;
     return part;

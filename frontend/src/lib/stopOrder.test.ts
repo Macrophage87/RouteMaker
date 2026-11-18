@@ -7,6 +7,7 @@ import { startDials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import {
   BEST_ORDER_LABEL,
+  ORDER_MAX_POINTS,
   STILL_FINDING_ORDER_SAID,
   applyAnswer,
   bestOrderSaid,
@@ -274,7 +275,9 @@ test("the button is in the point tools, only with two or more stops, and says wh
   const app = appSource();
   assert.equal(BEST_ORDER_LABEL, "Best order");
   assert.equal(STILL_FINDING_ORDER_SAID, "Still finding the best order.");
-  assert.match(app, /const orderShown = !isMassRide\(preset\) && stopsThatMove\(stopsOnly\(points, VIA_MARKS\.isVia, loopVias\)\.points, loopVias\) >= 2;/);
+  // Up to Best order's 25 stops and ends (ORDER_MAX_POINTS; a plan may hold 200 since 2026-11-18).
+  assert.equal(ORDER_MAX_POINTS, 25);
+  assert.match(app, /const orderStops = stopsOnly\(points, VIA_MARKS\.isVia, loopVias\)\.points;\s*const orderShown = !isMassRide\(preset\) && stopsThatMove\(orderStops, loopVias\) >= 2 && orderStops\.length <= ORDER_MAX_POINTS;/);
   assert.match(app, /\{orderShown && \(\s*<button[\s\S]{0,600}aria-disabled=\{ordering \? true : undefined\}\s*>\s*\{BEST_ORDER_LABEL\}/);
   // A second press while one is being found is answered, not sent.
   assert.match(app, /if \(orderingRef\.current\) \{\s*announce\(STILL_FINDING_ORDER_SAID\);\s*return;/);

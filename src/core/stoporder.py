@@ -59,7 +59,7 @@ COST_MAX_STOPS = 10
 COST_BUDGET_S = 12
 # A /route request carries at most this many locations (the routers'
 # service_limits.bicycle.max_locations, scripts/build_valhalla_configs.py).
-ROUTE_MAX_LOCATIONS = 50
+ROUTE_MAX_LOCATIONS = 210
 # ... and at most service_limits.bicycle.max_distance (500 km) of straight line
 # between its locations in turn; this keeps well under it.
 ROUTE_MAX_SPAN_M = 400_000

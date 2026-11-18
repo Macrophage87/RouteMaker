@@ -20,6 +20,8 @@ import { withViasOnLegs } from "./pointKinds.ts";
 import { t } from "./i18n.ts";
 
 export const BEST_ORDER_LABEL = t("Best order");
+/** The most stops and ends Best order takes (core/api.py STOP_ORDER_MAX_POINTS): offered only up to it. */
+export const ORDER_MAX_POINTS = 25;
 
 /** What the API answers (core.api.StopOrderOut). */
 export interface StopOrder {
