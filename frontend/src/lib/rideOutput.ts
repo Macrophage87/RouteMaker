@@ -10,7 +10,7 @@
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import type { Verbosity } from "./navigate.ts";
-import { englishOf, language, serverWordsIn, speechLang, t, voiceTags } from "./i18n.ts";
+import { englishOf, language, speechLang, t, voiceTags } from "./i18n.ts";
 import { isIos } from "./installOffer.ts";
 import { withoutMenuMarks } from "./menuNames.ts";
 import { browserChime, chimed } from "./cueTone.ts";
@@ -499,19 +499,13 @@ export class Voice {
 
   private start(text: string, chime?: "turn" | "off"): void {
     // A language the phone has no voice for (Amharic, Tigrinya and others on many phones): the screen keeps the
-    // language and the voice speaks the English, rather than an English voice spelling out words it cannot read. A
-    // sentence with no English in the catalog (one of the server's) is left to the screen.
+    // language and the voice speaks the English, read back from the app's catalog and the route's sentences
+    // (lib/i18n.ts englishOf), rather than an English voice spelling out words it cannot read. A sentence that reads
+    // back to no phrase is left to the screen.
     const voice = language() === "en" ? undefined : voiceFor(this.env.voices?.() ?? []);
     const ascii = /^[\x20-\x7e]*$/.test(text);
-    // Text already in English (the server's sentences) is spoken as it came.
-    let english = voice === null ? (englishOf(text) ?? (ascii ? text : null)) : null;
-    // A language the server does not word the route in: its hazard, work-zone and signal sentences come in English,
-    // so they are said by the English voice, not read out by the language's own (the 2026-10-29 review, P2). Words
-    // that read back to a catalog phrase stay with the language's voice.
-    if (voice !== null && ascii && !serverWordsIn()) {
-      const back = englishOf(text);
-      if (back === null || back === text) english = text;
-    }
+    // Text already in English (a name, a number) is spoken as it came.
+    const english = voice === null ? (englishOf(text) ?? (ascii ? text : null)) : null;
     if (voice === null && english === null) return this.next();
     const said = english ?? text;
     const utterance = this.env.utterance(said);

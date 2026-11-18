@@ -1679,6 +1679,7 @@ export const ES: Readonly<Record<string, string>> = {
   "current location": "ubicación actual",
   "Draft translation, not yet checked by a native speaker.": "Traducción preliminar, aún sin revisar por un hablante nativo.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Traducción preliminar, aún sin revisar por un hablante nativo. Plan sigue en inglés.",
+  "Spot a wrong word? Tell us on {discord}.": "¿Ve una palabra incorrecta? Díganos en {discord}.",
   // ---- Place sheets, results first (the 2026-10-28 audit, P7): opening hours in words (lib/openingHours.ts) ----
   "Open now": "Abierto ahora",
   "Closed now": "Cerrado ahora",

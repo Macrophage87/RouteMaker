@@ -196,6 +196,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Draft translation, not yet checked by a native speaker.": "Terjemahan sementara, belum diperiksa oleh penutur asli.",
   "Draft translation, not yet checked by a native speaker. Plan stays in English.": "Terjemahan sementara, belum diperiksa oleh penutur asli. Plan tetap dalam bahasa Inggris.",
   "your location": "lokasi Anda",
+  "Spot a wrong word? Tell us on {discord}.": "Menemukan kata yang salah? Beri tahu kami di {discord}.",
   "the start": "titik awal",
   "mile {mile} ({km} km)": "mil {mile} ({km} km)",
 

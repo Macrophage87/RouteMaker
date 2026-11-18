@@ -96,7 +96,7 @@ import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, loopWay, loopWays, withLoopWay, planStartDials, plansFromStart, reversedPoints, withLoop } from "./lib/loop.ts";
-import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
+import { FINDING_ORDER_SAID, ORDER_MAX_POINTS, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
   drawnLegs,
@@ -2142,7 +2142,7 @@ export function App() {
     if (!now || now === document.body || now === focusAtPress.current || now.classList.contains("access-link")) toolsToggleRef.current?.focus();
   }, []);
 
-  // The points notice ("outside the area", "at most 25 points") is a status in the Points section; while a
+  // The points notice ("outside the area", "at most 200 points") is a status in the Points section; while a
   // bar sheet or the phone's hidden sheet hides the planner it would say nothing, so it is said through
   // the app-level region then, and only then (no second reading while the planner shows it; recheck S1).
   const plannerShownNow = useRef(true);
@@ -3424,7 +3424,8 @@ export function App() {
   // short ride's tools (More tips says when it appears).
   // Never on a Mass Ride (OWNER-DECISIONS 449), whose field rides the stops in the order set.
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
-  const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
+  const orderStops = stopsOnly(points, VIA_MARKS.isVia, loopVias).points;
+  const orderShown = !isMassRide(preset) && stopsThatMove(orderStops, loopVias) >= 2 && orderStops.length <= ORDER_MAX_POINTS;
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
   // chip's place a stop; never during a ride. A two-point ride type takes stops only where each stop starts a new trip
   // (stopsAsTrips: Walk, the transit types, and Bikeshare since v0.22.0; Rebalance Ride has no destination).
@@ -3465,7 +3466,7 @@ export function App() {
     const ride = rideRef.current;
     const loop = loopStops(ride.preset, ride.dials.loop);
     const stops = stopsOnly(current, VIA_MARKS.isVia, loop);
-    if (isMassRide(ride.preset) || stopsThatMove(stops.points, loop) < 2) return;
+    if (isMassRide(ride.preset) || stopsThatMove(stops.points, loop) < 2 || stops.points.length > ORDER_MAX_POINTS) return;
     orderingRef.current = true;
     setOrdering(true);
     announce(FINDING_ORDER_SAID);
