@@ -7,6 +7,8 @@
  *   Plain .ts keeps Node's own type stripping, as before.
  * - import.meta.env: Vite fills it at build time; under Node it is a test build's (DEV, MODE "test", no beta).
  * - Stylesheets, fonts and images: an empty module (a component's `import "./x.css"` has no behaviour to test).
+ * - `?raw` (Vite's file-as-text import, lib/railData.ts): the file's text as the default export; `?url` (a file
+ *   fetched later, as the food list is): its file URL.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -19,6 +21,13 @@ const TEST_ENV = '({ DEV: true, PROD: false, MODE: "test", BASE_URL: "/", VITE_A
 
 export async function load(url, context, nextLoad) {
   if (ASSET.test(url) && url.startsWith("file:")) return { format: "module", source: "export default '';", shortCircuit: true };
+  if (url.startsWith("file:") && new URL(url).searchParams.has("raw")) {
+    const text = await readFile(fileURLToPath(url), "utf8");
+    return { format: "module", source: `export default ${JSON.stringify(text)};`, shortCircuit: true };
+  }
+  if (url.startsWith("file:") && new URL(url).searchParams.has("url")) {
+    return { format: "module", source: `export default ${JSON.stringify(url.split("?")[0])};`, shortCircuit: true };
+  }
   if (!url.startsWith("file:") || !/\.tsx(\?.*)?$/.test(url)) return nextLoad(url, context);
   const path = fileURLToPath(url);
   const text = (await readFile(path, "utf8")).replaceAll("import.meta.env", TEST_ENV);

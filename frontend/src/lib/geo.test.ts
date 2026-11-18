@@ -75,11 +75,11 @@ test("adding never mutates the list it was given", () => {
   assert.equal(JSON.stringify(route), frozen);
 });
 
-test("no more than the API's twenty-five points", () => {
+test("no more than the API's 200 points", () => {
   let route: LonLat[] = [];
-  for (let i = 0; i < 40; i += 1) route = addPoint(route, [-77 + i / 1000, 38.9]);
+  for (let i = 0; i < 240; i += 1) route = addPoint(route, [-77 + i / 10000, 38.9]);
   assert.equal(route.length, MAX_POINTS);
-  assert.equal(MAX_POINTS, 25);
+  assert.equal(MAX_POINTS, 200);
 });
 
 test("the coverage box is the settings' one and clicks outside it are refused", () => {
