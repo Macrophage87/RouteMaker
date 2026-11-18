@@ -17,7 +17,9 @@ test("the card names the stretch, then its distance, rise, minutes, which way an
   assert.equal(words.title, "Klingle Valley Trail");
   assert.match(words.detail, /0\.6 mi/);
   assert.match(words.detail, /5\.6%/);
-  assert.match(words.detail, /about 3\.6 min at 18 mph \(29 km\/h\)/);
+  // 1,033 m in 3.6 minutes is 10.7 mph: the climb's own speed, said as a guess.
+  assert.match(words.detail, /about 3\.6 min, a rough guess at 11 mph \(17 km\/h\)/);
+  assert.match(intervalHoverWords({ ...DRAWN, l: 1609, r: 0, t: 3.3 }).detail, /a rough guess at 18 mph/);
   assert.match(words.detail, /this way only/);
   assert.match(words.detail, /2 bollards to ride through/);
 });
@@ -36,7 +38,7 @@ test("in Spanish the card's words are Spanish (Plan is English and Spanish)", ()
   try {
     const words = intervalHoverWords({ ...DRAWN, n: "" });
     assert.match(words.detail, /sube .* al 5\.6%/);
-    assert.match(words.detail, /unos 3\.6 min a /);
+    assert.match(words.detail, /unos 3\.6 min, un cálculo aproximado a /);
     assert.match(words.detail, /solo en este sentido/);
     assert.match(words.detail, /2 bolardos que atravesar/);
     assert.match(intervalHoverWords({ ...DRAWN, r: 0, one: false, k: 1 }).detail, /llano.*en ambos sentidos.*1 bolardo que atravesar/);
