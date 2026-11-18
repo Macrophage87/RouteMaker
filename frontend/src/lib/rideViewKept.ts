@@ -1,5 +1,5 @@
 import type { RideStopMark } from "./pointKinds.ts";
-import type { RideView } from "../RideMode.tsx";
+import type { RideView } from "../rideStart.ts";
 
 /**
  * Whether a ride's new view (RideMode's onView) changes anything but the rider's position: if not, App keeps the view

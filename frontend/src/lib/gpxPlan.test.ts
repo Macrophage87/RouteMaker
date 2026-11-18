@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fidelity } from "./trackMatch.ts";
-import { COVERAGE_BBOX, MAX_POINTS, haversineM, insideCoverage, type LonLat } from "./geo.ts";
+import { COVERAGE_BBOX, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { GPX_NS_11, PLAN_TYPE_PREFIX, parseGpx, writeGpx, type GpxFile } from "./gpx.ts";
 import {
+  IMPORT_MAX_POINTS,
   IMPORT_START_POINTS,
   ImportError,
   JOIN_GAP_M,
@@ -145,7 +146,7 @@ test("a track becomes at most 25 points, from its start to its end, all inside t
   const track = line(at(0, 0), at(20_000, 5000), 4000);
   const plan = planFromGpx(file({ tracks: [{ segments: [track] }] }));
   assert.equal(plan.source, "track");
-  assert.ok(plan.points.length >= 2 && plan.points.length <= MAX_POINTS);
+  assert.ok(plan.points.length >= 2 && plan.points.length <= IMPORT_MAX_POINTS);
   assert.deepEqual(plan.points[0], track[0]);
   assert.deepEqual(plan.points.at(-1), track.at(-1));
   assert.ok(plan.points.every(insideCoverage));
@@ -275,7 +276,7 @@ test("a route denser than 25 points is followed as a line", () => {
   const dense = line(at(0, 0), at(5000, 3000), 200).map(([lon, lat]) => ({ lon, lat }));
   const plan = planFromGpx(file({ routes: [{ points: dense }] }));
   assert.equal(plan.source, "track");
-  assert.ok(plan.points.length <= MAX_POINTS);
+  assert.ok(plan.points.length <= IMPORT_MAX_POINTS);
   assert.deepEqual(note(plan.notes, "dense-route"), { kind: "dense-route", count: 200 });
 });
 
@@ -299,7 +300,7 @@ test("a 20,000-point track plans quickly, with a drawing line of at most 5,000 v
   const plan = planFromGpx(file({ tracks: [{ segments: [track] }] }));
   const elapsed = performance.now() - started;
   assert.ok(plan.reference.length <= REFERENCE_MAX_VERTICES, `${plan.reference.length}`);
-  assert.ok(plan.points.length <= MAX_POINTS);
+  assert.ok(plan.points.length <= IMPORT_MAX_POINTS);
   assert.ok(elapsed < 5000, `${elapsed} ms`);
 });
 
@@ -343,10 +344,10 @@ test("fitting adds points where the route missed the track, up to 25 and three r
   assert.deepEqual(next.at(-1), plan.points.at(-1));
   // No more rounds than allowed, never past the cap, and none once the track is followed.
   assert.equal(nextRefinement(plan.reference, plan.points, straight, REFINE_ROUNDS), null);
-  const full = Array.from({ length: MAX_POINTS }, (_, i) => WIGGLE[i * 40]);
+  const full = Array.from({ length: IMPORT_MAX_POINTS }, (_, i) => WIGGLE[i * 40]);
   assert.equal(nextRefinement(plan.reference, full, straight, 0), null);
-  const near = Array.from({ length: MAX_POINTS - 2 }, (_, i) => WIGGLE[i * 40]);
-  assert.equal(nextRefinement(plan.reference, near, straight, 0)?.length, MAX_POINTS);
+  const near = Array.from({ length: IMPORT_MAX_POINTS - 2 }, (_, i) => WIGGLE[i * 40]);
+  assert.equal(nextRefinement(plan.reference, near, straight, 0)?.length, IMPORT_MAX_POINTS);
   assert.equal(nextRefinement(plan.reference, plan.points, plan.reference, 0), null);
   // A route that follows 97% or more is left alone, even with a short miss to fill.
   const nearly = WIGGLE.map((p, i): LonLat => (i >= 600 && i < 615 ? [p[0], p[1] + 80 / 111_195] : p));
@@ -501,7 +502,7 @@ test("a route's named points are its stops when it is the plan, and marked when 
   assert.equal(asPlan.source, "route");
   assert.deepEqual(asPlan.pointNames, ["Start here", "Bakery", "Finish"]);
   assert.equal(asPlan.marks, undefined);
-  const dense = Array.from({ length: MAX_POINTS + 5 }, (_, i) => ({ ...pt(at(i * 20, 0)), ...(i === 7 ? { name: "Bridge" } : {}) }));
+  const dense = Array.from({ length: IMPORT_MAX_POINTS + 5 }, (_, i) => ({ ...pt(at(i * 20, 0)), ...(i === 7 ? { name: "Bridge" } : {}) }));
   const followed = planFromGpx(file({ routes: [{ points: dense }] }));
   assert.equal(followed.source, "track");
   assert.deepEqual(followed.marks, [{ at: at(140, 0), name: "Bridge" }]);

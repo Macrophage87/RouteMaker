@@ -6,7 +6,9 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  FAILURE_SHOWN_AFTER_MS,
   FIX_TIME_BACK_MS,
+  failureShown,
   ON_BOARD_WATCH_OPTIONS,
   fixTime,
   READING_OPTIONS,
@@ -233,4 +235,11 @@ test("a fix keeps the position's own time, so a cached reading is never taken as
   send({ coords: { latitude: 38.9, longitude: -77, accuracy: 300 }, timestamp: 75_000 });
   send({ coords: { latitude: 38.9, longitude: -77, accuracy: 300 } });
   assert.deepEqual(fixes.map((f) => f.at), [75_000, 100_000]);
+});
+
+test("failureShown: a lone failure between good fixes is not shown; fixes stopped a while, no fix yet, or a watch stopped for good is", () => {
+  assert.equal(failureShown("unavailable", true, 1_000), false);
+  assert.equal(failureShown("unavailable", true, FAILURE_SHOWN_AFTER_MS), true);
+  assert.equal(failureShown("unavailable", false, 0), true);
+  for (const reason of ["denied", "insecure", "unsupported"] as const) assert.equal(failureShown(reason, true, 0), true);
 });

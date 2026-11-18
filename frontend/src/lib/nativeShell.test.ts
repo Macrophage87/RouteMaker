@@ -129,9 +129,7 @@ test("the web bundle imports no Capacitor package; frontend/package.json depends
   assert.deepEqual(deps.filter((d) => d.startsWith("@capacitor")), []);
   // Ride mode reaches the shell only through this module.
   const ride = readFileSync(fileURLToPath(new URL("../RideMode.tsx", import.meta.url)), "utf8");
-  assert.match(ride, /import \{ rideBuzz, rideGeoEnv, rideSpeech, rideWake, ridesHidden, showTurnCard, speaksAloud \} from "\.\/lib\/nativeShell\.ts";/);
-  // The shell's voice, with the cue log's trace added to it (lib/cueRecorder.ts).
-  assert.match(ride, /new Voice\(\{ \.\.\.rideSpeech\(\), trace: /);
+  assert.match(ride, /import \{ rideBuzz, rideGeoEnv, rideWake, ridesHidden, showTurnCard, speaksAloud \} from "\.\/lib\/nativeShell\.ts";/);
   assert.match(ride, /new ScreenWake\(rideWake\(\)\)/);
   assert.match(ride, /geoEnv \?\? rideGeoEnv\(\)/);
   assert.match(ride, /if \(ridesHidden\(\)\) return;\s*timer = window\.setTimeout/);

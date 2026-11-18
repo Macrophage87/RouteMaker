@@ -683,11 +683,14 @@ class TestLimits:
         assert spent == 0
 
     def test_a_plan_of_twenty_five_points_can_be_named_at_once(self) -> None:
-        """A shared link opens with up to 25 points, and each is named."""
-        from core.api import MAX_POINTS
+        """A shared link of up to 25 points (a plan's old ceiling, and one plan's worth on the
+        routing limit) is named at once. A longer one, up to MAX_POINTS (200) since 2026-11-18,
+        is named over the next minutes: the page names one point at a time and asks again
+        after a 429 (frontend lib/geocode.ts PlaceNamer)."""
+        from core.api import POINTS_PER_PLAN
 
-        assert ratelimit.REVERSE_BURST.requests >= MAX_POINTS
-        assert ratelimit.REVERSE.requests >= MAX_POINTS
+        assert ratelimit.REVERSE_BURST.requests >= POINTS_PER_PLAN
+        assert ratelimit.REVERSE.requests >= POINTS_PER_PLAN
 
     def test_the_sixth_search_in_a_second_is_429(self, client, photon) -> None:
         fake = photon(answer())
@@ -1710,3 +1713,202 @@ class TestTransport:
             with override_settings(PHOTON_URL=f"http://127.0.0.1:{port}", PHOTON_TIMEOUT_S=0.3):
                 with pytest.raises(geocode.Unavailable):
                     geocode._get("/api", {"q": "x"})
+
+
+class TestStations:
+    """Search rows that name the place (the 2026-11-12 backlog, Go item 8): a railway's track
+    is never a row, a station asked for by a station word is found by its own name, and one
+    station's twins fold into one row."""
+
+    TRACK = dict(type="house", osm_type="W", osm_key="railway", osm_value="subway")
+
+    def test_a_station_word_finds_the_station_and_drops_the_track(self, monkeypatch) -> None:
+        dock = feature(
+            -77.0178,
+            38.9757,
+            name="Takoma Metro",
+            type="house",
+            osm_type="N",
+            osm_key="amenity",
+            osm_value="bicycle_rental",
+            district="Takoma",
+        )
+        tracks = [
+            feature(-77.0175 - i / 1000, 38.975 + i / 1000, name="Metro - Red Line", **self.TRACK)
+            for i in range(3)
+        ]
+        station = feature(
+            -77.0181,
+            38.9761,
+            name="Takoma",
+            type="house",
+            osm_type="N",
+            osm_key="railway",
+            osm_value="station",
+            district="Takoma",
+            city="Washington",
+        )
+        calls: list[dict] = []
+
+        def fake(path: str, params: dict) -> dict:
+            calls.append(dict(params))
+            return answer(station) if "osm_tag" in params else answer(dock, *tracks)
+
+        monkeypatch.setattr(geocode, "_get", fake)
+        found = geocode.search("Takoma Metro", lat=38.97, lon=-77.0, limit=6, lang="en")
+        assert [row["name"] for row in found] == ["Takoma", "Takoma Metro"]
+        assert calls[1]["q"] == "Takoma"
+        assert "railway:station" in calls[1]["osm_tag"]
+        assert calls[1]["lat"] == 38.97
+
+    def test_no_second_ask_when_the_station_is_there(self, monkeypatch) -> None:
+        station = feature(
+            -77.0074,
+            38.8978,
+            name="Union Station",
+            type="house",
+            osm_type="N",
+            osm_key="railway",
+            osm_value="station",
+        )
+        calls: list[dict] = []
+
+        def fake(path: str, params: dict) -> dict:
+            calls.append(dict(params))
+            return answer(station)
+
+        monkeypatch.setattr(geocode, "_get", fake)
+        found = geocode.search("Union Station", lat=38.9, lon=-77.0, limit=6, lang="en")
+        assert [row["name"] for row in found] == ["Union Station"]
+        assert len(calls) == 1
+
+    def test_one_stations_twins_fold_and_its_street_and_plaza_stay(self, monkeypatch) -> None:
+        def row(lon, lat, name, key, value, osm_type="N"):
+            return feature(
+                lon, lat, name=name, type="house", osm_type=osm_type, osm_key=key, osm_value=value
+            )
+
+        monkeypatch.setattr(
+            geocode,
+            "_get",
+            lambda path, params: answer(
+                row(-77.00741, 38.89777, "Union Station", "railway", "station"),
+                row(-77.00648, 38.89652, "Union Station Plaza", "leisure", "park", "W"),
+                row(
+                    -77.00649,
+                    38.89685,
+                    "Union Station Drive Northeast",
+                    "highway",
+                    "residential",
+                    "W",
+                ),
+                row(-77.00586, 38.89837, "Washington Union Station", "railway", "station"),
+                row(-77.00615, 38.89764, "Washington Union Station", "tourism", "attraction", "W"),
+                row(
+                    -77.00632, 38.89907, "Union Station Bus Deck Access", "highway", "footway", "W"
+                ),
+            ),
+        )
+        found = geocode.search("Union Station", lat=38.9, lon=-77.0, limit=6, lang="en")
+        assert [r["name"] for r in found] == [
+            "Union Station",
+            "Union Station Plaza",
+            "Union Station Drive Northeast",
+            "Union Station Bus Deck Access",
+        ]
+
+    def test_two_stations_far_apart_or_differently_named_stay_two(self, monkeypatch) -> None:
+        def station(lon, lat, name):
+            return feature(
+                lon,
+                lat,
+                name=name,
+                type="house",
+                osm_type="N",
+                osm_key="railway",
+                osm_value="station",
+            )
+
+        monkeypatch.setattr(
+            geocode,
+            "_get",
+            lambda path, params: answer(
+                station(-77.0074, 38.8978, "Union Station"),
+                station(-76.6, 39.3, "Union Station"),
+                station(-77.0080, 38.8985, "Judiciary Square"),
+            ),
+        )
+        found = geocode.search("Union", lat=38.9, lon=-77.0, limit=6, lang="en")
+        assert len(found) == 3
+
+    @pytest.mark.parametrize(
+        ("typed", "part"),
+        [
+            ("Takoma Metro", "Takoma"),
+            ("Union station", "Union"),
+            ("Main St stop", None),
+            ("Metro", None),
+            ("Takoma", None),
+            ("Silver Spring Metro, MD", "Silver Spring"),
+        ],
+    )
+    def test_station_part(self, typed, part) -> None:
+        assert geocode.station_part(typed) == part
+
+    @staticmethod
+    def _rows(monkeypatch, *features) -> list[dict]:
+        monkeypatch.setattr(geocode, "_get", lambda path, params: answer(*features))
+        return geocode.search("x", lat=38.9, lon=-77.0, limit=10, lang="en")
+
+    def test_same_name_places_do_not_chain_into_one(self, monkeypatch) -> None:
+        cafes = [
+            feature(
+                -77.03 + i * 0.0027,
+                38.9,
+                name="Starbucks",
+                type="house",
+                osm_type="N",
+                osm_key="amenity",
+                osm_value="cafe",
+            )
+            for i in range(3)
+        ]
+        assert len(self._rows(monkeypatch, *cafes)) == 2
+
+    def test_twins_fold_in_either_order(self, monkeypatch) -> None:
+        def row(lon, lat, name, key, value):
+            return feature(
+                lon, lat, name=name, type="house", osm_type="N", osm_key=key, osm_value=value
+            )
+
+        found = self._rows(
+            monkeypatch,
+            row(-77.00615, 38.89764, "Washington Union Station", "tourism", "attraction"),
+            row(-77.00741, 38.89777, "Union Station", "railway", "station"),
+            row(-77.00586, 38.89837, "Washington Union Station", "railway", "station"),
+        )
+        assert [r["name"] for r in found] == ["Washington Union Station"]
+
+    def test_a_station_and_its_neighbourhood_stay_two(self, monkeypatch) -> None:
+        found = self._rows(
+            monkeypatch,
+            feature(
+                -77.0181,
+                38.9761,
+                name="Takoma",
+                type="house",
+                osm_type="N",
+                osm_key="railway",
+                osm_value="station",
+            ),
+            feature(
+                -77.0195,
+                38.9770,
+                name="Takoma",
+                type="district",
+                osm_type="N",
+                osm_key="place",
+                osm_value="neighbourhood",
+            ),
+        )
+        assert len(found) == 2
