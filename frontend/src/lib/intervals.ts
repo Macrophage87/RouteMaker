@@ -15,14 +15,27 @@ import { t } from "./i18n.ts";
 import { withDarkPaint } from "./darkPaint.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
-export const INTERVALS_LABEL = "Interval stretches";
+/*
+ * The layer's words are in English and Spanish only, as Plan is (i18n.ts planStaysEnglish; the v0.27.3 review found them
+ * English on a Spanish page). Each English is kept in a constant not exported, as lib/terrainSection.ts does its Plan
+ * title, so the Go and Ride catalogs' check (Sheets.tsx imports this module) does not ask the other 18 languages for it.
+ */
+const LABEL = "Interval stretches";
+const HINT = "3 minutes or more with no stops, busy crossings or sharp turns, flat or uphill.";
+const MINUTES_LABEL = "Show intervals from";
+const UNAVAILABLE = "Interval stretches are unavailable for now.";
+const NONE = "No interval stretches yet: they arrive with the next map data update.";
+const LEGEND_TEXT = "Pink glow: an interval stretch. Arrows: ride it that way only (the other way goes downhill).";
+const LEGEND_NAME = "Interval stretches legend";
+
+export const INTERVALS_LABEL = t(LABEL);
 /** Read on every focus, so one short line. */
-export const INTERVALS_HINT = "3 minutes or more with no stops, busy crossings or sharp turns, flat or uphill.";
+export const INTERVALS_HINT = t(HINT);
 /**
  * The owner, 2026-11-17: "filter by time, essentially a 3', 5', 8', etc interval stretch ... 3 minutes is the minimum".
  * Minutes at 18 mph on the flat, slowed on a climb (the file's `t`; src/pipeline/interval_layer.py).
  */
-export const INTERVALS_MINUTES_LABEL = "Show intervals from";
+export const INTERVALS_MINUTES_LABEL = t(MINUTES_LABEL);
 // 20: the owner, 2026-11-17, "go up to 20, thats a common interval".
 export const INTERVALS_MINUTES_OPTIONS = [3, 5, 8, 12, 20] as const;
 export type IntervalsMinutes = (typeof INTERVALS_MINUTES_OPTIONS)[number];
@@ -30,9 +43,9 @@ export const INTERVALS_MINUTES_KEY = "routemaker.intervalsMinutes";
 /** The build's pace and climb slowing, for a file written before it carried `t`. */
 const PACE_MPH = 18;
 const CLIMB_SLOWING = 0.12;
-export const INTERVALS_UNAVAILABLE = "Interval stretches are unavailable for now.";
+export const INTERVALS_UNAVAILABLE = t(UNAVAILABLE);
 /** The file ships empty until the build host fills it (interval-data/README.md). */
-export const INTERVALS_NONE = "No interval stretches yet: they arrive with the next map data update.";
+export const INTERVALS_NONE = t(NONE);
 export const INTERVALS_PREF_KEY = "routemaker.intervalsLayer";
 
 /** Deep pink: not a stress colour, not the Scenic teal, the rails' violet nor the route's blue. 6:1 on white. */
@@ -196,7 +209,7 @@ export function intervalsStatusText(on: boolean, status: IntervalsStatus): strin
   return status === "unavailable" ? INTERVALS_UNAVAILABLE : status === "empty" ? INTERVALS_NONE : "";
 }
 
-export const INTERVALS_LEGEND_TEXT = "Pink glow: an interval stretch. Arrows: ride it that way only (the other way goes downhill).";
+export const INTERVALS_LEGEND_TEXT = t(LEGEND_TEXT);
 
 /**
  * Inside Plan's Trails and terrain section, beside Climbs (the owner, 2026-11-17: "a layer next to climbs"): its own
@@ -249,14 +262,14 @@ export function IntervalsControls({
         h(
           "select",
           { id: "intervals-minutes", value: String(minutes), onChange: (event: { target: { value: string } }) => onMinutesChange(Number(event.target.value) as IntervalsMinutes) },
-          ...INTERVALS_MINUTES_OPTIONS.map((m) => h("option", { key: m, value: String(m) }, `${m} minutes`)),
+          ...INTERVALS_MINUTES_OPTIONS.map((m) => h("option", { key: m, value: String(m) }, t("{n} minutes", { n: m }))),
         ),
       ),
     h("p", { className: "hint intervals-status", role: "status" }, status),
     on &&
       h(
         "ul",
-        { className: "legend intervals-legend", "aria-label": "Interval stretches legend" },
+        { className: "legend intervals-legend", "aria-label": t(LEGEND_NAME) },
         h(
           "li",
           { key: "glow" },

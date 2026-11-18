@@ -28,6 +28,7 @@ import {
   saveIntervalsLayer,
 } from "./intervals.ts";
 import { DARK_PAINT } from "./darkPaint.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 
 const ROW = { id: "a1", l: 2100, r: 30, g: 1.4, line: [[-77, 39], [-76.98, 39]], n: "MacArthur Boulevard" };
 
@@ -89,6 +90,23 @@ test("the rider sees one switch and its hint; the key only while it is on", asyn
   const on = await render(<IntervalsControls on onChange={() => {}} status={INTERVALS_NONE} />);
   assert.ok(on.text().includes(INTERVALS_LEGEND_TEXT));
   assert.ok(on.text().includes(INTERVALS_NONE));
+});
+
+test("in Spanish Plan the switch, its hint, the minutes and the key are in Spanish (the v0.27.3 review)", async () => {
+  // Before: "Interval stretches" and its hint stayed English on a Spanish page.
+  await loadLanguage("es");
+  setLanguageForTest("es");
+  try {
+    // A fresh copy, loaded with Spanish in force as the app loads its modules after the catalog.
+    const es = (await import(`./intervals.ts?es-${Date.now()}`)) as typeof import("./intervals.ts");
+    const screen = await render(<es.IntervalsControls on onChange={() => {}} minutes={5} onMinutesChange={() => {}} status={es.INTERVALS_NONE} />);
+    assert.ok(screen.get("switch", "Tramos para intervalos"));
+    const text = screen.text();
+    for (const words of ["3 minutos o más sin paradas", "Mostrar intervalos desde", "5 minutos", "Brillo rosa", "Aún no hay tramos"]) assert.ok(text.includes(words), words);
+    assert.ok(!/Interval stretches|minutes|Pink glow/.test(text), text);
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("by time: a short steady climb holds 3 minutes as a longer flat road does, and the rider picks the least", async () => {
