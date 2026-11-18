@@ -426,6 +426,31 @@ test("the next stop the rider came within 50 m of and rode away from is reached;
   assert.equal(end.has(points[2]), false);
 });
 
+test("a stop across a creek, reached later by a bridge, is not passed by riding the near bank on the line", () => {
+  // Out 1,000 m along the near bank, over a bridge 40 m north, back along the far bank to the cafe (point 1) at 1,540 m.
+  const coordinates = [at(0, 0), at(500, 0), at(1000, 0), at(1000, 40), at(500, 40), at(0, 40), at(-200, 40)];
+  const description = [
+    stretch(0, 1540, "Creek Trail"),
+    { ...stretch(1540, 1540, "Stop 1."), kind: "via", via: 1 },
+    stretch(1540, 2240, "Creek Trail"),
+  ] as DescriptionEntry[];
+  const model = rideModel(route(coordinates, description, [span(0, 2240, 1)], { leg_ends: [4, 6] }));
+  const points = [at(0, 0), at(500, 40), at(-200, 40)];
+  // Before (#1313): on the line at 500 m, 40 m from the cafe across the water, then off route before the bridge: the
+  // re-route took the cafe as reached and dropped it.
+  const before = new WeakSet<LonLat>();
+  nearStopsStep(before, model, 500, points, false, at(500, 0));
+  assert.equal(leftNearStop(before, points[1], at(700, -30)), true);
+  // Now: on the line, the line's own way to the cafe (1,040 m) is far past 50 m, so it is not near.
+  const onLine = new WeakSet<LonLat>();
+  nearStopsStep(onLine, model, 500, points, false, at(500, 0), false);
+  assert.equal(leftNearStop(onLine, points[1], at(700, -30)), false, "kept for the re-route");
+  // On the far bank, the line's way to it is short: near, then left, so reached (his rule as stated).
+  const farBank = new WeakSet<LonLat>();
+  nearStopsStep(farBank, model, 1510, points, false, at(530, 40), false);
+  assert.equal(leftNearStop(farBank, points[1], at(400, 100)), true);
+});
+
 test("the way back does not join before a stop the re-route leaves out", () => {
   const { r } = withStop();
   const model = rideModel(r);

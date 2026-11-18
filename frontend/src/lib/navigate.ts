@@ -2595,14 +2595,29 @@ export const NEAR_STOP_M = 50;
 
 /**
  * The next stop or via point the rider has not reached (replanKept's first, never the end) that a sure fix came within
- * NEAR_STOP_M of, on or off the line: one per place in the plan's points. Only the next one, so a stop the route
- * reaches on a later pass (a cafe for the way home, passed on the way out) is never counted.
+ * NEAR_STOP_M of: one per place in the plan's points. Only the next one, so a stop the route reaches on a later pass (a
+ * cafe for the way home, passed on the way out) is never counted. On the line (`off` false) the line's own way to it
+ * must be that short too: a cafe across a creek that the route reaches later by a bridge is not passed by riding the
+ * near bank. Off the line the rider's own way got them there, so the straight distance counts.
  */
-export function nearStopsStep(near: WeakSet<LonLat>, model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, here: LonLat): void {
+export function nearStopsStep(near: WeakSet<LonLat>, model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, here: LonLat, off = true): void {
   const kept = replanKept(model, progressM, points, loop);
   if (kept.length < 2) return;
   const next = points[kept[0]];
-  if (next && haversineM(next, here) <= NEAR_STOP_M) near.add(next);
+  if (!next || haversineM(next, here) > NEAR_STOP_M) return;
+  if (!off) {
+    const lineM = stopLineM(model, kept[0]);
+    if (lineM !== null && lineM - progressM > NEAR_STOP_M) return;
+  }
+  near.add(next);
+}
+
+/** The line's place for the plan's point `i` (a via point's pass, else its stop cue); null where the line does not place it. */
+function stopLineM(model: RideModel, i: number): number | null {
+  const pass = model.passes?.find((p) => p.point === i);
+  if (pass) return pass.atM;
+  const cue = model.cues.find((c) => c.kind === "stop" && (c.point ?? c.stop) === i);
+  return cue ? cue.atM : null;
 }
 
 /**
