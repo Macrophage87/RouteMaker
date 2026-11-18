@@ -27,6 +27,8 @@ const UNAVAILABLE = "Interval stretches are unavailable for now.";
 const NONE = "No interval stretches yet: they arrive with the next map data update.";
 const LEGEND_TEXT = "Pink glow: an interval stretch, deeper for longer efforts. Arrows: ride it that way only (the other way goes downhill).";
 const LEGEND_NAME = "Interval stretches legend";
+const BAND = "{from} to {to} min";
+const BAND_LAST = "{from} min or more";
 
 export const INTERVALS_LABEL = t(LABEL);
 /** Read on every focus, so one short line. */
@@ -75,7 +77,7 @@ export function intervalsColour(ramp: readonly string[]): unknown[] {
 export function intervalsBandLabel(i: number): string {
   const from = INTERVALS_BANDS[i];
   const to = INTERVALS_BANDS[i + 1];
-  return to === undefined ? `${from} min or more` : `${from} to ${to} min`;
+  return to === undefined ? t(BAND_LAST, { from }) : t(BAND, { from, to });
 }
 export const INTERVALS_SOURCE = "intervals";
 export const INTERVALS_LINE_LAYER = "intervals-line";

@@ -121,7 +121,8 @@ test("in Spanish Plan the switch, its hint, the minutes and the key are in Spani
     assert.ok(screen.get("switch", "Tramos para intervalos"));
     const text = screen.text();
     for (const words of ["3 minutos o más sin paradas", "Mostrar intervalos desde", "5 minutos", "Brillo rosa", "Aún no hay tramos"]) assert.ok(text.includes(words), words);
-    assert.ok(!/Interval stretches|minutes|Pink glow/.test(text), text);
+    assert.ok(!/Interval stretches|minutes|Pink glow| to \d+ min|or more/.test(text), text);
+    assert.ok(text.includes("min o más"), "the colour key's bands");
   } finally {
     setLanguageForTest("en");
   }

@@ -2627,7 +2627,7 @@ export const NEAR_STOP_M = 50;
  * must be that short too: a cafe across a creek that the route reaches later by a bridge is not passed by riding the
  * near bank. Off the line the rider's own way got them there, so the straight distance counts.
  */
-export function nearStopsStep(near: WeakSet<LonLat>, model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, here: LonLat, off = true): void {
+export function nearStopsStep(near: WeakSet<LonLat>, model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, here: LonLat, off: boolean): void {
   const kept = replanKept(model, progressM, points, loop);
   if (kept.length < 2) return;
   const next = points[kept[0]];

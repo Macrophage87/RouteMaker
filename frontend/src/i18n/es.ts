@@ -2705,6 +2705,8 @@ export const ES: Readonly<Record<string, string>> = {
   "No interval stretches yet: they arrive with the next map data update.": "Aún no hay tramos para intervalos: llegan con la próxima actualización de datos del mapa.",
   "Pink glow: an interval stretch, deeper for longer efforts. Arrows: ride it that way only (the other way goes downhill).": "Brillo rosa: un tramo para intervalos, más intenso para esfuerzos más largos. Flechas: recórralo solo en ese sentido (en el otro va cuesta abajo).",
   "Interval stretches legend": "Leyenda de tramos para intervalos",
+  "{from} to {to} min": "De {from} a {to} min",
+  "{from} min or more": "{from} min o más",
   "Summit": "Cumbre",
   "Turnaround": "Media vuelta",
   "Regroup": "Reagrupar",

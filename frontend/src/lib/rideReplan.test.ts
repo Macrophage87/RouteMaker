@@ -409,20 +409,20 @@ test("the next stop the rider came within 50 m of and rode away from is reached;
   const model = rideModel(r);
   const near = new WeakSet<LonLat>();
   // Before: no such rule, so a re-route sent the rider back to the stop's exact spot.
-  nearStopsStep(near, model, 900, points, false, at(1030, 20)); // 36 m from the stop, off the line
+  nearStopsStep(near, model, 900, points, false, at(1030, 20), true); // 36 m from the stop, off the line
   assert.equal(leftNearStop(near, points[1], at(1030, 20)), false, "still at it");
   assert.equal(leftNearStop(near, points[1], at(1100, 60)), true, "117 m away: left, so reached");
   // Never within 50 m: kept.
   const far = new WeakSet<LonLat>();
-  nearStopsStep(far, model, 900, points, false, at(1000, 80));
+  nearStopsStep(far, model, 900, points, false, at(1000, 80), true);
   assert.equal(leftNearStop(far, points[1], at(1300, 80)), false);
   // A stop the route reaches later is not the next one while an earlier one is ahead: passing near it counts nothing.
   const later = new WeakSet<LonLat>();
-  nearStopsStep(later, model, 100, [points[0], at(300, 0), points[1], points[2]], false, at(1000, 20));
+  nearStopsStep(later, model, 100, [points[0], at(300, 0), points[1], points[2]], false, at(1000, 20), true);
   assert.equal(leftNearStop(later, points[1], at(1300, 80)), false);
   // The end is never taken as reached this way.
   const end = new WeakSet<LonLat>();
-  nearStopsStep(end, model, 1500, points, false, at(1000, 990));
+  nearStopsStep(end, model, 1500, points, false, at(1000, 990), true);
   assert.equal(end.has(points[2]), false);
 });
 
@@ -439,7 +439,7 @@ test("a stop across a creek, reached later by a bridge, is not passed by riding 
   // Before (#1313): on the line at 500 m, 40 m from the cafe across the water, then off route before the bridge: the
   // re-route took the cafe as reached and dropped it.
   const before = new WeakSet<LonLat>();
-  nearStopsStep(before, model, 500, points, false, at(500, 0));
+  nearStopsStep(before, model, 500, points, false, at(500, 0), true);
   assert.equal(leftNearStop(before, points[1], at(700, -30)), true);
   // Now: on the line, the line's own way to the cafe (1,040 m) is far past 50 m, so it is not near.
   const onLine = new WeakSet<LonLat>();
