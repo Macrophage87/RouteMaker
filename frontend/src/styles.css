@@ -8880,6 +8880,38 @@ details.fold > summary .icon {
   margin-top: 0;
 }
 
+/* Plan's keyboard shortcuts sheet (PlanKeysDialog.tsx): the keys left, what each does right. */
+.plan-keys {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  margin: 0 0 12px;
+}
+.plan-keys > div {
+  display: contents;
+}
+.plan-keys dt {
+  white-space: nowrap;
+}
+.plan-keys dd {
+  margin: 0;
+}
+.plan-keys kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-align: center;
+  font-family: inherit;
+}
+.plan-keys-switch {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .closure-choices {
   display: flex;
   flex-wrap: wrap;
