@@ -354,6 +354,8 @@ import type { ShareCardSource } from "./ShareCardDialog.tsx";
 const ShareCardDialog = later(() => import("./ShareCardDialog.tsx").then((m) => m.ShareCardDialog));
 // Check a route (Plan, an opened file only): loaded on first use, its module with it.
 const CheckRoute = later(() => import("./CheckRoute.tsx").then((m) => m.CheckRoute));
+// The stretch picked on Plan's chart (ChartStretch.tsx, Plan experience item 5): loaded on first use too.
+const ChartStretch = later(() => import("./ChartStretch.tsx").then((m) => m.ChartStretch));
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { BARRIER_PRESETS, NO_BARRIERS, barrierAvoidFor, barrierAvoidPoints, barrierAvoidSaid, toggleBarrierAvoid, type BarrierAvoid } from "./lib/barriers.ts";
@@ -4444,6 +4446,36 @@ export function App() {
     // The button goes with the list while the route is planned again: the focus waits on the Route heading.
     routeHeadingRef.current?.focus();
   };
+  // The chart's picked stretch taken round (ChartStretch.tsx): on a file the plan follows, as Use this way above; on
+  // any other plan, via points on the way round in place of the points inside it (lib/chartStretch.ts viasAround).
+  const avoidStretch = async (stretch: WorstStretch, way: LonLat[]) => {
+    if (rideRef.current.imported?.verbatim && shown?.follows_file) return takeCalmerWay(stretch, way);
+    const route = shown;
+    const routed = routedPoints;
+    if (!route) return;
+    const { STRETCH_REPLAN, STRETCH_STOP, takenSaid, viasAround } = await import("./lib/chartStretch.ts");
+    if (stale || !dropStillValid(routed, pointsRef.current)) {
+      announce(STRETCH_REPLAN);
+      setNotice(STRETCH_REPLAN);
+      return;
+    }
+    const next = viasAround(routed, route, stretch, way, loopVias, (p) => VIA_MARKS.via(p), (p) => VIA_MARKS.isVia(p));
+    if (next === null || next === "stop") {
+      const said = next === "stop" ? STRETCH_STOP : t("A route can have at most {count} points.", { count: MAX_POINTS });
+      announce(said);
+      setNotice(said);
+      return;
+    }
+    setNotice(null);
+    commit(next);
+    // Planned at once, as Check a route's Use this way is: one press, no Update route after it.
+    setRouteAsk((n) => n + 1);
+    announce(takenSaid(stretch.street));
+    routeHeadingRef.current?.focus();
+  };
+  // A click on Plan's chart (Enter from the keyboard): the map centred on that spot, clear of the panels and the dock.
+  const centreOn = (point: LonLat) =>
+    mapRef.current?.easeTo({ center: point, padding: framePadding(), duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400 });
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
   // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
   const downloadRoute = (said?: (line: string) => void) => {
@@ -5433,7 +5465,11 @@ export function App() {
     const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
     const card = out && getComputedStyle(out).position === "fixed" ? out.getBoundingClientRect() : null;
     const right = Math.max(card && card.width > 0 ? window.innerWidth - card.left + 40 : 60, spotCard && spotCard.width > 0 ? window.innerWidth - spotCard.left + 40 : 0);
-    return { top: 60, bottom: 60, right, left: (panel?.right ?? 0) + 40 };
+    // Plan's chart docked under the map (ElevationChart.tsx, .pc-dock): clear of it too.
+    const dock = document.querySelector<HTMLElement>(".pc-dock");
+    const docked = dock && getComputedStyle(dock).position === "fixed" ? dock.getBoundingClientRect() : null;
+    const bottom = docked && docked.height > 0 ? window.innerHeight - docked.top + 30 : 60;
+    return { top: 60, bottom, right, left: (panel?.right ?? 0) + 40 };
   }, []);
 
   // On a phone, the map's bottom under the sheet: the map may move far enough for the area's edge to show above it.
@@ -6968,6 +7004,21 @@ export function App() {
           mode === "plan" && imported && fileShown()?.follows_file ? (
             <CheckRoute route={shown as RouteResponse} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={imported.verbatim ? (stretch, way) => void takeCalmerWay(stretch, way) : undefined} />
           ) : null,
+        // Plan's chart tools (Plan experience item 5): click to centre the map, pick a stretch, try a way round it.
+        chartTools:
+          mode === "plan" && shown
+            ? {
+                onCentre: centreOn,
+                stretch: (fromM: number, toM: number, clear: () => void) => {
+                  const profile = usableProfile(shown);
+                  // A file the plan follows without its own line has nothing to take a way round into.
+                  const take = !(imported && fileShown()?.follows_file) || imported.verbatim;
+                  return profile ? (
+                    <ChartStretch route={shown} profile={profile} fromM={fromM} toM={toM} onClear={clear} preset={preset} dials={planDials} getMap={getMap} plan={planCalmer} onUse={take ? (stretch, way) => void avoidStretch(stretch, way) : undefined} />
+                  ) : null;
+                },
+              }
+            : null,
       }}
     />
   );
