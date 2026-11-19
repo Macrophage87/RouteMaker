@@ -40,6 +40,10 @@ count them as the router prices them, not as a quiet trail.
   - each footway it opens is at most `WAY_MAX_M` (about 1,000 ft) long, since a tag opens
     the whole way and a router could ride any of it;
   - never one barred to pedestrians, an area, or indoors.
+- `trail_crossings`: a crosswalk with no bicycle tag, at most `GAP_M` long, that a trail
+  meets at one of its ends and that reaches another bicycle-open way (the road it crosses
+  at least), priced as a link: the crossing's stress belongs to the junction (Little Falls
+  Parkway, 2026-11-19).
 - An informal connector (`is_informal_connector`, `informal=yes`, no bicycle tag) is a
   link only where the whole way is a short hop (`INFORMAL_WAY_MAX_M`), and it is walked,
   not ridden: the pipeline drops its `informal` closure and opens it as walk your bike
@@ -389,6 +393,49 @@ def links(
             continue
         for way in used:
             found[way] = min(metres, found.get(way, metres))
+    return found
+
+
+def trail_crossings(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
+    """The crosswalks to price as links (`TIER`), not as last-resort sidewalks: a
+    crosswalk (`footway=crossing`, a link candidate) at most `GAP_M` long that a
+    trail-class bicycle-open way meets at one of its ends and that reaches another
+    bicycle-open way (the road it crosses, or a way beyond). `ways` as `links` takes them.
+
+    The owner, riding the Capital Crescent Trail at Little Falls Parkway on 2026-11-19:
+    "It seemed to miss part of the bike lane next to little falls parkway", then chose
+    "Build the rule". The parkway's separated path (OSM 1577282328, Little Falls Trail)
+    leaves the trail's crossing and ends at Arlington Road on a marked crosswalk with no
+    bicycle tag (778205176) across the parkway, which the last-resort price (LTS 4) made
+    a wall: routes crossed both carriageways and rode the parkway instead. Crossing the
+    road is the junction's stress, rated as a junction (the owner, 2026-11-15, crossings
+    split), so the crosswalk itself takes a link's price, as a trail's dead-end footway
+    link does. A crosswalk no trail meets at an end keeps the last-resort price: one that
+    only crosses a cycle track on its way over the road is a pedestrian's crossing."""
+    trail_at: dict[int, set[int]] = defaultdict(set)
+    open_at: dict[int, set[int]] = defaultdict(set)
+    crossings: list[tuple[int, Sequence[int], float]] = []
+    for osm_id, tags, node_ids, coords in ways:
+        if osm_id in closed or len(node_ids) < 2:
+            continue
+        if tags.get("footway") == "crossing" and is_link_candidate(tags):
+            crossings.append((osm_id, node_ids, _length(coords)))
+            continue
+        if not bicycle_open(tags):
+            continue
+        trail = tags.get("highway") in TRAIL_HIGHWAY
+        for node in node_ids:
+            open_at[node].add(osm_id)
+            if trail:
+                trail_at[node].add(osm_id)
+    found: set[int] = set()
+    for osm_id, node_ids, metres in crossings:
+        if not 0 < metres <= GAP_M:
+            continue
+        trails = trail_at.get(node_ids[0], set()) | trail_at.get(node_ids[-1], set())
+        reached = set().union(*(open_at.get(node, ()) for node in node_ids))
+        if trails and reached - trails:
+            found.add(osm_id)
     return found
 
 
