@@ -8878,7 +8878,13 @@ within 100 ft (30 m) of a road rated 4.5 or Avoid and parallel to it along most 
 length, keep `rm:sidewalk=yes` and are rated LTS 3; every other ridden sidewalk and
 crosswalk gets `rm:sidewalk=last_resort`, which also writes LTS 4's top lane count, and is
 rated LTS 4. A crosswalk is never beside a road, so even on a corridor beside a 4.5 or
-Avoid road its crosswalks are last resort: short, they barely move the price. On tile
+Avoid road its crosswalks are last resort: short, they barely move the price. A crosswalk
+that carries a trail across a road (`sidewalks.trail_crossings`: at most 160 ft (50 m), a
+trail-class bicycle-open way at one of its ends, reaching another bicycle-open way) is a
+link: the owner, 2026-11-19, of the Little Falls Trail beside Little Falls Parkway, whose
+end crosswalk at Arlington Road (OSM 778205176) the LTS 4 price made a wall, chose "Build
+the rule"; the crossing's own stress is the junction's (crossings split, 2026-11-15). In
+ten sample areas it moved 67 of 3,343 untagged crosswalks (2%) to the link price. On tile
 builds (tests/test_tile_build_sidewalk_price.py; one-off sweeps of 0.5 mi and 3 mi (800 m
 and 5 km) roads with side streets and slip lanes, not kept in the repo) the first kind loses
 to the road beside it at LTS 1 to 3.5 and wins over LTS 4, 4.5 and Avoid from the slider's 40 up; the
