@@ -15,6 +15,7 @@ import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import { metricFirst } from "./units.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatAxisMetres, formatClimb, spokenDistance } from "./format.ts";
 import { t } from "./i18n.ts";
+import type { NoteIcon } from "./routeNotes.ts";
 import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, shortStreet as abbreviate, usableProfile } from "./profileChart.ts";
 import { spanClass, usableSpans } from "./routeColours.ts";
 import { FACILITIES, HIGH_STRESS_LANE_MIN_TIER, MTB_LEVELS, MTB_TRAIL, relativeLuminance } from "../stressStyle.js";
@@ -580,6 +581,11 @@ export interface TurnMark {
   movement: TurnMovementKey | null;
   /** Orange (a triangle) and red (a diamond) as the planner's junction markers; "avoid" an Avoid stretch's start. */
   severity: "orange" | "red" | "avoid" | null;
+  /**
+   * A stop (Stephen 2026-11-19: "Add the stop symbol to the same place as the turns"): its number and its icon, where
+   * the planner gave it one; drawn in the turns' row in place of an arrow.
+   */
+  stop?: { number: number | null; icon: NoteIcon | null };
 }
 
 interface CueLike {
@@ -592,6 +598,8 @@ interface CueLike {
   /** A short path straight across a road: not a turn on the card, so not one here. */
   cross?: string;
   source?: string;
+  /** A stop's number, on a "stop" cue. */
+  stop?: number | null;
 }
 
 /**
@@ -599,11 +607,13 @@ interface CueLike {
  * at all), each junction the planner flagged orange or red, and where an Avoid stretch starts. Not work zones or
  * hazards: they are not junctions.
  */
-export function turnMarks(cues: readonly CueLike[], w: Pick<AheadWindow, "fromM" | "toM">): TurnMark[] {
+export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWindow, "fromM" | "toM">, stopIcon: (cue: C) => NoteIcon | undefined = () => undefined): TurnMark[] {
   const marks: TurnMark[] = [];
   for (const c of cues) {
     if (c.atM < w.fromM || c.atM > w.toM) continue;
-    if (c.kind === "turn") {
+    if (c.kind === "stop") {
+      marks.push({ m: c.atM, movement: null, severity: null, stop: { number: c.stop ?? null, icon: stopIcon(c) ?? null } });
+    } else if (c.kind === "turn") {
       if (c.movement !== null && !c.joined && !c.cross) marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null });
     } else if (c.source === "junction" && (c.severity === "orange" || c.severity === "red")) {
       marks.push({ m: c.atM, movement: null, severity: c.severity });
@@ -616,12 +626,15 @@ export function turnMarks(cues: readonly CueLike[], w: Pick<AheadWindow, "fromM"
 
 const RANK: Record<string, number> = { red: 3, orange: 2, avoid: 1 };
 
-/** Marks closer than `minM` drawn as one, so they never pile up: the turn's arrow kept, in the worse colour of the two. */
+/**
+ * Marks closer than `minM` drawn as one, so they never pile up: the turn's arrow kept, in the worse colour of the two.
+ * A stop is never joined to a turn or a junction marker (the review: a stop must not hide a busy junction): both drawn.
+ */
 export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[] {
   const out: TurnMark[] = [];
   for (const mark of marks) {
     const last = out[out.length - 1];
-    if (last && mark.m - last.m < minM) {
+    if (last && mark.m - last.m < minM && !last.stop && !mark.stop) {
       const severity = (RANK[mark.severity ?? ""] ?? 0) > (RANK[last.severity ?? ""] ?? 0) ? mark.severity : last.severity;
       out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity };
       continue;
