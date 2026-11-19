@@ -400,10 +400,12 @@ def trail_crossings(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> s
     """The crosswalks to price as links (`TIER`), not as last-resort sidewalks: a
     crosswalk (`footway=crossing`, a link candidate) at most `GAP_M` long that a
     trail-class bicycle-open way meets at one of its ends and that reaches another
-    bicycle-open way (the road it crosses, or a way beyond). `ways` as `links` takes them.
+    bicycle-open way (the road it crosses, or a way beyond: nearly always true, so the
+    test that matters is the trail at an end). Unlike `links`, the trail need not stop
+    there: it may run on past the crosswalk. `ways` as `links` takes them.
 
-    The owner, riding the Capital Crescent Trail at Little Falls Parkway on 2026-11-19:
-    "It seemed to miss part of the bike lane next to little falls parkway", then chose
+    The owner, 2026-11-19, of the Capital Crescent Trail at Little Falls Parkway: "It
+    seemed to miss part of the bike lane next to little falls parkway", then chose
     "Build the rule". The parkway's separated path (OSM 1577282328, Little Falls Trail)
     leaves the trail's crossing and ends at Arlington Road on a marked crosswalk with no
     bicycle tag (778205176) across the parkway, which the last-resort price (LTS 4) made

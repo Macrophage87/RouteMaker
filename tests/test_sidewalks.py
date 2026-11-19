@@ -629,3 +629,12 @@ def test_a_crosswalk_that_only_crosses_a_cycle_track_is_not():
         placed(214, SIDEWALK, [(0.0, 20.0), (50.0, 20.0)]),
     ]
     assert sw.trail_crossings(ways) == set()
+
+
+def test_a_trail_that_runs_on_past_its_crosswalk_is_found_where_links_is_not():
+    """Little Falls' own case: the crosswalk leaves the path partway along (the path runs
+    on), so the path is no dead end and `links` passes it by."""
+    ways = little_falls()
+    ways[0] = placed(200, SIDE_PATH, [(0.0, 0.0), (0.0, 100.0), (-60.0, 160.0)])
+    assert 201 not in sw.links(ways)
+    assert sw.trail_crossings(ways) == {201}
