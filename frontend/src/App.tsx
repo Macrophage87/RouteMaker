@@ -7310,7 +7310,7 @@ export function App() {
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
       {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !onBike} />
-      {/* Plan's alone, as Scenic (lib/intervals.ts). */}
+      {/* Go and Plan, not the Mass Ride map (lib/intervals.ts). */}
       <IntervalsOverlay getMap={getMap} on={intervalsShown} data={intervalsDrawn} />
       <BikeshareDocksOverlay
         active={docksActive}

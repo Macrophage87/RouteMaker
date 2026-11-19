@@ -10,7 +10,7 @@ import { INTERVALS_LABEL } from "./intervals.ts";
 import type { SectionLayer } from "./layerSection.ts";
 import { MTB_TRAILS_LABEL } from "./mtbTrailsSwitch.ts";
 import { TOPO_LINES_LABEL } from "./topoLines.ts";
-import { t } from "./i18n.ts";
+import { planStaysEnglish, t } from "./i18n.ts";
 
 /** Only a stress map known to be down leaves the trails out; "checking" is not "unavailable". */
 export function stressShowable(stress: "checking" | "available" | "unavailable"): boolean {
@@ -39,15 +39,15 @@ export interface TerrainState {
 export const MTB_TRAILS_ROW_UNAVAILABLE = t("Mountain-bike trails need the stress map, unavailable for now.");
 export const TOPO_LINES_ROW_UNAVAILABLE = t("Topo lines are not available on this server yet.");
 
-/** Its name: in Plan, which adds Interval stretches, "training" too (the owner, 2026-11-17: "Change the name of that
- * group to suit"). Go, which has no Interval stretches, keeps the old name. The Plan name is in English and Spanish
- * only, as Plan is (i18n.ts planStaysEnglish): kept out of an exported constant so the Go and Ride catalogs' check
- * does not ask the other languages for it. */
+/** Its name: with Interval stretches (Go and Plan), "training" too (the owner, 2026-11-17: "Change the name of that
+ * group to suit"). That name is in English and Spanish only (i18n.ts planStaysEnglish): kept out of an exported
+ * constant so the Go and Ride catalogs' check does not ask the other languages for it, and those languages keep the
+ * translated old name rather than show an English heading in Go. */
 export const TERRAIN_TITLE = t("Trails and terrain");
 const PLAN_TITLE = "Trails, terrain and training";
 export const TERRAIN_PLAN_TITLE = t(PLAN_TITLE);
-export function terrainTitle(withIntervals: boolean): string {
-  return withIntervals ? TERRAIN_PLAN_TITLE : TERRAIN_TITLE;
+export function terrainTitle(withIntervals: boolean, englishOnly: boolean = planStaysEnglish()): string {
+  return withIntervals && !englishOnly ? TERRAIN_PLAN_TITLE : TERRAIN_TITLE;
 }
 
 /** The layers the section switch turns on and off: the ones that can show. */
