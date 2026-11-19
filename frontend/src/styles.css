@@ -6058,7 +6058,6 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-size: max(16pt, calc(var(--cue-fit, 1) * 1.25rem));
 }
 
-/* The arrow grows with the words but leaves the distance most of the width. */
 /* A stop's own icon in the arrow's place, centred in the arrow's box. */
 .cue-stop-icon {
   display: flex;
@@ -6079,6 +6078,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-size: min(calc(var(--cue-fit-d, 1) * 92px), 25vw);
 }
 
+/* The arrow grows with the words but leaves the distance most of the width. */
 .ride-large .cue-shape {
   width: min(calc(var(--cue-fit-d, 1) * 128px), 35vw);
   height: auto;

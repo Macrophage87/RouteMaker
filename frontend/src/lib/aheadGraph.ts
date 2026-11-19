@@ -627,17 +627,16 @@ export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWi
 const RANK: Record<string, number> = { red: 3, orange: 2, avoid: 1 };
 
 /**
- * Marks closer than `minM` drawn as one, so they never pile up: the turn's arrow kept, in the worse colour of the two;
- * a stop among them is drawn in their place (where the rider is going; the turns are still counted in the sentence).
+ * Marks closer than `minM` drawn as one, so they never pile up: the turn's arrow kept, in the worse colour of the two.
+ * A stop is never joined to a turn or a junction marker (the review: a stop must not hide a busy junction): both drawn.
  */
 export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[] {
   const out: TurnMark[] = [];
   for (const mark of marks) {
     const last = out[out.length - 1];
-    if (last && mark.m - last.m < minM) {
+    if (last && mark.m - last.m < minM && !last.stop && !mark.stop) {
       const severity = (RANK[mark.severity ?? ""] ?? 0) > (RANK[last.severity ?? ""] ?? 0) ? mark.severity : last.severity;
-      const stop = last.stop ?? mark.stop;
-      out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity, ...(stop ? { stop } : {}) };
+      out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity };
       continue;
     }
     out.push({ ...mark });

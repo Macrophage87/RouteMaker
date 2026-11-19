@@ -81,6 +81,8 @@ const ZOOM_MAX = 1.6;
 const TURNS_H = 26;
 /** A stop's disc in the turns' row: as tall as an arrow. */
 const STOP_R = 11;
+/** Drawn on the ribbon (no room for the turns' strip): within the ribbon's height, as the arrows are. */
+const STOP_R_ON_RIBBON = 8.5;
 /**
  * Traffic stress, a ribbon of the stress colours under the turns, each stretch carrying its level, so it sits beside
  * the other graphs (Stephen 2026-11-04: "You can't have both elevation and traffic stress. Maybe just make the traffic
@@ -420,9 +422,11 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
   const iconStyle = useIconStyle();
   return (
     <g className="ride-ahead-turns">
+      {/* Stops first, so a turn or busy junction beside one is drawn over it, never hidden. */}
+      {marks.map((mark, i) => mark.stop && <StopMark key={`s${i}`} stop={mark.stop} cx={x(mark.m)} cy={cy} r={(halo ? STOP_R_ON_RIBBON : STOP_R) * scale} iconStyle={iconStyle} />)}
       {marks.map((mark, i) => {
+        if (mark.stop) return null;
         const cx = x(mark.m);
-        if (mark.stop) return <StopMark key={i} stop={mark.stop} cx={cx} cy={cy} iconStyle={iconStyle} />;
         const colour = mark.severity === "orange" || mark.severity === "red" ? SEVERITY_COLOURS[mark.severity] : null;
         if (mark.movement) {
           const arrow = ARROWS[mark.movement];
@@ -448,8 +452,7 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
 }
 
 /** A stop in the turns' row: on a disc of the panel with an edge, so it reads on the ribbon too. */
-function StopMark({ stop, cx, cy, iconStyle }: { stop: NonNullable<TurnMark["stop"]>; cx: number; cy: number; iconStyle: IconStyle }) {
-  const r = STOP_R;
+function StopMark({ stop, cx, cy, r, iconStyle }: { stop: NonNullable<TurnMark["stop"]>; cx: number; cy: number; r: number; iconStyle: IconStyle }) {
   return (
     <g className="ride-ahead-stop">
       <circle cx={cx} cy={cy} r={r} className="ride-ahead-stop-disc" />

@@ -31,12 +31,12 @@ test("a stop is drawn in the turns' row: its icon where it has one, its number i
   assert.equal(stops[1].textContent, "", "an icon: no number over it");
 });
 
-test("a stop is never lost among turns drawn as one, nor counted as a turn", () => {
-  const marks = turnMarks([cue({ atM: 100, movement: "right" }), cue({ kind: "stop", atM: 120, stop: 3, source: "via" })], { fromM: 0, toM: 3000 });
-  assert.equal(marks.length, 2);
+test("a stop beside a busy junction: both drawn, neither hiding the other", () => {
+  const marks = turnMarks([cue({ atM: 100, movement: "right", severity: "red" }), cue({ kind: "stop", atM: 120, stop: 3, source: "via" })], { fromM: 0, toM: 3000 });
   const drawn = spreadMarks(marks, 50);
-  assert.equal(drawn.length, 1);
-  assert.deepEqual(drawn[0].stop, { number: 3, icon: null }, "the stop drawn in their place");
+  assert.equal(drawn.length, 2);
+  assert.equal(drawn[0].severity, "red", "the red turn kept");
+  assert.deepEqual(drawn[1].stop, { number: 3, icon: null }, "the stop kept");
 });
 
 test("a named stop's card: the name large, 'Stop 2.' and where it is in the small print; no name, no change", () => {
