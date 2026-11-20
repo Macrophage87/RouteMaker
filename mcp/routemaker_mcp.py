@@ -5136,7 +5136,7 @@ RIDE_OPTIONS = {
             " or training ride). A second stopped counts this many seconds of riding when"
             " routes are ranked; 1 to 5 in half steps. It only raises the ride type's own weight"
             " (1; 2 on"
-            " trailmaxxing, gravel, mountain-goat, mountain-bike and fast; 3 on road-bike)."
+            " trailmaxxing, gravel, mountain-goat, mountain-bike, fast and tandem; 3 on road-bike)."
             " Compare summary.junction_waits before and after; the waits shown stay real."
         ),
     },
