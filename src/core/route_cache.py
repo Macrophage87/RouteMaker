@@ -454,6 +454,14 @@ def beacons() -> tuple:
     return approval("beacons", flashing_signals.active)
 
 
+def rater_version() -> str:
+    """The raters' junction ratings' version (`junction_raters.digest`): a reload changes
+    every plan that crosses a rated junction."""
+    from . import junction_raters
+
+    return approval("raters", junction_raters.digest)
+
+
 def _approved_part(preset: str) -> list:
     """The approvals the plan reads at request time, read as the plan reads them."""
     hazards = []
@@ -466,6 +474,7 @@ def _approved_part(preset: str) -> list:
         [repr(item) for item in junction_ratings()],
         hazards,
         [repr(item) for item in beacons()],
+        rater_version(),
     ]
 
 
