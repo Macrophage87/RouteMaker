@@ -728,3 +728,19 @@ def test_the_new_tools_only_read() -> None:
     for tool in mcp.TOOLS:
         if tool["name"] in names:
             assert tool["annotations"]["readOnlyHint"] is True
+
+
+def test_the_sharp_turn_weight_is_sent_kept_and_in_the_link(tools, api) -> None:
+    # The owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights".
+    out = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 0})
+    assert api.routes[-1]["sharp_turn_weight"] == 0
+    # 0 is a weight, not "none": it rides in the link.
+    assert "sharpturns=0" in out["link"]
+    tools.call("revise_route", {"draft_id": out["draft_id"], "preset": "gravel"})
+    assert api.routes[-1]["sharp_turn_weight"] == 0
+    tools.call(
+        "revise_route", {"draft_id": out["draft_id"], "clear_settings": ["sharp_turn_weight"]}
+    )
+    assert "sharp_turn_weight" not in api.routes[-1]
+    fun = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 4})
+    assert "sharpturns=4" in fun["link"]
