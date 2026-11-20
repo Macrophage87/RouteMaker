@@ -169,6 +169,7 @@ import {
   focusAfterClose,
   groupHolding,
   type CardOpener,
+  junctionCardBody,
 } from "./lib/junctionCard.ts";
 import { wrapCredits } from "./lib/mapInfo.ts";
 import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
@@ -178,7 +179,7 @@ import {
   groupLabel,
   junctionItems,
   junctionsOnMap,
-  warningIconSvg,
+  groupIconSvg,
   ICON_PX,
   type JunctionGroup,
   type JunctionItem,
@@ -2492,7 +2493,7 @@ export function MapView(props: Props) {
         element.className = `junction-marker junction-${group.severity}${single ? "" : " junction-group"}`;
         element.dataset.junctionIndex = String(first.index);
         element.innerHTML =
-          warningIconSvg(group.severity, ICON_PX) +
+          groupIconSvg(group, ICON_PX) +
           (single ? "" : `<span class="junction-count" aria-hidden="true">${group.members.length}</span>`);
         // The name alone: a title as well was read a second time, as the
         // description (a11y review, int-2).
@@ -3351,20 +3352,7 @@ function focusPlace(card: Popup | null, map: MapLibreMap): "card" | "opener" | "
  * than "Close popup, button".
  */
 function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boolean): Popup {
-  const body = document.createElement("div");
-  body.className = "junction-card";
-  const title = document.createElement("strong");
-  title.textContent = item.label.split(":")[0];
-  const reason = document.createElement("p");
-  reason.textContent = item.reason;
-  const cost = document.createElement("p");
-  cost.className = "junction-card-cost";
-  cost.textContent = `${item.costText}.`;
-  const where = document.createElement("p");
-  where.className = "hint";
-  where.textContent = `${item.where}. Drag the route away to plan around it.`;
-  // A Mass Ride's junction with no major junction of the profile there has no line (lib/intersectionMarkers.ts junctionCorkText).
-  body.append(...(item.costText ? [title, reason, cost, where] : [title, reason, where]));
+  const body = junctionCardBody(item);
   const card = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,

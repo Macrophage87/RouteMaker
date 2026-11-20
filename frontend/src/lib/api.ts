@@ -181,6 +181,25 @@ export interface ProfileCalm {
  * One stressful junction of the route (core.api.IntersectionOut; OWNER-DECISIONS
  * item 172). Only flagged ones are listed: a neighbourhood stop sign never is.
  */
+/** One movement at a rated junction (core.api.RatedMoveOut). */
+export interface RatedMove {
+  move: "cross" | "left" | "along";
+  /** 1 to 5 in half steps. */
+  level: number;
+  /** The seconds the raters expect it to take; null or absent where not given. */
+  wait_s?: number | null;
+}
+
+/** The raters' reading of a junction where it set the junction's cost (core.api.RatedJunctionOut). */
+export interface RatedJunction {
+  /** The movement the route makes there. */
+  move: RatedMove["move"];
+  /** That movement's level: the dot's colour. */
+  level: number;
+  /** Every movement that can be made there. */
+  moves: RatedMove[];
+}
+
 export interface JunctionWarning {
   /** Metres along the route's traced length. */
   m: number;
@@ -213,6 +232,8 @@ export interface JunctionWarning {
    * null or absent if it is in none. The junction stays in the list and on the map.
    */
   group?: number | null;
+  /** The raters' reading, where it set this junction's cost (marked from level 3 up); null or absent where the model priced it. */
+  rated?: RatedJunction | null;
 }
 
 /**

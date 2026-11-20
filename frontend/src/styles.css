@@ -2670,6 +2670,14 @@ ul.station-links {
 .junction-card p {
   margin: 4px 0 0;
 }
+.junction-card-moves {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.junction-card-yours {
+  font-weight: 700;
+}
 .junctions {
   margin: 12px 0;
 }
