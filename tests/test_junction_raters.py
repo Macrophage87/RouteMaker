@@ -335,3 +335,11 @@ def test_a_turn_onto_a_road_does_not_lend_its_rating_to_a_turn_off_it() -> None:
     onto = junction(movement=Movement.RIGHT, crossed=(), outgoing=BUSY, rater=rater(left=5.0))
     off = junction(m=40.0, lon=-76.9996, movement=Movement.LEFT, incoming=BUSY, crossed=())
     assert m.with_raters([onto, off], [rater(left=5.0)])[1].rater is None
+
+
+def test_a_jog_across_a_two_way_road_does_not_share_a_rating() -> None:
+    # Left onto Big Rd at A, left off it 40 m on at B: each lists Big Rd's other lanes as
+    # crossed, but they are two junctions.
+    onto = junction(movement=Movement.LEFT, outgoing=BUSY, crossed=(BUSY,))
+    off = junction(m=40.0, lon=-76.9996, movement=Movement.LEFT, incoming=BUSY, crossed=(BUSY,))
+    assert m.with_raters([onto, off], [rater(left=5.0)])[1].rater is None

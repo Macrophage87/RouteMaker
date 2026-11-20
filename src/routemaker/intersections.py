@@ -597,8 +597,10 @@ def with_raters(junctions: Sequence[Junction], raters: Sequence[RaterRating]) ->
 
 
 def _crossed_names(junction: Junction) -> frozenset[str]:
-    """The names of the roads a junction crosses."""
-    return frozenset(name for road in junction.crossed for name in road.names)
+    """The names of the roads a junction crosses, less a two-way road named like its own
+    road in or out: a turn onto or off a road lists its opposite lanes as crossed
+    (`_crossings`)."""
+    return frozenset(name for names in _crossings(junction) for name in names)
 
 
 def rater_move(junction: Junction) -> str | None:

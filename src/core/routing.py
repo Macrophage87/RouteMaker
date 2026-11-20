@@ -5619,9 +5619,9 @@ def _plan(
     junction_ratings = route_cache.junction_ratings()
     # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
     beacons = route_cache.beacons()
-    # The raters' junction ratings, read only where any are loaded and never on a Mass Ride,
-    # whose junction reading keeps its own (`intersections.assess`).
-    raters_loaded = preset_name != "mass-ride" and junction_raters.loaded()
+    # The raters' junction ratings, read only where any are loaded. A Mass Ride's junction
+    # reading keeps its own stress (`refine.events_of_raws`); its waits are scaled as any.
+    raters_loaded = junction_raters.loaded()
     # The rider's target distance counts at the top of the slider only, and never on a ride's
     # re-plan (`ride_replan`): the target is the whole ride's, and the re-plan is the rest of
     # it from where the rider is. Held to it, the rest could take up to 1.25 times the whole

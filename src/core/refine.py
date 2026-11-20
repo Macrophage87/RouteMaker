@@ -1137,7 +1137,9 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
             beacons=ctx.beacons,
-            raters=raters_of(raws, ctx),
+            # A Mass Ride keeps its own reading (`intersections.assess`): no rated junction is
+            # read for it.
+            raters=() if ctx.group else raters_of(raws, ctx),
             # A road closed to cars at the ride's time is car-free here only on the graph
             # that routes it as a path, as `routing.classify` reads it (hunt X1). The ride
             # time itself still prices the junctions (rush hour, night).
