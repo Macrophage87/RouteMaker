@@ -343,3 +343,42 @@ def test_a_jog_across_a_two_way_road_does_not_share_a_rating() -> None:
     onto = junction(movement=Movement.LEFT, outgoing=BUSY, crossed=(BUSY,))
     off = junction(m=40.0, lon=-76.9996, movement=Movement.LEFT, incoming=BUSY, crossed=(BUSY,))
     assert m.with_raters([onto, off], [rater(left=5.0)])[1].rater is None
+
+
+# --- The marker and the junction's panel (the owner, 2026-11-15: a dot "at each crossing
+# rated 3+", "The junction should be clickable") -------------------------------------
+
+
+def test_a_rated_junction_is_marked_from_three_up() -> None:
+    low = m.assess(junction(rater=rater(cross=2.5)))
+    assert low is not None and low.cost_ft == pytest.approx(800.0), "a 2.5 still costs"
+    assert not low.flagged and low.severity is None, "but is not marked"
+    for level in (3.0, 3.5, 4.0, 5.0):
+        event = m.assess(junction(rater=rater(cross=level)))
+        assert event is not None and event.flagged, level
+
+
+def test_a_rated_event_carries_its_movement_and_the_whole_reading() -> None:
+    r = RaterRating(-77.0, 38.9, (4.0, 5.0, 1.5), (40.0, None, 3.0), "stop")
+    event = m.assess(junction(rater=r))
+    assert event is not None
+    assert (event.rater_move, event.rater_level, event.rater) == ("cross", 4.0, r)
+
+
+def test_the_route_answer_says_the_rated_movements() -> None:
+    from core.routing import _intersection_rows
+
+    r = RaterRating(-77.0, 38.9, (4.0, None, 1.5), (40.4, None, None), "stop")
+    rated = m.assess(junction(rater=r))
+    model = m.assess(junction())
+    assert rated is not None and model is not None
+    rows = _intersection_rows([rated, model])
+    assert rows[0]["rated"] == {
+        "move": "cross",
+        "level": 4.0,
+        "moves": [
+            {"move": "cross", "level": 4.0, "wait_s": 40},
+            {"move": "along", "level": 1.5, "wait_s": None},
+        ],
+    }, "a movement that cannot be made (left) is left out"
+    assert rows[1]["rated"] is None

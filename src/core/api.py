@@ -1288,6 +1288,29 @@ class HillsTolerateOut(Schema):
     )
 
 
+class RatedMoveOut(Schema):
+    """One movement at a rated junction, as the raters read it."""
+
+    move: Literal["cross", "left", "along"]
+    level: float = Field(description="Its stress level, 1 to 5 in half steps.")
+    wait_s: int | None = Field(
+        default=None, description="The seconds the raters expect it to take; null if not given."
+    )
+
+
+class RatedJunctionOut(Schema):
+    """The raters' reading of a junction (the junction run of 2026-11-19), where it set the
+    junction's cost on this route."""
+
+    move: Literal["cross", "left", "along"] = Field(
+        description="The movement the route makes there."
+    )
+    level: float = Field(description="That movement's level: the marker's colour.")
+    moves: list[RatedMoveOut] = Field(
+        description="Every movement that can be made there, for the junction's panel."
+    )
+
+
 class IntersectionOut(Schema):
     """One stressful junction of the route (OWNER-DECISIONS item 172: "put
     markers on intersections in a route, such as an orange marker for higher
@@ -1331,6 +1354,13 @@ class IntersectionOut(Schema):
             " weekday rush hours, less at the weekend or at night; null where the hour"
             " changed nothing (off-peak, a cap that holds at any hour, a rated junction)."
             " The planner says it in words."
+        ),
+    )
+    rated: RatedJunctionOut | None = Field(
+        default=None,
+        description=(
+            "The raters' reading, where it set this junction's cost (marked from level 3"
+            " up); null where the model priced it."
         ),
     )
     group: int | None = Field(
