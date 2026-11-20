@@ -328,6 +328,38 @@ def trail_row(row: Mapping) -> dict:
     }
 
 
+# The raters' junction ratings (`core.models.JunctionRater`, the 2026-11-19 junction run): one
+# point per OSM node of a rated junction (a divided road's carriageways share one junction id).
+# The owner, 2026-11-20: "Add Junction pricing to the data release".
+JUNCTION_FIELDS: tuple[tuple[str, str], ...] = (
+    ("junction", "TEXT"),
+    ("osm_node_id", "INTEGER"),
+    ("control", "TEXT"),
+    ("cross_lts", "REAL"),
+    ("cross_delay_s", "REAL"),
+    ("left_lts", "REAL"),
+    ("left_delay_s", "REAL"),
+    ("along_lts", "REAL"),
+    ("along_delay_s", "REAL"),
+)
+
+
+def _rounded(value: float | None, places: int) -> float | None:
+    return None if value is None else round(value, places)
+
+
+def junction_row(row: Mapping) -> dict:
+    out = {
+        "junction": row["junction"],
+        "osm_node_id": row["node"],
+        "control": row.get("control") or None,
+    }
+    for move in ("cross", "left", "along"):
+        out[f"{move}_lts"] = _rounded(row.get(f"{move}_stress"), 1)
+        out[f"{move}_delay_s"] = _rounded(row.get(f"{move}_delay_s"), 1)
+    return out
+
+
 # The racks file (`scripts/build_bike_parking.py`): one layer a source, so each keeps its
 # own licence. Ids are "dc<n>" (DDOT), "bc"/"bs"/"ba"<n> (Baltimore City DOT), and "n"/"w"
 # plus an OSM id (OpenStreetMap).
@@ -388,6 +420,8 @@ LAYER_DESCRIPTIONS = {
     "roads": "Every way RouteMaker rates, one row per segment: traffic stress (LTS) and why.",
     "rating_rows": "The reviewed rating rows (owner and community), each with every way it covers.",
     "trails": "The named long trails the zoomed-out map draws, one row per trail name.",
+    "junctions": "The junction ratings the router prices junctions by: for each movement, a "
+    "stress level and the seconds a rider loses there, one row per OSM node of a rated junction.",
     "racks_ddot": "DDOT Public Bike Racks (DC Open Data, CC BY 4.0).",
     "racks_baltimore": "Baltimore City DOT bike racks and scooter corrals with racks "
     "(Baltimore City Code Art. 1 §9-1(h)).",
@@ -442,6 +476,17 @@ FIELD_NOTES = {
     "length_km": "Length in kilometres.",
     "name": "The name.",
     "unpaved_share": "The share of its length that is unpaved, 0 to 1.",
+    "junction": "The junction's id; a divided road's carriageway nodes share one.",
+    "osm_node_id": "The OpenStreetMap node id (https://www.openstreetmap.org/node/<id>).",
+    "control": "The traffic control OpenStreetMap tags there, as the raters read it.",
+    "cross_lts": "Stress of riding straight across the busiest road, 1 to 4.5, 5 = Avoid "
+    "(blank where the move can't be made).",
+    "cross_delay_s": "Seconds a rider loses crossing it, as rated (the router scales its own "
+    "measured waits by these).",
+    "left_lts": "Stress of turning left off or onto the busiest road.",
+    "left_delay_s": "Seconds a rider loses on that left, as rated.",
+    "along_lts": "Stress of riding straight on along the busiest road past the junction.",
+    "along_delay_s": "Seconds a rider loses riding along, as rated.",
     "ddot_id": "DDOT's rack id.",
     "bcdot_id": "Baltimore City's rack id (bc = installed rack, bs = corral, ba = 2021 inventory).",
     "racks": "Number of racks.",

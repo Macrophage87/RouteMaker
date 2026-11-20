@@ -4724,6 +4724,21 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   fill: var(--text);
 }
 
+/* A stop in the turns' row: its icon (or number) on a disc of the panel, edged in the text colour. */
+.ride-ahead-stop-disc {
+  fill: var(--bg);
+  stroke: var(--text);
+  stroke-width: 2;
+}
+.ride-ahead-stop-number {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.ride-ahead-stop-emoji {
+  font: 13px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
 /* A turn drawn on the stress ribbon (no room for the turns' strip): a halo of the panel round it, so it reads on any colour. */
 /* Under a mountain-bike trail's rocks, the panel, so the trail rail's purple does not show between them. */
 .ride-ahead-plot .ride-ahead-mtb-bed {
@@ -4933,6 +4948,15 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
   .ride-ahead-plot .ride-ahead-corker-n {
     fill: Canvas;
+  }
+
+  .ride-ahead-stop-disc {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .ride-ahead-stop-number {
+    fill: CanvasText;
   }
 
   .ride-ahead-corker circle,
@@ -6032,6 +6056,26 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-large .cue-then,
 .ride-large .boarding {
   font-size: max(16pt, calc(var(--cue-fit, 1) * 1.25rem));
+}
+
+/* A stop's own icon in the arrow's place, centred in the arrow's box. */
+.cue-stop-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cue-stop-icon > .icon-art {
+  width: 80%;
+  height: auto;
+  aspect-ratio: 1;
+}
+.cue-stop-icon > .icon-art-emoji {
+  width: auto;
+  aspect-ratio: auto;
+  font-size: 52px;
+}
+.ride-large .cue-stop-icon > .icon-art-emoji {
+  font-size: min(calc(var(--cue-fit-d, 1) * 92px), 25vw);
 }
 
 /* The arrow grows with the words but leaves the distance most of the width. */

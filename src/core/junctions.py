@@ -69,11 +69,13 @@ from pipeline.schema import (
 )
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
+    RATER_FREE_BELOW,
     Beacon,
     Control,
     Event,
     Junction,
     Movement,
+    RaterRating,
     Rating,
     Road,
     RouteEvents,
@@ -82,8 +84,10 @@ from routemaker.intersections import (
     beacons_near,
     major_crossings,
     majors_of_events,
+    rater_at,
     rating_at,
     with_beacons,
+    with_raters,
     with_ratings,
 )
 from routemaker.trace_junctions import (
@@ -250,6 +254,17 @@ def busy_by_tier(points: Sequence[tuple[int, float, float]]) -> set[int]:
     except DatabaseError:
         logger.warning("the junctions' tiers could not be read", exc_info=True)
         return set()
+
+
+def _hard_for_raters(raw: RawJunction, raters: Sequence[RaterRating]) -> bool:
+    """A junction (another road meets the route, or it changes road) the raters rated 2.5
+    or more for some movement: one that can cost something (`intersections.rater_event`)."""
+    if not raters or not (raw.has_cross_roads or raw.in_way != raw.out_way):
+        return False
+    found = rater_at(raw.lon, raw.lat, raters)
+    return found is not None and any(
+        level is not None and level >= RATER_FREE_BELOW for level in found.stress
+    )
 
 
 def _rated(raw: RawJunction, ratings: Sequence[Rating]) -> bool:
@@ -1225,6 +1240,7 @@ def events_of(
     ratings: Sequence[Rating] = (),
     beacons: Sequence[Beacon] = (),
     closure_when: str | None = None,
+    raters: Sequence[RaterRating] = (),
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
@@ -1239,18 +1255,25 @@ def events_of(
     `closure_when`: the ride time timed closures are read in (`routing.car_free_reading`),
     `when` where not given. `when` itself always times the junction costs (rush hour, night,
     weekend). Hunt X1 (2026-11-08, unreleased) briefly passed one value for both, so off the
-    weekend graphs a plan's junctions were priced with no ride time."""
+    weekend graphs a plan's junctions were priced with no ride time. `raters`: the raters'
+    ratings near the route (`core.junction_raters.near`), which set the stress cost of the
+    movement the route makes at a rated junction (`intersections.rater_event`); a junction
+    they rate 2.5 or more for some movement is read even where no road there can be busy."""
+
+    def read_anyway(raw: RawJunction) -> bool:
+        return _rated(raw, ratings) or _hard_for_raters(raw, raters)
+
     by_tier = busy_by_tier(
         [
             (position, raw.lon, raw.lat)
             for position, raw in enumerate(raws)
-            if tier_candidate(raw) and not _rated(raw, ratings)
+            if tier_candidate(raw) and not read_anyway(raw)
         ]
     )
     raws = [
         raw
         for position, raw in enumerate(raws)
-        if wanted(raw) or position in by_tier or _rated(raw, ratings)
+        if wanted(raw) or position in by_tier or read_anyway(raw)
     ]
     beacons = beacons_near([(raw.lon, raw.lat) for raw in raws], beacons)
     nodes = nodes_at(raws, locate, cut_short, beacons)
@@ -1270,6 +1293,7 @@ def events_of(
         signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]
         built = with_beacons(built, beacons, signs)
     built = with_ratings(built, ratings)
+    built = with_raters(built, raters)
     events = assess_route(built, group, when=when)
     if not group:
         return events

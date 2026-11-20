@@ -1006,9 +1006,10 @@ class TestCreateEndpoint:
         assert r.status_code == 429 and "Retry-After" in r and Override.objects.count() == 0
 
     def test_the_address_is_limited_too(self, client, live) -> None:
-        same = {"HTTP_X_FORWARDED_FOR": "203.0.113.77"}
-
         def attempt(n):
+            # An address of its own per attempt: a retry after a run that straddled a
+            # window boundary must not start on the count the first run left behind.
+            same = {"HTTP_X_FORWARDED_FOR": f"203.0.113.{77 + 100 * n}"}
             codes = []
             for _ in range(ratelimit.STRESS_EDIT_CLIENT.requests + 1):
                 codes.append(client.get(STATE.format(WAY), **same).status_code)
