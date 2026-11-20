@@ -1011,8 +1011,8 @@ class TestWhatIsSentToTheRouter:
             # non-cycling time, such as waiting at lights carry an additional penalty (3x)"),
             # and Gravel twice (2026-11-20, pleasure and training rides), so they rank the
             # router's own alternatives at every stress (#895, `presets.wait_weight_for(...)
-            # > 1`): once the route is traced, the search asks the router for them. Fast's own
-            # request already asks for them (hills tolerated), Mountain Goat seeks climbs and
+            # > 1`): once the route is traced, the search asks the router for them. Fast (1x
+            # since 2026-11-20) asks for them in its own request (hills tolerated), Mountain Goat seeks climbs and
             # Mountain Bike plans its own way.
             assert presets.wait_weight_for(name) > 1.0
             assert fake.endpoints() == ["route", "trace_attributes", "route"]

@@ -752,11 +752,12 @@ class TestTheWeekendGraph:
         expected = twins.get(presets.PRESETS[name].variant, presets.PRESETS[name].variant)
         if name in presets.OFFROAD_PRESETS:
             expected = "offroad"
-        if expected == "ebike":
+        if expected == "ebike" or name == "gravel":
             # Both graphs give the same route here, but the weekend graph reads way 202's
             # stretch closed to cars as calm, where the e-bike graph reads it as LTS 2: with
             # LTS 2 as a tiebreak on every ride (#1290), the weekend reading ranks above, which
-            # is what planning an e-bike ride twice on a weekend is for.
+            # is what planning an e-bike ride twice on a weekend is for. Gravel too since it
+            # starts at Default's traffic position (2026-11-20), as E-bike does.
             expected = "weekend"
         # Otherwise a tie keeps the ride's own.
         assert body["variant"] == expected
@@ -2356,7 +2357,9 @@ class TestRoadBike:
         [
             ("default", 4.0, 4.0),
             ("road-bike", 2.0, 3.0),
-            ("fast", None, 2.0),
+            ("gravel", None, 2.0),
+            ("group-ride", None, 2.0),
+            ("cargo", None, 2.0),
             ("default", 10.0, 5.0),
         ],
     )
@@ -2396,6 +2399,7 @@ class TestRoadBike:
         [
             ("default", None, 1.0),
             ("road-bike", None, 3.0),
+            ("cargo", None, 2.0),
             ("road-bike", 0.0, 0.0),
             ("default", 4.0, 4.0),
         ],
@@ -3585,7 +3589,9 @@ class TestWeekendPlannedTwice:
         self, client, facility_segments, router
     ):
         fake = router(standard_router())
-        body = post(client, {**good_body("gravel"), "when": "weekend"}).json()
+        # Gravel at 40, where it started until 2026-11-20: at its own 70 the weekend reading
+        # of the car-free stretch ranks above (the LTS 2 tiebreak, as E-bike's above).
+        body = post(client, {**good_body("gravel"), "when": "weekend", "stress": 40}).json()
         assert _bases(fake) == {"offroad", "weekend"}
         assert body["variant"] == "offroad"
 

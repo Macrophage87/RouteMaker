@@ -42,6 +42,7 @@ import {
   offersAssist,
   offersEasyMtb,
   offersStopsAndTurns,
+  showsFewerTurns,
   fitWaitWeight,
   ownWaitWeight,
   waitWeightOf,
@@ -497,7 +498,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       : null,
     waits: offersStopsAndTurns(preset) ? waitsView(preset, waitWeightOf(preset, draft)) : null,
     sharpTurns: offersStopsAndTurns(preset) ? sharpTurnsView(sharpTurnWeightOf(preset, draft)) : null,
-    fewerTurns: offersStopsAndTurns(preset)
+    fewerTurns: showsFewerTurns(preset)
       ? { label: FEWER_TURNS_LABEL, checked: dials.fewerTurns === true, hint: FEWER_TURNS_HINT, how: FEWER_TURNS_HOW, howAbout: FEWER_TURNS_HOW_ABOUT }
       : null,
     reset: moved ? start : null,

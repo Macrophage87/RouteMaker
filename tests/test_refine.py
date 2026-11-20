@@ -531,6 +531,12 @@ class TestTurnsBySpeed:
         few.turns, many.turns = 2, 6
         gap = refine.turn_m(many, dear) - refine.turn_m(few, dear)
         assert gap == pytest.approx(refine.QUIET_COST_FACTOR * 30 * 4 / dear.quiet_cost)
+        # A sharp turn's extra keeps the usual price: the ride type's sharp-turn weight
+        # already scales it.
+        sharp = analysis("c")
+        sharp.turns, sharp.turn_sharp = 2, 1.0
+        extra = refine.turn_m(sharp, dear) - refine.turn_m(few, dear)
+        assert extra == pytest.approx(refine.QUIET_COST_FACTOR * refine.TURN_RANK_S / dear.quiet_cost)
         usual = refine.turn_m(many, base) - refine.turn_m(few, base)
         assert usual == pytest.approx(refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 4 / base.quiet_cost)
 

@@ -252,7 +252,7 @@ export const STARTS: Record<PresetId, Start> = {
   gravel: { stress: 70, hills: 0, seek: true },
   // A strong rider: an LT1 grade of about 11% (`core.presets.FAST_HILLS`; Stephen, 2026-10-23: "More for fast").
   fast: { stress: 10, hills: 40, seek: true },
-  // Road Bike (Stephen, 2026-11-02): "Balanced" traffic, as Group Ride and Gravel (core.presets ROAD_BIKE_STRESS).
+  // Road Bike (Stephen, 2026-11-02): "Balanced" traffic, as Group Ride (core.presets ROAD_BIKE_STRESS).
   "road-bike": { stress: 40, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
   // Tandem (2026-11-08): the stoker is not in control, so Cargo with passengers' 80 (core.presets TANDEM_STRESS); hills toward avoid.
@@ -341,7 +341,8 @@ export function easyMtbOn(preset: PresetId, dials: Pick<Dials, "easyMtb" | "trai
 
 /**
  * A ride type's own weight on junction waits (core/presets.py WAIT_WEIGHTS): Road Bike 3; Tandem, Cargo Bike, Group
- * Ride and the pleasure ride types 2 (the owner, 2026-11-20; our default, not measured); every other 1. Fast is 1: real time.
+ * Ride and the pleasure ride types 2 (our defaults, not measured; agreed by the owner, 2026-11-20); every other 1. Fast is 1:
+ * real time (the owner, the same day).
  */
 const WAIT_WEIGHTS: Partial<Record<PresetId, number>> = {
   "road-bike": 3,
@@ -363,6 +364,18 @@ export function ownWaitWeight(preset: PresetId): number {
 /** Whether the ride type takes Waiting at lights and Fewer turns: a bike of the rider's own, not on foot, a share bike or transit. */
 export function offersStopsAndTurns(preset: PresetId): boolean {
   return !onFoot(preset) && !runs(preset) && !isTransit(preset) && !usesBikeshare(preset);
+}
+
+/**
+ * The ride types that already plan for fewer turns: their router charges a turn 30 s (core/presets.py
+ * HIGH_MANEUVER_PENALTY_S) and the ranking counts it at that, so Plan's "Fewer turns" box would change next to nothing
+ * and is not shown on them.
+ */
+const FEWER_TURNS_ALREADY: readonly PresetId[] = ["group-ride", "mass-ride", "road-bike", "tandem"];
+
+/** Whether Plan shows the "Fewer turns" box: a ride type that takes it and does not plan that way already. */
+export function showsFewerTurns(preset: PresetId): boolean {
+  return offersStopsAndTurns(preset) && !FEWER_TURNS_ALREADY.includes(preset);
 }
 
 /** The waits and sharp turns sliders' step (the owner, 2026-11-20: "maybe put some fractional levels too, like half"). */

@@ -54,6 +54,28 @@ test("Waiting at lights starts at the ride type's own weight and only goes up fr
   assert.equal(own.at(-1)?.getAttribute("aria-valuetext"), "1x", "Default's own is 1x");
 });
 
+// The defaults agreed on 2026-11-20: Fast at real time; Group Ride (a light splits the group) and Cargo Bike (a heavy
+// restart, wide turns) at 2x.
+test("each ride type's sliders start at its own weights", async () => {
+  const starts = async (preset: Parameters<typeof section>[0], name: string) => {
+    await section(preset, true);
+    return [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === name).at(-1)?.getAttribute("aria-valuetext");
+  };
+  assert.equal(await starts("fast", "Waiting at lights and stops"), "1x");
+  assert.equal(await starts("group-ride", "Waiting at lights and stops"), "2x");
+  assert.equal(await starts("cargo", "Waiting at lights and stops"), "2x");
+  assert.equal(await starts("cargo", "Sharp turns"), "2x");
+  assert.equal(await starts("fast", "Sharp turns"), "1x");
+  assert.equal(fitDials("cargo", { ...startDials("cargo"), waitWeight: 2, sharpTurnWeight: 2 }).waitWeight, undefined);
+  assert.equal(fitDials("cargo", { ...startDials("cargo"), waitWeight: 2, sharpTurnWeight: 2 }).sharpTurnWeight, undefined);
+});
+
+test("Fewer turns is not offered on a ride type that already plans for fewer turns", async () => {
+  await section("road-bike", true);
+  assert.equal(toggle("Fewer turns"), undefined);
+  assert.ok(slider("Sharp turns"), "its sliders stay");
+});
+
 test("moving Waiting at lights to 4x and ticking Fewer turns plan again with them", async () => {
   const { screen, commits } = await section("default", true);
   await click(screen.button(/Adjust$/));

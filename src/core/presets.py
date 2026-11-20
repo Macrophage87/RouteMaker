@@ -841,10 +841,10 @@ MTB_HILLS = 50
 #   (about three times a paved road): there is no road-bike twin of that graph.
 # - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
 #   11.2 mph; the rider's own speed (`rider_speed`) still wins.
-# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`). It had
+# - Fewer turns: Group Ride's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`). It had
 #   Group Ride's higher gate cost too ("a road bike slows hard for a gate or bollard") until the
 #   owner's 2026-11-08 ruling that only Tandem and Cargo pay a large one (`GATE_COST_S`).
-# - Traffic and hills: stress 40, "Balanced" (Group Ride's and Gravel's start), and Default's
+# - Traffic and hills: stress 40, "Balanced" (Group Ride's start), and Default's
 #   hills; living streets as Fast (`FAST_LIVING_STREETS`): a shared street is slow for a road
 #   bike.
 ROAD_BIKE = "road-bike"
@@ -1148,9 +1148,9 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.STANDARD,
                 # "L2: Cross or Mountain, avoid_bad_surfaces zero". Unpaved-share
                 # ranking is layer 4 and not built.
-                # Starts where Default does (2026-11-20; the owner: "look good"): 40, the
-                # early table's figure, started a pleasure ride more traffic tolerant than
-                # Default. Our default, not measured.
+                # Starts where Default does (2026-11-20): 40, the early table's figure,
+                # started a pleasure ride more traffic tolerant than Default. Proposed by
+                # us, agreed by the owner ("look good"); our default, not measured.
                 stress=DEFAULT_STRESS,
                 hills=0,
                 bicycle_type="Cross",
@@ -1165,7 +1165,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.STANDARD,
                 # "Few stops, few turns, smooth pavement | L2: high use_roads,
                 # high maneuver_penalty, high surface avoidance" - high, and
-                # still below the 1.0 at which the surface exclusion arms.
+                # still below the 1.0 at which the surface exclusion arms. (The high
+                # maneuver penalty went on 2026-11-20, below.)
                 # The old 10 was `use_roads` 0.90. On the slider's steps of
                 # five, 10 gives 0.871 and 5 gives 0.936: 10 is the nearer
                 # (review r1; 8 would give 0.897 but is not a step), and plans
