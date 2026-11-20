@@ -382,3 +382,13 @@ def test_the_route_answer_says_the_rated_movements() -> None:
         ],
     }, "a movement that cannot be made (left) is left out"
     assert rows[1]["rated"] is None
+
+
+def test_a_rated_turns_description_carries_its_level() -> None:
+    from routemaker.describe import _rated_level
+
+    hard = m.assess(junction(rater=rater(cross=4.0)))
+    mild = m.assess(junction(rater=rater(cross=2.5)))
+    assert _rated_level(hard) == {"rated_level": 4.0}
+    assert _rated_level(mild) == {}, "not marked below 3"
+    assert _rated_level(None) == {}

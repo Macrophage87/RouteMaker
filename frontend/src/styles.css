@@ -5565,6 +5565,15 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   align-items: center;
 }
 
+/* A hard move at a rated junction: the card bordered in the move's stress colour, inside an edge of the text colour
+   (black on light, white on dark) so the border reads whatever the colour. The arrow stays plain. */
+.cue-next-rated {
+  border: 5px solid var(--cue-rated);
+  outline: 2px solid var(--text);
+  border-radius: 10px;
+  padding: 4px 6px;
+}
+
 .cue-shape {
   flex: none;
   width: 72px;

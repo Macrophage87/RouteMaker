@@ -51,11 +51,11 @@ test("a rated junction's dot is its level's stress colour, a half step's own whe
   assert.equal(ratedDotFill(4.5, "cvd"), PALETTES.cvd[4].color, "no half colours there: the lower level's");
 });
 
-test("the dot says its level as a number, so the colour is never the only cue", () => {
-  assert.match(ratedDotSvg(3.5, 24, "twotone"), />3\.5<\/text>/);
-  assert.match(ratedDotSvg(4, 24, "twotone"), />4<\/text>/);
-  assert.match(ratedDotSvg(5, 24, "twotone"), />A<\/text>/);
-  assert.match(ratedDotSvg(4, 24, "twotone"), /<circle/);
+test("the dot is colour only, nothing written on it (the owner, 2026-11-20); its level is in the words beside it", () => {
+  const svg = ratedDotSvg(4, 24, "twotone");
+  assert.doesNotMatch(svg, /<text/);
+  assert.ok(svg.includes(`fill="${PALETTES.twotone[4].color}"`));
+  assert.equal(ratedTitle({ move: "cross", level: 4, moves: [] }), "Rated LTS 4 crossing");
 });
 
 test("the number is dark on a light dot and white on a dark one", () => {

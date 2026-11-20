@@ -166,7 +166,7 @@ export interface ProfileCalm {
   /** Each stretch at its own multiplier: the faint step line. */
   steps: { from_m: number; to_m: number; ratio: number | null; tier: number | null }[];
   /** Calm metres counted at one place: a junction's own cost, or Avoid's entry charge. */
-  points: { m: number; calm_m: number; kind: "junction" | "avoid_entry"; severity: "orange" | "red" | null }[];
+  points: { m: number; calm_m: number; kind: "junction" | "avoid_entry"; severity: "orange" | "red" | null; rated_level?: number | null }[];
   total_calm_m: number;
   rated_m: number;
   /** False where the junctions could not be read, so none are counted. */
@@ -346,6 +346,8 @@ export interface DescriptionEntry {
      * the path ("Right onto the path to Rock Creek Trail"). `onto` stays "path". Null elsewhere; absent from older APIs.
      */
     toward?: string | null;
+    /** The raters' level for the movement made there (3 or more), where a rating priced the junction; absent elsewhere. */
+    rated_level?: number | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;

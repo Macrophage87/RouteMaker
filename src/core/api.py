@@ -1687,6 +1687,13 @@ class DescriptionTurnOut(Schema):
     severity: Literal["orange", "red"] | None = Field(
         description='"Higher stress" (orange) or "Very high stress" (red), where flagged.'
     )
+    rated_level: float | None = Field(
+        default=None,
+        description=(
+            "The raters' level for the movement made there, where a rating priced the"
+            " flagged junction (3 or more); absent where the model priced it."
+        ),
+    )
     stay: bool | None = Field(
         default=None,
         description='A fork along one way: "Bear right to stay on ..."; absent elsewhere.',
@@ -2038,6 +2045,10 @@ class ProfileCalmPointOut(Schema):
     kind: Literal["junction", "avoid_entry"]
     severity: Literal["orange", "red"] | None = Field(
         default=None, description="A flagged junction's marker; null for the others."
+    )
+    rated_level: float | None = Field(
+        default=None,
+        description="The raters' level where a rating priced the flagged junction: its dot.",
     )
 
 

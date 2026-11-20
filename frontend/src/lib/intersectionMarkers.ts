@@ -9,7 +9,8 @@
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
 import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RatedJunction, RatedMove, RouteResponse } from "./api.ts";
-import { HALF_PALETTES, PALETTES, currentPalette } from "../stressStyle.js";
+import { currentPalette } from "../stressStyle.js";
+import { ratedDotFill, ratedLevelText } from "./ratedDot.ts";
 import { FEET_PER_MILE, KM_PER_MILE, both, formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { corkersFor } from "./profileChart.ts";
@@ -316,25 +317,7 @@ export function rowName(severity: string, where: string, reason: string, cost?: 
 
 // --- Rated junctions: a dot in the stress colour (the owner, 2026-11-15) ---------------
 
-/**
- * A junction the raters rated is a dot in its level's stress colour, the map's own (the owner,
- * 2026-11-15: "I like 2", a dot at each crossing rated 3 or more, the line keeping its riding level;
- * "The junction should be clickable"). Never the colour alone: the dot carries its level as a number,
- * and Avoid an "A". The junctions the model prices keep the triangle and the diamond.
- */
-export function ratedLevelText(level: number): string {
-  return level >= 5 ? "Avoid" : `LTS ${level}`;
-}
-
-/** The dot's fill for a level in a palette (a half step's own colour where the palette has one, else its lower level's). */
-export function ratedDotFill(level: number, palette: string = currentPalette()): string {
-  const whole = Math.min(5, Math.max(1, Math.floor(level)));
-  const palettes = PALETTES as Record<string, Record<number, { color: string }>>;
-  const halves = HALF_PALETTES as Record<string, Record<number, { color: string }> | undefined>;
-  const own = palettes[palette] ?? palettes.twotone;
-  if (level > whole && whole < 5) return halves[palette]?.[whole]?.color ?? own[whole].color;
-  return own[whole].color;
-}
+export { ratedDotFill, ratedLevelText };
 
 /** Black or white, whichever reads better on `fill` (WCAG relative luminance). */
 export function inkOn(fill: string): "#111111" | "#ffffff" {
@@ -346,16 +329,14 @@ export function inkOn(fill: string): "#111111" | "#ffffff" {
   return luminance > 0.3 ? "#111111" : "#ffffff";
 }
 
-/** The dot, as inline SVG markup: a white-ringed, dark-edged disc in the level's colour with the level on it. */
+/** The dot, as inline SVG markup: a white-ringed, dark-edged small disc in the level's colour, nothing written
+ * on it (the owner, 2026-11-20: "Just colors as small dots"). */
 export function ratedDotSvg(level: number, size = ICON_PX, palette: string = currentPalette()): string {
   const fill = ratedDotFill(level, palette);
-  const ink = inkOn(fill);
-  const text = level >= 5 ? "A" : String(level);
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
-    `<circle cx="12" cy="12" r="10.6" fill="#ffffff" stroke="#111111" stroke-width="1.2"/>` +
-    `<circle cx="12" cy="12" r="8.6" fill="${fill}"/>` +
-    `<text x="12" y="15.4" text-anchor="middle" font-size="${text.length > 1 ? 8.5 : 10.5}" font-weight="700" font-family="system-ui, sans-serif" fill="${ink}">${text}</text>` +
+    `<circle cx="12" cy="12" r="6.6" fill="#ffffff" stroke="#111111" stroke-width="1.2"/>` +
+    `<circle cx="12" cy="12" r="4.8" fill="${fill}"/>` +
     "</svg>"
   );
 }
