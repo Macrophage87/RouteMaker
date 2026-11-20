@@ -939,30 +939,6 @@ export function RideSheet({ nav, children }: { nav: SheetNav; children: ReactNod
   );
 }
 
-const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
-  cargo: "cargo",
-  tandem: "tandem",
-  bikeshare: "bikeshare",
-  novice: "kid",
-  "mountain-bike": "mtb",
-  gravel: "gravel",
-  fast: "fast",
-  "road-bike": "roadbike",
-  ebike: "bolt",
-  "mountain-goat": "mountain",
-  "group-ride": "user",
-  "mass-ride": "federal",
-  trailmaxxing: "trail",
-  "bike-transit": "train",
-  "bikeshare-transit": "train",
-  walk: "walk",
-  "walk-transit": "walk",
-  run: "run",
-  rebalance: "bikeshare",
-};
-
-const rideIcon = (id: PresetId) => <Icon name={RIDE_ICON[id] ?? "bike"} size={20} />;
-
 /**
  * Go's More ride types: every ride type, searchable, under its group's heading
  * (RIDE-TYPE-ORGANISE, lib/rideTypeGroups.ts). The search comes first in the Tab order.
@@ -995,13 +971,13 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
       {favs.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
           <h4 id="ride-sheet-favorites">{t("Favorites")}</h4>
-          <RideTypeCards ids={favs} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
+          <RideTypeCards ids={favs} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
         </section>
       )}
       {common.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-common">
           <h4 id="ride-sheet-common">{t("Common")}</h4>
-          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
+          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
         </section>
       )}
       {groups.map((group) =>
@@ -1009,13 +985,13 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
           <details key={group.id} className="fold ride-sheet-fold" open={group.ids.includes(preset) || undefined}>
             <summary>{`${group.label} (${group.ids.length})`}</summary>
             <div className="fold-body">
-              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
+              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
             </div>
           </details>
         ) : (
           <section key={group.id} className="ride-sheet-group" aria-labelledby={`ride-sheet-${group.id}`}>
             <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
-            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
+            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
           </section>
         ),
       )}
@@ -1065,7 +1041,7 @@ export function RideChips({
       onClick={() => onPick(id)}
       aria-describedby={ownHint && id === ownId ? "ride-own-hint" : undefined}
     >
-      <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
+      {/* Name only, no drawn icon (Stephen 2026-11-20: "they look weird"); a transit name keeps its emoji. */}
       <PresetName id={id} />
       {changed && preset === id && (
         <>

@@ -8,7 +8,7 @@
  * The ride type in use is pressed (aria-pressed), so it is said as well as shown. A
  * createElement component, so a test renders it (node's runner reads .ts, not .tsx).
  */
-import { createElement as h, type ReactElement, type ReactNode } from "react";
+import { createElement as h, type ReactElement } from "react";
 import { PRESETS, presetSummary, type PresetId } from "./presets.ts";
 import { PresetName } from "./presetName.ts";
 import { FavoriteStar } from "./favoriteRides.ts";
@@ -17,7 +17,6 @@ export function RideTypeCards({
   ids,
   preset,
   onPick,
-  icon,
   idPrefix,
   favorites,
   onFavorite,
@@ -25,8 +24,6 @@ export function RideTypeCards({
   ids: readonly PresetId[];
   preset: PresetId;
   onPick: (id: PresetId) => void;
-  /** The card's icon (decorative: aria-hidden); a function so the .tsx Icon stays out of this file. */
-  icon?: (id: PresetId) => ReactNode;
   /** Makes the name and sentence ids unique in the page. */
   idPrefix: string;
   /** The rider's favorites: with onFavorite, each card has its star (lib/favoriteRides.ts). */
@@ -53,7 +50,6 @@ export function RideTypeCards({
             "aria-describedby": aboutId,
             onClick: () => onPick(id),
           },
-          icon ? h("span", { className: "ride-card-icon", "aria-hidden": "true" }, icon(id)) : null,
           h("strong", { id: nameId }, h(PresetName, { id })),
           h("span", { id: aboutId, className: "hint" }, option ? presetSummary(option) : ""),
         ),
