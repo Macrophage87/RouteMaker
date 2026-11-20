@@ -10,7 +10,7 @@
  * The same parts are shown joined with a middle dot and read joined with
  * commas (`rideSummarySpoken`), so a screen reader does not say "middle dot".
  */
-import { CARRYINGS, WHENS, easyMtbOn, fitTarget, hillsGradePosition, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
+import { CARRYINGS, WHENS, easyMtbOn, fitTarget, fitWaitWeight, offersStopsAndTurns, waitWeightOf, hillsGradePosition, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { onFoot, presetLabel, presetSaid, runs, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
@@ -88,6 +88,9 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
     ...(dials.loop === true && preset !== "mass-ride" ? [t("loop")] : []),
     ...(dials.trailsOff === true && !trailsOffLocked(preset) ? [t("roads only")] : []),
     ...(easyMtbOn(preset, dials) ? [t("easy MTB trails")] : []),
+    // Plan's Stops and turns (2026-11-20): said only where the rider changed them from the ride type's own.
+    ...(fitWaitWeight(preset, dials.waitWeight) !== undefined ? [t("waits count {weight}x", { weight: waitWeightOf(preset, dials) })] : []),
+    ...(dials.fewerTurns === true && offersStopsAndTurns(preset) ? [t("fewer turns")] : []),
   ];
 }
 

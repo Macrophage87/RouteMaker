@@ -2938,4 +2938,17 @@ export const ES: Readonly<Record<string, string>> = {
   "No points yet.": "Todavía no hay puntos.",
   "Route first: the folds are in the route summary.": "Primero traza la ruta: las secciones están en su resumen.",
   "The route summary has {count} folds.": "El resumen de la ruta tiene {count} secciones.",
+  // ---- Plan's Ride settings popup: stops and turns (lib/dialsPanel.ts; the owner, 2026-11-20), drafted for native review ----
+  "Ride settings: {type}": "Ajustes del recorrido: {type}",
+  "Waiting at lights and stops": "Esperas en semáforos y paradas",
+  "Each second waiting counts this many seconds of riding when routes are compared.": "Cada segundo de espera cuenta como esta cantidad de segundos pedaleando al comparar rutas.",
+  "Waits at signals, stop signs and gaps in traffic count this many times over when routes are compared, so a route with fewer stops can win even if it is a little longer. The wait times shown stay the real ones. The slider starts at the ride type's own weight: Road Bike 3x; Fast, Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Tandem 2x; others 1x. At 5x a red light counts its most.": "Las esperas en semáforos, señales de alto y huecos en el tráfico cuentan esta cantidad de veces al comparar rutas, así que una ruta con menos paradas puede ganar aunque sea un poco más larga. Los tiempos de espera que se muestran siguen siendo los reales. El control empieza en el peso propio del tipo de recorrido: Road Bike 3x; Fast, Trailmaxxing, Gravel, Mountain Goat, Mountain Bike y Tandem 2x; los demás 1x. A 5x un semáforo en rojo cuenta lo máximo.",
+  "Turns cost more, sharp turns and zigzags most.": "Los giros cuestan más; los giros cerrados y los zigzags, aún más.",
+  "fewer turns": "menos giros",
+  "Each turn counts 30 seconds of riding when routes are compared, instead of 15, so a route with fewer turns wins where one is near. Sharp turns, U-turns and turns soon after another count extra either way.": "Cada giro cuenta como 30 segundos pedaleando al comparar rutas, en vez de 15, así que gana una ruta con menos giros si hay una cerca. Los giros cerrados, los cambios de sentido y los giros seguidos cuentan más en cualquier caso.",
+  "{weight}x": "{weight}x",
+  "Don't mind": "No me importa",
+  "Rather ride": "Prefiero pedalear",
+  "waits count {weight}x": "esperas cuentan {weight}x",
+  "waiting": "esperas",
 };

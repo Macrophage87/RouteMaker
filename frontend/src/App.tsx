@@ -7065,6 +7065,8 @@ export function App() {
           hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
           // A day and start time, in Plan only (the owner, 2026-11-13: Go always plans from now).
           startTime: mode === "plan" && offersStartTime(preset),
+          // Every ride setting in a popup, in Plan only (the owner, 2026-11-20: "Have it pop out to all ride parameters").
+          popout: mode === "plan",
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,

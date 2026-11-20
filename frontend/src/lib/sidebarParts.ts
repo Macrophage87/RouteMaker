@@ -7,7 +7,7 @@
  * Each is a real button or a real <details>, with its state in aria-expanded (or the element's own)
  * and its words in text; none depends on colour.
  */
-import { Fragment, createElement as h, useId, useState, type ReactElement, type ReactNode } from "react";
+import { Fragment, createElement as h, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { t } from "./i18n.ts";
 import { RIDE_ACTION_SPOKEN, RIDE_SETTINGS_LABEL, foldTitle, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
@@ -46,18 +46,100 @@ export function RideSettings({
   summary,
   spoken,
   typeCard,
+  popout,
   children,
 }: {
   summary: string;
   spoken: string;
   typeCard?: ReactNode;
+  /**
+   * Plan (the owner, 2026-11-20: "Have it pop out to all ride parameters"): Adjust opens every control in a popup over
+   * the map, titled `popout.title`, instead of under the line. Go keeps them under the line.
+   */
+  popout?: { title: string };
   children?: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (traffic, hills, when, then
   // anything else set), all one button, so the row is one press and one name.
   const chips = summary === "" ? [] : summary.split(" · ");
+  const lineText = h(
+    "span",
+    { className: "ride-line-text" },
+    h("span", { className: "ride-line-label" }, RIDE_SETTINGS_LABEL),
+    h(
+      "span",
+      { className: "ride-line-summary", "aria-hidden": "true" },
+      ...chips.map((chip, i) => h("span", { key: i, className: "ride-chip" }, chip)),
+    ),
+    h("span", { className: "visually-hidden" }, `: ${spoken}.`),
+  );
+  if (popout) {
+    // Not modal: the route and the map bar stay in reach while it is open (a change plans nothing until Route or
+    // Update route is pressed, as under the line). Escape and Done close it and give the focus back to Adjust.
+    const show = (next: boolean) => {
+      const dialog = dialogRef.current;
+      setOpen(next);
+      if (!dialog) return;
+      if (next && !dialog.open) {
+        dialog.show?.();
+        dialog.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
+      } else if (!next && dialog.open) {
+        dialog.close();
+        buttonRef.current?.focus({ preventScroll: true });
+      }
+    };
+    return h(
+      "section",
+      { className: "ride-settings", "aria-label": "Ride" },
+      typeCard ?? null,
+      h(
+        "h2",
+        { id: "ride-settings-heading", className: "ride-line" },
+        h(
+          "button",
+          {
+            type: "button",
+            ref: buttonRef,
+            className: "ride-line-button",
+            "aria-haspopup": "dialog",
+            "aria-expanded": open,
+            "aria-controls": bodyId,
+            onClick: () => show(!open),
+          },
+          lineText,
+          h("span", { className: "ride-line-action" }, ` ${RIDE_ACTION_SPOKEN}`),
+        ),
+      ),
+      // The controls stay in the page while it is closed, so nothing they hold is lost.
+      h(
+        "dialog",
+        {
+          id: bodyId,
+          ref: dialogRef,
+          className: "plan-ride-settings",
+          "aria-labelledby": titleId,
+          onKeyDown: (event: { key: string; preventDefault: () => void }) => {
+            if (event.key !== "Escape" && event.key !== "Esc") return;
+            event.preventDefault();
+            show(false);
+          },
+          onClose: () => setOpen(false),
+        },
+        h(
+          "div",
+          { className: "ride-settings-body" },
+          h("h2", { id: titleId, tabIndex: -1 }, popout.title),
+          children,
+          h("div", { className: "closure-choices" }, h("button", { type: "button", className: "primary", onClick: () => show(false) }, t("Done"))),
+        ),
+      ),
+    );
+  }
   return h(
     "section",
     { className: "ride-settings", "aria-label": "Ride" },

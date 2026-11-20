@@ -135,7 +135,8 @@ test("the Ride line never carries the rider and bike weight (313-314): not a fig
   const withWeight: Dials = { ...startDials("default"), systemWeightKg: 123 };
   assert.equal(rideSummary("default", withWeight), rideSummary("default", startDials("default")));
   assert.doesNotMatch(rideSummary("default", withWeight), /123|lb|kg|weight/i);
-  assert.doesNotMatch(src("./rideSummary.ts").replace(/\/\*[\s\S]*?\*\//g, ""), /systemWeight|weight/i);
+  // The rider and bike weight is never read there (its "wait weight", how much a wait counts, is another thing).
+  assert.doesNotMatch(src("./rideSummary.ts").replace(/\/\*[\s\S]*?\*\//g, ""), /systemWeight|bodyWeight|weightKg/i);
 });
 
 test("the Ride line is a heading holding a button with aria-expanded, whose words are read with commas", () => {
@@ -175,7 +176,7 @@ test("App puts the ride type's button first and every dial behind the Ride setti
   // The ride type is one press from its list (edit-route redesign); Go's Ride sheet lists them itself (typeCard false).
   assert.match(
     app,
-    /<RideSettings key="presets" summary=\{settingsSummary\(preset, dials\)\} spoken=\{settingsSummarySpoken\(preset, dials\)\} typeCard=\{presetsSection\}>\s*<DialsPanel/,
+    /<RideSettings key="presets" summary=\{settingsSummary\(preset, dials\)\} spoken=\{settingsSummarySpoken\(preset, dials\)\} typeCard=\{presetsSection\} popout=\{[^\n]+\}>\s*<DialsPanel/,
   );
   assert.match(app, /const presetsSection = typeCard \? <RideTypePicker key="presets" preset=\{preset\} dials=\{dials\} onChoose=\{choosePreset\} \/> : null;/);
   assert.match(src("../App.tsx"), /typeCard: mode !== "go",/);
