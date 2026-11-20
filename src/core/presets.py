@@ -989,7 +989,7 @@ ROAD_BIKE_BUTTON_RIDES = frozenset({ROAD_BIKE, RUN, TANDEM})
 # left at its own traffic position is planned again at the most direct end of the slider
 # (STRESS_MIN), and that route is taken where it is at least FAST_DIRECT_SAVES_S quicker door
 # to door (riding and waiting) and adds no more than FAST_DIRECT_LTS4_M of LTS 4 and Avoid.
-# Measured on 16 trips (2026-11-20, /mnt/project-files/plans/fast-real-time): planning every
+# Measured on 16 trips (2026-11-20, docs/stress/routing-costs.md): planning every
 # Fast ride at 0 saved 2.3% of the time and doubled its LTS 4 miles (one trip 8 minutes
 # slower); this rule kept 14.8 of the 20.7 minutes saved with LTS 4 flat. The minute and the
 # quarter mile are our defaults, not measured.

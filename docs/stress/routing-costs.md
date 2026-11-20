@@ -155,7 +155,7 @@ LTS 4 and Avoid (`presets.fast_direct_wins`, `routing._fast_direct`). The minute
 mile are our defaults, not measured. Measured on 16 public trips (2026-11-20): planning every
 Fast ride at 0 saved 20.7 minutes in total but doubled the LTS 4 miles (4.1 to 8.6) and made one
 trip 8.2 minutes slower; this rule saved 14.8 minutes with LTS 4 flat (+0.12 mi). A moved slider,
-a quick plan (a drag's preview) and a followed line are planned once, as before. The slider the
+Go's quick first route, a followed line and a plan with under half its time left are planned once, as before. The slider the
 rider sees stays at 10.
 
 Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means

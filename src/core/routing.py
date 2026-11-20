@@ -5290,29 +5290,36 @@ def plan(
     if started is None:
         started = clock()
     own = _plan_graphs(points, preset_name, long_ride, started, dials, quick, candidates)
-    if _fast_direct_applies(preset_name, dials, quick):
-        return _fast_direct(own, points, preset_name, long_ride, started, dials, candidates)
-    return own
+    if not _fast_direct_applies(preset_name, dials, own):
+        return own
+    # Only with at least half the time left, so the second plan never runs a clean first
+    # answer into the reserve (and a re-route's several plans stay inside theirs).
+    budget_s = _ride_budget_s(points, preset_name, long_ride, started, dials) - ANSWER_RESERVE_S
+    if clock() - started > budget_s / 2:
+        return own
+    return _fast_direct(own, points, preset_name, long_ride, started, dials, quick, candidates)
 
 
-def _fast_direct_applies(preset_name: str, dials: Dials, quick: bool) -> bool:
-    """Whether a plan is a Fast ride at its own traffic position, planned in full: not a quick
-    plan (a drag's preview), nor a followed file or a rider's own line."""
-    if preset_name != presets.FAST or quick or dials.follow is not None:
+def _fast_direct_applies(preset_name: str, dials: Dials, own: dict) -> bool:
+    """Whether a plan is a Fast ride at its own traffic position, planned in full: not a
+    provisional answer (Go's quick first route, which is asked again in full), nor a followed
+    file or a rider's own line."""
+    if preset_name != presets.FAST or own.get("provisional") or dials.follow is not None:
         return False
     return dials.stress is None or dials.stress == presets.stress_start(preset_name)
 
 
-def _fast_direct(own, points, preset_name, long_ride, started, dials, candidates) -> dict:
+def _fast_direct(own, points, preset_name, long_ride, started, dials, quick, candidates) -> dict:
     """Fast's own route, or its most direct one where that wins (`presets.fast_direct_wins`).
     The direct plan runs after the ride's own, in what is left of the budget, with a timing
-    recorder of its own (as `_weekend_plan`): whatever goes wrong with it, the ride's own is
-    answered. The answer's dials keep the position the rider sees, the ride type's own."""
+    recorder of its own (as `_weekend_plan`): whatever goes wrong with it, or cuts it short,
+    the ride's own is answered. The answer's dials keep the position the rider sees, the ride
+    type's own."""
     recorder = timing.Timings()
     token = timing.start(recorder)
     try:
-        direct_dials = dataclasses.replace(dials, stress=presets.STRESS_MIN)
-        direct = _plan_graphs(points, preset_name, long_ride, started, direct_dials, False, candidates)
+        at_zero = dataclasses.replace(dials, stress=presets.STRESS_MIN)
+        direct = _plan_graphs(points, preset_name, long_ride, started, at_zero, quick, candidates)
     except PlanCancelled:
         raise
     except Exception as error:  # noqa: BLE001 - the ride's own plan is answered
@@ -5320,12 +5327,10 @@ def _fast_direct(own, points, preset_name, long_ride, started, dials, candidates
         return own
     finally:
         timing.stop(token)
-    if not presets.fast_direct_wins(direct, own):
+    # A direct plan cut short may have stretches it could not rate: never weighed.
+    if recorder.failures or not presets.fast_direct_wins(direct, own):
         return own
     logger.info("Fast's most direct route is quicker and no busier; answered")
-    if recorder.failures:
-        # Cut short: answered, never kept in the answer cache.
-        _skipped_for_time()
     direct["dials"] = {**direct["dials"], "stress": own["dials"]["stress"]}
     return direct
 

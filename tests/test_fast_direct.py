@@ -78,7 +78,6 @@ class TestThePlan:
             ("road-bike", routing.Dials(), False),
             ("fast", routing.Dials(stress=20), False),
             ("fast", routing.Dials(stress=0), False),
-            ("fast", routing.Dials(), True),
             ("fast", routing.Dials(follow=((-77.0, 38.9), (-77.04, 38.9))), False),
         ],
     )
@@ -88,6 +87,37 @@ class TestThePlan:
         asked = self.plans(monkeypatch, body(30.0), body(20.0, stress=0))
         routing.plan(self.POINTS, name, dials=dials, quick=quick)
         assert len(asked) == 1
+
+    def test_a_provisional_answer_is_planned_once_and_a_quick_ask_answered_in_full_twice(
+        self, monkeypatch
+    ) -> None:
+        # Go asks every plan quick; a loop or a long ride is answered in full all the same.
+        asked = self.plans(monkeypatch, {**body(30.0), "provisional": True}, body(20.0, stress=0))
+        routing.plan(self.POINTS, "fast", quick=True)
+        assert len(asked) == 1
+        asked = self.plans(monkeypatch, {**body(30.0), "provisional": False}, body(20.0, stress=0))
+        assert routing.plan(self.POINTS, "fast", quick=True)["duration_s"] == 20.0 * 60
+        assert asked == [("fast", None, True), ("fast", 0, True)]
+
+    def test_no_second_plan_once_half_the_time_is_gone(self, monkeypatch) -> None:
+        asked = self.plans(monkeypatch, body(30.0), body(20.0, stress=0))
+        started = routing.clock() - routing.PLAN_BUDGET_S / 2
+        assert routing.plan(self.POINTS, "fast", started=started)["duration_s"] == 30.0 * 60
+        assert len(asked) == 1
+
+    def test_a_direct_plan_cut_short_never_wins(self, monkeypatch) -> None:
+        own = body(30.0)
+        asked: list = []
+
+        def planned(points, preset_name, long_ride, started, dials, quick, candidates):
+            asked.append(dials.stress)
+            if len(asked) == 2:
+                routing.timing.record_call(1.0, failed=True)
+                return body(20.0, stress=0)
+            return own
+
+        monkeypatch.setattr(routing, "_plan_graphs", planned)
+        assert routing.plan(self.POINTS, "fast") is own
 
     def test_the_slider_set_to_fasts_own_start_counts_as_its_own_position(
         self, monkeypatch
