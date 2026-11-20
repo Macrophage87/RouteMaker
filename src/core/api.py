@@ -375,8 +375,8 @@ class RouteIn(Schema):
         description=(
             "Weigh junction waits (signals, stop signs, gaps in traffic) more when routes are"
             " ranked: a second stopped counts this many seconds of riding. Raises the ride"
-            " type's own weight (1; 2 on Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and"
-            " Fast; 3 on Road Bike), never lowers it, and counts at most 5"
+            " type's own weight (1; 2 on Trailmaxxing, Gravel, Mountain Goat, Mountain Bike, Fast"
+            " and Tandem; 3 on Road Bike), never lowers it, and counts at most 5"
             " (`presets.MAX_WAIT_WEIGHT`). The waits shown are unchanged. null: the ride type's."
             " Bike ride types only; ignored on Run, Best order and the transit and Bikeshare"
             " ride types."
