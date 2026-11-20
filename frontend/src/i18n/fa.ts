@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "جاده‌های خاکی و مسیرهای طبیعی هزینه اضافه ندارند؛ هنوز دنبالشان نمی‌گردد.",
   "Treats unpaved roads and trails like pavement.": "جاده‌های خاکی و مسیرها را مثل آسفالت حساب می‌کند.",
   "Fast": "سریع",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "جاده‌های مستقیم، پیچ کم و آسفالت صاف، هر ترافیکی که باشد.",
+  "As direct as possible.": "تا حد ممکن مستقیم.",
   "The most direct route, whatever the traffic.": "مستقیم‌ترین مسیر، هر ترافیکی که باشد.",
   "Road Bike": "دوچرخه جاده",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "برای دوچرخه جاده: وقتی راه آسفالته‌ای برای دور زدن هست از شن، خاک و مسیرهای پرپیچ‌وخم دوری می‌کند، کمتر می‌پیچد و زمان را با سرعت دوچرخه جاده حساب می‌کند.",

@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "الطرق غير المعبدة والممرات بلا كلفة إضافية؛ لا يبحث عنها بعد.",
   "Treats unpaved roads and trails like pavement.": "يعامل الطرق غير المعبدة والممرات كالأسفلت.",
   "Fast": "سريع",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "طرق مباشرة، منعطفات قليلة وأسفلت ناعم، أيًا كانت الحركة.",
+  "As direct as possible.": "مباشر قدر الإمكان.",
   "The most direct route, whatever the traffic.": "أكثر المسارات مباشرة، أيًا كانت الحركة.",
   "Road Bike": "دراجة طريق",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "لدراجة الطريق: تتجنب الحصى والتراب والمسارات المتعرجة عندما يوجد طريق معبّد بديل، وتقلل المنعطفات، وتحسب الوقت بسرعة دراجة الطريق.",

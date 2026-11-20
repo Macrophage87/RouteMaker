@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "未舗装路やトレイルに追加コストはありません。まだ積極的には探しません。",
   "Treats unpaved roads and trails like pavement.": "未舗装路やトレイルを舗装路と同じに扱います。",
   "Fast": "速さ優先",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "交通量に関係なく、まっすぐな道、少ない曲がり角、なめらかな舗装。",
+  "As direct as possible.": "できるだけ直線的に。",
   "The most direct route, whatever the traffic.": "交通量に関係なく最も直線的なルート。",
   "Road Bike": "ロードバイク",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "ロードバイク向け：舗装路で迂回できる場合は砂利、土の道、曲がりくねった小道を避け、曲がる回数を減らし、ロードバイクのペースで所要時間を計算します。",

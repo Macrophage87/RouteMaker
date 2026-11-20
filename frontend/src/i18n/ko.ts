@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "비포장도로와 트레일에 추가 비용이 없습니다. 아직 일부러 찾지는 않습니다.",
   "Treats unpaved roads and trails like pavement.": "비포장도로와 트레일을 포장도로처럼 취급합니다.",
   "Fast": "빠르게",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "교통량과 상관없이 곧은 도로, 적은 회전, 매끄러운 포장.",
+  "As direct as possible.": "가능한 한 곧게.",
   "The most direct route, whatever the traffic.": "교통량과 상관없이 가장 곧은 경로.",
   "Road Bike": "로드 자전거",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "로드 자전거용: 포장된 우회로가 있으면 자갈, 흙길, 구불구불한 길을 피하고, 회전을 줄이며, 로드 자전거 속도로 시간을 계산합니다.",
