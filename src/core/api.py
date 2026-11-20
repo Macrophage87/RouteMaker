@@ -382,6 +382,20 @@ class RouteIn(Schema):
             " ride types."
         ),
     )
+    sharp_turn_weight: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=5.0,
+        allow_inf_nan=False,
+        description=(
+            "Weigh sharp turns when routes are ranked: a sharp turn's or U-turn's extra price"
+            " and the seconds a turn loses braking from speed count this many times. 0: a sharp"
+            " turn costs no more than any other turn; the ride type's own is 1 (3 on Road Bike,"
+            " 2 on Tandem). Any turn still costs its plain price. null: the ride type's. Bike"
+            " ride types only; ignored on Run, Best order and the transit and Bikeshare ride"
+            " types."
+        ),
+    )
     options: list[Literal["direct", "calmer", "fewer_turns", "paved"]] | None = Field(
         default=None,
         max_length=4,
@@ -1145,6 +1159,13 @@ class DialsOut(Schema):
         description=(
             "How many seconds of riding a second stopped at a junction counted when routes were"
             " ranked: the ride type's own weight, or the request's `wait_weight` where higher."
+        ),
+    )
+    sharp_turn_weight: float = Field(
+        default=1.0,
+        description=(
+            "What a sharp turn's extra and the seconds turns lose braking counted when routes"
+            " were ranked: the ride type's own, or the request's `sharp_turn_weight`."
         ),
     )
     trails_off: bool = False
@@ -6230,6 +6251,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         fewer_turns=body.fewer_turns,
         paved=body.paved,
         wait_weight=body.wait_weight,
+        sharp_turn_weight=body.sharp_turn_weight,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,

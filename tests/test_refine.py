@@ -410,7 +410,8 @@ class TestRepeatedSharpTurns:
         ctx = context()
         read = refine.analyse(trip, ctx, ctx.deadline)
         assert read.turns == 2
-        assert read.turn_load == 5.0
+        assert read.turn_load == 3.0
+        assert read.turn_sharp == 2.0
         assert read.turn_lost_s == 0.0
 
     def test_the_ranking_prices_the_weighed_turns(self, monkeypatch) -> None:
@@ -454,7 +455,8 @@ class TestTurnsBySpeed:
         easy = {"legs": [{"maneuvers": [timed(1, 400, 11), timed(11, 400, 11), timed(4, 0, 11)]}]}
         assert refine.weigh_turns(fast).lost_s > 3.0
         assert refine.weigh_turns(easy).lost_s < 0.5
-        assert refine.weigh_turns(fast).load == refine.weigh_turns(easy).load == 2.0
+        assert refine.weigh_turns(fast).load == refine.weigh_turns(easy).load == 1.0
+        assert refine.weigh_turns(fast).sharp == refine.weigh_turns(easy).sharp == 1.0
 
     def test_switchbacks_on_a_climb_count_as_plain_turns(self) -> None:
         # Two sharp turns 120 m apart. Uphill at 6 mph, slower than a sharp turn is ridden: a
@@ -465,7 +467,7 @@ class TestTurnsBySpeed:
         climb = refine.weigh_turns({"legs": [{"maneuvers": up}]})
         descent = refine.weigh_turns({"legs": [{"maneuvers": down}]})
         assert climb == refine.TurnReading(load=2.0, lost_s=0.0)
-        assert descent.load == 4.0
+        assert (descent.load, descent.sharp) == (2.0, 2.0)
         assert descent.lost_s > 5.0
 
     def test_a_short_stretchs_speed_is_not_read(self) -> None:
@@ -473,7 +475,8 @@ class TestTurnsBySpeed:
         # its speed is not read, and the jog after it keeps its extras.
         jog = [timed(1, 300, 6), timed(14, 40, 6), timed(11, 300, 6), timed(4, 0, 6)]
         read = refine.weigh_turns({"legs": [{"maneuvers": jog}]})
-        assert read.load == 2.0 + refine.SHARP_TURN_EXTRA + refine.JOG_TURN_EXTRA
+        assert read.load == 2.0 + refine.JOG_TURN_EXTRA
+        assert read.sharp == refine.SHARP_TURN_EXTRA
 
     def test_a_turn_at_a_junctions_wait_loses_nothing_more(self) -> None:
         # The wait (a stop, a signal) already prices the slowing.
@@ -489,15 +492,21 @@ class TestTurnsBySpeed:
         assert far.lost_s == free.lost_s
         assert stop.load == free.load
 
-    def test_the_lost_seconds_are_ranked_at_the_rides_wait_weight(self, monkeypatch) -> None:
+    def test_the_lost_seconds_and_sharp_extras_are_ranked_at_the_sharp_turn_weight(
+        self, monkeypatch
+    ) -> None:
+        # The owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at
+        # lights": the sharp-turn weight, not the wait weight, scales them. At 0 a sharp turn
+        # costs only its plain price.
         monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
         plain, fast = analysis("a"), analysis("b")
         plain.turns = fast.turns = 4
-        fast.turn_lost_s = 10.0
-        for weight in (1.0, 3.0):
-            ctx = context(wait_weight=weight)
+        fast.turn_lost_s, fast.turn_sharp = 10.0, 2.0
+        for weight in (0.0, 1.0, 3.0):
+            ctx = dataclasses.replace(context(wait_weight=5.0), sharp_weight=weight)
             gap = refine.level3(fast, ctx) - refine.level3(plain, ctx)
-            assert gap == pytest.approx(refine.QUIET_COST_FACTOR * weight * 10.0 / QUIET_COST)
+            seconds = weight * (10.0 + refine.TURN_RANK_S * 2.0)
+            assert gap == pytest.approx(refine.QUIET_COST_FACTOR * seconds / QUIET_COST)
 
     def test_fewer_turns_adds_the_lost_seconds_too(self) -> None:
         ctx = dataclasses.replace(context(), fewer_turns=True)
@@ -510,7 +519,20 @@ class TestTurnsBySpeed:
     def test_legs_add_their_lost_seconds(self) -> None:
         one, two = analysis("a"), analysis("b")
         one.turn_lost_s, two.turn_lost_s = 1.5, 2.0
-        assert refine.combine([one, two]).turn_lost_s == 3.5
+        one.turn_sharp, two.turn_sharp = 1.0, 2.0
+        both = refine.combine([one, two])
+        assert both.turn_lost_s == 3.5
+        assert both.turn_sharp == 3.0
+
+    def test_the_sharp_turn_weight_by_ride_type_and_the_riders_own(self) -> None:
+        assert presets.sharp_turn_weight_for("default") == 1.0
+        assert presets.sharp_turn_weight_for("trailmaxxing") == 1.0
+        assert presets.sharp_turn_weight_for(presets.ROAD_BIKE) == 3.0
+        assert presets.sharp_turn_weight_for(presets.TANDEM) == 2.0
+        # The rider's own, below the ride type's too, held to 0 to 5.
+        assert presets.sharp_turn_weight_for(presets.ROAD_BIKE, 0.0) == 0.0
+        assert presets.sharp_turn_weight_for("default", 4.0) == 4.0
+        assert presets.sharp_turn_weight_for("default", 9.0) == presets.MAX_SHARP_TURN_WEIGHT
 
 
 class TestCappedTrailCrossings:
