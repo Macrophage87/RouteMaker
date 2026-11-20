@@ -1,7 +1,7 @@
 // The Intervals layer on the map (lib/intervals.ts): a pink highlight under the stress lines, so their colour stays on
 // top, and arrows over them where a stretch holds one way only. No tap of its own: a press on a highlighted road
 // is the road's, as ever (a point in Plan, the road panel). Drawn from outside MapView as the Scenic overlay is
-// (app/mapOverlay.ts); App decides when it shows (its switch, Plan only). The file is fetched the first time it is on.
+// (app/mapOverlay.ts); App decides when it shows (its switch, Go and Plan, not the Mass Ride map). The file is fetched the first time it is on.
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { setSource, useMap } from "./mapOverlay.ts";
