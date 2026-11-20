@@ -291,7 +291,10 @@ ridden as a yield, 8 at other stops, 2 to 24 at a signal by place, road and ride
 gap in a busier road
 (<a href="#junctions">Junctions</a>). When Road Bike chooses between routes, these waits count three times
 over, because a road rider loses their pace at every stop, and on Tandem twice, because both riders stop and
-start together; the time shown is still the real wait.</li>
+start together. On Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Fast they count twice too, because on a
+pleasure or training ride the time is better spent riding than waiting at a light (the owner's ask; the 2 is our
+default, unmeasured). The time shown is still the real wait. An AI assistant can raise a ride type's weight, up to
+five times, never lower it.</li>
 <li><strong>Gates.</strong> The engine adds a wait at a gate whose access isn't marked<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>:
 30 seconds on every ride type. On Cargo Bike and Tandem a gate, cycle barrier or narrow bollard counts about
 15 minutes when choosing a route, though only the 30 seconds shows in the time, so their routes keep out of them
@@ -599,6 +602,15 @@ route's riding on LTS 3, LTS 4 and Avoid, and accepts a longer route for less of
 <p>Crossing or turning onto a busy road is often the most stressful part of a ride, so junctions have a
 cost of their own, measured in calm miles: the extra distance of quiet street a junction is worth.
 Quiet streets meeting quiet streets cost almost nothing.</p>
+<p><strong>Rated junctions</strong> (from version 0.29.0). Every junction a bike rides through has also
+been rated by hand from the evidence, movement by movement: straight across the busiest road, a left off or onto it,
+and straight on along it. Each movement has a stress level on the road scale and the seconds a rider loses there.
+The movement your route makes sets the junction's cost in place of the figures here; a right turn keeps them. A
+movement rated below 2.5 costs nothing (the owner's choice). From 2.5 up it follows the same scale: about 0.15 calm
+mi [800 ft] at 2.5, 0.30 at 3, 0.53 at 3.5, 0.76 at 4 and 2 calm mi at 5; 4.5 sits halfway, about 1.4 calm mi (our
+default, unmeasured). Rush hour multiplies it as it does any junction. A divided road's crossing counts once, not at
+each half. A junction rating a rider suggested and a reviewer approved still comes first, and Mass Ride keeps its
+own junction reading.</p>
 <figure id="fig-junction" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 840 260" role="img" aria-labelledby="fig-junction-t fig-junction-d" focusable="false" style="min-width:600px">
@@ -739,13 +751,17 @@ busiest road there is big, secondary or other; at night 9, 4 or 2, at weekday ru
 </tbody>
 </table>
 </div>
+<p>At a rated junction the wait keeps these measured figures, scaled by how slow the raters found it against
+others of its kind, from half to twice (our default, unmeasured): their raw seconds ran about twice the measured
+ones, such as 30 seconds against 13.5 crossing at a signal, so the measured figures set the level and the ratings
+rank junctions within it.</p>
 <p>A big road is a trunk or primary road, or one with 4 or more lanes or a speed limit of 40 mph [64 km/h] or
 more. The city limits come from the Census Bureau's county boundaries. When routes are compared, a signal counts
 the wait at a red instead, also measured on the owner's rides: in the cities 30, 15 or 20 seconds at a big,
 secondary or other road; outside them 45 seconds crossing or turning onto a big road and 30 at any other, counted
 twice, because a long light is a pain (the owner's choice). A light where you may need to press a button is ranked
 as an ordinary signal on every ride type (the owner's choice, as most of them run on a timer). On
-Road Bike, which counts its waits three times, and Tandem, twice, a wait counts at most five times the wait at a
+Road Bike, which counts its waits three times, and on the ride types that count them twice, a wait counts at most five times the wait at a
 red (the owner's choice), and a signal never more than the stop sign across the same road (our default).</p>
 <p>A route no longer U-turns round the end of a median. Where a road with
 a median is mapped as two one-way carriageways of the same name meeting at the median's nose, the router once took
@@ -1581,7 +1597,7 @@ climbing.</li>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.29.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.30.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

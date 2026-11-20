@@ -19,7 +19,7 @@ with one exception: above 80 (`STRESS_TODAYS_TOP`) the turn charge (`maneuver_pe
 to 15 s (`CALM_MANEUVER_PENALTY_S`, our default, not measured), and the calm search's ranking
 adds each turn at that price (`refine.turn_m`). A ride type that already charges more keeps its own.
 
-Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
+More turn rules (2026-11-12 on):
 
 - **Every setting** (the owner's yes, 2026-11-12). `presets.TURN_CHARGE_EVERY_SETTING` (True) builds owner
   decision 254's "every preset": 15 s at every position, Default's 70 included; `turn_m` at every position
@@ -28,6 +28,30 @@ Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
   metres of LTS 3 (`dedodge.turn_lts3_m`, about 22 m a turn at 70). The route scorecard's before/after
   (38 trips): at 70, 4% fewer turns with LTS 4 flat; at 25 (Go's More direct), 7% fewer turns but 1.7 mi
   more LTS 4 in all (Germantown to Poolesville, Old Town Bowie). The owner chose every setting anyway.
+- **Sharp turns and jogs weigh more** (2026-11-20, the owner: "see if you can find ways to further
+  penalize repeated sharp turns"). The ranking counts a route's turns as `refine.turn_load` weighs them:
+  one a turn, one more for a sharp turn (Valhalla's sharp right or left), two more for a U-turn, and one
+  more for a turn within 100 m (`refine.JOG_M`, the jog Ride says as one cue) of the turn before it, a
+  slight bend included, as Ride counts it. So
+  two sharp turns 40 m apart rank as five turns, not two. The router itself can't price a turn by what
+  came before it, so this works where routes are compared (`turn_m`), not inside Valhalla. The turns
+  shown stay a plain count. The side-street dodge pass still counts a dodge's turns plainly
+  (`dedodge.turn_count`, by heading). Our defaults, not measured.
+- **Turns cost by speed** (2026-11-20, the owner: "Turns should be penalised by turning speed/estimated
+  time. Road bikes that go at 20 miles an hour really don't like them. However switchbacks on climbs are
+  less of an issue"). Each turn type has a cornering speed from its path radius and a comfortable 15°
+  lean (`refine.corner_speed_ms`: about 20 mph for a slight bend, 11.5 mph for a plain turn, 8 mph
+  sharp, 6 mph for a U-turn). A rider arriving faster brakes to it and speeds up again after, and the
+  seconds that loses (`refine.turn_lost_s`, braking 1.5 m/s² and picking up 0.8 m/s², the junction
+  model's) are ranked as a junction's wait is, at the ride's wait weight (3x on Road Bike, 2x on the
+  pleasure and training rides). The speeds are the router's own before and after the turn, so they carry
+  the ride type's pace, the rider's and the hills. A sharp turn costs about 3.1 s at 20 mph and 0.3 s at
+  11 mph. A turn at a junction that already has a wait (a stop, a signal, a give-way) loses nothing
+  more, and a speed is read only off a stretch of 100 m or more (a maneuver's time holds the router's
+  own seconds for its turn). A turn reached no faster than its cornering speed (a switchback on a climb)
+  counts as one plain turn, without the sharp, U-turn or jog extras. Radii and lean are our defaults,
+  not measured. A bend along one road or trail is not a turn in the router's directions, so it is not
+  charged at all.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
   Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`

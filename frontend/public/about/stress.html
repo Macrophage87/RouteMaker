@@ -1406,6 +1406,15 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
     busier roads, and rural stop signs, cost more again. The hardest junctions, on LTS
     4 roads with no signal, can cost up to 2 calm miles [3.22 km; 10,560 ft]. Quiet
     streets meeting quiet streets cost almost nothing.</p>
+<p><strong>Rated junctions</strong> (from version 0.29.0). Every junction a bike rides through has also
+been rated by hand from the evidence, movement by movement: straight across the busiest road, a left off or onto it,
+and straight on along it. Each movement has a stress level on the road scale and the seconds a rider loses there.
+The movement your route makes sets the junction's cost in place of these figures; a right turn keeps them. A
+movement rated below 2.5 costs nothing (the owner's choice). From 2.5 up it follows the same scale: about 0.15 calm
+mi [800 ft] at 2.5, 0.30 at 3, 0.53 at 3.5, 0.76 at 4 and 2 calm mi at 5; 4.5 sits halfway, about 1.4 calm mi (our
+default, unmeasured). Rush hour multiplies it as it does any junction. A divided road's crossing counts once, not at
+each half. A junction rating a rider suggested and a reviewer approved still comes first, and Mass Ride keeps its
+own junction reading.</p>
 <details class="more"><summary>More: Junction warnings</summary>
 <div class="more-body">
     
@@ -1641,7 +1650,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
 <p class="next">Next: <a href="/about/routing.html">Routing</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.29.0.</p>
+  <p>Part of RouteMaker's documentation. It describes version 0.30.0.</p>
   <p><a href="/">Back to the map</a></p>
 </footer>
 </body>

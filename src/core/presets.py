@@ -911,12 +911,36 @@ AVOID_GRAVEL_BECOMES = frozenset({"default", "fast", "gravel", "mountain-goat"})
 # Run's is 3 too (2026-11-02): a runner stopped at a light loses their pace as a road rider does
 # (`core.run_plan.weigh`, its signalled crossings).
 # Tandem's is 2 (2026-11-08, "Tandem" above): both riders restart in step.
-WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0, TANDEM: TANDEM_WAIT_WEIGHT})
+# The pleasure and training ride types weigh theirs twice (the owner, 2026-11-20: "Especially
+# for pleasure and training rides, being able to spend that time riding and not waiting at a
+# light is what matters", then "Add that in"): Trailmaxxing, Gravel, Mountain Goat, Mountain
+# Bike and Fast. The 2 is our default, not measured (Tandem's, for a rider who would rather
+# keep moving).
+PLEASURE_WAIT_WEIGHT = 2.0
+PLEASURE_WAIT_RIDES = frozenset({"trailmaxxing", "gravel", "mountain-goat", MOUNTAIN_BIKE, "fast"})
+WAIT_WEIGHTS = MappingProxyType(
+    {
+        ROAD_BIKE: 3.0,
+        RUN: 3.0,
+        TANDEM: TANDEM_WAIT_WEIGHT,
+        **{name: PLEASURE_WAIT_WEIGHT for name in PLEASURE_WAIT_RIDES},
+    }
+)
+# The most a caller may raise a ride's wait weight to (`routing.Dials.wait_weight`, the API's
+# and the connector's `wait_weight`; the owner, 2026-11-20: "let the MCP server increase those
+# penalties more"). 5 is `junction_delay.MAX_STACKED_WEIGHT`, the most any wait counts in the
+# ranking: past it a red light's price stops growing.
+MAX_WAIT_WEIGHT = 5.0
 
 
-def wait_weight_for(name: str) -> float:
-    """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`)."""
-    return WAIT_WEIGHTS.get(name, 1.0)
+def wait_weight_for(name: str, asked: float | None = None) -> float:
+    """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`), or
+    `asked` where a caller asks for more, never past MAX_WAIT_WEIGHT. An ask below the ride
+    type's own weight is ignored: it raises the price of waiting, never lowers it."""
+    own = WAIT_WEIGHTS.get(name, 1.0)
+    if asked is None:
+        return own
+    return max(own, min(float(asked), MAX_WAIT_WEIGHT))
 
 
 # The ride types whose beg-button crossings rank at Road Bike's ten minutes
