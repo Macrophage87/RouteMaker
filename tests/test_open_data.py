@@ -183,6 +183,7 @@ class TestRoadRow:
                 open_data.ROAD_FIELDS,
                 open_data.OWNER_ROW_FIELDS,
                 open_data.TRAIL_FIELDS,
+                open_data.JUNCTION_FIELDS,
                 *open_data.RACK_FIELDS.values(),
             )
             for name, _ in fields
@@ -197,6 +198,19 @@ def test_rating_rows():
     assert (row["lts"], row["rated_by"], row["length_mi"]) == (2.5, "owner (reviewed)", 1.0)
     md = open_data.owner_row({"row_id": "mdot-sha-1", "tier": 4, "formula": 3})
     assert (md["lts"], md["formula_lts"]) == (4.0, 3.0)
+
+
+def test_junction_rows():
+    """The owner, 2026-11-20: "Add Junction pricing to the data release"."""
+    row = open_data.junction_row(
+        {"junction": "j42", "node": 42, "control": "signal", "cross_stress": 3.0,
+         "cross_delay_s": 31.25, "left_stress": 3.5, "left_delay_s": None,
+         "along_stress": None, "along_delay_s": None}
+    )  # fmt: skip
+    assert list(row) == [name for name, _ in open_data.JUNCTION_FIELDS]
+    assert (row["osm_node_id"], row["cross_lts"], row["cross_delay_s"]) == (42, 3.0, 31.2)
+    assert row["along_lts"] is None and row["left_delay_s"] is None
+    assert open_data.junction_row({"junction": "j1", "node": 1, "control": ""})["control"] is None
 
 
 def test_racks_split_by_source_and_keep_no_other_field():
@@ -356,6 +370,14 @@ def test_the_export_end_to_end(segment_schemas, tmp_path: Path):
     racks = tmp_path / "racks.json"
     racks.write_text(json.dumps({"points": [{"id": "dc1", "x": -77.0, "y": 38.9, "r": 3}]}))
     out = tmp_path / "out"
+    from django.contrib.gis.geos import Point
+
+    from core.models import JunctionRater
+
+    JunctionRater.objects.create(
+        junction="j7", node=7, location=Point(-77.0, 38.9, srid=4326), control="signal",
+        cross_stress=3.0, cross_delay_s=30.0,
+    )  # fmt: skip
 
     # Way 1 (LTS 3 on the map) runs along two short Arlington pieces, both "Comfortable"
     # (read as 2), neither covering 60% of it alone; one "Not Recommended" piece is shorter.
@@ -375,6 +397,7 @@ def test_the_export_end_to_end(segment_schemas, tmp_path: Path):
         "roads": 3,
         "rating_rows": 1,
         "trails": 1,
+        "junctions": 1,
         "racks_ddot": 1,
         "racks_baltimore": 0,
         "racks_osm": 0,
@@ -393,6 +416,9 @@ def test_the_export_end_to_end(segment_schemas, tmp_path: Path):
     trails = json.loads((folder / "geojson" / "trails.geojson").read_text())
     assert trails["features"][0]["properties"]["name"] == "Custis Trail"
     assert "ODbL" in trails["licence"]
+    junctions = json.loads((folder / "geojson" / "junctions.geojson").read_text())
+    props = junctions["features"][0]["properties"]
+    assert (props["osm_node_id"], props["cross_lts"], props["left_lts"]) == (7, 3.0, None)
     gpkg = sqlite3.connect(folder / "routemaker-data.gpkg")
     assert gpkg.execute("SELECT count(*) FROM roads").fetchone()[0] == 3
     gpkg.close()
@@ -416,7 +442,7 @@ def test_the_export_reads_only_the_map():
     tables = set(re.findall(r"FROM\s+\{?([\w.]+)\}?", source))
     # arlington_comfort is the temp table of Arlington's lines; nearby, a CTE over segment.
     allowed = {"schema", "schema}.segment", "information_schema.columns", "arlington_comfort",
-               "nearby"}  # fmt: skip
+               "nearby", "core_junctionrater"}  # fmt: skip
     assert tables <= allowed, tables
     assert not re.search(r"\b(ride|rider|user|account|presence|access_log)s?\b\.", source)
 

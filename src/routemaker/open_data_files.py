@@ -373,8 +373,9 @@ def readme(
     w(
         "Traffic stress (LTS) ratings and bike facilities for every road and trail RouteMaker "
         "rates, from Washington, DC to Baltimore, with the reviewed rating rows, the long "
-        "trails and bike parking. Coordinates are WGS 84 longitude/latitude (EPSG:4326). "
-        "Distances are in miles, with kilometres beside them where it helps.\n\n"
+        "trails, the junction ratings and bike parking. Coordinates are WGS 84 "
+        "longitude/latitude (EPSG:4326). Distances are in miles, with kilometres beside them "
+        "where it helps.\n\n"
     )
     w("## Files\n\n")
     w("- `routemaker-data.gpkg`: every layer in one GeoPackage (QGIS, ArcGIS Pro, GDAL).\n")
