@@ -59,8 +59,8 @@ class TestRescale:
 
     def test_presets_keep_their_routes(self) -> None:
         """Each ride type starts where it planned before: same `use_roads`
-        (Group Ride, Gravel, Mountain Goat from 50 to 40 and Fast from 10 are
-        within two points of theirs)."""
+        (Group Ride and Mountain Goat from 50 to 40 and Fast from 10 are
+        within two points of theirs). Gravel moved to Default's start on 2026-11-20."""
         was = {
             "default": 0.1,
             "trailmaxxing": 0.0,
@@ -69,9 +69,10 @@ class TestRescale:
         }
         for name, use_roads in was.items():
             assert presets.PRESETS[name].costing_options["use_roads"] == use_roads, name
-        for name, old in {"group-ride": 50, "gravel": 50, "mountain-goat": 50, "fast": 10}.items():
+        for name, old in {"group-ride": 50, "mountain-goat": 50, "fast": 10}.items():
             new = presets.PRESETS[name].costing_options["use_roads"]
             assert abs(new - old_use_roads(old)) < 0.07, name
+        assert presets.PRESETS["gravel"].stress == presets.DEFAULT_STRESS
 
     def test_cargo_keeps_its_two_starts(self) -> None:
         assert presets.CARGO_CARRYING_STRESS == {"cargo": presets.DEFAULT_STRESS, "people": 80}

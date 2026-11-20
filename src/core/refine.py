@@ -937,6 +937,9 @@ def turn_m(read: Analysis, ctx: Context) -> float:
         return 0.0
     else:
         per_turn_s = TURN_RANK_S
+    # A ride type whose router charges more (Group Ride's and Road Bike's 30 s) ranks its turns
+    # at its own charge, as the dodge pass does (`dedodge.turn_lts3_m`).
+    per_turn_s = max(per_turn_s, float((ctx.costing.get("bicycle") or {}).get("maneuver_penalty") or 0))
     sharp = ctx.sharp_weight
     seconds = per_turn_s * (turns + sharp * read.turn_sharp) + sharp * read.turn_lost_s
     return QUIET_COST_FACTOR * seconds / ctx.quiet_cost

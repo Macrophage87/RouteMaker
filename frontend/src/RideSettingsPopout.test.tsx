@@ -44,9 +44,9 @@ test("in Plan, Adjust opens every ride setting in a popup named for the ride typ
 });
 
 test("Waiting at lights starts at the ride type's own weight and only goes up from there", async () => {
-  await section("fast", true);
+  await section("trailmaxxing", true);
   const waits = slider("Waiting at lights and stops")!;
-  assert.equal(waits.getAttribute("aria-valuetext"), "2x", "Fast weighs its waits twice");
+  assert.equal(waits.getAttribute("aria-valuetext"), "2x", "Trailmaxxing weighs its waits twice");
   assert.equal(waits.min, "2");
   assert.equal(waits.max, "5");
   await section("default", true);

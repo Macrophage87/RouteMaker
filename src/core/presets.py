@@ -913,16 +913,25 @@ AVOID_GRAVEL_BECOMES = frozenset({"default", "fast", "gravel", "mountain-goat"})
 # Tandem's is 2 (2026-11-08, "Tandem" above): both riders restart in step.
 # The pleasure and training ride types weigh theirs twice (the owner, 2026-11-20: "Especially
 # for pleasure and training rides, being able to spend that time riding and not waiting at a
-# light is what matters", then "Add that in"): Trailmaxxing, Gravel, Mountain Goat, Mountain
-# Bike and Fast. The 2 is our default, not measured (Tandem's, for a rider who would rather
-# keep moving).
+# light is what matters", then "Add that in"): Trailmaxxing, Gravel, Mountain Goat and Mountain
+# Bike. The 2 is our default, not measured (Tandem's, for a rider who would rather keep moving).
+# Not Fast (the owner, the same day: "Fast is get there as soon as possible, so it should keep
+# as close to real time as possible, with some reduction for LTS 4+"): its waits count as the
+# real seconds they are.
 PLEASURE_WAIT_WEIGHT = 2.0
-PLEASURE_WAIT_RIDES = frozenset({"trailmaxxing", "gravel", "mountain-goat", MOUNTAIN_BIKE, "fast"})
+PLEASURE_WAIT_RIDES = frozenset({"trailmaxxing", "gravel", "mountain-goat", MOUNTAIN_BIKE})
+# Group Ride's is 2 (2026-11-20: a red light splits the group, which then waits to regroup)
+# and Cargo Bike's 2, as Tandem's (a heavy bike restarts slowly). Proposed by us and agreed by
+# the owner the same day ("look good"); our defaults, not measured.
+GROUP_RIDE_WAIT_WEIGHT = 2.0
+CARGO_WAIT_WEIGHT = TANDEM_WAIT_WEIGHT
 WAIT_WEIGHTS = MappingProxyType(
     {
         ROAD_BIKE: 3.0,
         RUN: 3.0,
         TANDEM: TANDEM_WAIT_WEIGHT,
+        "group-ride": GROUP_RIDE_WAIT_WEIGHT,
+        "cargo": CARGO_WAIT_WEIGHT,
         **{name: PLEASURE_WAIT_WEIGHT for name in PLEASURE_WAIT_RIDES},
     }
 )
@@ -938,10 +947,11 @@ MAX_WAIT_WEIGHT = 5.0
 # owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights", so apart
 # from the wait weight). Road Bike's is 3 (the owner, the same day: "Road bikes that go at 20
 # miles an hour really don't like them"); Tandem's 2, as its waits (both riders slow and
-# restart in step); every other ride type 1. A rider may set any weight from 0 (sharp turns
+# restart in step) and Cargo Bike's 2 (2026-11-20: long and heavy, it swings wide and is slow
+# back to speed); every other ride type 1. A rider may set any weight from 0 (sharp turns
 # cost no more than any other turn) to MAX_SHARP_TURN_WEIGHT, below the ride type's own too.
 # Our defaults, not measured.
-SHARP_TURN_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, TANDEM: 2.0})
+SHARP_TURN_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, TANDEM: 2.0, "cargo": 2.0})
 MAX_SHARP_TURN_WEIGHT = 5.0
 
 
@@ -1138,7 +1148,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.STANDARD,
                 # "L2: Cross or Mountain, avoid_bad_surfaces zero". Unpaved-share
                 # ranking is layer 4 and not built.
-                stress=40,
+                # Starts where Default does (2026-11-20; the owner: "look good"): 40, the
+                # early table's figure, started a pleasure ride more traffic tolerant than
+                # Default. Our default, not measured.
+                stress=DEFAULT_STRESS,
                 hills=0,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=0.0,
@@ -1164,7 +1177,11 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
                 use_living_streets=FAST_LIVING_STREETS,
-                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                # Not the high turn charge any more (the owner, 2026-11-20: Fast "should keep
+                # as close to real time as possible"): a turn's real cost, its braking time,
+                # is priced by `refine.weigh_turns`, so Fast pays the every-setting turn charge
+                # (CALM_MANEUVER_PENALTY_S) like Default.
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
