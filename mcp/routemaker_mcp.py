@@ -1438,10 +1438,10 @@ def plan_fragment(
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
         parts.append("fewerturns=1")
     if sent.get("wait_weight") and float(sent["wait_weight"]) > 1:
-        parts.append(f"waits={min(5, int(float(sent['wait_weight']) + 0.5))}")
+        parts.append(f"waits={half_step(sent['wait_weight'], 1):g}")
     # The rider's sharp-turn weight (Plan's Ride settings, 2026-11-20), 0 included.
     if sent.get("sharp_turn_weight") is not None:
-        parts.append(f"sharpturns={min(5, max(0, int(float(sent['sharp_turn_weight']) + 0.5)))}")
+        parts.append(f"sharpturns={half_step(sent['sharp_turn_weight'], 0):g}")
     if sent.get("novice_legs"):
         parts.append("novice=1")
     if dials.get("target_distance_m"):
@@ -1459,6 +1459,11 @@ def plan_fragment(
     if preset == "mass-ride" and sent.get("ride_size"):
         parts.append(f"riders={sent['ride_size']}")
     return "#" + "&".join(parts)
+
+
+def half_step(weight, low: float) -> float:
+    """A rider's weight as Plan's sliders and a link take it: half steps from `low` to 5."""
+    return min(5.0, max(float(low), math.floor(float(weight) * 2 + 0.5) / 2))
 
 
 def page_dials(dials: dict, sent: dict) -> dict:
@@ -1484,13 +1489,11 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "mtbLevel": sent.get("mtb_level"),
         "mtbPreferred": sent.get("mtb_preferred"),
         "rideSize": sent.get("ride_size"),
-        "waitWeight": min(5, int(float(sent["wait_weight"]) + 0.5))
-        if sent.get("wait_weight")
-        else None,
+        "waitWeight": half_step(sent["wait_weight"], 1) if sent.get("wait_weight") else None,
     }
     kept.update({k: v for k, v in optional.items() if v})
     if sent.get("sharp_turn_weight") is not None:
-        kept["sharpTurnWeight"] = min(5, max(0, int(float(sent["sharp_turn_weight"]) + 0.5)))
+        kept["sharpTurnWeight"] = half_step(sent["sharp_turn_weight"], 0)
     return kept
 
 
@@ -1616,6 +1619,14 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         except (ValueError, OverflowError):
             return None
 
+    def weight(key, low):
+        # Plan's half-step sliders (waits=2.5, sharpturns=0.5).
+        try:
+            value = float(one(key)) if one(key) is not None else None
+        except ValueError:
+            return None
+        return half_step(value, low) if value is not None and math.isfinite(value) else None
+
     stress = None if renamed else number("stress")
     if stress is not None and one("v") != "2":
         stress = stress_from_v1(stress)
@@ -1632,8 +1643,8 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "easy_mtb": one("easymtb") == "1" and preset in EASY_MTB_PRESETS,
         "novice_legs": one("novice") == "1",
         "fewer_turns": one("fewerturns") == "1",
-        "wait_weight": number("waits"),
-        "sharp_turn_weight": number("sharpturns"),
+        "wait_weight": weight("waits", 1),
+        "sharp_turn_weight": weight("sharpturns", 0),
         "loop": one("loop") == "1",
         "bike": one("bike") if one("bike") in ("classic", "ebike") else None,
         "ending": "outside_dock" if one("ending") == "outside" else None,
@@ -5111,29 +5122,34 @@ RIDE_OPTIONS = {
         ),
     },
     "wait_weight": {
-        # Whole steps, as Plan's slider and the link's waits=N take them.
-        "type": "integer",
+        # Half steps, as Plan's slider and the link's waits=N take them (the owner, 2026-11-20:
+        # "maybe put some fractional levels too, like half").
+        "type": "number",
+        "multipleOf": 0.5,
         "minimum": 1,
         "maximum": 5,
         "description": (
             "Bike ride types: weigh time stopped at junctions (lights, stop signs, gaps in"
             " traffic) more, for a ride where riding time matters more than waiting (a pleasure"
             " or training ride). A second stopped counts this many seconds of riding when"
-            " routes are ranked; 1 to 5. It only raises the ride type's own weight (1; 2 on"
+            " routes are ranked; 1 to 5 in half steps. It only raises the ride type's own weight"
+            " (1; 2 on"
             " trailmaxxing, gravel, mountain-goat, mountain-bike and fast; 3 on road-bike)."
             " Compare summary.junction_waits before and after; the waits shown stay real."
         ),
     },
     "sharp_turn_weight": {
-        # Whole steps, as Plan's slider and the link's sharpturns=N take them.
-        "type": "integer",
+        # Half steps, as Plan's slider and the link's sharpturns=N take them.
+        "type": "number",
+        "multipleOf": 0.5,
         "minimum": 0,
         "maximum": 5,
         "description": (
             "Bike ride types: how much sharp turns, U-turns and the time a turn loses braking"
             " from speed count when routes are ranked, apart from waits at lights. 0 for a"
             " rider who enjoys sharp turns (they cost no more than any other turn), up to 5 to"
-            " avoid them. The ride type's own is 1 (3 on road-bike, 2 on tandem). Every turn"
+            " avoid them (half steps). The ride type's own is 1 (3 on road-bike, 2 on tandem)."
+            " Every turn"
             " still costs its plain price; compare summary.turns."
         ),
     },
@@ -7384,12 +7400,12 @@ class Server:
             )
             if plan.sent.get(key)
         ]
-        # The link carries whole steps (Plan's slider): a weight between steps opens rounded.
+        # The link carries half steps (Plan's sliders): a weight between them opens rounded.
         weight = plan.sent.get("wait_weight")
-        if weight and float(weight) != int(float(weight)):
+        if weight and float(weight) != half_step(weight, 1):
             lost.append("the exact wait weight (the link rounds it)")
         sharp = plan.sent.get("sharp_turn_weight")
-        if sharp is not None and float(sharp) != int(float(sharp)):
+        if sharp is not None and float(sharp) != half_step(sharp, 0):
             lost.append("the exact sharp-turn weight (the link rounds it)")
         try:
             route_id = secrets.token_hex(16)
