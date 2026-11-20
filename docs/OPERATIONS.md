@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.29.0](#deploying-v0290)
 - [Deploying v0.28.1](#deploying-v0281)
 - [Deploying v0.28.0](#deploying-v0280)
 - [Deploying v0.27.3](#deploying-v0273)
@@ -5648,6 +5649,9 @@ What is in it, and what stays out of its columns and is linked instead (Maryland
 layers, Arlington's Bike Comfort Index, Capital Bikeshare's trips, live closures; the owner:
 agency data is cited "In our why's"), is `routemaker.open_data`'s docstring; the README written with the files says the same to whoever downloads them.
 Nothing from rides, riders, accounts or logs is read (`core.open_data_export`).
+The `junctions` layer (the raters' per-movement junction ratings; the owner, 2026-11-20: "Add
+Junction pricing to the data release") comes from the `JunctionRater` table of the database the
+export reads; where no ratings are loaded there it is left out, and the export says so.
 
 1. After the swap is done and the routers are restarted, on the PC, from the checkout (the api
    image has GDAL, which adds the spatial index; the bike-parking file comes from the checkout):
@@ -8082,6 +8086,41 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.29.0
+
+The release train's v0.29.0, on the owner's ask (2026-11-20, "Make 0.29 live"): Ride shows stops in
+the ahead graph's turns row and names them on the cue card (#1352), the Interval stretches layer in
+Go too (#1351), a crosswalk that carries a trail across a road priced as a link (#1353; takes effect
+at the next map rebuild, since the price is written into the graph), the planner side of the
+raters' junction ratings (#1354) and a test fix (#1350). Virginia stays out.
+
+What changes for a deploy:
+
+- one migration, `0068_junction_rater`: a new, empty table. The old code runs on it;
+- no `lua/`, `valhalla/`, compose, nginx, Dockerfile or requirements change, so the beta's release
+  agent takes a tag made by the Release workflow by itself, migration included; no map rebuild, no
+  router restart;
+- routing is unchanged until the table is loaded: with no rows, every junction keeps the model's
+  price and wait.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.29.0`, then approve).
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing
+  (the migration runs), then the front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
+- [ ] **Beta check.** The app says 0.29.0; Go, Map layers, Trails and terrain has "Interval
+  stretches"; a ride with a stop shows it in the graph's turns row and the cue card names it.
+- [ ] **Junction ratings (separate step, owner's go).** Not part of the deploy. Copy
+  `junctions-stress-delay.csv.gz` and `junction-nodes.tsv` from the PC's
+  `~/routemaker-exports/junctions-run` to the beta, then `manage.py load_junction_raters <csv.gz>
+  <junction-nodes.tsv>` (dry: read the counts), then the same with `--confirm`. Takes effect from
+  the next plan; undo is `JunctionRater.objects.all().delete()` in `manage.py shell`.
+- [ ] **The open data download** gains a `junctions` layer (#1354's ratings, one point per node)
+  once the ratings are loaded where the export runs; nothing to do at deploy.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.28.1 front end. 0068 only adds a table, so
+  the old code runs on it.
 
 ## Deploying v0.28.1
 

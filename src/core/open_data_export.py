@@ -1,9 +1,10 @@
 """Write the public data download from the live map tables (`manage.py export_open_data`).
 
-Reads the live segment table and the bike-parking file, and nothing else: no ride, rider,
-account, location or log table is named here, and a test holds that to be so. What each row
-says, and what the licences keep out, is `routemaker.open_data`; the file formats are
-`routemaker.open_data_files`. docs/OPERATIONS.md, "The open data download", is the procedure.
+Reads the live segment table, the junction ratings and the bike-parking file, and nothing
+else: no ride, rider, account, location or log table is named here, and a test holds that
+to be so. What each row says, and what the licences keep out, is `routemaker.open_data`; the
+file formats are `routemaker.open_data_files`. docs/OPERATIONS.md, "The open data download",
+is the procedure.
 
 Out, in one folder named for the build date:
 
@@ -172,6 +173,29 @@ def trail_rows(schema: str | None = None) -> Iterator[tuple[dict, bytes]]:
             yield open_data.trail_row(row), bytes(wkb)
 
 
+def junction_rows() -> Iterator[tuple[dict, bytes]]:
+    """The raters' junction ratings, one point per node (empty until they are loaded)."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT junction, node, control, cross_stress, cross_delay_s, left_stress,
+                      left_delay_s, along_stress, along_delay_s, ST_X(location), ST_Y(location)
+               FROM core_junctionrater ORDER BY junction, node"""
+        )
+        keys = (
+            "junction", "node", "control", "cross_stress", "cross_delay_s", "left_stress",
+            "left_delay_s", "along_stress", "along_delay_s",
+        )  # fmt: skip
+        for record in cursor.fetchall():
+            row = dict(zip(keys, record[:-2], strict=True))
+            yield open_data.junction_row(row), files.point_wkb(record[-2], record[-1])
+
+
+def junction_count() -> int:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM core_junctionrater")
+        return cursor.fetchone()[0]
+
+
 # A segment counts as on an Arlington comfort line where at least this share of it lies
 # within this many metres of the line (cross streets touch only a few metres of it).
 ARLINGTON_BUFFER_M = 12
@@ -315,6 +339,10 @@ def export(
         ("rating_rows", "MULTILINESTRING", open_data.OWNER_ROW_FIELDS, lambda: rating_rows(schema)),
         ("trails", "MULTILINESTRING", open_data.TRAIL_FIELDS, lambda: trail_rows(schema)),
     ]
+    if junction_count():
+        layers.append(("junctions", "POINT", open_data.JUNCTION_FIELDS, junction_rows))
+    else:
+        logger.warning("no junction ratings loaded: the junctions layer is left out")
     if racks is not None and racks.exists():
         points = rack_points(racks)
         for name in open_data.RACK_LAYERS:
