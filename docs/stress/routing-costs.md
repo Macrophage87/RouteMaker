@@ -19,7 +19,7 @@ with one exception: above 80 (`STRESS_TODAYS_TOP`) the turn charge (`maneuver_pe
 to 15 s (`CALM_MANEUVER_PENALTY_S`, our default, not measured), and the calm search's ranking
 adds each turn at that price (`refine.turn_m`). A ride type that already charges more keeps its own.
 
-Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
+More turn rules (2026-11-12 on):
 
 - **Every setting** (the owner's yes, 2026-11-12). `presets.TURN_CHARGE_EVERY_SETTING` (True) builds owner
   decision 254's "every preset": 15 s at every position, Default's 70 included; `turn_m` at every position
@@ -28,6 +28,13 @@ Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
   metres of LTS 3 (`dedodge.turn_lts3_m`, about 22 m a turn at 70). The route scorecard's before/after
   (38 trips): at 70, 4% fewer turns with LTS 4 flat; at 25 (Go's More direct), 7% fewer turns but 1.7 mi
   more LTS 4 in all (Germantown to Poolesville, Old Town Bowie). The owner chose every setting anyway.
+- **Sharp turns and jogs weigh more** (2026-11-20, the owner: "see if you can find ways to further
+  penalize repeated sharp turns"). The ranking counts a route's turns as `refine.turn_load` weighs them:
+  one a turn, one more for a sharp turn (Valhalla's sharp right or left), two more for a U-turn, and one
+  more for a turn within 100 m (`refine.JOG_M`, the jog Ride says as one cue) of the turn before it. So
+  two sharp turns 40 m apart rank as five turns, not two. The router itself can't price a turn by what
+  came before it, so this works where routes are compared (`turn_m`), not inside Valhalla. The turns
+  shown stay a plain count. Our defaults, not measured.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
   Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
