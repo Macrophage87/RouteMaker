@@ -196,7 +196,7 @@ class TestJunctionDelay:
         # The owner, 2026-11-02: "For the road cycling version, make non-cycling time, such as
         # waiting at lights carry an additional penalty (3x)".
         assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
-        assert presets.wait_weight_for("default") == presets.wait_weight_for("cargo") == 1.0
+        assert presets.wait_weight_for("default") == presets.wait_weight_for("ebike") == 1.0
         slow = analysis("a")
         slow.junction_delay_s = 60.0
         road = context(wait_weight=presets.wait_weight_for(presets.ROAD_BIKE))
@@ -210,14 +210,18 @@ class TestJunctionDelay:
     def test_pleasure_and_training_rides_weigh_waiting_twice(self) -> None:
         # The owner, 2026-11-20: "Especially for pleasure and training rides, being able to
         # spend that time riding and not waiting at a light is what matters".
-        for name in ("trailmaxxing", "gravel", "mountain-goat", "mountain-bike", "fast"):
+        for name in ("trailmaxxing", "gravel", "mountain-goat", "mountain-bike"):
             assert presets.wait_weight_for(name) == presets.PLEASURE_WAIT_WEIGHT == 2.0
         assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
+        # Group Ride (a light splits the group) and Cargo Bike (a heavy restart), 2026-11-20.
+        assert presets.wait_weight_for("group-ride") == presets.wait_weight_for("cargo") == 2.0
+        # Fast is "get there as soon as possible" (the owner, 2026-11-20): real time, 1x.
+        assert presets.wait_weight_for("fast") == 1.0
 
     def test_a_caller_can_raise_the_wait_weight_but_never_lower_it(self) -> None:
         # The owner, 2026-11-20: "let the MCP server increase those penalties more".
         assert presets.wait_weight_for("default", 4.0) == 4.0
-        assert presets.wait_weight_for("fast", 1.0) == 2.0
+        assert presets.wait_weight_for("trailmaxxing", 1.0) == 2.0
         assert presets.wait_weight_for(presets.ROAD_BIKE, 2.0) == 3.0
         assert presets.wait_weight_for("default", 9.0) == presets.MAX_WAIT_WEIGHT == 5.0
         assert presets.wait_weight_for("default", None) == 1.0
@@ -516,6 +520,26 @@ class TestTurnsBySpeed:
         gap = refine.turn_m(fast, ctx) - refine.turn_m(plain, ctx)
         assert gap == pytest.approx(refine.QUIET_COST_FACTOR * 10.0 / QUIET_COST)
 
+    def test_a_ride_type_that_charges_more_a_turn_ranks_turns_at_its_own_charge(self) -> None:
+        # Group Ride's and Road Bike's router charges 30 s a turn; the ranking does too, so
+        # the search and the ranking agree (as `dedodge.turn_lts3_m`).
+        base = context()
+        dear = dataclasses.replace(
+            base, costing={"bicycle": {**base.costing["bicycle"], "maneuver_penalty": 30}}
+        )
+        few, many = analysis("a"), analysis("b")
+        few.turns, many.turns = 2, 6
+        gap = refine.turn_m(many, dear) - refine.turn_m(few, dear)
+        assert gap == pytest.approx(refine.QUIET_COST_FACTOR * 30 * 4 / dear.quiet_cost)
+        # A sharp turn's extra keeps the usual price: the ride type's sharp-turn weight
+        # already scales it.
+        sharp = analysis("c")
+        sharp.turns, sharp.turn_sharp = 2, 1.0
+        extra = refine.turn_m(sharp, dear) - refine.turn_m(few, dear)
+        assert extra == pytest.approx(refine.QUIET_COST_FACTOR * refine.TURN_RANK_S / dear.quiet_cost)
+        usual = refine.turn_m(many, base) - refine.turn_m(few, base)
+        assert usual == pytest.approx(refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 4 / base.quiet_cost)
+
     def test_legs_add_their_lost_seconds(self) -> None:
         one, two = analysis("a"), analysis("b")
         one.turn_lost_s, two.turn_lost_s = 1.5, 2.0
@@ -529,6 +553,8 @@ class TestTurnsBySpeed:
         assert presets.sharp_turn_weight_for("trailmaxxing") == 1.0
         assert presets.sharp_turn_weight_for(presets.ROAD_BIKE) == 3.0
         assert presets.sharp_turn_weight_for(presets.TANDEM) == 2.0
+        # Cargo Bike as Tandem (2026-11-20): heavy, wide at a corner, slow back to speed.
+        assert presets.sharp_turn_weight_for("cargo") == 2.0
         # The rider's own, below the ride type's too, held to 0 to 5.
         assert presets.sharp_turn_weight_for(presets.ROAD_BIKE, 0.0) == 0.0
         assert presets.sharp_turn_weight_for("default", 4.0) == 4.0

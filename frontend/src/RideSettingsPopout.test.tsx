@@ -44,14 +44,36 @@ test("in Plan, Adjust opens every ride setting in a popup named for the ride typ
 });
 
 test("Waiting at lights starts at the ride type's own weight and only goes up from there", async () => {
-  await section("fast", true);
+  await section("trailmaxxing", true);
   const waits = slider("Waiting at lights and stops")!;
-  assert.equal(waits.getAttribute("aria-valuetext"), "2x", "Fast weighs its waits twice");
+  assert.equal(waits.getAttribute("aria-valuetext"), "2x", "Trailmaxxing weighs its waits twice");
   assert.equal(waits.min, "2");
   assert.equal(waits.max, "5");
   await section("default", true);
   const own = [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === "Waiting at lights and stops");
   assert.equal(own.at(-1)?.getAttribute("aria-valuetext"), "1x", "Default's own is 1x");
+});
+
+// The defaults agreed on 2026-11-20: Fast at real time; Group Ride (a light splits the group) and Cargo Bike (a heavy
+// restart, wide turns) at 2x.
+test("each ride type's sliders start at its own weights", async () => {
+  const starts = async (preset: Parameters<typeof section>[0], name: string) => {
+    await section(preset, true);
+    return [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === name).at(-1)?.getAttribute("aria-valuetext");
+  };
+  assert.equal(await starts("fast", "Waiting at lights and stops"), "1x");
+  assert.equal(await starts("group-ride", "Waiting at lights and stops"), "2x");
+  assert.equal(await starts("cargo", "Waiting at lights and stops"), "2x");
+  assert.equal(await starts("cargo", "Sharp turns"), "2x");
+  assert.equal(await starts("fast", "Sharp turns"), "1x");
+  assert.equal(fitDials("cargo", { ...startDials("cargo"), waitWeight: 2, sharpTurnWeight: 2 }).waitWeight, undefined);
+  assert.equal(fitDials("cargo", { ...startDials("cargo"), waitWeight: 2, sharpTurnWeight: 2 }).sharpTurnWeight, undefined);
+});
+
+test("Fewer turns is not offered on a ride type that already plans for fewer turns", async () => {
+  await section("road-bike", true);
+  assert.equal(toggle("Fewer turns"), undefined);
+  assert.ok(slider("Sharp turns"), "its sliders stay");
 });
 
 test("moving Waiting at lights to 4x and ticking Fewer turns plan again with them", async () => {

@@ -5085,7 +5085,7 @@ rounded, and the notes say so). Go has no control for either (nor for Sharp turn
 
 A third, "Sharp turns" (the owner: "I find sharp turns pretty fun, but I hate standing at lights"),
 sits under the waits slider: 0 to 5 from the ride type's own weight (`dials.ts`
-`SHARP_TURN_WEIGHTS`, `fitSharpTurnWeight`; Road Bike 3x, Tandem 2x, others 1x, our defaults,
+`SHARP_TURN_WEIGHTS`, `fitSharpTurnWeight`; Road Bike 3x, Tandem and Cargo Bike 2x, others 1x, our defaults,
 unmeasured), so a rider can lower it below the ride type's own, to 0. It weighs the sharp and
 U-turn extras and the seconds lost braking for turns (docs/stress/routing-costs.md), not waits.
 It travels as `sharpturns=N` (the app keeps it only when it differs from the ride type's own), `sharp_turn_weight`

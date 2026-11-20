@@ -374,11 +374,11 @@ class Context:
     # at `presets.FEWER_TURNS_PENALTY_S` each (`turn_m`).
     fewer_turns: bool = False
     # What a second of junction waiting costs against a second of riding when routes are
-    # ranked (`presets.wait_weight_for`): 1; 2 on the pleasure and training ride types and
-    # Tandem; 3 on Road Bike; or the request's higher `wait_weight`. The time shown is unchanged.
+    # ranked (`presets.wait_weight_for`): 1; 2 on the pleasure ride types, Group Ride,
+    # Cargo Bike and Tandem; 3 on Road Bike; or the request's higher `wait_weight`. The time shown is unchanged.
     wait_weight: float = 1.0
     # What a sharp turn's or U-turn's extra and the seconds turns lose to braking count
-    # (`presets.sharp_turn_weight_for`: 1; 3 on Road Bike, 2 on Tandem; the rider's "Sharp
+    # (`presets.sharp_turn_weight_for`: 1; 3 on Road Bike, 2 on Tandem and Cargo Bike; the rider's "Sharp
     # turns", 0 to 5).
     sharp_weight: float = 1.0
     # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
@@ -923,7 +923,8 @@ def turn_m(read: Analysis, ctx: Context) -> float:
     254's "every preset"), so repeats, dodges and loop way-backs weigh turns too; with it off,
     only where the calm search runs (above `presets.STRESS_TODAYS_TOP`, the same positions the
     router's turn charge rises at), and 0 at or below it. The rider's "Fewer turns"
-    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`. The
+    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`, and a ride
+    type whose router charges more a turn (Group Ride's and Road Bike's 30 s) at its own. The
     turns are counted as `turn_load` weighs them (`Analysis.ranked_turns`): a sharp turn, a
     U-turn or a jog counts for more than one; and the seconds they lose to braking and speeding
     up again (`Analysis.turn_lost_s`) are added. The sharp turns' extras and the lost seconds
@@ -937,8 +938,12 @@ def turn_m(read: Analysis, ctx: Context) -> float:
         return 0.0
     else:
         per_turn_s = TURN_RANK_S
+    # A ride type whose router charges more (Group Ride's and Road Bike's 30 s) ranks each turn
+    # at its own charge, as the dodge pass does (`dedodge.turn_lts3_m`). The sharp turns' extras
+    # keep the price above, so the ride type's sharp-turn weight is not counted twice over.
+    own_s = max(per_turn_s, float((ctx.costing.get("bicycle") or {}).get("maneuver_penalty") or 0))
     sharp = ctx.sharp_weight
-    seconds = per_turn_s * (turns + sharp * read.turn_sharp) + sharp * read.turn_lost_s
+    seconds = own_s * turns + per_turn_s * sharp * read.turn_sharp + sharp * read.turn_lost_s
     return QUIET_COST_FACTOR * seconds / ctx.quiet_cost
 
 
