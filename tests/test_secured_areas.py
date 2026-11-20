@@ -592,7 +592,7 @@ def test_a_link_needs_its_own_bicycle_permission_and_must_be_short():
     assert next(m for m in secured if m.way_id == 770173790).why == ra.WHY_SECURED
     # A run longer than LINK_MAX_M (the first crossing and its stub, made long) stays closed.
     found = [
-        replace_length(m, ra.LINK_MAX_M) if m.way_id == 770173788 else m
+        replace(m, length_m=ra.LINK_MAX_M) if m.way_id == 770173788 else m
         for m in ra.secured_closures(_nih_context()[1], [NIH])
     ]
     nodes = {w: n for w, _t, n, _c in NIH_WAYS}
@@ -600,11 +600,22 @@ def test_a_link_needs_its_own_bicycle_permission_and_must_be_short():
     assert ra.open_links(found, nodes, open_nodes) == {770173790}
 
 
-def replace_length(m, length_m):
-    return replace(m, length_m=length_m)
-
-
 def test_no_closed_way_means_no_change():
     context, _ = _nih_context()
     signed = [ra.MilitaryWay(1, "x", "cycleway", "", 10.0, ra.OPEN, ra.WHY_SIGNED)]
     assert run.reopen_links(context, signed, []) == (signed, [])
+
+
+def test_a_footway_crossing_an_open_road_midway_into_the_campus_stays_closed():
+    # Starts on an open street outside (node 1), crosses an open road inside at node 2
+    # partway along, and ends on a closed campus road (node 3): one open end only.
+    found = [
+        ra.MilitaryWay(5, "NIH", "footway", "", 30.0, ra.CLOSED, ra.WHY_SECURED_TAGGED_OPEN),
+    ]
+    assert ra.open_links(found, {5: [1, 2, 3]}, {1, 2}) == set()
+    assert ra.open_links(found, {5: [1, 2, 3]}, {1, 3}) == {5}
+
+
+def test_a_base_keeps_its_bicycle_yes_ways_closed():
+    found = [ra.MilitaryWay(5, "Fort", "footway", "", 20.0, ra.CLOSED, ra.WHY_TAGGED_OPEN)]
+    assert ra.open_links(found, {5: [1, 2]}, {1, 2}) == set()

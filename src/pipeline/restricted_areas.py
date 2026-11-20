@@ -1052,8 +1052,10 @@ def secured_closures(
 # are `footway=crossing bicycle=yes` and were closed, cutting the path into islands. A
 # closed way the rule would otherwise leave to a bicycle by its own tags
 # (`public_permission`), on a trail-class way, in a run of such ways no longer than
-# LINK_MAX_M that meets ways open to bicycles at two or more nodes, joins open paths and
-# leads nowhere inside: it reopens. A link that meets an open way at one node only (a
+# LINK_MAX_M whose way ends meet ways open to bicycles at two or more nodes, joins open
+# paths and leads nowhere inside: it reopens. Secured compounds only: on a base the owner
+# closed `bicycle=yes` ways outright (OWNER-DECISIONS 437.2, 437.3), so a base keeps that
+# rule until he says otherwise. A link that meets an open way at one node only (a
 # sidewalk into the campus) stays closed, as does any way with no bicycle permission of its
 # own. Our default, unmeasured: 50 m (about 165 ft), the width of a wide entrance with its
 # kerbs, as the trail-crosswalk rule (`routemaker.sidewalks.trail_crossings`) uses.
@@ -1062,7 +1064,6 @@ WHY_LINK = (
     "open: a short link with its own bicycle permission between two open paths (a crossing "
     "over an entrance), not a way inside"
 )
-_TAGGED_OPEN = frozenset({WHY_TAGGED_OPEN, WHY_SECURED_TAGGED_OPEN})
 
 
 def open_links(
@@ -1077,7 +1078,7 @@ def open_links(
         m.way_id: m
         for m in found
         if m.closed
-        and m.why in _TAGGED_OPEN
+        and m.why == WHY_SECURED_TAGGED_OPEN
         and m.highway in TRAIL_CLASS_HIGHWAY
         and m.way_id in node_ids
     }
@@ -1099,12 +1100,15 @@ def open_links(
     runs: dict[int, list[int]] = defaultdict(list)
     for way_id in candidates:
         runs[find(way_id)].append(way_id)
+    open_nodes = open_nodes if isinstance(open_nodes, (set, frozenset)) else set(open_nodes)
     out: set[int] = set()
     for run in runs.values():
         if sum(candidates[w].length_m for w in run) > LINK_MAX_M:
             continue
-        touches = {n for w in run for n in node_ids[w]} & set(open_nodes)
-        if len(touches) >= 2:
+        # Only the ways' ends count: a footway that crosses an open road partway along
+        # and stops on a closed way inside joins nothing.
+        ends = {node_ids[w][i] for w in run if node_ids[w] for i in (0, -1)}
+        if len(ends & open_nodes) >= 2:
             out.update(run)
     return out
 
