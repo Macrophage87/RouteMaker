@@ -112,7 +112,7 @@ import logging
 import re
 from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import osmium
@@ -209,8 +209,9 @@ SECURED_AREAS = {
     "w437408534": "James J. Rowley Training Center",
     # NIH's main campus, Bethesda: a perimeter fence, every visitor screened at the
     # gate. `amenity=research_institute` only. The Bethesda Trolley Trail through it
-    # is `bicycle=designated` and stays open; the sidewalks along Rockville Pike,
-    # Cedar Ln and Old Georgetown Rd are outside the fence.
+    # is `bicycle=designated` and stays open. The outline runs to the curb, so the
+    # side path along Rockville Pike lies inside it: its designated pieces stay open
+    # and the bicycle=yes crossings between them stay open as links (`WHY_LINK`).
     "w42921793": "National Institutes of Health, Bethesda",
     # NIH's animal centre near Poolesville (`barrier=fence` on the outline itself).
     "w1328156254": "National Institutes of Health Animal Center",
@@ -1042,6 +1043,80 @@ def secured_closures(
     return out
 
 
+# --- Short links between open paths (the owner, 2026-11-20) ------------------------------
+#
+# The owner, of the side path along Rockville Pike by the Medical Center Metro: "the path in
+# front of medical center isn't [routable]". NIH's outline (w42921793) runs to the curb, so
+# the side path lies inside it. Its `bicycle=designated` pieces stay open (`WHY_SIGNED`), but
+# the two crossings that join them over NIH's entrances (Wilson Ln, the delivery entrance)
+# are `footway=crossing bicycle=yes` and were closed, cutting the path into islands. A
+# closed way the rule would otherwise leave to a bicycle by its own tags
+# (`public_permission`), on a trail-class way, in a run of such ways no longer than
+# LINK_MAX_M that meets ways open to bicycles at two or more nodes, joins open paths and
+# leads nowhere inside: it reopens. A link that meets an open way at one node only (a
+# sidewalk into the campus) stays closed, as does any way with no bicycle permission of its
+# own. Our default, unmeasured: 50 m (about 165 ft), the width of a wide entrance with its
+# kerbs, as the trail-crosswalk rule (`routemaker.sidewalks.trail_crossings`) uses.
+LINK_MAX_M = 50.0
+WHY_LINK = (
+    "open: a short link with its own bicycle permission between two open paths (a crossing "
+    "over an entrance), not a way inside"
+)
+_TAGGED_OPEN = frozenset({WHY_TAGGED_OPEN, WHY_SECURED_TAGGED_OPEN})
+
+
+def open_links(
+    found: Sequence[MilitaryWay],
+    node_ids: Mapping[int, Sequence[int]],
+    open_nodes: Collection[int],
+) -> set[int]:
+    """The closed ways of `found` that are short links between open ways (`WHY_LINK`).
+    `node_ids` maps a way to its nodes (the candidates' at least); `open_nodes` are the
+    nodes of every way open to bicycles, inside an area or out."""
+    candidates = {
+        m.way_id: m
+        for m in found
+        if m.closed
+        and m.why in _TAGGED_OPEN
+        and m.highway in TRAIL_CLASS_HIGHWAY
+        and m.way_id in node_ids
+    }
+    parent = {w: w for w in candidates}
+
+    def find(w: int) -> int:
+        while parent[w] != w:
+            parent[w] = parent[parent[w]]
+            w = parent[w]
+        return w
+
+    by_node: dict[int, list[int]] = defaultdict(list)
+    for way_id in candidates:
+        for node in set(node_ids[way_id]):
+            by_node[node].append(way_id)
+    for ways_here in by_node.values():
+        for other in ways_here[1:]:
+            parent[find(other)] = find(ways_here[0])
+    runs: dict[int, list[int]] = defaultdict(list)
+    for way_id in candidates:
+        runs[find(way_id)].append(way_id)
+    out: set[int] = set()
+    for run in runs.values():
+        if sum(candidates[w].length_m for w in run) > LINK_MAX_M:
+            continue
+        touches = {n for w in run for n in node_ids[w]} & set(open_nodes)
+        if len(touches) >= 2:
+            out.update(run)
+    return out
+
+
+def with_open_links(found: Sequence[MilitaryWay], links: Collection[int]) -> list[MilitaryWay]:
+    """`found` with the ways in `links` open for `WHY_LINK`."""
+    return [
+        replace(m, status=OPEN, why=WHY_LINK) if m.way_id in links and m.closed else m
+        for m in found
+    ]
+
+
 def secured_missing(areas: Sequence[Area]) -> list[str]:
     """The curated compounds (`SECURED_AREAS`) the extract has no area for: deleted
     or renumbered upstream, so not closed until the list is updated. Warned about;
@@ -1527,6 +1602,7 @@ THROUGH_EXCEPTIONS = frozenset(
         WHY_EDGE_PATH,
         WHY_SECURED_PUBLIC_ROAD,
         WHY_SECURED_VISITOR,
+        WHY_LINK,
     }
 )
 
