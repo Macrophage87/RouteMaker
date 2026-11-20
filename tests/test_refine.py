@@ -14,7 +14,7 @@ from concurrent.futures import Future
 
 import pytest
 
-from core import parallel, presets, refine, routing, timing, trailseek
+from core import dedodge, parallel, presets, refine, routing, timing, trailseek
 from routemaker import calm, trace_junctions
 from routemaker import intersections as model
 from routemaker.intersections import Control, Event, Movement
@@ -457,16 +457,37 @@ class TestTurnsBySpeed:
         assert refine.weigh_turns(fast).load == refine.weigh_turns(easy).load == 2.0
 
     def test_switchbacks_on_a_climb_count_as_plain_turns(self) -> None:
-        # Two sharp turns 40 m apart. Uphill at 6 mph, slower than a sharp turn is ridden: a
-        # plain turn each, nothing lost. Downhill at 25 mph: the sharp and jog extras, and
-        # seconds lost braking.
-        up = [timed(1, 300, 6), timed(14, 40, 6), timed(11, 300, 6), timed(4, 0, 6)]
-        down = [timed(1, 300, 25), timed(14, 40, 25), timed(11, 300, 25), timed(4, 0, 25)]
+        # Two sharp turns 120 m apart. Uphill at 6 mph, slower than a sharp turn is ridden: a
+        # plain turn each, nothing lost. Downhill at 25 mph: the sharp extras, and seconds
+        # lost braking.
+        up = [timed(1, 300, 6), timed(14, 120, 6), timed(11, 300, 6), timed(4, 0, 6)]
+        down = [timed(1, 300, 25), timed(14, 120, 25), timed(11, 300, 25), timed(4, 0, 25)]
         climb = refine.weigh_turns({"legs": [{"maneuvers": up}]})
         descent = refine.weigh_turns({"legs": [{"maneuvers": down}]})
         assert climb == refine.TurnReading(load=2.0, lost_s=0.0)
-        assert descent.load == 5.0
+        assert descent.load == 4.0
         assert descent.lost_s > 5.0
+
+    def test_a_short_stretchs_speed_is_not_read(self) -> None:
+        # A maneuver's time holds the router's own seconds for its turn, so 40 m reads slow:
+        # its speed is not read, and the jog after it keeps its extras.
+        jog = [timed(1, 300, 6), timed(14, 40, 6), timed(11, 300, 6), timed(4, 0, 6)]
+        read = refine.weigh_turns({"legs": [{"maneuvers": jog}]})
+        assert read.load == 2.0 + refine.SHARP_TURN_EXTRA + refine.JOG_TURN_EXTRA
+
+    def test_a_turn_at_a_junctions_wait_loses_nothing_more(self) -> None:
+        # The wait (a stop, a signal) already prices the slowing.
+        maneuvers = [timed(1, 400, 20), timed(11, 400, 20), timed(4, 0, 20)]
+        maneuvers[1]["begin_shape_index"] = 1
+        shape = [(-77.0, 38.9), (-77.0, 38.9036), (-77.0, 38.9072)]
+        leg = {"maneuvers": maneuvers, "shape": dedodge.encode_polyline6(shape)}
+        free = refine.weigh_turns({"legs": [leg]})
+        stop = refine.weigh_turns({"legs": [leg]}, waits=[(-77.0, 38.9037)])
+        far = refine.weigh_turns({"legs": [leg]}, waits=[(-77.0, 38.9072)])
+        assert free.lost_s > 3.0
+        assert stop.lost_s == 0.0
+        assert far.lost_s == free.lost_s
+        assert stop.load == free.load
 
     def test_the_lost_seconds_are_ranked_at_the_rides_wait_weight(self, monkeypatch) -> None:
         monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
@@ -477,6 +498,14 @@ class TestTurnsBySpeed:
             ctx = context(wait_weight=weight)
             gap = refine.level3(fast, ctx) - refine.level3(plain, ctx)
             assert gap == pytest.approx(refine.QUIET_COST_FACTOR * weight * 10.0 / QUIET_COST)
+
+    def test_fewer_turns_adds_the_lost_seconds_too(self) -> None:
+        ctx = dataclasses.replace(context(), fewer_turns=True)
+        plain, fast = analysis("a"), analysis("b")
+        plain.turns = fast.turns = 4
+        fast.turn_lost_s = 10.0
+        gap = refine.turn_m(fast, ctx) - refine.turn_m(plain, ctx)
+        assert gap == pytest.approx(refine.QUIET_COST_FACTOR * 10.0 / QUIET_COST)
 
     def test_legs_add_their_lost_seconds(self) -> None:
         one, two = analysis("a"), analysis("b")

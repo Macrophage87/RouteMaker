@@ -793,13 +793,19 @@ JOG_TURN_EXTRA = 1.0
 # prices those seconds as it prices a junction's wait (`Context.wait_weight`: twice on the
 # pleasure and training rides, three times on Road Bike), and a turn the rider reaches no
 # faster than its cornering speed counts as a plain turn, without the sharp, U-turn or jog
-# extras. The turn's path radius by Valhalla's turn type, the comfortable lean, braking and
-# speeding up are our defaults, not measured.
+# extras. A turn at a junction that already has a wait (a stop, a signal, a give-way; within
+# `junction_delay.MERGE_M`) loses nothing more: the wait prices the slowing. A speed is read
+# only off a stretch of TURN_SPEED_MIN_M or more, since a maneuver's time holds the router's
+# own seconds for the turn that starts it and a short one reads slow; a turn with no speed read
+# keeps its extras and loses nothing on that side. Braking and pick-up are the junction
+# model's (`junction_delay.YIELD_DELAY_S`); the path radius by Valhalla's turn type and the
+# comfortable lean are our defaults, not measured.
 TURN_RADIUS_M = {9: 30.0, 16: 30.0, 10: 10.0, 15: 10.0, 11: 5.0, 14: 5.0, 12: 2.5, 13: 2.5}
 TURN_LEAN_TAN = math.tan(math.radians(15.0))
 GRAVITY_MS2 = 9.81
 TURN_BRAKE_MS2 = 1.5
-TURN_SPEED_UP_MS2 = 0.6
+TURN_SPEED_UP_MS2 = 0.8
+TURN_SPEED_MIN_M = JOG_M
 
 
 def corner_speed_ms(kind: int) -> float:
@@ -830,18 +836,34 @@ class TurnReading:
 def _speed_ms(maneuver: dict, to_metres: float) -> float | None:
     seconds = float(maneuver.get("time") or 0.0)
     metres = float(maneuver.get("length") or 0.0) * to_metres
-    return metres / seconds if seconds > 0 and metres > 0 else None
+    if seconds <= 0 or metres < TURN_SPEED_MIN_M:
+        return None
+    return metres / seconds
 
 
-def weigh_turns(trip: dict) -> TurnReading:
+def _at_a_wait(
+    shape: list[tuple[float, float]], maneuver: dict, waits: Sequence[tuple[float, float]]
+) -> bool:
+    """Whether the turn `maneuver` starts within MERGE_M of a junction's wait."""
+    index = maneuver.get("begin_shape_index")
+    if not waits or index is None or not 0 <= index < len(shape):
+        return False
+    here = Point(*shape[index][:2])
+    reach = junction_delay.MERGE_M
+    return any(haversine(here, Point(lon, lat)) <= reach for lon, lat in waits)
+
+
+def weigh_turns(trip: dict, waits: Sequence[tuple[float, float]] = ()) -> TurnReading:
     """The trip's turns as the ranking weighs them: one each (`turns_of`), plus
     SHARP_TURN_EXTRA for a sharp one, U_TURN_EXTRA for a U-turn, and JOG_TURN_EXTRA for one
     within JOG_M of the turn before it on the same leg, except where the rider reaches the turn
-    no faster than its cornering speed; and the seconds the turns lose (`turn_lost_s`)."""
+    no faster than its cornering speed; and the seconds the turns lose (`turn_lost_s`), none
+    at a junction with a wait (`waits`, lon and lat)."""
     to_metres = 1609.344 if trip.get("units") == "miles" else 1000.0
     load = lost = 0.0
     for leg in trip.get("legs") or []:
         maneuvers = leg.get("maneuvers") or []
+        shape = routing.decode_polyline6(leg["shape"]) if waits and leg.get("shape") else []
         since_m: float | None = None
         for index, maneuver in enumerate(maneuvers):
             kind = maneuver.get("type")
@@ -856,7 +878,8 @@ def weigh_turns(trip: dict) -> TurnReading:
                         load += U_TURN_EXTRA
                     if since_m is not None and since_m < JOG_M:
                         load += JOG_TURN_EXTRA
-                lost += turn_lost_s(kind, in_ms, _speed_ms(maneuver, to_metres))
+                if not _at_a_wait(shape, maneuver, waits):
+                    lost += turn_lost_s(kind, in_ms, _speed_ms(maneuver, to_metres))
                 since_m = 0.0
             if since_m is not None:
                 since_m += float(maneuver.get("length") or 0.0) * to_metres
@@ -1353,7 +1376,7 @@ def analyse(
         raters=raters_of(raws, ctx),
         rater_medians=ctx.rater_medians,
     )
-    turns_read = weigh_turns(trip)
+    turns_read = weigh_turns(trip, [(w.lon, w.lat) for w in found_waits])
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
