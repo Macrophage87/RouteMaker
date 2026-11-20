@@ -291,9 +291,11 @@ ridden as a yield, 8 at other stops, 2 to 24 at a signal by place, road and ride
 gap in a busier road
 (<a href="#junctions">Junctions</a>). When Road Bike chooses between routes, these waits count three times
 over, because a road rider loses their pace at every stop, and on Tandem twice, because both riders stop and
-start together. On Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Fast they count twice too, because on a
-pleasure or training ride the time is better spent riding than waiting at a light (the owner's ask; the 2 is our
-default, unmeasured). The time shown is still the real wait. Plan's <strong>Waiting at lights and
+start together. On Cargo Bike they count twice, because a heavy bike is slow back to speed, and on Group Ride
+twice, because a red light splits the group, which then waits to regroup. On Trailmaxxing, Gravel, Mountain Goat
+and Mountain Bike they count twice too, because on a pleasure ride the time is better spent riding than waiting at a
+light (the owner's ask). Fast counts each wait as the real seconds it is, because a fast ride is about getting there
+soonest (the owner's choice). The 2s are our defaults, unmeasured. The time shown is still the real wait. Plan's <strong>Waiting at lights and
 stops</strong> slider, or an AI assistant, can raise a ride type's weight, up to five times, never lower it.</li>
 <li><strong>Gates.</strong> The engine adds a wait at a gate whose access isn't marked<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>:
 30 seconds on every ride type. On Cargo Bike and Tandem a gate, cycle barrier or narrow bollard counts about
@@ -335,7 +337,7 @@ wider roads of the same level cost more.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 410" role="img" aria-labelledby="fig-costs-t fig-costs-d" focusable="false" style="min-width:576px">
 <title id="fig-costs-t">What a mile of busy road costs, by ride type</title>
-<desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers and Tandem: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
+<desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, Gravel, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers and Tandem: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
 <defs><marker id="ah-costs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <line class="grid" x1="280.0" y1="8" x2="280.0" y2="364"/>
 <text class="ts" x="280.0" y="380" text-anchor="middle">0</text>
@@ -357,7 +359,7 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="312.48" y="79" text-anchor="start">LTS 3: 1.22 to 1.36</text>
 <rect x="315.0" y="88" width="6.0" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="330.12" y="99" text-anchor="start">LTS 4: 2.11 to 2.34</text>
-<text class="t" x="270" y="136" text-anchor="end">Group Ride, Gravel, Mountain Goat</text>
+<text class="t" x="270" y="136" text-anchor="end">Group Ride, Mountain Goat</text>
 <rect x="314.7" y="118" width="16.6" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="339.3" y="129" text-anchor="start">LTS 3: 1.93 to 2.85</text>
 <rect x="376.8" y="138" width="15.7" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
@@ -367,7 +369,7 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="339.3" y="179" text-anchor="start">LTS 3: 1.93 to 2.85</text>
 <rect x="376.8" y="188" width="15.7" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="400.5" y="199" text-anchor="start">LTS 4: 5.38 to 6.25</text>
-<text class="t" x="270" y="236" text-anchor="end">Default, E-bike, Cargo (cargo)</text>
+<text class="t" x="270" y="236" text-anchor="end">Default, Gravel, E-bike, Cargo (cargo)</text>
 <rect x="331.8" y="218" width="52.4" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="392.22" y="229" text-anchor="start">LTS 3: 2.88 to 5.79</text>
 <rect x="511.3" y="238" width="53.6" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
@@ -388,7 +390,7 @@ wider roads of the same level cost more.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 620" role="img" aria-labelledby="fig-costs-n-t fig-costs-n-d" focusable="false">
 <title id="fig-costs-n-t">What a mile of busy road costs, by ride type</title>
-<desc id="fig-costs-n-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers and Tandem: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
+<desc id="fig-costs-n-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, Gravel, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers and Tandem: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
 <defs><marker id="ah-costs-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <line class="grid" x1="12.0" y1="8" x2="12.0" y2="540"/>
 <text class="ts" x="12.0" y="560" text-anchor="middle">0</text>
@@ -410,7 +412,7 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="39.584" y="123" text-anchor="start">LTS 3: 1.22 to 1.36</text>
 <rect x="39.4" y="132" width="6.0" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="53.696" y="145" text-anchor="start">LTS 4: 2.11 to 2.34</text>
-<text class="t" x="10" y="178" text-anchor="start">Group Ride, Gravel, Mountain Goat</text>
+<text class="t" x="10" y="178" text-anchor="start">Group Ride, Mountain Goat</text>
 <rect x="39.8" y="186" width="13.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="61.040000000000006" y="199" text-anchor="start">LTS 3: 1.93 to 2.85</text>
 <rect x="89.5" y="208" width="12.5" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
@@ -420,7 +422,7 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="61.040000000000006" y="275" text-anchor="start">LTS 3: 1.93 to 2.85</text>
 <rect x="89.5" y="284" width="12.5" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="110.0" y="297" text-anchor="start">LTS 4: 5.38 to 6.25</text>
-<text class="t" x="10" y="330" text-anchor="start">Default, E-bike, Cargo (cargo)</text>
+<text class="t" x="10" y="330" text-anchor="start">Default, Gravel, E-bike, Cargo (cargo)</text>
 <rect x="53.5" y="338" width="41.9" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="103.376" y="351" text-anchor="start">LTS 3: 2.88 to 5.79</text>
 <rect x="197.0" y="360" width="42.9" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
@@ -450,7 +452,7 @@ wider roads of the same level cost more.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 830 322" role="img" aria-labelledby="fig-slider-t fig-slider-d" focusable="false" style="min-width:597px">
 <title id="fig-slider-t">What the traffic slider does</title>
-<desc id="fig-slider-d">A line chart over slider positions 0 to 100. The router&#x27;s willingness to use roads falls in a straight line from 1 at position 0 to 0.10 at 70 and reaches 0 at 80. Above 80 a second line, the calm search&#x27;s rate, rises steeply from 0 to 10: at 85 it is 0.6, at 90 1.8, at 95 4.4 and at 100 10 miles of detour accepted per mile of LTS 3 avoided. Ride types start at: Fast 10, Group Ride and Gravel 40, Default 70, Bikeshare 80, Novice and Trailmaxxing 100.</desc>
+<desc id="fig-slider-d">A line chart over slider positions 0 to 100. The router&#x27;s willingness to use roads falls in a straight line from 1 at position 0 to 0.10 at 70 and reaches 0 at 80. Above 80 a second line, the calm search&#x27;s rate, rises steeply from 0 to 10: at 85 it is 0.6, at 90 1.8, at 95 4.4 and at 100 10 miles of detour accepted per mile of LTS 3 avoided. Ride types start at: Fast 10, Group Ride 40, Default and Gravel 70, Bikeshare 80, Novice and Trailmaxxing 100.</desc>
 <defs><marker id="ah-slider" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <line class="grid" x1="60.0" y1="30" x2="60.0" y2="220"/>
 <text class="ts" x="60.0" y="238" text-anchor="middle">0</text>
@@ -497,8 +499,8 @@ wider roads of the same level cost more.</p>
 <line class="ard" x1="620.0" y1="30" x2="620.0" y2="220"/>
 <line class="ard" x1="760.0" y1="30" x2="760.0" y2="220"/>
 <text class="ts" x="134.0" y="44" text-anchor="start">Fast</text>
-<text class="ts" x="344.0" y="44" text-anchor="start">Group, Gravel</text>
-<text class="ts" x="546.0" y="44" text-anchor="end">Default</text>
+<text class="ts" x="344.0" y="44" text-anchor="start">Group</text>
+<text class="ts" x="546.0" y="44" text-anchor="end">Default, Gravel</text>
 <text class="ts" x="624.0" y="44" text-anchor="start">Bikeshare</text>
 <text class="ts" x="746.0" y="112" text-anchor="end">Novice,</text>
 <text class="ts" x="746.0" y="126" text-anchor="end">Trailmaxxing</text>
@@ -512,7 +514,7 @@ wider roads of the same level cost more.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 498" role="img" aria-labelledby="fig-slider-n-t fig-slider-n-d" focusable="false">
 <title id="fig-slider-n-t">What the traffic slider does</title>
-<desc id="fig-slider-n-d">A line chart over slider positions 0 to 100. The router&#x27;s willingness to use roads falls in a straight line from 1 at position 0 to 0.10 at 70 and reaches 0 at 80. Above 80 a second line, the calm search&#x27;s rate, rises steeply from 0 to 10: at 85 it is 0.6, at 90 1.8, at 95 4.4 and at 100 10 miles of detour accepted per mile of LTS 3 avoided. Ride types start at: Fast 10, Group Ride and Gravel 40, Default 70, Bikeshare 80, Novice and Trailmaxxing 100.</desc>
+<desc id="fig-slider-n-d">A line chart over slider positions 0 to 100. The router&#x27;s willingness to use roads falls in a straight line from 1 at position 0 to 0.10 at 70 and reaches 0 at 80. Above 80 a second line, the calm search&#x27;s rate, rises steeply from 0 to 10: at 85 it is 0.6, at 90 1.8, at 95 4.4 and at 100 10 miles of detour accepted per mile of LTS 3 avoided. Ride types start at: Fast 10, Group Ride 40, Default and Gravel 70, Bikeshare 80, Novice and Trailmaxxing 100.</desc>
 <defs><marker id="ah-slider-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <line class="grid" x1="40.0" y1="20" x2="40.0" y2="196"/>
 <text class="ts" x="40.0" y="216" text-anchor="middle">0</text>
@@ -555,7 +557,7 @@ wider roads of the same level cost more.</p>
 <text class="t" x="56" y="386" text-anchor="start">avoided (right scale, 0 to 10)</text>
 <path class="ard" d="M10,413 L46,413"/>
 <text class="t" x="56" y="418" text-anchor="start">Where ride types start: Fast 10;</text>
-<text class="t" x="56" y="438" text-anchor="start">Group, Gravel 40; Default 70;</text>
+<text class="t" x="56" y="438" text-anchor="start">Group 40; Default, Gravel 70;</text>
 <text class="t" x="56" y="458" text-anchor="start">Bikeshare 80; Novice,</text>
 <text class="t" x="56" y="478" text-anchor="start">Trailmaxxing 100</text>
 </svg>
@@ -585,8 +587,9 @@ price of more busy road.</li>
 pavement<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> costs a little more, and each ride type has its own view of gravel and trails.</li>
 <li><strong>Turns</strong>: each change of street counts when choosing a route, though it adds nothing to the
 time shown: 15 seconds on most ride types at every traffic setting (the owner's choice, 2026-11-12; the 15 seconds is
-our default, unmeasured), and 30 on Group Ride, Mass Ride, Fast, Road Bike and Tandem, or with
-<strong>Fewer turns</strong> picked (a switch in Plan's Ride settings). On the route scorecard's 38 test trips it cut turns by 4% at the Default setting with no
+our default, unmeasured), and 30 on Group Ride, Mass Ride, Road Bike and Tandem, or with
+<strong>Fewer turns</strong> picked (a switch in Plan's Ride settings, not shown on those four, which count 30
+already). On the route scorecard's 38 test trips it cut turns by 4% at the Default setting with no
 more LTS 4, and by 7% near the busy end of the slider (25, near where Fast starts) for 1.7 mi more LTS 4 in all.
 Some turns count for more: a sharp turn as two, a U-turn as three, and a turn within 330 ft [100 m] of the one
 before as one more, so two sharp turns close together count as five, at a sharp-turn weight of 1 (the owner's ask, 2026-11-20; our defaults,
@@ -595,7 +598,7 @@ about 20 mph [32 km/h] for a slight bend, 11.5 mph [18.5 km/h] for a plain turn,
 6 mph [9 km/h] for a U-turn (our defaults). Arriving faster, you
 brake and speed up again: a sharp turn costs about 3 seconds at 20 mph [32 km/h] and almost nothing at 11 mph
 [18 km/h]. Those seconds and the extra count for a sharp turn or U-turn are multiplied by a sharp-turn weight of their
-own, 3 on Road Bike, 2 on Tandem and 1 on other ride types (our defaults, unmeasured), apart from the weight on waits
+own, 3 on Road Bike, 2 on Tandem and Cargo Bike and 1 on other ride types (our defaults, unmeasured), apart from the weight on waits
 (the owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights"). Plan's <strong>Sharp
 turns</strong> slider sets it from 0 to 5; at 0 a sharp turn counts as a plain turn and braking costs nothing. A turn where you already
 stop or wait loses no extra time, and a switchback on a climb, taken slowly anyway, counts as one plain turn. The
