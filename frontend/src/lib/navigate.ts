@@ -491,6 +491,7 @@ export interface Cue {
    * cut the API's sentence inside its list of streets): the big line, "4 signals ahead" ("Corkers: 4 signals ahead" on
    * a Mass Ride), the small one, "Scott Cir, M St, K St +1 · 2 busy", and the sentence a screen reader is given,
    * the API's with its two brackets as one (the 2026-10-28 audit, P6). The voice keeps the API's sentence.
+   * A named stop has one too (stopCardParts): its name large, "Stop 2." small.
    */
   card?: { head: string; rest: string; said: string };
   movement: TurnMovement | null;
@@ -1126,6 +1127,16 @@ export function stopSide(route: Pick<RouteResponse, "leg_arrival_sides" | "leg_e
   return side === "left" || side === "right" ? side : null;
 }
 
+/**
+ * A named stop's card (Stephen 2026-11-19: "state the stop name ... where the arrow and directions go"): the name large,
+ * "Stop 2." and the side it is on in the small print; null for any other cue, and for a stop with no name.
+ */
+export function stopCardParts(cue: Pick<Cue, "kind" | "stop" | "stopName" | "side"> | null | undefined): { head: string; rest: string } | null {
+  if (!cue || cue.kind !== "stop" || cue.stop === null || !cue.stopName) return null;
+  const number = stopText(cue.stop, undefined);
+  return { head: cue.stopName, rest: cue.side ? `${number} ${arrivalSideWords(cue.side)}` : number };
+}
+
 /** A stop's words on the card: "Stop 2, Union Market.", then its side where known ("Destination on your left."). */
 function stopCueText(number: number, name: string | undefined, side: "left" | "right" | null): string {
   return side ? `${stopText(number, name)} ${arrivalSideWords(side)}` : stopText(number, name);
@@ -1266,6 +1277,11 @@ export function rideModel(
   cues.push(...kept);
   cues.forEach((cue, i) => (cue.index = i));
   joinJogs(cues);
+  // A named stop's card: its name large where the arrow and directions go, its number under it (stopCardParts).
+  for (const cue of cues) {
+    const parts = stopCardParts(cue);
+    if (parts) cue.card = { ...parts, said: cue.text };
+  }
   // The route's notes (lib/routeNotes.ts; Stephen 2026-11-10, "Yes, in Ride too"): each within NOTE_NEAR_M of the line
   // is a cue where the line passes nearest it, said once early as a hazard is; one further off is on the map only.
   const noted = noteCues(notes, { coordinates, along }, lengthM);
@@ -2794,15 +2810,21 @@ export function viaSkipWorth(planned: RideModel, progressM: number, viaAtM: numb
   return before !== null && after !== null && after - before > VIA_SKIP_EXTRA_S;
 }
 
+/** A stop cue's place in the request the model was planned from (its `point`, else its number); null on any other cue. */
+export function stopPointIndex(cue: Pick<Cue, "kind" | "point" | "stop">): number | null {
+  return cue.kind === "stop" && cue.stop !== null ? (cue.point ?? cue.stop) : null;
+}
+
 /**
  * The stops still ahead, for the ride's map (2026-10-24: "Stops should appear on the map when riding"): each stop
  * cue not yet reached, with its place in `points` and its number. Via points are no cues, so none is drawn.
  */
+
 export function stopsAhead(model: RideModel, progressM: number, points: readonly LonLat[]): Array<{ point: LonLat; index: number; number: number }> {
   const out: Array<{ point: LonLat; index: number; number: number }> = [];
   for (const cue of model.cues) {
     if (cue.kind !== "stop" || cue.atM <= progressM + ARRIVE_M || cue.stop === null) continue;
-    const index = cue.point ?? cue.stop;
+    const index = stopPointIndex(cue) as number;
     const point = points[index];
     if (point) out.push({ point, index, number: cue.stop });
   }

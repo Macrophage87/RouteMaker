@@ -61,6 +61,9 @@ import { GRADE_BAND_FILL } from "./lib/profileChart.ts";
 import { ACCESS_MODE_CLASS } from "./lib/accessMode.ts";
 import { units } from "./lib/units.ts";
 import { TRAIL_ROCK } from "./lib/trailRocks.ts";
+import { NOTE_ICONS, type NoteIcon } from "./lib/routeNotes.ts";
+import type { IconStyle } from "./lib/iconStyle.ts";
+import { NOTO_ICON_URLS, useIconStyle } from "./app/iconArt.tsx";
 
 /** The drawing's width, in viewBox units (about pixels on a phone), at the usual text size; larger text draws the same
  *  in a narrower box, so every word and mark grows with it (the v0.19.0 release review: the graph's text stayed 11 to
@@ -76,6 +79,10 @@ const NO_ROOM_HOLD_MS = 3000;
 const ZOOM_MAX = 1.6;
 /** The strip of turns at the top. */
 const TURNS_H = 26;
+/** A stop's disc in the turns' row: as tall as an arrow. */
+const STOP_R = 11;
+/** Drawn on the ribbon (no room for the turns' strip): within the ribbon's height, as the arrows are. */
+const STOP_R_ON_RIBBON = 8.5;
 /**
  * Traffic stress, a ribbon of the stress colours under the turns, each stretch carrying its level, so it sits beside
  * the other graphs (Stephen 2026-11-04: "You can't have both elevation and traffic stress. Maybe just make the traffic
@@ -122,7 +129,9 @@ interface Props {
   views: readonly AheadView[];
   route: Pick<RouteResponse, "profile" | "stress_spans" | "trail_levels">;
   /** The ride's cues, for the turns strip. */
-  cues: readonly Pick<Cue, "kind" | "atM" | "movement" | "severity" | "joined" | "cross" | "source">[];
+  cues: readonly Pick<Cue, "kind" | "atM" | "movement" | "severity" | "joined" | "cross" | "source" | "stop" | "point">[];
+  /** A stop cue's icon, where the planner gave the stop one (its number in a disc where not). */
+  stopIcon?: (cue: Pick<Cue, "kind" | "point" | "stop">) => NoteIcon | undefined;
   /** You, metres along the route. */
   youM: number;
   lengthM: number;
@@ -163,7 +172,7 @@ interface Panel {
   h: number;
 }
 
-export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = [], large = false, maxPx = null, onNoRoom }: Props) {
+export function AheadGraph({ views, route, cues, stopIcon, youM, lengthM, ridersAlong = [], large = false, maxPx = null, onNoRoom }: Props) {
   const id = useId();
   const figureRef = useRef<HTMLElement>(null);
   // The drawing's width on screen, so a height in pixels is known in the drawing's units.
@@ -185,7 +194,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
   const ridersKey = ridersAlong.map((m) => Math.round(m / 10)).join(",");
   const w = useMemo(() => aheadWindow(step, lengthM, ridersAlong), [step, lengthM, ridersKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const x = (m: number) => LEFT + ((m - w.fromM) / (w.toM - w.fromM)) * (width - LEFT - RIGHT);
-  const turns = useMemo(() => turnMarks(cues, w), [cues, w]);
+  const turns = useMemo(() => turnMarks(cues, w, stopIcon), [cues, w, stopIcon]);
   // Drawn at least 20 units apart, so two marks a block apart are one, not a blob.
   const drawnTurns = useMemo(() => spreadMarks(turns, (20 / (width - LEFT - RIGHT)) * (w.toM - w.fromM)), [turns, w, width]);
   // The plots as tall as the room allows (lib/aheadGraph.ts plotHeight): the room in pixels, in the drawing's units.
@@ -406,12 +415,17 @@ const ARROWS: Record<NonNullable<TurnMark["movement"]>, { shaft: string; head: s
  * The strip of turns and junction markers, over the graphs on the same scale. A turn is a black arrow, or orange or red
  * where the planner flagged its junction (Stephen 2026-11-03: "make those arrows that color alone"), each in a dark edge
  * so it holds 3:1 on the panel; a flagged junction that is not a turn is the planner's own marker, an orange triangle
- * or a red diamond, and an Avoid stretch a magenta square.
+ * or a red diamond, and an Avoid stretch a magenta square. A stop is its icon (Noto or the phone's emoji, as on the
+ * map), or its number in a disc where it has none (Stephen 2026-11-19: "Add the stop symbol to the same place as the turns").
  */
 function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks: readonly TurnMark[]; x: X; cy?: number; scale?: number; halo?: boolean }) {
+  const iconStyle = useIconStyle();
   return (
     <g className="ride-ahead-turns">
+      {/* Stops first, so a turn or busy junction beside one is drawn over it, never hidden. */}
+      {marks.map((mark, i) => mark.stop && <StopMark key={`s${i}`} stop={mark.stop} cx={x(mark.m)} cy={cy} r={(halo ? STOP_R_ON_RIBBON : STOP_R) * scale} iconStyle={iconStyle} />)}
       {marks.map((mark, i) => {
+        if (mark.stop) return null;
         const cx = x(mark.m);
         const colour = mark.severity === "orange" || mark.severity === "red" ? SEVERITY_COLOURS[mark.severity] : null;
         if (mark.movement) {
@@ -433,6 +447,28 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
         }
         return <rect key={i} x={cx - 7} y={cy - 7} width={14} height={14} fill={ROUTE_AVOID_MAGENTA} stroke="#1c1917" strokeWidth={1.5} />;
       })}
+    </g>
+  );
+}
+
+/** A stop in the turns' row: on a disc of the panel with an edge, so it reads on the ribbon too. */
+function StopMark({ stop, cx, cy, r, iconStyle }: { stop: NonNullable<TurnMark["stop"]>; cx: number; cy: number; r: number; iconStyle: IconStyle }) {
+  return (
+    <g className="ride-ahead-stop">
+      <circle cx={cx} cy={cy} r={r} className="ride-ahead-stop-disc" />
+      {stop.icon ? (
+        iconStyle === "emoji" ? (
+          <text x={cx} y={cy + 5} textAnchor="middle" className="ride-ahead-stop-emoji">
+            {NOTE_ICONS[stop.icon]}
+          </text>
+        ) : (
+          <image href={NOTO_ICON_URLS[stop.icon]} x={cx - r + 2} y={cy - r + 2} width={2 * r - 4} height={2 * r - 4} />
+        )
+      ) : (
+        <text x={cx} y={cy + 4.5} textAnchor="middle" className="ride-ahead-stop-number">
+          {stop.number ?? ""}
+        </text>
+      )}
     </g>
   );
 }

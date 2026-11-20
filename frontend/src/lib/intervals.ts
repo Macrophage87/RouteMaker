@@ -3,7 +3,7 @@
  * Basically we're looking for long segments that have limited turns, no intersections, and are either flat or
  * uphill. We'd have this in the Plan panel and available for the MCP."
  *
- * One switch in Plan's Trails and terrain section, beside Climbs, off by default and kept on this device; not in Go. The stretches are found once
+ * One switch in the Trails and terrain section (Go and Plan; Go since 2026-11-18), beside Climbs, off by default and kept on this device. The stretches are found once
  * per map build (`manage.py build_intervals`, src/pipeline/interval_layer.py: what counts is there) and shipped as
  * interval-data/intervals.json, fetched the first time the layer is turned on. Each is drawn as a wide pink
  * highlight under the stress line (the stress colour stays on top), with arrows along it where it holds one way
@@ -11,7 +11,7 @@
  * so a test renders it.
  */
 import { createElement as h, type ReactElement } from "react";
-import { t } from "./i18n.ts";
+import { planLanguageAttributes, t } from "./i18n.ts";
 import { withDarkPaint } from "./darkPaint.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
@@ -260,7 +260,8 @@ export function IntervalsControls({
 }): ReactElement {
   return h(
     "div",
-    { className: "intervals-controls" },
+    // English-marked where the words stay English (all but English and Spanish), so a screen reader reads them as such in Go too.
+    { className: "intervals-controls", ...planLanguageAttributes() },
     h(
       "div",
       { className: "a11y-setting" },
