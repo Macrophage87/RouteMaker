@@ -695,5 +695,37 @@ def test_a_gap_link_is_short_needs_a_trail_and_is_never_closed():
 def test_a_gap_link_reads_the_open_ways_coordinates_through_locate():
     ways = spur()
     bare = [(w, t, n, c if w == 3 else ()) for w, t, n, c in ways]
-    coords = {w: c for w, _t, _n, c in ways}
-    assert sw.gap_links(bare, locate=coords.__getitem__) == {3}
+    assert sw.gap_links(bare, locate=lambda index: ways[index][3]) == {3}
+
+
+def test_a_shortcut_across_one_trails_bend_is_no_gap_link():
+    # A trail bends round in a U (two 200 m legs 40 m apart, joined 40 m round the bottom
+    # by itself); a 40 m footway across the top meets only that one trail.
+    ways = [
+        placed(1, TRAIL, [(0.0, 0.0), (0.0, -200.0), (40.0, -200.0), (40.0, 0.0)]),
+        placed(3, {"highway": "footway"}, [(0.0, 0.0), (40.0, 0.0)]),
+    ]
+    assert sw.gap_links(ways) == set()
+
+
+def test_a_link_another_rule_opened_counts_as_a_nearby_join():
+    # Two parallel connectors 20 m apart: once one is open, the other is no gap.
+    ways = [
+        placed(1, SIDE_PATH, [(0.0, -300.0), (0.0, 0.0), (0.0, 20.0), (0.0, 300.0)]),
+        placed(
+            2, {"highway": "service"}, [(35.0, -300.0), (35.0, 0.0), (35.0, 20.0), (35.0, 300.0)]
+        ),
+        placed(3, {"highway": "footway"}, [(0.0, 0.0), (35.0, 0.0)]),
+        placed(6, {"highway": "footway"}, [(0.0, 20.0), (35.0, 20.0)]),
+    ]
+    assert sw.gap_links(ways) == {3, 6}
+    assert sw.gap_links(ways, also_open={6}) == set()
+
+
+def test_a_footway_with_one_end_at_a_trail_junction_and_the_other_loose_is_no_gap_link():
+    ways = [
+        placed(1, SIDE_PATH, [(0.0, -300.0), (0.0, 0.0)]),
+        placed(2, SIDE_PATH, [(0.0, 0.0), (0.0, 300.0)]),
+        placed(3, {"highway": "footway"}, [(0.0, 0.0), (35.0, 0.0)]),
+    ]
+    assert sw.gap_links(ways) == set()
