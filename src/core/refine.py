@@ -604,6 +604,15 @@ class Analysis:
     # The turns the router's directions give (`turns_of`), which the top of the slider ranks
     # at `TURN_RANK_S` each (`turn_m`), as the router's own cost already does below it.
     turns: int = 0
+    # The same turns as the ranking weighs them (`turn_load`): a sharp turn, a U-turn and a
+    # turn hard on the last one each count for more than one. None: `turns` (an analysis made
+    # without the directions' turn types).
+    turn_load: float | None = None
+
+    @property
+    def ranked_turns(self) -> float:
+        """The turns the ranking counts (`turn_load`)."""
+        return float(self.turns) if self.turn_load is None else self.turn_load
 
     @property
     def ranked_delay_s(self) -> float:
@@ -752,6 +761,46 @@ TURN_MANEUVERS = frozenset(range(9, 17))
 TURN_RANK_S = presets.CALM_MANEUVER_PENALTY_S
 
 
+# Sharp turns and turns hard on the last one (the owner, 2026-11-20: "see if you can find ways
+# to further penalize repeated sharp turns"). Each counts as one turn more in the ranking
+# (`turn_load`); the turns shown stay a plain count. A sharp turn (Valhalla's sharp right and
+# sharp left, 11 and 14) slows the rider almost to a stop and turns them across their own
+# line; a U-turn (12, 13) counts two more. A turn within JOG_M of the turn before it is a jog:
+# Ride says the two as one cue (frontend `navigate.ts`, cue cards' `JOG_M`), and the rider
+# has the second to find before they are up to speed from the first. Our defaults, not
+# measured.
+SHARP_TURNS = frozenset({11, 14})
+U_TURNS = frozenset({12, 13})
+SHARP_TURN_EXTRA = 1.0
+U_TURN_EXTRA = 2.0
+JOG_M = 100.0
+JOG_TURN_EXTRA = 1.0
+
+
+def turn_load(trip: dict) -> float:
+    """The trip's turns as the ranking weighs them: one each (`turns_of`), plus
+    SHARP_TURN_EXTRA for a sharp one, U_TURN_EXTRA for a U-turn, and JOG_TURN_EXTRA for one
+    within JOG_M of the turn before it on the same leg."""
+    to_metres = 1609.344 if trip.get("units") == "miles" else 1000.0
+    load = 0.0
+    for leg in trip.get("legs") or []:
+        since_m: float | None = None
+        for maneuver in leg.get("maneuvers") or []:
+            kind = maneuver.get("type")
+            if kind in TURN_MANEUVERS:
+                load += 1.0
+                if kind in SHARP_TURNS:
+                    load += SHARP_TURN_EXTRA
+                elif kind in U_TURNS:
+                    load += U_TURN_EXTRA
+                if since_m is not None and since_m < JOG_M:
+                    load += JOG_TURN_EXTRA
+                since_m = 0.0
+            if since_m is not None:
+                since_m += float(maneuver.get("length") or 0.0) * to_metres
+    return load
+
+
 def turns_of(trip: dict) -> int:
     """The turns in a trip's directions (`TURN_MANEUVERS`), every leg."""
     return sum(
@@ -769,14 +818,17 @@ def turn_m(read: Analysis, ctx: Context) -> float:
     254's "every preset"), so repeats, dodges and loop way-backs weigh turns too; with it off,
     only where the calm search runs (above `presets.STRESS_TODAYS_TOP`, the same positions the
     router's turn charge rises at), and 0 at or below it. The rider's "Fewer turns"
-    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`."""
+    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`. The
+    turns are counted as `turn_load` weighs them (`Analysis.ranked_turns`): a sharp turn, a
+    U-turn or a jog counts for more than one."""
     if ctx.quiet_cost <= 0:
         return 0.0
+    turns = read.ranked_turns
     if ctx.fewer_turns:
-        return QUIET_COST_FACTOR * presets.FEWER_TURNS_PENALTY_S * read.turns / ctx.quiet_cost
+        return QUIET_COST_FACTOR * presets.FEWER_TURNS_PENALTY_S * turns / ctx.quiet_cost
     if not presets.TURN_CHARGE_EVERY_SETTING and not ctx.maxcalm and ctx.rate <= 0:
         return 0.0
-    return QUIET_COST_FACTOR * TURN_RANK_S * read.turns / ctx.quiet_cost
+    return QUIET_COST_FACTOR * TURN_RANK_S * turns / ctx.quiet_cost
 
 
 def delay_m(read: Analysis, ctx: Context) -> float:
@@ -1276,6 +1328,7 @@ def analyse(
         scenic=getattr(real_classes, "scenic", None),
         adjustments=getattr(real_classes, "adjustments", None),
         turns=turns_of(trip),
+        turn_load=turn_load(trip),
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
@@ -3542,6 +3595,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         junction_delay_s=sum(r.junction_delay_s for r in reads),
         junction_ranked_s=sum(r.ranked_delay_s for r in reads),
         turns=sum(r.turns for r in reads),
+        turn_load=sum(r.ranked_turns for r in reads),
     )
 
 

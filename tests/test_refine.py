@@ -313,7 +313,100 @@ class TestTurns:
     def test_legs_add_their_turns(self) -> None:
         one, two = analysis("a"), analysis("b")
         one.turns, two.turns = 3, 5
-        assert refine.combine([one, two]).turns == 8
+        two.turn_load = 7.0
+        both = refine.combine([one, two])
+        assert both.turns == 8
+        assert both.ranked_turns == 10.0
+
+
+def turn(kind: int, after_m: float) -> dict:
+    """A maneuver of Valhalla type `kind` followed by `after_m` metres (kilometres in the trip)."""
+    return {"type": kind, "length": after_m / 1000.0}
+
+
+class TestRepeatedSharpTurns:
+    """The owner, 2026-11-20: "see if you can find ways to further penalize repeated sharp
+    turns". A sharp turn and a turn within JOG_M of the last each count one turn more in the
+    ranking, a U-turn two more; the turns shown stay a plain count."""
+
+    def test_spread_out_plain_turns_weigh_one_each(self) -> None:
+        trip = {"legs": [{"maneuvers": [turn(1, 400), turn(10, 400), turn(15, 400), turn(4, 0)]}]}
+        assert refine.turns_of(trip) == 2
+        assert refine.turn_load(trip) == 2.0
+
+    def test_a_sharp_turn_counts_one_more_and_a_u_turn_two_more(self) -> None:
+        trip = {"legs": [{"maneuvers": [turn(1, 400), turn(11, 400), turn(13, 400), turn(4, 0)]}]}
+        assert refine.turns_of(trip) == 2
+        assert refine.turn_load(trip) == 2.0 + refine.SHARP_TURN_EXTRA + refine.U_TURN_EXTRA
+
+    def test_a_turn_within_a_jog_of_the_last_counts_one_more(self) -> None:
+        # Left then right 60 m on (a jog), then a turn 400 m on: one extra, for the second.
+        trip = {
+            "legs": [
+                {"maneuvers": [turn(1, 400), turn(15, 60), turn(10, 400), turn(16, 50), turn(4, 0)]}
+            ]
+        }
+        assert refine.turn_load(trip) == 3.0 + refine.JOG_TURN_EXTRA
+        # The gap counts the way between, whatever maneuvers it holds.
+        between = {"legs": [{"maneuvers": [turn(15, 60), turn(8, 60), turn(10, 400), turn(4, 0)]}]}
+        assert refine.turn_load(between) == 2.0
+
+    def test_repeated_sharp_turns_stack(self) -> None:
+        # Two sharp turns 40 m apart: 2 turns, 2 sharp extras, 1 jog extra.
+        trip = {"legs": [{"maneuvers": [turn(1, 300), turn(14, 40), turn(11, 300), turn(4, 0)]}]}
+        assert refine.turn_load(trip) == 5.0
+
+    def test_a_new_leg_starts_its_own_gap(self) -> None:
+        trip = {
+            "legs": [
+                {"maneuvers": [turn(10, 30), turn(4, 0)]},
+                {"maneuvers": [turn(15, 300), turn(4, 0)]},
+            ]
+        }
+        assert refine.turn_load(trip) == 2.0
+
+    def test_a_trip_in_miles_reads_its_gaps_in_miles(self) -> None:
+        trip = {
+            "units": "miles",
+            "legs": [{"maneuvers": [{"type": 15, "length": 0.05}, turn(10, 0)]}],
+        }
+        # 0.05 mi is 80 m: a jog.
+        assert refine.turn_load(trip) == 2.0 + refine.JOG_TURN_EXTRA
+
+    def test_the_reading_weighs_the_trips_turns(self, monkeypatch) -> None:
+        # `analyse` fills `turn_load` from the directions, beside the plain count.
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(2)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
+        monkeypatch.setattr(
+            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
+        )
+        monkeypatch.setattr(
+            routing, "classify", lambda p, when, roadway_only=False: [("1", "none")] * len(p)
+        )
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        maneuvers = [turn(1, 100), turn(14, 40), turn(11, 60), turn(4, 0)]
+        trip = {
+            "legs": [{"shape": "x", "maneuvers": maneuvers}],
+            "summary": {"length": 0.2, "time": 50.0, "cost": 1.0},
+        }
+        ctx = context()
+        read = refine.analyse(trip, ctx, ctx.deadline)
+        assert read.turns == 2
+        assert read.turn_load == 5.0
+
+    def test_the_ranking_prices_the_weighed_turns(self, monkeypatch) -> None:
+        # Before: two routes with 6 turns each ranked level; after: the one whose turns come
+        # sharp and close ranks behind by its extra turns' worth.
+        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
+        below = context()
+        spread, fiddly = analysis("a"), analysis("b")
+        spread.turns = fiddly.turns = 6
+        fiddly.turn_load = 10.0
+        gap = refine.level3(fiddly, below) - refine.level3(spread, below)
+        assert gap == pytest.approx(refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 4 / QUIET_COST)
 
 
 class TestCappedTrailCrossings:
