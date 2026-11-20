@@ -59,7 +59,7 @@ import {
 import { MTB_DONE_FINDING, MTB_DONE_NAME, MTB_DONE_NO_PLACE, MTB_DONE_TEXT, mtbTrailAhead } from "./lib/mtbDone.ts";
 import { requestRoute, requestStations, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
-import { PAGE_NOTES } from "./lib/routeNotes.ts";
+import { PAGE_NOTES, type NoteIcon } from "./lib/routeNotes.ts";
 import {
   SKIP_STOP,
   RESTART_AUTO_M,
@@ -153,6 +153,7 @@ import {
   START_NEAR_M,
   START_REACHED_SAID,
   stopsAhead,
+  stopPointIndex,
   toGo,
   wayBack,
   compassWord,
@@ -173,6 +174,7 @@ import {
   ARRIVED_SAID,
   OFF_ROUTE_KEPT_SAID,
 } from "./lib/navigate.ts";
+import { IconArt, useIconStyle } from "./app/iconArt.tsx";
 import { statsPause, statsStart, statsStep, withClosedStretch, type RideStats } from "./lib/rideStats.ts";
 import {
   Announcer,
@@ -511,7 +513,16 @@ function arrowFor(
  * turn at an unusual junction (v0.10.0; lib/junctionShape.ts) is drawn as the junction: the way taken solid with
  * its arrowhead, the other ways dashed.
  */
-function CueShape({ shape, junction, exit, jog }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number; jog?: string | null }) {
+function CueShape({ shape, junction, exit, jog, icon }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number; jog?: string | null; icon?: NoteIcon }) {
+  const iconStyle = useIconStyle();
+  // A stop with an icon (Stephen 2026-11-19: "use the stop symbol in the directions guide"): its icon, as on the map.
+  if (shape === "stop" && icon) {
+    return (
+      <span className="cue-shape cue-stop-icon" aria-hidden="true">
+        <IconArt icon={icon} style={iconStyle} />
+      </span>
+    );
+  }
   if (junction?.ring && exit && shape !== "uturn" && shape !== "stop" && shape !== "end" && shape !== "warn") {
     // A circle: the ring with the exit's number in it, the way round solid, the exits passed dashed.
     const drawn = ringPaths(junction);
@@ -1046,6 +1057,15 @@ export function RideMode({
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
+  // A stop's icon (Stephen 2026-11-19), from the points the model was planned with: on the cue card and the graph's turns row.
+  const stopIconOf = useCallback(
+    (cue: Pick<Cue, "kind" | "point" | "stop">): NoteIcon | undefined => {
+      const index = stopPointIndex(cue);
+      const point = index === null ? undefined : plan.current.points[index];
+      return point ? VIA_MARKS.iconOf(point) : undefined;
+    },
+    [model], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const modelRef = useRef(model);
   modelRef.current = model;
   // A new route (a re-plan, Keep, the other line): its cue numbers start again, so the cue log says where.
@@ -4072,7 +4092,7 @@ export function RideMode({
           </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
-            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} jog={cue.cross ? null : jogArrowPath(cue)} />
+            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} jog={cue.cross ? null : jogArrowPath(cue)} icon={stopIconOf(cue)} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
@@ -4570,11 +4590,11 @@ export function RideMode({
       {/* No room for any graph on this screen (Large text, a short phone): the graphs' sentence still for screen
           readers, visually hidden (the review of #928; about/using.html says so). */}
       {aheadWanted && !aheadFits && ride.progressM !== null && (
-        <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={ride.progressM} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={0} />
+        <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={ride.progressM} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} stopIcon={stopIconOf} maxPx={0} />
       )}
       {sheetShown && (
         <div ref={sheetRef} className="ride-controls">
-          {aheadAt !== null && <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={aheadMaxPx} onNoRoom={sayNoRoom} />}
+          {aheadAt !== null && <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={aheadMaxPx} onNoRoom={sayNoRoom} stopIcon={stopIconOf} />}
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}
