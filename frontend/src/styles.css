@@ -2665,6 +2665,14 @@ ul.station-links {
 .junction-card p {
   margin: 4px 0 0;
 }
+.junction-card-moves {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.junction-card-yours {
+  font-weight: 700;
+}
 .junctions {
   margin: 12px 0;
 }
@@ -5590,11 +5598,31 @@ dialog.plan-ride-settings h2:focus {
   margin: 8px 0 0;
 }
 
+/* A rated junction on the plain map: a small colour dot in a button large enough to press. */
+.rated-map-dot {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
 .cue-next,
 .cue-off {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+/* A hard move at a rated junction: the card bordered in the move's stress colour, inside an edge of the text colour
+   (black on light, white on dark) so the border reads whatever the colour. The arrow stays plain. */
+.cue-next-rated {
+  border: 5px solid var(--cue-rated);
+  outline: 2px solid var(--text);
+  border-radius: 10px;
+  padding: 4px 6px;
 }
 
 .cue-shape {

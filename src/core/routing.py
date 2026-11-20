@@ -4109,10 +4109,31 @@ def _intersection_rows(events: list) -> list[dict]:
             ),
             "group": event.group,
             "time_band": event.time_band,
+            "rated": _rated_out(event),
         }
         for event in events
         if event.flagged
     ]
+
+
+def _rated_out(event) -> dict | None:
+    """The raters' reading of a flagged junction whose cost a rating set: the movement the
+    route makes there and, for each movement that can be made, its level and seconds."""
+    rater = getattr(event, "rater", None)
+    move = getattr(event, "rater_move", None)
+    if rater is None or move is None or event.rater_level is None:
+        return None
+    return {
+        "move": move,
+        "level": event.rater_level,
+        "moves": [
+            {"move": name, "level": level, "wait_s": None if wait is None else round(wait)}
+            for name, level, wait in zip(
+                intersections.RATER_MOVES, rater.stress, rater.delay_s, strict=True
+            )
+            if level is not None
+        ],
+    }
 
 
 def _junction_debug_rows(events: list) -> list[dict]:
