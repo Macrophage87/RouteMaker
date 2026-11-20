@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "Грунтовые дороги и тропы не стоят дополнительно; специально их пока не ищет.",
   "Treats unpaved roads and trails like pavement.": "Считает грунтовые дороги и тропы как асфальт.",
   "Fast": "Быстро",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "Прямые дороги, мало поворотов и ровный асфальт, независимо от движения.",
+  "As direct as possible.": "Как можно прямее.",
   "The most direct route, whatever the traffic.": "Самый прямой маршрут, независимо от движения.",
   "Road Bike": "Шоссейный велосипед",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "Для шоссейного велосипеда: объезжает гравий, грунт и извилистые тропы, если есть асфальтированный путь, делает меньше поворотов и рассчитывает время по темпу шоссейного велосипеда.",

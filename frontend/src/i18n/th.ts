@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "ถนนไม่ลาดยางและเส้นทางธรรมชาติไม่มีต้นทุนเพิ่ม แต่ยังไม่ตั้งใจหาเส้นทางเหล่านี้",
   "Treats unpaved roads and trails like pavement.": "ถือว่าถนนไม่ลาดยางและเส้นทางธรรมชาติเหมือนถนนลาดยาง",
   "Fast": "เร็ว",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "ถนนตรง เลี้ยวน้อย ผิวเรียบ ไม่สนการจราจร",
+  "As direct as possible.": "ตรงที่สุดเท่าที่ทำได้",
   "The most direct route, whatever the traffic.": "เส้นทางที่ตรงที่สุด ไม่สนการจราจร",
   "Road Bike": "จักรยานเสือหมอบ",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "สำหรับจักรยานเสือหมอบ: หลีกเลี่ยงกรวด ทางดิน และเส้นทางที่คดเคี้ยวเมื่อมีทางลาดยางให้อ้อม เลี้ยวน้อยลง และคำนวณเวลาตามความเร็วของจักรยานเสือหมอบ",

@@ -3702,10 +3702,10 @@ What is downloaded, per PLAN:13, is Geofabrik's state extracts (West Virginia ad
 the Eastern Panhandle):
 
 ```
-https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf
-https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf
-https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf
-https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/district-of-columbia/district-of-columbia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/maryland/maryland-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/virginia/virginia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/west-virginia/west-virginia-latest.osm.pbf
 ```
 
 **Roughly 1–2 GB in total at today's sizes** — Virginia and Maryland are most of

@@ -320,6 +320,9 @@ button.access-link {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  /* Never sideways (Stephen 2026-11-20, Go's route sheet shifted half off a phone): a sheet is the screen's width, and
+     a row that needs more room scrolls on its own (the ride types, the food chips). */
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 4px 14px 10px;
   /* A sheet's header sticks to the top: a control the focus returns to (a dialog's opener) is scrolled clear of it,
@@ -4599,6 +4602,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 /* The cuisine chips: one row under the search box that scrolls sideways (the 2026-10-28 audit, P7: results
    first), so the list starts on the first screen. */
 .food .food-chips {
+  position: relative; /* its chips' hidden words stay inside the row (.chip-row.ride-chips) */
   flex-wrap: nowrap;
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -7160,7 +7164,13 @@ details.fold > summary .icon {
 
 .totals-row .stats.totals {
   flex: 1 1 auto;
+  min-width: 0;
   margin: 4px 0;
+}
+
+/* Details keeps its width; the totals beside it wrap (Plan at 130% text pushed it past the sheet's edge). */
+.totals-row .route-info-button {
+  flex-shrink: 0;
 }
 
 .route-info {
@@ -7474,11 +7484,16 @@ details.fold > summary .icon {
 .chip-row.ride-chips {
   flex-wrap: nowrap;
   overflow-x: auto;
+  /* The row holds its chips' screen-reader words (.visually-hidden, absolutely placed): without a position here they
+     are placed against the sheet, not this row, so a chip scrolled out of the row still widened the sheet, and the
+     sheet scrolled sideways (Go's route sheet on beta v0.29.0, Stephen 2026-11-20). */
+  position: relative;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  margin-inline: calc(-1 * var(--ride-chips-bleed, 16px));
-  padding-inline: var(--ride-chips-bleed, 16px);
-  scroll-padding-inline: var(--ride-chips-bleed, 16px);
+  /* To the sheet's edges: the bleed is the sheet's own side padding (.panel-scroll's 14px), no more. */
+  margin-inline: calc(-1 * var(--ride-chips-bleed, 14px));
+  padding-inline: var(--ride-chips-bleed, 14px);
+  scroll-padding-inline: var(--ride-chips-bleed, 14px);
 }
 
 .chip-row.ride-chips::-webkit-scrollbar {
@@ -8079,6 +8094,11 @@ details.fold > summary .icon {
 
 .alert-line .alert-text {
   font-weight: 700;
+}
+
+/* "31 min" stays on one line when the totals wrap beside Details. */
+.stats.totals .total-time dd > bdi {
+  white-space: nowrap;
 }
 
 /* " · arrive 8:27 AM" beside the route's time, smaller, so the time stays the first thing read and the line one line. */

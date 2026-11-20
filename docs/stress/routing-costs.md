@@ -147,6 +147,17 @@ every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py
 | Bikeshare | standard (e-bike graph for the e-bike) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.1 mph [13 km/h] (12.4 mph [20 km/h] on the e-bike) | yes, crossing rounds |
 | Riding with kids | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.5 | yes | Hybrid, 6.2 mph [10 km/h] | yes, except past 18.6 mi [30 km] of straight line |
 
+**Fast, as direct as possible** (the owner, 2026-11-20: "Make fast faster. Have that as the
+subtitle, direct as possible."). A Fast ride left at its own traffic position (10) is planned a
+second time at position 0, the most direct, and that route is answered where it is at least one
+minute quicker door to door (riding plus waits) and adds no more than a quarter mile [0.4 km] of
+LTS 4 and Avoid (`presets.fast_direct_wins`, `routing._fast_direct`). The minute and the quarter
+mile are our defaults, not measured. Measured on 16 public trips (2026-11-20): planning every
+Fast ride at 0 saved 20.7 minutes in total but doubled the LTS 4 miles (4.1 to 8.6) and made one
+trip 8.2 minutes slower; this rule saved 14.8 minutes with LTS 4 flat (+0.12 mi). A moved slider,
+Go's quick first route, a followed line and a plan with under half its time left are planned once, as before. The slider the
+rider sees stays at 10.
+
 Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means
 `refine.refine` is called: at a calm rate of 0 it makes up to five crossing-only rounds, each
 excluding the red crossings the last round's route took as well, and all of them run even

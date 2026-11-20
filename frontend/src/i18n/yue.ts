@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "未鋪路面嘅路同山徑唔額外計成本；暫時唔會特登去搵。",
   "Treats unpaved roads and trails like pavement.": "將未鋪路面嘅路同山徑當係鋪好嘅路。",
   "Fast": "快",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "唔理車流，行直路、少轉彎、路面平滑。",
+  "As direct as possible.": "盡量直接。",
   "The most direct route, whatever the traffic.": "唔理車流，最直接嘅路線。",
   "Road Bike": "公路單車",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "適合公路單車：有鋪裝道路可以繞過時避開碎石、泥路同彎彎曲曲嘅徑，少啲轉彎，並按公路單車嘅速度計時間。",

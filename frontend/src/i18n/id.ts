@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "Jalan dan jalur tanpa aspal tidak dihitung lebih berat; belum dicari secara khusus.",
   "Treats unpaved roads and trails like pavement.": "Memperlakukan jalan dan jalur tanpa aspal seperti aspal.",
   "Fast": "Cepat",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "Jalan langsung, sedikit belokan, dan aspal mulus, apa pun lalu lintasnya.",
+  "As direct as possible.": "Selangsung mungkin.",
   "The most direct route, whatever the traffic.": "Rute paling langsung, apa pun lalu lintasnya.",
   "Road Bike": "Sepeda balap",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "Untuk sepeda balap: menghindari kerikil, tanah, dan jalur berkelok bila ada jalan beraspal untuk memutar, lebih sedikit belokan, dan menghitung waktu dengan kecepatan sepeda balap.",
