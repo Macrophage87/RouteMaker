@@ -5076,10 +5076,10 @@ Plan, Adjust on the Ride settings line opens a non-modal `<dialog>` (`lib/sideba
 plus two Plan alone offers: "Waiting at lights and stops", a slider from the ride type's own
 wait weight to 5x (`dials.ts` `WAIT_WEIGHTS`, `WAIT_WEIGHT_MAX`, `fitWaitWeight`; 5x is our
 default, unmeasured, `junction_delay.MAX_STACKED_WEIGHT`), and "Fewer turns". Neither is offered
-on foot, Run, transit or bikeshare (`offersStopsAndTurns`). They travel as `waits=N` (whole
+on foot, Run, transit or bikeshare (`offersStopsAndTurns`). They travel as `waits=N` (half
 steps, kept only above the ride type's own) and `fewerturns=1` in a plan link (`planHash.ts`), as
 `wait_weight` and `fewer_turns` on `POST /api/route`, in a GPX export's dials comment, and in the
-connector's links (`mcp/routemaker_mcp.py` `plan_fragment`; a weight between whole steps opens
+connector's links (`mcp/routemaker_mcp.py` `plan_fragment`; a weight between half steps opens
 rounded, and the notes say so). Go has no control for either (nor for Sharp turns, below), so coming into Go drops them
 (`App.tsx`). Go's settings stay under the line.
 
@@ -5090,6 +5090,10 @@ unmeasured), so a rider can lower it below the ride type's own, to 0. It weighs 
 U-turn extras and the seconds lost braking for turns (docs/stress/routing-costs.md), not waits.
 It travels as `sharpturns=N` (the app keeps it only when it differs from the ride type's own), `sharp_turn_weight`
 on `POST /api/route` and in the connector, and in a GPX export's dials comment; Go drops it too.
+
+Both sliders move in half steps (`dials.ts` `WEIGHT_STEP`; the owner, 2026-11-20: "maybe put some
+fractional levels too, like half"), so `waits=2.5` and `sharpturns=0.5` are kept as they are; the
+connector takes the same half steps (`half_step`).
 
 ### Easy MTB trails (the owner, 2026-11-08)
 

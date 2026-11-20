@@ -529,10 +529,23 @@ def test_fewer_turns_and_all_paved_are_sent_kept_and_said_missing_from_the_link(
     # ride in the link.
     assert "fewerturns=1" in out["link"] and "waits=4" in out["link"]
     assert not any("Fewer turns" in n or "waits" in n for n in out.get("notes") or [])
-    # A weight between the link's whole steps opens rounded (half up), and the notes say so.
+    # Half steps ride in the link as they are (the owner, 2026-11-20: "maybe put some
+    # fractional levels too, like half"); a weight between them opens rounded, and the notes
+    # say so.
     half = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 2.5})
-    assert "waits=3" in half["link"]
-    assert any("exact wait weight" in n for n in half["notes"])
+    assert "waits=2.5" in half["link"]
+    assert not any("exact wait weight" in n for n in half.get("notes") or [])
+    odd = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 2.3})
+    assert "waits=2.5" in odd["link"]
+    assert any("exact wait weight" in n for n in odd["notes"])
+    # Just above 1 rounds to the ride type's own 1x: no waits= in the link, and said.
+    low = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 1.2})
+    assert "waits=" not in low["link"]
+    assert any("exact wait weight" in n for n in low["notes"])
+    # Above 5 is planned at 5, as the link says: nothing lost.
+    high = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 7})
+    assert "waits=5" in high["link"]
+    assert not any("exact wait weight" in n for n in high.get("notes") or [])
     paved = tools.call("plan_route", {"points": [east(0), east(4)], "paved": True})
     assert any("All paved" in n and "not in it" in n for n in paved["notes"])
     # A revision keeps it, as Keep to roads; a new ride type too; clear_settings drops it.
@@ -746,5 +759,9 @@ def test_the_sharp_turn_weight_is_sent_kept_and_in_the_link(tools, api) -> None:
     assert "sharpturns=4" in fun["link"]
     # A link with sharpturns=0 reads back as 0, and a weight between steps is said rounded.
     assert mcp.parse_fragment(out["link"].split("#", 1)[1])[3]["sharp_turn_weight"] == 0
-    half = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 2.5})
-    assert any("exact sharp-turn weight" in n for n in half["notes"])
+    half = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 0.5})
+    assert "sharpturns=0.5" in half["link"]
+    assert mcp.parse_fragment(half["link"].split("#", 1)[1])[3]["sharp_turn_weight"] == 0.5
+    odd = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 1.2})
+    assert "sharpturns=1" in odd["link"]
+    assert any("exact sharp-turn weight" in n for n in odd["notes"])

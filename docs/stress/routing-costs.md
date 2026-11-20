@@ -55,6 +55,7 @@ More turn rules (2026-11-12 on):
   lights"). The sharp and U-turn extras and the seconds lost braking for a turn are multiplied by a
   weight of their own, apart from the wait weight (`presets.sharp_turn_weight_for`): 3x on Road Bike,
   2x on Tandem, 1x on every other ride type (our defaults, not measured). A rider sets it from 0 to 5
+  in half steps
   (`sharp_turn_weight` on POST /api/route, the "Sharp turns" slider in Plan's Ride settings popup,
   `sharpturns=N` in a link), below the ride type's own included. At 0 a sharp turn counts as a plain
   turn and braking costs nothing; the plain per-turn charge and the jog extra stay.
