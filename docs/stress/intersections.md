@@ -301,6 +301,40 @@ the weight is passed in as `refine.intersection_weight(stress_dial)`, `src/core/
 counts the worth rule's exchange instead (red 5 x 2 x the cost, orange 5 x 1, unflagged
 0; 10 in place of 5 with a target). Mass Ride has no rolling stress chart.
 
+## 8a. Raters' junction ratings
+
+The 2026-11-19 junction run rated every junction a bike rides through. Each movement got
+a stress level on the road scale and the seconds a rider loses there, kept as two numbers.
+The movements are `cross` (straight across the busiest road), `left` (off or onto it) and
+`along` (straight on along it). The run is described in
+`reports/bike-infra-guide/junctions-run-FINAL.md`, in the project files.
+`manage.py load_junction_raters` loads it into `JunctionRater`, replacing every row. It
+drops a movement that cannot be made, and one the one-way check flags, because the router
+already knows which moves are legal. A plan reads the rows within reach of its nodes
+(`core.junction_raters.near`). The reach is `RATER_MATCH_M`, 15 m, the rider ratings'
+reach, because a junction of several nodes has one point.
+
+- **Stress.** The movement the route makes at a rated junction (`rater_move`: a left is
+  `left`; staying on a road past streets no busier is `along`; otherwise `cross`) sets
+  the junction's cost in place of the model's (`rater_event`). A right turn keeps the
+  model's figure. An approved rider rating still comes first, and a Mass Ride keeps its
+  own reading.
+- **Below 2.5 the cost is nothing** (the owner, 2026-11-20, "Build, free below 2.5").
+  From 2.5 up the cost follows the model's own scale (`RATER_COST_FT`): 800 ft at 2.5,
+  1,600 at 3, 2,800 at 3.5, 4,000 at 4, two miles (10,560 ft) at 5, and 7,280 at 4.5.
+  The 4.5 figure is halfway between 4 and 5, Claude's default and unmeasured. The ride
+  time multiplies it as it does the model's cost (section 7), without the model's floors.
+  A junction rated 2.5 or more for some movement is read even where no road there is busy.
+- **A divided road is charged once.** Both of its carriageway nodes carry the whole
+  road's crossing, so its rated crossings count at the dearest node, with no refuge credit
+  (`_one_road`).
+- **Waits.** The raters' seconds run long against the measured ones: crossing at a signal,
+  the median rating is 30 s against 13.5 s measured on the owner's rides. So a wait the
+  delay model times keeps its own figure, scaled by the rated seconds over the median for
+  the same control and movement, and held between 0.5x and 2x
+  (`junction_delay.rater_scaled`; the limits are Claude's default, unmeasured). The
+  measured figures set each class, and the raters rank junctions within it.
+
 ## 9. Still open
 
 Everything above is built. These points are not settled:

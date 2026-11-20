@@ -112,10 +112,16 @@ across the same road (Claude's default, `ranked_s`).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 
-from .intersections import MERGE_WITHIN_M, Movement, time_factor
+from .intersections import (
+    MERGE_WITHIN_M,
+    Movement,
+    RaterRating,
+    rater_at,
+    time_factor,
+)
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
 
 # One full stop and the speed built up again. Our default, 8 s: Fajans and Curry's 14.2 to
@@ -650,6 +656,80 @@ def waits(
             run = replace(signal_run(run, signal), button=signal.button, button_at=button_at)
     if run is not None:
         out.append(run)
+    return out
+
+
+# --- The raters' seconds (the 2026-11-19 junction run) ------------------------
+#
+# The raters gave each junction movement the seconds a rider loses there. Their waits run
+# long against the measured ones (a signal crossed: median 30 s rated, 13.5 s on the owner's
+# rides), so they are not used as they are: a wait the model times keeps the model's figure
+# (measured in the cities, the owner's choices outside them) times the rated seconds over the
+# median rated seconds of the same control and movement. The raters rank junctions within a
+# class; the measured figures set the class (the owner, 2026-11-20: waits "scaled to your
+# measured figures"). The ratio is held between RATER_RATIO_MIN and RATER_RATIO_MAX
+# (Claude's default, unmeasured), so one rater's long guess cannot outweigh the measurements.
+RATER_RATIO_MIN = 0.5
+RATER_RATIO_MAX = 2.0
+
+
+def rater_ratio(
+    rater: RaterRating, move: str, medians: Mapping[tuple[str, str], float]
+) -> float | None:
+    """The rated seconds of `move` over the median of its control and movement, held in
+    range; None where either is missing."""
+    seconds = rater.delay(move)
+    median = medians.get((rater.control, move))
+    if seconds is None or not median:
+        return None
+    return min(max(seconds / median, RATER_RATIO_MIN), RATER_RATIO_MAX)
+
+
+def _rater_move(junction: RawJunction) -> str:
+    """The raters' movement for a wait at `junction`: a left is `left`; at a signal, riding
+    along the busiest road is `along` (`signal_crossed_rank`); any other wait is crossing
+    or joining a road (`cross`)."""
+    if junction.movement is Movement.LEFT:
+        return "left"
+    if junction.signal:
+        crossed = signal_crossed_rank(junction)
+        if crossed is None or crossed >= _own_rank(junction):
+            return "along"
+    return "cross"
+
+
+def rater_scaled(
+    found: Sequence[Wait],
+    junctions: Iterable[RawJunction],
+    raters: Sequence[RaterRating],
+    medians: Mapping[tuple[str, str], float],
+) -> list[Wait]:
+    """The waits with each one at a rated junction scaled by `rater_ratio`: its seconds
+    shown and as ranked, and its red, alike."""
+    if not raters or not medians:
+        return list(found)
+    at = {j.m: j for j in junctions}
+    out = []
+    for wait in found:
+        junction = at.get(wait.m)
+        rater = rater_at(wait.lon, wait.lat, raters)
+        ratio = None
+        if junction is not None and rater is not None:
+            ratio = rater_ratio(rater, _rater_move(junction), medians)
+        if ratio is None:
+            out.append(wait)
+            continue
+        out.append(
+            replace(
+                wait,
+                seconds=wait.seconds * ratio,
+                ranked_s=wait.ranked_s * ratio,
+                red_s=None if wait.red_s is None else wait.red_s * ratio,
+                signal_ranked_s=(
+                    None if wait.signal_ranked_s is None else wait.signal_ranked_s * ratio
+                ),
+            )
+        )
     return out
 
 

@@ -103,6 +103,7 @@ import dataclasses
 import logging
 import math
 import threading
+from collections.abc import Callable, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 
@@ -456,6 +457,11 @@ class Context:
     # The known flashing beacons at junctions the map has a signal at
     # (`core.flashing_signals.active`), priced with no signal.
     beacons: tuple = ()
+    # The raters' junction ratings near a route's nodes (`core.junction_raters.near`), None
+    # where not read; and their median seconds by control and movement
+    # (`core.junction_raters.medians`), which scale the waits (`junction_delay.rater_scaled`).
+    raters: Callable[[Sequence[tuple[float, float]]], tuple] | None = None
+    rater_medians: dict = field(default_factory=dict)
     # A Mass Ride or a Novice and Nervous ride: steep grades either way are priced
     # (`routemaker.steep_grades`, the owner, 2026-10-26), in `Analysis.hill_m`.
     steep_grades: bool = False
@@ -1100,6 +1106,13 @@ def locator(variant: str, deadline: routing.Deadline, located: dict | None = Non
     return locate
 
 
+def raters_of(raws, ctx: Context) -> tuple:
+    """The raters' junction ratings near the route's junctions (`Context.raters`)."""
+    if ctx.raters is None or not raws:
+        return ()
+    return tuple(ctx.raters([(raw.lon, raw.lat) for raw in raws]))
+
+
 def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | None:
     """The junction events of a route's raw junctions, or None where the roads
     or the router could not be asked. Where the clock cut the `/locate` batches off
@@ -1116,6 +1129,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
             beacons=ctx.beacons,
+            raters=raters_of(raws, ctx),
             # A road closed to cars at the ride's time is car-free here only on the graph
             # that routes it as a path, as `routing.classify` reads it (hunt X1). The ride
             # time itself still prices the junctions (rush hour, night).
@@ -1197,7 +1211,14 @@ def analyse(
     # The junctions' waits, the junction model's signals, big roads and stop-sign prices
     # included (hunt J5; the owner, 2026-11-08), each read once for the time and the rank.
     found_waits = routing.junction_waits(
-        raws, ctx.beacons, events, stop_wait_s_per_ft(ctx), ctx.button_ways, ctx.when
+        raws,
+        ctx.beacons,
+        events,
+        stop_wait_s_per_ft(ctx),
+        ctx.button_ways,
+        ctx.when,
+        raters=raters_of(raws, ctx),
+        rater_medians=ctx.rater_medians,
     )
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
