@@ -478,7 +478,7 @@ FIELD_NOTES = {
     "unpaved_share": "The share of its length that is unpaved, 0 to 1.",
     "junction": "The junction's id; a divided road's carriageway nodes share one.",
     "osm_node_id": "The OpenStreetMap node id (https://www.openstreetmap.org/node/<id>).",
-    "control": "The control mapped there: signal, stop, yield, crosswalk only or none.",
+    "control": "The traffic control OpenStreetMap tags there, as the raters read it.",
     "cross_lts": "Stress of riding straight across the busiest road, 1 to 4.5, 5 = Avoid "
     "(blank where the move can't be made).",
     "cross_delay_s": "Seconds a rider loses crossing it, as rated (the router scales its own "
