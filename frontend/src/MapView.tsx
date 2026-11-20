@@ -288,6 +288,11 @@ interface Props {
   onStressAvailability: (availability: StressAvailability) => void;
   onMapClick: (point: LonLat) => void;
   onMovePoint: (index: number, point: LonLat) => void;
+  /**
+   * The points stay where they are (Go, until Edit route is opened; lib/appMode.ts mapEditsLocked; Stephen 2026-11-20:
+   * "stray clicks change the route too often"): no drag, no point menu, no double-click remove.
+   */
+  pointsLocked?: boolean;
   /** The route line, when it is the current points' route and can be dragged; null otherwise. */
   lineEdit: LineEdit | null;
   /**
@@ -1967,9 +1972,11 @@ export function MapView(props: Props) {
       const said = warning ? named : `${shown}.`;
       // The name and warning only, and the keyboard's way to remove a via: a pin takes no focus, so
       // dragging and clicking are the title's, for a pointer (review a11y-8).
-      element.setAttribute("aria-label", via ? `${said} Remove it from the Points list.` : said);
-      element.title = via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
-      const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
+      const locked = props.pointsLocked === true;
+      element.setAttribute("aria-label", via && !locked ? `${said} Remove it from the Points list.` : said);
+      if (locked) element.classList.add("pin-locked");
+      element.title = locked ? `${named} - open Edit route to change it` : via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
+      const marker = new maplibregl.Marker({ element, draggable: !locked, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
       // The browser's click at the end of a drag of the marker is not a click on it.
@@ -2065,10 +2072,10 @@ export function MapView(props: Props) {
         // A click on a marker is not a click on the map: without this it
         // would also add a via point under the marker.
         event.stopPropagation();
-        if (!via || dragged) return;
+        if (!via || dragged || locked) return;
         offerRemove();
       });
-      if (via) {
+      if (via && !locked) {
         // A double-click removes it at once, and is not the map's zoom.
         element.addEventListener("dblclick", (event) => {
           event.stopPropagation();
@@ -2104,7 +2111,7 @@ export function MapView(props: Props) {
       }
       return marker;
     });
-  }, [...markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings), stopIconsKey, iconStyle]);
+  }, [...markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings), stopIconsKey, iconStyle, props.pointsLocked]);
 
   // The ride's stops still ahead (2026-10-24): each stop's numbered pin and its name, anchored at the pin; via points
   // only shape the route, so they are not drawn. Said by name to a screen reader as an image.

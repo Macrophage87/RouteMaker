@@ -45,11 +45,11 @@ test("the ride type in use is said, not only shown: pressed, and only that one",
   assert.match(html, /<li class="ride-type-card current"><button type="button" aria-pressed="true" aria-labelledby="t-gravel-name"/);
 });
 
-test("a name with emoji is said by its spoken name; the icon is never read", () => {
+test("a name with emoji is said by its spoken name, with no drawn icon beside it", () => {
   const html = renderToStaticMarkup(
-    createElement(RideTypeCards, { ids: ["bike-transit"], preset: "default", onPick: () => {}, idPrefix: "t", icon: () => "I" }),
+    createElement(RideTypeCards, { ids: ["bike-transit"], preset: "default", onPick: () => {}, idPrefix: "t" }),
   );
-  assert.match(html, /<span class="ride-card-icon" aria-hidden="true">I<\/span>/);
+  assert.doesNotMatch(html, /ride-card-icon|<svg/);
   assert.match(html, /<strong id="t-bike-transit-name"><span aria-hidden="true">Own Bike \+ 🚆🚌<\/span><span class="visually-hidden">Own bike plus train or bus<\/span><\/strong>/);
 });
 

@@ -1639,6 +1639,43 @@ def assert_reference_lts4_street(
     return tiers
 
 
+def reopen_links(
+    context: RebuildContext,
+    military: Sequence[restricted_areas.MilitaryWay],
+    secured: Sequence[restricted_areas.MilitaryWay],
+) -> tuple[list[restricted_areas.MilitaryWay], list[restricted_areas.MilitaryWay]]:
+    """`restricted_areas.open_links` over the rebuild's ways, for both rules at once (a
+    link can join a base's open path to a compound's): the open nodes are those of every
+    way either rule left open and of every bicycle-open way neither judged."""
+    found = [*military, *secured]
+    if not any(m.closed for m in found):
+        return list(military), list(secured)
+    judged = {m.way_id: m for m in found}
+    node_ids: dict[int, Sequence[int]] = {}
+    open_nodes: set[int] = set()
+    for way in context.ways:
+        nodes = getattr(way, "node_ids", None) or ()
+        m = judged.get(way.osm_id)
+        if m is not None:
+            node_ids[way.osm_id] = nodes
+            if not m.closed:
+                open_nodes.update(nodes)
+        elif restricted_areas.open_to_bicycles(way.tags):
+            open_nodes.update(nodes)
+    links = restricted_areas.open_links(found, node_ids, open_nodes)
+    if links:
+        logger.info(
+            "short links between open paths inside closed areas, left open "
+            "(restricted_areas.WHY_LINK): %d ways %s",
+            len(links),
+            sorted(links)[:20],
+        )
+    return (
+        restricted_areas.with_open_links(military, links),
+        restricted_areas.with_open_links(secured, links),
+    )
+
+
 def military_through_networks(
     context: RebuildContext, found: Sequence[restricted_areas.MilitaryWay] | None = None
 ) -> list[tuple[list[int], list[int]]]:
@@ -3571,7 +3608,6 @@ def build_handlers(
         context.military_ways = restricted_areas.military_closures(
             placed, areas["military"], reopened=context.bicycle_override_ways
         )
-        military_closed = {m.way_id for m in context.military_ways if m.closed}
         # And a secured federal compound's, by the same rule (owner report 2026-10-06:
         # the Secret Service's Rowley Training Center), but for the ways the military
         # rule already judged.
@@ -3581,6 +3617,12 @@ def build_handlers(
             reopened=context.bicycle_override_ways,
             skip={m.way_id for m in context.military_ways},
         )
+        # A short bicycle-open link between two open paths (a crossing over a campus
+        # entrance) stays open (the owner, 2026-11-20: the Rockville Pike side path at NIH).
+        context.military_ways, context.secured_ways = reopen_links(
+            context, context.military_ways, context.secured_ways
+        )
+        military_closed = {m.way_id for m in context.military_ways if m.closed}
         secured_closed = {m.way_id for m in context.secured_ways if m.closed}
         # And a working site's: a quarry, a landfill or an industrial area (owner report
         # 2026-10-12: the Travilah quarry's haul roads, `highway=track` and nothing else,
