@@ -5163,7 +5163,7 @@ dialog.plan-ride-settings h2:focus {
     max-height: 70dvh;
     border-radius: 16px 16px 0 0;
   }
-}}
+}
 .ride-settings-dialog h2:focus {
   outline: none;
 }
