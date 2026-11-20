@@ -374,7 +374,8 @@ class Context:
     # at `presets.FEWER_TURNS_PENALTY_S` each (`turn_m`).
     fewer_turns: bool = False
     # What a second of junction waiting costs against a second of riding when routes are
-    # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
+    # ranked (`presets.wait_weight_for`): 1; 2 on the pleasure and training ride types and
+    # Tandem; 3 on Road Bike; or the request's higher `wait_weight`. The time shown is unchanged.
     wait_weight: float = 1.0
     # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
     # Road Bike, Run and Tandem, named, not read from `wait_weight`). No effect while

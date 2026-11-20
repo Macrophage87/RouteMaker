@@ -196,7 +196,7 @@ class TestJunctionDelay:
         # The owner, 2026-11-02: "For the road cycling version, make non-cycling time, such as
         # waiting at lights carry an additional penalty (3x)".
         assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
-        assert presets.wait_weight_for("default") == presets.wait_weight_for("fast") == 1.0
+        assert presets.wait_weight_for("default") == presets.wait_weight_for("cargo") == 1.0
         slow = analysis("a")
         slow.junction_delay_s = 60.0
         road = context(wait_weight=presets.wait_weight_for(presets.ROAD_BIKE))
@@ -206,6 +206,21 @@ class TestJunctionDelay:
         stops.junction_delay_s = 120.0
         extra_m = stops.key(top)[2] - smooth.key(top)[2]
         assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 3 * 120.0 / QUIET_COST)
+
+    def test_pleasure_and_training_rides_weigh_waiting_twice(self) -> None:
+        # The owner, 2026-11-20: "Especially for pleasure and training rides, being able to
+        # spend that time riding and not waiting at a light is what matters".
+        for name in ("trailmaxxing", "gravel", "mountain-goat", "mountain-bike", "fast"):
+            assert presets.wait_weight_for(name) == presets.PLEASURE_WAIT_WEIGHT == 2.0
+        assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
+
+    def test_a_caller_can_raise_the_wait_weight_but_never_lower_it(self) -> None:
+        # The owner, 2026-11-20: "let the MCP server increase those penalties more".
+        assert presets.wait_weight_for("default", 4.0) == 4.0
+        assert presets.wait_weight_for("fast", 1.0) == 2.0
+        assert presets.wait_weight_for(presets.ROAD_BIKE, 2.0) == 3.0
+        assert presets.wait_weight_for("default", 9.0) == presets.MAX_WAIT_WEIGHT == 5.0
+        assert presets.wait_weight_for("default", None) == 1.0
 
     def test_at_three_times_a_route_with_fewer_stops_wins_where_at_once_it_does_not(self) -> None:
         # Two routes of the same length and calm: the stoppier one rides 100 s quicker. At 1x

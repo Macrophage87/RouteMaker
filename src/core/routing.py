@@ -1797,6 +1797,11 @@ class Dials:
     # type's own costing.
     fewer_turns: bool = False
     paved: bool = False
+    # A higher weight on the junction waits than the ride type's own (`presets.wait_weight_for`;
+    # the owner, 2026-11-20: "let the MCP server increase those penalties more"): a second
+    # stopped counts this many seconds of riding in the ranking, up to `presets.MAX_WAIT_WEIGHT`.
+    # None: the ride type's. The waits shown are unchanged.
+    wait_weight: float | None = None
     # "Keep to roads, not trails" (trails off): plan on the no-trail graph, whatever the ride type
     # (`presets.variant_for_ride`). Mass Ride is always on it.
     trails_off: bool = False
@@ -6232,7 +6237,7 @@ def _plan(
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
         fewer_turns=dials.fewer_turns,
-        wait_weight=presets.wait_weight_for(preset_name),
+        wait_weight=presets.wait_weight_for(preset_name, dials.wait_weight),
         road_bike_buttons=presets.road_bike_buttons_for(preset_name),
         exposure=exposure,
         maxcalm=maxcalm,
@@ -6248,7 +6253,8 @@ def _plan(
         # And on a ride type that weighs its waits more than riding (Road Bike, 3x), at every
         # stress: a router alternative with fewer lights is the choice the weight is for.
         rank_alternates=(
-            presets.calm_rate_for(stress_dial) > 0 or presets.wait_weight_for(preset_name) > 1
+            presets.calm_rate_for(stress_dial) > 0
+            or presets.wait_weight_for(preset_name, dials.wait_weight) > 1
         )
         and alternates_span_ok(points),
         # Not the plan's own alternatives where the middle's route was kept: they were asked
@@ -7033,6 +7039,7 @@ def _plan(
                 "avoid_gravel": avoid_gravel,
                 "fewer_turns": dials.fewer_turns,
                 "paved": dials.paved,
+                "wait_weight": presets.wait_weight_for(preset_name, dials.wait_weight),
                 # What was planned, not what was asked: Mass Ride is always trails-off.
                 "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
                 "easy_mtb": easy_asked,
