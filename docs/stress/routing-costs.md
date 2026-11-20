@@ -37,6 +37,21 @@ More turn rules (2026-11-12 on):
   came before it, so this works where routes are compared (`turn_m`), not inside Valhalla. The turns
   shown stay a plain count. The side-street dodge pass still counts a dodge's turns plainly
   (`dedodge.turn_count`, by heading). Our defaults, not measured.
+- **Turns cost by speed** (2026-11-20, the owner: "Turns should be penalised by turning speed/estimated
+  time. Road bikes that go at 20 miles an hour really don't like them. However switchbacks on climbs are
+  less of an issue"). Each turn type has a cornering speed from its path radius and a comfortable 15°
+  lean (`refine.corner_speed_ms`: about 20 mph for a slight bend, 11.5 mph for a plain turn, 8 mph
+  sharp, 6 mph for a U-turn). A rider arriving faster brakes to it and speeds up again after, and the
+  seconds that loses (`refine.turn_lost_s`, braking 1.5 m/s² and picking up 0.8 m/s², the junction
+  model's) are ranked as a junction's wait is, at the ride's wait weight (3x on Road Bike, 2x on the
+  pleasure and training rides). The speeds are the router's own before and after the turn, so they carry
+  the ride type's pace, the rider's and the hills. A sharp turn costs about 3.1 s at 20 mph and 0.3 s at
+  11 mph. A turn at a junction that already has a wait (a stop, a signal, a give-way) loses nothing
+  more, and a speed is read only off a stretch of 100 m or more (a maneuver's time holds the router's
+  own seconds for its turn). A turn reached no faster than its cornering speed (a switchback on a climb)
+  counts as one plain turn, without the sharp, U-turn or jog extras. Radii and lean are our defaults,
+  not measured. A bend along one road or trail is not a turn in the router's directions, so it is not
+  charged at all.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
   Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
