@@ -811,6 +811,8 @@ curling up onto a bridge, is said on the side you actually turn.</li>
 three of them: "Right onto 6th Street, then immediately bear left onto Rhode Island Avenue". The turn card
 draws them as one arrow, except through a U-turn or a traffic circle (which keeps its ring) or where the turns
 wind back on themselves. Each turn still gets its own "now", said once you are past the turn before.</li>
+<li>At a stop, the turn card shows the stop's icon, where you gave it one, in place of the flag. A named stop's card
+gives its name large, with "Stop 2." under it.</li>
 <li><strong>To go</strong>: under the turn, a line gives the distance and time to the next stop, if
 there is one, and to the end, and the clock time you should get there, in the app's language, with your phone's own 12- or 24-hour
 clock when the phone is set to that language (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
@@ -884,7 +886,7 @@ stop's number under it. These three are hidden on a shared or fixed route and on
 the column. Then comes one bubble for each graph of the next 2 mi [3.2 km] the route can draw: <strong>Stress</strong>
 and <strong>Elevation</strong>, with <strong>Flow</strong> and <strong>Corkers</strong> first on a Mass Ride. Each
 turns its graph on or off and says so; More stays open, and the graphs change once it closes. While you are on the route, the graphs that are on stack at the top of the bottom panel on
-one distance axis, with a strip marking turns and busy junctions; on a shared ride they reach back to the last rider,
+one distance axis, with a strip marking turns, stops (each its icon, or its number in a disc) and busy junctions; on a shared ride they reach back to the last rider,
 each rider a dot. Stress is not a graph but a thin ribbon under the turns, in the map's stress colors, with no
 numbers and half steps dashed as on the map, so it fits beside Elevation. On a mountain-bike trail it takes the trail's
 map color (green, blue, black or red, and brown unrated) with brown stones along both edges. An Avoid stretch keeps its
@@ -897,7 +899,7 @@ name and no height axis, and where even the turns' strip has no room the turns a
 the slim strips still do not fit, only the first ones in More's order are drawn, or none, and a line names the rest, or, with no room for that line either, the app says "No room on this screen for: Elevation." once.
 With no room for a graph beside the ribbon, the ribbon is drawn alone, and with no room even for that it is said
 instead. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
-turns the map's contour lines on or off, the same switch as Topo lines in Layers, Trails and terrain, and says "Topo lines on."
+turns the map's contour lines on or off, the same switch as Topo lines in Layers, and says "Topo lines on."
 or "Topo lines off.", and like those it closes the column; a screen reader hears its name and whether it is on. Where the server has no contours it
 says they are not available, and with no signal it says it needs a connection. The <strong>Settings</strong> gear opens <strong>Ride settings</strong> as a popup over the map:
 <strong>Colors</strong>, <strong>High contrast</strong> and <strong>Units</strong>, the same as in Settings, Display;
@@ -1059,7 +1061,7 @@ it. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 256" role="img" aria-labelledby="fig-use-layers-t fig-use-layers-d" focusable="false" style="min-width:547px">
 <title id="fig-use-layers-t">The Layers sheet</title>
-<desc id="fig-use-layers-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain (in Plan, Trails, terrain and training, with interval stretches). Plan
+<desc id="fig-use-layers-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain (in Go and Plan, Trails, terrain and training, with interval stretches). Plan
 also has Scenic and Potential closures, and Mass Ride has federal land.</desc>
 <defs><marker id="ah-use-layers" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="12" width="230" height="32" rx="6"/>
@@ -1091,7 +1093,7 @@ also has Scenic and Potential closures, and Mass Ride has federal land.</desc>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 568" role="img" aria-labelledby="fig-use-layers-n-t fig-use-layers-n-d" focusable="false">
 <title id="fig-use-layers-n-t">The Layers sheet</title>
-<desc id="fig-use-layers-n-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain (in Plan, Trails, terrain and training, with interval stretches). Plan
+<desc id="fig-use-layers-n-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain (in Go and Plan, Trails, terrain and training, with interval stretches). Plan
 also has Scenic and Potential closures, and Mass Ride has federal land.</desc>
 <defs><marker id="ah-use-layers-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="8" width="240" height="36" rx="6"/>
@@ -1174,12 +1176,12 @@ names its line, such as Penn Line.</li>
 at each.</li>
 <li><strong>Places to see</strong>: museums, gardens, viewpoints and more. Off unless you turn it
 on.</li>
-<li><strong>Trails and terrain</strong> (in Plan, <strong>Trails, terrain and training</strong>, which adds
+<li><strong>Trails and terrain</strong> (in Go and Plan, <strong>Trails, terrain and training</strong>, which adds
 Interval stretches beside Climbs): trail ratings, climbs and topo lines; see
 <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
 <li>In Plan, also <strong>Scenic</strong> and <strong>Potential closures</strong>, both off by default. Neither
 changes the route.</li>
-<li>In Plan, <strong>Interval stretches</strong>, under Trails, terrain and training beside Climbs (off by
+<li>In Go and Plan, <strong>Interval stretches</strong>, under Trails, terrain and training beside Climbs (off by
 default, kept on this device), glows pink under the stress
 line on stretches of 3 minutes or more at 18 mph on the flat (the owner's choice; a climb slows the pace, so
 it needs less ground) for an interval effort: no signal, stop or give-way sign, gate or railway crossing, no busy
@@ -1668,7 +1670,7 @@ default).</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.28.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.29.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
