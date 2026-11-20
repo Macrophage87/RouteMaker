@@ -609,6 +609,9 @@ class Analysis:
     # turn hard on the last one each count for more than one. None: `turns` (an analysis made
     # without the directions' turn types).
     turn_load: float | None = None
+    # The seconds the turns lose to braking and speeding up again (`weigh_turns`), ranked as
+    # a junction's wait is (`turn_m`).
+    turn_lost_s: float = 0.0
 
     @property
     def ranked_turns(self) -> float:
@@ -778,28 +781,91 @@ JOG_M = 100.0
 JOG_TURN_EXTRA = 1.0
 
 
-def turn_load(trip: dict) -> float:
+# What a turn costs in speed (the owner, 2026-11-20: "Turns should be penalised by turning
+# speed/estimated time. Road bikes that go at 20 miles an hour really don't like them. However
+# switchbacks on climbs are less of an issue, due to the lower speed, at least uphill"). A
+# rider takes a turn no faster than its cornering speed, sqrt(g x radius x tan(lean)), so one
+# arriving faster brakes down to it and speeds up again after: the time that loses against
+# riding straight on is (v_in - v_c)^2 / (2 b v_in) + (v_out - v_c)^2 / (2 a v_out). The
+# speeds in and out are the router's own over the stretch before the turn and the one after
+# it (`length` / `time`), so they hold the ride type's pace, the rider's own and the hills: a
+# climb's switchback costs nothing, the same turn at the foot of a descent a lot. The ranking
+# prices those seconds as it prices a junction's wait (`Context.wait_weight`: twice on the
+# pleasure and training rides, three times on Road Bike), and a turn the rider reaches no
+# faster than its cornering speed counts as a plain turn, without the sharp, U-turn or jog
+# extras. The turn's path radius by Valhalla's turn type, the comfortable lean, braking and
+# speeding up are our defaults, not measured.
+TURN_RADIUS_M = {9: 30.0, 16: 30.0, 10: 10.0, 15: 10.0, 11: 5.0, 14: 5.0, 12: 2.5, 13: 2.5}
+TURN_LEAN_TAN = math.tan(math.radians(15.0))
+GRAVITY_MS2 = 9.81
+TURN_BRAKE_MS2 = 1.5
+TURN_SPEED_UP_MS2 = 0.6
+
+
+def corner_speed_ms(kind: int) -> float:
+    """The speed a turn of Valhalla type `kind` is ridden at (`TURN_RADIUS_M`)."""
+    return math.sqrt(GRAVITY_MS2 * TURN_RADIUS_M[kind] * TURN_LEAN_TAN)
+
+
+def turn_lost_s(kind: int, in_ms: float | None, out_ms: float | None) -> float:
+    """The seconds a turn loses against riding straight on: braking from `in_ms` to its
+    cornering speed and speeding up again to `out_ms` (0 for a speed not known)."""
+    corner = corner_speed_ms(kind)
+    lost = 0.0
+    if in_ms and in_ms > corner:
+        lost += (in_ms - corner) ** 2 / (2.0 * TURN_BRAKE_MS2 * in_ms)
+    if out_ms and out_ms > corner:
+        lost += (out_ms - corner) ** 2 / (2.0 * TURN_SPEED_UP_MS2 * out_ms)
+    return lost
+
+
+@dataclass(frozen=True)
+class TurnReading:
+    """A trip's turns as the ranking weighs them: `load` in turns, `lost_s` in seconds."""
+
+    load: float = 0.0
+    lost_s: float = 0.0
+
+
+def _speed_ms(maneuver: dict, to_metres: float) -> float | None:
+    seconds = float(maneuver.get("time") or 0.0)
+    metres = float(maneuver.get("length") or 0.0) * to_metres
+    return metres / seconds if seconds > 0 and metres > 0 else None
+
+
+def weigh_turns(trip: dict) -> TurnReading:
     """The trip's turns as the ranking weighs them: one each (`turns_of`), plus
     SHARP_TURN_EXTRA for a sharp one, U_TURN_EXTRA for a U-turn, and JOG_TURN_EXTRA for one
-    within JOG_M of the turn before it on the same leg."""
+    within JOG_M of the turn before it on the same leg, except where the rider reaches the turn
+    no faster than its cornering speed; and the seconds the turns lose (`turn_lost_s`)."""
     to_metres = 1609.344 if trip.get("units") == "miles" else 1000.0
-    load = 0.0
+    load = lost = 0.0
     for leg in trip.get("legs") or []:
+        maneuvers = leg.get("maneuvers") or []
         since_m: float | None = None
-        for maneuver in leg.get("maneuvers") or []:
+        for index, maneuver in enumerate(maneuvers):
             kind = maneuver.get("type")
             if kind in TURN_MANEUVERS:
                 load += 1.0
-                if kind in SHARP_TURNS:
-                    load += SHARP_TURN_EXTRA
-                elif kind in U_TURNS:
-                    load += U_TURN_EXTRA
-                if since_m is not None and since_m < JOG_M:
-                    load += JOG_TURN_EXTRA
+                in_ms = _speed_ms(maneuvers[index - 1], to_metres) if index else None
+                slow = in_ms is not None and in_ms <= corner_speed_ms(kind)
+                if not slow:
+                    if kind in SHARP_TURNS:
+                        load += SHARP_TURN_EXTRA
+                    elif kind in U_TURNS:
+                        load += U_TURN_EXTRA
+                    if since_m is not None and since_m < JOG_M:
+                        load += JOG_TURN_EXTRA
+                lost += turn_lost_s(kind, in_ms, _speed_ms(maneuver, to_metres))
                 since_m = 0.0
             if since_m is not None:
                 since_m += float(maneuver.get("length") or 0.0) * to_metres
-    return load
+    return TurnReading(load=load, lost_s=lost)
+
+
+def turn_load(trip: dict) -> float:
+    """The trip's turns in turns as the ranking weighs them (`weigh_turns`)."""
+    return weigh_turns(trip).load
 
 
 def turns_of(trip: dict) -> int:
@@ -821,15 +887,19 @@ def turn_m(read: Analysis, ctx: Context) -> float:
     router's turn charge rises at), and 0 at or below it. The rider's "Fewer turns"
     (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`. The
     turns are counted as `turn_load` weighs them (`Analysis.ranked_turns`): a sharp turn, a
-    U-turn or a jog counts for more than one."""
+    U-turn or a jog counts for more than one; and the seconds they lose to braking and speeding
+    up again (`Analysis.turn_lost_s`) are added at the ride's junction-wait weight."""
     if ctx.quiet_cost <= 0:
         return 0.0
     turns = read.ranked_turns
     if ctx.fewer_turns:
-        return QUIET_COST_FACTOR * presets.FEWER_TURNS_PENALTY_S * turns / ctx.quiet_cost
-    if not presets.TURN_CHARGE_EVERY_SETTING and not ctx.maxcalm and ctx.rate <= 0:
+        per_turn_s = presets.FEWER_TURNS_PENALTY_S
+    elif not presets.TURN_CHARGE_EVERY_SETTING and not ctx.maxcalm and ctx.rate <= 0:
         return 0.0
-    return QUIET_COST_FACTOR * TURN_RANK_S * turns / ctx.quiet_cost
+    else:
+        per_turn_s = TURN_RANK_S
+    seconds = per_turn_s * turns + ctx.wait_weight * read.turn_lost_s
+    return QUIET_COST_FACTOR * seconds / ctx.quiet_cost
 
 
 def delay_m(read: Analysis, ctx: Context) -> float:
@@ -1283,6 +1353,7 @@ def analyse(
         raters=raters_of(raws, ctx),
         rater_medians=ctx.rater_medians,
     )
+    turns_read = weigh_turns(trip)
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
@@ -1329,7 +1400,8 @@ def analyse(
         scenic=getattr(real_classes, "scenic", None),
         adjustments=getattr(real_classes, "adjustments", None),
         turns=turns_of(trip),
-        turn_load=turn_load(trip),
+        turn_load=turns_read.load,
+        turn_lost_s=turns_read.lost_s,
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
@@ -3597,6 +3669,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         junction_ranked_s=sum(r.ranked_delay_s for r in reads),
         turns=sum(r.turns for r in reads),
         turn_load=sum(r.ranked_turns for r in reads),
+        turn_lost_s=sum(r.turn_lost_s for r in reads),
     )
 
 
