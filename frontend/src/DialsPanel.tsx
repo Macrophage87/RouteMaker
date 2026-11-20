@@ -20,7 +20,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { onFoot, runs, type PresetId } from "./lib/presets.ts";
 import { AvoidStairsSwitch } from "./AvoidStairsSwitch.tsx";
 import { RunPaceSelect } from "./RunPaceSelect.tsx";
-import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
+import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, fitWaitWeight, offersBike, rideSizeOf, waitWeightOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
 import {
   MTB_LEVEL_LEGEND,
@@ -33,7 +33,7 @@ import {
   withMtbLevel,
   withMtbPreferred,
 } from "./lib/mtbMode.ts";
-import { RIDE_SIZE_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
+import { RIDE_SIZE_LABEL, WAITS_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
 import { defaultStart, fitStart, startBounds } from "./lib/startTime.ts";
@@ -53,7 +53,11 @@ interface Props {
   /** Leave out the Target distance dial (Plan's Loop by distance box is showing: one distance control). */
   hideTarget?: boolean;
   /** Offer Leave at, a day and start time (lib/startTime.ts): Plan only (the owner, 2026-11-13), not the docks' ride types. */
-  startTime?: boolean;
+  startTime?: boolean;  /**
+   * Offer Waiting at lights and stops and Fewer turns (the owner, 2026-11-20): Plan's Ride settings popout only, so Go
+   * keeps one control per feature.
+   */
+  stopsAndTurns?: boolean;
 }
 
 function Slider(props: {
@@ -260,6 +264,23 @@ function withField(dials: Dials, key: "targetDistanceM", value: number | undefin
   return next;
 }
 
+/** The dials with the rider's wait weight, taken off the object at the ride type's own (so the link stays as it was). */
+function withWaitWeight(dials: Dials, preset: PresetId, weight: number): Dials {
+  const next: Dials = { ...dials };
+  const fitted = fitWaitWeight(preset, weight);
+  if (fitted === undefined) delete next.waitWeight;
+  else next.waitWeight = fitted;
+  return next;
+}
+
+/** The dials with Fewer turns on, or taken off the object when off. */
+function withFewerTurns(dials: Dials, on: boolean): Dials {
+  const next: Dials = { ...dials };
+  if (on) next.fewerTurns = true;
+  else delete next.fewerTurns;
+  return next;
+}
+
 /** The dials with a ride size, the default taken off the object (so the link stays as it was). */
 function withRideSize(dials: Dials, riders: number): Dials {
   const next: Dials = { ...dials };
@@ -276,7 +297,7 @@ function withBike(dials: Dials, bike: Bike): Dials {
   return next;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed, hideTarget, startTime }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed, hideTarget, startTime, stopsAndTurns }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -286,7 +307,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   useEffect(() => () => keys.current.cancel(), []);
   const commitDraft = () => {
     const { draft: now, dials: was, onCommit: commit } = latest.current;
-    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize) commit(now);
+    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize || now.waitWeight !== was.waitWeight) commit(now);
   };
   const release = (settle: boolean) => {
     if (settle) keys.current.later(commitDraft);
@@ -306,6 +327,9 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   const [startDraft, setStartDraft] = useState<string | undefined>(undefined);
   const startHintId = useId();
   const [trailsOffInfo, setTrailsOffInfo] = useState(false);
+  const fewerTurnsHintId = useId();
+  const fewerTurnsInfoId = useId();
+  const [fewerTurnsInfo, setFewerTurnsInfo] = useState(false);
   const easyMtbHintId = useId();
   const easyMtbInfoId = useId();
   const [easyMtbInfo, setEasyMtbInfo] = useState(false);
@@ -488,6 +512,40 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
             describedBy="dials-speed-info"
           />
         </SettingRow>
+      )}
+      {/* Stops and turns (the owner, 2026-11-20), in Plan's popout only: how much a wait counts, then Fewer turns. */}
+      {stopsAndTurns && view.waits && (
+        <Slider
+          label={WAITS_LABEL}
+          dial="waits"
+          about="waiting"
+          view={view.waits}
+          value={waitWeightOf(preset, draft)}
+          onDraft={(weight) => setDraft(withWaitWeight(draft, preset, weight))}
+          onRelease={release}
+        />
+      )}
+      {stopsAndTurns && view.fewerTurns && (
+        <div className="dial fewer-turns">
+          <div className="dial-head">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={view.fewerTurns.checked}
+                aria-describedby={fewerTurnsHintId}
+                onChange={(event) => onCommit(withFewerTurns(dials, event.target.checked))}
+              />
+              {view.fewerTurns.label}
+            </label>
+            <InfoButton open={fewerTurnsInfo} onToggle={() => setFewerTurnsInfo(!fewerTurnsInfo)} controls={fewerTurnsInfoId} about={view.fewerTurns.howAbout} />
+          </div>
+          <p className="hint" id={fewerTurnsHintId}>
+            {view.fewerTurns.hint}
+          </p>
+          <DialInfo id={fewerTurnsInfoId} open={fewerTurnsInfo}>
+            <Bullets text={view.fewerTurns.how} />
+          </DialInfo>
+        </div>
       )}
       {/* Mass Ride's "Anticipated ride size" (PLAN items 128, 129, 139): the corker load's group length. */}
       {view.rideSize && (

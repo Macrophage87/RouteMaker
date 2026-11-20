@@ -2,7 +2,7 @@
 import type { RouteProfile, RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
-import { WHENS, carryingWords, hillsWords, offersEasyMtb, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
+import { WHENS, carryingWords, fitWaitWeight, hillsWords, offersEasyMtb, offersStopsAndTurns, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import { JOIN_GAP_M, type ImportNote, type ImportedPlan } from "./gpxPlan.ts";
 import { presetSaid, type PresetId } from "./presets.ts";
@@ -114,6 +114,7 @@ export function elevationsAlong(
  * (lib/federalStops.ts federalLines, item 239), carried in the description.
  */
 export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false, federal: readonly string[] = [], vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): GpxExport {
+  const waits = route.dials ? fitWaitWeight(route.preset as PresetId, route.dials.wait_weight) : undefined;
   const dials: ExportDials | undefined = route.dials
     ? {
         stress: route.dials.stress,
@@ -124,6 +125,9 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop =
         ...(route.dials.trails_off === true && route.preset !== "mass-ride" ? { trailsOff: true } : {}),
         // Easy MTB trails, as the link carries it (easymtb=1): without it the file reopens off the MTB trails.
         ...(route.dials.easy_mtb === true && offersEasyMtb(route.preset as PresetId) ? { easyMtb: true } : {}),
+        // Plan's Fewer turns and wait weight, as the link carries them (fewerturns=1, waits=N).
+        ...(route.dials.fewer_turns === true && offersStopsAndTurns(route.preset as PresetId) ? { fewerTurns: true } : {}),
+        ...(waits !== undefined ? { waitWeight: waits } : {}),
       }
     : undefined;
   return {

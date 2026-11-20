@@ -117,8 +117,10 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   if (!ready) throw new Error("the app did not show a route");
   await sleep(800);
+  // Plan's settings are a popup over the map (the owner, 2026-11-20), opened by the checks that use them (openRide);
+  // Go's open under the line as before.
   if (ride) {
-    await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+    await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-haspopup') !== 'dialog' && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
     await sleep(200);
   }
   // The junction list is in the route summary's "Junctions to watch" fold, closed by default (312):
@@ -179,6 +181,12 @@ async function openSection(p, id = null) {
   const sel = id ? `#${id}-section-body` : ".layer-section-body";
   await p.eval(`[...document.querySelectorAll('#sheet-layers ${sel}')].forEach((body) => { const b = document.querySelector('[aria-controls="' + body.id + '"]'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); }); true`);
   await sleep(150);
+}
+
+/** Opens Plan's Ride settings popup (the owner, 2026-11-20), where the sliders and switches are, if it is closed. */
+async function openRide(p) {
+  await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await sleep(200);
 }
 
 /** Opens the route summary's Directions fold (a native details). */
@@ -254,7 +262,8 @@ if (mine(11)) {
   const said = await p.eval("document.querySelector('.status-line').textContent");
   check("announcement: says the strong detour and the very high stress junctions", /Strong warning: 2\.4 times the direct distance/.test(said) && /2 very high stress junctions\./.test(said), said);
 
-  // The slider: named once, described by the calm note.
+  // The slider: named once, described by the calm note (in Plan's Ride settings popup, 2026-11-20).
+  await openRide(p);
   const slider = await axNode(p, ".dial input[type=range]");
   check("slider: its name is its label alone", slider?.name === "Traffic", JSON.stringify(slider?.name));
   check("slider: the calm note is its description", /^Calmest: finds the least stressful route towards your target distance/.test(slider?.description ?? ""), (slider?.description ?? "").slice(0, 60));
@@ -815,6 +824,7 @@ if (mine(4)) {
 // ---- 9. The target distance, the system weight and the loop toggle (OWNER-DECISIONS 256, 264, 266, 271) ----
 if (mine(12)) {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  await openRide(p);
   const target = await axNode(p, "input[placeholder=Default]");
   check("target distance: the field's name is its label, in miles", target?.role === "textbox" && target?.name === "Target distance (miles)", JSON.stringify(target?.name));
   check("target distance: its description says what it does, miles first, in under 150 characters", /^Optional: the calmest route at or under this\./.test(target?.description ?? "") && /up to 1\.6 times/.test(target?.description ?? "") && (target?.description ?? "").length < 150, (target?.description ?? "").slice(0, 80));
@@ -1262,6 +1272,7 @@ if (mine(2)) {
 // ---- 14. A slow plan (LONG-CALM, up to half a minute): said once while it runs, then the route (the a11y review's SF1) ----
 if (mine(4)) {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100), delayMs: 8000, delayFrom: Infinity });
+  await openRide(p);
   // The first route's own announcement lands once it settles: listen only after it.
   await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 10000);
   await sleep(500);
@@ -1330,6 +1341,7 @@ if (mine(14)) {
 // ---- 16b. Keep to roads, not trails (OWNER-DECISIONS 463, 463b): one switch on every ride type ----
 if (mine(5)) {
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  await openRide(p);
   const sw = await axNode(p, ".trails-off input");
   check("roads only: a real checkbox named \"Keep to roads, not trails\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === false && /No bike paths, trails or stairs./.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
   // P10: behind the row's one (i), in Settings' style, in place of its "How this works" disclosure.
@@ -1361,6 +1373,7 @@ if (mine(5)) {
 if (mine(2)) {
   // Mass Ride always keeps to roads: checked from a link that does not say so, in the Tab order, unchangeable.
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  await openRide(p);
   const sw = await axNode(p, ".trails-off input");
   // `disabled` is the accessibility tree's, what screen readers announce ("unavailable", "dimmed"): the a11y review's SF2.
   check("roads only: on Mass Ride it is checked and unavailable to AT, and its description says a mass ride always keeps to roads", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === true && sw?.disabled === true && /^A mass ride always keeps to roads\./.test(sw?.description ?? ""), JSON.stringify(sw));
@@ -1866,6 +1879,7 @@ if (mine(2)) {
 if (mine(24)) {
   // The Mass Ride version: three charts (the owner, 2026-10-10: "Riders per minute, Corker load, Elevation"), each under its own heading, on one distance axis.
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), junctions: false });
+  await openRide(p);
   // UI-CLEANUP (the owner's choice 7): the chart's fold starts closed; open it, as a rider would.
   await p.eval("(() => { const d = document.querySelector('.elevation-chart')?.closest('details'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
   await sleep(300);
@@ -4000,6 +4014,7 @@ if (mine(2)) {
 if (mine(15)) {
   const link = (bike, ending = "") => `#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=${bike === "ebike" ? -20 : -60}&bike=${bike}${ending}`;
   const p = await open({ route: S_BIKESHARE, hash: link("classic") });
+  await openRide(p);
   const plan = await p.eval(`(() => ({
     steps: [...document.querySelectorAll('ol.bikeshare-steps > li')].map((e) => e.textContent),
     markers: [...document.querySelectorAll('.dock-marker')].map((e) => ({ role: e.getAttribute('role'), label: e.getAttribute('aria-label'), badge: e.querySelector('.dock-badge')?.textContent, hiddenBadge: e.querySelector('.dock-badge')?.getAttribute('aria-hidden') })),
@@ -4561,6 +4576,7 @@ if (mine(16)) {
 // three groups (lib/rideTypeGroups.ts: Transportation 10, Adventure 8, Group 2).
 if (mine(10)) {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
+  await openRide(p);
   const kidsCard = "[...document.querySelectorAll('.ride-type-card > button:not(.ride-fav)')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();

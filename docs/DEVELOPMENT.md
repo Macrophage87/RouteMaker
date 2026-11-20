@@ -5068,6 +5068,21 @@ fine". So the closure is built into one graph. A ride chooses its graph through
 request has `trails_off` (the "Keep to roads, not trails" switch, below). Group Ride with trails
 on is on the standard graph, which keeps contraflow.
 
+### Plan's Ride settings popup (the owner, 2026-11-20)
+
+The owner: "Have it pop out to all ride parameters", then, on the mockup, "That looks good." In
+Plan, Adjust on the Ride settings line opens a non-modal `<dialog>` (`lib/sidebarParts.ts`
+`RideSettings` with `popout`; a bottom sheet at 720 px and below) holding every ride setting,
+plus two Plan alone offers: "Waiting at lights and stops", a slider from the ride type's own
+wait weight to 5x (`dials.ts` `WAIT_WEIGHTS`, `WAIT_WEIGHT_MAX`, `fitWaitWeight`; 5x is our
+default, unmeasured, `junction_delay.MAX_STACKED_WEIGHT`), and "Fewer turns". Neither is offered
+on foot, Run, transit or bikeshare (`offersStopsAndTurns`). They travel as `waits=N` (whole
+steps, kept only above the ride type's own) and `fewerturns=1` in a plan link (`planHash.ts`), as
+`wait_weight` and `fewer_turns` on `POST /api/route`, in a GPX export's dials comment, and in the
+connector's links (`mcp/routemaker_mcp.py` `plan_fragment`; a weight between whole steps opens
+rounded, and the notes say so). Go has no control for either, so coming into Go drops them
+(`App.tsx`). Go's settings stay under the line.
+
 ### Easy MTB trails (the owner, 2026-11-08)
 
 The owner: "allow trailmaxxing to use MTB trails too, some are definitely fine for that",

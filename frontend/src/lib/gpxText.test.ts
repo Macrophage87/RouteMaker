@@ -91,6 +91,15 @@ test("an Easy MTB trails route carries it in the file, on the ride types that of
   assert.equal(exportOf({ ...ROUTE, preset: "gravel", dials }, []).dials?.easyMtb, undefined);
 });
 
+test("Fewer turns and a wait weight above the ride type's own go in the file, as the link carries them", () => {
+  const dials = { stress: 70, hills: 0, when: null, carrying: null, fewer_turns: true, wait_weight: 4 };
+  const out = exportOf({ ...ROUTE, preset: "gravel", dials }, []).dials;
+  assert.equal(out?.fewerTurns, true);
+  assert.equal(out?.waitWeight, 4);
+  // Gravel's own 2x is the ride type's, not the rider's: not written.
+  assert.equal(exportOf({ ...ROUTE, preset: "gravel", dials: { ...dials, wait_weight: 2 } }, []).dials?.waitWeight, undefined);
+});
+
 test("the fidelity notice warns exactly when either share is under the threshold", () => {
   const ok = fidelityNotice({ trackCovered: 0.97, routeOnTrack: 0.95, lengthRatio: 1 });
   assert.equal(ok.warn, false);

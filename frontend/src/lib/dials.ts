@@ -39,11 +39,19 @@ export interface Dials {
    */
   trailsOff?: boolean;
   /**
-   * "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): set only by choosing that named option
-   * among the routes (lib/neighbours.ts rideDials), so a ride's re-plans keep to it; never a control, a link or a default.
+   * "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12): set by choosing that named option among the routes
+   * (lib/neighbours.ts rideDials), and since 2026-11-20 by Plan's own switch in the Ride settings popout (the owner:
+   * "Have it pop out to all ride parameters"). In the link and a saved route. "All paved" is still set only by its
+   * named option: never a control, a link or a default.
    */
   fewerTurns?: boolean;
   paved?: boolean;
+  /**
+   * "Waiting at lights and stops" (the owner, 2026-11-20: "being able to spend that time riding and not waiting at a
+   * light is what matters"): how many seconds of riding a second stopped counts when routes are compared, above the
+   * ride type's own (`ownWaitWeight`), up to WAIT_WEIGHT_MAX. Plan only; absent is the ride type's. In the link.
+   */
+  waitWeight?: number;
   /**
    * "Easy MTB trails" (the owner, 2026-11-08), Default and Trailmaxxing only (`offersEasyMtb`): also ride the
    * mountain-bike trails rated 0 or 1, or unrated (grass and dirt), on the off-road graph as Gravel does, steering off
@@ -324,6 +332,43 @@ export function easyMtbOn(preset: PresetId, dials: Pick<Dials, "easyMtb" | "trai
   return offersEasyMtb(preset) && dials.easyMtb === true && !trailsAreOff(preset, dials);
 }
 
+/**
+ * A ride type's own weight on junction waits (core/presets.py WAIT_WEIGHTS): Road Bike 3; Tandem and the pleasure and
+ * training ride types 2 (the owner, 2026-11-20; our default, not measured); every other 1.
+ */
+const WAIT_WEIGHTS: Partial<Record<PresetId, number>> = {
+  "road-bike": 3,
+  tandem: 2,
+  trailmaxxing: 2,
+  gravel: 2,
+  "mountain-goat": 2,
+  "mountain-bike": 2,
+  fast: 2,
+};
+/** The most a rider may weigh waits (core/presets.py MAX_WAIT_WEIGHT). */
+export const WAIT_WEIGHT_MAX = 5;
+
+export function ownWaitWeight(preset: PresetId): number {
+  return WAIT_WEIGHTS[preset] ?? 1;
+}
+
+/** Whether the ride type takes Waiting at lights and Fewer turns: a bike of the rider's own, not on foot, a share bike or transit. */
+export function offersStopsAndTurns(preset: PresetId): boolean {
+  return !onFoot(preset) && !runs(preset) && !isTransit(preset) && !usesBikeshare(preset);
+}
+
+/** The rider's wait weight where it is above the ride type's own and one the API takes, else undefined. */
+export function fitWaitWeight(preset: PresetId, weight: unknown): number | undefined {
+  if (!offersStopsAndTurns(preset) || typeof weight !== "number" || !Number.isFinite(weight)) return undefined;
+  const whole = Math.min(WAIT_WEIGHT_MAX, Math.round(weight));
+  return whole > ownWaitWeight(preset) ? whole : undefined;
+}
+
+/** The weight the plan uses: the rider's, else the ride type's own. */
+export function waitWeightOf(preset: PresetId, dials: Pick<Dials, "waitWeight">): number {
+  return fitWaitWeight(preset, dials.waitWeight) ?? ownWaitWeight(preset);
+}
+
 /** Whether the ride is planned trails off: the rider's switch, or a ride type that always is. */
 export function trailsAreOff(preset: PresetId, dials: Pick<Dials, "trailsOff">): boolean {
   return trailsOffLocked(preset) || dials.trailsOff === true;
@@ -450,6 +495,9 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(offersEasyMtb(preset) && dials.easyMtb === true ? { easyMtb: true } : {}),
+    // Fewer turns and the rider's wait weight (2026-11-20), on a ride type that takes them.
+    ...(offersStopsAndTurns(preset) && dials.fewerTurns === true ? { fewerTurns: true } : {}),
+    ...(fitWaitWeight(preset, dials.waitWeight) !== undefined ? { waitWeight: fitWaitWeight(preset, dials.waitWeight) } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
     // A start time stays with the plan through a change of ride type, except onto one planned from the docks now.
@@ -481,6 +529,10 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.trailsOff) fields.trails_off = true;
   if (dials.fewerTurns) fields.fewer_turns = true;
   if (dials.paved) fields.paved = true;
+  // The rider's wait weight, only above the ride type's own (the API takes 1 to 10 and counts at most 5).
+  if (typeof dials.waitWeight === "number" && Number.isFinite(dials.waitWeight) && dials.waitWeight > 1) {
+    fields.wait_weight = Math.min(WAIT_WEIGHT_MAX, dials.waitWeight);
+  }
   // "Easy MTB trails" (fitDials keeps it on Default and Trailmaxxing alone); absent is off.
   if (dials.easyMtb) fields.easy_mtb = true;
   const target = fitTarget(dials.targetDistanceM);

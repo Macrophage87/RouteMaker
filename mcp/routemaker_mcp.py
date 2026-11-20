@@ -1434,6 +1434,11 @@ def plan_fragment(
         parts.append("trailsoff=1")
     if dials.get("easy_mtb"):
         parts.append("easymtb=1")
+    # Fewer turns and the rider's wait weight (Plan's Ride settings, 2026-11-20; planHash.ts).
+    if dials.get("fewer_turns") or sent.get("fewer_turns"):
+        parts.append("fewerturns=1")
+    if sent.get("wait_weight") and float(sent["wait_weight"]) > 1:
+        parts.append(f"waits={min(5, int(float(sent['wait_weight']) + 0.5))}")
     if sent.get("novice_legs"):
         parts.append("novice=1")
     if dials.get("target_distance_m"):
@@ -1466,6 +1471,8 @@ def page_dials(dials: dict, sent: dict) -> dict:
     }
     if dials.get("easy_mtb"):
         kept["easyMtb"] = True
+    if dials.get("fewer_turns") or sent.get("fewer_turns"):
+        kept["fewerTurns"] = True
     optional = {
         "targetDistanceM": dials.get("target_distance_m"),
         "noviceLegs": sent.get("novice_legs"),
@@ -1474,6 +1481,9 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "mtbLevel": sent.get("mtb_level"),
         "mtbPreferred": sent.get("mtb_preferred"),
         "rideSize": sent.get("ride_size"),
+        "waitWeight": min(5, int(float(sent["wait_weight"]) + 0.5))
+        if sent.get("wait_weight")
+        else None,
     }
     kept.update({k: v for k, v in optional.items() if v})
     return kept
@@ -1616,6 +1626,8 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         # Default and Trailmaxxing only, as the page reads it (dials.ts fitDials).
         "easy_mtb": one("easymtb") == "1" and preset in EASY_MTB_PRESETS,
         "novice_legs": one("novice") == "1",
+        "fewer_turns": one("fewerturns") == "1",
+        "wait_weight": number("waits"),
         "loop": one("loop") == "1",
         "bike": one("bike") if one("bike") in ("classic", "ebike") else None,
         "ending": "outside_dock" if one("ending") == "outside" else None,
@@ -5093,7 +5105,8 @@ RIDE_OPTIONS = {
         ),
     },
     "wait_weight": {
-        "type": "number",
+        # Whole steps, as Plan's slider and the link's waits=N take them.
+        "type": "integer",
         "minimum": 1,
         "maximum": 5,
         "description": (
@@ -7344,13 +7357,17 @@ class Server:
             for key, what in (
                 ("blocked_lines", "the roads avoided"),
                 ("follow", "the line followed"),
-                # The app has no control for these (its named options set them for a ride).
-                ("fewer_turns", "Fewer turns"),
+                # The app has no control for this (its named option sets it for a ride). Fewer
+                # turns and the wait weight ride in the link since Plan's Ride settings took them
+                # (2026-11-20).
                 ("paved", "All paved"),
-                ("wait_weight", "the extra weight on waits"),
             )
             if plan.sent.get(key)
         ]
+        # The link carries whole steps (Plan's slider): a weight between steps opens rounded.
+        weight = plan.sent.get("wait_weight")
+        if weight and float(weight) != int(float(weight)):
+            lost.append("the exact wait weight (the link rounds it)")
         try:
             route_id = secrets.token_hex(16)
             self.api.share(
