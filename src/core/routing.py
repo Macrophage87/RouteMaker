@@ -5282,10 +5282,65 @@ def plan(
     A Mass Ride leaves the rail streets near it out (`core.mass_rails`, OWNER-DECISIONS 289);
     where that leaves no path, it is planned again with them open, and the route names the
     rails it rides (`road_hazards`).
+
+    A Fast ride left at its own traffic position is planned at the most direct end of the
+    slider too, and that route kept where it is quicker and no busier (`_fast_direct`).
     """
     dials = dials or Dials()
     if started is None:
         started = clock()
+    own = _plan_graphs(points, preset_name, long_ride, started, dials, quick, candidates)
+    if _fast_direct_applies(preset_name, dials, quick):
+        return _fast_direct(own, points, preset_name, long_ride, started, dials, candidates)
+    return own
+
+
+def _fast_direct_applies(preset_name: str, dials: Dials, quick: bool) -> bool:
+    """Whether a plan is a Fast ride at its own traffic position, planned in full: not a quick
+    plan (a drag's preview), nor a followed file or a rider's own line."""
+    if preset_name != presets.FAST or quick or dials.follow is not None:
+        return False
+    return dials.stress is None or dials.stress == presets.stress_start(preset_name)
+
+
+def _fast_direct(own, points, preset_name, long_ride, started, dials, candidates) -> dict:
+    """Fast's own route, or its most direct one where that wins (`presets.fast_direct_wins`).
+    The direct plan runs after the ride's own, in what is left of the budget, with a timing
+    recorder of its own (as `_weekend_plan`): whatever goes wrong with it, the ride's own is
+    answered. The answer's dials keep the position the rider sees, the ride type's own."""
+    recorder = timing.Timings()
+    token = timing.start(recorder)
+    try:
+        direct_dials = dataclasses.replace(dials, stress=presets.STRESS_MIN)
+        direct = _plan_graphs(points, preset_name, long_ride, started, direct_dials, False, candidates)
+    except PlanCancelled:
+        raise
+    except Exception as error:  # noqa: BLE001 - the ride's own plan is answered
+        logger.info("no direct plan beside Fast's own: %r", error)
+        return own
+    finally:
+        timing.stop(token)
+    if not presets.fast_direct_wins(direct, own):
+        return own
+    logger.info("Fast's most direct route is quicker and no busier; answered")
+    if recorder.failures:
+        # Cut short: answered, never kept in the answer cache.
+        _skipped_for_time()
+    direct["dials"] = {**direct["dials"], "stress": own["dials"]["stress"]}
+    return direct
+
+
+def _plan_graphs(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float,
+    dials: Dials,
+    quick: bool,
+    candidates: bool,
+) -> dict:
+    """`plan` on the ride's graph or graphs: the weekend graph beside its own where a car-free
+    road is near (`_plan_twice`), and a Mass Ride's rail streets."""
     if dials.graph is None:
         near = _weekend_too(preset_name, dials, points)
         if near or _weekend_ride(preset_name, dials):

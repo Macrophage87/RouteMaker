@@ -984,6 +984,32 @@ def wait_weight_for(name: str, asked: float | None = None) -> float:
 ROAD_BIKE_BUTTON_RIDES = frozenset({ROAD_BIKE, RUN, TANDEM})
 
 
+# Fast, "as direct as possible" (the owner, 2026-11-20: "Make fast faster", and, earlier the
+# same day, "as close to real time as possible, with some reduction for LTS 4+"). A Fast ride
+# left at its own traffic position is planned again at the most direct end of the slider
+# (STRESS_MIN), and that route is taken where it is at least FAST_DIRECT_SAVES_S quicker door
+# to door (riding and waiting) and adds no more than FAST_DIRECT_LTS4_M of LTS 4 and Avoid.
+# Measured on 16 trips (2026-11-20, /mnt/project-files/plans/fast-real-time): planning every
+# Fast ride at 0 saved 2.3% of the time and doubled its LTS 4 miles (one trip 8 minutes
+# slower); this rule kept 14.8 of the 20.7 minutes saved with LTS 4 flat. The minute and the
+# quarter mile are our defaults, not measured.
+FAST = "fast"
+FAST_DIRECT_SAVES_S = 60.0
+FAST_DIRECT_LTS4_M = 402.336
+
+
+def fast_direct_wins(direct: dict, own: dict) -> bool:
+    """Whether Fast's most direct route (`direct`, a plan's answer) replaces its own
+    (`FAST_DIRECT_SAVES_S`, `FAST_DIRECT_LTS4_M`)."""
+
+    def busy_m(body: dict) -> float:
+        stress = body.get("stress_m") or {}
+        return float(stress.get("4") or 0.0) + float(stress.get("5") or 0.0)
+
+    saved_s = float(own["duration_s"]) - float(direct["duration_s"])
+    return saved_s >= FAST_DIRECT_SAVES_S and busy_m(direct) - busy_m(own) <= FAST_DIRECT_LTS4_M
+
+
 def road_bike_buttons_for(name: str) -> bool:
     """Whether a ride type ranks beg buttons at Road Bike's price (`ROAD_BIKE_BUTTON_RIDES`)."""
     return name in ROAD_BIKE_BUTTON_RIDES
@@ -1166,7 +1192,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # "Few stops, few turns, smooth pavement | L2: high use_roads,
                 # high maneuver_penalty, high surface avoidance" - high, and
                 # still below the 1.0 at which the surface exclusion arms. (The high
-                # maneuver penalty went on 2026-11-20, below.)
+                # maneuver penalty was removed on 2026-11-20, below.)
                 # The old 10 was `use_roads` 0.90. On the slider's steps of
                 # five, 10 gives 0.871 and 5 gives 0.936: 10 is the nearer
                 # (review r1; 8 would give 0.897 but is not a step), and plans

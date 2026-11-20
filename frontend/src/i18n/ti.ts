@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "ዘይተነጽፉ መገድታትን ጸቢብ መገድታትን ተወሳኺ ዋጋ የብሎምን፤ ገና ኣይደልዮምን።",
   "Treats unpaved roads and trails like pavement.": "ዘይተነጽፉ መገድታትን ጸቢብ መገድታትን ከም ኣስፋልት ይርእዮም።",
   "Fast": "ቅልጡፍ",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "ቀጥታ መገድታት፣ ውሑዳት ምጥዋያትን ልሙጽ ኣስፋልትን፣ ትራፊክ ዝኾነ ይኹን።",
+  "As direct as possible.": "ብዝተኻእለ መጠን ቀጥታ።",
   "The most direct route, whatever the traffic.": "ዝቐጥዐ መንገዲ፣ ትራፊክ ዝኾነ ይኹን።",
   "Road Bike": "ናይ መገዲ ብሽክለታ",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "ንናይ መገዲ ብሽክለታ፦ ዝዞር ዝተነጽፈ መገዲ ምስ ዝህሉ ጠጠር፡ ሓመድን ጠዋዊ መገድታትን የወግድ፡ ውሑድ ምዕጻፍ ይገብር፡ ግዜ ድማ ብናይ መገዲ ብሽክለታ ፍጥነት ይቖጽር።",

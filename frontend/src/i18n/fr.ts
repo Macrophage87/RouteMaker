@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "Les routes et chemins non revêtus ne coûtent rien de plus ; il ne les recherche pas encore.",
   "Treats unpaved roads and trails like pavement.": "Traite les routes et chemins non revêtus comme du goudron.",
   "Fast": "Rapide",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "Routes directes, peu de virages et revêtement lisse, quelle que soit la circulation.",
+  "As direct as possible.": "Le plus direct possible.",
   "The most direct route, whatever the traffic.": "L'itinéraire le plus direct, quelle que soit la circulation.",
   "Road Bike": "Vélo de route",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "Pour un vélo de route : évite le gravier, la terre et les sentiers sinueux lorsqu'un chemin revêtu permet de les contourner, fait moins de virages et calcule la durée au rythme d'un vélo de route.",

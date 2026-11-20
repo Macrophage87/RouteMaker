@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "Wout ak chemen san asfat pa koute anyen anplis; li poko chèche yo.",
   "Treats unpaved roads and trails like pavement.": "Trete wout ak chemen san asfat tankou asfat.",
   "Fast": "Rapid",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "Wout dirèk, mwens viraj ak asfat lis, kèlkeswa sikilasyon an.",
+  "As direct as possible.": "Pi dirèk posib.",
   "The most direct route, whatever the traffic.": "Wout ki pi dirèk la, kèlkeswa sikilasyon an.",
   "Road Bike": "Bisiklèt wout",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "Pou yon bisiklèt wout: evite gravye, tè ak chemen ki vire anpil lè gen yon wout asfalte pou fè wonn, fè mwens vire, epi kalkile tan an nan vitès yon bisiklèt wout.",

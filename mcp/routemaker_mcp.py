@@ -4961,7 +4961,7 @@ RIDE_OPTIONS = {
             " target_miles). novice: Novice and Nervous, every road read one stress level up."
             " group-ride: a club ride. mass-ride: a large group on the direct roadway (no loops,"
             " stress and hills held low). mountain-goat: seeks climbs. mountain-bike: trails by"
-            " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. road-bike: a"
+            " IMBA level. gravel: unpaved welcome. fast: as direct as possible. road-bike: a"
             " road bike, off gravel, dirt and winding trails where there is a paved way round,"
             " fewer turns. cargo: cargo"
             " bike (carrying, assist). tandem: a bicycle built for two, no narrow barriers,"

@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "Asfaltsız yollar ve patikalar fazladan bir şey katmaz; henüz özellikle aranmaz.",
   "Treats unpaved roads and trails like pavement.": "Asfaltsız yolları ve patikaları asfalt gibi sayar.",
   "Fast": "Hızlı",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "Trafiğe bakmadan doğrudan yollar, az dönüş ve düzgün asfalt.",
+  "As direct as possible.": "Olabildiğince doğrudan.",
   "The most direct route, whatever the traffic.": "Trafiğe bakmadan en doğrudan rota.",
   "Road Bike": "Yol bisikleti",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "Yol bisikleti için: etrafından dolaşan asfalt bir yol varsa çakıl, toprak ve kıvrımlı patikalardan kaçınır, daha az döner ve süreyi yol bisikleti hızıyla hesaplar.",

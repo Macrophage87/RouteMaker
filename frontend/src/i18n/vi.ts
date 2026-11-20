@@ -925,7 +925,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Unpaved roads and trails cost nothing extra; it does not yet seek them out.": "Đường đất và đường mòn không bị tính thêm; chưa chủ động tìm chúng.",
   "Treats unpaved roads and trails like pavement.": "Coi đường đất và đường mòn như đường nhựa.",
   "Fast": "Nhanh",
-  "Direct roads, few turns and smooth pavement, whatever the traffic.": "Đường thẳng, ít lượt rẽ và mặt đường êm, bất kể xe đông.",
+  "As direct as possible.": "Thẳng nhất có thể.",
   "The most direct route, whatever the traffic.": "Lộ trình thẳng nhất, bất kể xe đông.",
   "Road Bike": "Xe đạp đường trường",
   "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.": "Dành cho xe đạp đường trường: tránh sỏi, đường đất và đường mòn quanh co khi có đường trải nhựa đi vòng, ít rẽ hơn và tính thời gian theo tốc độ xe đạp đường trường.",
