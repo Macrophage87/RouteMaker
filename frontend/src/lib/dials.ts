@@ -364,11 +364,19 @@ export function offersStopsAndTurns(preset: PresetId): boolean {
   return !onFoot(preset) && !runs(preset) && !isTransit(preset) && !usesBikeshare(preset);
 }
 
+/** The waits and sharp turns sliders' step (the owner, 2026-11-20: "maybe put some fractional levels too, like half"). */
+export const WEIGHT_STEP = 0.5;
+
+/** A weight to the sliders' half steps. */
+function toStep(weight: number): number {
+  return Math.round(weight / WEIGHT_STEP) * WEIGHT_STEP;
+}
+
 /** The rider's wait weight where it is above the ride type's own and one the API takes, else undefined. */
 export function fitWaitWeight(preset: PresetId, weight: unknown): number | undefined {
   if (!offersStopsAndTurns(preset) || typeof weight !== "number" || !Number.isFinite(weight)) return undefined;
-  const whole = Math.min(WAIT_WEIGHT_MAX, Math.round(weight));
-  return whole > ownWaitWeight(preset) ? whole : undefined;
+  const stepped = Math.min(WAIT_WEIGHT_MAX, toStep(weight));
+  return stepped > ownWaitWeight(preset) ? stepped : undefined;
 }
 
 /** The weight the plan uses: the rider's, else the ride type's own. */
@@ -388,8 +396,8 @@ export function ownSharpTurnWeight(preset: PresetId): number {
 /** The rider's sharp-turn weight where it differs from the ride type's own and the API takes it (0 to 5), else undefined. */
 export function fitSharpTurnWeight(preset: PresetId, weight: unknown): number | undefined {
   if (!offersStopsAndTurns(preset) || typeof weight !== "number" || !Number.isFinite(weight)) return undefined;
-  const whole = Math.max(0, Math.min(SHARP_TURN_WEIGHT_MAX, Math.round(weight)));
-  return whole !== ownSharpTurnWeight(preset) ? whole : undefined;
+  const stepped = Math.max(0, Math.min(SHARP_TURN_WEIGHT_MAX, toStep(weight)));
+  return stepped !== ownSharpTurnWeight(preset) ? stepped : undefined;
 }
 
 /** The sharp-turn weight the plan uses: the rider's, else the ride type's own. */

@@ -91,6 +91,10 @@ test("the settings ride in the link, the request and the line's words, and stay 
   // At or below a ride type's own weight the setting is that ride type's: not kept, not said.
   assert.equal(fitDials("road-bike", { ...dials, waitWeight: 3 }).waitWeight, undefined);
   assert.equal(fitDials("default", { ...dials, waitWeight: 9 }).waitWeight, 5);
+  // Half steps (the owner, 2026-11-20: "maybe put some fractional levels too, like half").
+  assert.equal(fitDials("default", { ...dials, waitWeight: 2.5 }).waitWeight, 2.5);
+  assert.equal(fitDials("default", { ...dials, waitWeight: 2.3 }).waitWeight, 2.5);
+  assert.match(settingsSummary("default", { ...dials, waitWeight: 2.5 }), /waits count 2.5x/);
   assert.doesNotMatch(settingsSummary("fast", startDials("fast")), /waits/);
   const fast = choose("fast", null, dials);
   assert.equal(fast.waitWeight, 4);
@@ -106,6 +110,7 @@ test("Sharp turns has its own slider from 0 to 5, starting at the ride type's ow
   assert.equal(road.getAttribute("aria-valuetext"), "3x", "Road Bike weighs sharp turns three times");
   assert.equal(road.min, "0");
   assert.equal(road.max, "5");
+  assert.equal(road.step, "0.5", "half steps");
   await section("default", true);
   const own = [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === "Sharp turns");
   assert.equal(own.at(-1)?.getAttribute("aria-valuetext"), "1x", "Default's own is 1x");
@@ -122,6 +127,13 @@ test("moving Sharp turns to 0 plans again with it and leaves the waits alone", a
   });
   assert.equal(commits.at(-1)?.sharpTurnWeight, 0);
   assert.equal(commits.at(-1)?.waitWeight, undefined);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(turns), "value")?.set?.call(turns, "1.5");
+    turns.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    turns.dispatchEvent(new window.Event("pointerup", { bubbles: true }) as unknown as Event);
+  });
+  assert.equal(commits.at(-1)?.sharpTurnWeight, 1.5);
+  assert.equal(turns.getAttribute("aria-valuetext"), "1.5x");
 });
 
 test("Go has no Sharp turns slider", async () => {
@@ -139,6 +151,9 @@ test("a sharp-turn weight rides in the link, the request and the line's words; 0
   // The ride type's own weight is not kept or said; a weight out of range is brought back in.
   assert.equal(fitDials("road-bike", { ...dials, sharpTurnWeight: 3 }).sharpTurnWeight, undefined);
   assert.equal(fitDials("default", { ...dials, sharpTurnWeight: 9 }).sharpTurnWeight, 5);
+  const half = { ...dials, sharpTurnWeight: 0.5 };
+  assert.equal(decodePlan(`#${encodePlan([[-77.03, 38.9], [-77.0, 38.9]], "road-bike", half)}`.replace("##", "#")).dials?.sharpTurnWeight, 0.5);
+  assert.match(settingsSummary("road-bike", half), /sharp turns count 0.5x/);
   assert.doesNotMatch(settingsSummary("road-bike", startDials("road-bike")), /sharp turns/);
   assert.equal(choose("default", null, dials).sharpTurnWeight, 0, "kept through a change of ride type");
   assert.equal(choose("walk", null, dials).sharpTurnWeight, undefined, "nothing to weigh on foot");

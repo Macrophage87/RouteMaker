@@ -49,6 +49,7 @@ import {
   fitSharpTurnWeight,
   sharpTurnWeightOf,
   SHARP_TURN_WEIGHT_MAX,
+  WEIGHT_STEP,
   offersTargetDistance,
   startDials,
   trailsAreOff,
@@ -157,7 +158,7 @@ export function waitsView(preset: PresetId, weight: number): SliderView {
   return {
     min: own,
     max: WAIT_WEIGHT_MAX,
-    step: 1,
+    step: WEIGHT_STEP,
     words: waitsWords(weight),
     ends: [t("Don't mind"), "", t("Rather ride")],
     disabled: own >= WAIT_WEIGHT_MAX,
@@ -170,7 +171,7 @@ export function sharpTurnsView(weight: number): SliderView {
   return {
     min: 0,
     max: SHARP_TURN_WEIGHT_MAX,
-    step: 1,
+    step: WEIGHT_STEP,
     words: waitsWords(weight),
     ends: [t("Fun"), "", t("Avoid")],
     disabled: false,

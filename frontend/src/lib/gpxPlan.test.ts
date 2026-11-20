@@ -136,6 +136,14 @@ test("an export's sliders and its points' names come back with its ride type", (
     ),
   ).dials;
   assert.equal(sharp?.sharpTurnWeight, 0);
+  // Half steps come back as they went (the owner, 2026-11-20: "like half").
+  const halves = planFromGpx(
+    parseGpx(
+      writeGpx({ name: "n", description: "d", attribution: [], preset: "default", dials: { stress: 70, hills: 0, waitWeight: 2.5, sharpTurnWeight: 1.5 }, planPoints: points, geometry: points }),
+    ),
+  ).dials;
+  assert.equal(halves?.waitWeight, 2.5);
+  assert.equal(halves?.sharpTurnWeight, 1.5);
   // Nonsense in the comment is left out, not guessed.
   const odd = planFromGpx(
     file({
