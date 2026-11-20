@@ -263,6 +263,8 @@ NODES = "\n".join(
         "j1\t1\t-77.0\t38.9",
         "j1\t5\t-76.9997\t38.9",
         "j2\t2\t-77.01\t38.9",
+        "j2\t1\t-77.01\t38.9",
+        "j9\t9\t-77.02\t38.9",
     ]
 )
 
@@ -287,6 +289,8 @@ def test_the_loader_is_dry_unless_confirmed(tmp_path) -> None:
     assert "dropped 1 movements: one-way flag" in text
     assert "dropped 1 movements: cannot be made" in text
     assert "dropped 1 junctions: no nodes" in text
+    assert "skipped 1 nodes: duplicate node" in text
+    assert "skipped 1 nodes: unrated node" in text
     assert JunctionRater.objects.count() == 0
 
 
@@ -312,3 +316,22 @@ def test_a_confirmed_load_replaces_the_table_and_reads_near_a_route(tmp_path) ->
     medians = junction_raters.medians()
     assert medians[("signal", "cross")] == pytest.approx(30.0)
     assert junction_raters.digest()
+
+
+def test_a_signal_rated_free_keeps_its_signal_for_the_delay_model() -> None:
+    signal = junction(control=Control.SIGNAL, rater=rater(cross=2.0))
+    (event,) = m.assess_route([signal])
+    assert event.cost_ft == 0.0 and not event.flagged and event.rater_level == 2.0
+    assert event.signals == ((-77.0, 38.9),)
+
+
+def test_a_rated_signal_still_prices_the_stop_sign_by_the_model() -> None:
+    plain = m.assess_route([junction(control=Control.SIGNAL)])[0]
+    rated = m.assess_route([junction(control=Control.SIGNAL, rater=rater(cross=3.0))])[0]
+    assert rated.stop_extra == plain.stop_extra and plain.stop_extra[0][1] > 0
+
+
+def test_a_turn_onto_a_road_does_not_lend_its_rating_to_a_turn_off_it() -> None:
+    onto = junction(movement=Movement.RIGHT, crossed=(), outgoing=BUSY, rater=rater(left=5.0))
+    off = junction(m=40.0, lon=-76.9996, movement=Movement.LEFT, incoming=BUSY, crossed=())
+    assert m.with_raters([onto, off], [rater(left=5.0)])[1].rater is None
