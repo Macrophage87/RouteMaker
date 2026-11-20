@@ -373,6 +373,30 @@ class TestRepeatedSharpTurns:
         # 0.05 mi is 80 m: a jog.
         assert refine.turn_load(trip) == 2.0 + refine.JOG_TURN_EXTRA
 
+    def test_the_reading_weighs_the_trips_turns(self, monkeypatch) -> None:
+        # `analyse` fills `turn_load` from the directions, beside the plain count.
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(2)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace, shape=None: pieces)
+        monkeypatch.setattr(
+            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
+        )
+        monkeypatch.setattr(
+            routing, "classify", lambda p, when, roadway_only=False: [("1", "none")] * len(p)
+        )
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        maneuvers = [turn(1, 100), turn(14, 40), turn(11, 60), turn(4, 0)]
+        trip = {
+            "legs": [{"shape": "x", "maneuvers": maneuvers}],
+            "summary": {"length": 0.2, "time": 50.0, "cost": 1.0},
+        }
+        ctx = context()
+        read = refine.analyse(trip, ctx, ctx.deadline)
+        assert read.turns == 2
+        assert read.turn_load == 5.0
+
     def test_the_ranking_prices_the_weighed_turns(self, monkeypatch) -> None:
         # Before: two routes with 6 turns each ranked level; after: the one whose turns come
         # sharp and close ranks behind by its extra turns' worth.

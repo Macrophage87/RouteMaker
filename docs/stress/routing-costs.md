@@ -31,10 +31,12 @@ More turn rules (2026-11-12 on):
 - **Sharp turns and jogs weigh more** (2026-11-20, the owner: "see if you can find ways to further
   penalize repeated sharp turns"). The ranking counts a route's turns as `refine.turn_load` weighs them:
   one a turn, one more for a sharp turn (Valhalla's sharp right or left), two more for a U-turn, and one
-  more for a turn within 100 m (`refine.JOG_M`, the jog Ride says as one cue) of the turn before it. So
+  more for a turn within 100 m (`refine.JOG_M`, the jog Ride says as one cue) of the turn before it, a
+  slight bend included, as Ride counts it. So
   two sharp turns 40 m apart rank as five turns, not two. The router itself can't price a turn by what
   came before it, so this works where routes are compared (`turn_m`), not inside Valhalla. The turns
-  shown stay a plain count. Our defaults, not measured.
+  shown stay a plain count. The side-street dodge pass still counts a dodge's turns plainly
+  (`dedodge.turn_count`, by heading). Our defaults, not measured.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
   Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
