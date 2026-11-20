@@ -134,7 +134,7 @@ export interface LayersSheetProps {
   bikeshare: { operators: readonly OperatorInfo[]; choices: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void; status: string };
   /** The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   scenic: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
-  /** The Intervals layer (lib/intervals.ts): one switch, off by default; null in Go, which leaves it out. */
+  /** The Intervals layer (lib/intervals.ts): one switch, off by default; null on the Mass Ride map, which leaves it out. */
   intervals?: { on: boolean; onChange: (on: boolean) => void; status: string; minutes?: IntervalsMinutes; onMinutesChange?: (minutes: IntervalsMinutes) => void } | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
@@ -236,7 +236,7 @@ export function LayersSheet(props: LayersSheetProps) {
             sits under its own switch while it is on, as the climbs' does (ClimbsLayerControls). */}
         <MtbTrailLegend />
         <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} />
-        {/* The owner, 2026-11-17: Interval stretches "next to climbs"; Plan's alone (null in Go). */}
+        {/* The owner, 2026-11-17: Interval stretches "next to climbs"; in Go too (2026-11-18), null on the Mass Ride map. */}
         {intervals && <IntervalsControls {...intervals} />}
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>

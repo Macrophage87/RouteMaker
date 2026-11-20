@@ -1,6 +1,6 @@
 # Interval stretches on the map
 
-One file the front end loads the first time Plan's "Interval stretches" layer is turned on
+One file the front end loads the first time the "Interval stretches" layer (Go or Plan) is turned on
 (`src/app/IntervalsOverlay.tsx`, imported with `?url&no-inline`, so it is its own hashed file under
 `/assets/`, left out of the service worker's precache by `LAZY_ASSET` in `src/sw/swCore.mjs`, as
 `climb-data/` is). The api reads it too (`src/core/intervals_near.py`, `GET /api/intervals-near`,
