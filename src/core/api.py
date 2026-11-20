@@ -378,6 +378,8 @@ class RouteIn(Schema):
             " type's own weight (1; 2 on Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and"
             " Fast; 3 on Road Bike), never lowers it, and counts at most 5"
             " (`presets.MAX_WAIT_WEIGHT`). The waits shown are unchanged. null: the ride type's."
+            " Bike ride types only; ignored on Run, Best order and the transit and Bikeshare"
+            " ride types."
         ),
     )
     options: list[Literal["direct", "calmer", "fewer_turns", "paved"]] | None = Field(
@@ -5196,6 +5198,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     # link carries loop=1 and targetmi and a kept route re-plans as the loop it is: without
     # them a Run loop's link opened, or re-planned, as a one-way run (routing hunt 4, X4-4).
     answer["dials"]["loop"] = bool(run.loop)
+    answer["dials"]["wait_weight"] = presets.wait_weight_for(presets.RUN)
     answer["dials"]["target_distance_m"] = int(target_m) if target_m else None
     answer["transit"] = run_plan.worded(transit.block(run_plan.as_plan(run, at)), run.seconds)
     answer["run"] = {
