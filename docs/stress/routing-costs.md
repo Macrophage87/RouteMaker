@@ -33,7 +33,7 @@ More turn rules (2026-11-12 on):
   one a turn, one more for a sharp turn (Valhalla's sharp right or left), two more for a U-turn, and one
   more for a turn within 100 m (`refine.JOG_M`, the jog Ride says as one cue) of the turn before it, a
   slight bend included, as Ride counts it. So
-  two sharp turns 40 m apart rank as five turns, not two. The router itself can't price a turn by what
+  two sharp turns 40 m apart rank as five turns, not two, at a sharp-turn weight of 1 (see Sharp-turn weight below). The router itself can't price a turn by what
   came before it, so this works where routes are compared (`turn_m`), not inside Valhalla. The turns
   shown stay a plain count. The side-street dodge pass still counts a dodge's turns plainly
   (`dedodge.turn_count`, by heading). Our defaults, not measured.

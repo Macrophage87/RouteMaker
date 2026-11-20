@@ -129,6 +129,13 @@ test("an export's sliders and its points' names come back with its ride type", (
     ),
   ).dials;
   assert.deepEqual(stops, { stress: 70, hills: 0, fewerTurns: true, waitWeight: 4 });
+  // And a sharp-turn weight, 0 included (the owner: "I find sharp turns pretty fun").
+  const sharp = planFromGpx(
+    parseGpx(
+      writeGpx({ name: "n", description: "d", attribution: [], preset: "road-bike", dials: { stress: 70, hills: 0, sharpTurnWeight: 0 }, planPoints: points, geometry: points }),
+    ),
+  ).dials;
+  assert.equal(sharp?.sharpTurnWeight, 0);
   // Nonsense in the comment is left out, not guessed.
   const odd = planFromGpx(
     file({

@@ -609,12 +609,12 @@ class Analysis:
     # The turns the router's directions give (`turns_of`), which the top of the slider ranks
     # at `TURN_RANK_S` each (`turn_m`), as the router's own cost already does below it.
     turns: int = 0
-    # The same turns as the ranking weighs them (`turn_load`): a sharp turn, a U-turn and a
-    # turn hard on the last one each count for more than one. None: `turns` (an analysis made
-    # without the directions' turn types).
+    # The same turns as the ranking weighs them, without the sharp extras: one each, and a turn
+    # hard on the last one counts for more than one (`TurnReading.load`). None: `turns` (an
+    # analysis made without the directions' turn types).
     turn_load: float | None = None
-    # The seconds the turns lose to braking and speeding up again (`weigh_turns`), ranked as
-    # a junction's wait is (`turn_m`).
+    # The seconds the turns lose to braking and speeding up again (`weigh_turns`), weighed by
+    # the rider's sharp-turn weight (`turn_m`).
     turn_lost_s: float = 0.0
     # The sharp turns' and U-turns' extras, in turns (`TurnReading.sharp`), weighed by the
     # rider's sharp-turn weight (`turn_m`).
@@ -774,7 +774,9 @@ TURN_RANK_S = presets.CALM_MANEUVER_PENALTY_S
 
 # Sharp turns and turns hard on the last one (the owner, 2026-11-20: "see if you can find ways
 # to further penalize repeated sharp turns"). Each counts as one turn more in the ranking
-# (`turn_load`); the turns shown stay a plain count. A sharp turn (Valhalla's sharp right and
+# (jogs in `TurnReading.load`, sharp and U-turn extras in `TurnReading.sharp`, weighed by the
+# rider's sharp-turn weight; `turn_load` is the two together); the turns shown stay a plain
+# count. A sharp turn (Valhalla's sharp right and
 # sharp left, 11 and 14) slows the rider almost to a stop and turns them across their own
 # line; a U-turn (12, 13) counts two more. A turn within JOG_M of the turn before it is a jog:
 # Ride says the two as one cue (frontend `navigate.ts`, cue cards' `JOG_M`), and the rider
@@ -864,8 +866,9 @@ def _at_a_wait(
 
 
 def weigh_turns(trip: dict, waits: Sequence[tuple[float, float]] = ()) -> TurnReading:
-    """The trip's turns as the ranking weighs them: one each (`turns_of`), plus
-    SHARP_TURN_EXTRA for a sharp one, U_TURN_EXTRA for a U-turn, and JOG_TURN_EXTRA for one
+    """The trip's turns as the ranking weighs them: `load`, one each (`turns_of`) plus
+    JOG_TURN_EXTRA for one; `sharp`, SHARP_TURN_EXTRA for a sharp one and U_TURN_EXTRA for a
+    U-turn (weighed apart, at the sharp-turn weight); JOG_TURN_EXTRA applies to a turn
     within JOG_M of the turn before it on the same leg, except where the rider reaches the turn
     no faster than its cornering speed; and the seconds the turns lose (`turn_lost_s`), none
     at a junction with a wait (`waits`, lon and lat)."""

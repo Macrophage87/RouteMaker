@@ -656,7 +656,7 @@ export function App() {
     if (!dials.startAt) return;
     if (mode === "go" || fitStart(dials.startAt, startClock) === undefined) setDials((now) => ({ ...now, startAt: undefined }));
   }, [mode, dials.startAt, startClock]);
-  // Waiting at lights and stops and Fewer turns are set in Plan's Ride settings popup alone; Go has no control for
+  // Waiting at lights and stops, Sharp turns and Fewer turns are set in Plan's Ride settings popup alone; Go has no control for
   // them, so coming into Go drops them rather than plan with settings it never shows.
   useEffect(() => {
     if (mode !== "go" || (dials.waitWeight === undefined && !dials.fewerTurns && dials.sharpTurnWeight === undefined)) return;

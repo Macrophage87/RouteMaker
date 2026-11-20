@@ -744,3 +744,7 @@ def test_the_sharp_turn_weight_is_sent_kept_and_in_the_link(tools, api) -> None:
     assert "sharp_turn_weight" not in api.routes[-1]
     fun = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 4})
     assert "sharpturns=4" in fun["link"]
+    # A link with sharpturns=0 reads back as 0, and a weight between steps is said rounded.
+    assert mcp.parse_fragment(out["link"].split("#", 1)[1])[3]["sharp_turn_weight"] == 0
+    half = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 2.5})
+    assert any("exact sharp-turn weight" in n for n in half["notes"])

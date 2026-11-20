@@ -98,6 +98,9 @@ test("Fewer turns and a wait weight above the ride type's own go in the file, as
   assert.equal(out?.waitWeight, 4);
   // Gravel's own 2x is the ride type's, not the rider's: not written.
   assert.equal(exportOf({ ...ROUTE, preset: "gravel", dials: { ...dials, wait_weight: 2 } }, []).dials?.waitWeight, undefined);
+  // A sharp-turn weight goes in at 0 too; Road Bike's own 3x is not written.
+  assert.equal(exportOf({ ...ROUTE, preset: "road-bike", dials: { ...dials, sharp_turn_weight: 0 } }, []).dials?.sharpTurnWeight, 0);
+  assert.equal(exportOf({ ...ROUTE, preset: "road-bike", dials: { ...dials, sharp_turn_weight: 3 } }, []).dials?.sharpTurnWeight, undefined);
 });
 
 test("the fidelity notice warns exactly when either share is under the threshold", () => {

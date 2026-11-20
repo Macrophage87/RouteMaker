@@ -492,7 +492,7 @@ export interface RideSectionProps {
   startTime?: boolean;
   /**
    * Plan (the owner, 2026-11-20: "Have it pop out to all ride parameters"): Adjust opens every ride setting in a popup,
-   * with Waiting at lights and stops and Fewer turns among them. Go keeps them under the line, without those two.
+   * with Waiting at lights and stops, Sharp turns and Fewer turns among them. Go keeps them under the line, without those three.
    */
   popout?: boolean;
 }

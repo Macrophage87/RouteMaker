@@ -1,5 +1,5 @@
 // Plan's Ride settings popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"), with Waiting at lights
-// and stops and Fewer turns among the settings; Go keeps its settings under the line, without those two. Rendered and
+// and stops, Sharp turns and Fewer turns among the settings; Go keeps its settings under the line, without those three. Rendered and
 // looked at as the rider sees it (testSupport/render.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";

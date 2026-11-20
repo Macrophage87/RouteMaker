@@ -7388,6 +7388,9 @@ class Server:
         weight = plan.sent.get("wait_weight")
         if weight and float(weight) != int(float(weight)):
             lost.append("the exact wait weight (the link rounds it)")
+        sharp = plan.sent.get("sharp_turn_weight")
+        if sharp is not None and float(sharp) != int(float(sharp)):
+            lost.append("the exact sharp-turn weight (the link rounds it)")
         try:
             route_id = secrets.token_hex(16)
             self.api.share(
