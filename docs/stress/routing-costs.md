@@ -54,7 +54,7 @@ More turn rules (2026-11-12 on):
 - **Sharp-turn weight** (2026-11-20, the owner: "I find sharp turns pretty fun, but I hate standing at
   lights"). The sharp and U-turn extras and the seconds lost braking for a turn are multiplied by a
   weight of their own, apart from the wait weight (`presets.sharp_turn_weight_for`): 3x on Road Bike,
-  2x on Tandem, 1x on every other ride type (our defaults, not measured). A rider sets it from 0 to 5
+  2x on Tandem and Cargo Bike, 1x on every other ride type (our defaults, not measured). A rider sets it from 0 to 5
   in half steps
   (`sharp_turn_weight` on POST /api/route, the "Sharp turns" slider in Plan's Ride settings popup,
   `sharpturns=N` in a link), below the ride type's own included. At 0 a sharp turn counts as a plain
@@ -102,7 +102,7 @@ today's positions like this:
 
 | `use_roads` | 1.0 | 0.871 | 0.486 | 0.10 | 0.0 |
 |---|---|---|---|---|---|
-| Position today | 0 | 10 (Fast) | 40 (Group, Goat, Gravel) | 70 (Default, E-bike, Cargo) | 80 (Cargo with passengers) and above |
+| Position today | 0 | 10 (Fast) | 40 (Group, Goat) | 70 (Default, Gravel, E-bike, Cargo) | 80 (Cargo with passengers) and above |
 | Old position | 0 | 12.9 | 51.4 | 90 | 100 |
 | LTS 3 added (5 road types) | 0 | 0.47-0.80 (interpolated) | 2.05-4.06 (interpolated) | 4.13-10.54 | 4.75-12.84 |
 | LTS 4 added (standard graph) | 0.82-1.14 | 2.44-2.94 (interpolated) | 9.63-11.56 (interpolated) | 26.08-32.62 | 32.14-40.52 |
@@ -139,7 +139,7 @@ every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py
 | Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
 | Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1208-1209`) |
 | Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else crossing rounds |
-| Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
+| Gravel | off-road | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
 | Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, crossing rounds |
 | Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, crossing rounds |
 | Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, crossing rounds |

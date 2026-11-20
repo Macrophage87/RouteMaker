@@ -380,13 +380,15 @@ def test_trailmaxxing_is_more_stress_averse_than_default() -> None:
     assert options("trailmaxxing")["avoid_bad_surfaces"] < options("default")["avoid_bad_surfaces"]
 
 
-def test_fast_is_direct_turn_shy_and_smooth() -> None:
-    """ "L2: high use_roads, high maneuver_penalty, high surface avoidance"."""
+def test_fast_is_direct_and_smooth_at_real_time() -> None:
+    """ "L2: high use_roads, high surface avoidance"; the turn charge is Default's (the
+    owner, 2026-11-20: Fast "should keep as close to real time as possible")."""
     # The old Fast was `use_roads` 0.90; on the slider's steps of five the
     # nearest is 10, 0.871 (5 would be 0.936). Still the most direct of the
     # ride types that are not traffic tolerant.
     assert options("fast")["use_roads"] == pytest.approx(0.871)
-    assert options("fast")["maneuver_penalty"] > options("default")["maneuver_penalty"]
+    assert options("fast")["maneuver_penalty"] == options("default")["maneuver_penalty"]
+    assert presets.wait_weight_for("fast") == presets.sharp_turn_weight_for("fast") == 1.0
     assert options("default")["avoid_bad_surfaces"] < options("fast")["avoid_bad_surfaces"] < 1.0
 
 
