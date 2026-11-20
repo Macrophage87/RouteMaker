@@ -28,7 +28,7 @@ export const REFINE_GOAL = 0.97;
 import { COVERAGE_BBOX, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { PLAN_TYPE_PREFIX, parseDialsComment, type GpxFile, type GpxRoute } from "./gpx.ts";
 import { DEFAULT_PRESET, resolvePreset, type PresetId } from "./presets.ts";
-import { fitWaitWeight, isCarrying, isWhen, offersEasyMtb, offersStopsAndTurns, type Dials } from "./dials.ts";
+import { fitSharpTurnWeight, fitWaitWeight, isCarrying, isWhen, offersEasyMtb, offersStopsAndTurns, type Dials } from "./dials.ts";
 import { cumulative, dedupe, fidelity, placesAlong, refineVias, significantIndexes, viaPoints, type Fidelity } from "./trackMatch.ts";
 
 /** Most vertices the reference line keeps for drawing and measuring. */
@@ -316,6 +316,8 @@ function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<Imported
   if (fields.fewerturns === "1" && offersStopsAndTurns(id)) dials.fewerTurns = true;
   const waits = fitWaitWeight(id, Number(fields.waits));
   if (fields.waits !== undefined && waits !== undefined) dials.waitWeight = waits;
+  const sharp = fields.sharpturns === undefined ? undefined : fitSharpTurnWeight(id, Number(fields.sharpturns));
+  if (sharp !== undefined) dials.sharpTurnWeight = sharp;
   return { preset: id, dials };
 }
 

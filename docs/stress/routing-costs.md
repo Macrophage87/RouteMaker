@@ -43,8 +43,7 @@ More turn rules (2026-11-12 on):
   lean (`refine.corner_speed_ms`: about 20 mph for a slight bend, 11.5 mph for a plain turn, 8 mph
   sharp, 6 mph for a U-turn). A rider arriving faster brakes to it and speeds up again after, and the
   seconds that loses (`refine.turn_lost_s`, braking 1.5 m/s² and picking up 0.8 m/s², the junction
-  model's) are ranked as a junction's wait is, at the ride's wait weight (3x on Road Bike, 2x on the
-  pleasure and training rides). The speeds are the router's own before and after the turn, so they carry
+  model's) are ranked at the ride's sharp-turn weight. The speeds are the router's own before and after the turn, so they carry
   the ride type's pace, the rider's and the hills. A sharp turn costs about 3.1 s at 20 mph and 0.3 s at
   11 mph. A turn at a junction that already has a wait (a stop, a signal, a give-way) loses nothing
   more, and a speed is read only off a stretch of 100 m or more (a maneuver's time holds the router's
@@ -52,6 +51,13 @@ More turn rules (2026-11-12 on):
   counts as one plain turn, without the sharp, U-turn or jog extras. Radii and lean are our defaults,
   not measured. A bend along one road or trail is not a turn in the router's directions, so it is not
   charged at all.
+- **Sharp-turn weight** (2026-11-20, the owner: "I find sharp turns pretty fun, but I hate standing at
+  lights"). The sharp and U-turn extras and the seconds lost braking for a turn are multiplied by a
+  weight of their own, apart from the wait weight (`presets.sharp_turn_weight_for`): 3x on Road Bike,
+  2x on Tandem, 1x on every other ride type (our defaults, not measured). A rider sets it from 0 to 5
+  (`sharp_turn_weight` on POST /api/route, the "Sharp turns" slider in Plan's Ride settings popup,
+  `sharpturns=N` in a link), below the ride type's own included. At 0 a sharp turn counts as a plain
+  turn and braking costs nothing; the plain per-turn charge and the jog extra stay.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
   Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`

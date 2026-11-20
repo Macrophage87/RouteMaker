@@ -46,6 +46,9 @@ import {
   ownWaitWeight,
   waitWeightOf,
   WAIT_WEIGHT_MAX,
+  fitSharpTurnWeight,
+  sharpTurnWeightOf,
+  SHARP_TURN_WEIGHT_MAX,
   offersTargetDistance,
   startDials,
   trailsAreOff,
@@ -105,6 +108,8 @@ export interface PanelView {
   easyMtb: EasyMtbView | null;
   /** "Waiting at lights and stops" (the owner, 2026-11-20), on a bike of the rider's own; null on any other ride type. */
   waits: SliderView | null;
+  /** "Sharp turns" (the owner, 2026-11-20), on the same ride types; null on any other. */
+  sharpTurns: SliderView | null;
   /** "Fewer turns" (2026-11-20, in Plan's Ride settings), on the same ride types; null on any other. */
   fewerTurns: FewerTurnsView | null;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
@@ -128,6 +133,14 @@ export const WAITS_LABEL = t("Waiting at lights and stops");
 export const WAITS_NOTE = t("Each second waiting counts this many seconds of riding when routes are compared.");
 export const WAITS_HOW =
   t("Waits at signals, stop signs and gaps in traffic count this many times over when routes are compared, so a route with fewer stops can win even if it is a little longer. The wait times shown stay the real ones. The slider starts at the ride type's own weight: Road Bike 3x; Fast, Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Tandem 2x; others 1x. At 5x a red light counts its most.");
+/**
+ * Sharp turns (the owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights"). API
+ * `sharp_turn_weight`, link `sharpturns`.
+ */
+export const SHARP_TURNS_LABEL = t("Sharp turns");
+export const SHARP_TURNS_NOTE = t("How much sharp turns count when routes are compared.");
+export const SHARP_TURNS_HOW =
+  t("Sharp turns and U-turns count extra when routes are compared, and so does the time any turn costs braking from speed: more on a fast flat road, almost nothing on a slow climb. This slider sets how much. At 0 a sharp turn costs no more than any other turn. Road Bike starts at 3x, Tandem at 2x, others at 1x. Every turn still costs a little, and Waiting at lights and stops is set apart.");
 export const FEWER_TURNS_LABEL = t("Fewer turns");
 export const FEWER_TURNS_HINT = t("Turns cost more, sharp turns and zigzags most.");
 export const FEWER_TURNS_HOW_ABOUT = t("fewer turns");
@@ -150,6 +163,19 @@ export function waitsView(preset: PresetId, weight: number): SliderView {
     disabled: own >= WAIT_WEIGHT_MAX,
     note: WAITS_NOTE,
     how: WAITS_HOW,
+  };
+}
+
+export function sharpTurnsView(weight: number): SliderView {
+  return {
+    min: 0,
+    max: SHARP_TURN_WEIGHT_MAX,
+    step: 1,
+    words: waitsWords(weight),
+    ends: [t("Fun"), "", t("Avoid")],
+    disabled: false,
+    note: SHARP_TURNS_NOTE,
+    how: SHARP_TURNS_HOW,
   };
 }
 
@@ -398,6 +424,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   };
   const moved =
     fitWaitWeight(preset, dials.waitWeight) !== undefined ||
+    fitSharpTurnWeight(preset, dials.sharpTurnWeight) !== undefined ||
     (dials.fewerTurns === true && offersStopsAndTurns(preset)) ||
     dials.stress !== start.stress ||
     dials.hills !== start.hills ||
@@ -468,6 +495,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
         }
       : null,
     waits: offersStopsAndTurns(preset) ? waitsView(preset, waitWeightOf(preset, draft)) : null,
+    sharpTurns: offersStopsAndTurns(preset) ? sharpTurnsView(sharpTurnWeightOf(preset, draft)) : null,
     fewerTurns: offersStopsAndTurns(preset)
       ? { label: FEWER_TURNS_LABEL, checked: dials.fewerTurns === true, hint: FEWER_TURNS_HINT, how: FEWER_TURNS_HOW, howAbout: FEWER_TURNS_HOW_ABOUT }
       : null,

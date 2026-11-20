@@ -2951,4 +2951,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Rather ride": "Prefiero pedalear",
   "waits count {weight}x": "esperas cuentan {weight}x",
   "waiting": "esperas",
+  "Sharp turns": "Giros cerrados",
+  "How much sharp turns count when routes are compared.": "Cuánto cuentan los giros cerrados al comparar rutas.",
+  "Sharp turns and U-turns count extra when routes are compared, and so does the time any turn costs braking from speed: more on a fast flat road, almost nothing on a slow climb. This slider sets how much. At 0 a sharp turn costs no more than any other turn. Road Bike starts at 3x, Tandem at 2x, others at 1x. Every turn still costs a little, and Waiting at lights and stops is set apart.": "Los giros cerrados y los cambios de sentido cuentan más al comparar rutas, y también el tiempo que cuesta frenar para cualquier giro: más en una carretera llana y rápida, casi nada en una subida lenta. Este control fija cuánto. En 0 un giro cerrado no cuesta más que cualquier otro giro. Road Bike empieza en 3x, Tandem en 2x, los demás en 1x. Cada giro sigue costando un poco, y Esperas en semáforos y paradas se ajusta aparte.",
+  "Fun": "Divertidos",
+  "sharp turns count {weight}x": "giros cerrados cuentan {weight}x",
+  "sharp turns": "giros cerrados",
 };

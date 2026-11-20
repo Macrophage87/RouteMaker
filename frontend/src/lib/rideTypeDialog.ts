@@ -7,7 +7,7 @@
  * sliders."
  */
 import { PRESETS, type PresetId } from "./presets.ts";
-import { fitWaitWeight, offersEasyMtb, offersStopsAndTurns, startDials, type Carrying, type Dials } from "./dials.ts";
+import { fitSharpTurnWeight, fitWaitWeight, offersEasyMtb, offersStopsAndTurns, startDials, type Carrying, type Dials } from "./dials.ts";
 
 /** A focusable element as the Tab trap sees it: a radio has a type, a group name and a state. */
 export type TabCandidate = { type?: string; name?: string; checked?: boolean };
@@ -67,6 +67,8 @@ export function choose(preset: PresetId, carrying: Carrying | null, current: Dia
     // ride type takes them, the weight only where it is still above that ride type's own.
     ...(current.fewerTurns === true && offersStopsAndTurns(preset) ? { fewerTurns: true } : {}),
     ...(fitWaitWeight(preset, current.waitWeight) !== undefined ? { waitWeight: fitWaitWeight(preset, current.waitWeight) } : {}),
+    // The rider's sharp-turn weight, kept where it still differs from the new ride type's own.
+    ...(fitSharpTurnWeight(preset, current.sharpTurnWeight) !== undefined ? { sharpTurnWeight: fitSharpTurnWeight(preset, current.sharpTurnWeight) } : {}),
   };
 }
 

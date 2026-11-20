@@ -1176,6 +1176,7 @@ export interface RouteResponse {
     /** "Fewer turns" and "All paved" (a named option chosen, then its ride's re-plans); absent from an older API. */
     fewer_turns?: boolean;
     wait_weight?: number;
+    sharp_turn_weight?: number;
     paved?: boolean;
     trails_off?: boolean;
     easy_mtb?: boolean;

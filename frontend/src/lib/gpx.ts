@@ -394,6 +394,8 @@ export interface ExportDials {
   fewerTurns?: boolean;
   /** The rider's wait weight, above the ride type's own, as the link carries it (waits=N). */
   waitWeight?: number;
+  /** The rider's sharp-turn weight, as the link carries it (sharpturns=N, 0 included). */
+  sharpTurnWeight?: number;
 }
 
 export function dialsComment(dials: ExportDials): string {
@@ -406,6 +408,7 @@ export function dialsComment(dials: ExportDials): string {
   if (dials.easyMtb) parts.push("easymtb=1");
   if (dials.fewerTurns) parts.push("fewerturns=1");
   if (dials.waitWeight) parts.push(`waits=${dials.waitWeight}`);
+  if (typeof dials.sharpTurnWeight === "number") parts.push(`sharpturns=${dials.sharpTurnWeight}`);
   return PLAN_DIALS_PREFIX + parts.join(";");
 }
 

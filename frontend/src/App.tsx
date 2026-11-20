@@ -659,9 +659,9 @@ export function App() {
   // Waiting at lights and stops and Fewer turns are set in Plan's Ride settings popup alone; Go has no control for
   // them, so coming into Go drops them rather than plan with settings it never shows.
   useEffect(() => {
-    if (mode !== "go" || (dials.waitWeight === undefined && !dials.fewerTurns)) return;
-    setDials((now) => ({ ...now, waitWeight: undefined, fewerTurns: undefined }));
-  }, [mode, dials.waitWeight, dials.fewerTurns]);
+    if (mode !== "go" || (dials.waitWeight === undefined && !dials.fewerTurns && dials.sharpTurnWeight === undefined)) return;
+    setDials((now) => ({ ...now, waitWeight: undefined, fewerTurns: undefined, sharpTurnWeight: undefined }));
+  }, [mode, dials.waitWeight, dials.fewerTurns, dials.sharpTurnWeight]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
   // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
   // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on

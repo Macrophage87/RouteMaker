@@ -20,7 +20,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { onFoot, runs, type PresetId } from "./lib/presets.ts";
 import { AvoidStairsSwitch } from "./AvoidStairsSwitch.tsx";
 import { RunPaceSelect } from "./RunPaceSelect.tsx";
-import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, fitWaitWeight, offersBike, rideSizeOf, waitWeightOf, type Bike, type Dials, type When } from "./lib/dials.ts";
+import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, fitSharpTurnWeight, fitWaitWeight, offersBike, rideSizeOf, sharpTurnWeightOf, waitWeightOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
 import {
   MTB_LEVEL_LEGEND,
@@ -33,7 +33,7 @@ import {
   withMtbLevel,
   withMtbPreferred,
 } from "./lib/mtbMode.ts";
-import { RIDE_SIZE_LABEL, WAITS_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
+import { RIDE_SIZE_LABEL, SHARP_TURNS_LABEL, WAITS_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
 import { defaultStart, fitStart, startBounds } from "./lib/startTime.ts";
@@ -273,6 +273,15 @@ function withWaitWeight(dials: Dials, preset: PresetId, weight: number): Dials {
   return next;
 }
 
+/** The dials with the rider's sharp-turn weight, taken off the object at the ride type's own (so the link stays as it was). */
+function withSharpTurnWeight(dials: Dials, preset: PresetId, weight: number): Dials {
+  const next: Dials = { ...dials };
+  const fitted = fitSharpTurnWeight(preset, weight);
+  if (fitted === undefined) delete next.sharpTurnWeight;
+  else next.sharpTurnWeight = fitted;
+  return next;
+}
+
 /** The dials with Fewer turns on, or taken off the object when off. */
 function withFewerTurns(dials: Dials, on: boolean): Dials {
   const next: Dials = { ...dials };
@@ -307,7 +316,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   useEffect(() => () => keys.current.cancel(), []);
   const commitDraft = () => {
     const { draft: now, dials: was, onCommit: commit } = latest.current;
-    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize || now.waitWeight !== was.waitWeight) commit(now);
+    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize || now.waitWeight !== was.waitWeight || now.sharpTurnWeight !== was.sharpTurnWeight) commit(now);
   };
   const release = (settle: boolean) => {
     if (settle) keys.current.later(commitDraft);
@@ -522,6 +531,17 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           view={view.waits}
           value={waitWeightOf(preset, draft)}
           onDraft={(weight) => setDraft(withWaitWeight(draft, preset, weight))}
+          onRelease={release}
+        />
+      )}
+      {stopsAndTurns && view.sharpTurns && (
+        <Slider
+          label={SHARP_TURNS_LABEL}
+          dial="sharp-turns"
+          about="sharp turns"
+          view={view.sharpTurns}
+          value={sharpTurnWeightOf(preset, draft)}
+          onDraft={(weight) => setDraft(withSharpTurnWeight(draft, preset, weight))}
           onRelease={release}
         />
       )}
