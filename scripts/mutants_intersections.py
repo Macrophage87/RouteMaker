@@ -1320,7 +1320,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "refuge: always",
         INTERSECTIONS,
-        "    if not _divided(crossings):\n        return [worst, *rest]",
+        "    if any(e.rater_level is not None for e in crossings) or not _divided(crossings):\n"
+        "        return [worst, *rest]",
         "    if False:\n        return [worst, *rest]",
         PURE,
     ),
