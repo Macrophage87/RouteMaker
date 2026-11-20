@@ -390,6 +390,10 @@ export interface ExportDials {
   trailsOff?: boolean;
   /** "Easy MTB trails" on Default and Trailmaxxing, so the file reopens on the MTB trails it rode. */
   easyMtb?: boolean;
+  /** Fewer turns, as the link carries it (fewerturns=1). */
+  fewerTurns?: boolean;
+  /** The rider's wait weight, above the ride type's own, as the link carries it (waits=N). */
+  waitWeight?: number;
 }
 
 export function dialsComment(dials: ExportDials): string {
@@ -400,6 +404,8 @@ export function dialsComment(dials: ExportDials): string {
   if (dials.loop) parts.push("loop=1");
   if (dials.trailsOff) parts.push("trailsoff=1");
   if (dials.easyMtb) parts.push("easymtb=1");
+  if (dials.fewerTurns) parts.push("fewerturns=1");
+  if (dials.waitWeight) parts.push(`waits=${dials.waitWeight}`);
   return PLAN_DIALS_PREFIX + parts.join(";");
 }
 

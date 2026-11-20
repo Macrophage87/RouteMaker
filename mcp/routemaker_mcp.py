@@ -1438,7 +1438,7 @@ def plan_fragment(
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
         parts.append("fewerturns=1")
     if sent.get("wait_weight") and float(sent["wait_weight"]) > 1:
-        parts.append(f"waits={min(5, round(float(sent['wait_weight'])))}")
+        parts.append(f"waits={min(5, int(float(sent['wait_weight']) + 0.5))}")
     if sent.get("novice_legs"):
         parts.append("novice=1")
     if dials.get("target_distance_m"):
@@ -1481,7 +1481,7 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "mtbLevel": sent.get("mtb_level"),
         "mtbPreferred": sent.get("mtb_preferred"),
         "rideSize": sent.get("ride_size"),
-        "waitWeight": min(5, round(float(sent["wait_weight"])))
+        "waitWeight": min(5, int(float(sent["wait_weight"]) + 0.5))
         if sent.get("wait_weight")
         else None,
     }
@@ -5105,7 +5105,8 @@ RIDE_OPTIONS = {
         ),
     },
     "wait_weight": {
-        "type": "number",
+        # Whole steps, as Plan's slider and the link's waits=N take them.
+        "type": "integer",
         "minimum": 1,
         "maximum": 5,
         "description": (
@@ -7363,6 +7364,10 @@ class Server:
             )
             if plan.sent.get(key)
         ]
+        # The link carries whole steps (Plan's slider): a weight between steps opens rounded.
+        weight = plan.sent.get("wait_weight")
+        if weight and float(weight) != int(float(weight)):
+            lost.append("the exact wait weight (the link rounds it)")
         try:
             route_id = secrets.token_hex(16)
             self.api.share(

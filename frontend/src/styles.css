@@ -5133,10 +5133,10 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
    sidebar, not modal, so the map bar's Route stays in reach; on a phone a sheet from the bottom, the map above it. */
 dialog.plan-ride-settings {
   position: fixed;
-  inset: 72px auto auto 50%;
-  transform: translateX(-50%);
+  /* Beside the sidebar (.panel ends at 412 px), so the plan stays in view; on narrower screens against the right edge. */
+  inset: 72px auto auto 424px;
   z-index: 40;
-  width: min(440px, calc(100vw - 32px));
+  width: 440px;
   max-height: calc(100dvh - 96px);
   overflow-y: auto;
   box-sizing: border-box;
@@ -5157,10 +5157,16 @@ dialog.plan-ride-settings h2 {
 dialog.plan-ride-settings h2:focus {
   outline: none;
 }
-@media (max-width: 600px) {
+@media (max-width: 899px) {
+  dialog.plan-ride-settings {
+    inset: 72px 12px auto auto;
+    width: min(440px, calc(100vw - 24px));
+  }
+}
+/* Where the panel becomes a bottom sheet (720 px), the popup does too. */
+@media (max-width: 720px) {
   dialog.plan-ride-settings {
     inset: auto 0 0 0;
-    transform: none;
     width: 100vw;
     max-width: 100vw;
     max-height: 70dvh;

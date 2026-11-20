@@ -529,6 +529,10 @@ def test_fewer_turns_and_all_paved_are_sent_kept_and_said_missing_from_the_link(
     # ride in the link.
     assert "fewerturns=1" in out["link"] and "waits=4" in out["link"]
     assert not any("Fewer turns" in n or "waits" in n for n in out.get("notes") or [])
+    # A weight between the link's whole steps opens rounded (half up), and the notes say so.
+    half = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 2.5})
+    assert "waits=3" in half["link"]
+    assert any("exact wait weight" in n for n in half["notes"])
     paved = tools.call("plan_route", {"points": [east(0), east(4)], "paved": True})
     assert any("All paved" in n and "not in it" in n for n in paved["notes"])
     # A revision keeps it, as Keep to roads; a new ride type too; clear_settings drops it.
