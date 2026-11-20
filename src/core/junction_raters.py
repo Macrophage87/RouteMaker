@@ -56,10 +56,14 @@ def near(points: Sequence[tuple[float, float]]) -> tuple[RaterRating, ...]:
 
     if not points:
         return ()
+    from .routing import plan_cursor
+
     sql = _NEAR_SQL.format(table=JunctionRater._meta.db_table)
     found: dict[int, RaterRating] = {}
     try:
-        with connection.cursor() as cursor:
+        # The plan's own cursor: under its deadline, cancelled with it, and in a savepoint,
+        # so a failed read leaves a caller's transaction usable (v0.29.0 release review).
+        with plan_cursor() as cursor:
             for start in range(0, len(points), _BATCH):
                 chunk = points[start : start + _BATCH]
                 cursor.execute(sql, [[p[0] for p in chunk], [p[1] for p in chunk], _REACH_DEG])
@@ -106,6 +110,14 @@ def medians() -> dict[tuple[str, str], float]:
     with _lock:
         _memo = (version, found)
     return found
+
+
+def loaded() -> bool:
+    """Whether any ratings are loaded: with none, a plan reads none (no query a candidate)."""
+    try:
+        return _version() != (None,)
+    except DatabaseError:
+        return False
 
 
 def digest() -> str:

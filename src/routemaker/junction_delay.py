@@ -709,7 +709,7 @@ def rater_scaled(
     """The waits with each one at a rated junction scaled by `rater_ratio`: its seconds
     shown and as ranked, and its red, alike. A run's first node can be a stop line or a
     divided road's near carriageway short of the rated node, so the run's nodes within
-    SIGNAL_MERGE_M of its start are read, nearest first."""
+    MERGE_M of its start are read, nearest first."""
     if not raters or not medians:
         return list(found)
     ordered = sorted(junctions, key=lambda j: j.m)
@@ -717,7 +717,7 @@ def rater_scaled(
     for wait in found:
         ratio = None
         for junction in ordered:
-            if junction.m < wait.m or junction.m - wait.m > SIGNAL_MERGE_M:
+            if junction.m < wait.m or junction.m - wait.m > MERGE_M:
                 continue
             rater = rater_at(junction.lon, junction.lat, raters)
             if rater is not None:

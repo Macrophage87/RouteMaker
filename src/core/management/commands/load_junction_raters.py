@@ -29,6 +29,7 @@ import gzip
 import io
 import math
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
@@ -49,9 +50,10 @@ def _number(text: str | None) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def read_ratings(lines, counts: Counter) -> dict[str, dict]:
-    """By junction id, its control and each movement's (stress, delay_s)."""
-    found: dict[str, dict] = {}
+def read_ratings(lines, counts: Counter) -> dict[str, tuple]:
+    """By junction id, (control, cross stress, cross delay, left stress, left delay, along
+    stress, along delay): a tuple, as some 600,000 are held at once."""
+    found: dict[str, list] = {}
     reader = csv.DictReader(lines)
     missing = {"junction", "movement", "stress", "delay_s"} - set(reader.fieldnames or ())
     if missing:
@@ -71,16 +73,16 @@ def read_ratings(lines, counts: Counter) -> dict[str, dict]:
         if not 1.0 <= stress <= 5.0:
             counts["stress out of range"] += 1
             continue
-        junction = found.setdefault(row["junction"], {"control": ""})
-        junction["control"] = (row.get("control_tagged") or "").strip()
-        junction[move] = (stress, _number(row["delay_s"]))
+        junction = found.setdefault(row["junction"], [""] + [None] * (2 * len(MOVES)))
+        junction[0] = (row.get("control_tagged") or "").strip()[:24]
+        at = 1 + 2 * MOVES.index(move)
+        junction[at : at + 2] = [stress, _number(row["delay_s"])]
         counts["movements"] += 1
-    return found
+    return {junction: tuple(item) for junction, item in found.items()}
 
 
-def read_nodes(lines) -> dict[str, list[tuple[int, float, float]]]:
-    """By junction id, its nodes as (node id, lon, lat)."""
-    out: dict[str, list[tuple[int, float, float]]] = {}
+def read_nodes(lines) -> Iterator[tuple[str, int, float, float]]:
+    """Each node of the nodes file as (junction id, node id, lon, lat), streamed."""
     reader = csv.DictReader(lines, delimiter="\t")
     missing = {"junction", "node", "lon", "lat"} - set(reader.fieldnames or ())
     if missing:
@@ -92,8 +94,7 @@ def read_nodes(lines) -> dict[str, list[tuple[int, float, float]]]:
         except (TypeError, ValueError):
             continue
         if row["junction"] and lon is not None and lat is not None:
-            out.setdefault(row["junction"], []).append((node, lon, lat))
-    return out
+            yield row["junction"], node, lon, lat
 
 
 def _open(path: Path):
@@ -118,35 +119,59 @@ class Command(BaseCommand):
         counts: Counter = Counter()
         with _open(Path(options["ratings"])) as lines:
             ratings = read_ratings(lines, counts)
-        with _open(Path(options["nodes"])) as lines:
-            nodes = read_nodes(lines)
         now = timezone.now()
-        rows = []
-        junctions = 0
-        for junction, item in ratings.items():
-            found = nodes.get(junction)
-            if not found:
-                counts["no position"] += 1
-                continue
-            junctions += 1
-            fields = {}
-            for move in MOVES:
-                stress, delay = item.get(move, (None, None))
-                fields[f"{move}_stress"] = stress
-                fields[f"{move}_delay_s"] = delay
-            for node, lon, lat in found:
-                rows.append(
+        confirm = options["confirm"]
+        placed: set[str] = set()
+        seen: set[int] = set()
+        batch: list = []
+        written = 0
+
+        def flush() -> None:
+            nonlocal written
+            if batch:
+                JunctionRater.objects.bulk_create(batch)
+                written += len(batch)
+                batch.clear()
+
+        # Streamed, a batch at a time: the nodes file holds over a million rows, and the dry
+        # run only counts them (v0.29.0 release review).
+        with transaction.atomic(), _open(Path(options["nodes"])) as lines:
+            if confirm:
+                JunctionRater.objects.all().delete()
+            for junction, node, lon, lat in read_nodes(lines):
+                item = ratings.get(junction)
+                if item is None:
+                    counts["unrated node"] += 1
+                    continue
+                if node in seen:
+                    # One node in two junctions: the first keeps it (the column is unique).
+                    counts["duplicate node"] += 1
+                    continue
+                seen.add(node)
+                placed.add(junction)
+                if not confirm:
+                    continue
+                fields = {}
+                for at, move in enumerate(MOVES):
+                    fields[f"{move}_stress"] = item[1 + 2 * at]
+                    fields[f"{move}_delay_s"] = item[2 + 2 * at]
+                batch.append(
                     JunctionRater(
                         junction=junction,
                         node=node,
                         location=Point(lon, lat, srid=4326),
-                        control=item["control"][:24],
+                        control=item[0],
                         loaded_at=now,
                         **fields,
                     )
                 )
+                if len(batch) >= BATCH:
+                    flush()
+            flush()
+        junctions = len(placed)
+        counts["no position"] = len(ratings) - junctions
         self.stdout.write(
-            f"{junctions:,} junctions at {len(rows):,} nodes, "
+            f"{junctions:,} junctions at {len(seen):,} nodes, "
             f"{counts['movements']:,} movements rated"
         )
         for reason in ("cannot be made", "one-way flag", "stress out of range", "unknown movement"):
@@ -154,12 +179,12 @@ class Command(BaseCommand):
                 self.stdout.write(f"  dropped {counts[reason]:,} movements: {reason}")
         if counts["no position"]:
             self.stdout.write(f"  dropped {counts['no position']:,} junctions: no nodes")
-        if not options["confirm"]:
+        for reason in ("duplicate node", "unrated node"):
+            if counts[reason]:
+                self.stdout.write(f"  skipped {counts[reason]:,} nodes: {reason}")
+        if not confirm:
             self.stdout.write("Dry run: nothing written. The same with --confirm loads it.")
             return
-        with transaction.atomic():
-            JunctionRater.objects.all().delete()
-            JunctionRater.objects.bulk_create(rows, batch_size=BATCH)
         self.stdout.write(
-            f"Loaded {junctions:,} junctions at {len(rows):,} nodes (every earlier row replaced)."
+            f"Loaded {junctions:,} junctions at {written:,} nodes (every earlier row replaced)."
         )

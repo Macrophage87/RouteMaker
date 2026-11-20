@@ -5619,6 +5619,9 @@ def _plan(
     junction_ratings = route_cache.junction_ratings()
     # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
     beacons = route_cache.beacons()
+    # The raters' junction ratings, read only where any are loaded. A Mass Ride's junction
+    # reading keeps its own stress (`refine.events_of_raws`); its waits are scaled as any.
+    raters_loaded = junction_raters.loaded()
     # The rider's target distance counts at the top of the slider only, and never on a ride's
     # re-plan (`ride_replan`): the target is the whole ride's, and the re-plan is the rest of
     # it from where the rider is. Held to it, the rest could take up to 1.25 times the whole
@@ -6256,8 +6259,8 @@ def _plan(
         avoid=avoid_list,
         junction_ratings=junction_ratings,
         beacons=beacons,
-        raters=junction_raters.near,
-        rater_medians=junction_raters.medians(),
+        raters=junction_raters.near if raters_loaded else None,
+        rater_medians=junction_raters.medians() if raters_loaded else {},
         steep_grades=steep_ride,
     )
     if past:
@@ -6945,8 +6948,12 @@ def _plan(
             beacons,
             events,
             when=when,
-            raters=junction_raters.near([(j.lon, j.lat) for j in raw_junctions]),
-            rater_medians=junction_raters.medians(),
+            raters=(
+                junction_raters.near([(j.lon, j.lat) for j in raw_junctions])
+                if raters_loaded
+                else ()
+            ),
+            rater_medians=junction_raters.medians() if raters_loaded else {},
         )
         waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))

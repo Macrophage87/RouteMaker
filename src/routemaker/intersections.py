@@ -581,15 +581,26 @@ def with_raters(junctions: Sequence[Junction], raters: Sequence[RaterRating]) ->
     shared = []
     for junction in out:
         if junction.rater is None:
-            names = _about(junction)
+            # Only a road both nodes cross: a turn onto a road and a turn off it 40 m on are
+            # two junctions, not one (v0.29.0 release review).
+            names = _crossed_names(junction)
             near = [
-                r for r in rated if abs(r.m - junction.m) <= MERGE_WITHIN_M and names & _about(r)
+                r
+                for r in rated
+                if abs(r.m - junction.m) <= MERGE_WITHIN_M and names & _crossed_names(r)
             ]
             if near:
                 nearest = min(near, key=lambda r: abs(r.m - junction.m))
                 junction = replace(junction, rater=nearest.rater)
         shared.append(junction)
     return shared
+
+
+def _crossed_names(junction: Junction) -> frozenset[str]:
+    """The names of the roads a junction crosses, less a two-way road named like its own
+    road in or out: a turn onto or off a road lists its opposite lanes as crossed
+    (`_crossings`)."""
+    return frozenset(name for names in _crossings(junction) for name in names)
 
 
 def rater_move(junction: Junction) -> str | None:
@@ -1372,7 +1383,25 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         move = rater_move(junction)
         level = None if move is None else junction.rater.level(move)
         if level is not None:
-            return rater_event(junction, kind, about, level, when)
+            if rater_cost_ft(level) > 0.0:
+                return rater_event(junction, kind, about, level, when)
+            # Rated below RATER_FREE_BELOW: no stress cost. At a signal the model's event is
+            # kept at nothing, so the signal still carries its points to the delay model
+            # (`_with_signal`; v0.29.0 release review); elsewhere there is nothing to say.
+            if junction.control is not Control.SIGNAL:
+                return None
+            model = assess(replace(junction, rater=None), group, when)
+            if model is None:
+                return None
+            return replace(
+                model,
+                cost_ft=0.0,
+                severity=None,
+                flagged=False,
+                untimed_ft=0.0,
+                time_band=None,
+                rater_level=level,
+            )
     if kind == "neighbourhood" or about is None:
         return None
     cost, untimed, factor = priced(junction, about, when)
@@ -2007,8 +2036,10 @@ def _with_signal(
     # same whatever the control, so read with it a rated signal's stop sign cost nothing
     # over the signal, and rating a junction hard made its lights rank cheaper (the
     # 2026-11-08 hunt, J3-4).
-    unrated = replace(junction, rating=None)
-    signalled = event if junction.rating is None else assess(unrated, group, when)
+    # The raters' level, too, is the same whatever the control (v0.29.0 release review).
+    unrated = replace(junction, rating=None, rater=None)
+    rated = junction.rating is not None or junction.rater is not None
+    signalled = assess(unrated, group, when) if rated else event
     stopped = assess(replace(unrated, control=Control.STOP), group, when)
     extra = max(
         (stopped.cost_ft if stopped is not None else 0.0)
