@@ -519,10 +519,18 @@ def test_turns_are_counted_as_the_app_counts_them() -> None:
 
 
 def test_fewer_turns_and_all_paved_are_sent_kept_and_said_missing_from_the_link(tools, api) -> None:
-    out = tools.call("plan_route", {"points": [east(0), east(4)], "fewer_turns": True})
+    out = tools.call(
+        "plan_route", {"points": [east(0), east(4)], "fewer_turns": True, "wait_weight": 4}
+    )
     assert api.routes[-1]["fewer_turns"] is True
+    assert api.routes[-1]["wait_weight"] == 4
     assert "paved" not in api.routes[-1]
-    assert any("Fewer turns" in n and "not in it" in n for n in out["notes"])
+    # Since Plan's Ride settings took them (2026-11-20), Fewer turns and the wait weight
+    # ride in the link.
+    assert "fewerturns=1" in out["link"] and "waits=4" in out["link"]
+    assert not any("Fewer turns" in n or "waits" in n for n in out.get("notes") or [])
+    paved = tools.call("plan_route", {"points": [east(0), east(4)], "paved": True})
+    assert any("All paved" in n and "not in it" in n for n in paved["notes"])
     # A revision keeps it, as Keep to roads; a new ride type too; clear_settings drops it.
     tools.call("revise_route", {"draft_id": out["draft_id"], "paved": True})
     assert api.routes[-1]["fewer_turns"] is True and api.routes[-1]["paved"] is True
