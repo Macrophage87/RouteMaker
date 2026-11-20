@@ -7360,6 +7360,7 @@ class Server:
                 # turns and the wait weight ride in the link since Plan's Ride settings took them
                 # (2026-11-20).
                 ("paved", "All paved"),
+                ("wait_weight", "the extra weight on waits"),
             )
             if plan.sent.get(key)
         ]
