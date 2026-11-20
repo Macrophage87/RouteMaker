@@ -481,6 +481,139 @@ class Rating:
     level: int
 
 
+# --- Raters' ratings of every junction (2026-11-19 junction run) -------------
+#
+# Every junction a bike rides through was rated by raters working from the lean junction
+# brief (docs/stress/briefs/, reports/bike-infra-guide/junctions-run-FINAL.md): for each
+# movement, `cross` (straight across the busiest road), `left` (off or onto it) and
+# `along` (straight on along it), a stress level on the road scale (1 to 5 in half steps)
+# and the seconds lost there, kept apart. Where a junction's node carries a rating for the
+# movement the route makes there, the rating sets the junction's stress cost in place of
+# the model's (an approved rider rating, 232, still comes first; a Mass Ride keeps its own
+# reading).
+#
+# The owner, 2026-11-20 ("Build, free below 2.5"): a rated level below 2.5 costs nothing
+# (its wait is still timed, `junction_delay`). From 2.5 up the cost is the model's own
+# scale, which the brief gave the raters ("about ... a third of a mile for 3, three
+# quarters of a mile for 4, two miles for 5"): the stopped-side crossing's 1,600 ft at 3
+# and 4,000 ft at 4 (`STOPPED_CROSSING_FT`), 2.5 and 3.5 at the midpoints, as a half-step
+# road is priced (`priced`), 5 the brief's two miles and 4.5 halfway to it (Claude's
+# default, unmeasured: a rater's 4.5 is "very hard but sometimes the only way", not an
+# LTS 4 road's 4.5, which 461a prices as LTS 4). The ride time multiplies it as it does
+# the model's own cost (`time_factor`), without the model's floors.
+RATER_FREE_BELOW = 2.5
+RATER_COST_FT = {
+    2.5: STOPPED_CROSSING_FT[3] / 2,
+    3.0: STOPPED_CROSSING_FT[3],
+    3.5: (STOPPED_CROSSING_FT[3] + STOPPED_CROSSING_FT[4]) / 2,
+    4.0: STOPPED_CROSSING_FT[4],
+    4.5: (STOPPED_CROSSING_FT[4] + 2 * FEET_PER_MILE) / 2,
+    5.0: 2 * FEET_PER_MILE,
+}
+# How near a route's node must be to a rated node (metres): the same node, as the router
+# and the run's extract place it, with room for rounding. Every node of a junction carries
+# its rating (`JunctionRater`), so a divided road's far carriageway is matched directly; a
+# node the live map has added since is given its junction's rating from the node beside it
+# (`with_raters`). Not the rider ratings' 15 m: a sidepath's crossing of a side street lies
+# that close to an arterial's junction, and would read its crossing (review, 2026-11-20).
+RATER_MATCH_M = 3.0
+RATER_MOVES = ("cross", "left", "along")
+
+
+@dataclass(frozen=True)
+class RaterRating:
+    """The raters' reading of one junction node: by movement (`RATER_MOVES`), its stress
+    level and seconds lost, or None where the movement cannot be made there (the loader
+    drops one the one-way check flags: the router only takes moves it allows)."""
+
+    lon: float
+    lat: float
+    stress: tuple[float | None, float | None, float | None]
+    delay_s: tuple[float | None, float | None, float | None]
+    # The junction's control as the raters read it ("signal", "stop", ...), for the delay
+    # scaling's classes (`junction_delay.rater_scaled`); "" where not given.
+    control: str = ""
+
+    def level(self, move: str) -> float | None:
+        return self.stress[RATER_MOVES.index(move)]
+
+    def delay(self, move: str) -> float | None:
+        return self.delay_s[RATER_MOVES.index(move)]
+
+
+def rater_cost_ft(level: float) -> float:
+    """The cost of a rated level (`RATER_COST_FT`): nothing below RATER_FREE_BELOW, the
+    level rounded down to a half step, 5 at most."""
+    if level < RATER_FREE_BELOW:
+        return 0.0
+    step = min(5.0, int(level * 2) / 2)
+    return RATER_COST_FT[step]
+
+
+def rater_at(lon: float, lat: float, raters: Sequence[RaterRating]) -> RaterRating | None:
+    """The rated node nearest (lon, lat) within RATER_MATCH_M, or None."""
+    best, best_m = None, RATER_MATCH_M
+    for rater in raters:
+        if abs(rater.lat - lat) > 0.0002:
+            continue
+        m = haversine(Point(lon, lat), Point(rater.lon, rater.lat))
+        if m <= best_m:
+            best, best_m = rater, m
+    return best
+
+
+def with_raters(junctions: Sequence[Junction], raters: Sequence[RaterRating]) -> list[Junction]:
+    """The junctions with each one's raters' reading, where a rated node is within
+    RATER_MATCH_M."""
+    if not raters:
+        return list(junctions)
+    out = []
+    for junction in junctions:
+        found = rater_at(junction.lon, junction.lat, raters)
+        out.append(replace(junction, rater=found) if found else junction)
+    # A junction of several nodes is rated at one of them: its other nodes within
+    # MERGE_WITHIN_M along the route, about a road in common (a divided road's far
+    # carriageway), take the same rating, so the road is priced as rated at both (and its
+    # crossing charged once, `_one_road`), never by the model at the far one.
+    rated = [j for j in out if j.rater is not None]
+    if not rated:
+        return out
+    shared = []
+    for junction in out:
+        if junction.rater is None:
+            names = _about(junction)
+            near = [
+                r for r in rated if abs(r.m - junction.m) <= MERGE_WITHIN_M and names & _about(r)
+            ]
+            if near:
+                nearest = min(near, key=lambda r: abs(r.m - junction.m))
+                junction = replace(junction, rater=nearest.rater)
+        shared.append(junction)
+    return shared
+
+
+def rater_move(junction: Junction) -> str | None:
+    """The raters' movement the route makes at a junction: a left is `left`; straight on
+    along the busiest road there (or with nothing crossed) is `along`, straight across a
+    busier one `cross`. A right turn has no rating: the model prices it."""
+    if junction.movement is Movement.LEFT:
+        return "left"
+    if junction.movement is not Movement.STRAIGHT:
+        return None
+    rider = junction.incoming.level
+    if not junction.continues and junction.outgoing.level > rider:
+        # Straight on onto a busier road from a side street meets its traffic as a crossing.
+        return "cross"
+    others = [r.level for r in junction.crossed if r.tier is not None]
+    if not others:
+        return "along"
+    # Riding on past side streets quieter than the rider's road, or no busier where the
+    # rider stays on the same road, is riding along it; a road as busy, met from another,
+    # is crossed (the brief: "When two roads are alike, rate the harder").
+    busiest = max(others)
+    return "along" if rider > busiest or (junction.continues and rider >= busiest) else "cross"
+
+
 # --- Flashing beacons mapped as signals ----------------------------------------
 #
 # The owner, 2026-10-20, at Connecticut Ave (MD 185) and Baltimore St, Kensington: "a
@@ -666,6 +799,8 @@ class Junction:
     # (`trace_junctions.RawJunction.ring_movement`, `ROUNDABOUT_FACTOR_ONTO`); None
     # elsewhere.
     ring_movement: Movement | None = None
+    # The raters' reading of the junction's node (`with_raters`), None where not rated.
+    rater: RaterRating | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -733,6 +868,8 @@ class Event:
     beacon: bool = field(default=False, compare=False)
     # The crossed road is a half step above `crossed_tier` on the map (2.5, 3.5, 4.5).
     crossed_half: bool = field(default=False, compare=False)
+    # The raters' level that set this event's cost (`rater_event`), or None.
+    rater_level: float | None = field(default=None, compare=False)
     # The points of the junction's nodes the model reads as signalised (its control
     # SIGNAL, shared across the junction's nodes: `share_controls`), and of every node
     # merged into it (`merge_nearby`): the junction-delay model times a wait there as a
@@ -1231,6 +1368,11 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         if kind != "neighbourhood" and about is not None:
             model = priced(junction, about, when, floors=False)[0]
         return rated(junction, kind, about, model, group)
+    if not group and junction.rater is not None:
+        move = rater_move(junction)
+        level = None if move is None else junction.rater.level(move)
+        if level is not None:
+            return rater_event(junction, kind, about, level, when)
     if kind == "neighbourhood" or about is None:
         return None
     cost, untimed, factor = priced(junction, about, when)
@@ -1365,6 +1507,54 @@ def rated(
     )
 
 
+def rater_event(
+    junction: Junction, kind: str, about: Road | None, level: float, when: str | None = None
+) -> Event | None:
+    """The event at a junction the raters rated for the movement the route makes there:
+    `rater_cost_ft` of the `level`, times the ride time's factor (`time_factor`), and the
+    colour that cost earns. None below RATER_FREE_BELOW (the owner, 2026-11-20)."""
+    base = rater_cost_ft(level)
+    if base <= 0.0:
+        return None
+    if kind == "neighbourhood" or about is None:
+        kind = "rated"
+        about = max(
+            (r for r in (junction.incoming, junction.outgoing, *junction.crossed) if r.tier),
+            key=lambda r: r.level,
+            default=junction.outgoing,
+        )
+    severe = level >= 4.0
+    factor = time_factor(when, about.urban, junction.control, severe, kind)
+    cost = base * factor
+    severity = severity_of(cost)
+    band = when if abs(cost - base) >= 1.0 else None
+    return Event(
+        junction.m,
+        junction.lon,
+        junction.lat,
+        kind,
+        junction.movement,
+        junction.control,
+        cost,
+        severity,
+        f"{reason_of(kind, about, junction.control, junction.beacon)} (rated LTS {level:g})",
+        _named_tier(about),
+        severity is not None,
+        junction.approach,
+        road_names=about.names,
+        road_display=about.display,
+        road_ways=about.ways,
+        road_oneway=about.oneway,
+        road_lanes=about.lanes,
+        time_factor=factor,
+        time_band=band,
+        untimed_ft=base,
+        beacon=junction.beacon,
+        crossed_half=_named_half(about),
+        rater_level=level,
+    )
+
+
 def with_ratings(junctions: Sequence[Junction], ratings: Sequence[Rating]) -> list[Junction]:
     """The junctions with each one's approved rating, where one is within RATING_MATCH_M."""
     if not ratings:
@@ -1467,7 +1657,9 @@ def _one_road(events: list[Event]) -> list[Event]:
         return events
     rest = [e for e in events if e not in crossings]
     worst = max(crossings, key=lambda e: e.cost_ft)
-    if not _divided(crossings):
+    # A rater's `cross` at a carriageway's node rates the whole road's crossing, refuge
+    # included: the divided road is charged once, at its dearest node.
+    if any(e.rater_level is not None for e in crossings) or not _divided(crossings):
         return [worst, *rest]
     cost = worst.cost_ft * MEDIAN_REFUGE_FACTOR
     severity = worst.severity
