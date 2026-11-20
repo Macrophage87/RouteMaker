@@ -710,9 +710,15 @@ class TestCacheParts:
         assert route_cache.key_for({"points": [], "preset": "default"}, "night", "t", "") is None
 
     def test_a_request_reads_each_approval_once(self, monkeypatch) -> None:
-        """The key and the plan it misses read the Avoid list, ratings, hazards and beacons
-        once between them; each request reads them afresh."""
-        from core import avoid_junctions, flashing_signals, junction_suggestions, mass_hazards
+        """The key and the plan it misses read the Avoid list, ratings, hazards, beacons and
+        the raters' version once between them; each request reads them afresh."""
+        from core import (
+            avoid_junctions,
+            flashing_signals,
+            junction_raters,
+            junction_suggestions,
+            mass_hazards,
+        )
 
         reads: list[str] = []
 
@@ -727,6 +733,7 @@ class TestCacheParts:
         monkeypatch.setattr(junction_suggestions, "approved_ratings", reader("ratings", ()))
         monkeypatch.setattr(mass_hazards, "approved", reader("hazards", {}))
         monkeypatch.setattr(flashing_signals, "active", reader("beacons", ()))
+        monkeypatch.setattr(junction_raters, "digest", reader("raters", ""))
 
         @route_cache.reads_approvals_once
         def request() -> None:
@@ -737,9 +744,9 @@ class TestCacheParts:
             route_cache.beacons()
 
         request()
-        assert sorted(reads) == ["avoid", "beacons", "hazards", "ratings"]
+        assert sorted(reads) == ["avoid", "beacons", "hazards", "raters", "ratings"]
         request()
-        assert len(reads) == 8
+        assert len(reads) == 10
         # Outside a request, read every time.
         route_cache.avoid_list()
         route_cache.avoid_list()

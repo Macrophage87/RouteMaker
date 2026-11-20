@@ -402,6 +402,8 @@ def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
     found = set(sidewalks.links(placed, closed=closed, walkable=walkable))
     # Street-end cut-throughs (the owner, 2026-10-28), ridden as the links are.
     found |= set(sidewalks.cut_throughs(placed, closed=closed | walkable))
+    # Crosswalks that carry a trail across a road (the owner, 2026-11-19), priced as links.
+    found |= sidewalks.trail_crossings(placed, closed=closed | walkable)
     walked = found & walkable
     for osm_id in walked:
         result.reasons.pop(osm_id, None)

@@ -924,7 +924,7 @@ export function App() {
     setScenicOnState(on);
     saveScenicLayer(on);
   };
-  // The Intervals layer (lib/intervals.ts; the owner, 2026-11-16): one switch in Plan's Layers, off by default, kept
+  // The Intervals layer (lib/intervals.ts; the owner, 2026-11-16): one switch in Go's and Plan's Layers, off by default, kept
   // on this device; its file is fetched the first time it is shown.
   const [intervalsOn, setIntervalsOnState] = useState<boolean>(() => readIntervalsLayer());
   const changeIntervalsOn = (on: boolean) => {
@@ -986,8 +986,8 @@ export function App() {
   // map, legend and panel are then about riders per minute, and otherwise as they were (OWNER-DECISIONS 325, 387).
   const [capacityTiles, setCapacityTiles] = useState(false);
   const massMap = isMassRide(preset) && capacityTiles;
-  // The Intervals layer draws in Plan only, off the Mass Ride map, as Scenic.
-  const intervalsShown = scenicShown(intervalsOn, mode, massMap);
+  // The Intervals layer draws in Go and Plan (the owner, 2026-11-18: yes to Go, for a training ride out now), off the Mass Ride map.
+  const intervalsShown = intervalsOn && !massMap;
   const intervals = useIntervals(intervalsShown);
   const intervalsDrawn = useMemo(() => (intervals.data ? intervalsAtLeast(intervals.data, intervalsMinutes) : null), [intervals.data, intervalsMinutes]);
   // The approved rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3; lib/massHazards.ts): asked for when
@@ -7310,7 +7310,7 @@ export function App() {
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
       {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !onBike} />
-      {/* Plan's alone, as Scenic (lib/intervals.ts). */}
+      {/* Go and Plan, not the Mass Ride map (lib/intervals.ts). */}
       <IntervalsOverlay getMap={getMap} on={intervalsShown} data={intervalsDrawn} />
       <BikeshareDocksOverlay
         active={docksActive}
@@ -7911,8 +7911,8 @@ export function App() {
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
-                // Not on the Mass Ride map either, where it never draws (scenicShown).
-                intervals: mode === "go" || massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
+                // Intervals: Go and Plan, not the Mass Ride map, where it never draws.
+                intervals: massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
                 bikeshare: {
                   operators: docksOperators,
