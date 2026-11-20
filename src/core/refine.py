@@ -377,6 +377,10 @@ class Context:
     # ranked (`presets.wait_weight_for`): 1; 2 on the pleasure and training ride types and
     # Tandem; 3 on Road Bike; or the request's higher `wait_weight`. The time shown is unchanged.
     wait_weight: float = 1.0
+    # What a sharp turn's or U-turn's extra and the seconds turns lose to braking count
+    # (`presets.sharp_turn_weight_for`: 1; 3 on Road Bike, 2 on Tandem; the rider's "Sharp
+    # turns", 0 to 5).
+    sharp_weight: float = 1.0
     # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
     # Road Bike, Run and Tandem, named, not read from `wait_weight`). No effect while
     # `junction_delay.BUTTONS_PRICED` is off (the owner, 2026-11-10).
@@ -612,6 +616,9 @@ class Analysis:
     # The seconds the turns lose to braking and speeding up again (`weigh_turns`), ranked as
     # a junction's wait is (`turn_m`).
     turn_lost_s: float = 0.0
+    # The sharp turns' and U-turns' extras, in turns (`TurnReading.sharp`), weighed by the
+    # rider's sharp-turn weight (`turn_m`).
+    turn_sharp: float = 0.0
 
     @property
     def ranked_turns(self) -> float:
@@ -790,8 +797,8 @@ JOG_TURN_EXTRA = 1.0
 # speeds in and out are the router's own over the stretch before the turn and the one after
 # it (`length` / `time`), so they hold the ride type's pace, the rider's own and the hills: a
 # climb's switchback costs nothing, the same turn at the foot of a descent a lot. The ranking
-# prices those seconds as it prices a junction's wait (`Context.wait_weight`: twice on the
-# pleasure and training rides, three times on Road Bike), and a turn the rider reaches no
+# prices those seconds at the ride's sharp-turn weight (`Context.sharp_weight`: three times on
+# Road Bike, the rider's "Sharp turns" from 0 to 5), and a turn the rider reaches no
 # faster than its cornering speed counts as a plain turn, without the sharp, U-turn or jog
 # extras. A turn at a junction that already has a wait (a stop, a signal, a give-way; within
 # `junction_delay.MERGE_M`) loses nothing more: the wait prices the slowing. A speed is read
@@ -827,9 +834,12 @@ def turn_lost_s(kind: int, in_ms: float | None, out_ms: float | None) -> float:
 
 @dataclass(frozen=True)
 class TurnReading:
-    """A trip's turns as the ranking weighs them: `load` in turns, `lost_s` in seconds."""
+    """A trip's turns as the ranking weighs them: `load` in turns (one each, and the jogs'
+    extras), `sharp` the sharp turns' and U-turns' extras in turns, `lost_s` in seconds. The
+    rider's sharp-turn weight (`Context.sharp_weight`) scales `sharp` and `lost_s`."""
 
     load: float = 0.0
+    sharp: float = 0.0
     lost_s: float = 0.0
 
 
@@ -860,7 +870,7 @@ def weigh_turns(trip: dict, waits: Sequence[tuple[float, float]] = ()) -> TurnRe
     no faster than its cornering speed; and the seconds the turns lose (`turn_lost_s`), none
     at a junction with a wait (`waits`, lon and lat)."""
     to_metres = 1609.344 if trip.get("units") == "miles" else 1000.0
-    load = lost = 0.0
+    load = sharp = lost = 0.0
     for leg in trip.get("legs") or []:
         maneuvers = leg.get("maneuvers") or []
         shape = routing.decode_polyline6(leg["shape"]) if waits and leg.get("shape") else []
@@ -873,9 +883,9 @@ def weigh_turns(trip: dict, waits: Sequence[tuple[float, float]] = ()) -> TurnRe
                 slow = in_ms is not None and in_ms <= corner_speed_ms(kind)
                 if not slow:
                     if kind in SHARP_TURNS:
-                        load += SHARP_TURN_EXTRA
+                        sharp += SHARP_TURN_EXTRA
                     elif kind in U_TURNS:
-                        load += U_TURN_EXTRA
+                        sharp += U_TURN_EXTRA
                     if since_m is not None and since_m < JOG_M:
                         load += JOG_TURN_EXTRA
                 if not _at_a_wait(shape, maneuver, waits):
@@ -883,12 +893,14 @@ def weigh_turns(trip: dict, waits: Sequence[tuple[float, float]] = ()) -> TurnRe
                 since_m = 0.0
             if since_m is not None:
                 since_m += float(maneuver.get("length") or 0.0) * to_metres
-    return TurnReading(load=load, lost_s=lost)
+    return TurnReading(load=load, sharp=sharp, lost_s=lost)
 
 
 def turn_load(trip: dict) -> float:
-    """The trip's turns in turns as the ranking weighs them (`weigh_turns`)."""
-    return weigh_turns(trip).load
+    """The trip's turns in turns as the ranking weighs them at a sharp-turn weight of 1
+    (`weigh_turns`)."""
+    read = weigh_turns(trip)
+    return read.load + read.sharp
 
 
 def turns_of(trip: dict) -> int:
@@ -911,7 +923,8 @@ def turn_m(read: Analysis, ctx: Context) -> float:
     (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`. The
     turns are counted as `turn_load` weighs them (`Analysis.ranked_turns`): a sharp turn, a
     U-turn or a jog counts for more than one; and the seconds they lose to braking and speeding
-    up again (`Analysis.turn_lost_s`) are added at the ride's junction-wait weight."""
+    up again (`Analysis.turn_lost_s`) are added. The sharp turns' extras and the lost seconds
+    are weighed by the rider's sharp-turn weight (`Context.sharp_weight`)."""
     if ctx.quiet_cost <= 0:
         return 0.0
     turns = read.ranked_turns
@@ -921,7 +934,8 @@ def turn_m(read: Analysis, ctx: Context) -> float:
         return 0.0
     else:
         per_turn_s = TURN_RANK_S
-    seconds = per_turn_s * turns + ctx.wait_weight * read.turn_lost_s
+    sharp = ctx.sharp_weight
+    seconds = per_turn_s * (turns + sharp * read.turn_sharp) + sharp * read.turn_lost_s
     return QUIET_COST_FACTOR * seconds / ctx.quiet_cost
 
 
@@ -1425,6 +1439,7 @@ def analyse(
         turns=turns_of(trip),
         turn_load=turns_read.load,
         turn_lost_s=turns_read.lost_s,
+        turn_sharp=turns_read.sharp,
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
@@ -3693,6 +3708,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         turns=sum(r.turns for r in reads),
         turn_load=sum(r.ranked_turns for r in reads),
         turn_lost_s=sum(r.turn_lost_s for r in reads),
+        turn_sharp=sum(r.turn_sharp for r in reads),
     )
 
 
