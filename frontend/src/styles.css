@@ -1248,6 +1248,11 @@ button.secondary {
   cursor: grab;
 }
 
+/* Go's route, locked until Edit route is open (lib/appMode.ts mapEditsLocked): the pins do not move. */
+.pin.pin-locked {
+  cursor: default;
+}
+
 .pin-start {
   background: #15803d;
 }

@@ -1972,7 +1972,8 @@ export function MapView(props: Props) {
       // dragging and clicking are the title's, for a pointer (review a11y-8).
       const locked = props.pointsLocked === true;
       element.setAttribute("aria-label", via && !locked ? `${said} Remove it from the Points list.` : said);
-      element.title = locked ? named : via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
+      if (locked) element.classList.add("pin-locked");
+      element.title = locked ? `${named} - open Edit route to change it` : via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: !locked, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
