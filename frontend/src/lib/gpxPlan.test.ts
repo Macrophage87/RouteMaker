@@ -122,6 +122,13 @@ test("an export's sliders and its points' names come back with its ride type", (
     ).dials;
   assert.deepEqual(easy("trailmaxxing"), { stress: 70, hills: 0, easyMtb: true });
   assert.equal(easy("gravel")?.easyMtb, undefined);
+  // So do Fewer turns and the rider's wait weight (Plan's Ride settings).
+  const stops = planFromGpx(
+    parseGpx(
+      writeGpx({ name: "n", description: "d", attribution: [], preset: "gravel", dials: { stress: 70, hills: 0, fewerTurns: true, waitWeight: 4 }, planPoints: points, geometry: points }),
+    ),
+  ).dials;
+  assert.deepEqual(stops, { stress: 70, hills: 0, fewerTurns: true, waitWeight: 4 });
   // Nonsense in the comment is left out, not guessed.
   const odd = planFromGpx(
     file({

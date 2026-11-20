@@ -7,7 +7,7 @@
  * sliders."
  */
 import { PRESETS, type PresetId } from "./presets.ts";
-import { offersEasyMtb, startDials, type Carrying, type Dials } from "./dials.ts";
+import { fitWaitWeight, offersEasyMtb, offersStopsAndTurns, startDials, type Carrying, type Dials } from "./dials.ts";
 
 /** A focusable element as the Tab trap sees it: a radio has a type, a group name and a state. */
 export type TabCandidate = { type?: string; name?: string; checked?: boolean };
@@ -63,6 +63,10 @@ export function choose(preset: PresetId, carrying: Carrying | null, current: Dia
     // Easy MTB trails stays between the ride types that offer it (Default, Trailmaxxing).
     ...(current.easyMtb === true && offersEasyMtb(preset) ? { easyMtb: true } : {}),
     ...(current.loop === true ? { loop: true } : {}),
+    // Fewer turns and the rider's wait weight are the rider's, as Keep to roads is (2026-11-20): kept where the new
+    // ride type takes them, the weight only where it is still above that ride type's own.
+    ...(current.fewerTurns === true && offersStopsAndTurns(preset) ? { fewerTurns: true } : {}),
+    ...(fitWaitWeight(preset, current.waitWeight) !== undefined ? { waitWeight: fitWaitWeight(preset, current.waitWeight) } : {}),
   };
 }
 

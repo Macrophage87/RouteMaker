@@ -293,8 +293,8 @@ gap in a busier road
 over, because a road rider loses their pace at every stop, and on Tandem twice, because both riders stop and
 start together. On Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Fast they count twice too, because on a
 pleasure or training ride the time is better spent riding than waiting at a light (the owner's ask; the 2 is our
-default, unmeasured). The time shown is still the real wait. An AI assistant can raise a ride type's weight, up to
-five times, never lower it.</li>
+default, unmeasured). The time shown is still the real wait. Plan's <strong>Waiting at lights and
+stops</strong> slider, or an AI assistant, can raise a ride type's weight, up to five times, never lower it.</li>
 <li><strong>Gates.</strong> The engine adds a wait at a gate whose access isn't marked<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>:
 30 seconds on every ride type. On Cargo Bike and Tandem a gate, cycle barrier or narrow bollard counts about
 15 minutes when choosing a route, though only the 30 seconds shows in the time, so their routes keep out of them
@@ -586,8 +586,17 @@ pavement<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> c
 <li><strong>Turns</strong>: each change of street counts when choosing a route, though it adds nothing to the
 time shown: 15 seconds on most ride types at every traffic setting (the owner's choice, 2026-11-12; the 15 seconds is
 our default, unmeasured), and 30 on Group Ride, Mass Ride, Fast, Road Bike and Tandem, or with
-<strong>Fewer turns</strong> picked. On the route scorecard's 38 test trips it cut turns by 4% at the Default setting with no
-more LTS 4, and by 7% near the busy end of the slider (25, near where Fast starts) for 1.7 mi more LTS 4 in all.</li>
+<strong>Fewer turns</strong> picked (a switch in Plan's Ride settings). On the route scorecard's 38 test trips it cut turns by 4% at the Default setting with no
+more LTS 4, and by 7% near the busy end of the slider (25, near where Fast starts) for 1.7 mi more LTS 4 in all.
+Some turns count for more: a sharp turn as two, a U-turn as three, and a turn within 330 ft [100 m] of the one
+before as one more, so two sharp turns close together count as five (the owner's ask, 2026-11-20; our defaults,
+unmeasured). A turn also costs the time you lose slowing for it. Each kind of turn has a speed you can take it at,
+about 20 mph [32 km/h] for a slight bend, 11.5 mph [18.5 km/h] for a plain turn, 8 mph [13 km/h] for a sharp one and
+6 mph [9 km/h] for a U-turn (our defaults). Arriving faster, you
+brake and speed up again, and those seconds count as a wait at a junction does, so they weigh most on fast rides: a
+sharp turn costs about 3 seconds at 20 mph [32 km/h] and almost nothing at 11 mph [18 km/h]. A turn where you already
+stop or wait loses no extra time, and a switchback on a climb, taken slowly anyway, counts as one plain turn. The
+turns shown on the route are still a plain count.</li>
 <li><strong>Stops and signals</strong>: the time a rider loses at each junction they give way at or wait
 at, counted as that much quiet riding: see <a href="#junction-time">Time lost at junctions</a>.</li>
 <li><strong>Closures</strong>: see <a href="#closures">Closures</a>.</li>
@@ -1382,7 +1391,11 @@ MD 198 at Fort Meade, as do ways signed for bikes and the Pentagon's public stre
 Quarries, landfills and the service roads of industrial sites close the same way, and so
 do an airport's airfield roads; public streets and the trails past them stay open. On a golf
 course the cart paths, walkways and drives close; public streets and their sidewalks,
-numbered roads, bike routes and named trails through the course stay open.</p>
+numbered roads, bike routes and named trails through the course stay open. From the next map update, a short
+crossing that is open to bikes by its own tags and joins two open paths inside a secured compound stays open, up to
+about 160 ft [50 m] long (our default), so a side path along a campus edge is not cut into pieces, as the Rockville
+Pike side path at NIH, by the Medical Center Metro, was before (the owner's ask, 2026-11-20). A sidewalk leading into the
+campus stays closed.</p>
 <p>The map shades these sites grey, with a hatch and a dashed edge, and, zoomed in, names each piece of
 one: a piece of about 0.1 sq mi [0.25 km²] or more from about a neighborhood's view, with "No public access" under it
 one step closer, and a smaller piece, such as the Marine Barracks' blocks, only close in (our defaults). Zoomed out

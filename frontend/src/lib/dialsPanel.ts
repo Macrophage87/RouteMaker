@@ -41,6 +41,11 @@ import {
   seeksClimbs,
   offersAssist,
   offersEasyMtb,
+  offersStopsAndTurns,
+  fitWaitWeight,
+  ownWaitWeight,
+  waitWeightOf,
+  WAIT_WEIGHT_MAX,
   offersTargetDistance,
   startDials,
   trailsAreOff,
@@ -98,8 +103,54 @@ export interface PanelView {
   trailsOff: TrailsOffView;
   /** The "Easy MTB trails" switch (the owner, 2026-11-08), on Default and Trailmaxxing; null on any other ride type. */
   easyMtb: EasyMtbView | null;
+  /** "Waiting at lights and stops" (the owner, 2026-11-20), on a bike of the rider's own; null on any other ride type. */
+  waits: SliderView | null;
+  /** "Fewer turns" (2026-11-20, in Plan's Ride settings), on the same ride types; null on any other. */
+  fewerTurns: FewerTurnsView | null;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;
+}
+
+/** The "Fewer turns" switch: off by default. */
+export interface FewerTurnsView {
+  label: string;
+  checked: boolean;
+  hint: string;
+  how: string;
+  howAbout: string;
+}
+
+/**
+ * Waiting at lights and stops (the owner, 2026-11-20: "Especially for pleasure and training rides, being able to spend
+ * that time riding and not waiting at a light is what matters"). API `wait_weight`, link `waits`.
+ */
+export const WAITS_LABEL = t("Waiting at lights and stops");
+export const WAITS_NOTE = t("Each second waiting counts this many seconds of riding when routes are compared.");
+export const WAITS_HOW =
+  t("Waits at signals, stop signs and gaps in traffic count this many times over when routes are compared, so a route with fewer stops can win even if it is a little longer. The wait times shown stay the real ones. The slider starts at the ride type's own weight: Road Bike 3x; Fast, Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Tandem 2x; others 1x. At 5x a red light counts its most.");
+export const FEWER_TURNS_LABEL = t("Fewer turns");
+export const FEWER_TURNS_HINT = t("Turns cost more, sharp turns and zigzags most.");
+export const FEWER_TURNS_HOW_ABOUT = t("fewer turns");
+export const FEWER_TURNS_HOW =
+  t("Each turn counts 30 seconds of riding when routes are compared, instead of 15, so a route with fewer turns wins where one is near. Sharp turns, U-turns and turns soon after another count extra either way.");
+
+/** "2x": the weight as the slider says it. */
+export function waitsWords(weight: number): string {
+  return t("{weight}x", { weight });
+}
+
+export function waitsView(preset: PresetId, weight: number): SliderView {
+  const own = ownWaitWeight(preset);
+  return {
+    min: own,
+    max: WAIT_WEIGHT_MAX,
+    step: 1,
+    words: waitsWords(weight),
+    ends: [t("Don't mind"), "", t("Rather ride")],
+    disabled: own >= WAIT_WEIGHT_MAX,
+    note: WAITS_NOTE,
+    how: WAITS_HOW,
+  };
 }
 
 /** The "Target distance" dial (OWNER-DECISIONS 256, 271), in miles first, kilometres in brackets. */
@@ -346,6 +397,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     ...(hiddenLoop ? { loop: true } : {}),
   };
   const moved =
+    fitWaitWeight(preset, dials.waitWeight) !== undefined ||
+    (dials.fewerTurns === true && offersStopsAndTurns(preset)) ||
     dials.stress !== start.stress ||
     dials.hills !== start.hills ||
     dials.targetDistanceM !== undefined ||
@@ -413,6 +466,10 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
           how: EASY_MTB_HOW,
           howAbout: EASY_MTB_HOW_ABOUT,
         }
+      : null,
+    waits: offersStopsAndTurns(preset) ? waitsView(preset, waitWeightOf(preset, draft)) : null,
+    fewerTurns: offersStopsAndTurns(preset)
+      ? { label: FEWER_TURNS_LABEL, checked: dials.fewerTurns === true, hint: FEWER_TURNS_HINT, how: FEWER_TURNS_HOW, howAbout: FEWER_TURNS_HOW_ABOUT }
       : null,
     reset: moved ? start : null,
   };

@@ -52,7 +52,8 @@ export function neighbourKinds(final: RouteResponse, go: boolean): NeighbourKind
   const kinds: NeighbourKind[] = go ? ["direct", "calmer"] : [];
   // Bikeshare's option is its ride between the same docks: More direct and Trailmaxxed only.
   if (final.preset === "bikeshare") return kinds.length ? kinds : null;
-  if (turnsOf(final) >= ASK_FEWER_TURNS_AT) kinds.push("fewer_turns");
+  // Not where the route was already planned with Fewer turns (Plan's switch, 2026-11-20): it would be the same route.
+  if (turnsOf(final) >= ASK_FEWER_TURNS_AT && final.dials?.fewer_turns !== true) kinds.push("fewer_turns");
   if (unpavedOf(final) >= PAVED_BY_M) kinds.push("paved");
   return kinds.length ? kinds : null;
 }

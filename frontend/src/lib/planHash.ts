@@ -122,6 +122,9 @@ export function encodePlan(
     if (dials.trailsOff) params.set("trailsoff", "1");
     // "Easy MTB trails" (2026-11-08), Default and Trailmaxxing only; absent is off.
     if (dials.easyMtb) params.set("easymtb", "1");
+    // Fewer turns and Waiting at lights and stops (2026-11-20, Plan's Ride settings); absent is off and the ride type's own.
+    if (dials.fewerTurns) params.set("fewerturns", "1");
+    if (typeof dials.waitWeight === "number" && dials.waitWeight > 1) params.set("waits", String(dials.waitWeight));
     // A novice rider's transit plan (v0.7.0): its bike legs as Novice and Nervous plans them.
     if (dials.noviceLegs) params.set("novice", "1");
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
@@ -203,6 +206,8 @@ export function decodePlan(hash: string): Plan {
     assist: params.get("assist") === "1",
     trailsOff: params.get("trailsoff") === "1",
     easyMtb: params.get("easymtb") === "1",
+    fewerTurns: params.get("fewerturns") === "1",
+    waitWeight: numberOrUndefined(params.get("waits")),
     noviceLegs: params.get("novice") === "1",
     ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),
     ...(params.get("ending") === "outside" ? { ending: "outside_dock" as const } : {}),

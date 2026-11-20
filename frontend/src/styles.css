@@ -5137,6 +5137,50 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-settings-body {
   padding: 16px;
 }
+/* Plan's Ride settings popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"): over the map beside the
+   sidebar, not modal, so the map bar's Route stays in reach; on a phone a sheet from the bottom, the map above it. */
+dialog.plan-ride-settings {
+  position: fixed;
+  /* Beside the sidebar (.panel ends at 412 px), so the plan stays in view; on narrower screens against the right edge. */
+  inset: 72px auto auto 424px;
+  z-index: 40;
+  width: 440px;
+  max-height: calc(100dvh - 96px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.plan-ride-settings-body {
+  padding: 16px;
+}
+dialog.plan-ride-settings h2 {
+  margin-top: 0;
+}
+dialog.plan-ride-settings h2:focus {
+  outline: none;
+}
+@media (max-width: 899px) {
+  dialog.plan-ride-settings {
+    inset: 72px 12px auto auto;
+    width: min(440px, calc(100vw - 24px));
+  }
+}
+/* Where the panel becomes a bottom sheet (720 px), the popup does too. */
+@media (max-width: 720px) {
+  dialog.plan-ride-settings {
+    inset: auto 0 0 0;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 70dvh;
+    border-radius: 16px 16px 0 0;
+  }
+}
 .ride-settings-dialog h2:focus {
   outline: none;
 }

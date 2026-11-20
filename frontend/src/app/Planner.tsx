@@ -12,7 +12,7 @@ import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { maxPointsFor } from "../lib/tripStops.ts";
 import { YOUR_LOCATION } from "../lib/appMode.ts";
-import type { PresetId } from "../lib/presets.ts";
+import { presetLabel, type PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
 import { DialsPanel } from "../DialsPanel.tsx";
 import { loopWay, loopWays, withLoopWay, type LoopView } from "../lib/loop.ts";
@@ -490,6 +490,11 @@ export interface RideSectionProps {
   hideTarget?: boolean;
   /** Offer Leave at, a day and start time (lib/startTime.ts): Plan only. */
   startTime?: boolean;
+  /**
+   * Plan (the owner, 2026-11-20: "Have it pop out to all ride parameters"): Adjust opens every ride setting in a popup,
+   * with Waiting at lights and stops and Fewer turns among them. Go keeps them under the line, without those two.
+   */
+  popout?: boolean;
 }
 
 /**
@@ -497,10 +502,10 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout } = props;
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} /> : null;
   return (
-    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection}>
+    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: presetLabel(preset) }) } : undefined}>
       <DialsPanel
         preset={preset}
         dials={dials}
@@ -509,6 +514,7 @@ export function RideSection(props: RideSectionProps) {
         ridingSpeed={ridingSpeed}
         hideTarget={hideTarget}
         startTime={startTime}
+        stopsAndTurns={popout}
       />
     </RideSettings>
   );
