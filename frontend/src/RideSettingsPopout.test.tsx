@@ -1,5 +1,5 @@
 // Plan's Ride settings popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"), with Waiting at lights
-// and stops and Fewer turns among the settings; Go keeps its settings under the line, without those two. Rendered and
+// and stops, Sharp turns and Fewer turns among the settings; Go keeps its settings under the line, without those three. Rendered and
 // looked at as the rider sees it (testSupport/render.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -96,4 +96,50 @@ test("the settings ride in the link, the request and the line's words, and stay 
   assert.equal(fast.waitWeight, 4);
   assert.equal(fast.fewerTurns, true);
   assert.equal(choose("walk", null, dials).waitWeight, undefined, "nothing to weigh on foot");
+});
+
+// Sharp turns (the owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights"): a slider of its
+// own, down to 0, apart from Waiting at lights.
+test("Sharp turns has its own slider from 0 to 5, starting at the ride type's own weight", async () => {
+  await section("road-bike", true);
+  const road = slider("Sharp turns")!;
+  assert.equal(road.getAttribute("aria-valuetext"), "3x", "Road Bike weighs sharp turns three times");
+  assert.equal(road.min, "0");
+  assert.equal(road.max, "5");
+  await section("default", true);
+  const own = [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === "Sharp turns");
+  assert.equal(own.at(-1)?.getAttribute("aria-valuetext"), "1x", "Default's own is 1x");
+});
+
+test("moving Sharp turns to 0 plans again with it and leaves the waits alone", async () => {
+  const { screen, commits } = await section("road-bike", true);
+  await click(screen.button(/Adjust$/));
+  const turns = slider("Sharp turns")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(turns), "value")?.set?.call(turns, "0");
+    turns.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    turns.dispatchEvent(new window.Event("pointerup", { bubbles: true }) as unknown as Event);
+  });
+  assert.equal(commits.at(-1)?.sharpTurnWeight, 0);
+  assert.equal(commits.at(-1)?.waitWeight, undefined);
+});
+
+test("Go has no Sharp turns slider", async () => {
+  const { screen } = await section("road-bike", false);
+  await click(screen.button(/Adjust$/));
+  assert.equal(slider("Sharp turns"), undefined);
+});
+
+test("a sharp-turn weight rides in the link, the request and the line's words; 0 included", () => {
+  const dials: Dials = { ...startDials("road-bike"), sharpTurnWeight: 0, waitWeight: 5 };
+  const plan = decodePlan(`#${encodePlan([[-77.03, 38.9], [-77.0, 38.9]], "road-bike", dials)}`.replace("##", "#"));
+  assert.equal(plan.dials?.sharpTurnWeight, 0);
+  assert.equal(dialFields(dials).sharp_turn_weight, 0);
+  assert.match(settingsSummary("road-bike", dials), /sharp turns count 0x/);
+  // The ride type's own weight is not kept or said; a weight out of range is brought back in.
+  assert.equal(fitDials("road-bike", { ...dials, sharpTurnWeight: 3 }).sharpTurnWeight, undefined);
+  assert.equal(fitDials("default", { ...dials, sharpTurnWeight: 9 }).sharpTurnWeight, 5);
+  assert.doesNotMatch(settingsSummary("road-bike", startDials("road-bike")), /sharp turns/);
+  assert.equal(choose("default", null, dials).sharpTurnWeight, 0, "kept through a change of ride type");
+  assert.equal(choose("walk", null, dials).sharpTurnWeight, undefined, "nothing to weigh on foot");
 });

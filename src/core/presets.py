@@ -933,6 +933,26 @@ WAIT_WEIGHTS = MappingProxyType(
 MAX_WAIT_WEIGHT = 5.0
 
 
+# What the time a turn loses to braking and speeding up again, and a sharp turn's or U-turn's
+# extra price, weigh when routes are ranked (`refine.turn_m`): the rider's "Sharp turns" (the
+# owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights", so apart
+# from the wait weight). Road Bike's is 3 (the owner, the same day: "Road bikes that go at 20
+# miles an hour really don't like them"); Tandem's 2, as its waits (both riders slow and
+# restart in step); every other ride type 1. A rider may set any weight from 0 (sharp turns
+# cost no more than any other turn) to MAX_SHARP_TURN_WEIGHT, below the ride type's own too.
+# Our defaults, not measured.
+SHARP_TURN_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, TANDEM: 2.0})
+MAX_SHARP_TURN_WEIGHT = 5.0
+
+
+def sharp_turn_weight_for(name: str, asked: float | None = None) -> float:
+    """How much a ride's sharp turns weigh in the ranking (`SHARP_TURN_WEIGHTS`), or the
+    rider's `asked`, held between 0 and MAX_SHARP_TURN_WEIGHT."""
+    if asked is None:
+        return SHARP_TURN_WEIGHTS.get(name, 1.0)
+    return max(0.0, min(float(asked), MAX_SHARP_TURN_WEIGHT))
+
+
 def wait_weight_for(name: str, asked: float | None = None) -> float:
     """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`), or
     `asked` where a caller asks for more, never past MAX_WAIT_WEIGHT. An ask below the ride

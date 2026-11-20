@@ -2391,6 +2391,47 @@ class TestRoadBike:
         body = {**good_body("default"), "wait_weight": asked}
         assert post(client, body).status_code == 400
 
+    @pytest.mark.parametrize(
+        ("name", "asked", "weight"),
+        [
+            ("default", None, 1.0),
+            ("road-bike", None, 3.0),
+            ("road-bike", 0.0, 0.0),
+            ("default", 4.0, 4.0),
+        ],
+    )
+    def test_the_riders_sharp_turn_weight(
+        self, name, asked, weight, client, facility_segments, router, monkeypatch
+    ):
+        """The owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at
+        lights". `sharp_turn_weight` sets the ride's own (any way, 0 to 5), apart from the
+        wait weight; the answer's dials say the weight used."""
+        seen = []
+
+        class Seen(refine.Context):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                seen.append(self)
+
+        monkeypatch.setattr(refine, "Context", Seen)
+        router(standard_router())
+        body = good_body(name)
+        if asked is not None:
+            body["sharp_turn_weight"] = asked
+        answer = post(client, body)
+        assert answer.status_code == 200
+        assert seen and {ctx.sharp_weight for ctx in seen} == {weight}
+        assert {ctx.wait_weight for ctx in seen} == {presets.wait_weight_for(name)}
+        assert answer.json()["dials"]["sharp_turn_weight"] == weight
+
+    @pytest.mark.parametrize("asked", [-1.0, 5.5, "lots"])
+    def test_a_sharp_turn_weight_out_of_range_is_refused(
+        self, asked, client, facility_segments, router
+    ):
+        router(standard_router())
+        body = {**good_body("default"), "sharp_turn_weight": asked}
+        assert post(client, body).status_code == 400
+
     def test_a_router_that_does_not_answer_falls_back_to_the_standard_map_and_says_which(
         self, client, facility_segments, router
     ):

@@ -53,6 +53,13 @@ export interface Dials {
    */
   waitWeight?: number;
   /**
+   * "Sharp turns" (the owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights"): how much a
+   * sharp turn's or U-turn's extra and the time a turn loses braking from speed count when routes are compared, 0 to
+   * SHARP_TURN_WEIGHT_MAX, below the ride type's own (`ownSharpTurnWeight`) too. Plan only; absent is the ride type's.
+   * In the link.
+   */
+  sharpTurnWeight?: number;
+  /**
    * "Easy MTB trails" (the owner, 2026-11-08), Default and Trailmaxxing only (`offersEasyMtb`): also ride the
    * mountain-bike trails rated 0 or 1, or unrated (grass and dirt), on the off-road graph as Gravel does, steering off
    * those rated 2 or harder (core/easy_mtb.py). Absent is off. In the link and a saved route; dropped on other ride types.
@@ -369,6 +376,27 @@ export function waitWeightOf(preset: PresetId, dials: Pick<Dials, "waitWeight">)
   return fitWaitWeight(preset, dials.waitWeight) ?? ownWaitWeight(preset);
 }
 
+/** A ride type's own sharp-turn weight (core/presets.py SHARP_TURN_WEIGHTS): Road Bike 3, Tandem 2, every other 1. */
+const SHARP_TURN_WEIGHTS: Partial<Record<PresetId, number>> = { "road-bike": 3, tandem: 2 };
+/** The most a rider may weigh sharp turns (core/presets.py MAX_SHARP_TURN_WEIGHT). */
+export const SHARP_TURN_WEIGHT_MAX = 5;
+
+export function ownSharpTurnWeight(preset: PresetId): number {
+  return SHARP_TURN_WEIGHTS[preset] ?? 1;
+}
+
+/** The rider's sharp-turn weight where it differs from the ride type's own and the API takes it (0 to 5), else undefined. */
+export function fitSharpTurnWeight(preset: PresetId, weight: unknown): number | undefined {
+  if (!offersStopsAndTurns(preset) || typeof weight !== "number" || !Number.isFinite(weight)) return undefined;
+  const whole = Math.max(0, Math.min(SHARP_TURN_WEIGHT_MAX, Math.round(weight)));
+  return whole !== ownSharpTurnWeight(preset) ? whole : undefined;
+}
+
+/** The sharp-turn weight the plan uses: the rider's, else the ride type's own. */
+export function sharpTurnWeightOf(preset: PresetId, dials: Pick<Dials, "sharpTurnWeight">): number {
+  return fitSharpTurnWeight(preset, dials.sharpTurnWeight) ?? ownSharpTurnWeight(preset);
+}
+
 /** Whether the ride is planned trails off: the rider's switch, or a ride type that always is. */
 export function trailsAreOff(preset: PresetId, dials: Pick<Dials, "trailsOff">): boolean {
   return trailsOffLocked(preset) || dials.trailsOff === true;
@@ -498,6 +526,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     // Fewer turns and the rider's wait weight (2026-11-20), on a ride type that takes them.
     ...(offersStopsAndTurns(preset) && dials.fewerTurns === true ? { fewerTurns: true } : {}),
     ...(fitWaitWeight(preset, dials.waitWeight) !== undefined ? { waitWeight: fitWaitWeight(preset, dials.waitWeight) } : {}),
+    ...(fitSharpTurnWeight(preset, dials.sharpTurnWeight) !== undefined ? { sharpTurnWeight: fitSharpTurnWeight(preset, dials.sharpTurnWeight) } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
     // A start time stays with the plan through a change of ride type, except onto one planned from the docks now.
@@ -532,6 +561,10 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // The rider's wait weight, only above the ride type's own (the API takes 1 to 10 and counts at most 5).
   if (typeof dials.waitWeight === "number" && Number.isFinite(dials.waitWeight) && dials.waitWeight > 1) {
     fields.wait_weight = Math.min(WAIT_WEIGHT_MAX, dials.waitWeight);
+  }
+  // The rider's sharp-turn weight, 0 included (fitDials keeps it only where it differs from the ride type's own).
+  if (typeof dials.sharpTurnWeight === "number" && Number.isFinite(dials.sharpTurnWeight)) {
+    fields.sharp_turn_weight = Math.max(0, Math.min(SHARP_TURN_WEIGHT_MAX, dials.sharpTurnWeight));
   }
   // "Easy MTB trails" (fitDials keeps it on Default and Trailmaxxing alone); absent is off.
   if (dials.easyMtb) fields.easy_mtb = true;
