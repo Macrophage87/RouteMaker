@@ -5228,6 +5228,24 @@ if (mine(1)) {
   await wide.close();
   await linked.close();
 }
+if (mine(2)) {
+  // Go's route sheet never scrolls sideways (Stephen 2026-11-20: on beta v0.29.0 it sat half off the phone, the handle
+  // at the left edge and Start cut in two). The ride types' screen-reader words (.visually-hidden, absolutely placed)
+  // were placed against the sheet, not their own sideways row, so the chips scrolled out of the row widened the sheet.
+  // At 390 px and with the phone's text at 130% (Android's font size), the chips run well past the row's edge.
+  const p = await goWith("granted", { hash: hashFor("default", 70), init: "document.addEventListener('DOMContentLoaded', () => { document.documentElement.style.fontSize = '130%'; });" });
+  await p.waitFor("!!document.querySelector('.go-sheet .ride-chips .chip')", 20000);
+  await sleep(500);
+  const sideways = () => p.eval(`(() => { const s = document.querySelector('.panel .panel-scroll'); const row = document.querySelector('.go-sheet .ride-chips');
+    return { sheet: s.scrollWidth - s.clientWidth, row: row.scrollWidth - row.clientWidth, page: document.documentElement.scrollWidth - innerWidth }; })()`);
+  const before = await sideways();
+  check("go: with a route at 390 px and 130% text, the ride types scroll in their own row and the sheet has nothing to scroll sideways",
+    before.row > 100 && before.sheet <= 0 && before.page <= 0, JSON.stringify(before));
+  // A sideways push on the sheet (a swipe, or a focus moved into a chip) leaves it where it is.
+  const pushed = await p.eval("(() => { const s = document.querySelector('.panel .panel-scroll'); s.scrollLeft = 9999; document.querySelector('.go-sheet .ride-chips .chip:last-of-type')?.focus(); return s.scrollLeft; })()");
+  check("go: the route sheet cannot be pushed sideways", pushed === 0, JSON.stringify({ pushed }));
+  await p.close();
+}
 if (mine(1)) {
   // The main flow (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): open Go, type a
   // destination, then the taps are counted: Where to? (1), the place picked (2) and Start ride (3), with no question
