@@ -138,6 +138,7 @@ from . import (
     barriers,
     beside_roads,
     easy_mtb,
+    junction_raters,
     mass_hazards,
     mass_rails,
     mtb,
@@ -3495,6 +3496,8 @@ def junction_waits(
     stop_s_per_ft: float | None = None,
     button_cache: dict | None = None,
     when: str | None = None,
+    raters: Sequence = (),
+    rater_medians: dict | None = None,
 ) -> list[junction_delay.Wait]:
     """A route's junction waits (`routemaker.junction_delay.waits`), read as `plan` and the
     calm search read them: stop signs taken as yields in the District, the beacons, and the
@@ -3502,7 +3505,9 @@ def junction_waits(
     waiting a foot of the junction model's cost is worth) its stop-sign prices, where there
     are `events`; suburban signals by `suburban_signal`, the map's beg buttons by
     `button_ways` (`button_cache`: its answers kept for the plan); a signal's time shown by
-    the ride-time setting `when` (None: not known)."""
+    the ride-time setting `when` (None: not known). With `raters` (`core.junction_raters`)
+    and their `rater_medians`, a wait at a rated junction is scaled by its rated seconds
+    (`junction_delay.rater_scaled`)."""
     junctions = list(junctions)
     signals = intersections.signal_points(events)
     stop_extra = None
@@ -3510,7 +3515,7 @@ def junction_waits(
         stop_extra = {
             point: ft * stop_s_per_ft for point, ft in intersections.stop_extra_ft(events).items()
         }
-    return junction_delay.waits(
+    found = junction_delay.waits(
         junctions,
         stop_as_yield,
         lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
@@ -3523,6 +3528,7 @@ def junction_waits(
         stop_extra_s=stop_extra,
         when=when,
     )
+    return junction_delay.rater_scaled(found, junctions, raters, rater_medians or {})
 
 
 def _outside_dc(piece) -> bool:
@@ -5613,6 +5619,9 @@ def _plan(
     junction_ratings = route_cache.junction_ratings()
     # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
     beacons = route_cache.beacons()
+    # The raters' junction ratings, read only where any are loaded. A Mass Ride's junction
+    # reading keeps its own stress (`refine.events_of_raws`); its waits are scaled as any.
+    raters_loaded = junction_raters.loaded()
     # The rider's target distance counts at the top of the slider only, and never on a ride's
     # re-plan (`ride_replan`): the target is the whole ride's, and the re-plan is the rest of
     # it from where the rider is. Held to it, the rest could take up to 1.25 times the whole
@@ -6250,6 +6259,8 @@ def _plan(
         avoid=avoid_list,
         junction_ratings=junction_ratings,
         beacons=beacons,
+        raters=junction_raters.near if raters_loaded else None,
+        rater_medians=junction_raters.medians() if raters_loaded else {},
         steep_grades=steep_ride,
     )
     if past:
@@ -6932,7 +6943,18 @@ def _plan(
         # (`routemaker.junction_delay`): part of the time shown.
         # Outside the major cities a signal across a big road waits longer (the owner,
         # 2026-11-08).
-        found_waits = junction_waits(raw_junctions, beacons, events, when=when)
+        found_waits = junction_waits(
+            raw_junctions,
+            beacons,
+            events,
+            when=when,
+            raters=(
+                junction_raters.near([(j.lon, j.lat) for j in raw_junctions])
+                if raters_loaded
+                else ()
+            ),
+            rater_medians=junction_raters.medians() if raters_loaded else {},
+        )
         waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
         route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)

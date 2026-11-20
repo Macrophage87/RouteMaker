@@ -72,7 +72,7 @@ test("the trails' own switch, inside, follows the same rule: no unavailable hint
   assert.match(sheets, /<MtbTrailsSwitch [^\n]*overlay=\{stressShowable\(stress\)\} \/>/);
 });
 
-test("in Plan, Interval stretches sit beside Climbs and count in the section switch; in Go they are left out", () => {
+test("Interval stretches sit beside Climbs and count in the section switch; left out where they are not offered (Mass Ride)", () => {
   assert.deepEqual(keys({ ...all, intervals: false }), ["mtb", "climbs", "intervals", "topo"]);
   assert.deepEqual(keys(all), ["mtb", "climbs", "topo"]);
   assert.equal(sectionState(terrainLayers({ ...all, intervals: true })), "some");
@@ -80,9 +80,10 @@ test("in Plan, Interval stretches sit beside Climbs and count in the section swi
   assert.equal(terrainStatus(false, { ...all, intervals: false, intervalsStatus: "Unavailable." }), "");
 });
 
-test("in Plan, with Interval stretches in it, the section says training too; Go keeps its name", async () => {
-  assert.equal(terrainTitle(true), "Trails, terrain and training");
-  assert.equal(terrainTitle(false), "Trails and terrain");
+test("with Interval stretches in it, the section says training too; without, or in a language that lacks that name, it keeps the old one", async () => {
+  assert.equal(terrainTitle(true, false), "Trails, terrain and training");
+  assert.equal(terrainTitle(false, false), "Trails and terrain");
+  assert.equal(terrainTitle(true, true), "Trails and terrain", "French, Arabic and the rest keep their translated name in Go");
   const html = renderToStaticMarkup(createElement(LayerSection, { id: "terrain", title: terrainTitle(true), layers: terrainLayers({ ...all, intervals: false }), onLayers: () => {} }));
   assert.match(html, /<h3 id="terrain-heading">Trails, terrain and training<\/h3>/);
 });
