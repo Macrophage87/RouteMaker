@@ -510,11 +510,12 @@ RATER_COST_FT = {
     4.5: (STOPPED_CROSSING_FT[4] + 2 * FEET_PER_MILE) / 2,
     5.0: 2 * FEET_PER_MILE,
 }
-# How near a route's node must be to a rated junction's point (metres), nearest first: a
-# junction of several nodes (a divided road's carriageways) has one point for all of them,
-# so the reach is the rider ratings' (RATING_MATCH_M), which takes in a divided road's two
-# carriageway nodes and stays short of the next junction.
-RATER_MATCH_M = RATING_MATCH_M
+# How near a route's node must be to a rated junction's node (metres): the same node, as
+# the router and the export place it, with room for rounding. Not the rider ratings' 15 m:
+# a sidepath's crossing of a side street lies that close to the arterial's junction, and
+# would read its crossing (review, 2026-11-20). A junction's other nodes (a divided road's
+# far carriageway) take its rating from the node beside them (`with_raters`).
+RATER_MATCH_M = 3.0
 RATER_MOVES = ("cross", "left", "along")
 
 
@@ -569,7 +570,25 @@ def with_raters(junctions: Sequence[Junction], raters: Sequence[RaterRating]) ->
     for junction in junctions:
         found = rater_at(junction.lon, junction.lat, raters)
         out.append(replace(junction, rater=found) if found else junction)
-    return out
+    # A junction of several nodes is rated at one of them: its other nodes within
+    # MERGE_WITHIN_M along the route, about a road in common (a divided road's far
+    # carriageway), take the same rating, so the road is priced as rated at both (and its
+    # crossing charged once, `_one_road`), never by the model at the far one.
+    rated = [j for j in out if j.rater is not None]
+    if not rated:
+        return out
+    shared = []
+    for junction in out:
+        if junction.rater is None:
+            names = _about(junction)
+            near = [
+                r for r in rated if abs(r.m - junction.m) <= MERGE_WITHIN_M and names & _about(r)
+            ]
+            if near:
+                nearest = min(near, key=lambda r: abs(r.m - junction.m))
+                junction = replace(junction, rater=nearest.rater)
+        shared.append(junction)
+    return shared
 
 
 def rater_move(junction: Junction) -> str | None:
@@ -587,8 +606,11 @@ def rater_move(junction: Junction) -> str | None:
     others = [r.level for r in junction.crossed if r.tier is not None]
     if not others:
         return "along"
-    # Staying on the same road past side streets no busier than it is riding along it.
-    return "along" if junction.continues and rider >= max(others) else "cross"
+    # Riding on past side streets quieter than the rider's road, or no busier where the
+    # rider stays on the same road, is riding along it; a road as busy, met from another,
+    # is crossed (the brief: "When two roads are alike, rate the harder").
+    busiest = max(others)
+    return "along" if rider > busiest or (junction.continues and rider >= busiest) else "cross"
 
 
 # --- Flashing beacons mapped as signals ----------------------------------------

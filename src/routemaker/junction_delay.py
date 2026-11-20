@@ -685,13 +685,15 @@ def rater_ratio(
     return min(max(seconds / median, RATER_RATIO_MIN), RATER_RATIO_MAX)
 
 
-def _rater_move(junction: RawJunction) -> str:
-    """The raters' movement for a wait at `junction`: a left is `left`; at a signal, riding
-    along the busiest road is `along` (`signal_crossed_rank`); any other wait is crossing
-    or joining a road (`cross`)."""
+def _rater_move(junction: RawJunction, signal: bool) -> str:
+    """The raters' movement for a wait at `junction`: a left is `left`; at a signal
+    (`signal`: the run is timed as one, a signal the junction model shares across the
+    junction's nodes included), riding along the busiest road is `along`, read as the
+    measured passes were counted (`signal_wait`); any other wait is crossing or joining a
+    road (`cross`)."""
     if junction.movement is Movement.LEFT:
         return "left"
-    if junction.signal:
+    if signal:
         crossed = signal_crossed_rank(junction)
         if crossed is None or crossed >= _own_rank(junction):
             return "along"
@@ -705,17 +707,23 @@ def rater_scaled(
     medians: Mapping[tuple[str, str], float],
 ) -> list[Wait]:
     """The waits with each one at a rated junction scaled by `rater_ratio`: its seconds
-    shown and as ranked, and its red, alike."""
+    shown and as ranked, and its red, alike. A run's first node can be a stop line or a
+    divided road's near carriageway short of the rated node, so the run's nodes within
+    SIGNAL_MERGE_M of its start are read, nearest first."""
     if not raters or not medians:
         return list(found)
-    at = {j.m: j for j in junctions}
+    ordered = sorted(junctions, key=lambda j: j.m)
     out = []
     for wait in found:
-        junction = at.get(wait.m)
-        rater = rater_at(wait.lon, wait.lat, raters)
         ratio = None
-        if junction is not None and rater is not None:
-            ratio = rater_ratio(rater, _rater_move(junction), medians)
+        for junction in ordered:
+            if junction.m < wait.m or junction.m - wait.m > SIGNAL_MERGE_M:
+                continue
+            rater = rater_at(junction.lon, junction.lat, raters)
+            if rater is not None:
+                move = _rater_move(junction, wait.red_s is not None)
+                ratio = rater_ratio(rater, move, medians)
+                break
         if ratio is None:
             out.append(wait)
             continue

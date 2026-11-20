@@ -106,12 +106,37 @@ def test_a_quiet_junction_the_raters_find_hard_costs_something() -> None:
 
 
 def test_with_raters_matches_the_node_only() -> None:
-    # A degree of longitude at 38.9 N is about 86.6 km: 0.0001 is about 9 m, 0.0003 26 m.
-    near = rater(cross=3.0, lon=-77.0001)
-    nearer = rater(cross=4.0, lon=-77.00001)
-    far = rater(cross=3.0, lon=-77.0003)
-    assert m.with_raters([junction()], [near, nearer])[0].rater == nearer
-    assert m.with_raters([junction()], [far])[0].rater is None
+    # A degree of longitude at 38.9 N is about 86.6 km: 0.00001 is about 0.9 m, 0.0001 9 m.
+    same = rater(cross=4.0, lon=-77.00001)
+    beside = rater(cross=4.0, lon=-77.0001)
+    assert m.with_raters([junction()], [same])[0].rater == same
+    # A sidepath's crossing of a side street 9 m from the arterial's rated junction is its
+    # own junction: it never reads the arterial's crossing (review, 2026-11-20).
+    assert m.with_raters([junction()], [beside])[0].rater is None
+
+
+def test_a_divided_roads_far_carriageway_takes_the_near_nodes_rating() -> None:
+    side = replace(BUSY, oneway=True, ways=frozenset({1}))
+    other = replace(BUSY, oneway=True, ways=frozenset({2}))
+    near = junction(crossed=(side,))
+    far = junction(m=25.0, lon=-76.9997, crossed=(other,))
+    for level, cost in ((2.0, None), (4.0, 4000.0)):
+        built = m.with_raters([near, far], [rater(cross=level)])
+        assert all(j.rater is not None for j in built)
+        events = m.merge_nearby([e for e in map(m.assess, built) if e is not None])
+        if cost is None:
+            assert events == []
+        else:
+            assert len(events) == 1 and events[0].cost_ft == pytest.approx(cost)
+
+
+def test_riding_on_where_the_name_changes_is_riding_along() -> None:
+    renamed = replace(BUSY, names=frozenset({"new rd"}))
+    j = junction(incoming=BUSY, outgoing=renamed, crossed=(QUIET,), continues=False)
+    assert m.rater_move(j) == "along"
+    # Two roads alike, met from one onto the other's crossing: the crossing is rated.
+    alike = junction(incoming=BUSY, outgoing=BUSY, crossed=(replace(BUSY, names=frozenset()),))
+    assert m.rater_move(alike) == "cross"
 
 
 def test_a_divided_road_rated_at_both_carriageways_is_charged_once() -> None:
@@ -194,6 +219,18 @@ def test_an_unrated_wait_or_no_medians_keeps_the_model() -> None:
     far = replace(_signal_rater(60.0), lon=-77.01)
     assert d.rater_scaled(found, [raw], [far], MEDIANS) == found
     assert d.rater_scaled(found, [raw], [_signal_rater(60.0)], {}) == found
+
+
+def test_a_run_reads_the_rated_node_past_its_first() -> None:
+    from routemaker import junction_delay as d
+
+    # The run starts at a stop line 10 m short of the rated signal node.
+    stop_line = _raw(m=90.0, lon=-77.0002, others=(), other_classes=(), other_headings=())
+    raw = _raw()
+    found = d.waits([stop_line, raw])
+    assert len(found) == 1
+    scaled = d.rater_scaled(found, [stop_line, raw], [_signal_rater(45.0)], MEDIANS)
+    assert scaled[0].seconds == pytest.approx(found[0].seconds * 1.5)
 
 
 def test_a_left_reads_the_left_seconds() -> None:

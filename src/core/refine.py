@@ -462,6 +462,8 @@ class Context:
     # (`core.junction_raters.medians`), which scale the waits (`junction_delay.rater_scaled`).
     raters: Callable[[Sequence[tuple[float, float]]], tuple] | None = None
     rater_medians: dict = field(default_factory=dict)
+    # `raters_of`'s reads, by the junctions' points.
+    rater_reads: dict = field(default_factory=dict)
     # A Mass Ride or a Novice and Nervous ride: steep grades either way are priced
     # (`routemaker.steep_grades`, the owner, 2026-10-26), in `Analysis.hill_m`.
     steep_grades: bool = False
@@ -1107,10 +1109,16 @@ def locator(variant: str, deadline: routing.Deadline, located: dict | None = Non
 
 
 def raters_of(raws, ctx: Context) -> tuple:
-    """The raters' junction ratings near the route's junctions (`Context.raters`)."""
+    """The raters' junction ratings near the route's junctions (`Context.raters`), read
+    once for a set of junctions and kept for the plan (the events and the waits ask alike)."""
     if ctx.raters is None or not raws:
         return ()
-    return tuple(ctx.raters([(raw.lon, raw.lat) for raw in raws]))
+    points = tuple((raw.lon, raw.lat) for raw in raws)
+    kept = ctx.rater_reads.get(points)
+    if kept is None:
+        # A plan's threads may read the same set at once: both read it, and either keeps it.
+        kept = ctx.rater_reads[points] = tuple(ctx.raters(points))
+    return kept
 
 
 def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | None:

@@ -15,7 +15,7 @@ import threading
 from collections.abc import Sequence
 
 from django.db import DatabaseError, connection
-from django.db.models import Count, Max
+from django.db.models import Max
 
 from routemaker.intersections import RATER_MATCH_M, RATER_MOVES, RaterRating
 
@@ -34,35 +34,39 @@ _memo: tuple[tuple, dict[tuple[str, str], float]] | None = None
 def _version() -> tuple:
     from .models import JunctionRater
 
-    seen = JunctionRater.objects.aggregate(n=Count("id"), last=Max("id"), at=Max("loaded_at"))
-    return (seen["n"], seen["last"], seen["at"])
+    # A load replaces every row, so its rows' ids are all new: the highest id (read from the
+    # primary key's index, not the table) says which load is in.
+    return (JunctionRater.objects.aggregate(last=Max("id"))["last"],)
 
 
-def _row(row) -> RaterRating:
-    return RaterRating(
-        row.location.x,
-        row.location.y,
-        (row.cross_stress, row.left_stress, row.along_stress),
-        (row.cross_delay_s, row.left_delay_s, row.along_delay_s),
-        row.control,
-    )
+_NEAR_SQL = """
+SELECT DISTINCT t.id, ST_X(t.location), ST_Y(t.location), t.control,
+       t.cross_stress, t.left_stress, t.along_stress,
+       t.cross_delay_s, t.left_delay_s, t.along_delay_s
+FROM {table} AS t
+JOIN unnest(%s::float8[], %s::float8[]) AS p(lon, lat)
+  ON ST_DWithin(t.location, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326), %s)
+"""
 
 
 def near(points: Sequence[tuple[float, float]]) -> tuple[RaterRating, ...]:
-    """The rated junctions within reach of any of `points` (lon, lat)."""
-    from django.contrib.gis.geos import MultiPoint, Point
-
+    """The rated junctions within reach of any of `points` (lon, lat): each point asks the
+    location index on its own, so a long route reads only its own corridor."""
     from .models import JunctionRater
 
     if not points:
         return ()
+    sql = _NEAR_SQL.format(table=JunctionRater._meta.db_table)
     found: dict[int, RaterRating] = {}
     try:
-        for start in range(0, len(points), _BATCH):
-            chunk = MultiPoint([Point(lon, lat) for lon, lat in points[start : start + _BATCH]])
-            chunk.srid = 4326
-            for row in JunctionRater.objects.filter(location__dwithin=(chunk, _REACH_DEG)):
-                found[row.id] = _row(row)
+        with connection.cursor() as cursor:
+            for start in range(0, len(points), _BATCH):
+                chunk = points[start : start + _BATCH]
+                cursor.execute(sql, [[p[0] for p in chunk], [p[1] for p in chunk], _REACH_DEG])
+                for row in cursor.fetchall():
+                    found[row[0]] = RaterRating(
+                        row[1], row[2], tuple(row[4:7]), tuple(row[7:10]), row[3] or ""
+                    )
     except DatabaseError:
         logger.warning("the junction ratings could not be read", exc_info=True)
         return ()

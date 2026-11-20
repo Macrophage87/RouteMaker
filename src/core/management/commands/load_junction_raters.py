@@ -83,7 +83,7 @@ def read_key(lines) -> dict[str, tuple[float, float]]:
             continue
         item = json.loads(line)
         lon, lat = _number(str(item.get("lon"))), _number(str(item.get("lat")))
-        if lon is not None and lat is not None:
+        if item.get("junction") and lon is not None and lat is not None:
             out[item["junction"]] = (lon, lat)
     return out
 
