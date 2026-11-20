@@ -305,7 +305,7 @@ import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, mapEditsLocked, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 // Ride mode, its graphs and its detours: loaded on first use, and once the page is idle. What App needs at Start (the
 // voice's unlock inside the press, the start and end sentences) is in rideStart.ts. A Start or Resume before the code
 // is in waits for it (beginRide, resumeLeft), so a ride never shows without its screen.
@@ -6871,6 +6871,8 @@ export function App() {
   };
   // Review (lib/appMode.ts): the panel holds the queues and the map their roads; the plan stays as it was, unshown.
   const reviewing = mode === "review" && canReview;
+  // Go's route stays as it is on the map until Edit route is open (lib/appMode.ts mapEditsLocked).
+  const editsLocked = mapEditsLocked(mode, view === "points");
   // Go's routes to choose from, all on the map in their colours, a press on one choosing it (lib/routeChoice.ts; the
   // owner, 2026-10-19). Not while riding, in Review, on a stale route, or while the way round an Avoid junction shows.
   const choicesDrawn = mode === "go" && !riding && !reviewing && !stale && !planEdited && !aroundAvoid && shown !== null;
@@ -7189,18 +7191,19 @@ export function App() {
         coveredBelow={coveredBelow}
         onStressAvailability={setStress}
         onMapClick={onBike || reviewing ? ignore : tapMap}
-        onMovePoint={onBike ? ignore : move}
-        lineEdit={riding || reviewing ? null : lineEdit}
+        onMovePoint={onBike || editsLocked ? ignore : move}
+        pointsLocked={editsLocked}
+        lineEdit={riding || reviewing || editsLocked ? null : lineEdit}
         choices={choices}
         routeColour={routeColour}
         onPickRoute={choicesDrawn ? choose : undefined}
-        onLineDrop={riding || reviewing ? ignore : insertOnLine}
+        onLineDrop={riding || reviewing || editsLocked ? ignore : insertOnLine}
         pressSetsEnd={goTapSetsEnd(mode)}
-        onRemovePoint={riding ? ignore : removeFromMap}
-        onSwitchKind={riding ? ignore : switchKind}
+        onRemovePoint={riding || editsLocked ? ignore : removeFromMap}
+        onSwitchKind={riding || editsLocked ? ignore : switchKind}
         // A Ctrl+click is a stop, its name asked first (2026-10-24); in Go only once there is a route to add it to.
-        onStopAt={onBike || reviewing || (goTapSetsEnd(mode) && points.length < 2) ? undefined : askStopAt}
-        onRenameStop={onBike || reviewing ? undefined : renameStop}
+        onStopAt={onBike || reviewing || editsLocked || (goTapSetsEnd(mode) && points.length < 2) ? undefined : askStopAt}
+        onRenameStop={onBike || reviewing || editsLocked ? undefined : renameStop}
         rideStops={riding ? (rideView?.stops ?? null) : null}
         // The route's notes: on the map in Plan, Go and a ride; in Plan each opens to change or remove it.
         routeNotes={reviewing || roaming ? null : notes}
