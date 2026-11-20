@@ -1649,7 +1649,6 @@ dialog.ride-types::backdrop {
 }
 
 .ride-sheet-cards .ride-type-card > button:not(.ride-fav) {
-  align-items: start;
   min-height: 44px;
   padding: 10px 12px;
 }
