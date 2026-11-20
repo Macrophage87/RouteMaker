@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import gzip
 import io
-import json
 from dataclasses import replace
 
 import pytest
@@ -258,9 +257,13 @@ CSV = "\n".join(
         "j3,none,cross,2,5,first pass sonnet,",
     ]
 )
-KEY = "\n".join(
-    json.dumps({"junction": j, "lon": lon, "lat": 38.9})
-    for j, lon in (("j1", -77.0), ("j2", -77.01))
+NODES = "\n".join(
+    [
+        "junction\tnode\tlon\tlat",
+        "j1\t1\t-77.0\t38.9",
+        "j1\t5\t-76.9997\t38.9",
+        "j2\t2\t-77.01\t38.9",
+    ]
 )
 
 
@@ -268,9 +271,9 @@ def _files(tmp_path):
     ratings = tmp_path / "ratings.csv.gz"
     with gzip.open(ratings, "wt", encoding="utf-8") as out:
         out.write(CSV + "\n")
-    key = tmp_path / "key.jsonl"
-    key.write_text(KEY + "\n")
-    return str(ratings), str(key)
+    nodes = tmp_path / "junction-nodes.tsv"
+    nodes.write_text(NODES + "\n")
+    return str(ratings), str(nodes)
 
 
 @pytest.mark.django_db
@@ -280,10 +283,10 @@ def test_the_loader_is_dry_unless_confirmed(tmp_path) -> None:
     out = io.StringIO()
     call_command("load_junction_raters", *_files(tmp_path), stdout=out)
     text = out.getvalue()
-    assert "2 junctions, 5 movements rated" in text
+    assert "2 junctions at 3 nodes, 5 movements rated" in text
     assert "dropped 1 movements: one-way flag" in text
     assert "dropped 1 movements: cannot be made" in text
-    assert "dropped 1 junctions: no position" in text
+    assert "dropped 1 junctions: no nodes" in text
     assert JunctionRater.objects.count() == 0
 
 
@@ -294,8 +297,10 @@ def test_a_confirmed_load_replaces_the_table_and_reads_near_a_route(tmp_path) ->
 
     call_command("load_junction_raters", *_files(tmp_path), "--confirm", stdout=io.StringIO())
     call_command("load_junction_raters", *_files(tmp_path), "--confirm", stdout=io.StringIO())
-    assert JunctionRater.objects.count() == 2
-    found = junction_raters.near([(-77.00005, 38.9)])
+    assert JunctionRater.objects.count() == 3
+    # Both of j1's nodes carry its rating.
+    assert len(junction_raters.near([(-76.9997, 38.9)])) == 1
+    found = junction_raters.near([(-77.00002, 38.9)])
     assert len(found) == 1
     rated = found[0]
     assert rated.control == "signal"

@@ -308,11 +308,12 @@ a stress level on the road scale and the seconds a rider loses there, kept as tw
 The movements are `cross` (straight across the busiest road), `left` (off or onto it) and
 `along` (straight on along it). The run is described in
 `reports/bike-infra-guide/junctions-run-FINAL.md`, in the project files.
-`manage.py load_junction_raters` loads it into `JunctionRater`, replacing every row. It
+`manage.py load_junction_raters` loads it into `JunctionRater`, one row for each node of a junction, replacing every row. It
 drops a movement that cannot be made, and one the one-way check flags, because the router
 already knows which moves are legal. A plan reads the rows within reach of its nodes
-(`core.junction_raters.near`). The reach is `RATER_MATCH_M`, 15 m, the rider ratings'
-reach, because a junction of several nodes has one point.
+(`core.junction_raters.near`). A route's node matches a rated node within
+`RATER_MATCH_M`, 3 m, so the same node. A sidepath's crossing a few metres from an
+arterial's junction never reads the arterial's crossing.
 
 - **Stress.** The movement the route makes at a rated junction (`rater_move`: a left is
   `left`; staying on a road past streets no busier is `along`; otherwise `cross`) sets

@@ -510,11 +510,12 @@ RATER_COST_FT = {
     4.5: (STOPPED_CROSSING_FT[4] + 2 * FEET_PER_MILE) / 2,
     5.0: 2 * FEET_PER_MILE,
 }
-# How near a route's node must be to a rated junction's node (metres): the same node, as
-# the router and the export place it, with room for rounding. Not the rider ratings' 15 m:
-# a sidepath's crossing of a side street lies that close to the arterial's junction, and
-# would read its crossing (review, 2026-11-20). A junction's other nodes (a divided road's
-# far carriageway) take its rating from the node beside them (`with_raters`).
+# How near a route's node must be to a rated node (metres): the same node, as the router
+# and the run's extract place it, with room for rounding. Every node of a junction carries
+# its rating (`JunctionRater`), so a divided road's far carriageway is matched directly; a
+# node the live map has added since is given its junction's rating from the node beside it
+# (`with_raters`). Not the rider ratings' 15 m: a sidepath's crossing of a side street lies
+# that close to an arterial's junction, and would read its crossing (review, 2026-11-20).
 RATER_MATCH_M = 3.0
 RATER_MOVES = ("cross", "left", "along")
 

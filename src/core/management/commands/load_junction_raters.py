@@ -7,14 +7,18 @@ from its folder:
 - `junctions-stress-delay.csv.gz`: one row per junction and movement (`junction`, `movement`,
   `stress`, `delay_s`, `control_tagged`, `oneway_flag`, ...). `stress` and `delay_s` are the
   final values; blank where the movement cannot be made.
-- `key.jsonl`: one line per junction with its `lon` and `lat`.
+- `junction-nodes.tsv`: one line per node of each junction (`junction`, `node`, `lon`, `lat`,
+  tab-separated, with a header). A junction of several nodes (a divided road's carriageways)
+  is one rating at each of its nodes, which a route's node is matched to
+  (`intersections.RATER_MATCH_M`). The positions are the run's extract's: a node the live
+  map has moved or dropped is simply not matched.
 
 A movement the one-way check flags (`oneway_flag`) is dropped: the router knows which moves
 are legal, and a rating for one that cannot be made would be read for a move that can. The
 load replaces every row, from the next plan, with no rebuild. Dry unless `--confirm`: it says
 how many junctions and movements it would load and what it dropped.
 
-    python manage.py load_junction_raters <csv.gz> <key.jsonl>
+    python manage.py load_junction_raters <csv.gz> <junction-nodes.tsv>
     # read what it would do, then the same with --confirm
 """
 
@@ -23,7 +27,6 @@ from __future__ import annotations
 import csv
 import gzip
 import io
-import json
 import math
 from collections import Counter
 from pathlib import Path
@@ -75,16 +78,21 @@ def read_ratings(lines, counts: Counter) -> dict[str, dict]:
     return found
 
 
-def read_key(lines) -> dict[str, tuple[float, float]]:
-    """By junction id, its (lon, lat)."""
-    out = {}
-    for line in lines:
-        if not line.strip():
+def read_nodes(lines) -> dict[str, list[tuple[int, float, float]]]:
+    """By junction id, its nodes as (node id, lon, lat)."""
+    out: dict[str, list[tuple[int, float, float]]] = {}
+    reader = csv.DictReader(lines, delimiter="\t")
+    missing = {"junction", "node", "lon", "lat"} - set(reader.fieldnames or ())
+    if missing:
+        raise CommandError(f"the nodes file has no {sorted(missing)} column")
+    for row in reader:
+        lon, lat = _number(row["lon"]), _number(row["lat"])
+        try:
+            node = int(row["node"])
+        except (TypeError, ValueError):
             continue
-        item = json.loads(line)
-        lon, lat = _number(str(item.get("lon"))), _number(str(item.get("lat")))
-        if item.get("junction") and lon is not None and lat is not None:
-            out[item["junction"]] = (lon, lat)
+        if row["junction"] and lon is not None and lat is not None:
+            out.setdefault(row["junction"], []).append((node, lon, lat))
     return out
 
 
@@ -99,7 +107,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("ratings", help="junctions-stress-delay.csv.gz")
-        parser.add_argument("key", help="key.jsonl (each junction's lon and lat)")
+        parser.add_argument("nodes", help="junction-nodes.tsv (each junction's nodes)")
         parser.add_argument("--confirm", action="store_true", help="write the rows")
 
     def handle(self, *args, **options):
@@ -110,39 +118,48 @@ class Command(BaseCommand):
         counts: Counter = Counter()
         with _open(Path(options["ratings"])) as lines:
             ratings = read_ratings(lines, counts)
-        with _open(Path(options["key"])) as lines:
-            key = read_key(lines)
+        with _open(Path(options["nodes"])) as lines:
+            nodes = read_nodes(lines)
         now = timezone.now()
         rows = []
+        junctions = 0
         for junction, item in ratings.items():
-            point = key.get(junction)
-            if point is None:
+            found = nodes.get(junction)
+            if not found:
                 counts["no position"] += 1
                 continue
+            junctions += 1
             fields = {}
             for move in MOVES:
                 stress, delay = item.get(move, (None, None))
                 fields[f"{move}_stress"] = stress
                 fields[f"{move}_delay_s"] = delay
-            rows.append(
-                JunctionRater(
-                    junction=junction,
-                    location=Point(*point, srid=4326),
-                    control=item["control"][:24],
-                    loaded_at=now,
-                    **fields,
+            for node, lon, lat in found:
+                rows.append(
+                    JunctionRater(
+                        junction=junction,
+                        node=node,
+                        location=Point(lon, lat, srid=4326),
+                        control=item["control"][:24],
+                        loaded_at=now,
+                        **fields,
+                    )
                 )
-            )
-        self.stdout.write(f"{len(rows):,} junctions, {counts['movements']:,} movements rated")
+        self.stdout.write(
+            f"{junctions:,} junctions at {len(rows):,} nodes, "
+            f"{counts['movements']:,} movements rated"
+        )
         for reason in ("cannot be made", "one-way flag", "stress out of range", "unknown movement"):
             if counts[reason]:
                 self.stdout.write(f"  dropped {counts[reason]:,} movements: {reason}")
         if counts["no position"]:
-            self.stdout.write(f"  dropped {counts['no position']:,} junctions: no position")
+            self.stdout.write(f"  dropped {counts['no position']:,} junctions: no nodes")
         if not options["confirm"]:
             self.stdout.write("Dry run: nothing written. The same with --confirm loads it.")
             return
         with transaction.atomic():
             JunctionRater.objects.all().delete()
             JunctionRater.objects.bulk_create(rows, batch_size=BATCH)
-        self.stdout.write(f"Loaded {len(rows):,} junctions (every earlier row replaced).")
+        self.stdout.write(
+            f"Loaded {junctions:,} junctions at {len(rows):,} nodes (every earlier row replaced)."
+        )

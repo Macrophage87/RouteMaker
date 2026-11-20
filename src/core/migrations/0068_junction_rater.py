@@ -18,7 +18,8 @@ class Migration(migrations.Migration):
                         auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
                     ),
                 ),
-                ("junction", models.CharField(max_length=32, unique=True)),
+                ("junction", models.CharField(db_index=True, max_length=32)),
+                ("node", models.BigIntegerField(unique=True)),
                 ("location", django.contrib.gis.db.models.fields.PointField(srid=4326)),
                 ("control", models.CharField(blank=True, max_length=24)),
                 ("cross_stress", models.FloatField(null=True)),

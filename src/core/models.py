@@ -2828,12 +2828,15 @@ class JunctionRater(models.Model):
     Read at plan time (`core.junction_raters`): the junction model prices the movement a
     route makes at a node within reach of `location` by its level
     (`routemaker.intersections.rater_event`), and the junction-delay model scales the wait
-    there by its seconds (`routemaker.junction_delay.rater_scaled`). Loaded whole by
+    there by its seconds (`routemaker.junction_delay.rater_scaled`). One row a node of the
+    junction (a divided road's carriageways are nodes of one junction). Loaded whole by
     `manage.py load_junction_raters`, which replaces every row.
     """
 
-    # "j" and the OSM node id of the export the run rated (2026-11-14).
-    junction = models.CharField(max_length=32, unique=True)
+    # The run's junction id ("j" and the smallest OSM node id of its nodes, 2026-11-14
+    # export): one row for each of its nodes, which all carry its rating.
+    junction = models.CharField(max_length=32, db_index=True)
+    node = models.BigIntegerField(unique=True)
     location = models.PointField(srid=4326)
     # The control the map tags there: signal, stop, yield, crosswalk only, none.
     control = models.CharField(max_length=24, blank=True)
