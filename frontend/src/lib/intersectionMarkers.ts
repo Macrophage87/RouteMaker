@@ -373,7 +373,7 @@ export interface RatedLine {
 }
 
 /** The junction panel's lines, one for each movement that can be made there, in the raters' order. */
-export function ratedLines(rated: RatedJunction): RatedLine[] {
+export function ratedLines(rated: Pick<RatedJunction, "moves"> & { move?: RatedJunction["move"] }): RatedLine[] {
   return rated.moves.map((move) => {
     const wait = ratedWaitText(move.wait_s);
     return {

@@ -9772,6 +9772,50 @@ def closures_map(request, params: Query[AreaClosuresIn], response: HttpResponse)
     return Status(200, {"closures": work_zones.area_rows(box, permits=params.permits)})
 
 
+class RatedJunctionsIn(Schema):
+    bbox: str = Field(
+        max_length=120,
+        description="The map's view: west,south,east,north in degrees, at most 0.04 by 0.03.",
+    )
+    every: bool = Field(
+        default=False,
+        description="Every rated junction, the quiet ones too (the map's very closest zoom).",
+    )
+
+
+class RatedMapJunctionOut(Schema):
+    lon: float
+    lat: float
+    level: float = Field(description="Its hardest movement's level, 1 to 5: the dot's colour.")
+    moves: list[RatedMoveOut] = Field(description="Every movement that can be made there.")
+
+
+class RatedJunctionsOut(Schema):
+    junctions: list[RatedMapJunctionOut]
+
+
+# GET /api/junctions/rated?bbox=west,south,east,north: the junctions the raters rated 3 or
+# more in the map's view, for its dots at the closest zooms (the owner, 2026-11-20: "They
+# should only show at intersections at the closest zoom or on a planned route"). A GET of a
+# map view, as a tile is: no point of the rider's is in it. The ratings change only at a
+# load, so the answer may be kept a while.
+@api.get(
+    "/junctions/rated",
+    response={200: RatedJunctionsOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The rated junctions (LTS 3 or more, or every one) in a zoomed-in map view",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.JUNCTIONS_RATED), errors_as_json)
+def junctions_rated(request, params: Query[RatedJunctionsIn], response: HttpResponse):
+    from . import junction_raters
+
+    try:
+        box = junction_raters.parse_box(params.bbox)
+    except ValueError as error:
+        return Status(400, {"error": str(error)})
+    response["Cache-Control"] = "public, max-age=300"
+    return Status(200, {"junctions": junction_raters.in_box(box, every=params.every)})
+
+
 class ClosuresStampOut(Schema):
     stamp: str = Field(
         description="A fingerprint of the closures in force now; it changes when they do."

@@ -5558,6 +5558,17 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin: 8px 0 0;
 }
 
+/* A rated junction on the plain map: a small colour dot in a button large enough to press. */
+.rated-map-dot {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
 .cue-next,
 .cue-off {
   display: flex;

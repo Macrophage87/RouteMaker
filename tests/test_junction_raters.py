@@ -313,6 +313,20 @@ def test_a_confirmed_load_replaces_the_table_and_reads_near_a_route(tmp_path) ->
     (j2,) = junction_raters.near([(-77.01, 38.9)])
     assert j2.stress == (None, None, 1.0)
     assert junction_raters.near([(-76.9, 38.9)]) == ()
+    # The map's view: j1 once, at the middle of its two nodes, coloured by its hardest
+    # movement; j2 (only riding along, at 1) is below 3 and not shown.
+    (dot,) = junction_raters.in_box((-77.02, 38.89, -76.99, 38.91))
+    assert dot["level"] == 4.0
+    assert [(m["move"], m["level"], m["wait_s"]) for m in dot["moves"]] == [
+        ("cross", 3.5, 30),
+        ("left", 4.0, 45),
+        ("along", 1.0, 6),
+    ]
+    assert junction_raters.in_box((-76.95, 38.89, -76.92, 38.91)) == []
+    # At the very closest zoom the quiet ones too.
+    found = junction_raters.in_box((-77.02, 38.89, -76.99, 38.91), every=True)
+    levels = sorted(j["level"] for j in found)
+    assert levels == [1.0, 4.0]
     medians = junction_raters.medians()
     assert medians[("signal", "cross")] == pytest.approx(30.0)
     assert junction_raters.digest()
@@ -392,3 +406,27 @@ def test_a_rated_turns_description_carries_its_level() -> None:
     assert _rated_level(hard) == {"rated_level": 4.0}
     assert _rated_level(mild) == {}, "not marked below 3"
     assert _rated_level(None) == {}
+
+
+def test_the_map_view_must_be_zoomed_in() -> None:
+    from core import junction_raters
+
+    assert junction_raters.parse_box("-77.02,38.89,-76.99,38.91") == (-77.02, 38.89, -76.99, 38.91)
+    for bad in ("-77.2,38.89,-76.99,38.91", "1,2,3", "a,b,c,d", "-76.99,38.89,-77.02,38.91"):
+        with pytest.raises(ValueError):
+            junction_raters.parse_box(bad)
+
+
+def test_a_map_junction_takes_its_hardest_movements_level() -> None:
+    from core import junction_raters
+
+    (row,) = junction_raters.box_rows([("j1", -77.0, 38.9, 3.0, None, 4.5, 20.4, None, None)])
+    assert row == {
+        "lon": -77.0,
+        "lat": 38.9,
+        "level": 4.5,
+        "moves": [
+            {"move": "cross", "level": 3.0, "wait_s": 20},
+            {"move": "along", "level": 4.5, "wait_s": None},
+        ],
+    }

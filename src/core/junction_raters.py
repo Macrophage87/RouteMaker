@@ -77,6 +77,86 @@ def near(points: Sequence[tuple[float, float]]) -> tuple[RaterRating, ...]:
     return tuple(found.values())
 
 
+# The map's view at its closest zooms (GET /api/junctions/rated): about a mile across at most.
+BOX_MAX_LON = 0.04
+BOX_MAX_LAT = 0.03
+BOX_LIMIT = 1500
+# A junction is shown from this level up (routemaker.intersections.RATER_MARK_FROM); the
+# map asks for every level only at its very closest zoom (the owner, 2026-11-20).
+BOX_FROM = 3.0
+
+_BOX_SQL = """
+SELECT t.junction, AVG(ST_X(t.location)), AVG(ST_Y(t.location)),
+       MAX(t.cross_stress), MAX(t.left_stress), MAX(t.along_stress),
+       MAX(t.cross_delay_s), MAX(t.left_delay_s), MAX(t.along_delay_s)
+FROM {table} AS t
+WHERE t.location && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+  AND GREATEST(COALESCE(t.cross_stress, 0), COALESCE(t.left_stress, 0),
+               COALESCE(t.along_stress, 0)) >= %s
+GROUP BY t.junction
+ORDER BY t.junction
+LIMIT %s
+"""
+
+
+def parse_box(text: str) -> tuple[float, float, float, float]:
+    """The view as west,south,east,north in degrees: in range, and zoomed in."""
+    parts = text.split(",")
+    if len(parts) != 4:
+        raise ValueError("bbox is west,south,east,north")
+    try:
+        west, south, east, north = (float(p) for p in parts)
+    except ValueError as error:
+        raise ValueError("bbox is four numbers") from error
+    if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
+        raise ValueError("bbox is west,south,east,north, each in range, west before east")
+    if east - west > BOX_MAX_LON or north - south > BOX_MAX_LAT:
+        raise ValueError("zoom in: the view is too large to show rated junctions")
+    return west, south, east, north
+
+
+def box_rows(rows: Sequence[Sequence]) -> list[dict]:
+    """The answer's junctions from the query's rows: one a junction, at the middle of its
+    nodes, with its hardest movement's level (the dot's colour) and every movement that can
+    be made there."""
+    from routemaker.intersections import RATER_MOVES
+
+    out = []
+    for _junction, lon, lat, *rest in rows:
+        moves = [
+            {"move": name, "level": level, "wait_s": None if wait is None else round(wait)}
+            for name, level, wait in zip(RATER_MOVES, rest[:3], rest[3:6], strict=True)
+            if level is not None
+        ]
+        out.append(
+            {
+                "lon": round(lon, 6),
+                "lat": round(lat, 6),
+                "level": max(move["level"] for move in moves),
+                "moves": moves,
+            }
+        )
+    return out
+
+
+def in_box(box: tuple[float, float, float, float], every: bool = False) -> list[dict]:
+    """The junctions rated 3 or more in a map view, or every rated one with `every`, for the
+    plain map's dots at its closest zooms (the owner, 2026-11-20: "Anything less than 3 only
+    show at the very closest zoom level"). None could be read: none."""
+    from django.db import connection
+
+    from .models import JunctionRater
+
+    sql = _BOX_SQL.format(table=JunctionRater._meta.db_table)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [*box, 0.0 if every else BOX_FROM, BOX_LIMIT])
+            return box_rows(cursor.fetchall())
+    except DatabaseError:
+        logger.warning("the junction ratings could not be read", exc_info=True)
+        return []
+
+
 def _read_medians() -> dict[tuple[str, str], float]:
     from .models import JunctionRater
 
