@@ -5241,9 +5241,9 @@ if (mine(2)) {
   const before = await sideways();
   check("go: with a route at 390 px and 130% text, the ride types scroll in their own row and the sheet has nothing to scroll sideways",
     before.row > 100 && before.sheet <= 0 && before.page <= 0, JSON.stringify(before));
-  // A sideways push on the sheet (a swipe, or a focus moved into a chip) leaves it where it is.
-  const pushed = await p.eval("(() => { const s = document.querySelector('.panel .panel-scroll'); s.scrollLeft = 9999; document.querySelector('.go-sheet .ride-chips .chip:last-of-type')?.focus(); return s.scrollLeft; })()");
-  check("go: the route sheet cannot be pushed sideways", pushed === 0, JSON.stringify({ pushed }));
+  // The sheet's backstop: overflow-x hidden, so a swipe never moves it even if something did overflow.
+  const style = await p.eval("getComputedStyle(document.querySelector('.panel .panel-scroll')).overflowX");
+  check("go: the route sheet's scroller does not scroll sideways by touch (overflow-x hidden)", style === "hidden", JSON.stringify({ style }));
   await p.close();
 }
 if (mine(1)) {

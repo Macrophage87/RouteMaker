@@ -7454,12 +7454,12 @@ details.fold > summary .icon {
    settings. The row runs to the sheet's edges, so the last chip in view is cut by the edge, which shows there is
    more to scroll to; each chip keeps its 44 px height and its name on one line. */
 .chip-row.ride-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
   /* The row holds its chips' screen-reader words (.visually-hidden, absolutely placed): without a position here they
      are placed against the sheet, not this row, so a chip scrolled out of the row still widened the sheet, and the
      sheet scrolled sideways (Go's route sheet on beta v0.29.0, Stephen 2026-11-20). */
   position: relative;
-  flex-wrap: nowrap;
-  overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   /* To the sheet's edges: the bleed is the sheet's own side padding (.panel-scroll's 14px), no more. */
@@ -8068,12 +8068,12 @@ details.fold > summary .icon {
   font-weight: 700;
 }
 
-/* " · arrive 8:27 AM" beside the route's time, smaller, so the time stays the first thing read and the line one line. */
 /* "31 min" stays on one line when the totals wrap beside Details. */
 .stats.totals .total-time dd > bdi {
   white-space: nowrap;
 }
 
+/* " · arrive 8:27 AM" beside the route's time, smaller, so the time stays the first thing read and the line one line. */
 .stats.totals .total-time .route-arrive {
   font-size: 0.6em;
   font-weight: 600;
