@@ -5148,6 +5148,9 @@ dialog.plan-ride-settings {
   border-radius: 12px;
   box-shadow: var(--shadow);
 }
+.plan-ride-settings-body {
+  padding: 16px;
+}
 dialog.plan-ride-settings h2 {
   margin-top: 0;
 }

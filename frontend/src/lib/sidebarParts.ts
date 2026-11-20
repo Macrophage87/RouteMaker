@@ -132,7 +132,7 @@ export function RideSettings({
         },
         h(
           "div",
-          { className: "ride-settings-body" },
+          { className: "plan-ride-settings-body" },
           h("h2", { id: titleId, tabIndex: -1 }, popout.title),
           children,
           h("div", { className: "closure-choices" }, h("button", { type: "button", className: "primary", onClick: () => show(false) }, t("Done"))),
