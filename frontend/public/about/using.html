@@ -627,15 +627,17 @@ router won't take; turning it on during a loop turns the loop off, and "Loop off
 every ride setting in a popup over the map, titled with the ride type (a sheet from the bottom on a narrow screen).
 The map and Route stay in reach while it is open, and Done or Escape closes it. In Go the settings open under the
 line.</li>
-<li><strong>Waiting at lights and stops</strong> and <strong>Fewer turns</strong>, in Plan's Ride settings, on every
+<li><strong>Waiting at lights and stops</strong>, <strong>Sharp turns</strong> and <strong>Fewer turns</strong>, in Plan's Ride settings, on every
 ride type but those on foot, Run, the transit ride types and the share-bike types. Waiting at lights and stops is a slider from
 <strong>Don't mind</strong> to <strong>Rather ride</strong>: each second waiting at a signal, a stop sign or a gap in
 traffic counts that many seconds of riding when routes are compared, so a route with fewer stops can win even if it
 is a little longer. It starts at the ride type's own weight (Road Bike 3x; Fast, Trailmaxxing, Gravel, Mountain Goat,
 Mountain Bike and Tandem 2x; others 1x) and goes up to 5x (our default). The wait times shown stay the real ones.
+Sharp turns, from 0 to 5, sets how much a sharp turn or U-turn and the time lost braking for a turn count: it
+starts at 3 on Road Bike, 2 on Tandem and 1 on others (our defaults), and at 0 a sharp turn counts as a plain one.
 Fewer turns counts each turn as 30 seconds of riding instead of 15 when routes are compared, on every ride type
-that offers it. Both are kept in the plan's link and its GPX
-file. Go has neither, so opening the plan in Go drops them. See
+that offers it. All three are kept in the plan's link and its GPX
+file. Go has none of them, so opening the plan in Go drops them. See
 <a href="/about/routing.html#junction-time">time lost at junctions</a>.</li>
 <li><strong>Riding speed</strong>, under the Hills slider: <strong>Ride type's speed</strong> (the default) or your
 own pace on the flat, 8 to 30 mph [13 to 48 km/h]. Route times, the arrival time and the ride's times to go follow
