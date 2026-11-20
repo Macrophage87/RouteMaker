@@ -94,6 +94,7 @@ test("the settings ride in the link, the request and the line's words, and stay 
   // Half steps (the owner, 2026-11-20: "maybe put some fractional levels too, like half").
   assert.equal(fitDials("default", { ...dials, waitWeight: 2.5 }).waitWeight, 2.5);
   assert.equal(fitDials("default", { ...dials, waitWeight: 2.3 }).waitWeight, 2.5);
+  assert.match(settingsSummary("default", { ...dials, waitWeight: 2.5 }), /waits count 2.5x/);
   assert.doesNotMatch(settingsSummary("fast", startDials("fast")), /waits/);
   const fast = choose("fast", null, dials);
   assert.equal(fast.waitWeight, 4);

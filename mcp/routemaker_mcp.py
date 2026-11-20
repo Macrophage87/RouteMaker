@@ -1437,7 +1437,7 @@ def plan_fragment(
     # Fewer turns and the rider's wait weight (Plan's Ride settings, 2026-11-20; planHash.ts).
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
         parts.append("fewerturns=1")
-    if sent.get("wait_weight") and float(sent["wait_weight"]) > 1:
+    if sent.get("wait_weight") and half_step(sent["wait_weight"], 1) > 1:
         parts.append(f"waits={half_step(sent['wait_weight'], 1):g}")
     # The rider's sharp-turn weight (Plan's Ride settings, 2026-11-20), 0 included.
     if sent.get("sharp_turn_weight") is not None:
@@ -1489,7 +1489,9 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "mtbLevel": sent.get("mtb_level"),
         "mtbPreferred": sent.get("mtb_preferred"),
         "rideSize": sent.get("ride_size"),
-        "waitWeight": half_step(sent["wait_weight"], 1) if sent.get("wait_weight") else None,
+        "waitWeight": half_step(sent["wait_weight"], 1)
+        if sent.get("wait_weight") and half_step(sent["wait_weight"], 1) > 1
+        else None,
     }
     kept.update({k: v for k, v in optional.items() if v})
     if sent.get("sharp_turn_weight") is not None:
@@ -7402,7 +7404,7 @@ class Server:
         ]
         # The link carries half steps (Plan's sliders): a weight between them opens rounded.
         weight = plan.sent.get("wait_weight")
-        if weight and float(weight) != half_step(weight, 1):
+        if weight and min(float(weight), 5.0) != half_step(weight, 1):
             lost.append("the exact wait weight (the link rounds it)")
         sharp = plan.sent.get("sharp_turn_weight")
         if sharp is not None and float(sharp) != half_step(sharp, 0):
