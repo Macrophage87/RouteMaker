@@ -196,7 +196,7 @@ class TestJunctionDelay:
         # The owner, 2026-11-02: "For the road cycling version, make non-cycling time, such as
         # waiting at lights carry an additional penalty (3x)".
         assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
-        assert presets.wait_weight_for("default") == presets.wait_weight_for("fast") == 1.0
+        assert presets.wait_weight_for("default") == presets.wait_weight_for("cargo") == 1.0
         slow = analysis("a")
         slow.junction_delay_s = 60.0
         road = context(wait_weight=presets.wait_weight_for(presets.ROAD_BIKE))
@@ -206,6 +206,21 @@ class TestJunctionDelay:
         stops.junction_delay_s = 120.0
         extra_m = stops.key(top)[2] - smooth.key(top)[2]
         assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 3 * 120.0 / QUIET_COST)
+
+    def test_pleasure_and_training_rides_weigh_waiting_twice(self) -> None:
+        # The owner, 2026-11-20: "Especially for pleasure and training rides, being able to
+        # spend that time riding and not waiting at a light is what matters".
+        for name in ("trailmaxxing", "gravel", "mountain-goat", "mountain-bike", "fast"):
+            assert presets.wait_weight_for(name) == presets.PLEASURE_WAIT_WEIGHT == 2.0
+        assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
+
+    def test_a_caller_can_raise_the_wait_weight_but_never_lower_it(self) -> None:
+        # The owner, 2026-11-20: "let the MCP server increase those penalties more".
+        assert presets.wait_weight_for("default", 4.0) == 4.0
+        assert presets.wait_weight_for("fast", 1.0) == 2.0
+        assert presets.wait_weight_for(presets.ROAD_BIKE, 2.0) == 3.0
+        assert presets.wait_weight_for("default", 9.0) == presets.MAX_WAIT_WEIGHT == 5.0
+        assert presets.wait_weight_for("default", None) == 1.0
 
     def test_at_three_times_a_route_with_fewer_stops_wins_where_at_once_it_does_not(self) -> None:
         # Two routes of the same length and calm: the stoppier one rides 100 s quicker. At 1x
@@ -314,6 +329,48 @@ class TestTurns:
         one, two = analysis("a"), analysis("b")
         one.turns, two.turns = 3, 5
         assert refine.combine([one, two]).turns == 8
+
+    def test_sharp_turns_close_together_are_counted(self) -> None:
+        # The owner, 2026-11-20: "further penalize repeated sharp turns". A right (10) then a
+        # left (15) 80 m on is one close pair; a slight turn (9) never counts; a sharp turn
+        # 400 m after the last is not close; each leg starts again.
+        trip = {
+            "legs": [
+                {
+                    "maneuvers": [
+                        {"type": 1, "length": 0.5},
+                        {"type": 10, "length": 0.08},
+                        {"type": 15, "length": 0.05},
+                        {"type": 9, "length": 0.05},
+                        {"type": 14, "length": 0.4},
+                        {"type": 11, "length": 0.2},
+                    ]
+                },
+                {"maneuvers": [{"type": 10, "length": 0.05}, {"type": 4, "length": 0.0}]},
+            ]
+        }
+        # 10 -> 15 at 80 m: close; 15 -> 14 at 100 m (the slight 9 between): close;
+        # 14 -> 11 at 400 m: not; the second leg's 10 is its first.
+        assert refine.close_turns_of(trip) == 2
+        assert refine.close_turns_of({"legs": [{}]}) == 0
+        miles = {
+            "units": "miles",
+            "legs": [{"maneuvers": [{"type": 10, "length": 0.1}, {"type": 15}]}],
+        }
+        # 0.1 mi is 161 m: past CLOSE_TURN_M.
+        assert refine.close_turns_of(miles) == 0
+
+    def test_a_zigzag_ranks_behind_the_same_turns_spread_out(self) -> None:
+        # Before: two routes with the same 6 turns tied. After: the one whose turns come in a
+        # run (4 close) ranks 4 x CLOSE_TURN_EXTRA_S of quiet riding behind.
+        below = context()
+        spread, zigzag = analysis("a"), analysis("b")
+        spread.turns = zigzag.turns = 6
+        zigzag.close_turns = 4
+        assert refine.level3(zigzag, below) - refine.level3(spread, below) == pytest.approx(
+            refine.QUIET_COST_FACTOR * refine.CLOSE_TURN_EXTRA_S * 4 / QUIET_COST
+        )
+        assert refine.combine([spread, zigzag]).close_turns == 4
 
 
 class TestCappedTrailCrossings:

@@ -604,6 +604,9 @@ class Analysis:
     # The turns the router's directions give (`turns_of`), which the top of the slider ranks
     # at `TURN_RANK_S` each (`turn_m`), as the router's own cost already does below it.
     turns: int = 0
+    # Of those, the sharp turns close after another (`close_turns_of`), each ranked
+    # CLOSE_TURN_EXTRA_S more (`turn_m`).
+    close_turns: int = 0
 
     @property
     def ranked_delay_s(self) -> float:
@@ -762,6 +765,35 @@ def turns_of(trip: dict) -> int:
     )
 
 
+# Repeated sharp turns (the owner, 2026-11-20: "see if you can find ways to further penalize
+# repeated sharp turns"): a plain or sharp turn or a U-turn (not a slight one) that comes
+# within CLOSE_TURN_M of the last one, the zigzag through a grid or a park's paths, costs
+# CLOSE_TURN_EXTRA_S more in the ranking on top of its own turn price, so each turn in a run
+# of them counts twice. Both numbers are our defaults, not measured: 150 m is a short city
+# block, and the extra is one more turn's `TURN_RANK_S`.
+SHARP_TURN_MANEUVERS = frozenset({10, 11, 12, 13, 14, 15})
+CLOSE_TURN_M = 150.0
+CLOSE_TURN_EXTRA_S = TURN_RANK_S
+
+
+def close_turns_of(trip: dict) -> int:
+    """The sharp turns (`SHARP_TURN_MANEUVERS`) that come within CLOSE_TURN_M of the sharp
+    turn before them, every leg; the count starts again on each leg. A maneuver's `length`
+    is the riding to the next one (kilometres, or miles where the trip says so)."""
+    to_m = 1609.344 if trip.get("units") == "miles" else 1000.0
+    close = 0
+    for leg in trip.get("legs") or []:
+        since: float | None = None
+        for maneuver in leg.get("maneuvers") or []:
+            if maneuver.get("type") in SHARP_TURN_MANEUVERS:
+                if since is not None and since < CLOSE_TURN_M:
+                    close += 1
+                since = 0.0
+            if since is not None:
+                since += float(maneuver.get("length") or 0.0) * to_m
+    return close
+
+
 def turn_m(read: Analysis, ctx: Context) -> float:
     """The route's turns as metres of quiet riding, at `TURN_RANK_S` a turn and the rate
     `delay_m` prices a second at, so between routes equally calm the one with fewer turns
@@ -769,14 +801,17 @@ def turn_m(read: Analysis, ctx: Context) -> float:
     254's "every preset"), so repeats, dodges and loop way-backs weigh turns too; with it off,
     only where the calm search runs (above `presets.STRESS_TODAYS_TOP`, the same positions the
     router's turn charge rises at), and 0 at or below it. The rider's "Fewer turns"
-    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`."""
+    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`. A sharp
+    turn close after another (`Analysis.close_turns`) adds CLOSE_TURN_EXTRA_S."""
     if ctx.quiet_cost <= 0:
         return 0.0
+    extra_s = CLOSE_TURN_EXTRA_S * read.close_turns
     if ctx.fewer_turns:
-        return QUIET_COST_FACTOR * presets.FEWER_TURNS_PENALTY_S * read.turns / ctx.quiet_cost
+        turns_s = presets.FEWER_TURNS_PENALTY_S * read.turns
+        return QUIET_COST_FACTOR * (turns_s + extra_s) / ctx.quiet_cost
     if not presets.TURN_CHARGE_EVERY_SETTING and not ctx.maxcalm and ctx.rate <= 0:
         return 0.0
-    return QUIET_COST_FACTOR * TURN_RANK_S * read.turns / ctx.quiet_cost
+    return QUIET_COST_FACTOR * (TURN_RANK_S * read.turns + extra_s) / ctx.quiet_cost
 
 
 def delay_m(read: Analysis, ctx: Context) -> float:
@@ -1276,6 +1311,7 @@ def analyse(
         scenic=getattr(real_classes, "scenic", None),
         adjustments=getattr(real_classes, "adjustments", None),
         turns=turns_of(trip),
+        close_turns=close_turns_of(trip),
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
@@ -3542,6 +3578,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         junction_delay_s=sum(r.junction_delay_s for r in reads),
         junction_ranked_s=sum(r.ranked_delay_s for r in reads),
         turns=sum(r.turns for r in reads),
+        close_turns=sum(r.close_turns for r in reads),
     )
 
 

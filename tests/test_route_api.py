@@ -1006,13 +1006,15 @@ class TestWhatIsSentToTheRouter:
             # same route, which is no different, so the asking ends.
             assert fake.endpoints() == ["route", "trace_attributes", "route", "route"]
             assert "alternates" in fake.calls[2][1]
-        elif name == "road-bike":
+        elif name in ("road-bike", "gravel"):
             # Road Bike weighs its junction waits three times (the owner, 2026-11-02: "make
             # non-cycling time, such as waiting at lights carry an additional penalty (3x)"),
-            # so it ranks the router's own alternatives at every stress (#895,
-            # `presets.wait_weight_for(...) > 1`): once the route is traced, the search asks
-            # the router for them.
-            assert presets.wait_weight_for(name) == 3.0
+            # and Gravel twice (2026-11-20, pleasure and training rides), so they rank the
+            # router's own alternatives at every stress (#895, `presets.wait_weight_for(...)
+            # > 1`): once the route is traced, the search asks the router for them. Fast's own
+            # request already asks for them (hills tolerated), Mountain Goat seeks climbs and
+            # Mountain Bike plans its own way.
+            assert presets.wait_weight_for(name) > 1.0
             assert fake.endpoints() == ["route", "trace_attributes", "route"]
             assert "alternates" in fake.calls[2][1]
         else:

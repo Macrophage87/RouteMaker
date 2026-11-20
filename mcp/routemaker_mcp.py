@@ -5092,6 +5092,19 @@ RIDE_OPTIONS = {
             " wherever pavement runs near (never closed). Compare summary.unpaved."
         ),
     },
+    "wait_weight": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 5,
+        "description": (
+            "Bike ride types: weigh time stopped at junctions (lights, stop signs, gaps in"
+            " traffic) more, for a ride where riding time matters more than waiting (a pleasure"
+            " or training ride). A second stopped counts this many seconds of riding when"
+            " routes are ranked; 1 to 5. It only raises the ride type's own weight (1; 2 on"
+            " trailmaxxing, gravel, mountain-goat, mountain-bike and fast; 3 on road-bike)."
+            " Compare summary.junction_waits before and after; the waits shown stay real."
+        ),
+    },
     "easy_mtb": {
         "type": "boolean",
         "default": False,
@@ -5258,6 +5271,7 @@ PASSED_OPTIONS = (
     "trails_off",
     "fewer_turns",
     "paved",
+    "wait_weight",
     "easy_mtb",
     "mtb_level",
     "mtb_preferred",
@@ -7333,6 +7347,7 @@ class Server:
                 # The app has no control for these (its named options set them for a ride).
                 ("fewer_turns", "Fewer turns"),
                 ("paved", "All paved"),
+                ("wait_weight", "the extra weight on waits"),
             )
             if plan.sent.get(key)
         ]
@@ -8085,6 +8100,7 @@ class Server:
                 # The rider's choices, as Keep to roads.
                 "fewer_turns",
                 "paved",
+                "wait_weight",
             )
             if preset != "run":
                 # A riding speed is no running pace: the run starts at Run's own.

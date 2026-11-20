@@ -367,6 +367,19 @@ class RouteIn(Schema):
             " types only; ignored on Run and the transit and Bikeshare ride types."
         ),
     )
+    wait_weight: float | None = Field(
+        default=None,
+        ge=1.0,
+        le=10.0,
+        allow_inf_nan=False,
+        description=(
+            "Weigh junction waits (signals, stop signs, gaps in traffic) more when routes are"
+            " ranked: a second stopped counts this many seconds of riding. Raises the ride"
+            " type's own weight (1; 2 on Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and"
+            " Fast; 3 on Road Bike), never lowers it, and counts at most 5"
+            " (`presets.MAX_WAIT_WEIGHT`). The waits shown are unchanged. null: the ride type's."
+        ),
+    )
     options: list[Literal["direct", "calmer", "fewer_turns", "paved"]] | None = Field(
         default=None,
         max_length=4,
@@ -1125,6 +1138,13 @@ class DialsOut(Schema):
     avoid_gravel: bool = False
     fewer_turns: bool = Field(default=False, description='Whether "Fewer turns" was on.')
     paved: bool = Field(default=False, description='Whether "All paved" was on.')
+    wait_weight: float = Field(
+        default=1.0,
+        description=(
+            "How many seconds of riding a second stopped at a junction counted when routes were"
+            " ranked: the ride type's own weight, or the request's `wait_weight` where higher."
+        ),
+    )
     trails_off: bool = False
     easy_mtb: bool = Field(
         default=False, description="Whether the ride was planned with Easy MTB trails on."
@@ -6165,6 +6185,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         avoid_gravel=body.avoid_gravel,
         fewer_turns=body.fewer_turns,
         paved=body.paved,
+        wait_weight=body.wait_weight,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,
