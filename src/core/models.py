@@ -2817,3 +2817,33 @@ class DailyUsage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.day} {self.tool}: {self.count}"
+
+
+class JunctionRater(models.Model):
+    """The raters' reading of one junction (the 2026-11-19 junction run): for each movement,
+    `cross` (straight across the busiest road), `left` (off or onto it) and `along` (straight
+    on along it), a stress level on the road scale and the seconds lost there, kept apart.
+    None where the movement cannot be made there, or the one-way check flags it.
+
+    Read at plan time (`core.junction_raters`): the junction model prices the movement a
+    route makes at a node within reach of `location` by its level
+    (`routemaker.intersections.rater_event`), and the junction-delay model scales the wait
+    there by its seconds (`routemaker.junction_delay.rater_scaled`). One row a node of the
+    junction (a divided road's carriageways are nodes of one junction). Loaded whole by
+    `manage.py load_junction_raters`, which replaces every row.
+    """
+
+    # The run's junction id ("j" and the smallest OSM node id of its nodes, 2026-11-14
+    # export): one row for each of its nodes, which all carry its rating.
+    junction = models.CharField(max_length=32, db_index=True)
+    node = models.BigIntegerField(unique=True)
+    location = models.PointField(srid=4326)
+    # The control the map tags there: signal, stop, yield, crosswalk only, none.
+    control = models.CharField(max_length=24, blank=True)
+    cross_stress = models.FloatField(null=True)
+    cross_delay_s = models.FloatField(null=True)
+    left_stress = models.FloatField(null=True)
+    left_delay_s = models.FloatField(null=True)
+    along_stress = models.FloatField(null=True)
+    along_delay_s = models.FloatField(null=True)
+    loaded_at = models.DateTimeField(default=timezone.now)

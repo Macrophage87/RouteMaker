@@ -568,3 +568,99 @@ def test_e_bikes_and_road_bikes_ride_no_sidewalk_but_walk_a_short_link() -> None
         assert told(variant, 2) == {}, "a sidewalk beside an Avoid road: closed"
         assert told(variant, 3) == {"link_walk": True}, "a short link is walked"
     assert told(variants.Variant.STANDARD, 9) == {}
+
+
+# Little Falls Parkway at the Capital Crescent Trail (the owner, 2026-11-19: "It seemed to
+# miss part of the bike lane next to little falls parkway"): the parkway's separated path
+# ends at Arlington Road on a marked crosswalk with no bicycle tag that runs across the
+# road to it. In metres: the path runs north up x=0 to y=100, the crosswalk crosses the
+# road (along y=112) to a street on the far side.
+CROSSWALK = {"highway": "footway", "footway": "crossing", "crossing": "marked"}
+
+
+def little_falls(path=SIDE_PATH, far=None, crosswalk=CROSSWALK, length=24.0):
+    return [
+        placed(200, dict(path), [(0.0, 0.0), (0.0, 100.0)]),
+        placed(201, dict(crosswalk), [(0.0, 100.0), (0.0, 112.0), (0.0, 100.0 + length)]),
+        placed(202, {"highway": "secondary"}, [(-100.0, 112.0), (0.0, 112.0), (100.0, 112.0)]),
+        placed(
+            203,
+            dict(far or {"highway": "tertiary"}),
+            [(0.0, 100.0 + length), (0.0, 300.0)],
+        ),
+    ]
+
+
+def test_a_crosswalk_carrying_a_trail_across_a_road_is_a_trail_crossing():
+    assert sw.trail_crossings(little_falls()) == {201}
+    assert sw.trail_crossings(little_falls(far=TRAIL)) == {201}, "path to path"
+
+
+def test_a_crosswalk_no_trail_meets_is_not():
+    assert sw.trail_crossings(little_falls(path={"highway": "residential"})) == set()
+    assert sw.trail_crossings(little_falls(path=SIDEWALK)) == set(), "a sidewalk is not a trail"
+
+
+def test_a_trail_crossing_may_run_on_past_the_road_to_a_sidewalk():
+    """Little Falls' own crosswalk runs from the path across both carriageways to the far
+    sidewalk: the road it crosses is the bicycle-open way it reaches."""
+    assert sw.trail_crossings(little_falls(far=SIDEWALK)) == {201}
+
+
+def test_a_crosswalk_a_trail_alone_meets_is_not():
+    ways = little_falls(far=SIDEWALK)
+    ways[2] = placed(202, SIDEWALK, [(-100.0, 112.0), (0.0, 112.0), (100.0, 112.0)])
+    assert sw.trail_crossings(ways) == set(), "nothing but the trail is ridden there"
+
+
+def test_a_trail_crossing_is_short_untagged_and_open():
+    assert sw.trail_crossings(little_falls(length=sw.GAP_M + 5)) == set()
+    tagged = {**CROSSWALK, "bicycle": "no"}
+    assert sw.trail_crossings(little_falls(crosswalk=tagged)) == set()
+    assert sw.trail_crossings(little_falls(), closed={201}) == set()
+
+
+def test_the_rebuild_prices_a_trail_crossing_as_a_link_not_a_last_resort():
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(*w[:2], [(e, n) for e, n in pts])
+        for w, pts in (
+            ((200, SIDE_PATH), [(0.0, 0.0), (0.0, 100.0)]),
+            ((201, CROSSWALK), [(0.0, 100.0), (0.0, 112.0), (0.0, 124.0)]),
+            ((202, {"highway": "secondary"}), [(-100.0, 112.0), (0.0, 112.0), (100.0, 112.0)]),
+            ((203, {"highway": "tertiary"}), [(0.0, 124.0), (0.0, 300.0)]),
+            ((204, CROSSWALK), [(50.0, 100.0), (50.0, 124.0)]),
+            ((205, SIDEWALK), [(50.0, 60.0), (50.0, 100.0)]),
+            ((206, {"highway": "tertiary"}), [(50.0, 124.0), (50.0, 300.0)]),
+        )
+    ]
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    assert 201 in result.sidewalk_links
+    assert 204 not in result.sidewalk_links, "a sidewalk's crosswalk"
+    last = last_resort_sidewalks(ways, {}, result.sidewalk_rides, result.sidewalk_links)
+    assert 201 not in last
+    assert 204 in last
+
+
+def test_a_crosswalk_that_only_crosses_a_cycle_track_is_not():
+    """A pedestrian's crosswalk over a road and the cycle track beside it: the track meets
+    it in the middle, not at an end."""
+    ways = [
+        placed(210, SIDEWALK, [(-50.0, 0.0), (0.0, 0.0)]),
+        placed(211, CROSSWALK, [(0.0, 0.0), (0.0, 5.0), (0.0, 15.0), (0.0, 20.0)]),
+        placed(212, SIDE_PATH, [(-100.0, 5.0), (0.0, 5.0), (100.0, 5.0)]),
+        placed(213, {"highway": "secondary"}, [(-100.0, 15.0), (0.0, 15.0), (100.0, 15.0)]),
+        placed(214, SIDEWALK, [(0.0, 20.0), (50.0, 20.0)]),
+    ]
+    assert sw.trail_crossings(ways) == set()
+
+
+def test_a_trail_that_runs_on_past_its_crosswalk_is_found_where_links_is_not():
+    """Little Falls' own case: the crosswalk leaves the path partway along (the path runs
+    on), so the path is no dead end and `links` passes it by."""
+    ways = little_falls()
+    ways[0] = placed(200, SIDE_PATH, [(0.0, 0.0), (0.0, 100.0), (-60.0, 160.0)])
+    assert 201 not in sw.links(ways)
+    assert sw.trail_crossings(ways) == {201}
