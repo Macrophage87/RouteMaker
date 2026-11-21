@@ -108,11 +108,11 @@ def test_the_three_geofabrik_extracts_are_the_plans_three_states() -> None:
     Fairfax, Prince William, Fredericksburg - is absent from the map rather than
     absent from the tiles, which is a rebuild that succeeds."""
     assert source.GEOFABRIK_EXTRACTS == (
-        "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
-        "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
-        "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/district-of-columbia/district-of-columbia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/maryland/maryland-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/virginia/virginia-latest.osm.pbf",
         # v0.7.0: the Eastern Panhandle inside the -78.05 west edge (Martinsburg, Harpers Ferry).
-        "https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/west-virginia/west-virginia-latest.osm.pbf",
     )
 
 

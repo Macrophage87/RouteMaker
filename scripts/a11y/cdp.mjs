@@ -573,7 +573,8 @@ export function capacityTile() {
 
 export async function axNode(page, selector) {
   // React can swap the node between the two calls (a re-render after a click), and CDP then answers "Could not find
-  // node with given id": look it up again, up to three times, rather than stop the whole suite.
+  // node with given id": look it up again, up to six times over a second and a half, rather than stop the whole suite
+  // (Ride's Large text re-lays the card and the rail out for longer than three quick tries on CI, v0.30.0).
   let nodes;
   for (let attempt = 1; ; attempt++) {
     try {
@@ -583,8 +584,8 @@ export async function axNode(page, selector) {
       ({ nodes } = await page.s("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false }));
       break;
     } catch (e) {
-      if (attempt >= 3 || !/Could not find node with given id/.test(e.message)) throw e;
-      await sleep(100);
+      if (attempt >= 6 || !/Could not find node with given id/.test(e.message)) throw e;
+      await sleep(100 * attempt);
     }
   }
   const n = nodes[0];

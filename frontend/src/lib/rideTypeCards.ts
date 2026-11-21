@@ -8,30 +8,149 @@
  * The ride type in use is pressed (aria-pressed), so it is said as well as shown. A
  * createElement component, so a test renders it (node's runner reads .ts, not .tsx).
  */
-import { createElement as h, type ReactElement, type ReactNode } from "react";
-import { PRESETS, presetSummary, type PresetId } from "./presets.ts";
+import { Fragment, createElement as h, useEffect, type ReactElement } from "react";
+import { PRESETS, presetLabel, presetSaid, presetSummary, type PresetId } from "./presets.ts";
 import { PresetName } from "./presetName.ts";
 import { FavoriteStar } from "./favoriteRides.ts";
+import { t } from "./i18n.ts";
+import { lineIcon } from "./sidebarParts.ts";
+import { forgetRemovedOwn, ownSetup, undoRemoveOwn, useRemovedOwn, type OwnRideType } from "./ownRideTypes.ts";
+import { rideSummaryParts } from "./rideSummary.ts";
+
+/**
+ * Go's default, from the ride type list (the owner, 2026-11-21: "make a button in the ride type list that will make it
+ * the default for go"): what the button says is pressed. `key` is a ride type's id or "own:<id>" for one of the
+ * rider's own; `current` is Go's now; pressing the pressed one puts Go back on Default.
+ */
+export interface GoDefault {
+  current: string;
+  onSet: (key: string) => void;
+}
+
+/** One of the rider's own in a line: its ride type, then what its sliders set ("Fast · balanced traffic · waits count 3x"). */
+export function ownSummary(own: OwnRideType): string {
+  const { preset, dials } = ownSetup(own);
+  return [presetLabel(preset), ...rideSummaryParts(preset, dials).slice(1).filter((part) => part !== t("now"))].join(" · ");
+}
+
+/** Mass Ride is never Go's (Settings' Primary Go method leaves it out too). */
+export const takesGoDefault = (key: string) => key !== "mass-ride";
+
+/**
+ * The card's Go's-default button, under the card: "Make Go's default" shown, or "Go's default" where it is (the owner,
+ * 2026-11-21, after the intuitiveness review: a bare "Go" read as "use this now"). Heard as "Make Go's default:
+ * Cargo Bike" either way (the words shown come first, for voice control), its state in aria-pressed; pressing the pressed one puts Go back on Default.
+ */
+export function GoDefaultButton({ goKey, said, go }: { goKey: string; said: string; go: GoDefault }): ReactElement | null {
+  if (!takesGoDefault(goKey)) return null;
+  const on = go.current === goKey;
+  return h(
+    "button",
+    {
+      type: "button",
+      // ride-fav keeps the card's own button rules off it (they skip .ride-fav).
+      className: "ride-fav ride-go-default",
+      "data-go": goKey,
+      "aria-pressed": on,
+      "aria-label": t("Make Go's default: {ride}", { ride: said }),
+      onClick: () => go.onSet(on ? "default" : goKey),
+    },
+    on ? t("Go's default") : t("Make Go's default"),
+  );
+}
+
+/**
+ * "My ride types" (lib/ownRideTypes.ts): each of the rider's own as a card, its name over its ride type and sliders
+ * ("Fast · balanced traffic · ..."), pressed where it is what is in use (`inUse`); its Go button, and Remove.
+ */
+export function OwnRideCards({
+  list,
+  inUse,
+  onPick,
+  onRemove,
+  idPrefix,
+  go,
+}: {
+  list: readonly OwnRideType[];
+  inUse: string | null;
+  onPick: (own: OwnRideType) => void;
+  onRemove: (own: OwnRideType) => void;
+  idPrefix: string;
+  go?: GoDefault;
+}): ReactElement {
+  // Remove takes a card off at once; Undo puts it back (release review of #1385). Always in the page, so it is heard.
+  const removed = useRemovedOwn();
+  useEffect(() => forgetRemovedOwn, []);
+  const undo = h(
+    "p",
+    { className: "hint own-ride-removed", role: "status" },
+    removed ? t("Removed {name}.", { name: removed.own.name }) : null,
+    removed ? " " : null,
+    removed ? h("button", { type: "button", className: "link", onClick: undoRemoveOwn }, t("Undo")) : null,
+  );
+  return h(Fragment, null, undo, h(
+    "ul",
+    { className: "ride-type-cards ride-sheet-cards own-ride-cards" },
+    list.map((own) => {
+      const nameId = `${idPrefix}-own-${own.id}-name`;
+      const aboutId = `${idPrefix}-own-${own.id}-about`;
+      const current = own.id === inUse;
+      return h(
+        "li",
+        { key: own.id, className: `ride-type-card has-fav${go && takesGoDefault(ownSetup(own).preset) ? " has-go" : ""}${current ? " current" : ""}` },
+        h(
+          "button",
+          { type: "button", "aria-pressed": current, "aria-labelledby": nameId, "aria-describedby": aboutId, onClick: () => onPick(own) },
+          h("strong", { id: nameId }, own.name),
+          h("span", { id: aboutId, className: "hint" }, ownSummary(own)),
+        ),
+        h(
+          "button",
+          {
+          type: "button",
+          className: "ride-fav ride-own-remove",
+          "aria-label": t("Remove {name}", { name: own.name }),
+          onClick: (event: { currentTarget: HTMLElement }) => {
+            // The card goes: the focus to the next card's button, else the one before, else the search (review
+            // of #1385), not lost to the page.
+            const item = event.currentTarget.closest("li");
+            const list = item?.closest("section");
+            const next = (item?.nextElementSibling ?? item?.previousElementSibling)?.querySelector<HTMLElement>("button");
+            onRemove(own);
+            const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => run();
+            frame(() => {
+              if (next?.isConnected) next.focus();
+              else list?.closest("dialog, .ride-groups")?.querySelector<HTMLElement>("input")?.focus();
+            });
+          },
+        },
+          lineIcon("trash", 20),
+        ),
+        go && takesGoDefault(ownSetup(own).preset) ? h(GoDefaultButton, { goKey: `own:${own.id}`, said: own.name, go }) : null,
+      );
+    }),
+  ));
+}
 
 export function RideTypeCards({
   ids,
   preset,
   onPick,
-  icon,
   idPrefix,
   favorites,
   onFavorite,
+  go,
 }: {
   ids: readonly PresetId[];
   preset: PresetId;
   onPick: (id: PresetId) => void;
-  /** The card's icon (decorative: aria-hidden); a function so the .tsx Icon stays out of this file. */
-  icon?: (id: PresetId) => ReactNode;
   /** Makes the name and sentence ids unique in the page. */
   idPrefix: string;
   /** The rider's favorites: with onFavorite, each card has its star (lib/favoriteRides.ts). */
   favorites?: readonly PresetId[];
   onFavorite?: (id: PresetId) => void;
+  /** Each card's Go button (GoDefaultButton). */
+  go?: GoDefault;
 }): ReactElement {
   return h(
     "ul",
@@ -43,7 +162,7 @@ export function RideTypeCards({
       const aboutId = `${idPrefix}-${id}-about`;
       return h(
         "li",
-        { key: id, className: `ride-type-card${current ? " current" : ""}${onFavorite ? " has-fav" : ""}` },
+        { key: id, className: `ride-type-card${current ? " current" : ""}${onFavorite ? " has-fav" : ""}${go && takesGoDefault(id) ? " has-go" : ""}` },
         h(
           "button",
           {
@@ -53,11 +172,11 @@ export function RideTypeCards({
             "aria-describedby": aboutId,
             onClick: () => onPick(id),
           },
-          icon ? h("span", { className: "ride-card-icon", "aria-hidden": "true" }, icon(id)) : null,
           h("strong", { id: nameId }, h(PresetName, { id })),
           h("span", { id: aboutId, className: "hint" }, option ? presetSummary(option) : ""),
         ),
         onFavorite ? h(FavoriteStar, { id, on: favorites?.includes(id) ?? false, onToggle: onFavorite }) : null,
+        go ? h(GoDefaultButton, { goKey: id, said: presetSaid(id), go }) : null,
       );
     }),
   );

@@ -376,6 +376,16 @@ export function goTapSetsEnd(mode: AppMode): boolean {
   return mode === "go";
 }
 
+/**
+ * Go keeps its route as it is on the map until Edit route is opened (Stephen 2026-11-20: "When loading a route, have
+ * it locked unless you intentionally want to edit it, stray clicks change the route too often", and "Or offer a way to
+ * lock a route in general"): a drag of the line or of a point, and a point's menu, change nothing then. Edit route, the
+ * route card's own button, is the unlock, so Go gains no control; Plan, where routes are made, stays free.
+ */
+export function mapEditsLocked(mode: AppMode, editRouteOpen: boolean): boolean {
+  return mode === "go" && !editRouteOpen;
+}
+
 /** A point that is the rider's location, as Go's route card and the points list name it (edit-route redesign). */
 export const YOUR_LOCATION = t("Your location");
 

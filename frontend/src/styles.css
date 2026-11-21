@@ -320,6 +320,9 @@ button.access-link {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  /* Never sideways (Stephen 2026-11-20, Go's route sheet shifted half off a phone): a sheet is the screen's width, and
+     a row that needs more room scrolls on its own (the ride types, the food chips). */
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 4px 14px 10px;
   /* A sheet's header sticks to the top: a control the focus returns to (a dialog's opener) is scrolled clear of it,
@@ -1248,6 +1251,11 @@ button.secondary {
   cursor: grab;
 }
 
+/* Go's route, locked until Edit route is open (lib/appMode.ts mapEditsLocked): the pins do not move. */
+.pin.pin-locked {
+  cursor: default;
+}
+
 .pin-start {
   background: #15803d;
 }
@@ -1637,28 +1645,15 @@ dialog.ride-types::backdrop {
   border-color: var(--accent);
 }
 
-/* Go's More ride types: the icon beside the name and its one sentence. */
+/* Go's More ride types: the name over its one sentence (no drawn icon, Stephen 2026-11-20). */
 .ride-sheet-cards {
   margin-top: 8px;
   gap: 8px;
 }
 
 .ride-sheet-cards .ride-type-card > button:not(.ride-fav) {
-  grid-template-columns: auto 1fr;
-  column-gap: 10px;
-  align-items: start;
   min-height: 44px;
   padding: 10px 12px;
-}
-
-.ride-sheet-cards .ride-card-icon {
-  grid-row: span 2;
-  display: flex;
-  padding-top: 1px;
-}
-
-.ride-sheet-cards .ride-type-card > button > .hint {
-  grid-column: 2;
 }
 
 /* The one in use: a thicker edge as well as the color, so it is not shown by color alone. */
@@ -4599,6 +4594,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 /* The cuisine chips: one row under the search box that scrolls sideways (the 2026-10-28 audit, P7: results
    first), so the list starts on the first screen. */
 .food .food-chips {
+  position: relative; /* its chips' hidden words stay inside the row (.chip-row.ride-chips) */
   flex-wrap: nowrap;
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -5136,6 +5132,87 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 /* The padding on the contents, so a tap anywhere in the popup lands on them, never on the dialog (its backdrop close). */
 .ride-settings-body {
   padding: 16px;
+}
+/* Plan's Ride settings popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"): over the map beside the
+   sidebar, not modal, so the map bar's Route stays in reach; on a phone a sheet from the bottom, the map above it. */
+dialog.plan-ride-settings {
+  position: fixed;
+  /* Beside the sidebar (.panel ends at 412 px), so the plan stays in view; on narrower screens against the right edge. */
+  inset: 72px auto auto 424px;
+  z-index: 40;
+  width: 440px;
+  max-height: calc(100dvh - 96px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.plan-ride-settings-body {
+  padding: 16px;
+}
+dialog.plan-ride-settings h2 {
+  margin-top: 0;
+}
+/* In Go, below Go's top bar (its Start/Roam button sat over the popup's title at 1280 px). */
+@media (min-width: 721px) {
+  .app.go-mode dialog.plan-ride-settings {
+    top: 124px;
+    height: calc(100dvh - 124px);
+    max-height: calc(100dvh - 124px);
+  }
+}
+/* Done stays at the popup's foot while its settings scroll, so a phone's sheet closes without scrolling to the end
+   (the v0.30.0 release review). */
+dialog.plan-ride-settings .plan-ride-settings-body > .closure-choices:last-child {
+  position: sticky;
+  bottom: 0;
+  margin: 12px -16px -16px;
+  padding: 8px 16px 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+dialog.plan-ride-settings h2:focus {
+  outline: none;
+}
+/* Not a popover (the owner, 2026-11-21: "Don't do a popover. That's messy"; "Litterally make it a full size new screen";
+   on a computer "that should just be a side panel"): on a computer a full-height panel beside the sidebar, square and
+   flush; on a phone the whole screen. */
+@media (min-width: 721px) {
+  dialog.plan-ride-settings {
+    /* Below the map bar's line (Route stays in reach), down to the foot of the screen. */
+    inset: 64px auto 0 412px;
+    height: calc(100dvh - 64px);
+    max-height: calc(100dvh - 64px);
+    border-width: 1px 1px 0 1px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+@media (min-width: 721px) and (max-width: 899px) {
+  dialog.plan-ride-settings {
+    inset: 64px 0 0 auto;
+    width: min(440px, 100vw);
+  }
+}
+@media (max-width: 720px) {
+  dialog.plan-ride-settings {
+    inset: 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  dialog.plan-ride-settings::backdrop {
+    background: var(--bg);
+  }
 }
 .ride-settings-dialog h2:focus {
   outline: none;
@@ -7096,7 +7173,13 @@ details.fold > summary .icon {
 
 .totals-row .stats.totals {
   flex: 1 1 auto;
+  min-width: 0;
   margin: 4px 0;
+}
+
+/* Details keeps its width; the totals beside it wrap (Plan at 130% text pushed it past the sheet's edge). */
+.totals-row .route-info-button {
+  flex-shrink: 0;
 }
 
 .route-info {
@@ -7410,11 +7493,16 @@ details.fold > summary .icon {
 .chip-row.ride-chips {
   flex-wrap: nowrap;
   overflow-x: auto;
+  /* The row holds its chips' screen-reader words (.visually-hidden, absolutely placed): without a position here they
+     are placed against the sheet, not this row, so a chip scrolled out of the row still widened the sheet, and the
+     sheet scrolled sideways (Go's route sheet on beta v0.29.0, Stephen 2026-11-20). */
+  position: relative;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  margin-inline: calc(-1 * var(--ride-chips-bleed, 16px));
-  padding-inline: var(--ride-chips-bleed, 16px);
-  scroll-padding-inline: var(--ride-chips-bleed, 16px);
+  /* To the sheet's edges: the bleed is the sheet's own side padding (.panel-scroll's 14px), no more. */
+  margin-inline: calc(-1 * var(--ride-chips-bleed, 14px));
+  padding-inline: var(--ride-chips-bleed, 14px);
+  scroll-padding-inline: var(--ride-chips-bleed, 14px);
 }
 
 .chip-row.ride-chips::-webkit-scrollbar {
@@ -8015,6 +8103,11 @@ details.fold > summary .icon {
 
 .alert-line .alert-text {
   font-weight: 700;
+}
+
+/* "31 min" stays on one line when the totals wrap beside Details. */
+.stats.totals .total-time dd > bdi {
+  white-space: nowrap;
 }
 
 /* " · arrive 8:27 AM" beside the route's time, smaller, so the time stays the first thing read and the line one line. */
@@ -12123,3 +12216,178 @@ button.route-note:focus-visible {
   stroke: #fad5ff;
 }
 
+
+/* Go's default from the ride type list (the owner, 2026-11-21): "Make Go's default" in words under the card, on
+   the end side, a 44px-high target; filled and "Go's default" where it is what Go starts on (aria-pressed). */
+.ride-fav.ride-go-default {
+  position: static;
+  width: auto;
+  height: auto;
+  display: block;
+  margin-inline-start: auto;
+  margin-top: 2px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  border-radius: 22px;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.ride-fav.ride-go-default[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.ride-types .ride-type-card.with-loads.has-go {
+  grid-row: span 3;
+}
+
+/* Create custom's name box, at the top of the Ride settings screen: its Save is the one way out while it is open,
+   so Done goes (intuitiveness review, Stephen 2026-11-21). Nothing shows there until Create custom is pressed. */
+.own-ride-create-wrap:not(.naming) .own-ride-said:empty {
+  display: none;
+}
+
+.own-ride-create-wrap .own-ride-save {
+  margin: 0 0 12px;
+  padding: 0 0 12px;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-ride-settings-body:has(.own-ride-create-wrap.naming) .ride-settings-finish {
+  display: none;
+}
+
+.own-ride-share {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.own-ride-share-title {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+/* Save as my own ride type, at the foot of the Ride settings popup. */
+.own-ride-save {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.own-ride-save input[type="text"] {
+  font-size: 1rem;
+  padding: 8px;
+}
+
+/* Share ride settings, at the foot of Advanced: Copy these settings, and settings pasted in to load (JSON). */
+.own-ride-share > div {
+  display: grid;
+  gap: 8px;
+}
+
+.own-ride-share textarea {
+  font: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Create custom, first under My ride types. */
+.own-ride-create {
+  margin-top: 8px;
+  min-height: 44px;
+}
+
+/* The Ride settings popup, scaled down (the owner, 2026-11-21: "See if you can scale it down so less scrolling.
+   expand, perhaps"): tighter rows, and on a wide screen twice as wide with the rows in two columns. */
+dialog.plan-ride-settings .dials .dial {
+  margin: 6px 0;
+}
+dialog.plan-ride-settings .dials input[type="range"] {
+  margin: 0;
+}
+dialog.plan-ride-settings .dial-ends {
+  margin-top: -6px;
+}
+@media (min-width: 1280px) {
+  dialog.plan-ride-settings {
+    width: min(760px, calc(100vw - 412px));
+  }
+  dialog.plan-ride-settings .dials {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+    align-items: start;
+  }
+  /* The When choices, warnings and the like across both columns. */
+  dialog.plan-ride-settings .dials > :not(.dial) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* When as a dropdown: its name beside the picker. */
+.dials .when-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  font-weight: 600;
+}
+.dials .when-pick select {
+  min-height: 44px;
+  font: inherit;
+  font-weight: 400;
+  max-width: 70%;
+}
+
+/* Go's short map key, first in Layers (intuitiveness review, 2026-11-21): a swatch and its plain words on one line,
+   never the full key's three columns. */
+.go-map-key {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.go-map-key h3 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+
+.legend.go-key li {
+  grid-template-columns: 68px 1fr;
+}
+
+.legend.go-key .stress-name {
+  font-weight: 400;
+}
+
+/* Plan's route card after an edit (intuitiveness review, 2026-11-21): the old figures dim, Update route in Start's place. */
+.totals-row.totals-edited .stats,
+.summary:has(.totals-edited) .stress-main {
+  opacity: 0.6;
+}
+.route-edited {
+  flex-direction: column;
+  align-items: stretch;
+}
+.route-edited .update-route {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.route-edited .hint {
+  flex: none;
+  margin: 4px 0 0;
+}

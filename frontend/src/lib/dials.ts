@@ -22,6 +22,9 @@ export type Bike = "classic" | "ebike";
 /** Bikeshare e-bike's ending (OWNER-DECISIONS 244): at a dock, or at the destination outside one. */
 export type Ending = "dock" | "outside_dock";
 
+/** A trip's own dials, not the ride's: left out where the ride type and sliders are kept (account settings, own ride types). */
+export const TRIP_DIALS: readonly (keyof Dials)[] = ["pickupStation", "dropoffStation", "transitOption", "targetDistanceM", "systemWeightKg", "ridingSpeedKmh", "loop"];
+
 export interface Dials {
   stress: number;
   hills: number;
@@ -39,11 +42,30 @@ export interface Dials {
    */
   trailsOff?: boolean;
   /**
-   * "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): set only by choosing that named option
-   * among the routes (lib/neighbours.ts rideDials), so a ride's re-plans keep to it; never a control, a link or a default.
+   * "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12): set by choosing that named option among the routes
+   * (lib/neighbours.ts rideDials), and since 2026-11-20 by Plan's own switch in the Ride settings popout (the owner:
+   * "Have it pop out to all ride parameters"). In the link and a saved route.
    */
   fewerTurns?: boolean;
+  /**
+   * "Paved only" (lib/surface.ts; the owner, 2026-11-21: "a surface setting: paved only, gravel, easy MTB, and then
+   * MTB2-4 as max"): gravel and dirt avoided wherever pavement runs near. Set by the Surface setting or the "All paved"
+   * named option, on the ride types that offer it (`offersPaved`). In the link (paved=1) and a saved route; absent is off.
+   */
   paved?: boolean;
+  /**
+   * "Waiting at lights and stops" (the owner, 2026-11-20: "being able to spend that time riding and not waiting at a
+   * light is what matters"): how many seconds of riding a second stopped counts when routes are compared, above the
+   * ride type's own (`ownWaitWeight`), up to WAIT_WEIGHT_MAX. Plan only; absent is the ride type's. In the link.
+   */
+  waitWeight?: number;
+  /**
+   * "Sharp turns" (the owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights"): how much a
+   * sharp turn's or U-turn's extra and the time a turn loses braking from speed count when routes are compared, 0 to
+   * SHARP_TURN_WEIGHT_MAX, below the ride type's own (`ownSharpTurnWeight`) too. Plan only; absent is the ride type's.
+   * In the link.
+   */
+  sharpTurnWeight?: number;
   /**
    * "Easy MTB trails" (the owner, 2026-11-08), Default and Trailmaxxing only (`offersEasyMtb`): also ride the
    * mountain-bike trails rated 0 or 1, or unrated (grass and dirt), on the off-road graph as Gravel does, steering off
@@ -234,10 +256,10 @@ export const STARTS: Record<PresetId, Start> = {
   "mountain-goat": { stress: 40, hills: 100, seek: true, climbs: true },
   // Slice 6: the old top of the traffic slider, hills at "fine with hills" (core.presets MTB_HILLS).
   "mountain-bike": { stress: 80, hills: 50, seek: true },
-  gravel: { stress: 40, hills: 0, seek: true },
+  gravel: { stress: 70, hills: 0, seek: true },
   // A strong rider: an LT1 grade of about 11% (`core.presets.FAST_HILLS`; Stephen, 2026-10-23: "More for fast").
   fast: { stress: 10, hills: 40, seek: true },
-  // Road Bike (Stephen, 2026-11-02): "Balanced" traffic, as Group Ride and Gravel (core.presets ROAD_BIKE_STRESS).
+  // Road Bike (Stephen, 2026-11-02): "Balanced" traffic, as Group Ride (core.presets ROAD_BIKE_STRESS).
   "road-bike": { stress: 40, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
   // Tandem (2026-11-08): the stoker is not in control, so Cargo with passengers' 80 (core.presets TANDEM_STRESS); hills toward avoid.
@@ -311,8 +333,13 @@ export function trailsOffLocked(preset: PresetId): boolean {
   return preset === "mass-ride";
 }
 
-/** The ride types that offer "Easy MTB trails" (core/presets.py EASY_MTB_PRESETS). */
-export const EASY_MTB_PRESETS: readonly PresetId[] = ["default", "trailmaxxing"];
+/**
+ * The ride types that offer "Easy MTB trails", and MTB trails up to level 2, 3 or 4 beside it (core/presets.py
+ * EASY_MTB_PRESETS; the owner, 2026-11-21: "People here can and should be able to adjust to anything"): every bike of
+ * the rider's own on the standard graph. Not Gravel or Mountain Goat (their off-road graph has the trails already), E-bike (its own graph), Mass Ride (always roads), Road Bike (its paved
+ * graph) or Mountain Bike (its own levels).
+ */
+export const EASY_MTB_PRESETS: readonly PresetId[] = ["default", "trailmaxxing", "group-ride", "fast", "cargo", "novice", "tandem"];
 
 /** Whether the ride type offers "Easy MTB trails" (the owner, 2026-11-08: Trailmaxxing, "And default"). */
 export function offersEasyMtb(preset: PresetId): boolean {
@@ -322,6 +349,103 @@ export function offersEasyMtb(preset: PresetId): boolean {
 /** Whether the ride is planned with "Easy MTB trails": on, on a ride type that offers it, and not trails off (which wins). */
 export function easyMtbOn(preset: PresetId, dials: Pick<Dials, "easyMtb" | "trailsOff">): boolean {
   return offersEasyMtb(preset) && dials.easyMtb === true && !trailsAreOff(preset, dials);
+}
+
+/**
+ * A ride type's own weight on junction waits (core/presets.py WAIT_WEIGHTS): Road Bike 3; Tandem, Cargo Bike, Group
+ * Ride and the pleasure ride types 2 (our defaults, not measured; agreed by the owner, 2026-11-20); every other 1. Fast is 1:
+ * real time (the owner, the same day).
+ */
+const WAIT_WEIGHTS: Partial<Record<PresetId, number>> = {
+  "road-bike": 3,
+  tandem: 2,
+  trailmaxxing: 2,
+  gravel: 2,
+  "mountain-goat": 2,
+  "mountain-bike": 2,
+  "group-ride": 2,
+  cargo: 2,
+};
+/** The most a rider may weigh waits (core/presets.py MAX_WAIT_WEIGHT). */
+export const WAIT_WEIGHT_MAX = 5;
+
+export function ownWaitWeight(preset: PresetId): number {
+  return WAIT_WEIGHTS[preset] ?? 1;
+}
+
+/** Whether the ride type takes "Paved only" (the API's `paved`): a bike of the rider's own, except Road Bike, always paved. */
+export function offersPaved(preset: PresetId): boolean {
+  return offersStopsAndTurns(preset) && preset !== "road-bike";
+}
+
+/**
+ * The hardest trail level a ride keeps, as the API takes `mtb_level`, or undefined for the default (left out of the
+ * link): on Mountain Bike 0 (no mountain-bike trails: the Surface setting's Gravel or Paved only), 1, 3 or 4 (2 is its
+ * default); on a ride type with Easy MTB trails on, 2 to 4 (1, the easy trails, is its default).
+ */
+export function fitTrailLevel(preset: PresetId, dials: Pick<Dials, "mtbLevel" | "easyMtb" | "paved">): number | undefined {
+  const level = dials.mtbLevel;
+  if (typeof level !== "number" || !Number.isInteger(level)) return undefined;
+  if (preset === "mountain-bike") return level >= 0 && level <= 4 && level !== DEFAULT_MTB_LEVEL ? level : undefined;
+  return offersEasyMtb(preset) && dials.easyMtb === true && dials.paved !== true && level >= 2 && level <= 4 ? level : undefined;
+}
+
+/** Whether the ride type takes Waiting at lights and Fewer turns: a bike of the rider's own, not on foot, a share bike or transit. */
+export function offersStopsAndTurns(preset: PresetId): boolean {
+  return !onFoot(preset) && !runs(preset) && !isTransit(preset) && !usesBikeshare(preset);
+}
+
+/**
+ * The ride types that already plan for fewer turns: their router charges a turn 30 s (core/presets.py
+ * HIGH_MANEUVER_PENALTY_S) and the ranking counts it at that, so Plan's "Fewer turns" box would change next to nothing
+ * and is not shown on them.
+ */
+const FEWER_TURNS_ALREADY: readonly PresetId[] = ["group-ride", "mass-ride", "road-bike", "tandem"];
+
+/** Whether Plan shows the "Fewer turns" box: a ride type that takes it and does not plan that way already. */
+export function showsFewerTurns(preset: PresetId): boolean {
+  return offersStopsAndTurns(preset) && !FEWER_TURNS_ALREADY.includes(preset);
+}
+
+/** The waits and sharp turns sliders' step (the owner, 2026-11-20: "maybe put some fractional levels too, like half"). */
+export const WEIGHT_STEP = 0.5;
+
+/** A weight to the sliders' half steps. */
+function toStep(weight: number): number {
+  return Math.round(weight / WEIGHT_STEP) * WEIGHT_STEP;
+}
+
+/** The rider's wait weight where it is above the ride type's own and one the API takes, else undefined. */
+export function fitWaitWeight(preset: PresetId, weight: unknown): number | undefined {
+  if (!offersStopsAndTurns(preset) || typeof weight !== "number" || !Number.isFinite(weight)) return undefined;
+  const stepped = Math.min(WAIT_WEIGHT_MAX, toStep(weight));
+  return stepped > ownWaitWeight(preset) ? stepped : undefined;
+}
+
+/** The weight the plan uses: the rider's, else the ride type's own. */
+export function waitWeightOf(preset: PresetId, dials: Pick<Dials, "waitWeight">): number {
+  return fitWaitWeight(preset, dials.waitWeight) ?? ownWaitWeight(preset);
+}
+
+/** A ride type's own sharp-turn weight (core/presets.py SHARP_TURN_WEIGHTS): Road Bike 3, Tandem and Cargo Bike 2, every other 1. */
+const SHARP_TURN_WEIGHTS: Partial<Record<PresetId, number>> = { "road-bike": 3, tandem: 2, cargo: 2 };
+/** The most a rider may weigh sharp turns (core/presets.py MAX_SHARP_TURN_WEIGHT). */
+export const SHARP_TURN_WEIGHT_MAX = 5;
+
+export function ownSharpTurnWeight(preset: PresetId): number {
+  return SHARP_TURN_WEIGHTS[preset] ?? 1;
+}
+
+/** The rider's sharp-turn weight where it differs from the ride type's own and the API takes it (0 to 5), else undefined. */
+export function fitSharpTurnWeight(preset: PresetId, weight: unknown): number | undefined {
+  if (!offersStopsAndTurns(preset) || typeof weight !== "number" || !Number.isFinite(weight)) return undefined;
+  const stepped = Math.max(0, Math.min(SHARP_TURN_WEIGHT_MAX, toStep(weight)));
+  return stepped !== ownSharpTurnWeight(preset) ? stepped : undefined;
+}
+
+/** The sharp-turn weight the plan uses: the rider's, else the ride type's own. */
+export function sharpTurnWeightOf(preset: PresetId, dials: Pick<Dials, "sharpTurnWeight">): number {
+  return fitSharpTurnWeight(preset, dials.sharpTurnWeight) ?? ownSharpTurnWeight(preset);
 }
 
 /** Whether the ride is planned trails off: the rider's switch, or a ride type that always is. */
@@ -449,7 +573,13 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     // Only an e-bike can end outside a dock, and never on Rebalance Ride (it ends where a bike is needed).
     ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
-    ...(offersEasyMtb(preset) && dials.easyMtb === true ? { easyMtb: true } : {}),
+    // The Surface setting (lib/surface.ts): Paved only or Easy MTB trails, never both (Paved only wins).
+    ...(offersPaved(preset) && dials.paved === true ? { paved: true } : {}),
+    ...(offersEasyMtb(preset) && dials.easyMtb === true && !(offersPaved(preset) && dials.paved === true) ? { easyMtb: true } : {}),
+    // Fewer turns and the rider's wait weight (2026-11-20), on a ride type that takes them.
+    ...(offersStopsAndTurns(preset) && dials.fewerTurns === true ? { fewerTurns: true } : {}),
+    ...(fitWaitWeight(preset, dials.waitWeight) !== undefined ? { waitWeight: fitWaitWeight(preset, dials.waitWeight) } : {}),
+    ...(fitSharpTurnWeight(preset, dials.sharpTurnWeight) !== undefined ? { sharpTurnWeight: fitSharpTurnWeight(preset, dials.sharpTurnWeight) } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
     // A start time stays with the plan through a change of ride type, except onto one planned from the docks now.
@@ -458,12 +588,11 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.outAndBack === true && !runs(preset) ? { outAndBack: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
-    // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
-    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
-      ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
-      : {}),
-    // The preferred level likewise, held to the hardest; left out where it is the default (min(2, hardest)).
-    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbPreferred) !== undefined && mtbPreferredOf(dials) !== defaultMtbPreferred(mtbLevelOf(dials))
+    // The hardest trail level (the Surface setting), only when it is not the ride type's default (the link stays short).
+    ...(fitTrailLevel(preset, dials) !== undefined ? { mtbLevel: fitTrailLevel(preset, dials) } : {}),
+    // Mountain Bike's preferred level likewise, held to the hardest; left out where it is the default (min(2, hardest)),
+    // and with no trails at all (level 0).
+    ...(preset === "mountain-bike" && dials.mtbLevel !== 0 && fitMtbLevel(dials.mtbPreferred) !== undefined && mtbPreferredOf(dials) !== defaultMtbPreferred(mtbLevelOf(dials))
       ? { mtbPreferred: mtbPreferredOf(dials) }
       : {}),
     ...(offersRideSize(preset) && fitRideSize(dials.rideSize) !== undefined && fitRideSize(dials.rideSize) !== RIDE_SIZE_DEFAULT
@@ -481,6 +610,14 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.trailsOff) fields.trails_off = true;
   if (dials.fewerTurns) fields.fewer_turns = true;
   if (dials.paved) fields.paved = true;
+  // The rider's wait weight, only above the ride type's own (the API takes 1 to 10 and counts at most 5).
+  if (typeof dials.waitWeight === "number" && Number.isFinite(dials.waitWeight) && dials.waitWeight > 1) {
+    fields.wait_weight = Math.min(WAIT_WEIGHT_MAX, dials.waitWeight);
+  }
+  // The rider's sharp-turn weight, 0 included (fitDials keeps it only where it differs from the ride type's own).
+  if (typeof dials.sharpTurnWeight === "number" && Number.isFinite(dials.sharpTurnWeight)) {
+    fields.sharp_turn_weight = Math.max(0, Math.min(SHARP_TURN_WEIGHT_MAX, dials.sharpTurnWeight));
+  }
   // "Easy MTB trails" (fitDials keeps it on Default and Trailmaxxing alone); absent is off.
   if (dials.easyMtb) fields.easy_mtb = true;
   const target = fitTarget(dials.targetDistanceM);
@@ -493,12 +630,13 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // Plan's start time (lib/startTime.ts): Washington's wall clock, which the API reads as such.
   if (dials.startAt) fields.depart_at = dials.startAt;
   if (dials.outAndBack) fields.out_and_back = true;
-  // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
-  const level = fitMtbLevel(dials.mtbLevel);
+  // The hardest trail level (fitDials keeps it where the ride type takes it): Mountain Bike's 0 to 4, absent 2; with
+  // Easy MTB trails, 2 to 4, absent 1.
+  const level = typeof dials.mtbLevel === "number" && Number.isInteger(dials.mtbLevel) && dials.mtbLevel >= 0 && dials.mtbLevel <= 4 ? dials.mtbLevel : undefined;
   if (level !== undefined) fields.mtb_level = level;
-  // The preferred level (fitDials holds it to the hardest); absent is min(2, the hardest), as the API's.
+  // The preferred level (fitDials holds it to the hardest); absent is min(2, the hardest), as the API's. None with no trails.
   const preferred = fitMtbLevel(dials.mtbPreferred);
-  if (preferred !== undefined) fields.mtb_preferred = Math.min(preferred, level ?? DEFAULT_MTB_LEVEL);
+  if (preferred !== undefined && level !== 0) fields.mtb_preferred = Math.min(preferred, level ?? DEFAULT_MTB_LEVEL);
   if (dials.bike) fields.bike = dials.bike;
   if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
   if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;
