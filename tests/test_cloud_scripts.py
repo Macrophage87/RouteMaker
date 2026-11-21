@@ -1351,6 +1351,7 @@ def beta(fake):
                 CLOUD_SMOKE_TRIES="3",
                 CLOUD_SMOKE_WAIT_S="0",
                 CLOUD_ROUTER_WAIT_S="0",
+                CLOUD_LOCK_WAIT_S="0",
                 **env,
             )
 

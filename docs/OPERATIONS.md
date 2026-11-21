@@ -10716,8 +10716,8 @@ It holds the deploy agent's lock from its checks to its end, so the router timer
 valhalla-mtb in the same seconds as the swap's `up -d --force-recreate` of the trail
 routers, and docker left offroad, paved and paved-weekend created but never started.
 When a trail router it started is not running, it says so and exits 3, without its
-"installed." line: remove any copy of it docker left only created (`docker ps -a`), start
-it (`beta-compose.sh up -d --no-deps <router>`), run
+"installed." line (auto-release.sh's ship-held says the same and stays paused; the map is
+good, so do not roll it back): start it (`beta-compose.sh up -d --force-recreate <router>`), run
 `scripts/beta/smoke-test.sh --local --trails`, and only then resume deployment.
 
 Then run `scripts/beta/smoke-test.sh --public` yourself once the pre-draw has finished,

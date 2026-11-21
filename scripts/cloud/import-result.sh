@@ -165,8 +165,9 @@ if [ "$beta" = 1 ]; then
 		# restarted valhalla-mtb in the same seconds as the trail routers' force-recreate below,
 		# and docker left offroad, paved and paved-weekend created but never started
 		# (cloud-20261120b, 2026-11-21).
-		exec 8>>"$beta_state/cd/lock"
-		flock -n 8 ||
+		exec 8>>"$beta_state/cd/lock" || die "cannot open $beta_state/cd/lock"
+		# -w: the router timer and the alert watch hold it a few seconds each pass.
+		flock -w "${CLOUD_LOCK_WAIT_S:-120}" 8 ||
 			die "a deployment pass is still running; wait for it: \"$beta_state/cd/bin/auto-release.sh\" pause --wait \"cloud data\""
 		[ ! -e "$beta_state/cd/in-progress" ] ||
 			die "a stopped deploy is half done ($beta_state/cd/in-progress); see BETA-RUNBOOK, \"Shipping an update later\", before installing data"
