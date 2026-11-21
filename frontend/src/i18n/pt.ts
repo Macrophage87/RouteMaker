@@ -2309,4 +2309,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Best avoided": "Melhor evitar",
   "Metro station: its colour is the line": "Estação de metrô: a cor é a linha",
   "Route locked. Open Edit route to change it.": "Rota bloqueada. Abra Editar rota para mudá-la.",
+  "Planner": "Planejador",
 };

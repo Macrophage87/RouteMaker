@@ -18,8 +18,9 @@ export const BUDGET_KB = {
   // The loader, React, MapLibre, App and what App imports at once, with their stylesheets.
   // 930 since v0.28.0: Ride mode moved to first use (39 KB less); with v0.28.0's other changes (Plan's chart tools among
   // them) the first load measured 923 KB. 935 since v0.30.0: the Ride settings popup in Go, the Surface picker and the
-  // rider's own ride types (#1384, #1386, #1385) brought it to 930.1 KB.
-  firstLoad: 935,
+  // rider's own ride types (#1384, #1386, #1385) brought it to 930.1 KB. 940 since v0.30.1: the junction dots on the map,
+  // the list, the chart and the ribbon (#1291) with #1401's accessibility fixes brought it to 935.8 KB.
+  firstLoad: 940,
   // App's own chunk. 329 since v0.28.0: 323 KB measured with Ride mode on first use (it was 356 before); 362 in v0.27.1.
   // 332 since v0.30.0: the intuitiveness review's Plan changes (#1398) on top of Ride settings, Surface and own ride
   // types brought it to 329.7 KB.

@@ -10,7 +10,7 @@ import { spreadMarks, turnMarks } from "./lib/aheadGraph.ts";
 import { stopCardParts, stopPointIndex } from "./lib/navigate.ts";
 
 const ROUTE = { profile: null, stress_spans: [{ from_m: 0, to_m: 3000, tier: 2, facility: null }], trail_levels: null } as unknown as RouteResponse;
-type GraphCue = Pick<Cue, "kind" | "atM" | "movement" | "severity" | "joined" | "cross" | "source" | "stop" | "point">;
+type GraphCue = Pick<Cue, "kind" | "atM" | "movement" | "severity" | "ratedLevel" | "joined" | "cross" | "source" | "stop" | "point">;
 const cue = (over: Partial<GraphCue>): GraphCue => ({ kind: "turn", atM: 0, movement: null, severity: null, source: "stretch", stop: null, ...over });
 const CUES: GraphCue[] = [
   cue({ atM: 300, movement: "left" }),
@@ -44,4 +44,32 @@ test("a named stop's card: the name large, 'Stop 2.' and where it is in the smal
   assert.deepEqual(stopCardParts({ kind: "stop", stop: 2, stopName: "Joe's Coffee" }), { head: "Joe's Coffee", rest: "Stop 2." });
   assert.equal(stopCardParts({ kind: "stop", stop: 2 }), null);
   assert.equal(stopCardParts({ kind: "turn", stop: null, stopName: "x" }), null);
+});
+
+// Rated junctions (the owner, 2026-11-15: a dot at each crossing rated 3 or more, in its stress colour).
+test("a rated junction on the ribbon: a small colour dot in place of the triangle, a rated turn's arrow in that level's colour", async () => {
+  const { ratedDotFill } = await import("./lib/intersectionMarkers.ts");
+  const cues = [
+    cue({ kind: "hazard", atM: 400, severity: "red", source: "junction", ratedLevel: 4 }),
+    cue({ atM: 1200, movement: "left", severity: "orange", ratedLevel: 3 }),
+    cue({ kind: "hazard", atM: 2000, severity: "orange", source: "junction" }),
+  ];
+  const screen = await render(<AheadGraph views={["stress"]} route={ROUTE} cues={cues} youM={0} lengthM={3000} />);
+  const turns = screen.container.querySelector(".ride-ahead-turns");
+  assert.ok(turns);
+  const dots = [...turns.querySelectorAll(".rated-dot")];
+  assert.equal(dots.length, 1, "one dot: the rated junction that is not a turn");
+  assert.equal(dots[0].getAttribute("aria-label"), "LTS 4");
+  assert.equal(dots[0].textContent, "", "colour only: nothing written on the dot");
+  const head = turns.querySelector<SVGPathElement>(".ride-ahead-arrow .ride-ahead-arrow-head");
+  assert.equal(head?.style.fill, ratedDotFill(3), "the rated turn's arrow is in its level's colour");
+  assert.equal(turns.querySelectorAll(":scope > path").length, 1, "the junction the model priced keeps its triangle");
+});
+
+test("rated marks drawn as one keep the harder level", () => {
+  const marks = turnMarks(
+    [cue({ atM: 100, movement: "right", severity: "orange", ratedLevel: 3 }), cue({ kind: "hazard", atM: 120, severity: "red", source: "junction", ratedLevel: 4.5 })],
+    { fromM: 0, toM: 3000 },
+  );
+  assert.deepEqual(spreadMarks(marks, 50), [{ m: 100, movement: "right", severity: "red", rated: 4.5 }]);
 });
