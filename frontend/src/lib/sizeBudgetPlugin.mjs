@@ -17,10 +17,13 @@ import { appPreloads } from "./appPreloadPlugin.mjs";
 export const BUDGET_KB = {
   // The loader, React, MapLibre, App and what App imports at once, with their stylesheets.
   // 930 since v0.28.0: Ride mode moved to first use (39 KB less); with v0.28.0's other changes (Plan's chart tools among
-  // them) the first load measured 923 KB.
-  firstLoad: 930,
+  // them) the first load measured 923 KB. 935 since v0.30.0: the Ride settings popup in Go, the Surface picker and the
+  // rider's own ride types (#1384, #1386, #1385) brought it to 930.1 KB.
+  firstLoad: 935,
   // App's own chunk. 329 since v0.28.0: 323 KB measured with Ride mode on first use (it was 356 before); 362 in v0.27.1.
-  app: 329,
+  // 332 since v0.30.0: the intuitiveness review's Plan changes (#1398) on top of Ride settings, Surface and own ride
+  // types brought it to 329.7 KB.
+  app: 332,
 };
 
 /** The chunks and stylesheets a first open downloads: the entry, what it imports at once, and App's (appPreloads). */

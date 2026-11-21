@@ -59,17 +59,74 @@ def test_trails_off_wins_and_other_ride_types_ignore_it() -> None:
     assert presets.variant_for_ride("default", "weekend", trails_off=True, easy_mtb=True) == (
         "no-trail"
     )
-    assert presets.variant_for_ride("fast", "weekday_offpeak", easy_mtb=True) == "standard"
-    assert presets.EASY_MTB_PRESETS == {"default", "trailmaxxing"}
+    # Since 2026-11-21 every bike of the rider's own on the standard graph takes it (the Surface
+    # setting: "People here can and should be able to adjust to anything").
+    assert presets.variant_for_ride("fast", "weekday_offpeak", easy_mtb=True) == "offroad"
+    assert presets.EASY_MTB_PRESETS == {
+        "default",
+        "trailmaxxing",
+        "group-ride",
+        "fast",
+        "cargo",
+        "novice",
+        "tandem",
+    }
+    # Not on a ride type with a graph of its own.
+    for name in ("road-bike", "ebike", "mass-ride", "mountain-bike"):
+        assert presets.variant_for_ride(name, "weekday_offpeak", easy_mtb=True) == (
+            presets.variant_for_ride(name, "weekday_offpeak")
+        )
 
 
-@pytest.mark.parametrize("name", ["fast", "gravel", "mountain-bike", "mass-ride"])
-def test_the_api_takes_it_on_default_and_trailmaxxing_only(name) -> None:
+@pytest.mark.parametrize("level", [2, 3, 4])
+@pytest.mark.parametrize("name", ["default", "fast", "cargo", "tandem"])
+def test_a_harder_level_rides_the_mountain_bike_graph(name, level) -> None:
+    """MTB trails up to level 2, 3 or 4 (the Surface setting, 2026-11-21): the Mountain Bike
+    graph, where those levels are open, at the weekend too (and planned on the weekend graph
+    beside it, as Mountain Bike's are)."""
+    for when in ("weekday_offpeak", "weekend"):
+        assert presets.variant_for_ride(name, when, easy_mtb=level) == "mtb"
+    assert presets.weekend_too(name, "weekend", easy_mtb=level)
+    assert easy_mtb.max_level_of(level) == level
+    assert easy_mtb.max_level_of(None) == 1
+
+
+def test_a_harder_level_holds_only_the_trails_above_it(readings, monkeypatch) -> None:
+    monkeypatch.setattr(routing, "_route", lambda *a: pytest.fail("nothing to steer off"))
+    within = trip("within", [road(200), hard(800, 3), road(200)])
+    chosen, info = settle(within, max_level=3)
+    assert chosen is within
+    assert info["max_level"] == 3 and info["harder_m"] == 0.0 and info["limited"] is None
+    above = trip("above", [hard(800, 4)], pieces=[piece(-80.0, 30.0)])
+    _chosen, info = settle(above, max_level=3)
+    assert info["harder_m"] == 800.0 and info["limited"] == "no_way_round"
+
+
+@pytest.mark.parametrize("name", ["road-bike", "ebike", "mountain-bike", "mass-ride"])
+def test_the_api_refuses_it_on_a_ride_type_with_a_graph_of_its_own(name) -> None:
     points = [[-77.04, 38.91], [-77.01, 38.89]]
     assert api.RouteIn(points=points, preset="trailmaxxing", easy_mtb=True).easy_mtb is True
     assert api.RouteIn(points=points, preset=name).easy_mtb is False
-    with pytest.raises(ValueError, match="easy_mtb"):
+    with pytest.raises(ValueError):
         api.RouteIn(points=points, preset=name, easy_mtb=True)
+
+
+def test_the_api_takes_a_harder_level_with_it_and_mountain_bike_level_0() -> None:
+    points = [[-77.04, 38.91], [-77.01, 38.89]]
+    body = api.RouteIn(points=points, preset="fast", easy_mtb=True, mtb_level=3)
+    assert body.mtb_level == 3
+    assert api._trail_level(body) == 3
+    assert api._trail_level(api.RouteIn(points=points, preset="fast", easy_mtb=True)) == 1
+    with pytest.raises(ValueError):
+        api.RouteIn(points=points, preset="fast", mtb_level=3)
+    with pytest.raises(ValueError):
+        api.RouteIn(points=points, preset="fast", easy_mtb=True, mtb_level=0)
+    # Mountain Bike's 0 is no mountain-bike trails, planned as after End mountain biking.
+    none = api.RouteIn(points=points, preset="mountain-bike", mtb_level=0)
+    assert api._no_mtb_trails(none)
+    dials = api._bike_dials(none)
+    assert dials.mtb_done is True and dials.mtb_level is None
+    assert presets.variant_for_ride("mountain-bike", "weekday_offpeak", mtb_done=True) == "standard"
 
 
 def test_an_answer_whose_rounds_ran_out_of_time_is_not_kept() -> None:
@@ -95,14 +152,14 @@ def piece(lon, lat, metres=100.0):
 
 @pytest.fixture
 def readings(monkeypatch):
-    def reading_of(trip, variant, costing, deadline, traces):
+    def reading_of(trip, variant, costing, deadline, traces, max_level=easy_mtb.EASY_MAX_LEVEL):
         if trip.get("untraced"):
             return None
         stretches = trip["stretches"]
         pieces = trip.get("pieces") or [
             piece(-77.0 + i * 0.01, 38.9) for i in range(len(stretches))
         ]
-        return easy_mtb.harder_m(stretches), pieces, stretches
+        return easy_mtb.harder_m(stretches, max_level), pieces, stretches
 
     monkeypatch.setattr(easy_mtb, "reading_of", reading_of)
 
@@ -114,9 +171,17 @@ def trip(name, stretches, **extra):
 FAR_POINTS = [(-80.0, 30.0), (-80.1, 30.0)]
 
 
-def settle(first, points=FAR_POINTS, excludes=None):
+def settle(first, points=FAR_POINTS, excludes=None, max_level=easy_mtb.EASY_MAX_LEVEL):
     return easy_mtb.settle(
-        first, {"locations": [], "alternates": 2}, "offroad", {}, None, {}, points, excludes
+        first,
+        {"locations": [], "alternates": 2},
+        "offroad",
+        {},
+        None,
+        {},
+        points,
+        excludes,
+        max_level=max_level,
     )
 
 

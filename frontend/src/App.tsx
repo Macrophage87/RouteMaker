@@ -305,7 +305,7 @@ import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, mapEditsLocked, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 // Ride mode, its graphs and its detours: loaded on first use, and once the page is idle. What App needs at Start (the
 // voice's unlock inside the press, the start and end sentences) is in rideStart.ts. A Start or Resume before the code
 // is in waits for it (beginRide, resumeLeft), so a ride never shows without its screen.
@@ -323,6 +323,8 @@ import { rideTooLong } from "./lib/navigate.ts";
 import { installState } from "./lib/installOffer.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
+import { matchingOwn, ownNow, ownSetup, reloadOwn, setGoOwn, useOwnRideTypes, type OwnRideType } from "./lib/ownRideTypes.ts";
+import { takesGoDefault, type GoDefault } from "./lib/rideTypeCards.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
@@ -369,7 +371,7 @@ const RideGroup = later(() => import("./RideGroup.tsx").then((m) => m.RideGroup)
 const RoamMode = later(() => import("./RoamMode.tsx").then((m) => m.RoamMode));
 import { RideGuard } from "./RideGuard.tsx";
 import { watchOpenLinks } from "./lib/rideLinks.ts";
-import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
+import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
@@ -444,6 +446,16 @@ const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length
 const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, wide: !window.matchMedia(NARROW).matches });
 // Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
 const GO_START_RIDE = OPENING.mode === "go" && !PLAN_LINK && START_MY_GO.myGo.ride ? START_MY_GO.myGo.ride : null;
+// Or one of the rider's own ride types (lib/ownRideTypes.ts), made Go's from the ride type list: its ride type and
+// every slider.
+const GO_START_OWN = ((): { preset: PresetId; dials: Dials } | null => {
+  if (OPENING.mode !== "go" || PLAN_LINK) return null;
+  const { list, goOwn } = ownNow();
+  const own = list.find((o) => o.id === goOwn);
+  if (!own) return null;
+  // Its own ride type, even where My Go's ride is another (it was saved again on another base since).
+  return ownSetup(own);
+})();
 // A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
 const OPEN_AT = atFromHash(window.location.hash);
 // A shared route's link (v0.7.0, "share the identical route"; lib/sharedRoutes.ts): the exact line it names is
@@ -522,8 +534,8 @@ export function App() {
   // The parts loaded on first use start arriving once the first screen is up (app/later.tsx).
   usePreloadLater();
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
-  const [preset, setPreset] = useState<PresetId>(GO_START_RIDE ?? initialPlan.preset);
-  const [dials, setDials] = useState<Dials>(() => (GO_START_RIDE ? startDials(GO_START_RIDE) : initialPlan.dials));
+  const [preset, setPreset] = useState<PresetId>(GO_START_OWN?.preset ?? GO_START_RIDE ?? initialPlan.preset);
+  const [dials, setDials] = useState<Dials>(() => GO_START_OWN?.dials ?? (GO_START_RIDE ? startDials(GO_START_RIDE) : initialPlan.dials));
   // Go or Plan (lib/appMode.ts), and why it opened so (a later account My Go may still move it).
   const [mode, setModeState] = useState<AppMode>(OPENING.mode);
   const modeSwitched = useRef(false);
@@ -1193,6 +1205,8 @@ export function App() {
   useEffect(() => watchOpenLinks(window, () => onBikeNow.current, (question) => window.confirm(question), (url) => window.location.assign(url)), []);
   // How many are on the ride's broadcast (RideGroup's count), shown in Ride mode's Broadcast; More > Riders opens its panel.
   const [rideRiders, setRideRiders] = useState<number | null>(null);
+  // Which ended ride (its n) the rider made its ride type Go's default from, on the summary card.
+  const [goDefaultSetAfter, setGoDefaultSetAfter] = useState<number | null>(null);
   const [ridersAsk, setRidersAsk] = useState(0);
   // What the ride started from, captured at Start ride: the ride never follows the planner's own route,
   // which a failed or changed plan could take away mid-ride.
@@ -1974,6 +1988,7 @@ export function App() {
   const lastSettings = useRef<SettingsDoc | null>(null);
   // The favorite ride types are saved with the rest (lib/favoriteRides.ts); a star pressed is a change.
   const favoriteRides = useFavoriteRides();
+  const ownRides = useOwnRideTypes();
   const [settingsSynced, setSettingsSynced] = useState(false);
   const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
   // This device's settings when the page first asked for the account's: a read that comes later (retryUntil) keeps
@@ -2002,6 +2017,7 @@ export function App() {
     } else {
       applyToDevice(step.doc);
       reloadFavorites();
+      reloadOwn();
       // The account's weight, or cleared when it was cleared elsewhere; an account from before it kept one
       // leaves this device's, which the save below then puts in the account.
       if (step.doc.weight === null) {
@@ -3158,6 +3174,17 @@ export function App() {
     namer.remember(home.point, home.label || t("Home"), home.label || t("Home"));
     void goTo(home.point, home.label || t("Home"));
   };
+  // A Home set from the Home chip's sheet, where there was none: the trip there is planned too (intuitiveness review,
+  // 2026-11-21: the rider pressed Home to go home, set it, and had to press Home again). A changed Home only changes it.
+  const setFirstHome = (home: Home | null) => {
+    // Not once a ride has begun: a spot's name looked up while Start was pressed (the PR review's 4).
+    const first = myGoRef.current.home === null && modeRef.current === "go" && !shownNow.current.riding;
+    setHome(home);
+    if (first && home) {
+      namer.remember(home.point, home.label || t("Home"), home.label || t("Home"));
+      void goTo(home.point, home.label || t("Home"));
+    }
+  };
   // Home at a spot on the map (Pick on the map then a tap): named by a name the page
   // has, else the reverse look-up (through the page's one geocoding gate), else its coordinates.
   const setHomeAt = async (point: LonLat) => {
@@ -3167,7 +3194,7 @@ export function App() {
     }
     const known = namer.name(point)?.name;
     const reverse = known ? null : await geoGate.run(() => fetchPlaces(reverseUrl(point))).catch(() => null);
-    setHome(homeAtSpot(point, known, reverse));
+    setFirstHome(homeAtSpot(point, known, reverse));
   };
   const setHomeAtRef = useRef(setHomeAt);
   setHomeAtRef.current = setHomeAt;
@@ -3247,6 +3274,13 @@ export function App() {
   // The Ride sheet's ride types: a pick closes the sheet; closing it scrolls Go's sheet to the totals (the view effect).
   const pickRideAndClose = (id: PresetId) => {
     pickRide(id);
+    if (modeRef.current === "go" && viewNow.current === "ride") backToPlanner();
+  };
+  // One of the rider's own ride types (lib/ownRideTypes.ts) from Go's Ride sheet: its ride type and every slider.
+  const pickOwnAndClose = (own: OwnRideType) => {
+    const setup = ownSetup(own);
+    choosePreset(setup.preset, setup.dials);
+    announceExtra(`${own.name}.`);
     if (modeRef.current === "go" && viewNow.current === "ride") backToPlanner();
   };
   // Search prefers places near the rider: the location the app already has (`here`, rounded to about 1 km)
@@ -3570,7 +3604,8 @@ export function App() {
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick }, { now: true });
   // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
   // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
-  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
+  // Nor one with no mountain-bike trails (the Surface setting's Gravel or Paved only, level 0).
+  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) && dials.mtbLevel !== 0 ? mtbLevelOf(dials) : null;
   useEffect(() => {
     setRoutableMtb(routableLevel);
   }, [routableLevel]);
@@ -4193,9 +4228,9 @@ export function App() {
     const last = routedPoints[routedPoints.length - 1];
     return routeTitle(fileNamed(first), fileNamed(last), routedLoop);
   };
-  const keepForOffline = async () => {
+  const keepForOffline = async (): Promise<{ said: string; kept: boolean }> => {
     const plan = routedKey.current;
-    if (!shown || keeping || !plan) return;
+    if (!shown || keeping || !plan) return { said: "", kept: false };
     setKeeping(true);
     const controller = new AbortController();
     keepAbort.current = controller;
@@ -4207,8 +4242,13 @@ export function App() {
     setKeeping(false);
     setKeptVersion((v) => v + 1);
     // Stopped by Remove of this route in Settings: Remove has said what happened; the keep says nothing.
-    if (removed) setKeepSpoken({ text: "", count: 0 });
-    else setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
+    if (removed) {
+      setKeepSpoken({ text: "", count: 0 });
+      return { said: "", kept: false };
+    }
+    const said = keepSaid(outcome, title);
+    setKeepSpoken((s) => ({ text: said, count: s.count + 1 }));
+    return { said, kept: outcome === "kept" || outcome === "partial" || outcome === "no-map" };
   };
   // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
   const openKept = (kept: KeptRoute) => {
@@ -4242,7 +4282,7 @@ export function App() {
       void saveSettings(window.location.origin, doc).then((saved) => saved && setUnitsPending(false));
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight, ridingSpeed]);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, ownRides, weight, ridingSpeed]);
   const answerHome = (move: boolean) => {
     const offer = homeAsk;
     if (!offer) return;
@@ -6668,10 +6708,9 @@ export function App() {
         ? null
         : (points.length >= 2 || fromStart) && routeNow.unavailable === null
           ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
-          : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
-            points.length === 0 && !isMassRide(preset)
-            ? { label: ROAM_NAME, start: true, busy: false, onPress: startRoam }
-            : null;
+          : // No destination yet: nothing here. Roam is behind More (intuitiveness review, 2026-11-21: the biggest
+            // button on the first screen, it outranked Where to?).
+            null;
   const goBar =
     mode === "go" && !riding && (goBig !== null || can.undo || can.redo || points.length > 0)
       ? { onUndo: can.undo ? undo : null, onRedo: can.redo ? redo : null, big: goBig, onClear: points.length > 0 ? clearPlan : null }
@@ -6871,6 +6910,11 @@ export function App() {
   };
   // Review (lib/appMode.ts): the panel holds the queues and the map their roads; the plan stays as it was, unshown.
   const reviewing = mode === "review" && canReview;
+  // Go's route stays as it is on the map until Edit route is open (lib/appMode.ts mapEditsLocked).
+  const editsLocked = mapEditsLocked(mode, view === "points");
+  // A locked pin pressed (intuitiveness review, 2026-11-21: the lock was silent, its only words a hover title): said
+  // once a press, in the page's status line.
+  const sayRouteLocked = () => announce(t("Route locked. Open Edit route to change it."));
   // Go's routes to choose from, all on the map in their colours, a press on one choosing it (lib/routeChoice.ts; the
   // owner, 2026-10-19). Not while riding, in Review, on a stale route, or while the way round an Avoid junction shows.
   const choicesDrawn = mode === "go" && !riding && !reviewing && !stale && !planEdited && !aroundAvoid && shown !== null;
@@ -6905,13 +6949,43 @@ export function App() {
   // to add that ride to your saved routes"): Go's Save offers sign-in, or the GPX file, as Plan's bar does.
   const sharedShown = sharedOpen !== null && shown === sharedOpen.answer;
   const actions = {
-    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+    // Signed out, Plan's Save route keeps the route on this device (intuitiveness review, 2026-11-21), so More has no
+    // second Keep for offline then.
+    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown: keepShown && me.signed_in, keepForOffline, keeping, keepSpoken, linkSaid,
     downloadRoute,
     save: saveProps ?? (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
     savedNote: savedNoteShown,
   };
   // Go's ride types: before a route under the place chips, with one under the route card (edit-route redesign).
   // P3: the ride type in use first, pressed, then the rider's own and starred ones, in one row that scrolls sideways.
+  // Go's default from the ride type list (the owner, 2026-11-21): a built-in ride type is My Go's ride; one of the
+  // rider's own is My Go's ride set to its ride type, and Go starts on its sliders too (GO_START_OWN).
+  const goDefault: GoDefault = {
+    current: ownRides.goOwn ? `own:${ownRides.goOwn}` : (myGo.ride ?? "default"),
+    onSet: (key) => {
+      const own = key.startsWith("own:") ? ownRides.list.find((o) => `own:${o.id}` === key) : undefined;
+      const ride: PresetId = own ? ownSetup(own).preset : (key as PresetId);
+      setGoOwn(own ? own.id : null);
+      saveMyGoNow({ ...myGoRef.current, ride: ride === "default" ? null : ride });
+      announceExtra(t("Go starts on {ride}.", { ride: own ? own.name : presetSaid(ride) }));
+    },
+  };
+  const ownInUse = matchingOwn(ownRides.list, preset, dials);
+  // After a ride (the owner, 2026-11-21: "have the 'save as default' be an option after the ride is finished"): the ride
+  // type ridden, a built-in one or one of the rider's own, where it is not already what Go starts on. A changed ride
+  // type that is not one of the rider's own is not offered: it has no name to start on.
+  const endedGoKey = ownInUse ? `own:${ownInUse.id}` : isCustom(preset, dials) ? null : preset;
+  const endedGoDefault =
+    rideEnded && endedGoKey && takesGoDefault(preset) && (goDefaultSetAfter === rideEnded.n || goDefault.current !== endedGoKey)
+      ? {
+          name: ownInUse ? ownInUse.name : presetSaid(preset),
+          set: goDefaultSetAfter === rideEnded.n,
+          onSet: () => {
+            goDefault.onSet(endedGoKey);
+            setGoDefaultSetAfter(rideEnded.n);
+          },
+        }
+      : null;
   const goRides = (
     <RideChips
       ids={goRideChips(myGo.ride, preset, favoriteRides)}
@@ -6922,6 +6996,7 @@ export function App() {
       ownHint={OWN_RIDE_HINT}
       own={myGo.ride ?? "default"}
       changed={isCustom(preset, dials)}
+      mine={ownInUse?.name ?? null}
     />
   );
   const go = {
@@ -7029,6 +7104,16 @@ export function App() {
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startBusy: rideOpening === "start", broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
         barrierAvoid: planDials.barrierAvoid,
+        // Plan's card after an edit: Update route in Start's row, as the map bar's (intuitiveness review, 2026-11-21).
+        edited:
+          mode === "plan" && planEdited
+            ? {
+                label: routingNow ? ROUTING_LABEL : routeNow.label,
+                onUpdate: routeNow.unavailable === null ? pressRoute : null,
+                busy: routingNow,
+                why: routeNow.unavailable,
+              }
+            : null,
         // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
         check:
           mode === "plan" && imported && fileShown()?.follows_file ? (
@@ -7063,6 +7148,14 @@ export function App() {
           hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
           // A day and start time, in Plan only (the owner, 2026-11-13: Go always plans from now).
           startTime: mode === "plan" && offersStartTime(preset),
+          // Every ride setting in a popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"), the same one
+          // in Go (2026-11-21: "just have the same control popout for both"), so a link's waits, sharp turns and Fewer
+          // turns are planned with, and seen, in Go too.
+          popout: true,
+          go: goDefault,
+          shown: mode !== "go" || view === "ride",
+          onDone: mode === "go" ? backToPlanner : undefined,
+          onSaid: announce,
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,
@@ -7189,18 +7282,20 @@ export function App() {
         coveredBelow={coveredBelow}
         onStressAvailability={setStress}
         onMapClick={onBike || reviewing ? ignore : tapMap}
-        onMovePoint={onBike ? ignore : move}
-        lineEdit={riding || reviewing ? null : lineEdit}
+        onMovePoint={onBike || editsLocked ? ignore : move}
+        pointsLocked={editsLocked}
+        onLockedPress={editsLocked && !riding && !reviewing ? sayRouteLocked : undefined}
+        lineEdit={riding || reviewing || editsLocked ? null : lineEdit}
         choices={choices}
         routeColour={routeColour}
         onPickRoute={choicesDrawn ? choose : undefined}
-        onLineDrop={riding || reviewing ? ignore : insertOnLine}
+        onLineDrop={riding || reviewing || editsLocked ? ignore : insertOnLine}
         pressSetsEnd={goTapSetsEnd(mode)}
-        onRemovePoint={riding ? ignore : removeFromMap}
-        onSwitchKind={riding ? ignore : switchKind}
+        onRemovePoint={riding || editsLocked ? ignore : removeFromMap}
+        onSwitchKind={riding || editsLocked ? ignore : switchKind}
         // A Ctrl+click is a stop, its name asked first (2026-10-24); in Go only once there is a route to add it to.
-        onStopAt={onBike || reviewing || (goTapSetsEnd(mode) && points.length < 2) ? undefined : askStopAt}
-        onRenameStop={onBike || reviewing ? undefined : renameStop}
+        onStopAt={onBike || reviewing || editsLocked || (goTapSetsEnd(mode) && points.length < 2) ? undefined : askStopAt}
+        onRenameStop={onBike || reviewing || editsLocked ? undefined : renameStop}
         rideStops={riding ? (rideView?.stops ?? null) : null}
         // The route's notes: on the map in Plan, Go and a ride; in Plan each opens to change or remove it.
         routeNotes={reviewing || roaming ? null : notes}
@@ -7560,7 +7655,9 @@ export function App() {
               defaultFixed={saveProps?.defaultFixed}
               label={SAVE_ROUTE}
               bar
-              onGpx={downloadRoute}
+              // Signed out, Save keeps the route on this device, with Sign in to sync beside what it says; no Download
+              // GPX here, the route row's GPX is one press away (intuitiveness review, 2026-11-21).
+              keepHere={!me.signed_in && keepShown ? keepForOffline : null}
               signIn={signInFromSave}
             />
           )}
@@ -7672,6 +7769,7 @@ export function App() {
           onDone={finishRide}
           onReports={rideEndReports}
           origin={origin}
+          goDefault={endedGoDefault}
         />
       )}
       {riding && rideStart && (
@@ -7851,7 +7949,7 @@ export function App() {
                   places={{
                     homeReady: myGo.home !== null,
                     home: myGo.home,
-                    onHomePlace: (found) => setHome(homeFromPlace(found)),
+                    onHomePlace: (found) => setFirstHome(homeFromPlace(found)),
                     onClearHome: () => setHome(null),
                     homePicking: homePick,
                     onPickHome: pickHome,
@@ -7870,6 +7968,7 @@ export function App() {
                     onRepair: openRepair,
                     onSights: openPlaces,
                     onSavedRoutes: () => setLoadOpen("go"),
+                    onRoam: points.length === 0 && !isMassRide(preset) ? startRoam : null,
                   }}
                   rides={goRides}
                   notice={notice}
@@ -7907,6 +8006,7 @@ export function App() {
                 nav: sheetNav, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn,
                 setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus,
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
+                goKey: mode === "go",
                 climbsStatus, climbsAlong, zoom, facilitiesShown, scenicDrawn: scenicShown(scenicOn, mode, massMap),
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
@@ -8052,7 +8152,7 @@ export function App() {
             <EditRouteSheet nav={sheetNav}>{goMode && view === "points" && sections.points}</EditRouteSheet>
             <RideSheet nav={sheetNav}>
               {/* A pick closes the sheet (P3: it saved the Close press), back to the route and its totals. */}
-              <RideGroupChips preset={preset} onPick={pickRideAndClose} open={view === "ride"} />
+              <RideGroupChips preset={preset} dials={dials} onPick={pickRideAndClose} onPickOwn={pickOwnAndClose} go={goDefault} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
               {/* Start from here (the owner, 2026-10-16: "You should be able to make changes then start from the edit
