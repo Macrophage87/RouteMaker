@@ -122,8 +122,9 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "fast",
     label: "Fast",
-    description: "Direct roads, few turns and smooth pavement, whatever the traffic.",
-    summary: "The most direct route, whatever the traffic.",
+    // The owner, 2026-11-20: "Make fast faster. Have that as the subtitle, direct as possible."
+    description: "The most direct route, whatever the traffic.",
+    summary: "As direct as possible.",
   },
   {
     // Road Bike (Stephen, 2026-11-02), replacing the Avoid gravel box: its own map, where gravel, dirt and

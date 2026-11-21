@@ -233,10 +233,11 @@ test("the heading holds between fixes too close to take one from (a phone with n
   assert.equal(track.step(at(20, 30), 180), 180);
 });
 
-test("App: Roam is Go's one button with no destination, a detour's end comes back to it, and the plan is shut while roaming", async () => {
+test("App: Roam is behind Go's More with no destination, a detour's end comes back to it, and the plan is shut while roaming", async () => {
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /points\.length === 0 && !isMassRide\(preset\)\s*\? \{ label: ROAM_NAME, start: true, busy: false, onPress: startRoam \}/);
+  // The intuitiveness review (2026-11-21): behind More, not the bar's big button.
+  assert.match(app, /onRoam: points\.length === 0 && !isMassRide\(preset\) \? startRoam : null,/);
   assert.match(app, /if \(start\?\.roam\) \{\s*setRiding\(false\);\s*setRideStart\(null\);\s*setRideView\(null\);\s*setFollow\(true\);\s*setRoaming\(true\);\s*announce\(BACK_TO_ROAM\);\s*return;/);
   assert.match(app, /beginRide\(ridePrefs, false, \{ route: result\.route, points: asked, roam: true \}\);/);
   // A bikeshare or transit ride type rides the detour as the default ride.
