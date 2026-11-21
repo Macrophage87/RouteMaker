@@ -14,8 +14,8 @@ import { REACH_DEFAULT, reachBody } from "./reach.ts";
 import { ES } from "../i18n/es.ts";
 
 test("offered on every bike of the rider's own on the standard graph, and off by default", () => {
-  // Since 2026-11-21 (the Surface setting) every bike of the rider's own on the standard graph (core/presets.py's).
-  assert.deepEqual([...EASY_MTB_PRESETS], ["default", "trailmaxxing", "group-ride", "mountain-goat", "gravel", "fast", "cargo", "novice", "tandem"]);
+  // Since 2026-11-21 (the Surface setting) every bike of the rider's own on the standard graph but Gravel and Mountain Goat, whose off-road graph has the trails already (core/presets.py's).
+  assert.deepEqual([...EASY_MTB_PRESETS], ["default", "trailmaxxing", "group-ride", "fast", "cargo", "novice", "tandem"]);
   for (const preset of PRESETS) {
     const start = startDials(preset.id);
     assert.equal(start.easyMtb, undefined, preset.id);

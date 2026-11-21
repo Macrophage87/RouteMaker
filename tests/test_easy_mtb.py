@@ -66,8 +66,6 @@ def test_trails_off_wins_and_other_ride_types_ignore_it() -> None:
         "default",
         "trailmaxxing",
         "group-ride",
-        "mountain-goat",
-        "gravel",
         "fast",
         "cargo",
         "novice",
@@ -81,7 +79,7 @@ def test_trails_off_wins_and_other_ride_types_ignore_it() -> None:
 
 
 @pytest.mark.parametrize("level", [2, 3, 4])
-@pytest.mark.parametrize("name", ["default", "fast", "gravel", "tandem"])
+@pytest.mark.parametrize("name", ["default", "fast", "cargo", "tandem"])
 def test_a_harder_level_rides_the_mountain_bike_graph(name, level) -> None:
     """MTB trails up to level 2, 3 or 4 (the Surface setting, 2026-11-21): the Mountain Bike
     graph, where those levels are open, at the weekend too (and planned on the weekend graph

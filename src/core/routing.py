@@ -5749,7 +5749,9 @@ def _plan(
     ):
         dirt_closed = (
             dials.dirt_closed
-            or dials.mtb_done
+            # After "End mountain biking" in a ride; not Mountain Bike with no trails chosen
+            # (the Surface setting's Gravel), whose dirt paths open as Default's do.
+            or (dials.mtb_done and dials.ride_replan)
             or (bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked))
         )
         # "End mountain biking" pressed on a trail (the owner, 2026-11-08: "It still routes on

@@ -14,6 +14,7 @@ import { t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
 import { formatDistanceChange, formatDuration } from "./format.ts";
 import { isTransit, type PresetId } from "./presets.ts";
+import { isMtb } from "./mtbMode.ts";
 import { turnTotal, unpavedMetres } from "./quickFigures.ts";
 import type { StressKey } from "./stressBar.ts";
 
@@ -300,6 +301,10 @@ export function rideDials(planDials: Dials, shown: RouteResponse | null): Dials 
     ...(neighbour.kind === "paved" ? { paved: true } : {}),
   };
   // All paved and Easy MTB trails are never both (the Surface setting, 2026-11-21): All paved wins.
-  if (neighbour.kind === "paved") delete dials.easyMtb;
+  if (neighbour.kind === "paved") {
+    delete dials.easyMtb;
+    // A harder trail level goes with Easy MTB trails, but on Mountain Bike, where it is its own.
+    if (!isMtb(shown.preset)) delete dials.mtbLevel;
+  }
   return dials;
 }

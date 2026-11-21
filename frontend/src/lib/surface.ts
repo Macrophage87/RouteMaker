@@ -74,7 +74,8 @@ export function withSurface(preset: PresetId, dials: Dials, surface: Surface): D
   if (surface === "paved") next.paved = true;
   if (isMtb(preset)) {
     // Mountain Bike: 0 is no trails, and no preferred level; 1 to 4 as its own levels (the default, 2, left out).
-    if (level >= 1) return withMtbLevel({ ...next, mtbLevel: undefined }, level as MtbLevel);
+    // From no trails (0) the preferred level starts over; else it is kept, held to the new hardest.
+    if (level >= 1) return withMtbLevel(next.mtbLevel === 0 ? { ...next, mtbLevel: undefined } : next, level as MtbLevel);
     next.mtbLevel = 0;
     delete next.mtbPreferred;
     return next;

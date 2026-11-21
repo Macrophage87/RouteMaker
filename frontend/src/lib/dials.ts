@@ -333,10 +333,10 @@ export function trailsOffLocked(preset: PresetId): boolean {
 /**
  * The ride types that offer "Easy MTB trails", and MTB trails up to level 2, 3 or 4 beside it (core/presets.py
  * EASY_MTB_PRESETS; the owner, 2026-11-21: "People here can and should be able to adjust to anything"): every bike of
- * the rider's own on the standard graph. Not E-bike (its own graph), Mass Ride (always roads), Road Bike (its paved
+ * the rider's own on the standard graph. Not Gravel or Mountain Goat (their off-road graph has the trails already), E-bike (its own graph), Mass Ride (always roads), Road Bike (its paved
  * graph) or Mountain Bike (its own levels).
  */
-export const EASY_MTB_PRESETS: readonly PresetId[] = ["default", "trailmaxxing", "group-ride", "mountain-goat", "gravel", "fast", "cargo", "novice", "tandem"];
+export const EASY_MTB_PRESETS: readonly PresetId[] = ["default", "trailmaxxing", "group-ride", "fast", "cargo", "novice", "tandem"];
 
 /** Whether the ride type offers "Easy MTB trails" (the owner, 2026-11-08: Trailmaxxing, "And default"). */
 export function offersEasyMtb(preset: PresetId): boolean {

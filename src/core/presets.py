@@ -1452,8 +1452,6 @@ EASY_MTB_PRESETS = frozenset(
         "default",
         "trailmaxxing",
         "group-ride",
-        "mountain-goat",
-        "gravel",
         "fast",
         "cargo",
         "novice",

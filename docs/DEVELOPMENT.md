@@ -5129,7 +5129,7 @@ on every bike of the rider's own but Road Bike (always paved), made of dials the
 | Easy MTB trails | `mtb_level` 1 | `easy_mtb` |
 | MTB trails up to level 2-4 | `mtb_level` 2-4 (2 the default) | `easy_mtb`, `mtb_level` 2-4 |
 
-E-bike and Mass Ride (graphs of their own) get Paved only and Gravel. Mountain Bike's level 0
+E-bike and Mass Ride (graphs of their own), and Gravel and Mountain Goat (whose off-road graph has the trails already), get Paved only and Gravel. Mountain Bike's level 0
 plans as after Ride's End mountain biking (`api._no_mtb_trails` sets `Dials.mtb_done`: the
 standard graph, Default's `use_roads`), with no preferred level. On the other ride types a level
 of 2 to 4 rides the Mountain Bike graph, where every level is open, with the ride type's own

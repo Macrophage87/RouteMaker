@@ -1665,6 +1665,13 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "mtb_preferred": number("prefer"),
         "ride_size": (None if number("riders") is None else min(2000, max(100, number("riders")))),
     }
+    # The trail level as the page reads it (dials.ts fitTrailLevel): Mountain Bike's 0 to 4,
+    # elsewhere 2 to 4 beside Easy MTB trails, never with Paved only.
+    level = options["mtb_level"]
+    if preset == "mountain-bike":
+        options["mtb_level"] = level if level in (0, 1, 3, 4) else None
+    elif not (options["easy_mtb"] and not options["paved"] and level in (2, 3, 4)):
+        options["mtb_level"] = None
     if one("targetmi"):
         try:
             options["target_distance_m"] = int(float(one("targetmi")) * METRES_PER_MILE)
@@ -1794,8 +1801,6 @@ EASY_MTB_PRESETS = frozenset(
         "default",
         "trailmaxxing",
         "group-ride",
-        "mountain-goat",
-        "gravel",
         "fast",
         "cargo",
         "novice",
@@ -8251,6 +8256,12 @@ class Server:
             options.pop("run_pace_kmh", None)
             field, kmh = pace_option(args["pace_mph"], preset)
             options[field] = kmh
+        # A harder trail level off Mountain Bike rides only beside Easy MTB trails (the API
+        # refuses it alone), as the page's fitDials keeps it.
+        if preset != "mountain-bike" and not (
+            options.get("easy_mtb") and (options.get("mtb_level") or 0) >= 2
+        ):
+            options.pop("mtb_level", None)
         limit = args.get("max_miles_from_metro", draft.limit)
         early_notes: list[str] = []
         if reshaped and options.get("follow"):

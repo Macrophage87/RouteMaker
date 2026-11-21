@@ -424,6 +424,20 @@ def test_paved_only_travels_in_the_link_as_the_page_keeps_it() -> None:
     assert "paved" not in mcp.page_dials({"stress": 70, "hills": 0}, {})
 
 
+def test_a_links_trail_level_is_read_as_the_page_keeps_it() -> None:
+    """The Surface setting's trail level (lib/dials.ts fitTrailLevel): Mountain Bike's 0 to 4,
+    elsewhere 2 to 4 beside Easy MTB trails, so a link never asks what the API refuses."""
+    base = "#p=-77.03651,38.89768;-77.00911,38.88990&preset="
+    level = lambda tail: mcp.parse_fragment(base + tail)[3]["mtb_level"]  # noqa: E731
+    assert level("mountain-bike&level=0") == 0
+    assert level("mountain-bike&level=3") == 3
+    assert level("default&easymtb=1&level=3") == 3
+    assert level("default&level=3") is None
+    assert level("default&easymtb=1&level=0") is None
+    assert level("default&easymtb=1&paved=1&level=3") is None
+    assert level("ebike&easymtb=1&level=3") is None
+
+
 def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path) -> None:
     out = tools.call(
         "plan_route",

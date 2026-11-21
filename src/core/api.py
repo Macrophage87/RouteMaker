@@ -6501,8 +6501,10 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
-        mtb_level=body.mtb_level,
-        mtb_preferred=body.mtb_preferred,
+        # Mountain Bike with no trails (level 0): on the graph its plan takes (`_no_mtb_trails`).
+        mtb_level=None if _no_mtb_trails(body) else body.mtb_level,
+        mtb_preferred=None if _no_mtb_trails(body) else body.mtb_preferred,
+        mtb_done=_no_mtb_trails(body),
         loop=body.loop,
         out_and_back=body.out_and_back,
     )
@@ -6683,8 +6685,10 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
-        mtb_level=body.mtb_level,
-        mtb_preferred=body.mtb_preferred,
+        # Mountain Bike with no trails (level 0): on the graph its plan takes (`_no_mtb_trails`).
+        mtb_level=None if _no_mtb_trails(body) else body.mtb_level,
+        mtb_preferred=None if _no_mtb_trails(body) else body.mtb_preferred,
+        mtb_done=_no_mtb_trails(body),
     )
     started = getattr(request, "routing_started", None)
     try:

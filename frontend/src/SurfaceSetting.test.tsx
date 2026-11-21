@@ -13,6 +13,7 @@ import { choose } from "./lib/rideTypeDialog.ts";
 import { rideSummary } from "./lib/rideSummary.ts";
 import { dialsComment } from "./lib/gpx.ts";
 import { REACH_DEFAULT, reachBody } from "./lib/reach.ts";
+import { rideDials } from "./lib/neighbours.ts";
 import { PRESETS, type PresetId } from "./lib/presets.ts";
 
 const ALL = ["Paved only", "Gravel", "Easy MTB trails", "MTB trails up to Level 2 (blue)", "MTB trails up to Level 3 (black)", "MTB trails up to Level 4 (red)"];
@@ -173,4 +174,31 @@ test("it is the rider's: kept through a change of ride type where taken, and by 
   const { screen, commits } = await section("default", true, { ...paved, stress: 20 });
   await click(screen.all("button", "Back to this ride type's settings").at(-1)!);
   assert.equal(commits.at(-1)!.paved, true);
+});
+
+test("on Mountain Bike, another hardest level keeps the preferred one where it still fits", async () => {
+  const { commits } = await section("mountain-bike", true, { ...startDials("mountain-bike"), mtbLevel: 4, mtbPreferred: 3 });
+  await pick(picker()!, "mtb-3");
+  assert.equal(commits.at(-1)!.mtbLevel, 3);
+  assert.equal(commits.at(-1)!.mtbPreferred, 3);
+  const raised = await section("mountain-bike", true, { ...startDials("mountain-bike"), mtbLevel: 3, mtbPreferred: 3 });
+  await pick(picker()!, "mtb-4");
+  assert.equal(raised.commits.at(-1)!.mtbPreferred, 3);
+});
+
+test("Gravel and Mountain Goat take Paved only and Gravel: their off-road graph has the trails already", () => {
+  for (const preset of ["gravel", "mountain-goat"] as const) {
+    assert.deepEqual(panelView(preset, startDials(preset)).surface?.options.map(([value]) => value), ["paved", "gravel"]);
+  }
+});
+
+test("a ride on the All paved option drops a harder trail level with Easy MTB trails, so its re-plans are taken", () => {
+  const dials = { ...startDials("default"), easyMtb: true, mtbLevel: 3 };
+  const shown = { preset: "default", neighbour: { kind: "paved", stress: dials.stress } } as unknown as Parameters<typeof rideDials>[1];
+  const ride = rideDials(dials, shown);
+  assert.equal(ride.paved, true);
+  assert.equal(ride.easyMtb, undefined);
+  assert.equal(ride.mtbLevel, undefined);
+  const mtb = rideDials({ ...startDials("mountain-bike"), mtbLevel: 3 }, { ...shown!, preset: "mountain-bike" } as typeof shown);
+  assert.equal(mtb.mtbLevel, 3, "Mountain Bike's level is its own");
 });
