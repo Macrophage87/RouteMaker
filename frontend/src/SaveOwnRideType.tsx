@@ -6,7 +6,7 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { t } from "./lib/i18n.ts";
-import { OWN_NAME_MAX, freeName, ownName, ownNow, ownPlan, readShareJson, saveOwn, shareJson, type OwnRideType } from "./lib/ownRideTypes.ts";
+import { OWN_NAME_MAX, freeName, ownName, ownNow, ownPlan, readShareJson, saveOwn, shareJson, useCreateRequests, type OwnRideType } from "./lib/ownRideTypes.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { startDials, type Dials } from "./lib/dials.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
@@ -84,6 +84,16 @@ function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dial
   const plan = ownPlan(preset, dials);
   useEffect(() => setSaid(""), [plan]);
   const offered = matching === null && differsFromStart(preset, dials);
+  // Create custom from the ride type list: the name box at once, whatever the sliders say.
+  const creates = useCreateRequests();
+  const createsAtMount = useRef(creates);
+  useEffect(() => {
+    if (creates === createsAtMount.current) return;
+    createsAtMount.current = creates;
+    setName(t("My {ride}", { ride: presetLabel(preset) }));
+    setNaming(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new press opens it
+  }, [creates]);
   const save = () => {
     const kept = ownName(name);
     if (!kept) return;

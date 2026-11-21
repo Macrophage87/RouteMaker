@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "コピーできませんでした。",
   "These are not RouteMaker ride settings.": "RouteMakerの走行設定ではありません。",
   "Loaded {name}. It is in My ride types.": "{name}を読み込みました。マイ走行タイプにあります。",
+  "Create custom": "自分で作成",
+  "Ride type's": "走行タイプ既定",
+  "{weight}x the expected stop": "想定停止の{weight}x",
+  "{weight}x the expected slowdown": "想定減速の{weight}x",
 };

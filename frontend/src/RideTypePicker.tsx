@@ -15,7 +15,7 @@
  * RIDE-TYPE-ORGANISE (Stephen, 2026-10-12): a search box over the cards, and the
  * cards under their group's heading (lib/rideTypeGroups.ts).
  */
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { t } from "./lib/i18n.ts";
 import { PRESETS, presetDescription, presetSaid, presetSummary, type PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
@@ -25,7 +25,7 @@ import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/ri
 import { mtbChosen } from "./lib/mtbMode.ts";
 import { rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "./lib/rideTypeGroups.ts";
 import { FavoriteStar, toggleFromPicker, useFavoriteRides } from "./lib/favoriteRides.ts";
-import { matchingOwn, ownSetup, removeOwn, useOwnRideTypes, type OwnRideType } from "./lib/ownRideTypes.ts";
+import { matchingOwn, ownSetup, removeOwn, requestCreate, useOwnRideTypes, type OwnRideType } from "./lib/ownRideTypes.ts";
 import { GoDefaultButton, OwnRideCards, ownSummary, takesGoDefault, type GoDefault } from "./lib/rideTypeCards.ts";
 
 interface Props {
@@ -109,6 +109,27 @@ export function RideTypePicker({ preset, dials, onChoose, go }: Props) {
     close();
   };
 
+  // My ride types and Create custom (the owner, 2026-11-21: "Put it after favorites"): after Favorites, else first.
+  const ownSection =
+    query === "" ? (
+            <section className="ride-type-group" aria-labelledby="ride-types-own">
+              <h3 id="ride-types-own">{t("My ride types")}</h3>
+              {/* Create custom (the owner, 2026-11-21): Ride settings opens with its name box ready. */}
+              <button
+                type="button"
+                className="secondary own-ride-create"
+                onClick={() => {
+                  close();
+                  requestCreate();
+                }}
+              >
+                {t("Create custom")}
+              </button>
+              <OwnRideCards list={own.list} inUse={mine?.id ?? null} onPick={pickOwn} onRemove={(o) => removeOwn(o.id)} idPrefix="ride-types" go={go} />
+            </section>
+    ) : null;
+  const hasFavorites = groups.some((group) => group.id === "favorites");
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
@@ -187,13 +208,9 @@ export function RideTypePicker({ preset, dials, onChoose, go }: Props) {
             </button>
           </p>
           <RideTypeSearch id="ride-types-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
-          {query === "" && own.list.length > 0 && (
-            <section className="ride-type-group" aria-labelledby="ride-types-own">
-              <h3 id="ride-types-own">{t("My ride types")}</h3>
-              <OwnRideCards list={own.list} inUse={mine?.id ?? null} onPick={pickOwn} onRemove={(o) => removeOwn(o.id)} idPrefix="ride-types" go={go} />
-            </section>
-          )}
+          {!hasFavorites && ownSection}
           {groups.map((group) => (
+            <Fragment key={group.id}>
             <GroupFold key={group.id} fold={folded && !OPEN_GROUPS.includes(group.id)} label={group.label} count={group.ids.length} open={group.ids.includes(preset)}>
             <section className="ride-type-group" aria-labelledby={`ride-types-${group.id}`}>
               <h3 id={`ride-types-${group.id}`} className={folded && !OPEN_GROUPS.includes(group.id) ? "visually-hidden" : undefined}>{group.label}</h3>
@@ -258,6 +275,8 @@ export function RideTypePicker({ preset, dials, onChoose, go }: Props) {
               </ul>
             </section>
             </GroupFold>
+            {group.id === "favorites" && ownSection}
+            </Fragment>
           ))}
         </div>
       </dialog>

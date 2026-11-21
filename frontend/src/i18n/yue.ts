@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "複製唔到。",
   "These are not RouteMaker ride settings.": "呢啲唔係 RouteMaker 踩車設定。",
   "Loaded {name}. It is in My ride types.": "已經載入{name}。佢喺我嘅踩車類型度。",
+  "Create custom": "自訂",
+  "Ride type's": "踩車類型預設",
+  "{weight}x the expected stop": "預計停車嘅{weight}x",
+  "{weight}x the expected slowdown": "預計減速嘅{weight}x",
 };

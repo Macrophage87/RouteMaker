@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "คัดลอกไม่ได้",
   "These are not RouteMaker ride settings.": "นี่ไม่ใช่การตั้งค่าการปั่นของ RouteMaker",
   "Loaded {name}. It is in My ride types.": "โหลด {name} แล้ว อยู่ในประเภทการปั่นของฉัน",
+  "Create custom": "สร้างเอง",
+  "Ride type's": "ตามประเภทการปั่น",
+  "{weight}x the expected stop": "{weight}x ของการหยุดที่คาด",
+  "{weight}x the expected slowdown": "{weight}x ของการชะลอที่คาด",
 };

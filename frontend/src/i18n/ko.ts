@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "복사하지 못했습니다.",
   "These are not RouteMaker ride settings.": "RouteMaker 라이딩 설정이 아닙니다.",
   "Loaded {name}. It is in My ride types.": "{name}을(를) 불러왔습니다. 내 라이딩 유형에 있습니다.",
+  "Create custom": "직접 만들기",
+  "Ride type's": "라이딩 유형 기본",
+  "{weight}x the expected stop": "예상 정지의 {weight}x",
+  "{weight}x the expected slowdown": "예상 감속의 {weight}x",
 };

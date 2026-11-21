@@ -57,7 +57,7 @@ export function RideSettings({
    * the map, titled `popout.title`, instead of under the line; Go too (2026-11-21). `shown` false (Go's Ride sheet
    * closed) closes the popup with it, so it is never left open behind a closed sheet.
    */
-  popout?: { title: string; shown?: boolean };
+  popout?: { title: string; shown?: boolean; openSignal?: number };
   children?: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -71,6 +71,16 @@ export function RideSettings({
     dialogRef.current?.close?.();
     setOpen(false);
   }, [hidden]);
+  // Opened from elsewhere (the ride type list's Create custom): each new count opens it; the count at mount does not.
+  const openSignal = popout?.openSignal ?? 0;
+  const signalAtMount = useRef(openSignal);
+  useEffect(() => {
+    if (openSignal === signalAtMount.current || hidden) return;
+    signalAtMount.current = openSignal;
+    const dialog = dialogRef.current;
+    setOpen(true);
+    if (dialog && !dialog.open) dialog.show?.();
+  }, [openSignal, hidden]);
   // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (traffic, hills, when, then
   // anything else set), all one button, so the row is one press and one name.
   const chips = summary === "" ? [] : summary.split(" · ");

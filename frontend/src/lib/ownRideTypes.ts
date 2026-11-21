@@ -215,6 +215,24 @@ export function useOwnRideTypes(): { list: OwnRideType[]; goOwn: string | null }
   return useSyncExternalStore(subscribe, snapshot, () => EMPTY);
 }
 
+/**
+ * "Create custom" (the owner, 2026-11-21: 'have a "create custom" for ride settings'), from the ride type list: the
+ * Ride settings popup opens with its name box ready. Each press counts one; the popup and its Save watch the count.
+ */
+let creates = 0;
+const createListeners = new Set<() => void>();
+export function requestCreate(): void {
+  creates += 1;
+  for (const listener of createListeners) listener();
+}
+const subscribeCreates = (listener: () => void) => {
+  createListeners.add(listener);
+  return () => createListeners.delete(listener);
+};
+export function useCreateRequests(): number {
+  return useSyncExternalStore(subscribeCreates, () => creates, () => 0);
+}
+
 /** This device's, read once (Go's first ride type, before React). */
 export function ownNow(): { list: OwnRideType[]; goOwn: string | null } {
   return snapshot();

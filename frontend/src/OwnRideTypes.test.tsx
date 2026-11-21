@@ -57,7 +57,7 @@ test("the ride type list shows My ride types first; picking one sets its ride ty
   assert.equal(chosen.at(-1)?.dials.sharpTurnWeight, 0);
   await click(screen.button(/^Default/));
   await click(screen.button("Remove Saturday coffee ride"));
-  assert.equal(screen.all("heading", "My ride types").length, 0);
+  assert.equal(screen.all("button", "Saturday coffee ride").length, 0);
   assert.equal(ownNow().list.length, 0);
 });
 

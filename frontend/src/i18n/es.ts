@@ -2971,4 +2971,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Could not copy.": "No se pudo copiar.",
   "These are not RouteMaker ride settings.": "Estos no son ajustes de viaje de RouteMaker.",
   "Loaded {name}. It is in My ride types.": "Cargado {name}. Está en Mis tipos de viaje.",
+  "Create custom": "Crear uno propio",
+  "Ride type's": "Del tipo de viaje",
+  "{weight}x the expected stop": "{weight}x la parada prevista",
+  "{weight}x the expected slowdown": "{weight}x la frenada prevista",
 };

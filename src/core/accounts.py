@@ -56,7 +56,7 @@ WEIGHT_PARTS = ("riderKg", "bikeKg", "cargoKg")
 WEIGHT_KEYS = frozenset({"name", "totalKg", "parts", "setAt"})
 # The riding speed picker's range, whole mph (frontend lib/ridingSpeed.ts SPEED_MIN_MPH and
 # SPEED_MAX_MPH).
-SPEED_MIN_MPH = 8
+SPEED_MIN_MPH = 6
 SPEED_MAX_MPH = 30
 # The units setting's values (frontend lib/units.ts UNITS).
 UNITS = ("us", "metric")

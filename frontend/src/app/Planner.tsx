@@ -30,7 +30,7 @@ import type { usePlaceNames } from "../usePlaceNames.ts";
 import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
 import { VIA_MARKS, namePoints } from "../lib/pointKinds.ts";
 import { SaveOwnRideType } from "../SaveOwnRideType.tsx";
-import { matchingOwn, useOwnRideTypes } from "../lib/ownRideTypes.ts";
+import { matchingOwn, useCreateRequests, useOwnRideTypes } from "../lib/ownRideTypes.ts";
 import type { GoDefault } from "../lib/rideTypeCards.ts";
 import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
 import { Icon } from "../Icon.tsx";
@@ -513,9 +513,10 @@ export function RideSection(props: RideSectionProps) {
   const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown, go } = props;
   // The rider's own ride type this is, if any (lib/ownRideTypes.ts): the popup is named for it.
   const matching = matchingOwn(useOwnRideTypes().list, preset, dials);
+  const creates = useCreateRequests();
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} go={go} /> : null;
   return (
-    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }), shown } : undefined}>
+    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }), shown, openSignal: creates } : undefined}>
       <DialsPanel
         preset={preset}
         dials={dials}

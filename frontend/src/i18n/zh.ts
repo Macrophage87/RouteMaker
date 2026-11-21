@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "无法复制。",
   "These are not RouteMaker ride settings.": "这不是 RouteMaker 骑行设置。",
   "Loaded {name}. It is in My ride types.": "已载入{name}。它在我的骑行类型里。",
+  "Create custom": "自定义",
+  "Ride type's": "骑行类型默认",
+  "{weight}x the expected stop": "预计停车的{weight}x",
+  "{weight}x the expected slowdown": "预计减速的{weight}x",
 };

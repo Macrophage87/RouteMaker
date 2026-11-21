@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "Не удалось скопировать.",
   "These are not RouteMaker ride settings.": "Это не настройки поездки RouteMaker.",
   "Loaded {name}. It is in My ride types.": "{name} загружено. Оно в «Мои типы поездок».",
+  "Create custom": "Создать свой",
+  "Ride type's": "Как у типа",
+  "{weight}x the expected stop": "{weight}x ожидаемой остановки",
+  "{weight}x the expected slowdown": "{weight}x ожидаемого замедления",
 };

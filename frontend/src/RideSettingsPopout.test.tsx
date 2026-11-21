@@ -47,12 +47,12 @@ test("in Plan, Adjust opens every ride setting in a popup named for the ride typ
 test("Waiting at lights starts at the ride type's own weight and only goes up from there", async () => {
   await section("trailmaxxing", true);
   const waits = slider("Waiting at lights and stops")!;
-  assert.equal(waits.getAttribute("aria-valuetext"), "2x", "Trailmaxxing weighs its waits twice");
+  assert.match(waits.getAttribute("aria-valuetext") ?? "", /^2x the expected /, "Trailmaxxing weighs its waits twice");
   assert.equal(waits.min, "2");
   assert.equal(waits.max, "5");
   await section("default", true);
   const own = [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === "Waiting at lights and stops");
-  assert.equal(own.at(-1)?.getAttribute("aria-valuetext"), "1x", "Default's own is 1x");
+  assert.match(own.at(-1)?.getAttribute("aria-valuetext") ?? "", /^1x the expected /, "Default's own is 1x");
 });
 
 // The defaults agreed on 2026-11-20: Fast at real time; Group Ride (a light splits the group) and Cargo Bike (a heavy
@@ -62,11 +62,11 @@ test("each ride type's sliders start at its own weights", async () => {
     await section(preset, true);
     return [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === name).at(-1)?.getAttribute("aria-valuetext");
   };
-  assert.equal(await starts("fast", "Waiting at lights and stops"), "1x");
-  assert.equal(await starts("group-ride", "Waiting at lights and stops"), "2x");
-  assert.equal(await starts("cargo", "Waiting at lights and stops"), "2x");
-  assert.equal(await starts("cargo", "Sharp turns"), "2x");
-  assert.equal(await starts("fast", "Sharp turns"), "1x");
+  assert.match(await starts("fast", "Waiting at lights and stops") ?? "", /^1x the expected /);
+  assert.match(await starts("group-ride", "Waiting at lights and stops") ?? "", /^2x the expected /);
+  assert.match(await starts("cargo", "Waiting at lights and stops") ?? "", /^2x the expected /);
+  assert.match(await starts("cargo", "Sharp turns") ?? "", /^2x the expected /);
+  assert.match(await starts("fast", "Sharp turns") ?? "", /^1x the expected /);
   assert.equal(fitDials("cargo", { ...startDials("cargo"), waitWeight: 2, sharpTurnWeight: 2 }).waitWeight, undefined);
   assert.equal(fitDials("cargo", { ...startDials("cargo"), waitWeight: 2, sharpTurnWeight: 2 }).sharpTurnWeight, undefined);
 });
@@ -134,13 +134,13 @@ test("the settings ride in the link, the request and the line's words, and stay 
 test("Sharp turns has its own slider from 0 to 5, starting at the ride type's own weight", async () => {
   await section("road-bike", true);
   const road = slider("Sharp turns")!;
-  assert.equal(road.getAttribute("aria-valuetext"), "3x", "Road Bike weighs sharp turns three times");
+  assert.match(road.getAttribute("aria-valuetext") ?? "", /^3x the expected /, "Road Bike weighs sharp turns three times");
   assert.equal(road.min, "0");
   assert.equal(road.max, "5");
   assert.equal(road.step, "0.5", "half steps");
   await section("default", true);
   const own = [...document.querySelectorAll<HTMLInputElement>('input[type="range"]')].filter((el) => nameOf(el) === "Sharp turns");
-  assert.equal(own.at(-1)?.getAttribute("aria-valuetext"), "1x", "Default's own is 1x");
+  assert.match(own.at(-1)?.getAttribute("aria-valuetext") ?? "", /^1x the expected /, "Default's own is 1x");
 });
 
 test("moving Sharp turns to 0 plans again with it and leaves the waits alone", async () => {
@@ -160,7 +160,7 @@ test("moving Sharp turns to 0 plans again with it and leaves the waits alone", a
     turns.dispatchEvent(new window.Event("pointerup", { bubbles: true }) as unknown as Event);
   });
   assert.equal(commits.at(-1)?.sharpTurnWeight, 1.5);
-  assert.equal(turns.getAttribute("aria-valuetext"), "1.5x");
+  assert.match(turns.getAttribute("aria-valuetext") ?? "", /^1\.5x the expected /);
 });
 
 test("Without the popup there is no Sharp turns slider", async () => {
@@ -193,7 +193,7 @@ test("Go's Ride settings (no ride type button) open the same popup, Sharp turns 
   );
   await click(screen.button(/Adjust$/));
   screen.dialog("Ride settings: Default");
-  assert.equal(slider("Waiting at lights and stops")?.getAttribute("aria-valuetext"), "3x", "a link's weight is shown, not dropped");
+  assert.match(slider("Waiting at lights and stops")?.getAttribute("aria-valuetext") ?? "", /^3x the expected /, "a link's weight is shown, not dropped");
   assert.ok(slider("Sharp turns"));
   assert.ok(toggle("Fewer turns"));
 });

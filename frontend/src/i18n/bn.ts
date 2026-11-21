@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "কপি করা যায়নি।",
   "These are not RouteMaker ride settings.": "এগুলো RouteMaker রাইড সেটিংস নয়।",
   "Loaded {name}. It is in My ride types.": "{name} লোড হয়েছে। এটি আমার রাইডের ধরনে আছে।",
+  "Create custom": "নিজের তৈরি করুন",
+  "Ride type's": "রাইডের ধরনের",
+  "{weight}x the expected stop": "{weight}x প্রত্যাশিত থামা",
+  "{weight}x the expected slowdown": "{weight}x প্রত্যাশিত গতি কমা",
 };

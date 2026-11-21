@@ -12250,3 +12250,52 @@ button.route-note:focus-visible {
   width: 100%;
   box-sizing: border-box;
 }
+
+/* Create custom, first under My ride types. */
+.own-ride-create {
+  margin-top: 8px;
+  min-height: 44px;
+}
+
+/* The Ride settings popup, scaled down (the owner, 2026-11-21: "See if you can scale it down so less scrolling.
+   expand, perhaps"): tighter rows, and on a wide screen twice as wide with the rows in two columns. */
+dialog.plan-ride-settings .dials .dial {
+  margin: 6px 0;
+}
+dialog.plan-ride-settings .dials input[type="range"] {
+  margin: 0;
+}
+dialog.plan-ride-settings .dial-ends {
+  margin-top: -6px;
+}
+@media (min-width: 1280px) {
+  dialog.plan-ride-settings {
+    width: min(760px, calc(100vw - 448px));
+  }
+  dialog.plan-ride-settings .dials {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+    align-items: start;
+  }
+  /* The When choices, warnings and the like across both columns. */
+  dialog.plan-ride-settings .dials > :not(.dial) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* When as a dropdown: its name beside the picker. */
+.dials .when-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  font-weight: 600;
+}
+.dials .when-pick select {
+  min-height: 44px;
+  font: inherit;
+  font-weight: 400;
+  max-width: 70%;
+}

@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "Không sao chép được.",
   "These are not RouteMaker ride settings.": "Đây không phải cài đặt đạp xe của RouteMaker.",
   "Loaded {name}. It is in My ride types.": "Đã tải {name}. Nó nằm trong Kiểu đạp xe của tôi.",
+  "Create custom": "Tự tạo",
+  "Ride type's": "Theo kiểu đạp xe",
+  "{weight}x the expected stop": "{weight}x lần dừng dự kiến",
+  "{weight}x the expected slowdown": "{weight}x lần giảm tốc dự kiến",
 };

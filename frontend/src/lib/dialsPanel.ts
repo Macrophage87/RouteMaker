@@ -160,7 +160,9 @@ export function waitsView(preset: PresetId, weight: number): SliderView {
     min: own,
     max: WAIT_WEIGHT_MAX,
     step: WEIGHT_STEP,
-    words: waitsWords(weight),
+    // What the number is (the owner, 2026-11-21: "make the multiple indicate that it's what you're expecting the app to
+    // use. The expected slowdown/stop").
+    words: t("{weight}x the expected stop", { weight }),
     // The real numbers at the ends (the owner, 2026-11-21: "what's the top what's the end ... The others want an actual
     // number"); Traffic keeps its words.
     ends: [waitsWords(own), "", waitsWords(WAIT_WEIGHT_MAX)],
@@ -175,7 +177,7 @@ export function sharpTurnsView(weight: number): SliderView {
     min: 0,
     max: SHARP_TURN_WEIGHT_MAX,
     step: WEIGHT_STEP,
-    words: waitsWords(weight),
+    words: t("{weight}x the expected slowdown", { weight }),
     ends: [waitsWords(0), "", waitsWords(SHARP_TURN_WEIGHT_MAX)],
     disabled: false,
     note: SHARP_TURNS_NOTE,

@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "کپی نشد.",
   "These are not RouteMaker ride settings.": "این‌ها تنظیمات سواری RouteMaker نیستند.",
   "Loaded {name}. It is in My ride types.": "{name} بارگذاری شد. در نوع‌های سواری من است.",
+  "Create custom": "ساختن نوع خودم",
+  "Ride type's": "سرعت نوع سواری",
+  "{weight}x the expected stop": "{weight}x توقف موردانتظار",
+  "{weight}x the expected slowdown": "{weight}x کندشدن موردانتظار",
 };

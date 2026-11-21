@@ -186,7 +186,7 @@ test("App puts the ride type's button first and every dial behind the Ride setti
   const order = [
     'label={t("Traffic")}',
     'label={t("Hills")}',
-    '<legend>{t("When")}</legend>',
+    '<legend className="visually-hidden">{t("When")}</legend>',
     "{view.target && !hideTarget && (",
   ].map(at);
   assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance");

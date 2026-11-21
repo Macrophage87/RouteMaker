@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "Tidak bisa menyalin.",
   "These are not RouteMaker ride settings.": "Ini bukan pengaturan bersepeda RouteMaker.",
   "Loaded {name}. It is in My ride types.": "{name} dimuat. Ada di Jenis bersepeda saya.",
+  "Create custom": "Buat sendiri",
+  "Ride type's": "Bawaan jenis",
+  "{weight}x the expected stop": "{weight}x perkiraan berhenti",
+  "{weight}x the expected slowdown": "{weight}x perkiraan melambat",
 };

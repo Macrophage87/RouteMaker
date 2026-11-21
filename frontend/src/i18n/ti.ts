@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "ክቕዳሕ ኣይተኻእለን።",
   "These are not RouteMaker ride settings.": "እዚኦም ናይ RouteMaker ቅጥዕታት ጉዕዞ ኣይኮኑን።",
   "Loaded {name}. It is in My ride types.": "{name} ተጻዒኑ። ኣብ ናተይ ዓይነታት ጉዕዞ ኣሎ።",
+  "Create custom": "ናይ ገዛእ ርእስኻ ፍጠር",
+  "Ride type's": "ናይ ዓይነት ጉዕዞ",
+  "{weight}x the expected stop": "{weight}x ዝጽበ ደው ምባል",
+  "{weight}x the expected slowdown": "{weight}x ዝጽበ ምንካይ ፍጥነት",
 };

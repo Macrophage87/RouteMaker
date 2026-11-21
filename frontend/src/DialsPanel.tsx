@@ -14,9 +14,9 @@
  * same words again (a11y review of integrate-2). The note under it is its
  * description.
  */
-import { InfoButton, SettingRow, SettingSelect } from "./SettingRow.tsx";
-import { SPEED_HINT, SPEED_LABEL, speedOptions, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { InfoButton } from "./SettingRow.tsx";
+import { SPEED_LABEL, SPEED_OWN_POSITION, speedSliderView, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { onFoot, runs, type PresetId } from "./lib/presets.ts";
 import { AvoidStairsSwitch } from "./AvoidStairsSwitch.tsx";
 import { RunPaceSelect } from "./RunPaceSelect.tsx";
@@ -60,6 +60,12 @@ interface Props {
   stopsAndTurns?: boolean;
 }
 
+/**
+ * The Ride settings popup's compact rows (the owner, 2026-11-21: "See if you can scale it down so less scrolling"): a
+ * slider's note goes behind its (i) instead of under it.
+ */
+const Compact = createContext(false);
+
 function Slider(props: {
   label: string;
   /** Names the slider for code that goes to it (Go's climb figure opens Hills, P3). */
@@ -80,8 +86,11 @@ function Slider(props: {
   const [info, setInfo] = useState(false);
   const { view } = props;
   const [low, middle, high] = view.ends;
-  // P10: one (i) per row, where there is more than the line shows: the note in full, then the detail.
-  const more = Boolean(view.noteSaid || view.how);
+  const compact = useContext(Compact);
+  // P10: one (i) per row, where there is more than the line shows: the note in full, then the detail. Compact, the
+  // note itself goes behind the (i) too.
+  const noteBehind = compact && Boolean(view.note) && !view.noteSaid;
+  const more = Boolean(view.noteSaid || view.how || noteBehind);
   return (
     <div className="dial" data-dial={props.dial}>
       <div className="dial-head">
@@ -118,18 +127,48 @@ function Slider(props: {
         <span>{high}</span>
       </div>
       {/* The short line is shown; where it is a short form, the full sentence (behind the (i)) is the one read. */}
-      {view.note && (
+      {view.note && !compact && (
         <p className="hint" id={noteId} aria-hidden={view.noteSaid ? "true" : undefined}>
           {view.note}
         </p>
       )}
       {more && (
         <DialInfo id={infoId} open={info}>
+          {noteBehind && view.note && <Bullets id={noteId} text={view.note} />}
           {view.noteSaid && <Bullets id={saidId} text={view.noteSaid} />}
           {view.how && <Bullets text={view.how} />}
         </DialInfo>
       )}
     </div>
+  );
+}
+
+/**
+ * Riding speed as a slider (the owner, 2026-11-21: "Maybe put speed on a slider too"), from the ride type's own speed
+ * at its left end, then 6 to 30 mph. It moves freely while held and is set when let go, as the other sliders plan.
+ */
+function SpeedSlider({ speed }: { speed: RidingSpeedControl }) {
+  const [draft, setDraft] = useState<number | null>(speed.mph);
+  useEffect(() => setDraft(speed.mph), [speed.mph]);
+  const settle = useRef<Debounce | null>(null);
+  const commit = (value: number | null) => {
+    if (value !== speed.mph) speed.onChange(value);
+  };
+  return (
+    <Slider
+      label={SPEED_LABEL}
+      dial="speed"
+      about="riding speed"
+      view={speedSliderView(draft)}
+      value={draft ?? SPEED_OWN_POSITION}
+      onDraft={(position) => setDraft(position <= SPEED_OWN_POSITION ? null : position)}
+      onRelease={(keys) => {
+        if (!keys) return commit(draft);
+        settle.current ??= new Debounce(KEY_SETTLE_MS);
+        const value = draft;
+        settle.current.later(() => commit(value));
+      }}
+    />
   );
 }
 
@@ -353,6 +392,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   }, [mtbKey, mtbClamp]);
   const mtbClampSaid = mtbClamp?.key === mtbKey ? mtbClamp.said : "";
   return (
+    <Compact.Provider value={stopsAndTurns === true}>
     <section className="dials" aria-labelledby="dials-heading">
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
           sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, keep to
@@ -511,17 +551,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
       {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the
           defaults would like to be able to override the speed as an advanced feature", "next to hill speed or max
           grade"). Not on a ride type that keeps its own pace (Mass Ride, a share bike). */}
-      {ridingSpeed && takesRiderSpeed(preset) && (
-        <SettingRow infoId="dials-speed-info" about="riding speed" info={SPEED_HINT} className="riding-speed">
-          <SettingSelect
-            label={SPEED_LABEL}
-            value={ridingSpeed.mph === null ? "" : String(ridingSpeed.mph)}
-            options={speedOptions()}
-            onChange={(value) => ridingSpeed.onChange(value === "" ? null : Number(value))}
-            describedBy="dials-speed-info"
-          />
-        </SettingRow>
-      )}
+      {ridingSpeed && takesRiderSpeed(preset) && <SpeedSlider speed={ridingSpeed} />}
       {/* Stops and turns (the owner, 2026-11-20), in the Ride settings popup (Plan and Go): how much a wait counts, then Fewer turns. */}
       {stopsAndTurns && view.waits && (
         <Slider
@@ -579,34 +609,39 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
         />
       )}
       <fieldset className="when">
-        <legend>{t("When")}</legend>
-        <label className="toggle">
-          <input
-            type="radio"
-            name="when"
-            value=""
-            checked={dials.when === null && !startSet}
-            onChange={() => onCommit({ ...dials, when: null, startAt: undefined })}
-          />
-          {t("Now")}
-          {dials.when === null && !startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
-        </label>
-        {startTime && (
-          <label className="toggle">
-            <input
-              type="radio"
-              name="when"
-              value="start"
-              checked={startSet}
-              onChange={() => {
+        {/* A dropdown (the owner, 2026-11-21: "When is better as a dropdown"): one line, not six radio buttons. */}
+        <legend className="visually-hidden">{t("When")}</legend>
+        <label className="when-pick">
+          <span>{t("When")}</span>
+          <select
+            value={startSet ? "start" : (dials.when ?? "")}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              if (value === "") return onCommit({ ...dials, when: null, startAt: undefined });
+              if (value === "start") {
                 const now = Date.now();
-                onCommit({ ...dials, when: null, startAt: fitStart(lastStart, now) ?? defaultStart(now) });
-              }}
-            />
-            {t("Leave at")}
-            {startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
-          </label>
-        )}
+                return onCommit({ ...dials, when: null, startAt: fitStart(lastStart, now) ?? defaultStart(now) });
+              }
+              onCommit({ ...dials, when: value as When, startAt: undefined });
+            }}
+          >
+            <option value="">
+              {t("Now")}
+              {dials.when === null && !startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
+            </option>
+            {startTime && (
+              <option value="start">
+                {t("Leave at")}
+                {startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
+              </option>
+            )}
+            {WHENS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {startSet && (
           <div className="start-time">
             <label htmlFor={startId}>{t("Day and start time")}</label>
@@ -641,18 +676,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
             )}
           </div>
         )}
-        {WHENS.map((option) => (
-          <label key={option.id} className="toggle">
-            <input
-              type="radio"
-              name="when"
-              value={option.id}
-              checked={dials.when === option.id}
-              onChange={() => onCommit({ ...dials, when: option.id as When, startAt: undefined })}
-            />
-            {option.label}
-          </label>
-        ))}
         {/* One line, the rest behind its (i) (Plan streamline, Stephen 2026-10-17; P10, one (i) per row). */}
         <div className="dial-head">
           {/* About riding: not said on foot (Walk keeps When for Walk + transit's timetable). */}
@@ -739,5 +762,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
         </button>
       )}
     </section>
+    </Compact.Provider>
   );
 }

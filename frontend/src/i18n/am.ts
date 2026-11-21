@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "መቅዳት አልተቻለም።",
   "These are not RouteMaker ride settings.": "እነዚህ የRouteMaker የጉዞ ቅንብሮች አይደሉም።",
   "Loaded {name}. It is in My ride types.": "{name} ተጭኗል። በየእኔ የጉዞ አይነቶች ውስጥ ነው።",
+  "Create custom": "የራስዎን ይፍጠሩ",
+  "Ride type's": "የጉዞ አይነቱ",
+  "{weight}x the expected stop": "{weight}x የሚጠበቀው ቆይታ",
+  "{weight}x the expected slowdown": "{weight}x የሚጠበቀው ፍጥነት መቀነስ",
 };

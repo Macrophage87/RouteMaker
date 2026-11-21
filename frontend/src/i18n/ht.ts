@@ -2284,4 +2284,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Could not copy.": "Pa t ka kopye.",
   "These are not RouteMaker ride settings.": "Sa yo pa paramèt woulib RouteMaker.",
   "Loaded {name}. It is in My ride types.": "{name} chaje. Li nan Kalite woulib pa m.",
+  "Create custom": "Kreye pa m",
+  "Ride type's": "Pa kalite woulib la",
+  "{weight}x the expected stop": "{weight}x kanpe prevwa a",
+  "{weight}x the expected slowdown": "{weight}x ralantisman prevwa a",
 };

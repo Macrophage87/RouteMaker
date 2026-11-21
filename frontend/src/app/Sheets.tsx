@@ -15,7 +15,7 @@ import type { Dials } from "../lib/dials.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { OwnRideCards, RideTypeCards, type GoDefault } from "../lib/rideTypeCards.ts";
-import { matchingOwn, removeOwn, setGoOwn, useOwnRideTypes, type OwnRideType } from "../lib/ownRideTypes.ts";
+import { matchingOwn, removeOwn, requestCreate, setGoOwn, useOwnRideTypes, type OwnRideType } from "../lib/ownRideTypes.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, signInLabel, tabSession } from "../lib/signIn.ts";
 import { signInHasChoice } from "../lib/stressEditor.ts";
@@ -995,16 +995,21 @@ export function RideGroupChips({
       </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
       {go && <p className="hint">{t("Go on a card makes it what Go starts on.")}</p>}
-      {query === "" && own.list.length > 0 && (
-        <section className="ride-sheet-group" aria-labelledby="ride-sheet-own">
-          <h4 id="ride-sheet-own">{t("My ride types")}</h4>
-          <OwnRideCards list={own.list} inUse={mine?.id ?? null} onPick={onPickOwn} onRemove={(o) => removeOwn(o.id)} idPrefix="ride-sheet" go={go} />
-        </section>
-      )}
       {favs.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
           <h4 id="ride-sheet-favorites">{t("Favorites")}</h4>
           <RideTypeCards ids={favs} preset={inUse} onPick={onPick} idPrefix="ride-sheet" {...star} />
+        </section>
+      )}
+      {/* After Favorites (the owner, 2026-11-21: "Put it after favorites"). */}
+      {query === "" && (
+        <section className="ride-sheet-group" aria-labelledby="ride-sheet-own">
+          <h4 id="ride-sheet-own">{t("My ride types")}</h4>
+          {/* Create custom (the owner, 2026-11-21): the sheet's Ride settings popup opens with its name box ready. */}
+          <button type="button" className="secondary own-ride-create" onClick={requestCreate}>
+            {t("Create custom")}
+          </button>
+          <OwnRideCards list={own.list} inUse={mine?.id ?? null} onPick={onPickOwn} onRemove={(o) => removeOwn(o.id)} idPrefix="ride-sheet" go={go} />
         </section>
       )}
       {common.length > 0 && (

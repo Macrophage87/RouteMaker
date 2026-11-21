@@ -626,10 +626,21 @@ router won't take; turning it on during a loop turns the loop off, and "Loop off
 <li><strong>Ride type</strong> and its <strong>traffic</strong> and <strong>hills</strong> sliders:
 <a href="/about/ride-types.html">Ride types</a>. In Plan and Go, <strong>Adjust</strong> on the Ride settings line opens
 every ride setting in a popup over the map, titled with the ride type (a sheet from the bottom on a narrow screen).
-The map and Route stay in reach while it is open, and Done or Escape closes it.</li>
+The map and Route stay in reach while it is open, and Done or Escape closes it. When is a dropdown, and
+<strong>Riding speed</strong> a slider from the ride type's own speed to 30 mph [48 km/h], starting at 6 mph [10 km/h]
+for the slowest cargo bikes.</li>
+<li><strong>My ride types</strong>: <strong>Save as my own ride type</strong> at the foot of Ride settings, once a
+slider is moved, keeps the ride type and every slider under a name you give; <strong>Create custom</strong> in the ride
+type list opens Ride settings with the name box ready. Your own are listed after Favorites in the ride type list;
+picking one sets its ride type and every slider, and its bin removes it. Saving under a name you used replaces that
+one. They are kept on this device, and in your account when signed in. Ride settings' <strong>Advanced</strong> copies
+the settings as a short JSON text to send to someone, and loads one pasted in: only a ride type and its sliders,
+never a place or a route.</li>
+<li><strong>Go</strong> on a ride type's card, your own too, makes it what Go starts on (filled where it is);
+pressed again, Go starts on Default. It is the same choice as Settings' Primary Go method.</li>
 <li><strong>Waiting at lights and stops</strong>, <strong>Sharp turns</strong> and <strong>Fewer turns</strong>, in the Ride settings, on every
-ride type but those on foot, Run, the transit ride types and the share-bike types. Waiting at lights and stops is a slider from
-<strong>Don't mind</strong> to <strong>Rather ride</strong>: each second waiting at a signal, a stop sign or a gap in
+ride type but those on foot, Run, the transit ride types and the share-bike types. Waiting at lights and stops is a slider shown as a multiple of the expected stop, from the ride type's own
+weight to 5x: each second waiting at a signal, a stop sign or a gap in
 traffic counts that many seconds of riding when routes are compared, so a route with fewer stops can win even if it
 is a little longer. It starts at the ride type's own weight (Road Bike 3x; Group Ride, Cargo Bike, Tandem,
 Trailmaxxing, Gravel, Mountain Goat and Mountain Bike 2x; others 1x) and goes up to 5x (our default). The wait times shown stay the real ones.
