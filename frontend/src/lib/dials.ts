@@ -44,10 +44,14 @@ export interface Dials {
   /**
    * "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12): set by choosing that named option among the routes
    * (lib/neighbours.ts rideDials), and since 2026-11-20 by Plan's own switch in the Ride settings popout (the owner:
-   * "Have it pop out to all ride parameters"). In the link and a saved route. "All paved" is still set only by its
-   * named option: never a control, a link or a default.
+   * "Have it pop out to all ride parameters"). In the link and a saved route.
    */
   fewerTurns?: boolean;
+  /**
+   * "Paved only" (lib/surface.ts; the owner, 2026-11-21: "a surface setting: paved only, gravel, easy MTB, and then
+   * MTB2-4 as max"): gravel and dirt avoided wherever pavement runs near. Set by the Surface setting or the "All paved"
+   * named option, on the ride types that offer it (`offersPaved`). In the link (paved=1) and a saved route; absent is off.
+   */
   paved?: boolean;
   /**
    * "Waiting at lights and stops" (the owner, 2026-11-20: "being able to spend that time riding and not waiting at a
@@ -364,6 +368,14 @@ export function ownWaitWeight(preset: PresetId): number {
   return WAIT_WEIGHTS[preset] ?? 1;
 }
 
+/**
+ * Whether the ride type takes "Paved only" (the API's `paved`): a bike of the rider's own, except Road Bike, which is
+ * always paved, and Mountain Bike, whose surface is its hardest trail level.
+ */
+export function offersPaved(preset: PresetId): boolean {
+  return offersStopsAndTurns(preset) && preset !== "road-bike" && preset !== "mountain-bike";
+}
+
 /** Whether the ride type takes Waiting at lights and Fewer turns: a bike of the rider's own, not on foot, a share bike or transit. */
 export function offersStopsAndTurns(preset: PresetId): boolean {
   return !onFoot(preset) && !runs(preset) && !isTransit(preset) && !usesBikeshare(preset);
@@ -547,7 +559,9 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     // Only an e-bike can end outside a dock, and never on Rebalance Ride (it ends where a bike is needed).
     ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
-    ...(offersEasyMtb(preset) && dials.easyMtb === true ? { easyMtb: true } : {}),
+    // The Surface setting (lib/surface.ts): Paved only or Easy MTB trails, never both (Paved only wins).
+    ...(offersPaved(preset) && dials.paved === true ? { paved: true } : {}),
+    ...(offersEasyMtb(preset) && dials.easyMtb === true && !(offersPaved(preset) && dials.paved === true) ? { easyMtb: true } : {}),
     // Fewer turns and the rider's wait weight (2026-11-20), on a ride type that takes them.
     ...(offersStopsAndTurns(preset) && dials.fewerTurns === true ? { fewerTurns: true } : {}),
     ...(fitWaitWeight(preset, dials.waitWeight) !== undefined ? { waitWeight: fitWaitWeight(preset, dials.waitWeight) } : {}),

@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "จุดแวะยังคงอยู่ในลำดับนี้ เพื่อให้จุดผ่านของคุณอยู่บนเส้นทางเดิม",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "เส้นทาง MTB ระดับง่าย",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "ใช้เส้นทางจักรยานเสือภูเขาระดับง่ายหรือไม่มีระดับด้วย ส่วนใหญ่เป็นหญ้าและดิน",
   "Not used while Keep to roads is on.": "ไม่ใช้ขณะเปิดถนนเท่านั้น",
   "easy MTB trails": "เส้นทาง MTB ระดับง่าย",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "วางแผนบนแผนที่ออฟโรดแบบเดียวกับ Gravel จึงอาจใช้เส้นทางจักรยานเสือภูเขาระดับ 0 หรือ 1 ในมาตราใดก็ได้ หรือที่ไม่มีระดับเลย เส้นทางระดับ 2 หรือยากกว่าจะถูกเลี่ยงทุกที่ที่มีทางอื่น ถ้ายังต้องใช้ เส้นทางจะแจ้งให้ทราบ ความเครียดจากการจราจรยังคำนวณตามปกติ ดินอาจเป็นโคลนหลังฝนตก",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "ตามประเภทการปั่น",
   "{weight}x the expected stop": "{weight}x ของการหยุดที่คาด",
   "{weight}x the expected slowdown": "{weight}x ของการชะลอที่คาด",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "พื้นผิว",
+  "Paved only": "ทางลาดยางเท่านั้น",
+  "Avoids gravel and dirt wherever pavement runs near.": "หลีกเลี่ยงกรวดและดินในที่ที่มีทางลาดยางอยู่ใกล้",
+  "Paved and gravel roads and paths, as this ride type plans them.": "ถนนและทางลาดยางและกรวด ตามที่ประเภทการปั่นนี้วางแผน",
+  "paved only": "ทางลาดยางเท่านั้น",
+  "surface": "พื้นผิว",
 };

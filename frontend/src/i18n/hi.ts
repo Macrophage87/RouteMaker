@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "आपके बीच के बिंदु अपने रास्ते पर रहें, इसलिए पड़ाव इसी क्रम में रहते हैं।",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "आसान MTB ट्रेल",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "आसान दर्जे वाले या बिना दर्जे वाले माउंटेन-बाइक ट्रेल भी लेता है, जो ज़्यादातर घास और मिट्टी के होते हैं।",
   "Not used while Keep to roads is on.": "सिर्फ़ सड़कें चालू रहने पर इसका इस्तेमाल नहीं होता।",
   "easy MTB trails": "आसान MTB ट्रेल",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel की तरह ऑफ़-रोड नक्शे पर योजना बनाता है, इसलिए किसी भी पैमाने पर 0 या 1 दर्जे वाले, या बिल्कुल बिना दर्जे वाले माउंटेन-बाइक ट्रेल पर चला जा सकता है। 2 या उससे कठिन दर्जे वाले ट्रेल, जहाँ भी कोई दूसरा रास्ता हो, छोड़ दिए जाते हैं; अगर फिर भी कोई इस्तेमाल होता है, तो रूट बताता है। ट्रैफ़िक का तनाव हमेशा की तरह तौला जाता है। बारिश के बाद मिट्टी कीचड़ भरी हो सकती है।",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "सवारी प्रकार की",
   "{weight}x the expected stop": "{weight}x अपेक्षित रुकना",
   "{weight}x the expected slowdown": "{weight}x अपेक्षित धीमापन",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "सतह",
+  "Paved only": "केवल पक्की सड़क",
+  "Avoids gravel and dirt wherever pavement runs near.": "जहाँ पास में पक्की सड़क हो वहाँ बजरी और कच्चे रास्ते से बचता है।",
+  "Paved and gravel roads and paths, as this ride type plans them.": "पक्की और बजरी वाली सड़कें और रास्ते, जैसे यह सवारी प्रकार योजना बनाता है।",
+  "paved only": "केवल पक्की सड़क",
+  "surface": "सतह",
 };

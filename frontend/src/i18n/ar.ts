@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "تبقى المحطات بهذا الترتيب، لتبقى نقاط العبور على طريقها.",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "مسارات دراجات جبلية سهلة",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "يستخدم أيضًا مسارات الدراجات الجبلية المصنفة سهلة أو غير المصنفة، ومعظمها عشب وتراب.",
   "Not used while Keep to roads is on.": "لا يُستخدم ما دام خيار طرق فقط مفعّلًا.",
   "easy MTB trails": "مسارات دراجات جبلية سهلة",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "يخطط على خريطة الطرق الوعرة، كما يفعل Gravel، فيمكن ركوب مسارات الدراجات الجبلية المصنفة 0 أو 1 على أي من المقياسين، أو غير المصنفة إطلاقًا. تُستبعد المسارات المصنفة 2 أو أصعب حيثما وُجد طريق بديل؛ وإن بقي أحدها مستخدمًا يذكر المسار ذلك. يُقدَّر ضغط حركة المرور كالمعتاد. قد يكون التراب موحلًا بعد المطر.",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "سرعة نوع الرحلة",
   "{weight}x the expected stop": "{weight}x التوقف المتوقع",
   "{weight}x the expected slowdown": "{weight}x التباطؤ المتوقع",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "السطح",
+  "Paved only": "معبّد فقط",
+  "Avoids gravel and dirt wherever pavement runs near.": "يتجنب الحصى والتراب حيثما يوجد طريق معبّد قريب.",
+  "Paved and gravel roads and paths, as this ride type plans them.": "طرق ومسارات معبّدة وحصوية، كما يخطط لها نوع الركوب هذا.",
+  "paved only": "معبّد فقط",
+  "surface": "السطح",
 };

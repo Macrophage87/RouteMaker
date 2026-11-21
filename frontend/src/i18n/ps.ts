@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "تمځایونه په همدې ترتیب پاتې کېږي، څو ستاسو د تېرېدو ټکي په خپله لار پاتې شي.",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "اسانې د MTB لارې",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "د غرنۍ بایسکل هغه لارې هم کاروي چې اسانه درجه لري یا درجه نه لري، چې ډېرې یې واښه او خاوره دي.",
   "Not used while Keep to roads is on.": "تر هغه چې یوازې سړکونه روښانه وي، نه کارول کېږي.",
   "easy MTB trails": "اسانې د MTB لارې",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "د Gravel په څېر د سړک بهر نقشې پر سر پلان جوړوي، نو د غرنۍ بایسکل هغه لارې چې په هر یوه پیمانه 0 یا 1 درجه لري، یا هېڅ درجه نه لري، کېدای شي وکارول شي. هغه لارې چې 2 یا تر هغې سختې درجه لري، هر چېرته چې بله لار وي، پرېښودل کېږي؛ که بیا هم یوه وکارول شي، لاره یې وايي. د ترافیکو فشار د تل په څېر تلل کېږي. خاوره کېدای شي له باران وروسته خټه وي.",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "د سفر ډول",
   "{weight}x the expected stop": "{weight}x تمه شوې تمځای",
   "{weight}x the expected slowdown": "{weight}x تمه شوې ورو کېدنه",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "سطحه",
+  "Paved only": "یوازې پخه لاره",
+  "Avoids gravel and dirt wherever pavement runs near.": "هر چېرې چې پخه لاره نږدې وي، له جغلو او خاورو ډډه کوي.",
+  "Paved and gravel roads and paths, as this ride type plans them.": "پخې او جغلي سړکونه او لارې، لکه څنګه چې دا ډول سفر یې پلان کوي.",
+  "paved only": "یوازې پخه لاره",
+  "surface": "سطحه",
 };

@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "መሕለፊ ነጥብታትኩም ኣብ መገዶም ምእንቲ ክጸንሑ፡ መዕረፊታት በዚ ስርዓት ይጸንሑ።",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "ቀለልቲ ናይ MTB መንገድታት",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "ቀሊል ዝተባህሉ ወይ ደረጃ ዘይብሎም ናይ ጎቦ ብሽክለታ መንገድታት እውን ይጥቀም፤ መብዛሕትኦም ሳዕሪን ሓመድን እዮም።",
   "Not used while Keep to roads is on.": "ጽርግያታት ጥራይ ክሳብ ዝበርህ ኣይጥቀመሉን።",
   "easy MTB trails": "ቀለልቲ ናይ MTB መንገድታት",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "ከም Gravel ኣብ ካርታ ካብ ጽርግያ ወጻኢ ይውጥን፤ ስለዚ ኣብ ዝኾነ መዐቀኒ 0 ወይ 1 ዝተዋህቦም ወይ ፈጺሙ ደረጃ ዘይብሎም ናይ ጎቦ ብሽክለታ መንገድታት ክጥቀመሎም ይኽእል። 2 ወይ ካብኡ ዝኸበዱ መንገድታት ካልእ መገዲ ኣብ ዘለዎ ኩሉ ይግደፉ፤ ሓደ ገና እንተ ተጠቐመ እቲ መስመር ይነግር። ጸቕጢ ትራፊክ ከም ልሙድ ይምዘን። ድሕሪ ዝናብ ሓመድ ጭቃ ክኸውን ይኽእል።",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "ናይ ዓይነት ጉዕዞ",
   "{weight}x the expected stop": "{weight}x ዝጽበ ደው ምባል",
   "{weight}x the expected slowdown": "{weight}x ዝጽበ ምንካይ ፍጥነት",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "ገጽ መንገዲ",
+  "Paved only": "ዝተነጽፈ ጥራይ",
+  "Avoids gravel and dirt wherever pavement runs near.": "ኣብ ጥቓ ዝተነጽፈ መንገዲ ኣብ ዘለዎ ኩሉ ጸጸርን ሓመድን የወግድ።",
+  "Paved and gravel roads and paths, as this ride type plans them.": "ዝተነጽፉን ናይ ጸጸርን መንገድታትን መገድታትን፣ ከምቲ እዚ ዓይነት ጉዕዞ ዝውጥኖ።",
+  "paved only": "ዝተነጽፈ ጥራይ",
+  "surface": "ገጽ መንገዲ",
 };

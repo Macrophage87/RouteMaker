@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "Ara noktalarınız kendi yollarında kalsın diye duraklar bu sırada kalıyor.",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "Kolay MTB patikaları",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Kolay derecelendirilmiş ya da derecesiz dağ bisikleti patikalarını da kullanır; çoğu çim ve topraktır.",
   "Not used while Keep to roads is on.": "Yalnızca yollar açıkken kullanılmaz.",
   "easy MTB trails": "kolay MTB patikaları",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel gibi arazi haritasında planlar; bu yüzden iki ölçekten herhangi birinde 0 ya da 1 derecelendirilmiş veya hiç derecelendirilmemiş dağ bisikleti patikaları kullanılabilir. 2 ya da daha zor derecelendirilmiş patikalar, başka bir yol olan her yerde dışarıda bırakılır; yine de biri kullanılırsa rota bunu söyler. Trafik stresi her zamanki gibi tartılır. Toprak yağmurdan sonra çamurlu olabilir.",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "Sürüş türünün",
   "{weight}x the expected stop": "beklenen duruşun {weight}x'i",
   "{weight}x the expected slowdown": "beklenen yavaşlamanın {weight}x'i",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "Yüzey",
+  "Paved only": "Yalnızca asfalt",
+  "Avoids gravel and dirt wherever pavement runs near.": "Yakında asfalt olan her yerde çakıl ve topraktan kaçınır.",
+  "Paved and gravel roads and paths, as this ride type plans them.": "Bu sürüş türünün planladığı gibi asfalt ve çakıl yollar ve patikalar.",
+  "paved only": "yalnızca asfalt",
+  "surface": "yüzey",
 };

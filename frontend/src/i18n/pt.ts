@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "As paradas ficam nesta ordem, para manter seus pontos de passagem no caminho deles.",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "Trilhas de MTB fáceis",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Também usa trilhas de mountain bike de nível fácil ou sem nível, quase sempre de grama e terra.",
   "Not used while Keep to roads is on.": "Não é usado enquanto Só ruas estiver ativado.",
   "easy MTB trails": "trilhas de MTB fáceis",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Planeja no mapa off-road, como o Gravel, então trilhas de mountain bike de nível 0 ou 1 em qualquer escala, ou sem nível, podem ser usadas. Trilhas de nível 2 ou mais difíceis ficam de fora sempre que houver outro caminho; se uma ainda for usada, a rota avisa. O estresse do trânsito é pesado como de costume. A terra pode ficar enlameada depois da chuva.",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "Do tipo de passeio",
   "{weight}x the expected stop": "{weight}x a parada prevista",
   "{weight}x the expected slowdown": "{weight}x a desaceleração prevista",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "Superfície",
+  "Paved only": "Só pavimentado",
+  "Avoids gravel and dirt wherever pavement runs near.": "Evita cascalho e terra onde houver pavimento por perto.",
+  "Paved and gravel roads and paths, as this ride type plans them.": "Ruas e caminhos pavimentados e de cascalho, como este tipo de passeio os planeja.",
+  "paved only": "só pavimentado",
+  "surface": "superfície",
 };

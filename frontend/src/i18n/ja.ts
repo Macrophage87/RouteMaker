@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "経由地がそのルート上に残るよう、立ち寄り先はこの順番のままです。",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "初級MTBトレイル",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "初級の評価、または評価のないマウンテンバイクトレイル(主に草地と土)も通ります。",
   "Not used while Keep to roads is on.": "「車道のみ」がオンの間は使われません。",
   "easy MTB trails": "初級MTBトレイル",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravelと同じくオフロード地図で計画するため、どちらの尺度でも0か1の評価、またはまったく評価のないマウンテンバイクトレイルを通ることがあります。評価2以上の難しいトレイルは、迂回路があればどこでも避けます。それでも通る場合はルートがそう伝えます。交通ストレスはいつも通り考慮します。雨の後は土がぬかるんでいることがあります。",
@@ -2288,4 +2287,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride type's": "走行タイプ既定",
   "{weight}x the expected stop": "想定停止の{weight}x",
   "{weight}x the expected slowdown": "想定減速の{weight}x",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "路面",
+  "Paved only": "舗装路のみ",
+  "Avoids gravel and dirt wherever pavement runs near.": "近くに舗装路があれば砂利道や未舗装路を避けます。",
+  "Paved and gravel roads and paths, as this ride type plans them.": "舗装路と砂利の道や小道。このライドタイプの計画どおり。",
+  "paved only": "舗装路のみ",
+  "surface": "路面",
 };

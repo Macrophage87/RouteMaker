@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { PRESETS } from "./presets.ts";
 import { EASY_MTB_PRESETS, dialFields, easyMtbOn, fitDials, offersEasyMtb, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
-import { EASY_MTB_HINT, EASY_MTB_LABEL, EASY_MTB_LOCKED_HINT, panelView } from "./dialsPanel.ts";
+import { EASY_MTB_LABEL, EASY_MTB_LOCKED_HINT, panelView } from "./dialsPanel.ts";
 import { EASY_MTB_HARDER_SHORT, EASY_MTB_NO_MAP, EASY_MTB_NO_MAP_SHORT, easyMtbNote } from "./easyMtb.ts";
 import { choose } from "./rideTypeDialog.ts";
 import { rideSummary } from "./rideSummary.ts";
@@ -20,13 +20,11 @@ test("offered on Default and Trailmaxxing alone, and off by default", () => {
     assert.equal(start.easyMtb, undefined, preset.id);
     assert.equal(dialFields(start).easy_mtb, undefined, preset.id);
     assert.equal(offersEasyMtb(preset.id), preset.id === "default" || preset.id === "trailmaxxing", preset.id);
+    // Since 2026-11-21 it is the Surface picker's third choice (lib/surface.ts), not a switch of its own.
     const view = panelView(preset.id, start);
-    assert.equal(view.easyMtb === null, !offersEasyMtb(preset.id), preset.id);
-    if (view.easyMtb) {
-      assert.equal(view.easyMtb.label, EASY_MTB_LABEL);
-      assert.equal(view.easyMtb.checked, false);
-      assert.equal(view.easyMtb.hint, EASY_MTB_HINT);
-    }
+    const offered = view.surface?.options.some(([id, label]) => id === "easy-mtb" && label === EASY_MTB_LABEL) ?? false;
+    assert.equal(offered, offersEasyMtb(preset.id), preset.id);
+    if (offered) assert.notEqual(view.surface?.value, "easy-mtb");
   }
 });
 
@@ -49,12 +47,12 @@ test("on, it travels in the link, the request and back; on another ride type it 
   assert.equal(decodePlan("#preset=default&v=2&stress=70&hills=0").dials.easyMtb, undefined);
 });
 
-test("Keep to roads wins: the switch shows off and says why; changing ride type keeps it where it is offered", () => {
+test("Keep to roads wins: the choice is not offered and the (i) says why; changing ride type keeps it where it is offered", () => {
   const both = fitDials("default", { ...startDials("default"), easyMtb: true, trailsOff: true });
   const view = panelView("default", both);
-  assert.equal(view.easyMtb?.checked, false);
-  assert.equal(view.easyMtb?.locked, true);
-  assert.equal(view.easyMtb?.hint, EASY_MTB_LOCKED_HINT);
+  assert.equal(view.surface?.value, "gravel");
+  assert.equal(view.surface?.options.some(([id]) => id === "easy-mtb"), false);
+  assert.ok(view.surface?.info.some(([label, said]) => label === EASY_MTB_LABEL && said === EASY_MTB_LOCKED_HINT));
   assert.equal(easyMtbOn("default", both), false);
   const on = fitDials("default", { ...startDials("default"), easyMtb: true });
   assert.equal(choose("trailmaxxing", null, on).easyMtb, true);
@@ -88,7 +86,7 @@ test("the notice: a harder trail it found no way round, or the off-road map down
 });
 
 test("every Easy MTB phrase is in Spanish with its {places}", () => {
-  for (const phrase of [EASY_MTB_LABEL, EASY_MTB_HINT, EASY_MTB_LOCKED_HINT, EASY_MTB_NO_MAP, EASY_MTB_NO_MAP_SHORT, EASY_MTB_HARDER_SHORT]) {
+  for (const phrase of [EASY_MTB_LABEL, EASY_MTB_LOCKED_HINT, EASY_MTB_NO_MAP, EASY_MTB_NO_MAP_SHORT, EASY_MTB_HARDER_SHORT]) {
     assert.ok(ES[phrase], phrase);
   }
 });

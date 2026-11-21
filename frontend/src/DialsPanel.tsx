@@ -14,7 +14,7 @@
  * same words again (a11y review of integrate-2). The note under it is its
  * description.
  */
-import { InfoButton } from "./SettingRow.tsx";
+import { InfoButton, SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { SPEED_LABEL, SPEED_OWN_POSITION, speedSliderView, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { onFoot, runs, type PresetId } from "./lib/presets.ts";
@@ -35,6 +35,7 @@ import {
 } from "./lib/mtbMode.ts";
 import { RIDE_SIZE_LABEL, SHARP_TURNS_LABEL, WAITS_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
+import { SURFACE_ABOUT, SURFACE_LABEL, withSurface } from "./lib/surface.ts";
 import { t } from "./lib/i18n.ts";
 import { defaultStart, fitStart, startBounds } from "./lib/startTime.ts";
 import { sentences } from "./lib/sentences.ts";
@@ -378,9 +379,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   const fewerTurnsHintId = useId();
   const fewerTurnsInfoId = useId();
   const [fewerTurnsInfo, setFewerTurnsInfo] = useState(false);
-  const easyMtbHintId = useId();
-  const easyMtbInfoId = useId();
-  const [easyMtbInfo, setEasyMtbInfo] = useState(false);
+  const surfaceInfoId = useId();
   // What lowering the hardest trail level did to the preferred one, said politely (never a silent clamp),
   // with the ride type and levels it was said of: a change from outside the panel (a link, a ride type, a
   // reset) clears it, so it never speaks of levels no longer shown.
@@ -728,33 +727,29 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           </DialInfo>
         </div>
       )}
-      {/* Easy MTB trails (the owner, 2026-11-08): Default and Trailmaxxing only, off by default. */}
-      {view.easyMtb && (
-        <div className="dial easy-mtb">
-          <div className="dial-head">
-            <label className="toggle">
-              {/* aria-disabled while Keep to roads is on, which wins: in the Tab order with its reason said. */}
-              <input
-                type="checkbox"
-                checked={view.easyMtb.checked}
-                aria-disabled={view.easyMtb.locked || undefined}
-                aria-describedby={easyMtbHintId}
-                onChange={(event) => {
-                  if (view.easyMtb?.locked) return;
-                  onCommit({ ...dials, easyMtb: event.target.checked });
-                }}
-              />
-              {view.easyMtb.label}
-            </label>
-            <InfoButton open={easyMtbInfo} onToggle={() => setEasyMtbInfo(!easyMtbInfo)} controls={easyMtbInfoId} about={view.easyMtb.howAbout} />
-          </div>
-          <p className="hint" id={easyMtbHintId}>
-            {view.easyMtb.hint}
-          </p>
-          <DialInfo id={easyMtbInfoId} open={easyMtbInfo}>
-            <Bullets text={view.easyMtb.how} />
-          </DialInfo>
-        </div>
+      {/* Surface (the owner, 2026-11-21: "paved only, gravel, easy MTB, and then MTB2-4 as max"): one picker, under
+          Keep to roads, which wins over Easy MTB trails. Mountain Bike's Hardest trail level above is its surface. */}
+      {view.surface && (
+        <SettingRow
+          infoId={surfaceInfoId}
+          about={SURFACE_ABOUT}
+          className="surface"
+          info={
+            <ul className="setting-info-list">
+              {view.surface.info.map(([label, hint]) => (
+                <li key={label}>{`${label}: ${hint}`}</li>
+              ))}
+            </ul>
+          }
+        >
+          <SettingSelect
+            label={SURFACE_LABEL}
+            value={view.surface.value}
+            options={view.surface.options}
+            onChange={(surface) => onCommit(withSurface(dials, surface))}
+            describedBy={surfaceInfoId}
+          />
+        </SettingRow>
       )}
       {view.reset && (
         <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
