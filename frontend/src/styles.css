@@ -2659,6 +2659,10 @@ ul.station-links {
 .junction-popup-red .maplibregl-popup-content {
   border-left-color: #dc2626;
 }
+/* A plain-map rated junction's card: no warning bar, whose orange would contradict an LTS 1 or 2. */
+.junction-popup-plain .maplibregl-popup-content {
+  border-left: none;
+}
 .junction-popup .maplibregl-popup-close-button {
   color: var(--text);
 }
@@ -5651,6 +5655,13 @@ dialog.plan-ride-settings h2:focus {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+/* The same border and padding as a rated move's (transparent), so the card keeps its height between turns. */
+.cue-next {
+  border: 5px solid transparent;
+  border-radius: 10px;
+  padding: 4px 6px;
 }
 
 /* A hard move at a rated junction: the card bordered in the move's stress colour, inside an edge of the text colour
