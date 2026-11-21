@@ -90,7 +90,8 @@ BOX_FROM = 3.0
 # joined. Not their middle: the run's nodes include driveway, alley and sidewalk nodes along a
 # street, and their middle lands partway up the block (the owner, 2026-11-21: "The junction
 # dots are misaligned", at 3rd St and Rhode Island Ave NW). A divided road's dot sits on one of
-# its carriageways. When that node is outside the view, the smallest one inside it.
+# its carriageways. When that node is outside the view, or went to another junction at the
+# load, the smallest one left.
 _BOX_SQL = """
 SELECT t.junction,
        ST_X((array_agg(t.location ORDER BY t.node))[1]),
