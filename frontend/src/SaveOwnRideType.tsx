@@ -16,13 +16,13 @@ export function differsFromStart(preset: PresetId, dials: Dials): boolean {
   return ownPlan(preset, dials) !== ownPlan(preset, startDials(preset, dials.carrying, dials.when, dials.assist, dials.bike ?? null));
 }
 
-export function SaveOwnRideType(props: { preset: PresetId; dials: Dials; matching: OwnRideType | null; onLoad: (preset: PresetId, dials: Dials) => void }) {
-  return (
-    <>
-      <SaveButton {...props} />
-      <ShareSettings {...props} />
-    </>
-  );
+/**
+ * Save as my own ride type, at the foot of the Ride settings screen; Create custom's name box is a second one, at the
+ * screen's top (`create`), so the name comes first and the four main settings are under it (intuitiveness review,
+ * Stephen 2026-11-21). Sharing (ShareSettings) is at the foot of the Advanced fold.
+ */
+export function SaveOwnRideType(props: { preset: PresetId; dials: Dials; matching: OwnRideType | null; create?: boolean; onSaid?: (text: string) => void }) {
+  return <SaveButton {...props} />;
 }
 
 /**
@@ -30,7 +30,7 @@ export function SaveOwnRideType(props: { preset: PresetId; dials: Dials; matchin
  * people, like via JSON"): Copy puts these settings on the clipboard as JSON (lib/ownRideTypes.ts shareJson); settings
  * pasted in and loaded are used at once and kept in My ride types under their name.
  */
-function ShareSettings({ preset, dials, matching, onLoad }: { preset: PresetId; dials: Dials; matching: OwnRideType | null; onLoad: (preset: PresetId, dials: Dials) => void }) {
+export function ShareSettings({ preset, dials, matching, onLoad }: { preset: PresetId; dials: Dials; matching: OwnRideType | null; onLoad: (preset: PresetId, dials: Dials) => void }) {
   const [pasted, setPasted] = useState("");
   const [said, setSaid] = useState("");
   const id = useId();
@@ -51,9 +51,10 @@ function ShareSettings({ preset, dials, matching, onLoad }: { preset: PresetId; 
     setSaid(own ? t("Loaded {name}. It is in My ride types.", { name: own.name }) : t("Loaded {name} for now. My ride types is full ({max}): remove one to keep it.", { name: read.name, max: OWN_MAX }));
   };
   return (
-    <details className="fold own-ride-share">
-      <summary>{t("Advanced")}</summary>
-      <div className="fold-body">
+    // In the Advanced fold already (DialsPanel), so a group under its own small heading, not a second fold.
+    <div className="own-ride-share" role="group" aria-labelledby={`${id}-share`}>
+      <h3 id={`${id}-share`} className="own-ride-share-title">{t("Share ride settings")}</h3>
+      <div>
         <button type="button" className="secondary" onClick={() => void copy()}>
           {t("Copy these settings")}
         </button>
@@ -66,11 +67,11 @@ function ShareSettings({ preset, dials, matching, onLoad }: { preset: PresetId; 
           {said}
         </p>
       </div>
-    </details>
+    </div>
   );
 }
 
-function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dials; matching: OwnRideType | null }) {
+function SaveButton({ preset, dials, matching, create = false, onSaid }: { preset: PresetId; dials: Dials; matching: OwnRideType | null; create?: boolean; onSaid?: (text: string) => void }) {
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [said, setSaid] = useState("");
@@ -78,19 +79,24 @@ function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dial
   const openRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const id = useId();
+  // The name ready to type over (the tap-count review: "My Default" was not selected).
   useEffect(() => {
-    if (naming) inputRef.current?.focus();
+    if (!naming) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
   }, [naming]);
   // A new change after a save: the line that said it was saved goes.
   const plan = ownPlan(preset, dials);
   useEffect(() => setSaid(""), [plan]);
-  const offered = matching === null && differsFromStart(preset, dials);
+  // The top one is Create custom's alone; the foot one is Save as my own ride type's alone.
+  const offered = !create && matching === null && differsFromStart(preset, dials);
   // Create custom from the ride type list: the name box at once, whatever the sliders say.
   const creates = useCreateRequests();
   const createsAtMount = useRef(creates);
   useEffect(() => {
     if (creates === createsAtMount.current) return;
     createsAtMount.current = creates;
+    if (!create) return;
     setName(t("My {ride}", { ride: presetLabel(preset) }));
     setNaming(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new press opens it
@@ -105,16 +111,31 @@ function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dial
     }
     const own = saveOwn(kept, preset, dials);
     setNaming(false);
-    setSaid(own ? t("Saved as {name}. It is first in the ride types.", { name: own.name }) : "");
-    // The form goes: the focus to the popup's title, now the saved name (review of #1385), not lost to the page.
+    const savedSaid = own ? t("Saved as {name}. It is first in the ride types.", { name: own.name }) : "";
+    // Create custom's screen closes at once: what it says goes to the page's own status line (onSaid), not a line in
+    // a closed screen that is never heard and is still there next time (review of the intuitiveness PR).
+    if (create) onSaid?.(savedSaid);
+    else setSaid(savedSaid);
+    // Create custom's save is done (the tap-count review: Save, then Done, then Close): the screen closes as Done closes
+    // it, back to the route (in Go, the Ride sheet with it), and the focus goes where Done sends it.
     const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => run();
-    frame(() => rootRef.current?.closest("dialog")?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true }));
+    frame(() => {
+      const dialog = rootRef.current?.closest("dialog");
+      if (create) dialog?.querySelector<HTMLButtonElement>(".ride-settings-done")?.click();
+      // The form goes: the focus to the popup's title, now the saved name (review of #1385), not lost to the page.
+      else dialog?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
+    });
   };
   return (
-    <div ref={rootRef} className="own-ride-save-wrap">
+    <div ref={rootRef} className={`own-ride-save-wrap${create ? " own-ride-create-wrap" : ""}${create && naming ? " naming" : ""}`}>
       {naming ? (
         <form
           className="own-ride-save"
+          onKeyDown={(event) => {
+            // Escape closes the screen (sidebarParts.ts): the name box goes with it, so it is not there, with no Done,
+            // when the screen opens again.
+            if (create && (event.key === "Escape" || event.key === "Esc")) setNaming(false);
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             save();

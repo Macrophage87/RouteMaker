@@ -324,7 +324,7 @@ import { installState } from "./lib/installOffer.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { matchingOwn, ownNow, ownSetup, reloadOwn, setGoOwn, useOwnRideTypes, type OwnRideType } from "./lib/ownRideTypes.ts";
-import type { GoDefault } from "./lib/rideTypeCards.ts";
+import { takesGoDefault, type GoDefault } from "./lib/rideTypeCards.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
@@ -1205,6 +1205,8 @@ export function App() {
   useEffect(() => watchOpenLinks(window, () => onBikeNow.current, (question) => window.confirm(question), (url) => window.location.assign(url)), []);
   // How many are on the ride's broadcast (RideGroup's count), shown in Ride mode's Broadcast; More > Riders opens its panel.
   const [rideRiders, setRideRiders] = useState<number | null>(null);
+  // Which ended ride (its n) the rider made its ride type Go's default from, on the summary card.
+  const [goDefaultSetAfter, setGoDefaultSetAfter] = useState<number | null>(null);
   const [ridersAsk, setRidersAsk] = useState(0);
   // What the ride started from, captured at Start ride: the ride never follows the planner's own route,
   // which a failed or changed plan could take away mid-ride.
@@ -6949,6 +6951,21 @@ export function App() {
     },
   };
   const ownInUse = matchingOwn(ownRides.list, preset, dials);
+  // After a ride (the owner, 2026-11-21: "have the 'save as default' be an option after the ride is finished"): the ride
+  // type ridden, a built-in one or one of the rider's own, where it is not already what Go starts on. A changed ride
+  // type that is not one of the rider's own is not offered: it has no name to start on.
+  const endedGoKey = ownInUse ? `own:${ownInUse.id}` : isCustom(preset, dials) ? null : preset;
+  const endedGoDefault =
+    rideEnded && endedGoKey && takesGoDefault(preset) && (goDefaultSetAfter === rideEnded.n || goDefault.current !== endedGoKey)
+      ? {
+          name: ownInUse ? ownInUse.name : presetSaid(preset),
+          set: goDefaultSetAfter === rideEnded.n,
+          onSet: () => {
+            goDefault.onSet(endedGoKey);
+            setGoDefaultSetAfter(rideEnded.n);
+          },
+        }
+      : null;
   const goRides = (
     <RideChips
       ids={goRideChips(myGo.ride, preset, favoriteRides)}
@@ -7107,6 +7124,8 @@ export function App() {
           popout: true,
           go: goDefault,
           shown: mode !== "go" || view === "ride",
+          onDone: mode === "go" ? backToPlanner : undefined,
+          onSaid: announce,
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,
@@ -7717,6 +7736,7 @@ export function App() {
           onDone={finishRide}
           onReports={rideEndReports}
           origin={origin}
+          goDefault={endedGoDefault}
         />
       )}
       {riding && rideStart && (

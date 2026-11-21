@@ -12217,27 +12217,61 @@ button.route-note:focus-visible {
 }
 
 
-/* Go's default from the ride type list (the owner, 2026-11-21): a "Go" button left of the star (or Remove), a 44px
-   target; filled where it is what Go starts on (and said so: aria-pressed). The card's text keeps clear of both. */
-.ride-type-card.has-go > button:not(.ride-fav):first-child {
-  padding-inline-end: 100px;
-}
-
+/* Go's default from the ride type list (the owner, 2026-11-21): "Make Go's default" in words under the card, on
+   the end side, a 44px-high target; filled and "Go's default" where it is what Go starts on (aria-pressed). */
 .ride-fav.ride-go-default {
-  inset-inline-end: 48px;
+  position: static;
   width: auto;
+  height: auto;
+  display: block;
+  margin-inline-start: auto;
+  margin-top: 2px;
+  min-height: 44px;
   min-width: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
+  background: transparent;
   color: var(--text-muted);
-  border: 2px solid var(--border);
+  border: 0;
   border-radius: 22px;
   font-weight: 700;
+  font-size: 0.875rem;
 }
 
 .ride-fav.ride-go-default[aria-pressed="true"] {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-text);
+}
+
+.ride-types .ride-type-card.with-loads.has-go {
+  grid-row: span 3;
+}
+
+/* Create custom's name box, at the top of the Ride settings screen: its Save is the one way out while it is open,
+   so Done goes (intuitiveness review, Stephen 2026-11-21). Nothing shows there until Create custom is pressed. */
+.own-ride-create-wrap:not(.naming) .own-ride-said:empty {
+  display: none;
+}
+
+.own-ride-create-wrap .own-ride-save {
+  margin: 0 0 12px;
+  padding: 0 0 12px;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-ride-settings-body:has(.own-ride-create-wrap.naming) .ride-settings-finish {
+  display: none;
+}
+
+.own-ride-share {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.own-ride-share-title {
+  font-size: 1rem;
+  margin: 0 0 8px;
 }
 
 /* Save as my own ride type, at the foot of the Ride settings popup. */
@@ -12254,12 +12288,8 @@ button.route-note:focus-visible {
   padding: 8px;
 }
 
-/* Advanced: Copy these settings, and settings pasted in to load (JSON). */
-.own-ride-share {
-  margin-top: 12px;
-}
-
-.own-ride-share .fold-body {
+/* Share ride settings, at the foot of Advanced: Copy these settings, and settings pasted in to load (JSON). */
+.own-ride-share > div {
   display: grid;
   gap: 8px;
 }
