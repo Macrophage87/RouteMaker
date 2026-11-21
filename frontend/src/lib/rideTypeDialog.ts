@@ -7,7 +7,7 @@
  * sliders."
  */
 import { PRESETS, type PresetId } from "./presets.ts";
-import { offersEasyMtb, startDials, type Carrying, type Dials } from "./dials.ts";
+import { fitSharpTurnWeight, fitTrailLevel, fitWaitWeight, offersEasyMtb, offersPaved, offersStopsAndTurns, startDials, type Carrying, type Dials } from "./dials.ts";
 
 /** A focusable element as the Tab trap sees it: a radio has a type, a group name and a state. */
 export type TabCandidate = { type?: string; name?: string; checked?: boolean };
@@ -62,7 +62,17 @@ export function choose(preset: PresetId, carrying: Carrying | null, current: Dia
     ...(current.trailsOff ? { trailsOff: true } : {}),
     // Easy MTB trails stays between the ride types that offer it (Default, Trailmaxxing).
     ...(current.easyMtb === true && offersEasyMtb(preset) ? { easyMtb: true } : {}),
+    // The trail level with Easy MTB trails (the Surface setting), kept where the new ride type takes it.
+    ...(current.easyMtb === true && offersEasyMtb(preset) && fitTrailLevel(preset, { ...current, paved: undefined }) !== undefined ? { mtbLevel: current.mtbLevel } : {}),
+    // Paved only (the Surface setting) is the rider's too: kept where the new ride type takes it.
+    ...(current.paved === true && offersPaved(preset) ? { paved: true } : {}),
     ...(current.loop === true ? { loop: true } : {}),
+    // Fewer turns and the rider's wait weight are the rider's, as Keep to roads is (2026-11-20): kept where the new
+    // ride type takes them, the weight only where it is still above that ride type's own.
+    ...(current.fewerTurns === true && offersStopsAndTurns(preset) ? { fewerTurns: true } : {}),
+    ...(fitWaitWeight(preset, current.waitWeight) !== undefined ? { waitWeight: fitWaitWeight(preset, current.waitWeight) } : {}),
+    // The rider's sharp-turn weight, kept where it still differs from the new ride type's own.
+    ...(fitSharpTurnWeight(preset, current.sharpTurnWeight) !== undefined ? { sharpTurnWeight: fitSharpTurnWeight(preset, current.sharpTurnWeight) } : {}),
   };
 }
 

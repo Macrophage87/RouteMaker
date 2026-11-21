@@ -13,6 +13,7 @@ import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
 import { ROUTE_BAND, ROUTE_LANE_DASH, ROUTE_LANE_RAIL, ROUTE_SWATCH_BAND_WIDTH, ROUTE_SWATCH_CASING_WIDTH, ROUTE_SWATCH_HEIGHT, routeCasing, routeLegend, routeMarkDash, routeMarkWidth, type RouteLaneFacility } from "./lib/routeColours.ts";
 import { seekNote, tolerateNote } from "./lib/summary.ts";
 import { tripStressSpans } from "./lib/transit.ts";
+import { wholePercents } from "./lib/stressBar.ts";
 
 /**
  * A row of a figure's list, read as label, figure, hint with a pause between
@@ -61,6 +62,11 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
   // Every colour on the map, a transit trip's later rides' included (lib/transit.ts, tripStressSpans).
   const colours = routeLegend(tripStressSpans(route));
   const casing = routeCasing();
+  // Each level's share and distance in one table (intuitiveness review, 2026-11-21: the same split was shown four
+  // times, the bar's text line and a second percent-only table included).
+  // Whole percents that add up to 100, as the bar's are (lib/stressBar.ts wholePercents).
+  const total = colours.reduce((sum, row) => sum + row.metres, 0);
+  const shares = total > 0 ? wholePercents(colours.map((row) => row.metres / total)) : colours.map(() => 0);
   return (
     <>
       {figures && colours.length > 0 && (
@@ -92,7 +98,9 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
                 </svg>
                 <span className="stress-name">{row.short}</span>
                 {PAUSE}
-                <span className="stress-pct">{formatDistance(row.metres)}</span>
+                <span className="stress-pct">
+                  {shares[colours.indexOf(row)]}% · <bdi>{formatDistance(row.metres)}</bdi>
+                </span>
                 {PAUSE}
                 <span className="stress-label">{row.label}</span>
               </li>

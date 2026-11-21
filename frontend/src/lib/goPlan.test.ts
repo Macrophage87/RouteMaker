@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughAgain, goRoughDue, goRoughTriesAfter, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, goStartSaid, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_LOCATION_OFF, GO_START_SAID, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, GO_WARM_AFTER_MS, goWarmDue, goPickStart, goHereStart, goStartStale, goRough, goRoughAgain, goRoughDue, goRoughTriesAfter, GO_ROUGH_M, GO_ROUGH_AGAIN_MS, GO_ROUGH_TRIES, GO_FOLLOW_MS, goFollowTo, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, goStartSaid, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -182,11 +182,11 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   // settings opens the Ride sheet with every type; the chip in use says when its sliders were moved.
   assert.match(
     appFile,
-    /<RideChips\s+ids=\{goRideChips\(myGo\.ride, preset, favoriteRides\)\}\s+preset=\{preset\}\s+onPick=\{pickRide\}\s+more=\{\(opener\) => openView\("ride", opener\)\}\s+label=\{t\("Ride type"\)\}\s+ownHint=\{OWN_RIDE_HINT\}\s+own=\{myGo\.ride \?\? "default"\}\s+changed=\{isCustom\(preset, dials\)\}\s+\/>/,
+    /<RideChips\s+ids=\{goRideChips\(myGo\.ride, preset, favoriteRides\)\}\s+preset=\{preset\}\s+onPick=\{pickRide\}\s+more=\{\(opener\) => openView\("ride", opener\)\}\s+label=\{t\("Ride type"\)\}\s+ownHint=\{OWN_RIDE_HINT\}\s+own=\{myGo\.ride \?\? "default"\}\s+changed=\{isCustom\(preset, dials\)\}\s+mine=\{ownInUse\?\.name \?\? null\}\s+\/>/,
   );
   assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && id === ownId \? "ride-own-hint" : undefined\}/);
   // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts); a pick closes it (P3).
-  assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRideAndClose\} open=\{view === "ride"\} \/>/);
+  assert.match(appFile, /<RideGroupChips preset=\{preset\} dials=\{dials\} onPick=\{pickRideAndClose\} onPickOwn=\{pickOwnAndClose\} go=\{goDefault\} open=\{view === "ride"\} \/>/);
   // A pick goes through the ride type dialog's own choice, with Mountain Bike's loop (mtbChosen).
   assert.match(appFile, /choosePreset\(id, mtbChosen\(preset, id, chooseRideType\(id, carries\(id\) \? "cargo" : null, dials\)\)\);/);
   // Toggle buttons with their state, not colour alone.
@@ -730,4 +730,18 @@ test("Go's searches lean to the route's start and list places nearest it first, 
   assert.match(src("../app/Planner.tsx"), /origin=\{\(\) => points\[0\]\}/);
   // The list is the sorted one, and Enter takes its first place.
   assert.match(src("../PlaceSearch.tsx"), /const places = withoutFoodRows\(nearestFirst\(found, start, answered\), food\);/);
+});
+
+test("go start: the dot follows a rider who has moved, on a sure fix, and stays put for GPS jitter (the owner, 2026-11-21)", () => {
+  const here = goHereStart([-77.06, 38.905], 1_000_000);
+  // About 110 m north: the rider has moved, so the dot and the start go there.
+  assert.deepEqual(goFollowTo(here, { point: [-77.06, 38.906], accuracyM: 10 }), [-77.06, 38.906]);
+  // About 11 m: jitter, kept where it was (no new early route Home).
+  assert.equal(goFollowTo(here, { point: [-77.06, 38.9051], accuracyM: 10 }), null);
+  // A rough fix never moves a sure dot (goRoughAgain looks after rough ones).
+  assert.equal(goFollowTo(here, { point: [-77.06, 38.92], accuracyM: GO_ROUGH_M + 1 }), null);
+  // Outside the map, or a start that is not the location: nothing.
+  assert.equal(goFollowTo(here, { point: [-80, 30], accuracyM: 10 }), null);
+  assert.equal(goFollowTo({ kind: "none" }, { point: [-77.06, 38.906], accuracyM: 10 }), null);
+  assert.ok(GO_FOLLOW_MS >= 10_000 && GO_FOLLOW_MS <= 30_000, "often enough to follow, rare enough for the battery");
 });

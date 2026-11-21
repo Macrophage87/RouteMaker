@@ -117,8 +117,10 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   if (!ready) throw new Error("the app did not show a route");
   await sleep(800);
+  // The settings are a popup over the map (the owner, 2026-11-20; Go too since 2026-11-21), opened by the checks that
+  // use them (openRide).
   if (ride) {
-    await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+    await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-haspopup') !== 'dialog' && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
     await sleep(200);
   }
   // The junction list is in the route summary's "Junctions to watch" fold, closed by default (312):
@@ -179,6 +181,15 @@ async function openSection(p, id = null) {
   const sel = id ? `#${id}-section-body` : ".layer-section-body";
   await p.eval(`[...document.querySelectorAll('#sheet-layers ${sel}')].forEach((body) => { const b = document.querySelector('[aria-controls="' + body.id + '"]'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); }); true`);
   await sleep(150);
+}
+
+/** Opens Plan's Ride settings popup (the owner, 2026-11-20), where the sliders and switches are, if it is closed. */
+async function openRide(p) {
+  await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await sleep(200);
+  // v0.30.0 (intuitiveness review, #1391): Traffic, Hills, Surface and When first, the rest behind one Advanced fold.
+  await p.eval("(() => { const d = document.querySelector('details.dials-advanced'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
+  await sleep(200);
 }
 
 /** Opens the route summary's Directions fold (a native details). */
@@ -254,7 +265,8 @@ if (mine(11)) {
   const said = await p.eval("document.querySelector('.status-line').textContent");
   check("announcement: says the strong detour and the very high stress junctions", /Strong warning: 2\.4 times the direct distance/.test(said) && /2 very high stress junctions\./.test(said), said);
 
-  // The slider: named once, described by the calm note.
+  // The slider: named once, described by the calm note (in Plan's Ride settings popup, 2026-11-20).
+  await openRide(p);
   const slider = await axNode(p, ".dial input[type=range]");
   check("slider: its name is its label alone", slider?.name === "Traffic", JSON.stringify(slider?.name));
   check("slider: the calm note is its description", /^Calmest: finds the least stressful route towards your target distance/.test(slider?.description ?? ""), (slider?.description ?? "").slice(0, 60));
@@ -339,9 +351,9 @@ if (mine(4)) for (const [label, size] of [["phone", { width: 390, height: 844, m
   await sleep(3500);
   const handed = await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
   check(`plan bar (${label}): pressing Update route hands the focus to Save route in its place`, handed, await p.eval("document.activeElement?.textContent?.trim() || document.activeElement?.tagName"));
-  check(`plan bar (${label}): signed in, the route up to date shows Save route big in Update route's place; it opens the name form (focused, named, with Download GPX, whole on the screen), Escape and Cancel return to it, and a change brings Update route back in its place`,
+  check(`plan bar (${label}): signed in, the route up to date shows Save route big in Update route's place; it opens the name form (focused, named, whole on the screen; GPX is the route row's since #1398), Escape and Cancel return to it, and a change brings Update route back in its place`,
     JSON.stringify(upToDate) === JSON.stringify(["Save route", "Start ride", "Manual mode", "Clear the plan"]) && big?.h >= 52 && big.top <= 16 && big.expanded === "false" &&
-      form.open && form.focused && !!form.name && form.expanded === "true" && JSON.stringify(form.buttons) === JSON.stringify(["About Fixed route", "Save", "Download GPX", "Cancel"]) && back &&
+      form.open && form.focused && !!form.name && form.expanded === "true" && JSON.stringify(form.buttons) === JSON.stringify(["About Fixed route", "Save", "Cancel"]) && back &&
       JSON.stringify(changed) === JSON.stringify(["Update route", "Manual mode", "Clear the plan"]),
     JSON.stringify({ upToDate, big, form, back, changed }));
   await p.close();
@@ -361,19 +373,18 @@ if (mine(1)) {
   await p.close();
 }
 
-// ---- 1e. The bar's other buttons (the owner, 2026-10-21): signed out, Save offers Discord sign-in or the GPX file; Start
+// ---- 1e. The bar's other buttons (the owner, 2026-10-21): signed out, Save keeps the route on this device (#1398); Start
 // ride on a computer asks first; an empty plan offers Load route; a route a link shared can be saved from Go ----
 if (mine(2)) {
   const p = await open({ ride: false, signIn: true, computerAsks: true });
-  await p.eval("document.querySelector('.plan-map-bar .save-route-open').click(); true");
-  await sleep(300);
-  const form = await p.eval("(() => { const f = document.querySelector('.plan-map-bar .save-route-form'); return { input: !!f?.querySelector('input'), items: [...f.querySelectorAll('a, button')].map((x) => x.textContent.trim()), href: f.querySelector('a')?.getAttribute('href'), focused: document.activeElement?.textContent.trim() }; })()");
-  await p.eval("[...document.querySelectorAll('.plan-map-bar .save-route-form button')].find((b) => b.textContent.trim() === 'Download GPX').click(); true");
-  await p.waitFor("!!document.querySelector('.plan-map-bar .save-route-said')?.textContent.trim()", 5000);
-  const gpx = await p.eval("({ said: document.querySelector('.plan-map-bar .save-route-said').textContent.trim(), closed: !document.querySelector('.plan-map-bar .save-route-form'), focus: document.activeElement === document.querySelector('.plan-map-bar .save-route-open') })");
-  check("plan bar: signed out, Save offers Sign in with Discord (focused, to /auth/login) or Download GPX, which saves the file, says so and returns to Save",
-    !form.input && JSON.stringify(form.items) === JSON.stringify(["Sign in with Discord", "Download GPX", "Cancel"]) && form.href === "/auth/login" && form.focused === "Sign in with Discord" &&
-      /^GPX track/.test(gpx.said) && gpx.closed && gpx.focus, JSON.stringify({ form, gpx }));
+  // Signed out, Save route keeps the route on this device, with Sign in to sync on the line that says so; no sign-in
+  // form and no Download GPX in it (intuitiveness review, Plan, #1398).
+  await p.eval("document.querySelector('.plan-map-bar .save-route-open').focus(); true");
+  await p.enter();
+  await p.waitFor("(() => { const t = document.querySelector('.plan-map-bar .save-route-said')?.textContent.trim() ?? ''; return t !== '' && !/^Keeping/.test(t); })()", 15000);
+  const kept = await p.eval("(() => { const s = document.querySelector('.plan-map-bar .save-route-said'); const a = s.querySelector('a.save-route-sync'); return { form: !!document.querySelector('.plan-map-bar .save-route-form'), status: s.getAttribute('role'), said: s.textContent.trim(), sync: a ? [a.textContent.trim(), a.getAttribute('href')] : null, focus: document.activeElement === document.querySelector('.plan-map-bar .save-route-open') }; })()");
+  check("plan bar: signed out, Save keeps the route on this device, says so in its status line with Sign in to sync (to /auth/login), opens no form, and keeps the focus",
+    !kept.form && kept.status === "status" && kept.said !== "" && JSON.stringify(kept.sync) === JSON.stringify(["Sign in to sync", "/auth/login"]) && kept.focus, JSON.stringify(kept));
   await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').focus(); true");
   await p.enter();
   await sleep(500);
@@ -815,6 +826,7 @@ if (mine(4)) {
 // ---- 9. The target distance, the system weight and the loop toggle (OWNER-DECISIONS 256, 264, 266, 271) ----
 if (mine(12)) {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  await openRide(p);
   const target = await axNode(p, "input[placeholder=Default]");
   check("target distance: the field's name is its label, in miles", target?.role === "textbox" && target?.name === "Target distance (miles)", JSON.stringify(target?.name));
   check("target distance: its description says what it does, miles first, in under 150 characters", /^Optional: the calmest route at or under this\./.test(target?.description ?? "") && /up to 1\.6 times/.test(target?.description ?? "") && (target?.description ?? "").length < 150, (target?.description ?? "").slice(0, 80));
@@ -1262,6 +1274,7 @@ if (mine(2)) {
 // ---- 14. A slow plan (LONG-CALM, up to half a minute): said once while it runs, then the route (the a11y review's SF1) ----
 if (mine(4)) {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100), delayMs: 8000, delayFrom: Infinity });
+  await openRide(p);
   // The first route's own announcement lands once it settles: listen only after it.
   await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 10000);
   await sleep(500);
@@ -1330,6 +1343,7 @@ if (mine(14)) {
 // ---- 16b. Keep to roads, not trails (OWNER-DECISIONS 463, 463b): one switch on every ride type ----
 if (mine(5)) {
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  await openRide(p);
   const sw = await axNode(p, ".trails-off input");
   check("roads only: a real checkbox named \"Keep to roads, not trails\", off by default, described in under 150 characters in plain words", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === false && /No bike paths, trails or stairs./.test(sw?.description ?? "") && (sw?.description ?? "").length < 150, JSON.stringify(sw));
   // P10: behind the row's one (i), in Settings' style, in place of its "How this works" disclosure.
@@ -1361,6 +1375,7 @@ if (mine(5)) {
 if (mine(2)) {
   // Mass Ride always keeps to roads: checked from a link that does not say so, in the Tab order, unchangeable.
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  await openRide(p);
   const sw = await axNode(p, ".trails-off input");
   // `disabled` is the accessibility tree's, what screen readers announce ("unavailable", "dimmed"): the a11y review's SF2.
   check("roads only: on Mass Ride it is checked and unavailable to AT, and its description says a mass ride always keeps to roads", sw?.role === "checkbox" && sw?.name === "Keep to roads, not trails" && sw?.checked === true && sw?.disabled === true && /^A mass ride always keeps to roads\./.test(sw?.description ?? ""), JSON.stringify(sw));
@@ -1665,12 +1680,18 @@ if (mine(26)) {
       await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: x + 36, y: y + 24, button: "left", clickCount: 1 });
     }
     await sleep(1500);
+    // The card is the route before the change until Update route (intuitiveness review, Plan, #1398): no Link till then.
+    const routeIfChanged = async () => {
+      if (await p.eval(`!!${BAR_ROUTE}`)) await pressRoute(p);
+    };
+    await routeIfChanged();
     await p.waitFor("!!document.querySelector('.link-note')", 20000);
     const dragged = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
     check("locate: dragging the location's marker moves it and keeps the Copy link note", !!pin?.hit && dragged.hash !== hashBefore && dragged.note === POINT_NOTE, JSON.stringify({ pin, dragged, hashBefore }));
     // Undo: the map bar's (P10: the one Undo in Plan, on every layout), an icon button named Undo.
     const undid = await p.eval("(() => { const u = document.querySelector('.plan-map-bar button[data-history=undo]'); u?.click(); return !!u && u.getAttribute('aria-label') === 'Undo'; })()");
     await sleep(1500);
+    await routeIfChanged();
     await p.waitFor("!!document.querySelector('.link-note')", 20000);
     const undone = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
     check("locate: undoing the drag puts the point back and keeps the Copy link note", undid && undone.hash === hashBefore && undone.note === POINT_NOTE, JSON.stringify({ undid, undone, hashBefore }));
@@ -1866,6 +1887,7 @@ if (mine(2)) {
 if (mine(24)) {
   // The Mass Ride version: three charts (the owner, 2026-10-10: "Riders per minute, Corker load, Elevation"), each under its own heading, on one distance axis.
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), junctions: false });
+  await openRide(p);
   // UI-CLEANUP (the owner's choice 7): the chart's fold starts closed; open it, as a rider would.
   await p.eval("(() => { const d = document.querySelector('.elevation-chart')?.closest('details'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
   await sleep(300);
@@ -4000,6 +4022,7 @@ if (mine(2)) {
 if (mine(15)) {
   const link = (bike, ending = "") => `#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=${bike === "ebike" ? -20 : -60}&bike=${bike}${ending}`;
   const p = await open({ route: S_BIKESHARE, hash: link("classic") });
+  await openRide(p);
   const plan = await p.eval(`(() => ({
     steps: [...document.querySelectorAll('ol.bikeshare-steps > li')].map((e) => e.textContent),
     markers: [...document.querySelectorAll('.dock-marker')].map((e) => ({ role: e.getAttribute('role'), label: e.getAttribute('aria-label'), badge: e.querySelector('.dock-badge')?.textContent, hiddenBadge: e.querySelector('.dock-badge')?.getAttribute('aria-hidden') })),
@@ -4363,18 +4386,17 @@ if (mine(19)) {
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${hashFor("default", 70)}` });
   await p.waitFor("!!document.querySelector('.summary')", 40000);
   await sleep(800);
-  check("keep for offline: a browser tab offers it too (the owner's choice of 2026-10-10)", await p.eval("!!document.querySelector('.keep-offline') && !!document.querySelector('#keep-offline-said')"));
-
-  // Keep for offline: a real button under the route; what it did is said politely.
-  await p.eval("(() => { const m = document.querySelector('.route-actions .route-more'); if (m && m.getAttribute('aria-expanded') !== 'true') m.click(); return true; })()");
-  await sleep(200);
-  const keep = await p.eval("(() => { const b = document.querySelector('.route-actions .keep-offline'); const r = b?.getBoundingClientRect(); return { name: b?.textContent, tag: b?.tagName, h: r?.height ?? 0, region: document.querySelector('#keep-offline-said')?.getAttribute('role') }; })()");
-  check("keep for offline: a real button under the route, 44 px tall, with a polite status line for what it did", keep.name === "Keep for offline" && keep.tag === "BUTTON" && keep.h >= 44 && keep.region === "status", JSON.stringify(keep));
-  await p.eval("document.querySelector('.route-actions .keep-offline').focus(); true");
+  // Signed out (as here), the bar's Save route is the keep (intuitiveness review, Plan, #1398): More has no second Keep
+  // for offline. It keeps at once, with no form (no aria-expanded), and says what it did in its status line.
+  const SAVE = ".plan-map-bar .save-route-open";
+  check("keep for offline: a browser tab offers it too (the owner's choice of 2026-10-10), as the bar's Save route, signed out", await p.eval(`!!document.querySelector('${SAVE}') && !document.querySelector('${SAVE}').hasAttribute('aria-expanded') && !!document.querySelector('.plan-map-bar .save-route-said') && !document.querySelector('.route-actions .keep-offline')`));
+  const keep = await p.eval(`(() => { const b = document.querySelector('${SAVE}'); const r = b?.getBoundingClientRect(); return { name: b?.getAttribute('aria-label') ?? b?.textContent, tag: b?.tagName, h: r?.height ?? 0, region: document.querySelector('.plan-map-bar .save-route-said')?.getAttribute('role') }; })()`);
+  check("keep for offline: a real button, 44 px tall, with a polite status line for what it did", keep.name === "Save route" && keep.tag === "BUTTON" && keep.h >= 44 && keep.region === "status", JSON.stringify(keep));
+  await p.eval(`document.querySelector('${SAVE}').focus(); true`);
   await p.enter();
-  const kept = await p.waitFor("/^Kept for offline: /.test(document.querySelector('#keep-offline-said')?.textContent ?? '')", 90000);
-  const keptSaid = await p.eval("document.querySelector('#keep-offline-said').textContent.trim()");
-  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Save & load when there is no signal\.$/.test(keptSaid), keptSaid);
+  const kept = await p.waitFor("/^Kept for offline: /.test(document.querySelector('.plan-map-bar .save-route-said')?.textContent ?? '')", 90000);
+  const keptSaid = await p.eval("document.querySelector('.plan-map-bar .save-route-said').textContent.trim()");
+  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Save & load when there is no signal\./.test(keptSaid), keptSaid);
   const stored = await p.eval(`(async () => { const keys = await caches.keys(); const tiles = keys.includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).map((q) => new URL(q.url).pathname) : [];
     return { tiles: tiles.filter((t) => t.startsWith('/tiles/stress/')).length, positions: tiles.filter((t) => /lat=|lon=/.test(t)).length }; })()`);
   check("keep for offline: the stress tiles along the route are kept in the kept routes' bucket, and no URL with a position", stored.tiles > 0 && stored.positions === 0, JSON.stringify(stored));
@@ -4561,6 +4583,7 @@ if (mine(16)) {
 // three groups (lib/rideTypeGroups.ts: Transportation 10, Adventure 8, Group 2).
 if (mine(10)) {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
+  await openRide(p);
   const kidsCard = "[...document.querySelectorAll('.ride-type-card > button:not(.ride-fav)')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();
@@ -4886,9 +4909,9 @@ if (mine(14)) {
       chips: names('.go-places .place-chip'), rides: names('.go-sheet .ride-chips button'), search: !!document.querySelector('.go-sheet input[type=search], .go-sheet input[role=combobox], .go-sheet input'),
       small: [...document.querySelectorAll('.go-top button, .go-sheet button, .go-sheet input')].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().height < 44 || e.getBoundingClientRect().width < 44)).map((e) => e.className + ':' + e.textContent.trim()),
       scroll: document.documentElement.scrollWidth > innerWidth }; })()`);
-  // With no destination, the bar under them holds Roam (a ride with no destination; the owner, 2026-10-22).
-  check("go: a phone with no link opens in Go: Settings, the Go/Plan switch (Go pressed), Layers and Locate over the map, Roam under them, and no bottom bar",
-    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Settings", "Go", "Plan", "Layers", "Locate", "Roam"]), JSON.stringify(go));
+  // Roam went under More (intuitiveness review, Go, #1395), first there: a ride with no destination is rarer than a place.
+  check("go: a phone with no link opens in Go: Settings, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
+    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Settings", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
@@ -4896,8 +4919,8 @@ if (mine(14)) {
   // Food is "Eat" (P2: it lists places to eat), and More ride types "Ride type & settings" (P3: hills and traffic are there);
   // Sights is "Places to see" and Saved routes "Load route" (P12).
   // Ride type & settings second, beside the rider's own (#1335, v0.28.0: no sideways swipe to reach it).
-  check("go: the sheet has Where to?, the place chips Home, Eat, Water and Restroom (no Work), then More with Metro, Repair, Places to see, Load route and Featured routes, and the ride types Default, Ride type & settings, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Eat", "Water", "Restroom", "More", "Metro", "Repair", "Places to see", "Load route", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Ride type & settings", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus"]), JSON.stringify(go));
+  check("go: the sheet has Where to?, the place chips Home, Eat, Water and Restroom (no Work), then More with Roam, Metro, Repair, Places to see, Load route and Featured routes, and the ride types Default, Ride type & settings, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Eat", "Water", "Restroom", "More", "Roam", "Metro", "Repair", "Places to see", "Load route", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Ride type & settings", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus"]), JSON.stringify(go));
   // More > Load route (Stephen 2026-10-26; P12: it was Saved routes): Load route's popup, one title; Escape gives the focus back.
   await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
   await sleep(200);
@@ -4997,6 +5020,19 @@ if (mine(2)) {
   await sleep(200);
   const box = await axNode(p, ".go-start-search input");
   check("go start: Change start opens a box named Start from, described as replacing the location", box?.role === "combobox" && box?.name === "Start from" && /in place of your location/.test(box?.description ?? ""), JSON.stringify(box));
+  await p.close();
+}
+if (mine(1)) {
+  // Go's dot follows the rider (lib/appMode.ts GO_FOLLOW_MS, the owner 2026-11-21): the GPS moves about 200 m and,
+  // within one GO_FOLLOW_MS (15 s) and a little, the dot moves with it, quietly (nothing more said).
+  const p = await goWith("granted");
+  const dot = "document.querySelector('.rider-marker-still')?.style.transform ?? ''";
+  const before = await p.eval(`({ dot: ${dot}, said: window.__said.length })`);
+  await p.s("Emulation.setGeolocationOverride", { latitude: 38.9073, longitude: -77.0365, accuracy: 15 });
+  await sleep(18000);
+  const after = await p.eval(`({ dot: ${dot}, said: window.__said.slice(${before.said}), geo: window.__geo })`);
+  check("go start: the rider's dot follows the location before a destination: moved about 200 m, the dot moves within 18 s, nothing is said, and it is one look-up at a time (no watch)",
+    before.dot !== "" && after.dot !== "" && after.dot !== before.dot && !after.said.some((t) => /location/i.test(t)) && after.geo >= 2 && after.geo <= 3, JSON.stringify({ before, after }));
   await p.close();
 }
 if (mine(1)) {
@@ -5212,6 +5248,24 @@ if (mine(1)) {
   await wide.close();
   await linked.close();
 }
+if (mine(2)) {
+  // Go's route sheet never scrolls sideways (Stephen 2026-11-20: on beta v0.29.0 it sat half off the phone, the handle
+  // at the left edge and Start cut in two). The ride types' screen-reader words (.visually-hidden, absolutely placed)
+  // were placed against the sheet, not their own sideways row, so the chips scrolled out of the row widened the sheet.
+  // At 390 px and with the phone's text at 130% (Android's font size), the chips run well past the row's edge.
+  const p = await goWith("granted", { hash: hashFor("default", 70), init: "document.addEventListener('DOMContentLoaded', () => { document.documentElement.style.fontSize = '130%'; });" });
+  await p.waitFor("!!document.querySelector('.go-sheet .ride-chips .chip')", 20000);
+  await sleep(500);
+  const sideways = () => p.eval(`(() => { const s = document.querySelector('.panel .panel-scroll'); const row = document.querySelector('.go-sheet .ride-chips');
+    return { sheet: s.scrollWidth - s.clientWidth, row: row.scrollWidth - row.clientWidth, page: document.documentElement.scrollWidth - innerWidth }; })()`);
+  const before = await sideways();
+  check("go: with a route at 390 px and 130% text, the ride types scroll in their own row and the sheet has nothing to scroll sideways",
+    before.row > 100 && before.sheet <= 0 && before.page <= 0, JSON.stringify(before));
+  // The sheet's backstop: overflow-x hidden, so a swipe never moves it even if something did overflow.
+  const style = await p.eval("getComputedStyle(document.querySelector('.panel .panel-scroll')).overflowX");
+  check("go: the route sheet's scroller does not scroll sideways by touch (overflow-x hidden)", style === "hidden", JSON.stringify({ style }));
+  await p.close();
+}
 if (mine(1)) {
   // The main flow (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): open Go, type a
   // destination, then the taps are counted: Where to? (1), the place picked (2) and Start ride (3), with no question
@@ -5295,11 +5349,12 @@ if (mine(8)) {
     planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + 🚆🚌Own bike plus train or bus"]), JSON.stringify({ taps, trip }));
   check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
     list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 &&
-      /* a ride step says its traffic stress in words since 8a7c1c1e ("Transit: colour every ride of the trip by traffic stress") */
-      /^Ride 4 min to Eastern Market\. Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
+      /* Go's steps are the steps alone, without each ride's stress shares (intuitiveness review, Go, #1395); Plan's keep them */
+      /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
-  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock and riding the whole way beside it",
-    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+  // "Riding the whole way" shows only where it is quicker (intuitiveness review, Go, #1395): here transit is quicker.
+  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock, and no riding-the-whole-way line where transit is quicker",
+    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && trip.compare === undefined,
     JSON.stringify(trip));
   check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
     trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",

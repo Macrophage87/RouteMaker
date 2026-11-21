@@ -347,7 +347,7 @@ the route goes to its top by way of its bottom.
   DC's languages cover Go and Ride (Plan stays in English). They are first drafts, not yet
   checked by native speakers. A phone set to one opens Go and Ride in it; pick another there. Tell us
   about any wording that is wrong.
-- Riding speed: in Settings, from 8 to 30 mph (13 to 48 km/h), if you ride faster or slower than
+- Riding speed: a slider in Ride settings, from 6 to 30 mph (10 to 48 km/h), if you ride faster or slower than
   the ride type assumes. Times and arrival clocks follow it. Mass Ride and the share bikes keep
   their own pace.
 - Favorites (signed in): Go's Home button becomes Favorites, with Home and Work first and then

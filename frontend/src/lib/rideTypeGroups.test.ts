@@ -141,7 +141,7 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   // Go: the search is cleared whenever the sheet is left (as Plan's dialog on closing).
   assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) setQuery\(""\);\s*\}, \[open\]\);/);
   // P3: a pick closes the sheet.
-  assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} onPick=\{pickRideAndClose\} open=\{view === "ride"\} \/>/);
+  assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} dials=\{dials\} onPick=\{pickRideAndClose\} onPickOwn=\{pickOwnAndClose\} go=\{goDefault\} open=\{view === "ride"\} \/>/);
   assert.ok(go.indexOf("<RideTypeSearch") < go.indexOf("groups.map"), "the search comes before the groups");
   const plan = src("../RideTypePicker.tsx");
   assert.match(plan, /<RideTypeSearch id="ride-types-search"/);

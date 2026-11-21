@@ -239,10 +239,10 @@ def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
     assert report.completed, "the rebuild ran rather than stopping at stage one"
     downloads = [c for c in binaries.commands("curl") if not c[-1].endswith(".md5")]
     assert [c[-1] for c in downloads] == [
-        "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
-        "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
-        "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
-        "https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/district-of-columbia/district-of-columbia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/maryland/maryland-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/virginia/virginia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/west-virginia/west-virginia-latest.osm.pbf",
     ]
     osmium = binaries.commands("osmium")
     assert [c[1] for c in osmium] == ["merge", "extract"], "merged, then clipped"
