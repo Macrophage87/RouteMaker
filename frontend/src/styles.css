@@ -5657,8 +5657,10 @@ dialog.plan-ride-settings h2:focus {
   align-items: center;
 }
 
-/* The same border and padding as a rated move's (transparent), so the card keeps its height between turns. */
-.cue-next {
+/* The same border and padding as a rated move's (transparent), so the card keeps its height between turns
+   and when it goes off route. */
+.cue-next,
+.cue-off {
   border: 5px solid transparent;
   border-radius: 10px;
   padding: 4px 6px;

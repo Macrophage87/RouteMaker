@@ -8091,20 +8091,22 @@ wide gates), so the beta agent stops on the tag.
 
 ## Deploying v0.30.1
 
-A patch on v0.30.0, on the owner's ask (2026-11-21, "Let's send the Junction markers and other fixes as
-a patch"): the raters' junction ratings shown as small dots in the stress colour, level 3 and up, on a
-planned route (map, list, stress chart, Ride ribbon) and on the plain map from zoom 17 (every rated
-junction at the closest zoom), with a card of each movement's level and wait, and Ride's turn card
-bordered in a hard move's colour (#1291, with the new `GET /api/junctions/rated`); the Go location dot
-refreshed every 15 s before a destination (#1406); accessibility fixes and the bottom bar's "Plan"
-renamed "Planner" (#1401); the beta map swap holds the deploy lock against the router timer and
-stops (exit 3) when a trail router did not start (#1409). #1291 also adds two rater briefs and a pipeline change (short sidewalk links
-walked on the e-bike and Road Bike graphs) that takes effect only at the next map rebuild.
+A patch on v0.30.0, on the owner's ask (2026-11-21, "Let's send the Junction markers and other fixes
+as a patch"): the raters' junction ratings shown as small dots in the stress colour, level 3 and up,
+on a planned route (map, list, stress chart, Ride ribbon) and on the plain map from zoom 17 (every
+rated junction at the closest zoom), with a card of each movement's level and wait, and Ride's turn
+card bordered in a hard move's colour (#1291, with the new `GET /api/junctions/rated`); the Go
+location dot refreshed every 15 s before a destination (#1406); accessibility fixes and the bottom
+bar's "Plan" renamed "Planner" (#1401); the beta map swap holds the deploy lock against the router
+timer and stops (exit 3) when a trail router did not start (#1409). #1291 also adds two rater briefs
+and a pipeline change (short sidewalk links walked on the e-bike and Road Bike graphs) that takes
+effect only at the next map rebuild.
 
 What changes for a deploy:
 
 - no migration; no `lua/`, `valhalla/`, compose, nginx, Dockerfile or requirements change, so the
-  beta's release agent takes a tag made by the Release workflow by itself; no router restart, no map step;
+  beta's release agent takes a tag made by the Release workflow by itself; no router restart, no map
+  step;
 - `scripts/beta/auto-release.sh` changed (#1409), so after the deploy the agent puts its own new
   files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"); only if the log
   says "WARNING: the agent's files could not all be reinstalled", run `scripts/beta/auto-release.sh
