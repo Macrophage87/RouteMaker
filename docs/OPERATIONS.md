@@ -8092,7 +8092,8 @@ wide gates), so the beta agent stops on the tag.
 
 The release train's v0.30.0, on the owner's ask (2026-11-21, "Get ready to ship 0.30 when the map is
 rebuilt"): Adjust, in Plan and now Go, opens every ride setting in a popup with "Waiting at lights and stops",
-"Sharp turns" (both in half steps) and "Fewer turns" (#1367, #1374, #1376); waits weigh 2x on
+"Sharp turns" (both in half steps) and "Fewer turns" (#1367, #1374, #1376), and a Surface picker, Paved only,
+Gravel or Easy MTB trails, kept in links as `paved=1` (#1386); waits weigh 2x on
 pleasure and training rides, Group Ride and Cargo (Tandem's was already 2x), and the connector can raise them
 (#1364, #1377, #1378); sharp turns, U-turns and jogs rank as more than one turn and turns are priced
 by the speed they cost (#1363, #1366); Fast is as direct as possible at real time (#1378, #1381); Go
