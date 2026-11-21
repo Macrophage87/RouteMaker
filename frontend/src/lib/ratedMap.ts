@@ -42,8 +42,9 @@ export function ratedMapAsk(view: View, zoom: number): { path: string; box: View
   if (view.east - view.west > MAX_LON || view.north - view.south > MAX_LAT) return null;
   const cx = (view.west + view.east) / 2;
   const cy = (view.south + view.north) / 2;
-  const halfLon = Math.min((view.east - view.west) * 2, MAX_LON) / 2;
-  const halfLat = Math.min((view.north - view.south) * 2, MAX_LAT) / 2;
+  // A hair under the server's largest, so rounding never takes the box over it (a 400 draws nothing).
+  const halfLon = Math.min((view.east - view.west) * 2, MAX_LON - 2e-4) / 2;
+  const halfLat = Math.min((view.north - view.south) * 2, MAX_LAT - 2e-4) / 2;
   const r = (v: number) => Math.round(v * 1e4) / 1e4;
   const box = { west: r(cx - halfLon), south: r(cy - halfLat), east: r(cx + halfLon), north: r(cy + halfLat) };
   const every = zoom >= RATED_EVERY_ZOOM;
@@ -74,10 +75,37 @@ export async function loadRatedMap(
   }
 }
 
-/** The map's dots with a planned route drawn: not those the route's own junction markers stand for. */
-export function ratedMapShown(junctions: readonly RatedMapJunction[], onRoute: readonly LonLat[]): RatedMapJunction[] {
-  if (!onRoute.length) return [...junctions];
-  return junctions.filter((j) => !onRoute.some((at) => haversineM(at, [j.lon, j.lat]) <= SAME_SPOT_M));
+/** The map's dots with a planned route drawn: none on the route itself, whose own markers show its junctions in the
+ * colour of the movement it makes there (a dot in its hardest movement's colour would contradict them), and none
+ * where those markers stand. `line` is the route's line. */
+export function ratedMapShown(
+  junctions: readonly RatedMapJunction[],
+  onRoute: readonly LonLat[],
+  line: readonly LonLat[] = [],
+): RatedMapJunction[] {
+  if (!onRoute.length && line.length < 2) return [...junctions];
+  return junctions.filter((j) => {
+    const at: LonLat = [j.lon, j.lat];
+    return !onRoute.some((spot) => haversineM(spot, at) <= SAME_SPOT_M) && !nearLine(at, line, SAME_SPOT_M);
+  });
+}
+
+/** Whether `at` is within `m` metres of the line (a flat projection, fine at these distances). */
+function nearLine(at: LonLat, line: readonly LonLat[], m: number): boolean {
+  const kx = 111_320 * Math.cos((at[1] * Math.PI) / 180);
+  const ky = 110_540;
+  for (let i = 1; i < line.length; i += 1) {
+    const ax = (line[i - 1][0] - at[0]) * kx;
+    const ay = (line[i - 1][1] - at[1]) * ky;
+    const bx = (line[i][0] - at[0]) * kx;
+    const by = (line[i][1] - at[1]) * ky;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
+    if (Math.hypot(ax + t * dx, ay + t * dy) <= m) return true;
+  }
+  return false;
 }
 
 /** "Junction rated LTS 4": the dot's name, and its card's title. */

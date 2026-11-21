@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   groupIconSvg,
-  inkOn,
   junctionIconSvg,
   junctionItems,
   ratedDotFill,
@@ -56,12 +55,6 @@ test("the dot is colour only, nothing written on it (the owner, 2026-11-20); its
   assert.doesNotMatch(svg, /<text/);
   assert.ok(svg.includes(`fill="${PALETTES.twotone[4].color}"`));
   assert.equal(ratedTitle({ move: "cross", level: 4, moves: [] }), "Rated LTS 4 crossing");
-});
-
-test("the number is dark on a light dot and white on a dark one", () => {
-  assert.equal(inkOn(PALETTES.twotone[3].color), "#111111");
-  assert.equal(inkOn(PALETTES.twotone[5].color), "#ffffff");
-  assert.equal(inkOn(PALETTES.cvd[5].color), "#ffffff");
 });
 
 test("a junction the model priced keeps its warning shape", () => {

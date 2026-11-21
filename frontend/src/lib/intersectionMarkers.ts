@@ -319,16 +319,6 @@ export function rowName(severity: string, where: string, reason: string, cost?: 
 
 export { ratedDotFill, ratedLevelText };
 
-/** Black or white, whichever reads better on `fill` (WCAG relative luminance). */
-export function inkOn(fill: string): "#111111" | "#ffffff" {
-  const channel = (i: number) => {
-    const v = parseInt(fill.slice(i, i + 2), 16) / 255;
-    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-  };
-  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
-  return luminance > 0.3 ? "#111111" : "#ffffff";
-}
-
 /** The dot, as inline SVG markup: a white-ringed, dark-edged small disc in the level's colour, nothing written
  * on it (the owner, 2026-11-20: "Just colors as small dots"). */
 export function ratedDotSvg(level: number, size = ICON_PX, palette: string = currentPalette()): string {
