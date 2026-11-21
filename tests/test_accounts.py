@@ -114,7 +114,8 @@ class TestSettings:
         for bad in (
             [{"id": "a1", "name": "x", "plan": "#preset=fast&q=1,2"}],  # a route's points
             [{"id": "A!", "name": "x", "plan": "#preset=fast"}],
-            [{"id": "a1", "name": "x", "plan": "#preset=fast&via=1,2"}],  # nothing that names a place (#1385 review)
+            # nothing that names a place (#1385 review)
+            [{"id": "a1", "name": "x", "plan": "#preset=fast&via=1,2"}],
             [{"id": "a1", "name": "x", "plan": "#preset=fast&line=abc"}],
             [{"id": "a1", "name": "x", "plan": "#preset=fast&sn=Home"}],
             [{"id": "a1", "name": "x", "plan": "#preset=fast&nt=hi"}],

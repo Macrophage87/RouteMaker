@@ -8091,9 +8091,12 @@ wide gates), so the beta agent stops on the tag.
 ## Deploying v0.30.0
 
 The release train's v0.30.0, on the owner's ask (2026-11-21, "Get ready to ship 0.30 when the map is
-rebuilt"): Adjust, in Plan and now Go, opens every ride setting in a popup with "Waiting at lights and stops",
-"Sharp turns" (both in half steps) and "Fewer turns" (#1367, #1374, #1376), and a Surface picker, Paved only,
-Gravel or Easy MTB trails, kept in links as `paved=1` (#1386); waits weigh 2x on
+rebuilt"): Ride settings, the same in Plan and Go and now a screen of their own (a full screen on a phone, a
+side panel on a computer), with "Waiting at lights and stops", "Sharp turns" (both in half steps) and "Fewer
+turns" (#1367, #1374, #1376, #1384, #1391); a Surface picker from Paved only and Gravel to Easy MTB trails and MTB
+trails up to level 4, kept in links as `paved=1` (#1386, #1388); the rider's own named ride types, kept on the
+account in `settings.own` and `goOwn` (no migration: the settings JSON; no points, vias, lines or notes accepted)
+with what Go starts on and settings shared as JSON (#1385, #1391); waits weigh 2x on
 pleasure and training rides, Group Ride and Cargo (Tandem's was already 2x), and the connector can raise them
 (#1364, #1377, #1378); sharp turns, U-turns and jogs rank as more than one turn and turns are priced
 by the speed they cost (#1363, #1366); Fast is as direct as possible at real time (#1378, #1381); Go
@@ -8101,7 +8104,7 @@ locks the route on the map until Edit route is opened (#1360), drops drawn icons
 (#1361) and its route sheet never scrolls sideways (#1383); short bike-open links inside closed
 campuses (#1359) and footways that close a gap between bike ways (#1362) are priced as links, which
 takes effect with the map rebuilt from this branch (cloud-20261120b, commit e6c6f6a7; the commits
-after it are front end only); Geofabrik's per-state download folders (#1380). Junction dots, method C
+after it change no pipeline code); Geofabrik's per-state download folders (#1380). Junction dots, method C
 trail levels and Virginia stay out.
 
 What changes for a deploy:
@@ -8119,8 +8122,9 @@ What changes for a deploy:
   checkout, `docker compose build api`, recreate api and worker with no job todo or doing, then the
   front end.
 - [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
-- [ ] **Beta check.** The app says 0.30.0; Plan, Adjust opens the popup with both sliders and Fewer
-  turns, and a link made there carries `waits=` and `sharpturns=`; Go keeps the route fixed on the
+- [ ] **Beta check.** The app says 0.30.0; Ride settings (Plan and Go) opens its screen with both
+  sliders, Fewer turns and Surface, and a link made there carries `waits=` and `sharpturns=`; a ride type
+  saved under My ride types is there after a reload, signed in; Go keeps the route fixed on the
   map until Edit route; Fast's card reads "As direct as possible."
 - [ ] **The map swap (owner's go)**, as "Rebuilding on the cloud box", once cloud-20261120b's bundle
   is checked. Then: the Rockville Pike side path at Medical Center (NIH) is routed through; the
