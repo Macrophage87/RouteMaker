@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.30.0](#deploying-v0300)
 - [Deploying v0.29.0](#deploying-v0290)
 - [Deploying v0.28.1](#deploying-v0281)
 - [Deploying v0.28.0](#deploying-v0280)
@@ -3702,10 +3703,10 @@ What is downloaded, per PLAN:13, is Geofabrik's state extracts (West Virginia ad
 the Eastern Panhandle):
 
 ```
-https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf
-https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf
-https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf
-https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/district-of-columbia/district-of-columbia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/maryland/maryland-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/virginia/virginia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/west-virginia/west-virginia-latest.osm.pbf
 ```
 
 **Roughly 1–2 GB in total at today's sizes** — Virginia and Maryland are most of
@@ -8087,6 +8088,52 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.30.0
+
+The release train's v0.30.0, on the owner's ask (2026-11-21, "Get ready to ship 0.30 when the map is
+rebuilt"): Ride settings, the same in Plan and Go and now a screen of their own (a full screen on a phone, a
+side panel on a computer), with "Waiting at lights and stops", "Sharp turns" (both in half steps) and "Fewer
+turns" (#1367, #1374, #1376, #1384, #1391); a Surface picker from Paved only and Paved and gravel to Easy MTB trails and MTB
+trails up to level 4, kept in links as `paved=1` (#1386, #1388); the rider's own named ride types, kept on the
+account in `settings.own` and `goOwn` (no migration: the settings JSON; no points, vias, lines or notes accepted)
+with what Go starts on and settings shared as JSON (#1385, #1391); waits weigh 2x on
+pleasure and training rides, Group Ride and Cargo (Tandem's was already 2x), and the connector can raise them
+(#1364, #1377, #1378); sharp turns, U-turns and jogs rank as more than one turn and turns are priced
+by the speed they cost (#1363, #1366); Fast is as direct as possible at real time (#1378, #1381); Go
+locks the route on the map until Edit route is opened (#1360), drops drawn icons on ride type chips
+(#1361) and its route sheet never scrolls sideways (#1383); short bike-open links inside closed
+campuses (#1359) and footways that close a gap between bike ways (#1362) are priced as links, which
+takes effect with the map rebuilt from this branch (cloud-20261120b, commit e6c6f6a7; the commits
+after it change no pipeline code); Geofabrik's per-state download folders (#1380). Junction dots, method C
+trail levels and Virginia stay out.
+
+What changes for a deploy:
+
+- no migration; no `lua/`, `valhalla/`, compose, nginx, Dockerfile or requirements change, so the
+  beta's release agent takes a tag made by the Release workflow by itself; no router restart;
+- the api code runs on the old map too (#1359 and #1362 only change what the rebuild writes), so the
+  tag and the map swap are separate steps, in either order;
+- new link and API parameters (`waits=`, `sharpturns=`, `fewerturns=`; `wait_weight`,
+  `sharp_turn_weight`) are optional; old links plan as before.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.30.0`, then approve).
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing, then the
+  front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
+- [ ] **Beta check.** The app says 0.30.0; Ride settings (Plan and Go) opens its screen with both
+  sliders, Fewer turns and Surface, and a link made there carries `waits=` and `sharpturns=`; a ride type
+  saved under My ride types is there after a reload, signed in; Go keeps the route fixed on the
+  map until Edit route; Fast's card reads "As direct as possible."
+- [ ] **The map swap (owner's go)**, as "Rebuilding on the cloud box", once cloud-20261120b's bundle
+  is checked. Then: the Rockville Pike side path at Medical Center (NIH) is routed through; the
+  JunctionRater table still holds its rows; `scripts/refresh_places.py`, the barrier snapshot and
+  `build_intervals` (commit `intervals.json`).
+- [ ] **Rollback.** The `pre-rel` api image and the v0.29.0 front end, together: the old api refuses
+  (422) the new `wait_weight` and `sharp_turn_weight` that a v0.30.0 page sends once a slider is moved.
+  The map has its own rollback (the previous graph), and either runs with the other.
+
 ## Deploying v0.29.0
 
 The release train's v0.29.0, on the owner's ask (2026-11-20, "Make 0.29 live"): Ride shows stops in
@@ -8923,7 +8970,16 @@ trail-class bicycle-open way at one of its ends, reaching another bicycle-open w
 link: the owner, 2026-11-19, of the Little Falls Trail beside Little Falls Parkway, whose
 end crosswalk at Arlington Road (OSM 778205176) the LTS 4 price made a wall, chose "Build
 the rule"; the crossing's own stress is the junction's (crossings split, 2026-11-15). In
-ten sample areas it moved 67 of 3,343 untagged crosswalks (2%) to the link price. On tile
+ten sample areas it moved 67 of 3,343 untagged crosswalks (2%) to the link price. A run of
+footways with no bicycle tag (plain, sidewalk or crosswalk) that closes a gap is a link too
+(`sidewalks.gap_links`: at most 160 ft (50 m) long, its ends meeting bicycle-open ways with
+a trail among them, which the open network otherwise joins only by riding 1,000 ft (300 m)
+or more, our default, unmeasured): the owner, 2026-11-20, after Little Falls and the
+Rockville Pike side path at NIH, "Do a search for places that could match this and open
+them. This happens a lot." On the 2026-11-14 DC-area extract (BBBike's WashingtonDC cut) it
+found 337, 120 of them (about 1 mi in all) beyond what the other link rules already open,
+such as the 115 ft (35 m) footway from a cycleway to the service road by the Bethesda Trolley
+Trail (OSM 39941547) and the Capital Crescent Trail's spur at Neal Potter Plaza. On tile
 builds (tests/test_tile_build_sidewalk_price.py; one-off sweeps of 0.5 mi and 3 mi (800 m
 and 5 km) roads with side streets and slip lanes, not kept in the repo) the first kind loses
 to the road beside it at LTS 1 to 3.5 and wins over LTS 4, 4.5 and Avoid from the slider's 40 up; the
@@ -9632,7 +9688,7 @@ EDT). First check that Geofabrik's current build is new enough (three small text
 
 ```sh
 for r in district-of-columbia maryland virginia west-virginia; do
-  curl -fsS https://download.geofabrik.de/north-america/us/$r-updates/state.txt | grep '^timestamp'
+  curl -fsS https://download.geofabrik.de/north-america/us/$r/$r-updates/state.txt | grep '^timestamp'
 done                                                             # each at or after the owner's last 2026-10-06 edit
 ```
 

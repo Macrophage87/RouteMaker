@@ -35,3 +35,11 @@ test("without More, only the chips", async () => {
   const screen = await render(<RideChips ids={IDS} preset="cargo" onPick={() => {}} />);
   assert.equal(screen.all("button").length, 3);
 });
+
+test("each ride type chip shows its name only, no drawn icon (Stephen 2026-11-20); a transit name keeps its emoji", async () => {
+  const screen = await render(<RideChips ids={IDS} preset="cargo" onPick={() => {}} more={() => {}} />);
+  const chips = screen.all("button").filter((b) => b.classList.contains("ride-type-chip"));
+  assert.equal(chips.length, 3);
+  for (const chip of chips) assert.equal(chip.querySelector("svg"), null);
+  assert.match(chips[1].textContent ?? "", /🚆/);
+});

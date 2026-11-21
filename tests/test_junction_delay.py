@@ -862,9 +862,11 @@ class TestButtonPriceByRideType:
 
     def test_other_ride_types_keep_the_stacked_rule(self) -> None:
         run = self.button()
-        # Cargo (1x): the usual two-minute button, as before.
+        # E-bike (1x): the usual two-minute button, as before. Cargo is not named for Road
+        # Bike's price either, though its waits weigh 2x since 2026-11-20.
         assert not presets.road_bike_buttons_for("cargo")
-        assert ride_ranked_s([run], "cargo") == d.BUTTON_RANKED_S == 120.0
+        assert not presets.road_bike_buttons_for("ebike")
+        assert ride_ranked_s([run], "ebike") == d.BUTTON_RANKED_S == 120.0
         # Any ride type above 1x not named: the stacked rule, 2 x 120 = 240 held at 5x the
         # 45 s red, 225 s; not ten minutes.
         assert 2.0 * d.ranked_s([run], 2.0) == d.MAX_STACKED_WEIGHT * 45.0 == 225.0

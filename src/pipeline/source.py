@@ -96,8 +96,10 @@ GEOFABRIK_BASE_URL = "https://download.geofabrik.de/north-america/us/"
 # Charles Town) inside the coverage box's -78.05 west edge (config.settings.COVERAGE_BBOX). Small
 # next to Virginia and Maryland; the clip drops all but the panhandle.
 GEOFABRIK_REGIONS = ("district-of-columbia", "maryland", "virginia", "west-virginia")
+# Each state sits in a folder of its own (Geofabrik, by 2026-11-20: the old flat
+# `us/<state>-latest.osm.pbf` now redirects to a 404, which failed cloud-20261120).
 GEOFABRIK_EXTRACTS = tuple(
-    f"{GEOFABRIK_BASE_URL}{region}-latest.osm.pbf" for region in GEOFABRIK_REGIONS
+    f"{GEOFABRIK_BASE_URL}{region}/{region}-latest.osm.pbf" for region in GEOFABRIK_REGIONS
 )
 
 # The two files this stage leaves behind, by fixed name. Fixed rather than

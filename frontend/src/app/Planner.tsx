@@ -12,7 +12,7 @@ import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { maxPointsFor } from "../lib/tripStops.ts";
 import { YOUR_LOCATION } from "../lib/appMode.ts";
-import type { PresetId } from "../lib/presets.ts";
+import { presetLabel, type PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
 import { DialsPanel } from "../DialsPanel.tsx";
 import { loopWay, loopWays, withLoopWay, type LoopView } from "../lib/loop.ts";
@@ -29,6 +29,9 @@ import { approximateHint, type Fix, type locateSupport } from "../lib/geolocatio
 import type { usePlaceNames } from "../usePlaceNames.ts";
 import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
 import { VIA_MARKS, namePoints } from "../lib/pointKinds.ts";
+import { SaveOwnRideType, ShareSettings } from "../SaveOwnRideType.tsx";
+import { matchingOwn, useCreateRequests, useOwnRideTypes } from "../lib/ownRideTypes.ts";
+import type { GoDefault } from "../lib/rideTypeCards.ts";
 import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
 import { Icon } from "../Icon.tsx";
 import { PLANNER_EXTRAS, searchLede } from "../lib/sidebar.ts";
@@ -490,6 +493,20 @@ export interface RideSectionProps {
   hideTarget?: boolean;
   /** Offer Leave at, a day and start time (lib/startTime.ts): Plan only. */
   startTime?: boolean;
+  /**
+   * Plan and Go (the owner, 2026-11-20: "Have it pop out to all ride parameters"; 2026-11-21: "just have the same control
+   * popout for both"): Adjust opens every ride setting in a popup, with Waiting at lights and stops, Sharp turns and Fewer
+   * turns among them. Without it, the settings open under the line, without those three.
+   */
+  popout?: boolean;
+  /** Each ride type card's Go button (lib/rideTypeCards.ts GoDefault): the owner, 2026-11-21. */
+  go?: GoDefault;
+  /** False while the section is out of sight (Go's Ride sheet closed): the popup closes with it. */
+  shown?: boolean;
+  /** Done (and a save) also does this: Go closes its Ride sheet, so one press lands back on the route. */
+  onDone?: () => void;
+  /** The page's status line: Create custom's "Saved as …", as its screen closes. */
+  onSaid?: (text: string) => void;
 }
 
 /**
@@ -497,10 +514,15 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime } = props;
-  const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} /> : null;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown, go, onDone, onSaid } = props;
+  // The rider's own ride type this is, if any (lib/ownRideTypes.ts): the popup is named for it.
+  const matching = matchingOwn(useOwnRideTypes().list, preset, dials);
+  const creates = useCreateRequests();
+  const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} go={go} /> : null;
   return (
-    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection}>
+    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }), shown, openSignal: creates, onDone } : undefined}>
+      {/* Create custom's name first, then the settings it names (intuitiveness review, Stephen 2026-11-21). */}
+      {popout && <SaveOwnRideType preset={preset} dials={dials} matching={matching} create onSaid={onSaid} />}
       <DialsPanel
         preset={preset}
         dials={dials}
@@ -509,7 +531,10 @@ export function RideSection(props: RideSectionProps) {
         ridingSpeed={ridingSpeed}
         hideTarget={hideTarget}
         startTime={startTime}
+        stopsAndTurns={popout}
+        advanced={popout ? <ShareSettings preset={preset} dials={dials} matching={matching} onLoad={choosePreset} /> : undefined}
       />
+      {popout && <SaveOwnRideType preset={preset} dials={dials} matching={matching} />}
     </RideSettings>
   );
 }

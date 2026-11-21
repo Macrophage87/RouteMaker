@@ -63,8 +63,17 @@ def level_of(mtb_only: bool, mtb_level: int | None, trail_tags: object) -> int |
     return None
 
 
-def is_easy(level: int | None) -> bool:
-    return level is None or level <= EASY_MAX_LEVEL
+def is_easy(level: int | None, max_level: int = EASY_MAX_LEVEL) -> bool:
+    """Whether a way is within the ride's hardest level: an unrated trail always is."""
+    return level is None or level <= max_level
+
+
+def max_level_of(mtb_level: int | None) -> int:
+    """The hardest level a ride holds to: the rider's 2 to 4 (the Surface setting, 2026-11-21),
+    else the easy level."""
+    if mtb_level is None:
+        return EASY_MAX_LEVEL
+    return min(max(int(mtb_level), EASY_MAX_LEVEL), max(mtbmode.LEVELS))
 
 
 def _tags(kept: object) -> object:
@@ -104,13 +113,15 @@ def way_levels(way_ids: Sequence[int]) -> dict[int, int | None]:
     }
 
 
-def stretches_of(pieces: list, levels: dict[int, int | None]) -> list[mtbmode.Stretch]:
+def stretches_of(
+    pieces: list, levels: dict[int, int | None], max_level: int = EASY_MAX_LEVEL
+) -> list[mtbmode.Stretch]:
     """One stretch a piece, its level set only where the trail is not easy, so the level
     rounds' points (`mtb.exclusion_points`, at `EASY_MAX_LEVEL`) fall on harder trails."""
     out = []
     for piece in pieces:
         level = levels.get(piece.way_id)
-        hard = None if is_easy(level) else level
+        hard = None if is_easy(level, max_level) else level
         out.append(
             mtbmode.Stretch(
                 metres=piece.metres,
@@ -123,20 +134,20 @@ def stretches_of(pieces: list, levels: dict[int, int | None]) -> list[mtbmode.St
     return out
 
 
-def harder_m(stretches: Sequence[mtbmode.Stretch]) -> float:
-    return sum(s.metres for s in stretches if s.level is not None and s.level > EASY_MAX_LEVEL)
+def harder_m(stretches: Sequence[mtbmode.Stretch], max_level: int = EASY_MAX_LEVEL) -> float:
+    return sum(s.metres for s in stretches if s.level is not None and s.level > max_level)
 
 
 def reading_of(
-    trip: dict, variant: str, costing: dict, deadline, traces
+    trip: dict, variant: str, costing: dict, deadline, traces, max_level: int = EASY_MAX_LEVEL
 ) -> tuple[float, list, list[mtbmode.Stretch]] | None:
     """A route's metres on harder trails, its pieces and its stretches; None where a leg
     cannot be traced."""
     pieces = mtb._pieces(trip, variant, costing, deadline, traces)
     if pieces is None:
         return None
-    stretches = stretches_of(pieces, way_levels([p.way_id for p in pieces]))
-    return harder_m(stretches), pieces, stretches
+    stretches = stretches_of(pieces, way_levels([p.way_id for p in pieces]), max_level)
+    return harder_m(stretches, max_level), pieces, stretches
 
 
 def dirt_m(trip: dict, variant: str, costing: dict, deadline, traces) -> float | None:
@@ -162,6 +173,7 @@ def settle(
     points: list,
     level_excludes: list | None = None,
     keeps=None,
+    max_level: int = EASY_MAX_LEVEL,
 ) -> tuple[dict, dict]:
     """The route an Easy MTB trails plan answers, and what the answer says of it (`easy_mtb`).
 
@@ -175,9 +187,9 @@ def settle(
     alone they threw that work away (the third routing hunt, C3-1)."""
     from . import routing
 
-    info: dict = {"max_level": EASY_MAX_LEVEL, "rounds": 0, "harder_m": None, "limited": None}
+    info: dict = {"max_level": max_level, "rounds": 0, "harder_m": None, "limited": None}
     try:
-        best = reading_of(trip, variant, costing, deadline, traces)
+        best = reading_of(trip, variant, costing, deadline, traces, max_level)
     except (routing.DeadlineExceeded, routing.RouterUnavailable):
         info["limited"] = "time"
         return trip, info
@@ -190,7 +202,7 @@ def settle(
     best_excludes: list[tuple[float, float]] = []
     base = {k: v for k, v in request.items() if k not in ("alternates", "exclude_locations")}
     while current[0] > TOLERANCE_M and info["rounds"] < ROUNDS:
-        more = mtb.exclusion_points(current[1], current[2], EASY_MAX_LEVEL, points)
+        more = mtb.exclusion_points(current[1], current[2], max_level, points)
         if not more:
             info["limited"] = "no_way_round"
             break
@@ -203,7 +215,7 @@ def settle(
                 deadline,
             )
             again = answer.get("trip") or {}
-            found = reading_of(again, variant, costing, deadline, traces)
+            found = reading_of(again, variant, costing, deadline, traces, max_level)
         except routing.RouterRefused:
             info["limited"] = "no_way_round"
             break
@@ -226,31 +238,33 @@ def settle(
     return best_trip, info
 
 
-def reread(trip: dict, variant: str, costing: dict, deadline, traces) -> dict | None:
+def reread(
+    trip: dict, variant: str, costing: dict, deadline, traces, max_level: int = EASY_MAX_LEVEL
+) -> dict | None:
     """One route's own reading, for a route answered beside or after `settle`'s (a candidate,
     the way round an Avoid-rated junction, the answer once the later passes changed it), so a
     harder trail is never shown without its notice. None where it cannot be read."""
     from . import routing
 
     try:
-        found = reading_of(trip, variant, costing, deadline, traces)
+        found = reading_of(trip, variant, costing, deadline, traces, max_level)
     except (routing.DeadlineExceeded, routing.RouterUnavailable):
         return None
     if found is None:
         return None
     return {
-        "max_level": EASY_MAX_LEVEL,
+        "max_level": max_level,
         "rounds": 0,
         "harder_m": round(found[0], 1),
         "limited": "no_way_round" if found[0] > TOLERANCE_M else None,
     }
 
 
-def no_graph() -> dict:
+def no_graph(max_level: int = EASY_MAX_LEVEL) -> dict:
     """What the answer says where the off-road router is not being served: the ride was
     planned on the standard graph, as Gravel's is, where no mountain-bike trail is open."""
     return {
-        "max_level": EASY_MAX_LEVEL,
+        "max_level": max_level,
         "rounds": 0,
         "harder_m": None,
         "limited": "no_offroad_graph",

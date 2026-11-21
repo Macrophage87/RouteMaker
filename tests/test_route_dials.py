@@ -752,11 +752,12 @@ class TestTheWeekendGraph:
         expected = twins.get(presets.PRESETS[name].variant, presets.PRESETS[name].variant)
         if name in presets.OFFROAD_PRESETS:
             expected = "offroad"
-        if expected == "ebike":
+        if expected == "ebike" or name == "gravel":
             # Both graphs give the same route here, but the weekend graph reads way 202's
             # stretch closed to cars as calm, where the e-bike graph reads it as LTS 2: with
             # LTS 2 as a tiebreak on every ride (#1290), the weekend reading ranks above, which
-            # is what planning an e-bike ride twice on a weekend is for.
+            # is what planning an e-bike ride twice on a weekend is for. Gravel too since it
+            # starts at Default's traffic position (2026-11-20), as E-bike does.
             expected = "weekend"
         # Otherwise a tie keeps the ride's own.
         assert body["variant"] == expected
@@ -2351,6 +2352,90 @@ class TestRoadBike:
         # router's alternatives, where a route with fewer lights comes from.
         assert {ctx.rank_alternates for ctx in seen} == {name == "road-bike"}
 
+    @pytest.mark.parametrize(
+        ("name", "asked", "weight"),
+        [
+            ("default", 4.0, 4.0),
+            ("road-bike", 2.0, 3.0),
+            ("gravel", None, 2.0),
+            ("group-ride", None, 2.0),
+            ("cargo", None, 2.0),
+            ("default", 10.0, 5.0),
+        ],
+    )
+    def test_a_request_can_raise_the_wait_weight(
+        self, name, asked, weight, client, facility_segments, router, monkeypatch
+    ):
+        """The owner, 2026-11-20: "let the MCP server increase those penalties more". The
+        request's `wait_weight` raises the ride type's own, never lowers it, and counts at most
+        `presets.MAX_WAIT_WEIGHT`; the answer's dials say the weight used."""
+        seen = []
+
+        class Seen(refine.Context):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                seen.append(self)
+
+        monkeypatch.setattr(refine, "Context", Seen)
+        router(standard_router())
+        body = good_body(name)
+        if asked is not None:
+            body["wait_weight"] = asked
+        answer = post(client, body)
+        assert answer.status_code == 200
+        assert seen and {ctx.wait_weight for ctx in seen} == {weight}
+        assert answer.json()["dials"]["wait_weight"] == weight
+        # Above 1 the router's own alternatives are ranked at any stress.
+        assert {ctx.rank_alternates for ctx in seen} == {True}
+
+    @pytest.mark.parametrize("asked", [0.5, 11.0, "lots"])
+    def test_a_wait_weight_out_of_range_is_refused(self, asked, client, facility_segments, router):
+        router(standard_router())
+        body = {**good_body("default"), "wait_weight": asked}
+        assert post(client, body).status_code == 400
+
+    @pytest.mark.parametrize(
+        ("name", "asked", "weight"),
+        [
+            ("default", None, 1.0),
+            ("road-bike", None, 3.0),
+            ("cargo", None, 2.0),
+            ("road-bike", 0.0, 0.0),
+            ("default", 4.0, 4.0),
+        ],
+    )
+    def test_the_riders_sharp_turn_weight(
+        self, name, asked, weight, client, facility_segments, router, monkeypatch
+    ):
+        """The owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at
+        lights". `sharp_turn_weight` sets the ride's own (any way, 0 to 5), apart from the
+        wait weight; the answer's dials say the weight used."""
+        seen = []
+
+        class Seen(refine.Context):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                seen.append(self)
+
+        monkeypatch.setattr(refine, "Context", Seen)
+        router(standard_router())
+        body = good_body(name)
+        if asked is not None:
+            body["sharp_turn_weight"] = asked
+        answer = post(client, body)
+        assert answer.status_code == 200
+        assert seen and {ctx.sharp_weight for ctx in seen} == {weight}
+        assert {ctx.wait_weight for ctx in seen} == {presets.wait_weight_for(name)}
+        assert answer.json()["dials"]["sharp_turn_weight"] == weight
+
+    @pytest.mark.parametrize("asked", [-1.0, 5.5, "lots"])
+    def test_a_sharp_turn_weight_out_of_range_is_refused(
+        self, asked, client, facility_segments, router
+    ):
+        router(standard_router())
+        body = {**good_body("default"), "sharp_turn_weight": asked}
+        assert post(client, body).status_code == 400
+
     def test_a_router_that_does_not_answer_falls_back_to_the_standard_map_and_says_which(
         self, client, facility_segments, router
     ):
@@ -2975,7 +3060,7 @@ class TestEasyMtbTrails:
         assert dirt["distance_m"] == plain["distance_m"]
         assert dirt["duration_s"] > plain["duration_s"]
 
-    @pytest.mark.parametrize("name", ["fast", "gravel", "mountain-bike"])
+    @pytest.mark.parametrize("name", ["road-bike", "ebike", "mountain-bike"])
     def test_other_ride_types_are_refused(self, name, client, facility_segments, router):
         fake = router(standard_router())
         assert post(client, {**good_body(name), "easy_mtb": True}).status_code == 400
@@ -3206,7 +3291,7 @@ class TestMountainBike:
         assert mtb["over_level_m"] > 0
         assert mtb["limited"] == "no_way_round"
 
-    @pytest.mark.parametrize("level", [0, 5, "2", 2.5])
+    @pytest.mark.parametrize("level", [-1, 5, "2", 2.5])
     def test_a_level_out_of_range_is_refused(self, client, facility_segments, router, level):
         router(standard_router())
         assert post(client, {**good_body("mountain-bike"), "mtb_level": level}).status_code == 400
@@ -3504,7 +3589,9 @@ class TestWeekendPlannedTwice:
         self, client, facility_segments, router
     ):
         fake = router(standard_router())
-        body = post(client, {**good_body("gravel"), "when": "weekend"}).json()
+        # Gravel at 40, where it started until 2026-11-20: at its own 70 the weekend reading
+        # of the car-free stretch ranks above (the LTS 2 tiebreak, as E-bike's above).
+        body = post(client, {**good_body("gravel"), "when": "weekend", "stress": 40}).json()
         assert _bases(fake) == {"offroad", "weekend"}
         assert body["variant"] == "offroad"
 
