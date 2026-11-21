@@ -143,7 +143,7 @@ class TestSettings:
         assert r.status_code == 400
         assert "4321" not in r.content.decode()
 
-    @pytest.mark.parametrize("speed", [18, None])
+    @pytest.mark.parametrize("speed", [6, 18, None])
     def test_the_riding_speed_is_kept(self, speed) -> None:
         # The owner, 2026-10-27: fast riders "override the speed as an advanced feature".
         client, user, csrf = signed_in()
@@ -152,7 +152,7 @@ class TestSettings:
         assert r.status_code == 200
         assert AccountSettings.objects.get(user=user).data == doc
 
-    @pytest.mark.parametrize("speed", [7, 31, 18.5, "18", True])
+    @pytest.mark.parametrize("speed", [5, 31, 18.5, "18", True])
     def test_a_riding_speed_off_the_picker_is_refused(self, speed) -> None:
         client, _user, csrf = signed_in()
         r = send(client, "post", "/api/me/settings", {"settings": {"v": 1, "speed": speed}}, csrf)
