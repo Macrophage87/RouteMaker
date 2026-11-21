@@ -29,7 +29,7 @@ import { approximateHint, type Fix, type locateSupport } from "../lib/geolocatio
 import type { usePlaceNames } from "../usePlaceNames.ts";
 import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
 import { VIA_MARKS, namePoints } from "../lib/pointKinds.ts";
-import { SaveOwnRideType } from "../SaveOwnRideType.tsx";
+import { SaveOwnRideType, ShareSettings } from "../SaveOwnRideType.tsx";
 import { matchingOwn, useCreateRequests, useOwnRideTypes } from "../lib/ownRideTypes.ts";
 import type { GoDefault } from "../lib/rideTypeCards.ts";
 import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
@@ -503,6 +503,8 @@ export interface RideSectionProps {
   go?: GoDefault;
   /** False while the section is out of sight (Go's Ride sheet closed): the popup closes with it. */
   shown?: boolean;
+  /** Done (and a save) also does this: Go closes its Ride sheet, so one press lands back on the route. */
+  onDone?: () => void;
 }
 
 /**
@@ -510,13 +512,15 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown, go } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown, go, onDone } = props;
   // The rider's own ride type this is, if any (lib/ownRideTypes.ts): the popup is named for it.
   const matching = matchingOwn(useOwnRideTypes().list, preset, dials);
   const creates = useCreateRequests();
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} go={go} /> : null;
   return (
-    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }), shown, openSignal: creates } : undefined}>
+    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }), shown, openSignal: creates, onDone } : undefined}>
+      {/* Create custom's name first, then the settings it names (intuitiveness review, Stephen 2026-11-21). */}
+      {popout && <SaveOwnRideType preset={preset} dials={dials} matching={matching} create />}
       <DialsPanel
         preset={preset}
         dials={dials}
@@ -526,8 +530,9 @@ export function RideSection(props: RideSectionProps) {
         hideTarget={hideTarget}
         startTime={startTime}
         stopsAndTurns={popout}
+        advanced={popout ? <ShareSettings preset={preset} dials={dials} matching={matching} onLoad={choosePreset} /> : undefined}
       />
-      {popout && <SaveOwnRideType preset={preset} dials={dials} matching={matching} onLoad={choosePreset} />}
+      {popout && <SaveOwnRideType preset={preset} dials={dials} matching={matching} />}
     </RideSettings>
   );
 }

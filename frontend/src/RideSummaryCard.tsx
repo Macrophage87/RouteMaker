@@ -88,6 +88,7 @@ export function RideSummaryCard({
   onReports,
   rebalance = null,
   origin = null,
+  goDefault = null,
 }: {
   stats: RideStats;
   endedAt: number;
@@ -120,6 +121,11 @@ export function RideSummaryCard({
    * its rating?" and, after Road closed presses, the offer to send them for review. None: neither line shows.
    */
   origin?: string | null;
+  /**
+   * The ride's ride type, where it is not yet what Go starts on (the owner, 2026-11-21: have "save as default" be an
+   * option after the ride is finished): its name and Make Go's default; once pressed, a line that says so.
+   */
+  goDefault?: { name: string; set: boolean; onSet: () => void } | null;
 }) {
   const done = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -203,6 +209,16 @@ export function RideSummaryCard({
             {!favorite.saved && (
               <button type="button" className="secondary" onClick={favorite.onSave}>
                 {SAVE_SPOT_TEXT}
+              </button>
+            )}
+          </div>
+        )}
+        {goDefault && (
+          <div className="ride-summary-favorite ride-summary-go-default">
+            <p>{goDefault.set ? t("Go starts on {ride}.", { ride: goDefault.name }) : goDefault.name}</p>
+            {!goDefault.set && (
+              <button type="button" className="secondary" aria-label={t("Make {ride} Go's default", { ride: goDefault.name })} onClick={goDefault.onSet}>
+                {t("Make Go's default")}
               </button>
             )}
           </div>

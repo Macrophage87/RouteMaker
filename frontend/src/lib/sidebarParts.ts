@@ -67,7 +67,7 @@ export function RideSettings({
    * the map, titled `popout.title`, instead of under the line; Go too (2026-11-21). `shown` false (Go's Ride sheet
    * closed) closes the popup with it, so it is never left open behind a closed sheet.
    */
-  popout?: { title: string; shown?: boolean; openSignal?: number };
+  popout?: { title: string; shown?: boolean; openSignal?: number; onDone?: () => void };
   children?: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -162,7 +162,24 @@ export function RideSettings({
           { className: "plan-ride-settings-body" },
           h("h2", { id: titleId, tabIndex: -1 }, popout.title),
           children,
-          h("div", { className: "closure-choices" }, h("button", { type: "button", className: "primary", onClick: () => show(false) }, t("Done"))),
+          // Done closes the screen, and in Go the Ride sheet behind it (the tap-count review: Done, then Close), so one
+          // press is back on the route. A save from the name box presses it too (SaveOwnRideType.tsx).
+          h(
+            "div",
+            { className: "closure-choices ride-settings-finish" },
+            h(
+              "button",
+              {
+                type: "button",
+                className: "primary ride-settings-done",
+                onClick: () => {
+                  show(false);
+                  popout.onDone?.();
+                },
+              },
+              t("Done"),
+            ),
+          ),
         ),
       ),
     );

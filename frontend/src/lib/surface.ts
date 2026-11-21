@@ -23,7 +23,7 @@ export const SURFACE_LABEL = t("Surface");
 export const SURFACE_ABOUT = "surface";
 export const PAVED_LABEL = t("Paved only");
 export const PAVED_HINT = t("Avoids gravel and dirt wherever pavement runs near.");
-export const GRAVEL_LABEL = t("Gravel");
+export const GRAVEL_LABEL = t("Paved and gravel");
 export const GRAVEL_HINT = t("Paved and gravel roads and paths, as this ride type plans them.");
 /** On Mountain Bike: its roads and paths with none of the mountain-bike trails, as after End mountain biking. */
 export const MTB_GRAVEL_HINT = t("Paved and gravel roads and paths, with no mountain-bike trails.");

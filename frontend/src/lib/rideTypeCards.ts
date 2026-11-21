@@ -36,7 +36,11 @@ export function ownSummary(own: OwnRideType): string {
 /** Mass Ride is never Go's (Settings' Primary Go method leaves it out too). */
 export const takesGoDefault = (key: string) => key !== "mass-ride";
 
-/** The Go button beside a card's star: "Go" shown, "Go starts on Cargo Bike" heard, pressed where it is Go's. */
+/**
+ * The card's Go's-default button, under the card: "Make Go's default" shown, or "Go's default" where it is (the owner,
+ * 2026-11-21, after the intuitiveness review: a bare "Go" read as "use this now"). Heard as "Make Cargo Bike Go's
+ * default" either way, its state in aria-pressed; pressing the pressed one puts Go back on Default.
+ */
 export function GoDefaultButton({ goKey, said, go }: { goKey: string; said: string; go: GoDefault }): ReactElement | null {
   if (!takesGoDefault(goKey)) return null;
   const on = go.current === goKey;
@@ -44,14 +48,14 @@ export function GoDefaultButton({ goKey, said, go }: { goKey: string; said: stri
     "button",
     {
       type: "button",
+      // ride-fav keeps the card's own button rules off it (they skip .ride-fav).
       className: "ride-fav ride-go-default",
       "data-go": goKey,
       "aria-pressed": on,
-      "aria-label": t("Go starts on {ride}", { ride: said }),
-      title: t("Go starts on {ride}", { ride: said }),
+      "aria-label": t("Make {ride} Go's default", { ride: said }),
       onClick: () => go.onSet(on ? "default" : goKey),
     },
-    t("Go"),
+    on ? t("Go's default") : t("Make Go's default"),
   );
 }
 
@@ -100,7 +104,6 @@ export function OwnRideCards({
           h("strong", { id: nameId }, own.name),
           h("span", { id: aboutId, className: "hint" }, ownSummary(own)),
         ),
-        go && takesGoDefault(ownSetup(own).preset) ? h(GoDefaultButton, { goKey: `own:${own.id}`, said: own.name, go }) : null,
         h(
           "button",
           {
@@ -123,6 +126,7 @@ export function OwnRideCards({
         },
           lineIcon("trash", 20),
         ),
+        go && takesGoDefault(ownSetup(own).preset) ? h(GoDefaultButton, { goKey: `own:${own.id}`, said: own.name, go }) : null,
       );
     }),
   ));
@@ -171,8 +175,8 @@ export function RideTypeCards({
           h("strong", { id: nameId }, h(PresetName, { id })),
           h("span", { id: aboutId, className: "hint" }, option ? presetSummary(option) : ""),
         ),
-        go ? h(GoDefaultButton, { goKey: id, said: presetSaid(id), go }) : null,
         onFavorite ? h(FavoriteStar, { id, on: favorites?.includes(id) ?? false, onToggle: onFavorite }) : null,
+        go ? h(GoDefaultButton, { goKey: id, said: presetSaid(id), go }) : null,
       );
     }),
   );
