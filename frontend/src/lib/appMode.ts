@@ -334,6 +334,25 @@ export function goPickStart(prior: [number, number], fix: { point: [number, numb
 }
 
 /**
+ * Go's dot follows the rider (the owner, 2026-11-21: "The current location doesn't update"): while Go shows the
+ * location as its start, before a destination, with a sure fix, the location is looked up again every GO_FOLLOW_MS
+ * (one look-up each time, as Locate's; no watch). Our default, unmeasured: often enough for a rider walking or
+ * rolling about, rare enough for the battery; a ride or Roam has its own watch for riding.
+ */
+export const GO_FOLLOW_MS = 15_000;
+
+/**
+ * Where Go's start (and dot) moves after a follow look-up, or null to keep it: only a sure fix (a rough one is
+ * goRoughAgain's) inside the map, more than GO_PICK_MOVED_M from the dot, so GPS jitter never asks for the early
+ * route Home again.
+ */
+export function goFollowTo(start: GoStart, fix: { point: [number, number]; accuracyM: number }): [number, number] | null {
+  if (start.kind !== "here" || goRough(fix.accuracyM)) return null;
+  const next = goPickStart(start.point, fix);
+  return next.moved ? next.point : null;
+}
+
+/**
  * Go's warm look-up (routing audit S28): while the rider is in Where to? (the box takes the focus, or an early start
  * fires), a location older than this is looked up again quietly, so the destination's own look-up (GO_PICK_LOOK_MS)
  * gets the browser's recent fix (LOCATE_OPTIONS.maximumAge, 30 s) at once instead of waiting on the GPS. At most one

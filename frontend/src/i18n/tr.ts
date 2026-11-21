@@ -2309,4 +2309,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Best avoided": "Kaçınmak en iyisi",
   "Metro station: its colour is the line": "Metro istasyonu: rengi hattıdır",
   "Route locked. Open Edit route to change it.": "Rota kilitli. Değiştirmek için Rotayı düzenle'yi açın.",
+  "Planner": "Planlayıcı",
 };

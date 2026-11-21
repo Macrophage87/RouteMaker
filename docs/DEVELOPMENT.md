@@ -6135,7 +6135,13 @@ puts it, at most two presses away.
   time (`goHereStart`): older than `GO_START_MAX_AGE_MS` (2 min; the owner, 2026-10-19: "Go
   mode sometimes picks a stale current location") it is not routed from (`goStartStale`), so a
   pick looks the location up again, and when the page comes back into view in Go with an empty
-  plan a stale start is looked up again quietly; Go's Locate moves it too. A destination set in
+  plan a stale start is looked up again quietly; Go's Locate moves it too. While Go shows the
+  location as its start (empty plan, page in view, not in Roam or a ride), the dot follows the rider
+  (the owner, 2026-11-21: "The current location doesn't update"; `GO_FOLLOW_MS`, 15 s, our default,
+  unmeasured): one quiet look-up each time, around the gate, no watch; a sure fix more than 25 m away
+  (`goFollowTo`) moves the dot and the start, one where the dot is keeps the start fresh, and the
+  map does not move. A rough fix (over `GO_ROUGH_M`, 1,000 m) is instead looked up again every
+  `GO_ROUGH_AGAIN_MS` (20 s), at most `GO_ROUGH_TRIES` times. A destination set in
   Go from a fresh start looks the location up again too (the owner, 2026-10-19: "update when
   setting a destination too"; `goPickStart`): a fix within `GO_PICK_LOOK_MS` (3 s) more than 25 m
   away is the start; otherwise the start Go had stands (so a rider who has not moved keeps the early
@@ -6285,7 +6291,7 @@ Tests: `lib/sidebar.test.ts`.
   another view shows.
 - **The focus** (`focusOnViewChange`, tested over every transition): a sheet takes it
   to its heading (the legend's, for Legend); Back or Escape returns it to the bar
-  button that opened the sheet; the Plan button takes it to the planner's heading, the
+  button that opened the sheet; the Planner button takes it to the planner's heading, the
   `h1` (cause `planButton`, `{ kind: "planner" }`; on the planner already, App focuses the
   heading and scrolls the panel to the top itself); an error that brings the planner back takes it to the
   error, the long-ride question to "Plan it". Escape is not the sheet's inside a
@@ -6399,8 +6405,9 @@ Tests: `lib/sidebar.test.ts`.
   Atkinson file through `lib/mapGlyphs.ts` `glyphRequestUrl`, and leaves other ranges to the
   base map. A kept ride's prefetch skips the bundled faces. The licence is the second
   `BUNDLED_FONTS` entry, in `licenses.txt`.
-- **The Plan button (OWNER-DECISIONS 392, 393).** The bar is Plan, Map layers, Legend, GPX,
-  Settings (`BAR_ITEMS`; Plan is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
+- **The Planner button (OWNER-DECISIONS 392, 393).** The bar is Planner, Layers, Reports, Save & load,
+  Settings (`BAR_ITEMS`; named "Planner" since the intuitiveness review of 2026-11-21, so it is not a second "Plan"
+  beside the Go/Plan switch; it is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
   `aria-current` while the planner shows and no other button then). It returns from any
   sheet; on the planner it focuses the heading and scrolls to the top. The focus differs on
   purpose (the reading of 392): Plan goes to the planner as a whole, so to its `h1`; Back and

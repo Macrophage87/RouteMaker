@@ -31,6 +31,7 @@ import { Protocol } from "pmtiles";
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { loadRatedMap, ratedMapAsk, ratedMapCardBody, ratedMapDot, ratedMapName, ratedMapShown, type RatedMapJunction } from "./lib/ratedMap.ts";
 import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
@@ -103,7 +104,7 @@ import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
 import { ROUTE_MILES_SOURCE_ID, applyMileSizes, applyMileUnits, routeMileFeatures, routeMileLayers } from "./lib/routeMiles.ts";
-import { subscribeUnits } from "./lib/units.ts";
+import { metricFirst, subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
@@ -169,6 +170,7 @@ import {
   focusAfterClose,
   groupHolding,
   type CardOpener,
+  junctionCardBody,
 } from "./lib/junctionCard.ts";
 import { wrapCredits } from "./lib/mapInfo.ts";
 import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
@@ -178,7 +180,7 @@ import {
   groupLabel,
   junctionItems,
   junctionsOnMap,
-  warningIconSvg,
+  groupIconSvg,
   ICON_PX,
   type JunctionGroup,
   type JunctionItem,
@@ -517,6 +519,11 @@ function ghostData(line: readonly LonLat[] | null | undefined): object {
     : { type: "FeatureCollection", features: [] };
 }
 /** The way back's dashed line: from the rider to the planned line, or nothing. */
+/** A map scale not in the rider's units: accessibility mode hides it (styles.css, .scale-second). */
+function markSecondScale(element: HTMLElement): void {
+  element.classList.toggle("scale-second", (element.dataset.unit === "metric") !== metricFirst());
+}
+
 export function wayBackData(rider: LonLat | null | undefined, to: LonLat | null | undefined): object {
   return rider && to ? ghostData([rider, to]) : ghostData(null);
 }
@@ -834,6 +841,20 @@ export function MapView(props: Props) {
     mapRef.current = map;
     let disposed = false;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    // The compass only while the map is turned (intuitiveness review, 2026-11-21): one fewer button the rest of the time.
+    // On above 5 degrees, off below 1 (no flicker as a heading-up ride crosses north); kept while it has the focus, so
+    // pressing it does not drop the focus on the page (the PR review).
+    const markTurned = () => {
+      const box = map.getContainer();
+      const turn = Math.max(Math.abs(map.getBearing()), map.getPitch());
+      const focused = box.querySelector(".maplibregl-ctrl-compass") === document.activeElement;
+      if (turn > 5) box.classList.add("map-turned");
+      else if (turn < 1 && !focused) box.classList.remove("map-turned");
+    };
+    map.on("rotate", markTurned);
+    map.on("pitch", markTurned);
+    markTurned();
+    container.current.querySelector(".maplibregl-ctrl-compass")?.addEventListener("blur", markTurned);
     // Map tools, under the zoom buttons (OWNER-DECISIONS 450): an empty control React fills.
     const toolsControl = document.createElement("div");
     toolsControl.className = "maplibregl-ctrl map-tools-ctrl";
@@ -854,8 +875,22 @@ export function MapView(props: Props) {
     });
     // Both scales, miles and feet over kilometres and metres (OWNER-DECISIONS 85):
     // a bottom corner stacks its controls upwards, so the one added last is on top.
-    map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
-    map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-right");
+    // The rider's other unit is marked: accessibility mode shows one scale, in the rider's units (intuitiveness review,
+    // 2026-11-21: the two enlarged boxes hid the End pin).
+    const scale = (unit: "metric" | "imperial") => {
+      const control = new maplibregl.ScaleControl({ unit });
+      return {
+        onAdd: (m: maplibregl.Map) => {
+          const element = control.onAdd(m);
+          element.dataset.unit = unit;
+          markSecondScale(element);
+          return element;
+        },
+        onRemove: () => control.onRemove(),
+      };
+    };
+    map.addControl(scale("metric"), "bottom-right");
+    map.addControl(scale("imperial"), "bottom-right");
     const canvas = map.getCanvas();
     canvas.setAttribute(
       "aria-label",
@@ -2408,8 +2443,9 @@ export function MapView(props: Props) {
     () =>
       subscribeUnits(() => {
         const map = mapRef.current;
-        if (!map || !loaded.current) return;
-        applyMileUnits(map, callbacks.current.stale ? null : (callbacks.current.route ?? null));
+        if (!map) return;
+        if (loaded.current) applyMileUnits(map, callbacks.current.stale ? null : (callbacks.current.route ?? null));
+        map.getContainer().querySelectorAll<HTMLElement>(".maplibregl-ctrl-scale[data-unit]").forEach(markSecondScale);
       }),
     [],
   );
@@ -2504,7 +2540,7 @@ export function MapView(props: Props) {
         element.className = `junction-marker junction-${group.severity}${single ? "" : " junction-group"}`;
         element.dataset.junctionIndex = String(first.index);
         element.innerHTML =
-          warningIconSvg(group.severity, ICON_PX) +
+          groupIconSvg(group, ICON_PX) +
           (single ? "" : `<span class="junction-count" aria-hidden="true">${group.members.length}</span>`);
         // The name alone: a title as well was read a second time, as the
         // description (a11y review, int-2).
@@ -2700,6 +2736,94 @@ export function MapView(props: Props) {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [props.permitsOn]);
+  // The rated junctions on the plain map (lib/ratedMap.ts): small colour dots at the two closest zooms only (the owner,
+  // 2026-11-20), asked after the map settles there; each a button that opens a card of its movements. A planned
+  // route's own junction markers stand for the dots at their spots.
+  const [ratedMap, setRatedMap] = useState<RatedMapJunction[]>([]);
+  const ratedMarkers = useRef<Marker[]>([]);
+  const ratedPopup = useRef<Popup | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let controller: AbortController | null = null;
+    let settle = 0;
+    let asked: { west: number; south: number; east: number; north: number } | null = null;
+    let askedEvery = false;
+    const refresh = async () => {
+      const b = map.getBounds();
+      const view = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+      const ask = ratedMapAsk(view, map.getZoom());
+      // Zoomed in to the closest or back out of it: asked again, with or without the quiet junctions.
+      if (ask && ask.every === askedEvery && viewInside(view, asked)) return;
+      controller?.abort();
+      if (!ask) {
+        if (asked) setRatedMap([]);
+        asked = null;
+        return;
+      }
+      const mine = new AbortController();
+      controller = mine;
+      const found = await loadRatedMap(ask.path, mine.signal);
+      if (!found || mine.signal.aborted) return;
+      asked = ask.box;
+      askedEvery = ask.every;
+      setRatedMap(found);
+    };
+    const onMove = () => {
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => void refresh(), 400);
+    };
+    map.on("moveend", onMove);
+    void refresh();
+    return () => {
+      controller?.abort();
+      window.clearTimeout(settle);
+      map.off("moveend", onMove);
+    };
+  }, []);
+  useEffect(() => {
+    const map = mapRef.current;
+    ratedPopup.current?.remove();
+    ratedPopup.current = null;
+    ratedMarkers.current.forEach((marker) => marker.remove());
+    ratedMarkers.current = [];
+    if (!map) return;
+    const onRoute = props.route && !props.stale ? junctionsOnMap(junctionItems(props.route)).map((item): LonLat => [item.lon, item.lat]) : [];
+    const line = props.route && !props.stale ? (props.route.geometry.coordinates as LonLat[]) : [];
+    for (const junction of ratedMapShown(ratedMap, onRoute, line)) {
+      const element = ratedMapDot(junction);
+      element.addEventListener("click", (event) => {
+        // A click on a dot is not a click on the map: it must not add a point.
+        event.stopPropagation();
+        ratedPopup.current?.remove();
+        // The focus is taken below, once the card has its name (as showJunctionCard does).
+        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, focusAfterOpen: false, offset: 10, className: "junction-popup junction-popup-plain" })
+          .setLngLat([junction.lon, junction.lat])
+          .setDOMContent(ratedMapCardBody(junction))
+          .addTo(map);
+        ratedPopup.current = popup;
+        const card = popup.getElement();
+        card.setAttribute("role", "dialog");
+        card.setAttribute("aria-label", ratedMapName(junction));
+        const close = card.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
+        close?.setAttribute("aria-label", CARD_CLOSE_LABEL);
+        close?.focus();
+        // Escape closes it, as it does the closure card (showClosureCard).
+        card.addEventListener("keydown", (key) => {
+          if (key.key === "Escape") {
+            key.stopPropagation();
+            popup.remove();
+          }
+        });
+        popup.on("close", () => {
+          if (ratedPopup.current === popup) ratedPopup.current = null;
+          const active = document.activeElement;
+          if (element.isConnected && (!active || active === document.body || card.contains(active))) element.focus();
+        });
+      });
+      ratedMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat([junction.lon, junction.lat]).addTo(map));
+    }
+  }, [ratedMap, props.route, props.stale]);
   useEffect(() => {
     const map = mapRef.current;
     closurePopup.current?.remove();
@@ -3363,20 +3487,7 @@ function focusPlace(card: Popup | null, map: MapLibreMap): "card" | "opener" | "
  * than "Close popup, button".
  */
 function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boolean): Popup {
-  const body = document.createElement("div");
-  body.className = "junction-card";
-  const title = document.createElement("strong");
-  title.textContent = item.label.split(":")[0];
-  const reason = document.createElement("p");
-  reason.textContent = item.reason;
-  const cost = document.createElement("p");
-  cost.className = "junction-card-cost";
-  cost.textContent = `${item.costText}.`;
-  const where = document.createElement("p");
-  where.className = "hint";
-  where.textContent = `${item.where}. Drag the route away to plan around it.`;
-  // A Mass Ride's junction with no major junction of the profile there has no line (lib/intersectionMarkers.ts junctionCorkText).
-  body.append(...(item.costText ? [title, reason, cost, where] : [title, reason, where]));
+  const body = junctionCardBody(item);
   const card = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,
