@@ -209,3 +209,15 @@ test("the waits and sharp turns sliders show their real numbers at each end; Tra
   assert.deepEqual(ends("Traffic"), ["Traffic tolerant", "Balanced", "Calm at any cost"]);
   assert.deepEqual(ends("Hills"), ["1%", "8%", "15%"]);
 });
+
+test("the popup closes with its section: Go's Ride sheet closed leaves no popup open behind it", async () => {
+  const props = { preset: "default" as PresetId, dials: startDials("default"), choosePreset: () => {}, commitDials: () => {}, route: null, typeCard: false, popout: true };
+  const screen = await render(<RideSection {...props} shown />);
+  const adjust = screen.button(/Adjust$/);
+  await click(adjust);
+  const popup = screen.dialog("Ride settings: Default");
+  assert.equal(popup.hasAttribute("open"), true);
+  await screen.rerender(<RideSection {...props} shown={false} />);
+  assert.equal(popup.hasAttribute("open"), false, "closed with the sheet");
+  assert.equal(adjust.getAttribute("aria-expanded"), "false");
+});

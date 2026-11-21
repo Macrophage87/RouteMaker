@@ -173,6 +173,21 @@ export function removeOwn(id: string): void {
   setOwn(snapshot().list.filter((o) => o.id !== id));
 }
 
+/**
+ * A name for settings loaded from someone else that does not replace one of the rider's own of the same name
+ * (review of #1385): "Commute (2)". The same setup under the same name is the same one.
+ */
+export function freeName(list: readonly OwnRideType[], name: string, preset: PresetId, dials: Dials): string {
+  const plan = ownPlan(preset, dials);
+  const taken = (n: string) => list.some((o) => sameName(o.name, n) && o.plan !== plan);
+  if (!taken(name)) return name;
+  for (let i = 2; i < 100; i++) {
+    const next = ownName(`${name.slice(0, OWN_NAME_MAX - 5)} (${i})`);
+    if (!taken(next)) return next;
+  }
+  return name;
+}
+
 /** Read the device's again (after the account's settings are put on the device). */
 export function reloadOwn(): void {
   current = readOwn();
@@ -237,7 +252,8 @@ export function readShareJson(text: string): { name: string; preset: PresetId; d
   if (!preset) return null;
   const settings = b.settings && typeof b.settings === "object" && !Array.isArray(b.settings) ? (b.settings as Partial<Dials>) : {};
   try {
-    const decoded = decodePlan(encodePlan([], preset, { ...startDialsFor(preset), ...settings } as Dials));
+    // A link's checks, without a trip's own dials (a target distance, a loop): only the ride's settings come in.
+    const decoded = decodePlan(ownPlan(preset, { ...startDialsFor(preset), ...settings } as Dials));
     if (decoded.preset !== preset) return null;
     const name = typeof b.name === "string" ? ownName(b.name) : "";
     return { name: name || presetLabel(preset), preset, dials: decoded.dials };

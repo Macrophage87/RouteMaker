@@ -9,9 +9,9 @@ import { RideSection } from "./app/Planner.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import { GoDefaultButton } from "./lib/rideTypeCards.ts";
 import { startDials, type Dials } from "./lib/dials.ts";
-import { matchingOwn, ownNow, ownPlan, ownSetup, parseOwn, readShareJson, reloadOwn, setGoOwn, setOwn, shareJson, withSaved } from "./lib/ownRideTypes.ts";
+import { freeName, matchingOwn, ownNow, ownPlan, ownSetup, parseOwn, readShareJson, reloadOwn, setGoOwn, setOwn, shareJson, withSaved } from "./lib/ownRideTypes.ts";
 const ownPlanOf = (s: { preset: PresetId; dials: Dials }) => ownPlan(s.preset, s.dials);
-import { applyToDevice, deviceSettings, parseSettings } from "./lib/accountSettings.ts";
+import { applyToDevice, deviceSettings, parseSettings, signInLate } from "./lib/accountSettings.ts";
 import type { PresetId } from "./lib/presets.ts";
 
 beforeEach(() => {
@@ -160,4 +160,29 @@ test("Advanced: settings pasted in and loaded are used at once and kept in My ri
   await type(fold.querySelector("textarea")!, "hello");
   await click(screen.button("Load"));
   assert.match(screen.text(), /These are not RouteMaker ride settings\./);
+});
+
+// Review of #1385: a late sign-in keeps the account's own ride types from another device; a pasted "Commute" does not
+// replace the rider's own "Commute"; a pasted target or loop does not reach the ride.
+test("a late sign-in merges own ride types one by one, and Go's stays one still in the list", () => {
+  const hilly = withSaved([], "Hilly", "mountain-goat", startDials("mountain-goat"), "h1")[0];
+  const commute = withSaved([], "Commute", "default", { ...startDials("default"), stress: 90 }, "c1")[0];
+  const account = { v: 1, own: [hilly], goOwn: "h1" };
+  const atLoad = { v: 1 };
+  const device = { v: 1, own: [commute], goOwn: null };
+  const step = signInLate(account, device, atLoad);
+  assert.deepEqual(step.doc.own?.map((o) => o.name), ["Commute", "Hilly"]);
+  assert.equal(step.doc.goOwn, null, "the device's choice, made later");
+  const removed = signInLate({ v: 1, own: [hilly, commute], goOwn: "h1" }, { v: 1, own: [commute], goOwn: "h1" }, { v: 1, own: [hilly, commute], goOwn: "h1" });
+  assert.deepEqual(removed.doc.own?.map((o) => o.name), ["Commute"]);
+  assert.equal(removed.doc.goOwn, null, "Hilly went, so Go's choice of it goes too");
+});
+
+test("settings loaded under a name already used keep both; a pasted target or loop stays behind", () => {
+  const mine = withSaved([], "Commute", "default", startDials("default"), "c1");
+  assert.equal(freeName(mine, "Commute", "fast", coffee), "Commute (2)");
+  assert.equal(freeName(mine, "Commute", "default", startDials("default")), "Commute", "the same setup is the same one");
+  const read = readShareJson('{"kind":"routemaker-ride-settings","rideType":"default","settings":{"targetDistanceM":99999,"loop":true}}')!;
+  assert.equal(read.dials.targetDistanceM, undefined);
+  assert.equal(read.dials.loop, undefined);
 });

@@ -447,14 +447,14 @@ const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, wide: !wi
 // Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
 const GO_START_RIDE = OPENING.mode === "go" && !PLAN_LINK && START_MY_GO.myGo.ride ? START_MY_GO.myGo.ride : null;
 // Or one of the rider's own ride types (lib/ownRideTypes.ts), made Go's from the ride type list: its ride type and
-// every slider, where My Go's ride is still its ride type.
+// every slider.
 const GO_START_OWN = ((): { preset: PresetId; dials: Dials } | null => {
   if (OPENING.mode !== "go" || PLAN_LINK) return null;
   const { list, goOwn } = ownNow();
   const own = list.find((o) => o.id === goOwn);
   if (!own) return null;
-  const setup = ownSetup(own);
-  return setup.preset === (START_MY_GO.myGo.ride ?? "default") ? setup : null;
+  // Its own ride type, even where My Go's ride is another (it was saved again on another base since).
+  return ownSetup(own);
 })();
 // A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
 const OPEN_AT = atFromHash(window.location.hash);
@@ -7105,6 +7105,7 @@ export function App() {
           // turns are planned with, and seen, in Go too.
           popout: true,
           go: goDefault,
+          shown: mode !== "go" || view === "ride",
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,

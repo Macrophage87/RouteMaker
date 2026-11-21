@@ -270,6 +270,21 @@ export function signInLate(account: SettingsDoc | null, device: SettingsDoc, atL
       doc.favorites = [...new Set(merged)];
       continue;
     }
+    if (key === "own") {
+      // One by one (review of #1385): those saved, changed or removed here, the account's others (another device's) kept.
+      const was = new Map((atLoad.own ?? []).map((o) => [o.id, JSON.stringify(o)]));
+      const here = new Map((device.own ?? []).map((o) => [o.id, o]));
+      const removed = new Set([...was.keys()].filter((id) => !here.has(id)));
+      const changed = [...here.values()].filter((o) => was.get(o.id) !== JSON.stringify(o));
+      const changedIds = new Set(changed.map((o) => o.id));
+      const kept = (step.doc.own ?? []).filter((o) => !removed.has(o.id) && !changedIds.has(o.id));
+      doc.own = parseOwn([...changed, ...kept]);
+      continue;
+    }
+    if (key === "goOwn") {
+      doc.goOwn = device.goOwn ?? null;
+      continue;
+    }
     if (key === "sections") {
       // Section by section: the Layers sections changed here, the account's others kept.
       const sections = { ...(step.doc.sections ?? {}) };
@@ -285,6 +300,8 @@ export function signInLate(account: SettingsDoc | null, device: SettingsDoc, atL
     if (device[key] === undefined) delete doc[key];
     else (doc as unknown as Record<string, unknown>)[key] = device[key];
   }
+  // Go's own ride type is one still in the list.
+  if (doc.goOwn && !(doc.own ?? []).some((o) => o.id === doc.goOwn)) doc.goOwn = null;
   return { kind: "use-account", doc, save: sameSettings(doc, step.doc) ? null : doc };
 }
 

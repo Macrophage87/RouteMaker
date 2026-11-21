@@ -501,6 +501,8 @@ export interface RideSectionProps {
   popout?: boolean;
   /** Each ride type card's Go button (lib/rideTypeCards.ts GoDefault): the owner, 2026-11-21. */
   go?: GoDefault;
+  /** False while the section is out of sight (Go's Ride sheet closed): the popup closes with it. */
+  shown?: boolean;
 }
 
 /**
@@ -508,12 +510,12 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, go } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown, go } = props;
   // The rider's own ride type this is, if any (lib/ownRideTypes.ts): the popup is named for it.
   const matching = matchingOwn(useOwnRideTypes().list, preset, dials);
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} go={go} /> : null;
   return (
-    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }) } : undefined}>
+    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }), shown } : undefined}>
       <DialsPanel
         preset={preset}
         dials={dials}

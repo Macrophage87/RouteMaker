@@ -6,7 +6,7 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { t } from "./lib/i18n.ts";
-import { OWN_NAME_MAX, ownName, ownPlan, readShareJson, saveOwn, shareJson, type OwnRideType } from "./lib/ownRideTypes.ts";
+import { OWN_NAME_MAX, freeName, ownName, ownNow, ownPlan, readShareJson, saveOwn, shareJson, type OwnRideType } from "./lib/ownRideTypes.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { startDials, type Dials } from "./lib/dials.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
@@ -45,7 +45,7 @@ function ShareSettings({ preset, dials, matching, onLoad }: { preset: PresetId; 
       return;
     }
     onLoad(read.preset, read.dials);
-    const own = saveOwn(read.name, read.preset, read.dials);
+    const own = saveOwn(freeName(ownNow().list, read.name, read.preset, read.dials), read.preset, read.dials);
     setPasted("");
     setSaid(t("Loaded {name}. It is in My ride types.", { name: own?.name ?? read.name }));
   };
@@ -75,6 +75,7 @@ function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dial
   const [said, setSaid] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const openRef = useRef<HTMLButtonElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const id = useId();
   useEffect(() => {
     if (naming) inputRef.current?.focus();
@@ -83,65 +84,66 @@ function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dial
   const plan = ownPlan(preset, dials);
   useEffect(() => setSaid(""), [plan]);
   const offered = matching === null && differsFromStart(preset, dials);
-  if (!naming && !offered) {
-    return said ? (
-      <p className="hint own-ride-said" role="status">
-        {said}
-      </p>
-    ) : null;
-  }
-  if (!naming) {
-    return (
-      <div className="own-ride-save">
-        <button
-          type="button"
-          ref={openRef}
-          className="secondary"
-          onClick={() => {
-            setName(t("My {ride}", { ride: presetLabel(preset) }));
-            setNaming(true);
-          }}
-        >
-          {t("Save as my own ride type")}
-        </button>
-        <p className="hint own-ride-said" role="status">
-          {said}
-        </p>
-      </div>
-    );
-  }
   const save = () => {
     const kept = ownName(name);
     if (!kept) return;
     const own = saveOwn(kept, preset, dials);
     setNaming(false);
     setSaid(own ? t("Saved as {name}. It is first in the ride types.", { name: own.name }) : "");
+    // The form goes: the focus to the popup's title, now the saved name (review of #1385), not lost to the page.
+    const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => run();
+    frame(() => rootRef.current?.closest("dialog")?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true }));
   };
   return (
-    <form
-      className="own-ride-save"
-      onSubmit={(event) => {
-        event.preventDefault();
-        save();
-      }}
-    >
-      <label htmlFor={id}>{t("Name")}</label>
-      <input id={id} ref={inputRef} type="text" value={name} maxLength={OWN_NAME_MAX} autoComplete="off" onChange={(event) => setName(event.target.value)} />
-      <div className="closure-choices">
-        <button type="submit" className="primary" disabled={!ownName(name)}>
-          {t("Save")}
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            setNaming(false);
-            requestAnimationFrame?.(() => openRef.current?.focus());
+    <div ref={rootRef} className="own-ride-save-wrap">
+      {naming ? (
+        <form
+          className="own-ride-save"
+          onSubmit={(event) => {
+            event.preventDefault();
+            save();
           }}
         >
-          {t("Cancel")}
-        </button>
-      </div>
-    </form>
+          <label htmlFor={id}>{t("Name")}</label>
+          <input id={id} ref={inputRef} type="text" value={name} maxLength={OWN_NAME_MAX} autoComplete="off" onChange={(event) => setName(event.target.value)} />
+          <div className="closure-choices">
+            <button type="submit" className="primary" disabled={!ownName(name)}>
+              {t("Save")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setNaming(false);
+                const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => run();
+                frame(() => openRef.current?.focus());
+              }}
+            >
+              {t("Cancel")}
+            </button>
+          </div>
+        </form>
+      ) : (
+        offered && (
+          <div className="own-ride-save">
+            <button
+              type="button"
+              ref={openRef}
+              className="secondary"
+              onClick={() => {
+                setName(t("My {ride}", { ride: presetLabel(preset) }));
+                setNaming(true);
+              }}
+            >
+              {t("Save as my own ride type")}
+            </button>
+          </div>
+        )
+      )}
+      {/* Always in the page, so what it says is heard when it changes. */}
+      <p className="hint own-ride-said" role="status">
+        {said}
+      </p>
+    </div>
   );
 }

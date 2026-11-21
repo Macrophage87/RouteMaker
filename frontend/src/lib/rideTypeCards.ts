@@ -83,17 +83,34 @@ export function OwnRideCards({
       const current = own.id === inUse;
       return h(
         "li",
-        { key: own.id, className: `ride-type-card has-fav has-go${current ? " current" : ""}` },
+        { key: own.id, className: `ride-type-card has-fav${go && takesGoDefault(ownSetup(own).preset) ? " has-go" : ""}${current ? " current" : ""}` },
         h(
           "button",
           { type: "button", "aria-pressed": current, "aria-labelledby": nameId, "aria-describedby": aboutId, onClick: () => onPick(own) },
           h("strong", { id: nameId }, own.name),
           h("span", { id: aboutId, className: "hint" }, ownSummary(own)),
         ),
-        go ? h(GoDefaultButton, { goKey: `own:${own.id}`, said: own.name, go }) : null,
+        go && takesGoDefault(ownSetup(own).preset) ? h(GoDefaultButton, { goKey: `own:${own.id}`, said: own.name, go }) : null,
         h(
           "button",
-          { type: "button", className: "ride-fav ride-own-remove", "aria-label": t("Remove {name}", { name: own.name }), onClick: () => onRemove(own) },
+          {
+          type: "button",
+          className: "ride-fav ride-own-remove",
+          "aria-label": t("Remove {name}", { name: own.name }),
+          onClick: (event: { currentTarget: HTMLElement }) => {
+            // The card goes: the focus to the next card's button, else the one before, else the search (review
+            // of #1385), not lost to the page.
+            const item = event.currentTarget.closest("li");
+            const list = item?.closest("section");
+            const next = (item?.nextElementSibling ?? item?.previousElementSibling)?.querySelector<HTMLElement>("button");
+            onRemove(own);
+            const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => run();
+            frame(() => {
+              if (next?.isConnected) next.focus();
+              else list?.closest("dialog, .ride-groups")?.querySelector<HTMLElement>("input")?.focus();
+            });
+          },
+        },
           lineIcon("trash", 20),
         ),
       );

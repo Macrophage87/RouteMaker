@@ -117,8 +117,8 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   if (!ready) throw new Error("the app did not show a route");
   await sleep(800);
-  // Plan's settings are a popup over the map (the owner, 2026-11-20), opened by the checks that use them (openRide);
-  // Go's open under the line as before.
+  // The settings are a popup over the map (the owner, 2026-11-20; Go too since 2026-11-21), opened by the checks that
+  // use them (openRide).
   if (ride) {
     await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-haspopup') !== 'dialog' && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
     await sleep(200);

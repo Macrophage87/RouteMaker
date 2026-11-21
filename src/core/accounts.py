@@ -95,7 +95,7 @@ def _own_ok(own) -> bool:
         if not isinstance(item, dict) or set(item) != {"id", "name", "plan"}:
             return False
         ident, name, plan = item["id"], item["name"], item["plan"]
-        if not (isinstance(ident, str) and OWN_ID_RE.match(ident)) or ident in ids:
+        if not (isinstance(ident, str) and OWN_ID_RE.fullmatch(ident)) or ident in ids:
             return False
         if not (isinstance(name, str) and 0 < len(name) <= OWN_NAME_MAX):
             return False
@@ -135,7 +135,7 @@ def settings_problem(data) -> str | None:
     if own is not None and not _own_ok(own):
         return "Your own ride types are not in the expected form."
     go_own = data.get("goOwn")
-    if go_own is not None and not (isinstance(go_own, str) and OWN_ID_RE.match(go_own)):
+    if go_own is not None and not (isinstance(go_own, str) and OWN_ID_RE.fullmatch(go_own)):
         return "Go's own ride type is not in the expected form."
     weight = data.get("weight")
     if weight is not None and not _weight_ok(weight):
