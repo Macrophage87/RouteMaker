@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "د Go ډیفالټ یې کړه: {ride}",
   "As this ride type plans them.": "لکه څنګه چې دا ډول سپرلۍ یې پلان کوي.",
   "No mountain-bike trails.": "د غرنۍ بایسکل لارې نه.",
+  "Map key": "د نقشې کیلي",
+  "Calm: comfortable for everyone": "آرام: د ټولو لپاره آرامه",
+  "Fine for most adults": "د ډیرو لویانو لپاره سم",
+  "For experienced riders": "د تجربه لرونکو سپرو لپاره",
+  "Busy, fast traffic": "ګڼه او چټکه ترافیک",
+  "Best avoided": "غوره ده ورڅخه ډډه وشي",
+  "Metro station: its colour is the line": "د مټرو سټیشن: رنګ یې لیکه ده",
+  "Route locked. Open Edit route to change it.": "لاره بنده ده. د بدلولو لپاره د لارې سمون پرانیزئ.",
 };

@@ -87,6 +87,9 @@ function StepMore({ step }: { step: TransitStep }) {
   return null;
 }
 
+/** A step that is not a boarding: riding, a share bike, walking, a station's way in or out. */
+const NOT_BOARDING: ReadonlySet<string> = new Set(["ride", "take", "bikeshare", "walk", "enter", "exit"]);
+
 export function TransitSummary({
   plan,
   preset,
@@ -151,7 +154,8 @@ export function TransitSummary({
     <ol className="transit-steps" aria-label={STEPS_LABEL}>
       {plan.steps.map((step, index) => {
         // Each ride's traffic stress, in the route chart's words (every ride's, the first's too).
-        const stress = stepStressSaid(step, lineSpans);
+        // Not in Go, whose fold is the steps alone (intuitiveness review, 2026-11-21: the stress shares there were noise).
+        const stress = go ? null : stepStressSaid(step, lineSpans);
         return (
           <li key={index} className={`transit-step transit-${step.mode}`}>
             <Icon name={stepIcon(step)} size={16} />
@@ -213,6 +217,7 @@ export function TransitSummary({
       ))}
     </ul>
   );
+  const boarding = plan.steps.find((step) => !NOT_BOARDING.has(step.mode));
   const comparison = plan.comparison && <p className={plan.riding_quicker ? "transit-compare" : "transit-compare hint"}>{plan.comparison}</p>;
   if (go) {
     return (
@@ -225,9 +230,22 @@ export function TransitSummary({
             <span className="visually-hidden">{legsSpoken(chosen.legs)}</span>
           </p>
         )}
-        {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}
+        {plan.departure ? (
+          <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />
+        ) : (
+          // The first boarding, on the first screen (intuitiveness review, 2026-11-21: "Board the Red Line at 10:29 am"
+          // was inside the closed steps' fold), with WMATA's next trains where it has them.
+          boarding && (
+            <p className="transit-board">
+              <strong>{boarding.text}</strong>
+              {boarding.live && <span className="hint"> {boarding.live.text}</span>}
+            </p>
+          )
+        )}
         {elevatorWarnings}
-        {comparison}
+        {/* Only where riding the whole way is quicker: "Transit saves about 112 min" told a rider who chose transit what
+            the time above already says (intuitiveness review, 2026-11-21). */}
+        {plan.riding_quicker && comparison}
         {/* WMATA's live alerts stay on the first screen with the other warnings (Stephen 2026-11-12: warnings before
             Start); the plan's own notes go behind the steps' fold. */}
         {(plan.live?.alerts.length ?? 0) > 0 && (

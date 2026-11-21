@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "ናይ Go ነባሪ ግበሮ: {ride}",
   "As this ride type plans them.": "ከምቲ እዚ ዓይነት ጉዕዞ ዝሕንጽጾ።",
   "No mountain-bike trails.": "ናይ ጎቦ ብሽክለታ መገዲ የለን።",
+  "Map key": "መፍትሕ ካርታ",
+  "Calm: comfortable for everyone": "ህዱእ: ንኹሉ ምቹእ",
+  "Fine for most adults": "ንመብዛሕትኦም ዓበይቲ ጽቡቕ",
+  "For experienced riders": "ንተመኩሮ ዘለዎም",
+  "Busy, fast traffic": "ብዙሕን ቅልጡፍን ትራፊክ",
+  "Best avoided": "ዘይምኻድ ይሓይሽ",
+  "Metro station: its colour is the line": "መደበሪ ሜትሮ: ሕብሩ መስመሩ እዩ",
+  "Route locked. Open Edit route to change it.": "መንገዲ ተዓጽዩ። ንምቕያር መንገዲ ኣርትዕ ክፈት።",
 };

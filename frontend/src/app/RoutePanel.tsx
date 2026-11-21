@@ -721,6 +721,8 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
 export function StressFigure({ segments, go, line = null, surface = [] }: { segments: StressSegment[]; line?: string | null; surface?: readonly string[]; go?: { route: RouteResponse; peek: boolean; onWorst?: (line: LonLat[]) => void } }) {
   const keyHintId = useId();
   const route = go?.route;
+  // A street's own name only: "worst on path" (an unnamed way's description) said nothing (intuitiveness review).
+  const namedStreet = (street: string | null | undefined) => (street && /^\p{Lu}|^\d/u.test(street) ? street : null);
   const worst = useMemo(() => (route ? (worstStretches(route, 1)[0] ?? null) : null), [route]);
   // One image to a screen reader, named with each share; the line under it says the same in text.
   const bar = (
@@ -773,7 +775,7 @@ export function StressFigure({ segments, go, line = null, surface = [] }: { segm
         ))}
       </div>
     ) : null;
-  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route, worst?.street ?? null);
+  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route, namedStreet(worst?.street));
   const onWorst = worst && go.onWorst;
   return (
     <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
@@ -1040,9 +1042,13 @@ export function RouteSummary({
         ))}
       {/* Riders often arrive by a shared link, straight into a route, and a
           phone has no hover to show the handle: say that the line moves. */}
-      <p className="hint reshape">
-        {narrow ? t("To reshape the route, press and hold the line, then drag it.") : t("To reshape the route, drag the line.")}
-      </p>
+      {/* Not in Go, where the route stays put until Edit route is open (the owner, 2026-11-21): the hint told a rider
+          to drag a line that would not move (intuitiveness review, 2026-11-21). */}
+      {!goMode && (
+        <p className="hint reshape">
+          {narrow ? t("To reshape the route, press and hold the line, then drag it.") : t("To reshape the route, drag the line.")}
+        </p>
+      )}
       {goMode ? (
         <details className="route-credit-fold">
           <summary>{t("Data sources")}</summary>

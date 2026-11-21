@@ -291,6 +291,8 @@ interface Props {
    * "stray clicks change the route too often"): no drag, no point menu, no double-click remove.
    */
   pointsLocked?: boolean;
+  /** A locked pin pressed (pointsLocked): said, so the press is not met with silence (intuitiveness review, 2026-11-21). */
+  onLockedPress?: () => void;
   /** The route line, when it is the current points' route and can be dragged; null otherwise. */
   lineEdit: LineEdit | null;
   /**
@@ -1972,7 +1974,10 @@ export function MapView(props: Props) {
       // dragging and clicking are the title's, for a pointer (review a11y-8).
       const locked = props.pointsLocked === true;
       element.setAttribute("aria-label", via && !locked ? `${said} Remove it from the Points list.` : said);
-      if (locked) element.classList.add("pin-locked");
+      if (locked) {
+        element.classList.add("pin-locked");
+        element.addEventListener("click", () => callbacks.current.onLockedPress?.());
+      }
       element.title = locked ? `${named} - open Edit route to change it` : via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: !locked, anchor: "center" })
         .setLngLat(point)

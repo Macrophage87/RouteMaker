@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "የGo ነባሪ አድርግ: {ride}",
   "As this ride type plans them.": "ይህ የጉዞ አይነት እንደሚያቅዳቸው።",
   "No mountain-bike trails.": "የተራራ ብስክሌት መንገዶች የሉም።",
+  "Map key": "የካርታ መግለጫ",
+  "Calm: comfortable for everyone": "ረጋ ያለ: ለሁሉም ምቹ",
+  "Fine for most adults": "ለአብዛኞቹ አዋቂዎች ተስማሚ",
+  "For experienced riders": "ልምድ ላላቸው ተጓዦች",
+  "Busy, fast traffic": "ብዙ፣ ፈጣን ትራፊክ",
+  "Best avoided": "ባይሄዱበት ይሻላል",
+  "Metro station: its colour is the line": "የሜትሮ ጣቢያ: ቀለሙ መስመሩ ነው",
+  "Route locked. Open Edit route to change it.": "መንገዱ ተቆልፏል። ለመቀየር መንገድ አርትዕን ይክፈቱ።",
 };

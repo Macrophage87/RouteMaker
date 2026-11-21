@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "Đặt làm mặc định của Go: {ride}",
   "As this ride type plans them.": "Như loại chuyến đi này lập kế hoạch.",
   "No mountain-bike trails.": "Không có đường mòn xe đạp địa hình.",
+  "Map key": "Chú giải bản đồ",
+  "Calm: comfortable for everyone": "Yên tĩnh: thoải mái cho mọi người",
+  "Fine for most adults": "Ổn cho hầu hết người lớn",
+  "For experienced riders": "Cho người đạp xe có kinh nghiệm",
+  "Busy, fast traffic": "Giao thông đông, nhanh",
+  "Best avoided": "Tốt nhất nên tránh",
+  "Metro station: its colour is the line": "Ga Metro: màu là tuyến",
+  "Route locked. Open Edit route to change it.": "Tuyến đường đã khóa. Mở Sửa tuyến để thay đổi.",
 };

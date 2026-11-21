@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "پیش‌فرض Go کن: {ride}",
   "As this ride type plans them.": "همان‌طور که این نوع سواری برنامه‌ریزی می‌کند.",
   "No mountain-bike trails.": "بدون مسیرهای دوچرخه کوهستان.",
+  "Map key": "راهنمای نقشه",
+  "Calm: comfortable for everyone": "آرام: راحت برای همه",
+  "Fine for most adults": "مناسب برای بیشتر بزرگسالان",
+  "For experienced riders": "برای دوچرخه‌سواران باتجربه",
+  "Busy, fast traffic": "ترافیک شلوغ و سریع",
+  "Best avoided": "بهتر است اجتناب شود",
+  "Metro station: its colour is the line": "ایستگاه مترو: رنگ آن خط است",
+  "Route locked. Open Edit route to change it.": "مسیر قفل است. برای تغییر، ویرایش مسیر را باز کنید.",
 };

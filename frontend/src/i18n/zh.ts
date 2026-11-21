@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "设为 Go 默认：{ride}",
   "As this ride type plans them.": "按此骑行类型的规划。",
   "No mountain-bike trails.": "无山地车道。",
+  "Map key": "地图图例",
+  "Calm: comfortable for everyone": "平静：人人舒适",
+  "Fine for most adults": "适合大多数成年人",
+  "For experienced riders": "适合有经验的骑手",
+  "Busy, fast traffic": "车多且快",
+  "Best avoided": "最好避开",
+  "Metro station: its colour is the line": "地铁站：颜色即线路",
+  "Route locked. Open Edit route to change it.": "路线已锁定。打开编辑路线以更改。",
 };

@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "Fè l chwa Go pa defo: {ride}",
   "As this ride type plans them.": "Jan kalite woulib sa a planifye yo.",
   "No mountain-bike trails.": "Pa gen chemen bisiklèt mòn.",
+  "Map key": "Lejann kat la",
+  "Calm: comfortable for everyone": "Kal: konfòtab pou tout moun",
+  "Fine for most adults": "Bon pou pifò granmoun",
+  "For experienced riders": "Pou siklis ki gen eksperyans",
+  "Busy, fast traffic": "Anpil machin, vit",
+  "Best avoided": "Pi bon pou evite",
+  "Metro station: its colour is the line": "Estasyon Metro: koulè a se liy lan",
+  "Route locked. Open Edit route to change it.": "Wout la fèmen. Louvri Modifye wout pou chanje l.",
 };

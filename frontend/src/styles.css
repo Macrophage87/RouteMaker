@@ -12349,3 +12349,24 @@ dialog.plan-ride-settings .dial-ends {
   font-weight: 400;
   max-width: 70%;
 }
+
+/* Go's short map key, first in Layers (intuitiveness review, 2026-11-21): a swatch and its plain words on one line,
+   never the full key's three columns. */
+.go-map-key {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.go-map-key h3 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+
+.legend.go-key li {
+  grid-template-columns: 68px 1fr;
+}
+
+.legend.go-key .stress-name {
+  font-weight: 400;
+}

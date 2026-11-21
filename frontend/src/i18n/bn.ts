@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "Go-এর ডিফল্ট করুন: {ride}",
   "As this ride type plans them.": "এই রাইডের ধরন যেভাবে পরিকল্পনা করে।",
   "No mountain-bike trails.": "কোনো মাউন্টেন-বাইক ট্রেইল নয়।",
+  "Map key": "মানচিত্রের সংকেত",
+  "Calm: comfortable for everyone": "শান্ত: সবার জন্য আরামদায়ক",
+  "Fine for most adults": "বেশিরভাগ প্রাপ্তবয়স্কের জন্য ঠিক",
+  "For experienced riders": "অভিজ্ঞ রাইডারদের জন্য",
+  "Busy, fast traffic": "ব্যস্ত, দ্রুত ট্রাফিক",
+  "Best avoided": "এড়িয়ে চলাই ভালো",
+  "Metro station: its colour is the line": "মেট্রো স্টেশন: রংটাই লাইন",
+  "Route locked. Open Edit route to change it.": "রুট লক করা। বদলাতে রুট সম্পাদনা খুলুন।",
 };
