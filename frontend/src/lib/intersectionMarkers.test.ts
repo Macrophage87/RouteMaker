@@ -348,12 +348,7 @@ test("the list row and its name carry the cost after the reason", async () => {
   const name = rowName(item.severityText, item.where, item.reason, item.costText);
   assert.equal(name, `Very high stress, At 3.2 mi (5.2 km): ${left.reason}. Costs 0.45 calm mi (0.73 calm km), more at rush hour`);
   assert.doesNotMatch(name, / [,:.]/);
-  const list = readFileSync(new URL("../IntersectionList.tsx", import.meta.url), "utf8");
-  assert.match(list, /\{item\.costText && <span className="junction-cost">\{item\.costText\}<\/span>\}/);
-  // The marker's card says it too (where there is one: a Mass Ride's junction may have none).
-  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /cost\.textContent = `\$\{item\.costText\}\.`/);
-  assert.match(map, /body\.append\(\.\.\.\(item\.costText \? \[title, reason, cost, where\] : \[title, reason, where\]\)\);/);
+  // The row and the marker's card show it: IntersectionList.test.tsx and junctionCardBody.test.tsx.
 });
 
 test("a Mass Ride's junction says its corkers, not a single rider's calm miles (the 2026-10-28 audit, P6)", () => {

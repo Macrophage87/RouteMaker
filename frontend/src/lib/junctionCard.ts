@@ -13,7 +13,7 @@
  * - Escape closes the card.
  * - After a group's zoom, the focus goes to the first member's new marker.
  */
-import type { JunctionGroup, JunctionItem } from "./intersectionMarkers.ts";
+import { ratedLines, type JunctionGroup, type JunctionItem } from "./intersectionMarkers.ts";
 
 /** What opened the card: a marker on the map, or a row of the summary's list. */
 export type CardOpener = "marker" | "list";
@@ -42,9 +42,10 @@ export function escapeClosesCard(cardOpen: boolean, focusAt: "card" | "opener" |
 }
 
 /** The card's accessible name: "Very high stress junction, at 1.2 mi (2.0 km)". */
-export function cardName(item: Pick<JunctionItem, "label" | "where">): string {
+export function cardName(item: Pick<JunctionItem, "label" | "where"> & Partial<Pick<JunctionItem, "rated">>): string {
   const severity = item.label.split(":")[0];
-  return `${severity} junction, ${item.where.charAt(0).toLowerCase()}${item.where.slice(1)}`;
+  // A rated junction's title says what it is already: "Rated LTS 4 crossing, at 1.2 mi (2.0 km)".
+  return `${severity}${item.rated ? "" : " junction"}, ${item.where.charAt(0).toLowerCase()}${item.where.slice(1)}`;
 }
 
 /** The close button's name, for MapLibre's "Close popup". */
@@ -76,4 +77,35 @@ export function collapseCredits(element: CreditsElement | null): boolean {
   if (!element.classList.contains("maplibregl-compact") || !element.classList.contains("maplibregl-compact-show")) return false;
   element.classList.remove("maplibregl-compact-show");
   return true;
+}
+
+/**
+ * What a junction's card holds: its title, the reason, a rated junction's movements, its cost and how
+ * to plan around it. A rated junction says each movement that can be made there, this route's own
+ * marked (the owner, 2026-11-15: "that should tell us how stressful the junction is"). A Mass Ride's
+ * junction with no major junction of the profile there has no cost line (junctionCorkText).
+ */
+export function junctionCardBody(item: JunctionItem): HTMLDivElement {
+  const body = document.createElement("div");
+  body.className = "junction-card";
+  const title = document.createElement("strong");
+  title.textContent = item.label.split(":")[0];
+  const reason = document.createElement("p");
+  reason.textContent = item.reason;
+  const moves = document.createElement("ul");
+  moves.className = "junction-card-moves";
+  for (const line of item.rated ? ratedLines(item.rated) : []) {
+    const row = document.createElement("li");
+    row.textContent = line.yours ? `${line.text} (this route)` : line.text;
+    if (line.yours) row.className = "junction-card-yours";
+    moves.append(row);
+  }
+  const cost = document.createElement("p");
+  cost.className = "junction-card-cost";
+  cost.textContent = `${item.costText}.`;
+  const where = document.createElement("p");
+  where.className = "hint";
+  where.textContent = `${item.where}. Drag the route away to plan around it.`;
+  body.append(title, reason, ...(moves.childElementCount ? [moves] : []), ...(item.costText ? [cost] : []), where);
+  return body;
 }

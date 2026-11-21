@@ -282,6 +282,15 @@ class TestJunctions:
         expected = 1900 + 100 * m5 + (400 + 1300) * 0.3048 + entry
         assert out["total_calm_m"] == pytest.approx(expected, abs=1)
 
+    def test_a_rated_junctions_point_carries_its_level(self) -> None:
+        # The chart draws its dot in that level's colour; a junction the model priced has none.
+        rated = Event(300, 4000, "red", True)
+        rated.rater_level = 4.0
+        out = calm.score(
+            [span(0, 1000, 2)], [rated, Event(600, 1300, "orange", True)], DEFAULT, [0]
+        )
+        assert [p.get("rated_level") for p in out["points"]] == [4.0, None]
+
     def test_avoid_after_a_gap_is_a_new_entry(self) -> None:
         steps = [calm.Step(0, 100, 14.0, 5), calm.Step(150, 200, 14.0, 5)]
         entries = [p for p in calm.points_of(steps, [], DEFAULT) if p.kind == "avoid_entry"]

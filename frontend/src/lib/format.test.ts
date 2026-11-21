@@ -161,8 +161,8 @@ test("the conversion factors are this module's alone: no other copy of a mile, a
 test("the map's scale shows miles and feet over kilometres and metres", async () => {
   const { readFileSync } = await import("node:fs");
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  const metric = view.indexOf('new maplibregl.ScaleControl({ unit: "metric" })');
-  const imperial = view.indexOf('new maplibregl.ScaleControl({ unit: "imperial" })');
+  const metric = view.indexOf('map.addControl(scale("metric"), "bottom-right")');
+  const imperial = view.indexOf('map.addControl(scale("imperial"), "bottom-right")');
   // A bottom corner stacks upwards: the control added last is on top.
   assert.ok(metric > 0 && imperial > metric);
 });
