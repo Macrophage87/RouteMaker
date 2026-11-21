@@ -1299,7 +1299,8 @@ case "NAME $*" in
     for r in "$@"; do case "$r" in valhalla-*) echo "$r" >>"$FAKE_DIR/running" ;; esac; done ;;
   "beta-compose ps -q --status running "*)
     r=${*: -1}
-    if grep -qx "$r" "$FAKE_DIR/running" 2>/dev/null && ! grep -qx "$r" "$FAKE_DIR/stuck_routers" 2>/dev/null; then
+    stuck=$(cat "$FAKE_DIR/stuck_routers" 2>/dev/null)
+    if grep -qx "$r" "$FAKE_DIR/running" 2>/dev/null && ! grep -qx "$r" <<<"$stuck"; then
       echo "id-$r"
     fi ;;
 esac
@@ -1463,7 +1464,8 @@ def test_on_the_beta_the_swap_holds_the_deploy_lock_against_the_router_timer(fak
     probe.write_text(
         "#!/usr/bin/env bash\n"
         f"exec 9<{lock}\n"
-        f"if flock -n 9; then echo free >>{fake.dir / 'lock-seen'}; else echo held >>{fake.dir / 'lock-seen'}; fi\n"
+        f"seen={fake.dir / 'lock-seen'}\n"
+        'if flock -n 9; then echo free >>"$seen"; else echo held >>"$seen"; fi\n'
     )
 
     done = beta.run("--swap")
