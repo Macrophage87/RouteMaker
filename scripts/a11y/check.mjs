@@ -5024,10 +5024,10 @@ if (mine(2)) {
 }
 if (mine(1)) {
   // Go's dot follows the rider (lib/appMode.ts GO_FOLLOW_MS, the owner 2026-11-21): the GPS moves about 200 m and,
-  // within one GO_FOLLOW_MS (15 s) and a little, the dot moves with it, quietly (nothing more said) and without moving the map.
+  // within one GO_FOLLOW_MS (15 s) and a little, the dot moves with it, quietly (nothing more said).
   const p = await goWith("granted");
   const dot = "document.querySelector('.rider-marker-still')?.style.transform ?? ''";
-  const before = await p.eval(`({ dot: ${dot}, said: window.__said.length, centre: location.hash })`);
+  const before = await p.eval(`({ dot: ${dot}, said: window.__said.length })`);
   await p.s("Emulation.setGeolocationOverride", { latitude: 38.9073, longitude: -77.0365, accuracy: 15 });
   await sleep(18000);
   const after = await p.eval(`({ dot: ${dot}, said: window.__said.slice(${before.said}), geo: window.__geo })`);

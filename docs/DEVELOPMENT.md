@@ -6135,7 +6135,13 @@ puts it, at most two presses away.
   time (`goHereStart`): older than `GO_START_MAX_AGE_MS` (2 min; the owner, 2026-10-19: "Go
   mode sometimes picks a stale current location") it is not routed from (`goStartStale`), so a
   pick looks the location up again, and when the page comes back into view in Go with an empty
-  plan a stale start is looked up again quietly; Go's Locate moves it too. A destination set in
+  plan a stale start is looked up again quietly; Go's Locate moves it too. While Go shows the
+  location as its start (empty plan, page in view, not in Roam or a ride), the dot follows the rider
+  (the owner, 2026-11-21: "The current location doesn't update"; `GO_FOLLOW_MS`, 15 s, our default,
+  unmeasured): one quiet look-up each time, around the gate, no watch; a sure fix more than 25 m away
+  (`goFollowTo`) moves the dot and the start, one where the dot is keeps the start fresh, and the
+  map does not move. A rough fix (over `GO_ROUGH_M`, 1,000 m) is instead looked up again every
+  `GO_ROUGH_AGAIN_MS` (20 s), at most `GO_ROUGH_TRIES` times. A destination set in
   Go from a fresh start looks the location up again too (the owner, 2026-10-19: "update when
   setting a destination too"; `goPickStart`): a fix within `GO_PICK_LOOK_MS` (3 s) more than 25 m
   away is the start; otherwise the start Go had stands (so a rider who has not moved keeps the early

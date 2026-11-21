@@ -2919,7 +2919,11 @@ export function App() {
         // Anything else that set the start meanwhile (Locate, a pick, a typed start) wins.
         if (!inGo() || goStartRef.current !== was) return;
         const to = goFollowTo(was, result.fix);
-        if (to === null) return;
+        if (to === null) {
+          // A sure fix where the dot is: the start stays fresh (goStartStale), so a pick routes at once.
+          if (!goRough(result.fix.accuracyM) && insideCoverage(result.fix.point)) setGoStart(goHereStart(was.point));
+          return;
+        }
         setHere(result.fix);
         setGoStart(goHereStart(to));
       });
