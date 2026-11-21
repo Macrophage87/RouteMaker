@@ -330,12 +330,12 @@ not offered when the spot is already at a rack. <strong>List</strong> shows the 
 with <strong>Road info</strong> under them; pressing and holding the map still opens the road card. The map stays live
 behind the card, so another tap moves it, and Escape or Close closes it.</li>
 <li>With a route on screen, the route comes first and Where to? and the place buttons fold behind <strong>New
-destination</strong>.</li>
+destination</strong>, which opens Where to? ready to type.</li>
 <li><strong>Place buttons:</strong> <strong>Home</strong>, <strong>Eat</strong>,
 <strong>Water</strong> and <strong>Restroom</strong>; <strong>More</strong> adds
-<strong>Metro</strong> (the three nearest stations, closed ones marked), <strong>Repair</strong>,
+<strong>Roam</strong> (with nothing planned), <strong>Metro</strong> (the three nearest stations, closed ones marked), <strong>Repair</strong>,
 <strong>Places to see</strong>, <strong>Load route</strong>, <strong>Featured routes</strong> and Change home. The first press of Home asks where home is: search for it or
-tap the map. Signed in, Home is <strong>Favorites</strong> instead. It pops out Home (or Set Home),
+tap the map; once it is set, the route home is planned too. Signed in, Home is <strong>Favorites</strong> instead. It pops out Home (or Set Home),
 Work (or Set Work), then your other saved places in the order you set, and one tap rides to one.
 Favorites hold 20 places besides Home, Work among them; a spot outside the area the map covers can't be
 saved. <strong>Add a place</strong> searches for one, and <strong>Edit</strong> has Change Home and
@@ -348,7 +348,7 @@ In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly a
 only.</li>
 <li><strong>The route card</strong> shows the start, the stops and via points between, counted apart ("1 stop · 3 via points"), and the destination; Edit
 opens the points. In Go the line and pins stay put on the map until Edit is open, so a stray drag or tap
-changes nothing (the owner's ask). <strong>Add a stop</strong> under it puts a place where it adds the least distance,
+changes nothing (the owner's ask); a tap on a pin then says "Route locked. Open Edit route to change it." <strong>Add a stop</strong> under it puts a place where it adds the least distance,
 and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out. With a route to
 a place, the three nearest bike racks within 500 ft [152 m] of its end are pins. For a destination you picked or pressed in Go,
 <strong>End at the bike rack</strong> under the card moves the end to the nearest in one change, so Undo puts it back; <strong>Ride here</strong> on a rack's card
@@ -442,8 +442,8 @@ past the last highlight shows under About this ride.</li>
 </ul>
 
 <h3 id="roam">Roam</h3>
-<p>With nothing planned in Go (no start or destination), on any ride type but Mass Ride, the big
-button is <strong>Roam</strong>: a ride with nowhere set.</p>
+<p>With nothing planned in Go (no start or destination), on any ride type but Mass Ride,
+<strong>Roam</strong> is first under the place buttons' <strong>More</strong>: a ride with nowhere set.</p>
 <ul>
 <li>The map follows you, and the card names the road you are on and, once you are moving, up to three roads ahead, within
 about half a mile [800 m], each on one line with how far it is in a straight line, such as "13th St NW · 0.1 mi
@@ -626,18 +626,23 @@ router won't take; turning it on during a loop turns the loop off, and "Loop off
 <li><strong>Ride type</strong> and its <strong>traffic</strong> and <strong>hills</strong> sliders:
 <a href="/about/ride-types.html">Ride types</a>. In Plan and Go, <strong>Adjust</strong> on the Ride settings line opens
 every ride setting on a screen of its own, titled with the ride type: on a computer a full-height panel beside the
-sidebar, with the map and Route still in reach; on a phone the whole screen. Done or Escape closes it. When is a dropdown, and
+sidebar, with the map and Route still in reach; on a phone the whole screen. Traffic, Hills, Surface and When come
+first; Riding speed, Waiting at lights and stops, Sharp turns, Fewer turns, Keep to roads and Share ride settings are
+under <strong>Advanced</strong>, which opens by itself when one of them is set away from the ride type's own. Done
+closes the screen, and in Go the Ride sheet behind it too, back to the route; Escape closes the screen alone. When is a dropdown, and
 <strong>Riding speed</strong> a slider from the ride type's own speed to 30 mph [48 km/h], starting at 6 mph [10 km/h]
 for the slowest cargo bikes.</li>
 <li><strong>My ride types</strong>: <strong>Save as my own ride type</strong> at the foot of Ride settings, once a
 slider is moved, keeps the ride type and every slider under a name you give; <strong>Create custom</strong> in the ride
-type list opens Ride settings with the name box ready. Your own are listed after Favorites in the ride type list;
+type list opens Ride settings with the name box first, its name selected to type over, and the settings under it;
+its one <strong>Save</strong> keeps it and goes back to the route. Your own are listed after Favorites in the ride type list;
 picking one sets its ride type and every slider, and its bin removes it (Undo brings it back). Saving under a name you
-used replaces that one; up to 20 are kept, and a full list says so rather than dropping one. They are kept on this device, and in your account when signed in. Ride settings' <strong>Advanced</strong> copies
+used replaces that one; up to 20 are kept, and a full list says so rather than dropping one. They are kept on this device, and in your account when signed in. <strong>Share ride settings</strong>, at the foot of Advanced, copies
 the settings as a short JSON text to send to someone, and loads one pasted in: only a ride type and its sliders,
 never a place or a route.</li>
-<li><strong>Go</strong> on a ride type's card, your own too, makes it what Go starts on (filled where it is);
-pressed again, Go starts on Default. It is the same choice as Settings' Primary Go method.</li>
+<li><strong>Make Go's default</strong> under a ride type's card, your own too, makes it what Go starts on; the
+button then reads <strong>Go's default</strong>, and pressed again, Go starts on Default. The ride summary offers Make
+Go's default too, for the ride type you rode, where it is not Go's already. It is the same choice as Settings' Primary Go method.</li>
 <li><strong>Waiting at lights and stops</strong>, <strong>Sharp turns</strong> and <strong>Fewer turns</strong>, in the Ride settings, on every
 ride type but those on foot, Run, the transit ride types and the share-bike types. Waiting at lights and stops is a slider shown as a multiple of the expected stop, from the ride type's own
 weight to 5x: each second waiting at a signal, a stop sign or a gap in
@@ -650,7 +655,7 @@ Fewer turns counts each turn as 30 seconds of riding instead of 15 when routes a
 Group Ride, Mass Ride, Road Bike and Tandem, which count 30 already. All three are kept in the plan's link and its GPX
 file, and Go plans with them too. See
 <a href="/about/routing.html#junction-time">time lost at junctions</a>.</li>
-<li><strong>Riding speed</strong>, under the Hills slider: <strong>Ride type's speed</strong> (the default) or your
+<li><strong>Riding speed</strong>, under Advanced: <strong>Ride type's speed</strong> (the default) or your
 own pace on the flat, 6 to 30 mph [10 to 48 km/h]. Route times, the arrival time and the ride's times to go follow
 it; hills and junction waits still count. Not on Mass Ride or the share-bike types, which keep their own pace. Kept on
 this device, and with your account when you are signed in; never in a shared link (see
@@ -665,12 +670,12 @@ hour at first, our default): that moment's ride time, the closures in force then
 Start ride, Best order and the nearest places always plan for now, and the time is never kept in a link or a saved
 route.</li>
 <li><strong>Surface</strong>, the roughest the route may use: <strong>Paved only</strong> keeps off gravel and dirt
-wherever pavement runs near, <strong>Gravel</strong> (at first) plans as the ride type does, <strong>Easy MTB trails</strong> also
+wherever pavement runs near, <strong>Paved and gravel</strong> (at first) plans as the ride type does, <strong>Easy MTB trails</strong> also
 uses mountain-bike trails rated Green and unrated ones (<a href="/about/trails.html#easy-mtb">Easy MTB trails</a>), and
 <strong>MTB trails up to Level 2, 3 or 4</strong> uses any trail up to that level, planned on Mountain Bike's map. All
 six are on Default, Trailmaxxing, Group Ride, Fast, Cargo Bike, Novice, Tandem and Mountain Bike; Gravel, Mountain
-Goat, E-bike and Mass Ride have Paved only and Gravel. On Mountain Bike it is the hardest trail level (MTB trails up to
-Level 2 at first), and Gravel or Paved only rides no mountain-bike trail. Not on Road Bike, always paved; or on foot,
+Goat, E-bike and Mass Ride have Paved only and Paved and gravel. On Mountain Bike it is the hardest trail level (MTB trails up to
+Level 2 at first), and Paved and gravel or Paved only rides no mountain-bike trail. Not on Road Bike, always paved; or on foot,
 Run, the share-bike and transit ride types. Kept in the plan's link
 and its GPX file.</li>
 <li><strong>Cargo Bike</strong> asks what you carry: Carrying cargo, or Cargo with passengers.</li>
@@ -689,18 +694,21 @@ lanes on LTS 4 and Avoid roads and counts them in the route's totals. Off unless
 you to confirm before it is planned.</li>
 </ul>
 <h3>Reading the route</h3>
+<p>After a change to the plan, Plan's route card dims, says "The figures are for the route before your change." and
+shows <strong>Update route</strong> where Start ride was, with no GPX or Link until the route is planned again.</p>
 <p><strong>Keep to compare</strong> keeps the route on the map, dashed. Change the plan and route again, and a table
 sets the kept route beside the new one: time, distance, climb, busy roads, heavy traffic, stressful junctions,
 turns, waiting at lights, unpaved, and paths and protected lanes (a row that is zero on both is left out), with
 the better side marked. <strong>Use kept route</strong> brings it
 back and keeps the other to compare; <strong>Stop comparing</strong> drops it. Nothing is sent: the kept route stays
 on your device.</p>
-<p><strong>Stress and facilities</strong> also gives the route's <strong>Turns</strong>, its <strong>Waiting at
+<p><strong>Stress and facilities</strong> gives each stress level's share and distance in one table, under the stress
+bar, and the route's <strong>Turns</strong>, its <strong>Waiting at
 lights and stops</strong> (part of the moving time) and its <strong>Surface</strong>: "All paved", or the paved,
 gravel and dirt miles, from 0.05 mi [80 m] of unpaved riding, and the miles whose surface isn't mapped where they are
 a tenth or more of the route (our defaults). These figures and Other routes' lines are in English for now.</p>
 <p>Under the route are its folds: <strong>Elevation and climbs</strong> (its key behind <strong>Key</strong>), <strong>Stress and
-facilities</strong>, <strong>Directions</strong> (with <strong>Full detail</strong>, and a copy or
+facilities</strong>, <strong>Directions</strong> (one line a step, with <strong>Full detail</strong> for the full sentences, a copy or
 download as text, and the route's notices in one closed line before step 1, such as "8 alerts on this
 route"), <strong>Junctions to watch</strong>, <strong>Other routes</strong> (up to three
 more, planned at the top of the traffic slider or, for Fewer turns and All paved, at your own setting; each with
@@ -1089,7 +1097,8 @@ ride</a>.</li>
 </div></details>
 <h2 id="layers">Layers and the road panel</h2>
 <p>Layers turns the map's extras on and off, one switch per section, with each section's key inside
-it. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
+it. In Go it opens with a short <strong>Map key</strong> in plain words: the stress levels, from "Calm:
+comfortable for everyone" to "Best avoided", and a Metro station's dot, colored by its line. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
 <figure id="fig-use-layers" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 256" role="img" aria-labelledby="fig-use-layers-t fig-use-layers-d" focusable="false" style="min-width:547px">
@@ -1382,9 +1391,9 @@ out. Each saved route has a
 <strong>More</strong> button that opens its GPX, Rename, Versions and Tags (both in Plan) and Delete. A row
 shows its tags, and Archived if it is. A search box finds a route by its name or tags. In Plan, once the route is up to date and you've picked it (when there is more than one line
 to choose from), the big button at the top of the map, where <strong>Update route</strong> sits, becomes <strong>Save route</strong>, with <strong>Start ride</strong>
-beside it (on a phone they read Save and Start). That Save also has <strong>Download GPX</strong>, and not
-signed in it offers <strong>Sign in</strong> (where available; your plan is kept) or
-Download GPX. A route someone sent you by link can be saved the same way. Plan's Save form has an optional
+beside it (on a phone they read Save and Start). The GPX button on the route row downloads the file. Not
+signed in, Save keeps the route on this device, as Keep for offline does, and says so with <strong>Sign in to
+sync</strong> beside it. A route someone sent you by link can be saved the same way. Plan's Save form has an optional
 <strong>Tags</strong> field (commas between tags; up to 8 a route, of up to 30 characters each), which offers the tags you
 already use. Only Plan's Save has a <strong>Fixed route</strong> box, unticked unless you tick it (our default).
 A fixed route keeps its exact line and is never re-routed: off it, Ride shows the way back, and only a closure on
