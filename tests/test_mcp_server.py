@@ -401,7 +401,7 @@ def test_easy_mtb_trails_is_passed_read_from_a_link_and_said(tools, stand_in) ->
     link = "#p=-77.03651,38.89768;-77.00911,38.88990&preset=trailmaxxing&v=2&easymtb=1"
     assert mcp.parse_fragment(link)[3]["easy_mtb"] is True
     # On a ride type that does not offer it, the page drops it, and so does the connector.
-    assert mcp.parse_fragment(link.replace("trailmaxxing", "fast"))[3]["easy_mtb"] is False
+    assert mcp.parse_fragment(link.replace("trailmaxxing", "ebike"))[3]["easy_mtb"] is False
     assert mcp.easy_mtb_said({"harder_m": 0.0, "limited": None}) is None
     assert "rated 2 or harder" in mcp.easy_mtb_said({"harder_m": 800.0, "limited": "no_way_round"})
     assert "off-road router" in mcp.easy_mtb_said({"harder_m": None, "limited": "no_offroad_graph"})
@@ -417,8 +417,8 @@ def test_paved_only_travels_in_the_link_as_the_page_keeps_it() -> None:
     assert "paved=1" in fragment
     assert mcp.parse_fragment(fragment)[3]["paved"] is True
     assert mcp.page_dials(dials, {})["paved"] is True
-    # Road Bike is always paved and Mountain Bike's surface is its trail level: no link carries it.
-    for preset in ("road-bike", "mountain-bike"):
+    # Road Bike is always paved: its link does not carry it.
+    for preset in ("road-bike",):
         assert "paved=1" not in mcp.plan_fragment(points, [], preset, dials, {})
         assert mcp.parse_fragment(fragment.replace("default", preset))[3]["paved"] is False
     assert "paved" not in mcp.page_dials({"stress": 70, "hills": 0}, {})
@@ -1724,8 +1724,12 @@ def test_a_new_ride_type_keeps_keep_to_roads_and_easy_mtb_trails(tools) -> None:
     easy = tools.call("plan_route", {"points": points, "easy_mtb": True})
     moved = tools.call("revise_route", {"draft_id": easy["draft_id"], "preset": "trailmaxxing"})
     assert StandIn.routes[-1].get("easy_mtb") is True
-    tools.call("revise_route", {"draft_id": moved["draft_id"], "preset": "gravel"})
+    tools.call("revise_route", {"draft_id": moved["draft_id"], "preset": "ebike"})
     assert not StandIn.routes[-1].get("easy_mtb")
+    # A harder level beside it (the Surface setting, 2026-11-21) stays with it.
+    hard = tools.call("plan_route", {"points": points, "easy_mtb": True, "mtb_level": 3})
+    tools.call("revise_route", {"draft_id": hard["draft_id"], "preset": "fast"})
+    assert StandIn.routes[-1].get("easy_mtb") is True and StandIn.routes[-1]["mtb_level"] == 3
 
 
 # --- The app's drawn legs and stop names (`line=`, `sn=`) and its ride links (2026-11-05) ------

@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "في عطلة نهاية الأسبوع، الطرق المغلقة أمام السيارات في تلك الأيام، مثل Beach Drive في مقاطعة Montgomery وSligo Creek Parkway، تُحسب كممرات بلا سيارات. مع قواعد الدراجات الكهربائية، أو الطرق فقط، أو الركوب الجماعي، تُحسب ممرًا في التفصيل فقط. الليل من 9 مساءً إلى 7 صباحًا كل يوم، بما في ذلك عطلة نهاية الأسبوع، وخارج الذروة ينتهي عند 9 مساءً. عبور طريق مزدحم يُحسب أكثر في ساعة الذروة، وأقل في عطلة نهاية الأسبوع والليل، حين يكون المرور عادة أهدأ. كل تحذير تقاطع يذكر متى يغيّره الوقت.",
   "Bike": "الدراجة",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "اختيار دراجة ينقل شريط التلال إلى موضع البداية لتلك الدراجة.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "لا يستخدم المسار دروبًا أصعب من هذا إن وُجد طريق آخر، ويخبرك حين يضطر.",
   " (above your hardest level)": " (فوق أصعب مستوى لديك)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "المسارات ذات الدروب بهذا المستوى تأتي أولًا، ثم الأسهل أو الأصعب بدرجة؛ والدروب الأبعد تُحسب كغيرها. لا يمكن أن يكون أصعب من أصعب مستوى لديك: ارفعه لتفضيل الأصعب.",
   "Electric assist": "مساعدة كهربائية",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "لا يُستخدم ما دام خيار طرق فقط مفعّلًا.",
   "easy MTB trails": "مسارات دراجات جبلية سهلة",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "يخطط على خريطة الطرق الوعرة، كما يفعل Gravel، فيمكن ركوب مسارات الدراجات الجبلية المصنفة 0 أو 1 على أي من المقياسين، أو غير المصنفة إطلاقًا. تُستبعد المسارات المصنفة 2 أو أصعب حيثما وُجد طريق بديل؛ وإن بقي أحدها مستخدمًا يذكر المسار ذلك. يُقدَّر ضغط حركة المرور كالمعتاد. قد يكون التراب موحلًا بعد المطر.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "يستخدم هذا المسار {distance} من مسار دراجات جبلية مصنف 2 أو أصعب: لم يُعثر على طريق بديل.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "يستخدم هذا المسار {distance} من مسار دراجات جبلية مصنف {level} أو أصعب: لم يُعثر على طريق بديل.",
   "Uses a harder MTB trail.": "يستخدم مسار دراجات جبلية أصعب.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "خريطة الطرق الوعرة غير متاحة، لذا يبقى هذا المسار على الدروب المعتادة.",
   "Off-road map unavailable: usual trails.": "خريطة الطرق الوعرة غير متاحة: الدروب المعتادة.",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "طرق ومسارات معبّدة وحصوية، كما يخطط لها نوع الركوب هذا.",
   "paved only": "معبّد فقط",
   "surface": "السطح",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "طرق ومسارات معبّدة وحصوية، دون مسارات الدراجات الجبلية.",
+  "MTB trails up to {level}": "مسارات الدراجات الجبلية حتى {level}",
 };

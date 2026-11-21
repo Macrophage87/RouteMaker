@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "В выходные дороги, закрытые для машин в эти дни, как Beach Drive в округе Монтгомери и Sligo Creek Parkway, считаются дорожками без машин. По правилам для электровелосипедов, только дорог или в массовой поездке они считаются дорожкой только в разбивке. Ночь — с 21:00 до 7:00 каждый день, включая выходные, а «не час пик» заканчивается в 21:00. Пересечение оживлённой дороги весит больше в час пик и меньше в выходные и ночью, когда движение обычно спокойнее. Каждое предупреждение о перекрёстке сообщает, когда время на него влияет.",
   "Bike": "Велосипед",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "Выбор велосипеда ставит ползунок холмов в исходное положение для этого велосипеда.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "Маршрут не использует тропы сложнее этой, если есть другой путь, и сообщает, когда приходится.",
   " (above your hardest level)": " (выше вашего самого сложного уровня)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "Маршруты с тропами этого уровня идут первыми, затем на уровень легче или сложнее; тропы дальше считаются как остальные. Не может быть сложнее вашего самого сложного уровня: поднимите его, чтобы предпочитать более сложные.",
   "Electric assist": "Электропомощь",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "Не используется, пока включено «Только дороги».",
   "easy MTB trails": "лёгкие МТБ-трассы",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Планирует по внедорожной карте, как Gravel, поэтому маршрут может идти по трассам для горных велосипедов с оценкой 0 или 1 по любой из двух шкал или вовсе без оценки. Трассы с оценкой 2 и сложнее обходятся везде, где есть другой путь; если одна всё же используется, маршрут об этом скажет. Нагрузка от трафика учитывается как обычно. После дождя грунт может быть грязным.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Этот маршрут проходит {distance} по трассе для горных велосипедов с оценкой 2 или сложнее: другого пути не нашлось.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "Этот маршрут проходит {distance} по трассе для горных велосипедов с оценкой {level} или сложнее: другого пути не нашлось.",
   "Uses a harder MTB trail.": "Идёт по более сложной МТБ-трассе.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Внедорожная карта недоступна, поэтому маршрут идёт по обычным тропам.",
   "Off-road map unavailable: usual trails.": "Нет внедорожной карты: обычные тропы.",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Асфальтовые и гравийные дороги и дорожки, как их планирует этот тип поездки.",
   "paved only": "только асфальт",
   "surface": "покрытие",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "Асфальтовые и гравийные дороги и дорожки, без МТБ-трасс.",
+  "MTB trails up to {level}": "МТБ-трассы до {level}",
 };

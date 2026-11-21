@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "Cuối tuần, đường cấm ô tô vào những ngày đó, như Beach Drive ở Montgomery County và Sligo Creek Parkway, được tính như đường không xe. Với luật xe đạp điện, chỉ đường phố hoặc chuyến đi đông người, chúng chỉ được tính là đường mòn trong phần chi tiết. Ban đêm là 9 giờ tối đến 7 giờ sáng mỗi ngày, kể cả cuối tuần, và ngoài giờ cao điểm kết thúc lúc 9 giờ tối. Băng qua đường đông bị tính nặng hơn vào giờ cao điểm, và nhẹ hơn vào cuối tuần và ban đêm, khi xe thường thưa hơn. Mỗi cảnh báo giao lộ cho biết khi nào thời gian làm thay đổi nó.",
   "Bike": "Xe đạp",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "Chọn xe đạp sẽ dời thanh trượt dốc về vị trí ban đầu của xe đó.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "Tuyến không dùng đường mòn khó hơn mức này nếu có lối khác, và báo khi bắt buộc phải dùng.",
   " (above your hardest level)": " (khó hơn mức khó nhất của bạn)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "Tuyến có đường mòn ở mức này được ưu tiên, rồi mức dễ hơn hoặc khó hơn một bậc; đường mòn xa hơn được tính như các đường mòn khác. Không thể khó hơn mức khó nhất của bạn: nâng mức đó lên để ưu tiên khó hơn.",
   "Electric assist": "Trợ lực điện",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "Không dùng khi Chỉ đường phố đang bật.",
   "easy MTB trails": "đường mòn MTB dễ",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Lập kế hoạch trên bản đồ địa hình, như Gravel, nên có thể đi đường mòn xe đạp địa hình xếp loại 0 hoặc 1 trên thang nào cũng được, hoặc hoàn toàn chưa xếp loại. Đường mòn loại 2 hoặc khó hơn được bỏ qua ở bất cứ đâu có đường khác; nếu vẫn phải dùng một đoạn, tuyến đường sẽ cho biết. Mức căng thẳng giao thông vẫn được tính như thường lệ. Đất có thể lầy lội sau mưa.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Tuyến đường này đi {distance} trên đường mòn xe đạp địa hình loại 2 hoặc khó hơn: không tìm thấy đường khác.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "Tuyến đường này đi {distance} trên đường mòn xe đạp địa hình loại {level} hoặc khó hơn: không tìm thấy đường khác.",
   "Uses a harder MTB trail.": "Đi một đường mòn MTB khó hơn.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Bản đồ địa hình hiện không có, nên tuyến đường này đi theo các đường mòn thông thường.",
   "Off-road map unavailable: usual trails.": "Không có bản đồ địa hình: đường mòn thông thường.",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Đường và lối đi trải nhựa và sỏi, như loại chuyến đi này lên kế hoạch.",
   "paved only": "chỉ đường trải nhựa",
   "surface": "mặt đường",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "Đường và lối đi trải nhựa và sỏi, không có đường mòn MTB.",
+  "MTB trails up to {level}": "Đường mòn MTB đến {level}",
 };

@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "Le week-end, les routes alors fermées aux voitures, comme Beach Drive dans le comté de Montgomery et Sligo Creek Parkway, sont comptées comme des pistes sans voitures. Avec les règles vélo électrique, sur routes seulement, ou en sortie de masse, elles ne comptent comme pistes que dans le détail. La nuit va de 21 h à 7 h tous les jours, week-ends compris, et les heures creuses finissent à 21 h. Traverser une route chargée compte plus à l'heure de pointe, et moins le week-end et la nuit, quand la circulation est d'habitude plus calme. Chaque alerte de carrefour dit quand l'horaire l'a changée.",
   "Bike": "Vélo",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "Choisir un vélo remet le curseur des côtes à sa position de départ pour ce vélo.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "L'itinéraire n'utilise aucun sentier plus difficile que celui-ci tant qu'il existe une autre voie, et le dit quand il le doit.",
   " (above your hardest level)": " (au-dessus de votre niveau le plus difficile)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "Les itinéraires avec des sentiers de ce niveau viennent d'abord, puis un niveau plus facile ou plus difficile ; les sentiers plus éloignés comptent comme n'importe quel sentier. Il ne peut pas dépasser votre niveau le plus difficile : relevez-le pour en préférer un plus dur.",
   "Electric assist": "Assistance électrique",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "Inutilisé tant que Routes seulement est activé.",
   "easy MTB trails": "sentiers VTT faciles",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Planifie sur la carte tout-terrain, comme Gravel : les sentiers VTT classés 0 ou 1 sur l'une ou l'autre échelle, ou non classés, peuvent être empruntés. Les sentiers classés 2 ou plus difficiles sont évités partout où il existe un autre chemin ; si l'un d'eux reste emprunté, l'itinéraire le signale. Le stress du trafic est pesé comme d'habitude. La terre peut être boueuse après la pluie.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Cet itinéraire emprunte {distance} de sentier VTT classé 2 ou plus difficile : aucun autre chemin n'a été trouvé.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "Cet itinéraire emprunte {distance} de sentier VTT classé {level} ou plus difficile : aucun autre chemin n'a été trouvé.",
   "Uses a harder MTB trail.": "Emprunte un sentier VTT plus difficile.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "La carte tout-terrain n'est pas disponible, cet itinéraire reste donc sur les sentiers habituels.",
   "Off-road map unavailable: usual trails.": "Carte tout-terrain indisponible : sentiers habituels.",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Routes et chemins revêtus et en gravier, comme ce type de sortie les planifie.",
   "paved only": "revêtu uniquement",
   "surface": "revêtement",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "Routes et chemins revêtus et en gravier, sans sentiers VTT.",
+  "MTB trails up to {level}": "Sentiers VTT jusqu'à {level}",
 };

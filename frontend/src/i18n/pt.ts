@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "Nos fins de semana, ruas fechadas para carros nesses dias, como a Beach Drive no condado de Montgomery e a Sligo Creek Parkway, são planejadas como caminhos sem carros. Com regras de bicicleta elétrica, só ruas, ou em pedal em massa, só contam como caminhos no detalhamento. A noite vai das 21h às 7h todos os dias, inclusive fins de semana, e o fora de pico termina às 21h. Atravessar uma rua movimentada conta mais no horário de pico e menos nos fins de semana e à noite, quando o trânsito costuma ser mais calmo. Cada aviso de cruzamento diz quando o horário o mudou.",
   "Bike": "Bicicleta",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "Escolher uma bicicleta move o controle de subidas para onde ele começa para essa bicicleta.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "A rota não usa trilha mais difícil que esta onde houver outro caminho, e avisa onde precisar.",
   " (above your hardest level)": " (acima do seu nível mais difícil)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "Rotas com trilhas deste nível vêm primeiro, depois um nível mais fácil ou mais difícil; trilhas mais distantes dele contam como qualquer trilha. Não pode ser mais difícil que seu nível mais difícil: aumente-o para preferir um mais difícil.",
   "Electric assist": "Assistência elétrica",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "Não é usado enquanto Só ruas estiver ativado.",
   "easy MTB trails": "trilhas de MTB fáceis",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Planeja no mapa off-road, como o Gravel, então trilhas de mountain bike de nível 0 ou 1 em qualquer escala, ou sem nível, podem ser usadas. Trilhas de nível 2 ou mais difíceis ficam de fora sempre que houver outro caminho; se uma ainda for usada, a rota avisa. O estresse do trânsito é pesado como de costume. A terra pode ficar enlameada depois da chuva.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Esta rota usa {distance} de trilha de mountain bike de nível 2 ou mais difícil: nenhum outro caminho foi encontrado.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "Esta rota usa {distance} de trilha de mountain bike de nível {level} ou mais difícil: nenhum outro caminho foi encontrado.",
   "Uses a harder MTB trail.": "Usa uma trilha de MTB mais difícil.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "O mapa off-road não está disponível, então esta rota fica nas trilhas de sempre.",
   "Off-road map unavailable: usual trails.": "Sem mapa off-road: trilhas de sempre.",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Ruas e caminhos pavimentados e de cascalho, como este tipo de passeio os planeja.",
   "paved only": "só pavimentado",
   "surface": "superfície",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "Ruas e caminhos pavimentados e de cascalho, sem trilhas de MTB.",
+  "MTB trails up to {level}": "Trilhas de MTB até {level}",
 };

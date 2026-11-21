@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "週末は、その日に車両通行止めになる道（Montgomery County の Beach Drive や Sligo Creek Parkway など）を車の来ない道として計画します。電動自転車のルール、車道のみ、集団走行では、内訳の中でだけ道として数えます。夜間は毎日（週末も）午後 9 時〜午前 7 時、閑散時間は午後 9 時で終わります。混んだ道の横断は、ラッシュ時は重く、交通が落ち着く週末と夜は軽く数えます。交差点の警告には時間帯で変わったかどうかを示します。",
   "Bike": "自転車",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "自転車を選ぶと、坂のスライダーがその自転車の初期位置に移ります。",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "ほかに道があればこれより難しいトレイルは使わず、使うしかないときは知らせます。",
   " (above your hardest level)": " （いちばん難しいレベルより上）",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "このレベルのトレイルがあるルートを優先し、次に 1 段階易しいか難しいもの。それより離れたトレイルはほかと同じに数えます。いちばん難しいレベルより難しくはできません：難しいほうを選ぶにはそれを上げてください。",
   "Electric assist": "電動アシスト",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "「車道のみ」がオンの間は使われません。",
   "easy MTB trails": "初級MTBトレイル",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravelと同じくオフロード地図で計画するため、どちらの尺度でも0か1の評価、またはまったく評価のないマウンテンバイクトレイルを通ることがあります。評価2以上の難しいトレイルは、迂回路があればどこでも避けます。それでも通る場合はルートがそう伝えます。交通ストレスはいつも通り考慮します。雨の後は土がぬかるんでいることがあります。",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "このルートは評価2以上のマウンテンバイクトレイルを{distance}通ります。迂回路は見つかりませんでした。",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "このルートは評価{level}以上のマウンテンバイクトレイルを{distance}通ります。迂回路は見つかりませんでした。",
   "Uses a harder MTB trail.": "難しいMTBトレイルを通ります。",
   "The off-road map isn't available, so this route keeps to the usual trails.": "オフロード地図が使えないため、このルートはいつものトレイルを通ります。",
   "Off-road map unavailable: usual trails.": "オフロード地図なし:いつものトレイル。",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "舗装路と砂利の道や小道。このライドタイプの計画どおり。",
   "paved only": "舗装路のみ",
   "surface": "路面",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "舗装路と砂利の道や小道。MTBトレイルは通りません。",
+  "MTB trails up to {level}": "MTBトレイル（{level}まで）",
 };

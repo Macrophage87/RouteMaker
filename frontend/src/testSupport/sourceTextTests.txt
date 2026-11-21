@@ -176,7 +176,6 @@ lib/terrainSection.test.ts
 lib/themeClock.test.ts
 lib/topoLines.test.ts
 lib/trailMiles.test.ts
-lib/trailsOff.test.ts
 lib/transit.test.ts
 lib/transitLegStress.test.ts
 lib/tripCheck.test.ts

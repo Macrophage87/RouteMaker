@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "สุดสัปดาห์ ถนนที่ปิดรถยนต์ในวันนั้น เช่น Beach Drive ใน Montgomery County และ Sligo Creek Parkway วางแผนเป็นทางที่ไม่มีรถ ตามกฎจักรยานไฟฟ้า ถนนเท่านั้น หรือการปั่นเป็นกลุ่ม จะนับเป็นทางในรายละเอียดเท่านั้น กลางคืนคือ 21:00 ถึง 07:00 ทุกวัน รวมสุดสัปดาห์ และนอกชั่วโมงเร่งด่วนสิ้นสุดเวลา 21:00 การข้ามถนนพลุกพล่านนับมากขึ้นในชั่วโมงเร่งด่วน และนับน้อยลงในสุดสัปดาห์และกลางคืนที่รถมักน้อยกว่า คำเตือนทางแยกแต่ละจุดบอกว่าเวลาเปลี่ยนมันเมื่อไร",
   "Bike": "จักรยาน",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "เลือกจักรยานแล้วแถบเลื่อนเนินจะย้ายไปตำแหน่งเริ่มของจักรยานนั้น",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "ถ้ามีทางอื่น เส้นทางจะไม่ใช้ทางที่ยากกว่านี้ และบอกเมื่อจำเป็นต้องใช้",
   " (above your hardest level)": " (เกินระดับยากสุดของคุณ)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "เส้นทางที่มีทางระดับนี้มาก่อน แล้วจึงง่ายหรือยากกว่าหนึ่งระดับ ทางที่ห่างกว่านั้นนับเหมือนทางอื่น ยากกว่าระดับยากสุดของคุณไม่ได้: เพิ่มระดับนั้นถ้าอยากได้ที่ยากกว่า",
   "Electric assist": "ไฟฟ้าช่วย",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "ไม่ใช้ขณะเปิดถนนเท่านั้น",
   "easy MTB trails": "เส้นทาง MTB ระดับง่าย",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "วางแผนบนแผนที่ออฟโรดแบบเดียวกับ Gravel จึงอาจใช้เส้นทางจักรยานเสือภูเขาระดับ 0 หรือ 1 ในมาตราใดก็ได้ หรือที่ไม่มีระดับเลย เส้นทางระดับ 2 หรือยากกว่าจะถูกเลี่ยงทุกที่ที่มีทางอื่น ถ้ายังต้องใช้ เส้นทางจะแจ้งให้ทราบ ความเครียดจากการจราจรยังคำนวณตามปกติ ดินอาจเป็นโคลนหลังฝนตก",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "เส้นทางนี้ใช้เส้นทางจักรยานเสือภูเขาระดับ 2 หรือยากกว่าเป็นระยะ {distance} ไม่พบทางอื่น",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "เส้นทางนี้ใช้เส้นทางจักรยานเสือภูเขาระดับ {level} หรือยากกว่าเป็นระยะ {distance} ไม่พบทางอื่น",
   "Uses a harder MTB trail.": "ใช้เส้นทาง MTB ที่ยากกว่า",
   "The off-road map isn't available, so this route keeps to the usual trails.": "แผนที่ออฟโรดใช้ไม่ได้ เส้นทางนี้จึงใช้ทางเดิมตามปกติ",
   "Off-road map unavailable: usual trails.": "ไม่มีแผนที่ออฟโรด: ทางตามปกติ",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "ถนนและทางลาดยางและกรวด ตามที่ประเภทการปั่นนี้วางแผน",
   "paved only": "ทางลาดยางเท่านั้น",
   "surface": "พื้นผิว",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "ถนนและทางลาดยางและกรวด ไม่ใช้เส้นทาง MTB",
+  "MTB trails up to {level}": "เส้นทาง MTB ถึง{level}",
 };

@@ -127,7 +127,10 @@ rides a harder one (no way round was found), or that the off-road router was not
 the route kept to the usual trails. It travels in the link (`easymtb=1`) and a saved route;
 `open_link` reads it back, and drops it on a ride type that does not offer it, as the app does.
 `paved` (the app's Surface "Paved only", and its "All paved" option) travels likewise as
-`paved=1`, on a bike of the rider's own but Road Bike (always paved) and Mountain Bike.
+`paved=1`, on a bike of the rider's own but Road Bike (always paved). `easy_mtb` is on every bike
+of the rider's own on the standard map, and `mtb_level` 2 to 4 beside it rides the trails up to
+that level on the mountain-bike map (`level=N`). On mountain-bike, `mtb_level` 0 is no
+mountain-bike trails (the app's Surface Gravel; with `paved`, Paved only).
 
 On Mountain Bike the summary's `mtb` lines (and each alternative's) say what the app's trail
 notes say: trail harder than the rider's hardest level with no way round, busy road, the

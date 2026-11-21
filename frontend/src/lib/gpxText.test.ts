@@ -88,7 +88,7 @@ test("an Easy MTB trails route carries it in the file, on the ride types that of
   const dials = { stress: 70, hills: 0, when: "weekend" as const, carrying: null, easy_mtb: true };
   assert.equal(exportOf({ ...ROUTE, preset: "trailmaxxing", dials }, []).dials?.easyMtb, true);
   assert.equal(exportOf({ ...ROUTE, preset: "default", dials: { ...dials, easy_mtb: false } }, []).dials?.easyMtb, undefined);
-  assert.equal(exportOf({ ...ROUTE, preset: "gravel", dials }, []).dials?.easyMtb, undefined);
+  assert.equal(exportOf({ ...ROUTE, preset: "ebike", dials }, []).dials?.easyMtb, undefined);
 });
 
 test("Fewer turns and a wait weight above the ride type's own go in the file, as the link carries them", () => {

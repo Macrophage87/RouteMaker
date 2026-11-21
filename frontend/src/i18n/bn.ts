@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "সপ্তাহান্তে সেদিন গাড়ির জন্য বন্ধ রাস্তা, যেমন Montgomery County-র Beach Drive আর Sligo Creek Parkway, যানবাহনমুক্ত পথ হিসেবে ধরা হয়। ই-বাইক নিয়মে, শুধু রাস্তায় বা দলবদ্ধ সফরে, এগুলো শুধু বিবরণে পথ হিসেবে গোনা হয়। রাত প্রতিদিন রাত ৯টা থেকে সকাল ৭টা, সপ্তাহান্তসহ, আর ভিড়ের বাইরের সময় রাত ৯টায় শেষ। ব্যস্ত রাস্তা পার হওয়া ভিড়ের সময় বেশি গোনা হয়, আর সপ্তাহান্তে ও রাতে, যখন যানজট সাধারণত কম, কম। প্রতিটি মোড়ের সতর্কতা বলে সময় কখন তাকে বদলেছে।",
   "Bike": "সাইকেল",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "সাইকেল বাছলে পাহাড় স্লাইডার সেই সাইকেলের শুরুর জায়গায় যায়।",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "অন্য পথ থাকলে পথ এর চেয়ে কঠিন ট্রেইল নেয় না, আর বাধ্য হলে জানায়।",
   " (above your hardest level)": " (আপনার সবচেয়ে কঠিন স্তরের ওপরে)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "এই স্তরের ট্রেইলসহ পথ আগে আসে, তারপর এক ধাপ সহজ বা কঠিন; তার বাইরের ট্রেইল অন্যদের মতো গোনা হয়। আপনার সবচেয়ে কঠিন স্তরের চেয়ে কঠিন হতে পারে না: কঠিন পছন্দ করতে সেটি বাড়ান।",
   "Electric assist": "বিদ্যুৎ সহায়তা",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "শুধু রাস্তা চালু থাকলে এটি ব্যবহার হয় না।",
   "easy MTB trails": "সহজ MTB ট্রেইল",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel-এর মতো অফ-রোড মানচিত্রে পরিকল্পনা করে, তাই যেকোনো স্কেলে 0 বা 1 মানের, বা একেবারে মানহীন মাউন্টেন-বাইক ট্রেইলে চলা যেতে পারে। 2 বা তার চেয়ে কঠিন ট্রেইল যেখানে অন্য পথ আছে সেখানে বাদ দেওয়া হয়; তবুও একটি ব্যবহার হলে রুট তা জানায়। যানজটের চাপ বরাবরের মতোই বিবেচনা করা হয়। বৃষ্টির পরে মাটি কাদাময় হতে পারে।",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "এই রুট 2 বা তার চেয়ে কঠিন মানের মাউন্টেন-বাইক ট্রেইলের {distance} ব্যবহার করে: অন্য কোনো পথ পাওয়া যায়নি।",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "এই রুট {level} বা তার চেয়ে কঠিন মানের মাউন্টেন-বাইক ট্রেইলের {distance} ব্যবহার করে: অন্য কোনো পথ পাওয়া যায়নি।",
   "Uses a harder MTB trail.": "একটি কঠিন MTB ট্রেইল ব্যবহার করে।",
   "The off-road map isn't available, so this route keeps to the usual trails.": "অফ-রোড মানচিত্র পাওয়া যাচ্ছে না, তাই এই রুট সাধারণ ট্রেইলেই থাকে।",
   "Off-road map unavailable: usual trails.": "অফ-রোড মানচিত্র নেই: সাধারণ ট্রেইল।",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "পাকা ও নুড়ির রাস্তা ও পথ, এই রাইডের ধরন যেভাবে পরিকল্পনা করে।",
   "paved only": "শুধু পাকা রাস্তা",
   "surface": "পৃষ্ঠ",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "পাকা ও নুড়ির রাস্তা ও পথ, মাউন্টেন বাইক ট্রেল ছাড়া।",
+  "MTB trails up to {level}": "MTB ট্রেল {level} পর্যন্ত",
 };

@@ -94,6 +94,7 @@ from . import (
     bikeshare,
     climbprofile,
     climbs_near,
+    easy_mtb,
     follow,
     gbfs,
     geocode,
@@ -420,7 +421,8 @@ class RouteIn(Schema):
     easy_mtb: StrictBool = Field(
         default=False,
         description=(
-            'Default and Trailmaxxing only: the "Easy MTB trails" switch (core.easy_mtb). Plan'
+            "A bike of the rider's own on the standard graph (presets.EASY_MTB_PRESETS): the"
+            ' "Easy MTB trails" choice (core.easy_mtb), up to `mtb_level` where given. Plan'
             " on the off-road graph as Gravel does, so mountain-bike trails rated 0 or 1 on"
             " `mtb:scale` or `mtb:scale:imba`, and unrated ones (grass and dirt), may be ridden,"
             " and steer off the trails rated 2 or harder; where the route still rides one,"
@@ -604,13 +606,18 @@ class RouteIn(Schema):
     )
     mtb_level: StrictInt | None = Field(
         default=None,
-        ge=1,
+        ge=0,
         le=4,
         description=(
-            "Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level the"
+            "Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level the"
             " rider takes, 1 (green, IMBA 1) to 4 (red, IMBA 4 and up); an unrated"
             " mountain-bike trail counts as 2. A route on a harder trail is answered only where"
             " none can be found without one, with `mtb.over_level_m` saying how much. Absent: 2."
+            " 0 is no mountain-bike trails at all (the Surface setting's Gravel or Paved only):"
+            " planned as after Ride's End mountain biking, on the standard graph."
+            " With `easy_mtb` on another ride type that takes it: the hardest level, 1 to 4"
+            " (absent: 1, the easy trails); 2 to 4 plan on the Mountain Bike graph, and"
+            " `easy_mtb.harder_m` says the metres on trails harder than it."
         ),
     )
     mtb_preferred: StrictInt | None = Field(
@@ -885,12 +892,18 @@ class RouteIn(Schema):
                 "Mass Ride does not look for climbs: a field that slows below balance speed on a"
                 " climb walks, so the hills slider stops at the fastest time"
             )
-        if self.mtb_level is not None and self.preset != presets.MOUNTAIN_BIKE:
-            raise ValueError("mtb_level applies to the Mountain Bike ride type only")
+        if (
+            self.mtb_level is not None
+            and self.preset != presets.MOUNTAIN_BIKE
+            and not (self.easy_mtb and self.preset in presets.EASY_MTB_PRESETS)
+        ):
+            raise ValueError("mtb_level applies to Mountain Bike, or with easy_mtb")
+        if self.mtb_level == 0 and self.preset != presets.MOUNTAIN_BIKE:
+            raise ValueError("mtb_level 0 applies to the Mountain Bike ride type only")
         if self.mtb_preferred is not None and self.preset != presets.MOUNTAIN_BIKE:
             raise ValueError("mtb_preferred applies to the Mountain Bike ride type only")
         if self.easy_mtb and self.preset not in presets.EASY_MTB_PRESETS:
-            raise ValueError("easy_mtb applies to the Default and Trailmaxxing ride types only")
+            raise ValueError("easy_mtb applies to a bike of the rider's own on the standard graph")
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
         if self.carrying is not None and self.carrying not in preset.carrying:
@@ -2669,11 +2682,13 @@ class BarrierRoundOut(Schema):
 class EasyMtbOut(Schema):
     """An Easy MTB trails plan's reading of its route (`core.easy_mtb`)."""
 
-    max_level: int = Field(description="The hardest trail level counted easy (1).")
+    max_level: int = Field(
+        description="The hardest trail level held: 1, the easy trails, or the rider's 2 to 4."
+    )
     rounds: int = Field(default=0, description="Rounds of excluding harder trails.")
     harder_m: float | None = Field(
         default=None,
-        description="Metres on mountain-bike trails rated 2 or harder; 0 when held off.",
+        description="Metres on mountain-bike trails harder than `max_level`; 0 when held off.",
     )
     limited: Literal["time", "untraced", "no_way_round", "no_offroad_graph"] | None = Field(
         default=None,
@@ -6221,8 +6236,9 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         loop=body.loop,
         out_and_back=body.out_and_back,
         debug_junctions=body.debug_junctions,
-        mtb_level=body.mtb_level,
-        mtb_preferred=body.mtb_preferred,
+        # Mountain Bike's level 0 (no trails, the Surface setting) is planned as `mtb_done`.
+        mtb_level=None if _no_mtb_trails(body) else body.mtb_level,
+        mtb_preferred=None if _no_mtb_trails(body) else body.mtb_preferred,
         ride_size=body.ride_size if body.preset == "mass-ride" else None,
         vias=tuple(body.via_points),
         follow=_follow_line(body),
@@ -6234,8 +6250,22 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         dirt_ridden=body.ride_replan and body.dirt_ridden,
         ahead_only=body.ahead_only,
         dirt_closed=body.ride_replan and body.dirt_closed,
-        mtb_done=body.ride_replan and body.mtb_done,
+        mtb_done=(body.ride_replan and body.mtb_done) or _no_mtb_trails(body),
     )
+
+
+def _no_mtb_trails(body: RouteIn) -> bool:
+    """Mountain Bike at level 0 (the Surface setting's Gravel or Paved only, the owner,
+    2026-11-21: "People here can and should be able to adjust to anything"): no mountain-bike
+    trail, planned as Ride's "End mountain biking" plans (`Dials.mtb_done`)."""
+    return body.preset == presets.MOUNTAIN_BIKE and body.mtb_level == 0
+
+
+def _trail_level(body: RouteIn) -> int:
+    """`routing._easy_asked` from the request alone, for the answer cache's graph."""
+    if not body.easy_mtb or body.preset not in presets.EASY_MTB_PRESETS or body.trails_off:
+        return 0
+    return easy_mtb.max_level_of(body.mtb_level)
 
 
 def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
@@ -6305,13 +6335,13 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         )
     if key is not None:
         preset = presets.PRESETS[body.preset]
-        mtb_done = bool(body.ride_replan and body.mtb_done)
+        mtb_done = bool(body.ride_replan and body.mtb_done) or _no_mtb_trails(body)
         own_variant = presets.variant_for_ride(
             body.preset,
             when,
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
-            bool(body.easy_mtb),
+            _trail_level(body),
             mtb_done,
         )
         while own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
@@ -6326,7 +6356,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             when,
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
-            bool(body.easy_mtb),
+            _trail_level(body),
             mtb_done,
         )
         if answered.get("variant") == "weekend" and presets.weekend_too(*ride_dials):

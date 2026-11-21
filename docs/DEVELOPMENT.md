@@ -5117,16 +5117,28 @@ choice is not offered, the Surface (i) says why, and the ride takes the no-trail
 
 ### Surface (the owner, 2026-11-21)
 
-The owner: "a surface setting: paved only, gravel, easy MTB, and then MTB2-4 as max." One
-picker in Ride settings, Plan and Go alike (`frontend/src/lib/surface.ts`, `dialsPanel.ts`
-`surfaceView`, `DialsPanel.tsx`), made of dials that already plan: **Paved only** is the API's
-`paved` (the "All paved" option's setting), **Gravel** is the ride type as it plans, and **Easy
-MTB trails** is `easy_mtb` (above). Paved only and Easy MTB are never both; `fitDials` keeps
-Paved only where the ride type takes it (`offersPaved`: a bike of the rider's own, but Road
-Bike, always paved, and Mountain Bike, whose surface is its Hardest trail level, 1 to 4). It
-travels as `paved=1` in a plan link and a GPX dials comment, `paved` in a saved route's dials,
-through a change of ride type and Back to this ride type's settings, and in the MCP's links
-(`PAVED_PRESETS`). Reach does not take it.
+The owner: "a surface setting: paved only, gravel, easy MTB, and then MTB2-4 as max", then
+"People here can and should be able to adjust to anything." One picker in Ride settings, Plan
+and Go alike (`frontend/src/lib/surface.ts`, `dialsPanel.ts` `surfaceView`, `DialsPanel.tsx`),
+on every bike of the rider's own but Road Bike (always paved), made of dials the API takes:
+
+| Surface | Mountain Bike | A ride type in `EASY_MTB_PRESETS` |
+| --- | --- | --- |
+| Paved only | `paved`, `mtb_level` 0 | `paved` |
+| Gravel | `mtb_level` 0 | the ride type as it plans |
+| Easy MTB trails | `mtb_level` 1 | `easy_mtb` |
+| MTB trails up to level 2-4 | `mtb_level` 2-4 (2 the default) | `easy_mtb`, `mtb_level` 2-4 |
+
+E-bike and Mass Ride (graphs of their own) get Paved only and Gravel. Mountain Bike's level 0
+plans as after Ride's End mountain biking (`api._no_mtb_trails` sets `Dials.mtb_done`: the
+standard graph, Default's `use_roads`), with no preferred level. On the other ride types a level
+of 2 to 4 rides the Mountain Bike graph, where every level is open, with the ride type's own
+costing, and `core.easy_mtb.settle` holds it to that level (`max_level`) as it holds Easy MTB
+trails to 1; `routing._easy_asked` gives the level, which `presets.variant_for_ride` takes as
+its `easy_mtb`. Keep to roads wins over every trail choice. Paved only and the trails are never
+both. It travels as `paved=1` and `level=N` (0 included) in a plan link and a GPX dials comment,
+in a saved route's dials, through a change of ride type where the new one takes it, Back to this
+ride type's settings, and the MCP's links and `revise_route`. Reach takes none of it.
 
 With it on, `presets.variant_for_ride(..., easy_mtb=True)` gives the off-road graph
 (`Variant.OFFROAD`), as Gravel's, at the weekend too, with the ride type's own costing, so the

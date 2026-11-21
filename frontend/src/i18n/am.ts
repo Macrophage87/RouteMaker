@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "ቅዳሜና እሁድ፣ በእነዚያ ቀናት ለመኪና የተዘጉ መንገዶች፣ እንደ በMontgomery County ያለው Beach Drive እና Sligo Creek Parkway፣ ከመኪና ነጻ መንገድ ተብለው ይቆጠራሉ። በኢ-ብስክሌት ደንቦች፣ በመንገዶች ብቻ ወይም በቡድን ጉዞ፣ በዝርዝሩ ውስጥ ብቻ እንደ መንገድ ይቆጠራሉ። ሌሊት በየቀኑ ከ21:00 እስከ 7:00 ነው፣ ቅዳሜና እሁድን ጨምሮ፣ ከመጨናነቅ ውጭም በ21:00 ያልቃል። የተጨናነቀ መንገድ መሻገር በመጨናነቅ ሰዓት የበለጠ ይቆጠራል፣ ትራፊክ በአብዛኛው ጸጥ በሚልበት ቅዳሜና እሁድ እና ሌሊት ደግሞ ያነሰ። እያንዳንዱ የመስቀለኛ መንገድ ማስጠንቀቂያ ሰዓቱ መቼ እንደሚቀይረው ይናገራል።",
   "Bike": "ብስክሌት",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "ብስክሌት መምረጥ የኮረብታ ተንሸራታቹን ወደዚያ ብስክሌት መነሻ ቦታ ያንቀሳቅሳል።",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "ሌላ መንገድ ካለ መንገዱ ከዚህ የከበዱ ዱካዎችን አይጠቀምም፣ ሲገደድም ይነግርዎታል።",
   " (above your hardest level)": " (ከከባዱ ደረጃዎ በላይ)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "በዚህ ደረጃ ዱካ ያላቸው መንገዶች መጀመሪያ ይመጣሉ፣ ከዚያ በአንድ ደረጃ ቀላል ወይም ከባድ፤ ከዚያ ያለፉ ዱካዎች እንደሌሎቹ ይቆጠራሉ። ከከባዱ ደረጃዎ ሊከብድ አይችልም፦ ከባዱን ለመምረጥ እሱን ከፍ ያድርጉት።",
   "Electric assist": "የኤሌክትሪክ እገዛ",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "መንገዶች ብቻ ሲበራ ጥቅም ላይ አይውልም።",
   "easy MTB trails": "ቀላል የMTB ዱካዎች",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "እንደ Gravel ከመንገድ ውጭ ባለው ካርታ ላይ ያቅዳል፤ ስለዚህ በማንኛውም ልኬት 0 ወይም 1 የተሰጣቸው ወይም ምንም ደረጃ ያልተሰጣቸው የተራራ ብስክሌት ዱካዎች ሊያገለግሉ ይችላሉ። 2 ወይም ከዚያ በላይ የከበዱ ዱካዎች ሌላ መንገድ ባለበት ሁሉ ይቀራሉ፤ አንዱ አሁንም ጥቅም ላይ ከዋለ መስመሩ ይናገራል። የትራፊክ ጫና እንደተለመደው ይመዘናል። ከዝናብ በኋላ አፈሩ ጭቃ ሊሆን ይችላል።",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "ይህ መስመር 2 ወይም ከዚያ በላይ የከበደ የተራራ ብስክሌት ዱካ {distance} ይጠቀማል፤ ሌላ መንገድ አልተገኘም።",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "ይህ መስመር {level} ወይም ከዚያ በላይ የከበደ የተራራ ብስክሌት ዱካ {distance} ይጠቀማል፤ ሌላ መንገድ አልተገኘም።",
   "Uses a harder MTB trail.": "የከበደ የMTB ዱካ ይጠቀማል።",
   "The off-road map isn't available, so this route keeps to the usual trails.": "ከመንገድ ውጭ ያለው ካርታ አይገኝም፤ ስለዚህ ይህ መስመር በተለመዱት ዱካዎች ላይ ይቆያል።",
   "Off-road map unavailable: usual trails.": "ከመንገድ ውጭ ካርታ የለም፦ የተለመዱ ዱካዎች።",
@@ -2274,4 +2273,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "የተነጠፉና የጠጠር መንገዶችና ዱካዎች፣ ይህ የጉዞ አይነት እንደሚያቅዳቸው።",
   "paved only": "የተነጠፈ ብቻ",
   "surface": "የመንገድ ገጽ",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "የተነጠፉና የጠጠር መንገዶችና ዱካዎች፣ ያለ ተራራ ብስክሌት ዱካዎች።",
+  "MTB trails up to {level}": "የMTB ዱካዎች እስከ {level}",
 };

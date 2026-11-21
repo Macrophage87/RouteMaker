@@ -330,8 +330,13 @@ export function trailsOffLocked(preset: PresetId): boolean {
   return preset === "mass-ride";
 }
 
-/** The ride types that offer "Easy MTB trails" (core/presets.py EASY_MTB_PRESETS). */
-export const EASY_MTB_PRESETS: readonly PresetId[] = ["default", "trailmaxxing"];
+/**
+ * The ride types that offer "Easy MTB trails", and MTB trails up to level 2, 3 or 4 beside it (core/presets.py
+ * EASY_MTB_PRESETS; the owner, 2026-11-21: "People here can and should be able to adjust to anything"): every bike of
+ * the rider's own on the standard graph. Not E-bike (its own graph), Mass Ride (always roads), Road Bike (its paved
+ * graph) or Mountain Bike (its own levels).
+ */
+export const EASY_MTB_PRESETS: readonly PresetId[] = ["default", "trailmaxxing", "group-ride", "mountain-goat", "gravel", "fast", "cargo", "novice", "tandem"];
 
 /** Whether the ride type offers "Easy MTB trails" (the owner, 2026-11-08: Trailmaxxing, "And default"). */
 export function offersEasyMtb(preset: PresetId): boolean {
@@ -365,12 +370,21 @@ export function ownWaitWeight(preset: PresetId): number {
   return WAIT_WEIGHTS[preset] ?? 1;
 }
 
-/**
- * Whether the ride type takes "Paved only" (the API's `paved`): a bike of the rider's own, except Road Bike, which is
- * always paved, and Mountain Bike, whose surface is its hardest trail level.
- */
+/** Whether the ride type takes "Paved only" (the API's `paved`): a bike of the rider's own, except Road Bike, always paved. */
 export function offersPaved(preset: PresetId): boolean {
-  return offersStopsAndTurns(preset) && preset !== "road-bike" && preset !== "mountain-bike";
+  return offersStopsAndTurns(preset) && preset !== "road-bike";
+}
+
+/**
+ * The hardest trail level a ride keeps, as the API takes `mtb_level`, or undefined for the default (left out of the
+ * link): on Mountain Bike 0 (no mountain-bike trails: the Surface setting's Gravel or Paved only), 1, 3 or 4 (2 is its
+ * default); on a ride type with Easy MTB trails on, 2 to 4 (1, the easy trails, is its default).
+ */
+export function fitTrailLevel(preset: PresetId, dials: Pick<Dials, "mtbLevel" | "easyMtb" | "paved">): number | undefined {
+  const level = dials.mtbLevel;
+  if (typeof level !== "number" || !Number.isInteger(level)) return undefined;
+  if (preset === "mountain-bike") return level >= 0 && level <= 4 && level !== DEFAULT_MTB_LEVEL ? level : undefined;
+  return offersEasyMtb(preset) && dials.easyMtb === true && dials.paved !== true && level >= 2 && level <= 4 ? level : undefined;
 }
 
 /** Whether the ride type takes Waiting at lights and Fewer turns: a bike of the rider's own, not on foot, a share bike or transit. */
@@ -571,12 +585,11 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.outAndBack === true && !runs(preset) ? { outAndBack: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
-    // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
-    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
-      ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
-      : {}),
-    // The preferred level likewise, held to the hardest; left out where it is the default (min(2, hardest)).
-    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbPreferred) !== undefined && mtbPreferredOf(dials) !== defaultMtbPreferred(mtbLevelOf(dials))
+    // The hardest trail level (the Surface setting), only when it is not the ride type's default (the link stays short).
+    ...(fitTrailLevel(preset, dials) !== undefined ? { mtbLevel: fitTrailLevel(preset, dials) } : {}),
+    // Mountain Bike's preferred level likewise, held to the hardest; left out where it is the default (min(2, hardest)),
+    // and with no trails at all (level 0).
+    ...(preset === "mountain-bike" && dials.mtbLevel !== 0 && fitMtbLevel(dials.mtbPreferred) !== undefined && mtbPreferredOf(dials) !== defaultMtbPreferred(mtbLevelOf(dials))
       ? { mtbPreferred: mtbPreferredOf(dials) }
       : {}),
     ...(offersRideSize(preset) && fitRideSize(dials.rideSize) !== undefined && fitRideSize(dials.rideSize) !== RIDE_SIZE_DEFAULT
@@ -614,12 +627,13 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // Plan's start time (lib/startTime.ts): Washington's wall clock, which the API reads as such.
   if (dials.startAt) fields.depart_at = dials.startAt;
   if (dials.outAndBack) fields.out_and_back = true;
-  // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
-  const level = fitMtbLevel(dials.mtbLevel);
+  // The hardest trail level (fitDials keeps it where the ride type takes it): Mountain Bike's 0 to 4, absent 2; with
+  // Easy MTB trails, 2 to 4, absent 1.
+  const level = typeof dials.mtbLevel === "number" && Number.isInteger(dials.mtbLevel) && dials.mtbLevel >= 0 && dials.mtbLevel <= 4 ? dials.mtbLevel : undefined;
   if (level !== undefined) fields.mtb_level = level;
-  // The preferred level (fitDials holds it to the hardest); absent is min(2, the hardest), as the API's.
+  // The preferred level (fitDials holds it to the hardest); absent is min(2, the hardest), as the API's. None with no trails.
   const preferred = fitMtbLevel(dials.mtbPreferred);
-  if (preferred !== undefined) fields.mtb_preferred = Math.min(preferred, level ?? DEFAULT_MTB_LEVEL);
+  if (preferred !== undefined && level !== 0) fields.mtb_preferred = Math.min(preferred, level ?? DEFAULT_MTB_LEVEL);
   if (dials.bike) fields.bike = dials.bike;
   if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
   if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;
