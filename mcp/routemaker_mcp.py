@@ -1482,6 +1482,7 @@ def page_dials(dials: dict, sent: dict) -> dict:
     }
     if dials.get("easy_mtb"):
         kept["easyMtb"] = True
+    # The page's fitDials keeps it on `PAVED_PRESETS` alone.
     if dials.get("paved") or sent.get("paved"):
         kept["paved"] = True
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
@@ -7421,12 +7422,12 @@ class Server:
             for key, what in (
                 ("blocked_lines", "the roads avoided"),
                 ("follow", "the line followed"),
-                # The app has no control for this (its named option sets it for a ride). Fewer
-                # turns and the wait weight ride in the link since Plan's Ride settings took them
-                # (2026-11-20).
+                # Fewer turns and the wait weight ride in the link since Plan's Ride settings
+                # took them (2026-11-20), and "All paved" as Surface's Paved only (2026-11-21),
+                # except on the ride types whose link does not keep it (`PAVED_PRESETS`).
                 ("paved", "All paved"),
             )
-            if plan.sent.get(key)
+            if plan.sent.get(key) and not (key == "paved" and plan.preset in PAVED_PRESETS)
         ]
         # The link carries half steps (Plan's sliders): a weight between them opens rounded.
         weight = plan.sent.get("wait_weight")

@@ -5102,9 +5102,9 @@ The owner: "allow trailmaxxing to use MTB trails too, some are definitely fine f
 control, "yes"; the design, "Steer on Gravel's graph" (no new graph and no new router); which
 trails, "yes 0 1 and unknown are counted." and "Unknown is typically grass and dirt."
 
-One switch, "Easy MTB trails", off by default, on the Default and Trailmaxxing ride types in
-Plan (`frontend/src/lib/dials.ts` `offersEasyMtb`, `EASY_MTB_PRESETS`; `dialsPanel.ts`
-`EASY_MTB_*`; `DialsPanel.tsx`). It travels as the other dials do: `easymtb=1` in a plan link
+"Easy MTB trails", off by default, on the Default and Trailmaxxing ride types
+(`frontend/src/lib/dials.ts` `offersEasyMtb`, `EASY_MTB_PRESETS`; `dialsPanel.ts`
+`EASY_MTB_*`). Since 2026-11-21 it is the third choice of Ride settings' Surface picker, below. It travels as the other dials do: `easymtb=1` in a plan link
 (`planHash.ts`), `easyMtb` in a saved route's dials, `easy_mtb` on `POST /api/route`
 (`core.api.RouteIn`, a strict boolean, refused on any other ride type), on Best order and the
 nearest-places search, on the MCP's `plan_route` and `revise_route` (mcp/README.md), and in a
@@ -5113,7 +5113,20 @@ on the ride types that offer it, so the file reopens on the MTB trails it rode).
 Reach does not take it (`lib/reach.ts`). Changing between Default and Trailmaxxing keeps it
 (`rideTypeDialog.choose`, and the MCP's `revise_route`, which also keeps Keep to roads on any
 ride type); `fitDials` drops it elsewhere. Keep to roads wins: with trails off the
-switch shows off, says why, and the ride takes the no-trail graph.
+choice is not offered, the Surface (i) says why, and the ride takes the no-trail graph.
+
+### Surface (the owner, 2026-11-21)
+
+The owner: "a surface setting: paved only, gravel, easy MTB, and then MTB2-4 as max." One
+picker in Ride settings, Plan and Go alike (`frontend/src/lib/surface.ts`, `dialsPanel.ts`
+`surfaceView`, `DialsPanel.tsx`), made of dials that already plan: **Paved only** is the API's
+`paved` (the "All paved" option's setting), **Gravel** is the ride type as it plans, and **Easy
+MTB trails** is `easy_mtb` (above). Paved only and Easy MTB are never both; `fitDials` keeps
+Paved only where the ride type takes it (`offersPaved`: a bike of the rider's own, but Road
+Bike, always paved, and Mountain Bike, whose surface is its Hardest trail level, 1 to 4). It
+travels as `paved=1` in a plan link and a GPX dials comment, `paved` in a saved route's dials,
+through a change of ride type and Back to this ride type's settings, and in the MCP's links
+(`PAVED_PRESETS`). Reach does not take it.
 
 With it on, `presets.variant_for_ride(..., easy_mtb=True)` gives the off-road graph
 (`Variant.OFFROAD`), as Gravel's, at the weekend too, with the ride type's own costing, so the

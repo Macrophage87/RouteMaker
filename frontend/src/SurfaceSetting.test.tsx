@@ -11,6 +11,7 @@ import { decodePlan, encodePlan } from "./lib/planHash.ts";
 import { choose } from "./lib/rideTypeDialog.ts";
 import { rideSummary } from "./lib/rideSummary.ts";
 import { dialsComment } from "./lib/gpx.ts";
+import { REACH_DEFAULT, reachBody } from "./lib/reach.ts";
 import { PRESETS, type PresetId } from "./lib/presets.ts";
 
 async function section(preset: PresetId, popout: boolean, dials: Dials = startDials(preset)) {
@@ -25,9 +26,9 @@ async function section(preset: PresetId, popout: boolean, dials: Dials = startDi
 
 /** The Surface picker, by the name in its label, or undefined. */
 function picker(): HTMLSelectElement | undefined {
-  return [...document.querySelectorAll<HTMLSelectElement>("label.select-setting select")].findLast(
-    (el) => el.closest("label")?.querySelector(".setting-name")?.textContent === "Surface",
-  );
+  return [...document.querySelectorAll<HTMLSelectElement>("label.select-setting select")]
+    .filter((el) => el.closest("label")?.querySelector(".setting-name")?.textContent === "Surface")
+    .at(-1);
 }
 
 function choices(select: HTMLSelectElement): string[] {
@@ -78,6 +79,8 @@ test("choosing Paved only plans again with it, and it travels in the link, the r
   assert.equal(fitDials("default", decodePlan(hash).dials).paved, true);
   assert.match(dialsComment(dials), /paved=1/);
   assert.match(rideSummary("default", dials), /paved only/);
+  // Reach's rings take no surface (the API's ReachIn refuses fields it does not know).
+  assert.equal("paved" in reachBody([[-77.03, 38.9]], "default", fitDials("default", dials), REACH_DEFAULT), false);
   // Shown back as chosen.
   await section("default", true, dials);
   assert.equal(picker()!.value, "paved");
