@@ -6291,7 +6291,7 @@ Tests: `lib/sidebar.test.ts`.
   another view shows.
 - **The focus** (`focusOnViewChange`, tested over every transition): a sheet takes it
   to its heading (the legend's, for Legend); Back or Escape returns it to the bar
-  button that opened the sheet; the Plan button takes it to the planner's heading, the
+  button that opened the sheet; the Planner button takes it to the planner's heading, the
   `h1` (cause `planButton`, `{ kind: "planner" }`; on the planner already, App focuses the
   heading and scrolls the panel to the top itself); an error that brings the planner back takes it to the
   error, the long-ride question to "Plan it". Escape is not the sheet's inside a
@@ -6405,8 +6405,9 @@ Tests: `lib/sidebar.test.ts`.
   Atkinson file through `lib/mapGlyphs.ts` `glyphRequestUrl`, and leaves other ranges to the
   base map. A kept ride's prefetch skips the bundled faces. The licence is the second
   `BUNDLED_FONTS` entry, in `licenses.txt`.
-- **The Plan button (OWNER-DECISIONS 392, 393).** The bar is Plan, Map layers, Legend, GPX,
-  Settings (`BAR_ITEMS`; Plan is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
+- **The Planner button (OWNER-DECISIONS 392, 393).** The bar is Planner, Layers, Reports, Save & load,
+  Settings (`BAR_ITEMS`; named "Planner" since the intuitiveness review of 2026-11-21, so it is not a second "Plan"
+  beside the Go/Plan switch; it is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
   `aria-current` while the planner shows and no other button then). It returns from any
   sheet; on the planner it focuses the heading and scrolls to the top. The focus differs on
   purpose (the reading of 392): Plan goes to the planner as a whole, so to its `h1`; Back and

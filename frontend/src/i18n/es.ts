@@ -2998,4 +2998,6 @@ export const ES: Readonly<Record<string, string>> = {
   "busy junction": "cruce con mucho tráfico",
   "The figures are for the route before your change.": "Las cifras son de la ruta antes de su cambio.",
   "Sign in to sync": "Inicie sesión para sincronizar",
+  "Planner": "Planificador",
+  "Press Enter in Add a stop, or Route on the map, to plan.": "Pulse Intro en Agregar una parada, o Ruta en el mapa, para planificar.",
 };

@@ -12419,3 +12419,27 @@ dialog.plan-ride-settings .dial-ends {
   flex: none;
   margin: 4px 0 0;
 }
+
+/* Accessibility mode: one map scale, in the rider's units (intuitiveness review, 2026-11-21: two enlarged scales and
+   Map tools hid the End pin). The route is framed clear of the map's right-hand controls too (App framePadding). */
+:root.access-mode .maplibregl-ctrl-scale.scale-second {
+  display: none;
+}
+
+/* The map's zoom buttons at 44 px on a touch screen, and its compass only while the map is turned (intuitiveness review,
+   2026-11-21: three 29 px buttons, touching, on a phone meant for a handlebar mount). */
+.maplibregl-map:not(.map-turned) .maplibregl-ctrl-compass {
+  display: none;
+}
+@media (pointer: coarse) {
+  .maplibregl-ctrl-group button.maplibregl-ctrl-zoom-in,
+  .maplibregl-ctrl-group button.maplibregl-ctrl-zoom-out,
+  .maplibregl-ctrl-group button.maplibregl-ctrl-compass {
+    width: 44px;
+    height: 44px;
+  }
+}
+/* A ride has its own compass (.ride-compass): the map's stays away there. */
+.app.riding .maplibregl-ctrl-compass {
+  display: none;
+}

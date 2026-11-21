@@ -104,6 +104,8 @@ export interface PointsSectionProps {
   tipsId: string;
   /** Opens the keyboard shortcuts' sheet (Plan only, on a computer); undefined: no entry in Tips. */
   onKeys?: () => void;
+  /** Enter in the empty Add a stop box: Route, as the map bar's (Plan's alone; undefined in Go). */
+  onEnterRoute?: () => void;
 }
 
 /**
@@ -124,7 +126,7 @@ function HintLines({ lines }: { lines: readonly string[] }) {
 }
 
 export function PointsSection(props: PointsSectionProps) {
-  const { bikeLoop, pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId, onKeys } = props;
+  const { bikeLoop, pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId, onKeys, onEnterRoute } = props;
   // A finger as the main pointer: the Info's tips say tap and press and hold, not click (P8).
   const touch = looksLikePhone();
   return (
@@ -259,6 +261,7 @@ export function PointsSection(props: PointsSectionProps) {
         bestOrder={bestOrder}
         orderFocused={orderFocused}
         ordering={ordering}
+        onEnterRoute={onEnterRoute}
       />
       {/* What to do after the start, said where it plans and not shown (as the empty plan's line): the Points list and
           the map show it. In accessibility mode it shows, with its Map tools way in. */}
@@ -306,6 +309,7 @@ type PointBoxesProps = Pick<
   | "bestOrder"
   | "orderFocused"
   | "ordering"
+  | "onEnterRoute"
 > & {
   /** What "Use my location" adds under its button once a point is the rider's location (approximate), or "". */
   locateNote: string;
@@ -317,7 +321,7 @@ type PointBoxesProps = Pick<
  * Start / Destination / Stop choice. It keeps which point a Change opened a box for; App keeps the plan.
  */
 function PointBoxes(props: PointBoxesProps) {
-  const { preset, pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, locateMe, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
+  const { preset, pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, locateMe, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering, onEnterRoute } = props;
   // Each stop's grip (lib/pointMover.ts): drag, the arrows, or a press for Up and Down. Only the stops move, as with
   // Best order: the start and the end stay, and a via point goes with the stop it leads to (App.tsx reorderPoint).
   const slots = namePoints(points, VIA_MARKS.isVia, loopVias).flatMap((n, i) => (n.role === "stop" ? [i] : []));
@@ -369,6 +373,7 @@ function PointBoxes(props: PointBoxesProps) {
       origin={() => points[0]}
       current={variant === "from" && changing === "from" ? placeName(0) : variant === "to" && changing === "to" ? placeName(points.length - 1) : undefined}
       inputRef={boxRefs[variant]}
+      onEmptyEnter={variant === "add" ? onEnterRoute : undefined}
       onDismiss={
         variant === changing
           ? () => {
