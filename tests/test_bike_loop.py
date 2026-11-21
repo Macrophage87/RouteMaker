@@ -47,19 +47,27 @@ class FakeAsk:
         if bearing in self.refuse:
             raise routing.RouterRefused(400, 442, "no way")
         factor = self.by_bearing.get(bearing, self.factor)
+        # As Valhalla: a leg ends only at a "break" or "break_through" point (a missing type is
+        # a break); a "through" or "via" point is ridden inside its leg.
+        types = [p.get("type", "break") for p in payload["locations"]]
         legs = []
         total = 0.0
-        for a, b in zip(points, points[1:], strict=False):
-            metres = straight(a, b) * factor
+        run: list[tuple[float, float]] = [points[0]]
+        metres = 0.0
+        for i, (a, b) in enumerate(zip(points, points[1:], strict=False), start=1):
+            metres += straight(a, b) * factor
+            run += [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), b]
+            if types[i] not in ("break", "break_through"):
+                continue
             total += metres
-            middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
             legs.append(
                 {
-                    "shape": dedodge.encode_polyline6([a, middle, b]),
+                    "shape": dedodge.encode_polyline6(run),
                     "summary": {"length": metres / 1000.0},
                     "elevation": [0.0, self.climb_m / 3.0],
                 }
             )
+            run, metres = [b], 0.0
         return {"trip": {"legs": legs, "summary": {"length": total / 1000.0}}}, "standard"
 
 
@@ -231,7 +239,7 @@ class TestEndpoint:
             assert payload["costing"] == "bicycle"
             assert payload["costing_options"] == costing
 
-    def test_the_corners_go_through_and_the_start_breaks(self, client, monkeypatch) -> None:
+    def test_the_corners_split_legs_and_the_start_breaks(self, client, monkeypatch) -> None:
         seen: list[dict] = []
         ask = FakeAsk(factor=1.3)
 
@@ -246,7 +254,9 @@ class TestEndpoint:
             client, {"start": list(START), "target_distance_m": 10 * MILE, "preset": "gravel"}
         )
         types = [loc["type"] for loc in seen[0]["locations"]]
-        assert types == ["break", "through", "through", "break"]
+        # The corners must split the trip into its three legs (a "through" point makes none,
+        # and every triangle came back as one leg: no loop from anywhere, beta 2026-11-21).
+        assert types == ["break", "break_through", "break_through", "break"]
         assert seen[0]["costing"] == "bicycle"
 
     @pytest.mark.parametrize("preset", ["run", "mass-ride", "bikeshare", "walk"])
