@@ -371,7 +371,7 @@ const RideGroup = later(() => import("./RideGroup.tsx").then((m) => m.RideGroup)
 const RoamMode = later(() => import("./RoamMode.tsx").then((m) => m.RoamMode));
 import { RideGuard } from "./RideGuard.tsx";
 import { watchOpenLinks } from "./lib/rideLinks.ts";
-import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
+import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
@@ -3174,6 +3174,17 @@ export function App() {
     namer.remember(home.point, home.label || t("Home"), home.label || t("Home"));
     void goTo(home.point, home.label || t("Home"));
   };
+  // A Home set from the Home chip's sheet, where there was none: the trip there is planned too (intuitiveness review,
+  // 2026-11-21: the rider pressed Home to go home, set it, and had to press Home again). A changed Home only changes it.
+  const setFirstHome = (home: Home | null) => {
+    // Not once a ride has begun: a spot's name looked up while Start was pressed (the PR review's 4).
+    const first = myGoRef.current.home === null && modeRef.current === "go" && !shownNow.current.riding;
+    setHome(home);
+    if (first && home) {
+      namer.remember(home.point, home.label || t("Home"), home.label || t("Home"));
+      void goTo(home.point, home.label || t("Home"));
+    }
+  };
   // Home at a spot on the map (Pick on the map then a tap): named by a name the page
   // has, else the reverse look-up (through the page's one geocoding gate), else its coordinates.
   const setHomeAt = async (point: LonLat) => {
@@ -3183,7 +3194,7 @@ export function App() {
     }
     const known = namer.name(point)?.name;
     const reverse = known ? null : await geoGate.run(() => fetchPlaces(reverseUrl(point))).catch(() => null);
-    setHome(homeAtSpot(point, known, reverse));
+    setFirstHome(homeAtSpot(point, known, reverse));
   };
   const setHomeAtRef = useRef(setHomeAt);
   setHomeAtRef.current = setHomeAt;
@@ -4217,9 +4228,9 @@ export function App() {
     const last = routedPoints[routedPoints.length - 1];
     return routeTitle(fileNamed(first), fileNamed(last), routedLoop);
   };
-  const keepForOffline = async () => {
+  const keepForOffline = async (): Promise<{ said: string; kept: boolean }> => {
     const plan = routedKey.current;
-    if (!shown || keeping || !plan) return;
+    if (!shown || keeping || !plan) return { said: "", kept: false };
     setKeeping(true);
     const controller = new AbortController();
     keepAbort.current = controller;
@@ -4231,8 +4242,13 @@ export function App() {
     setKeeping(false);
     setKeptVersion((v) => v + 1);
     // Stopped by Remove of this route in Settings: Remove has said what happened; the keep says nothing.
-    if (removed) setKeepSpoken({ text: "", count: 0 });
-    else setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
+    if (removed) {
+      setKeepSpoken({ text: "", count: 0 });
+      return { said: "", kept: false };
+    }
+    const said = keepSaid(outcome, title);
+    setKeepSpoken((s) => ({ text: said, count: s.count + 1 }));
+    return { said, kept: outcome === "kept" || outcome === "partial" || outcome === "no-map" };
   };
   // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
   const openKept = (kept: KeptRoute) => {
@@ -6692,10 +6708,9 @@ export function App() {
         ? null
         : (points.length >= 2 || fromStart) && routeNow.unavailable === null
           ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
-          : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
-            points.length === 0 && !isMassRide(preset)
-            ? { label: ROAM_NAME, start: true, busy: false, onPress: startRoam }
-            : null;
+          : // No destination yet: nothing here. Roam is behind More (intuitiveness review, 2026-11-21: the biggest
+            // button on the first screen, it outranked Where to?).
+            null;
   const goBar =
     mode === "go" && !riding && (goBig !== null || can.undo || can.redo || points.length > 0)
       ? { onUndo: can.undo ? undo : null, onRedo: can.redo ? redo : null, big: goBig, onClear: points.length > 0 ? clearPlan : null }
@@ -6897,6 +6912,9 @@ export function App() {
   const reviewing = mode === "review" && canReview;
   // Go's route stays as it is on the map until Edit route is open (lib/appMode.ts mapEditsLocked).
   const editsLocked = mapEditsLocked(mode, view === "points");
+  // A locked pin pressed (intuitiveness review, 2026-11-21: the lock was silent, its only words a hover title): said
+  // once a press, in the page's status line.
+  const sayRouteLocked = () => announce(t("Route locked. Open Edit route to change it."));
   // Go's routes to choose from, all on the map in their colours, a press on one choosing it (lib/routeChoice.ts; the
   // owner, 2026-10-19). Not while riding, in Review, on a stale route, or while the way round an Avoid junction shows.
   const choicesDrawn = mode === "go" && !riding && !reviewing && !stale && !planEdited && !aroundAvoid && shown !== null;
@@ -6931,7 +6949,9 @@ export function App() {
   // to add that ride to your saved routes"): Go's Save offers sign-in, or the GPX file, as Plan's bar does.
   const sharedShown = sharedOpen !== null && shown === sharedOpen.answer;
   const actions = {
-    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+    // Signed out, Plan's Save route keeps the route on this device (intuitiveness review, 2026-11-21), so More has no
+    // second Keep for offline then.
+    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown: keepShown && me.signed_in, keepForOffline, keeping, keepSpoken, linkSaid,
     downloadRoute,
     save: saveProps ?? (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
     savedNote: savedNoteShown,
@@ -7084,6 +7104,16 @@ export function App() {
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startBusy: rideOpening === "start", broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
         barrierAvoid: planDials.barrierAvoid,
+        // Plan's card after an edit: Update route in Start's row, as the map bar's (intuitiveness review, 2026-11-21).
+        edited:
+          mode === "plan" && planEdited
+            ? {
+                label: routingNow ? ROUTING_LABEL : routeNow.label,
+                onUpdate: routeNow.unavailable === null ? pressRoute : null,
+                busy: routingNow,
+                why: routeNow.unavailable,
+              }
+            : null,
         // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
         check:
           mode === "plan" && imported && fileShown()?.follows_file ? (
@@ -7254,6 +7284,7 @@ export function App() {
         onMapClick={onBike || reviewing ? ignore : tapMap}
         onMovePoint={onBike || editsLocked ? ignore : move}
         pointsLocked={editsLocked}
+        onLockedPress={editsLocked && !riding && !reviewing ? sayRouteLocked : undefined}
         lineEdit={riding || reviewing || editsLocked ? null : lineEdit}
         choices={choices}
         routeColour={routeColour}
@@ -7624,7 +7655,9 @@ export function App() {
               defaultFixed={saveProps?.defaultFixed}
               label={SAVE_ROUTE}
               bar
-              onGpx={downloadRoute}
+              // Signed out, Save keeps the route on this device, with Sign in to sync beside what it says; no Download
+              // GPX here, the route row's GPX is one press away (intuitiveness review, 2026-11-21).
+              keepHere={!me.signed_in && keepShown ? keepForOffline : null}
               signIn={signInFromSave}
             />
           )}
@@ -7916,7 +7949,7 @@ export function App() {
                   places={{
                     homeReady: myGo.home !== null,
                     home: myGo.home,
-                    onHomePlace: (found) => setHome(homeFromPlace(found)),
+                    onHomePlace: (found) => setFirstHome(homeFromPlace(found)),
                     onClearHome: () => setHome(null),
                     homePicking: homePick,
                     onPickHome: pickHome,
@@ -7935,6 +7968,7 @@ export function App() {
                     onRepair: openRepair,
                     onSights: openPlaces,
                     onSavedRoutes: () => setLoadOpen("go"),
+                    onRoam: points.length === 0 && !isMassRide(preset) ? startRoam : null,
                   }}
                   rides={goRides}
                   notice={notice}
@@ -7972,6 +8006,7 @@ export function App() {
                 nav: sheetNav, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn,
                 setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus,
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
+                goKey: mode === "go",
                 climbsStatus, climbsAlong, zoom, facilitiesShown, scenicDrawn: scenicShown(scenicOn, mode, massMap),
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.

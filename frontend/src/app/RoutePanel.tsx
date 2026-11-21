@@ -69,7 +69,7 @@ import {
   type ShareKeep,
   type ShareKeepChoice,
 } from "../lib/sharedRoutes.ts";
-import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarKey, stressBarLabel, stressPlainParts, surfaceGlanceParts } from "../lib/quickFigures.ts";
+import { calmPercent, calmWayShares, calmWaysLabel, groupRideLine, quickFigures, stressBarLabel, stressPlainParts, surfaceGlanceParts } from "../lib/quickFigures.ts";
 import { facilityRows } from "../lib/facilityBar.ts";
 import { stretchEnds, worstStretches } from "../lib/worstStretches.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
@@ -103,7 +103,7 @@ export interface RouteActionsProps {
   shareImage: () => void;
   linkSpoken: string;
   keepShown: boolean;
-  keepForOffline: () => Promise<void>;
+  keepForOffline: () => Promise<unknown>;
   keeping: boolean;
   keepSpoken: { text: string; count: number };
   linkSaid: string;
@@ -324,6 +324,21 @@ export interface RouteSectionProps {
   check?: ReactNode;
   /** Plan's chart tools (ElevationChart.tsx): click to centre the map, pick a stretch and avoid it; null in Go. */
   chartTools?: ChartTools | null;
+  /** Plan, the plan changed since this route was drawn: its figures dim and Update route stands in Start's row. */
+  edited?: PlanEdited | null;
+}
+
+/**
+ * Plan's route card after an edit (intuitiveness review, 2026-11-21: a stray click added a via point and the card kept
+ * its old figures and a live Start): the label the map bar's button has ("Update route") and its press.
+ */
+export interface PlanEdited {
+  label: string;
+  /** Null while the plan cannot be routed (an end removed): the card stays dimmed, `why` said in the button's place. */
+  onUpdate: (() => void) | null;
+  /** Routing now: the button stays, pressed and busy, so the focus is not lost (the PR review's 1). */
+  busy: boolean;
+  why: string | null;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -430,6 +445,7 @@ export function RouteSection(props: RouteSectionProps) {
           check={props.check ?? null}
           chartTools={props.chartTools ?? null}
           barrierAvoid={props.barrierAvoid}
+          edited={mode === "plan" ? (props.edited ?? null) : null}
         />
       )}
     </section>
@@ -721,6 +737,8 @@ function RouteAlerts({ route, answer, choice, around, onAround, pointCount }: { 
 export function StressFigure({ segments, go, line = null, surface = [] }: { segments: StressSegment[]; line?: string | null; surface?: readonly string[]; go?: { route: RouteResponse; peek: boolean; onWorst?: (line: LonLat[]) => void } }) {
   const keyHintId = useId();
   const route = go?.route;
+  // A street's own name only: "worst on path" (an unnamed way's description) said nothing (intuitiveness review).
+  const namedStreet = (street: string | null | undefined) => (street && /^\p{Lu}|^\d/u.test(street) ? street : null);
   const worst = useMemo(() => (route ? (worstStretches(route, 1)[0] ?? null) : null), [route]);
   // One image to a screen reader, named with each share; the line under it says the same in text.
   const bar = (
@@ -744,14 +762,9 @@ export function StressFigure({ segments, go, line = null, surface = [] }: { segm
           {t("Traffic stress along the route")}
         </figcaption>
         {bar}
-        {line ? (
-          // Said too: the turns are not in the bar's name.
-          <p className="stress-key group-ride-line">{line}</p>
-        ) : (
-          <p className="stress-key" aria-hidden="true">
-            {stressBarKey(segments)}
-          </p>
-        )}
+        {/* No "LTS 1: 52%, ..." line under the bar (intuitiveness review, 2026-11-21): the bar, the fold's "97% quiet"
+            and its one table say it. A Group Ride's turns line stays, said too: they are not in the bar's name. */}
+        {line && <p className="stress-key group-ride-line">{line}</p>}
         {/* Surface at a glance (Plan item 10): the unpaved riding by kind, where the route has some. */}
         {surface.length > 0 && (
           <p className="stress-key surface-line">
@@ -773,7 +786,7 @@ export function StressFigure({ segments, go, line = null, surface = [] }: { segm
         ))}
       </div>
     ) : null;
-  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route, worst?.street ?? null);
+  const parts = line ? [line, ...surfaceGlanceParts(go.route.stress_spans)] : stressPlainParts(go.route, namedStreet(worst?.street));
   const onWorst = worst && go.onWorst;
   return (
     <figure className="stress stress-main stress-go" aria-labelledby="stress-figure-caption">
@@ -850,7 +863,10 @@ export function RouteSummary({
   check = null,
   chartTools = null,
   barrierAvoid = [],
+  edited = null,
 }: {
+  /** Plan, the plan changed since this route: its figures dim, and Update route stands where Start and its row were. */
+  edited?: PlanEdited | null;
   /** Cargo and Tandem: the barriers this plan goes around (lib/barriers.ts), [lon, lat]. */
   barrierAvoid?: readonly [number, number][];
   route: RouteResponse;
@@ -902,6 +918,7 @@ export function RouteSummary({
   const [routesOpen, setRoutesOpen] = useState(false);
   const infoId = useId();
   const routesId = useId();
+  const editedId = useId();
   // Broadcast held (or right-clicked): its link as a QR code (lib/broadcastQr.ts).
   const broadcastHold = useHold(ride.onBroadcastHold);
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
@@ -1040,9 +1057,13 @@ export function RouteSummary({
         ))}
       {/* Riders often arrive by a shared link, straight into a route, and a
           phone has no hover to show the handle: say that the line moves. */}
-      <p className="hint reshape">
-        {narrow ? t("To reshape the route, press and hold the line, then drag it.") : t("To reshape the route, drag the line.")}
-      </p>
+      {/* Not in Go, where the route stays put until Edit route is open (the owner, 2026-11-21): the hint told a rider
+          to drag a line that would not move (intuitiveness review, 2026-11-21). */}
+      {!goMode && (
+        <p className="hint reshape">
+          {narrow ? t("To reshape the route, press and hold the line, then drag it.") : t("To reshape the route, drag the line.")}
+        </p>
+      )}
       {goMode ? (
         <details className="route-credit-fold">
           <summary>{t("Data sources")}</summary>
@@ -1252,7 +1273,7 @@ export function RouteSummary({
     <div className="summary">
       {bikeshareFold}
       {/* Headings for a screen reader's list, out of sight: the route's figures, then each fold (the a11y review's S5). */}
-      <div className="totals-row">
+      <div className={edited ? "totals-row totals-edited" : "totals-row"}>
         <h3 className="visually-hidden">{t("Totals")}</h3>
         <dl className="stats totals">
           <div className="total-time">
@@ -1296,11 +1317,36 @@ export function RouteSummary({
       {check}
       {noteList}
       {actions.savedNote}
-      <div className="actions start-ride">
-        <RouteActions {...actions} start={start} />
-        {/* Plan streamline (Stephen 2026-10-17): the how-to is Start's description, out of sight; the too-long line shows. */}
-        {rideable && !iphone ? <div className="visually-hidden">{startHint}</div> : startHint}
-      </div>
+      {edited ? (
+        // No Start, GPX or Link for a route that no longer matches the plan (intuitiveness review, 2026-11-21).
+        <div className="actions start-ride route-edited">
+          {edited.onUpdate || edited.busy ? (
+            <button
+              type="button"
+              className="update-route"
+              aria-describedby={editedId}
+              aria-disabled={edited.busy || undefined}
+              onClick={() => {
+                if (!edited.busy) edited.onUpdate?.();
+              }}
+            >
+              <Icon name="routes" size={20} />
+              {edited.label}
+            </button>
+          ) : (
+            edited.why && <p className="hint">{edited.why}</p>
+          )}
+          <p id={editedId} className="hint">
+            {t("The figures are for the route before your change.")}
+          </p>
+        </div>
+      ) : (
+        <div className="actions start-ride">
+          <RouteActions {...actions} start={start} />
+          {/* Plan streamline (Stephen 2026-10-17): the how-to is Start's description, out of sight; the too-long line shows. */}
+          {rideable && !iphone ? <div className="visually-hidden">{startHint}</div> : startHint}
+        </div>
+      )}
       {(profile || climbs) && (
         <Fold
           title={elevationTitle}
@@ -1335,23 +1381,6 @@ export function RouteSummary({
         >
           {/* The four quick figures, first in the fold (the owner's choice 4). */}
           <QuickFigures figures={quickFigures(route)} />
-          {segments.length > 0 && (
-            <figure className="stress" aria-labelledby="stress-detail-caption">
-              <figcaption id="stress-detail-caption">{t("Traffic stress, stretch by stretch")}</figcaption>
-              <ul className="stress-list">
-                {segments.map((s) => (
-                  <li key={s.key}>
-                    <span className={`swatch ${segmentClass(s)}`} style={segmentStyle(s)} aria-hidden="true" />
-                    <span className="stress-name">{s.short}</span>
-                    <span className="visually-hidden">, </span>
-                    <span className="stress-pct">{s.percent}%</span>
-                    <span className="visually-hidden">, </span>
-                    <span className="stress-label">{s.label}</span>
-                  </li>
-                ))}
-              </ul>
-            </figure>
-          )}
           <FacilityBreakdown route={route} part="figures" />
         </Fold>
       )}
