@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "सप्ताहांत पर, उन दिनों कारों के लिए बंद सड़कें, जैसे Montgomery County में Beach Drive और Sligo Creek Parkway, बिना ट्रैफ़िक के पथ गिनी जाती हैं। ई-बाइक नियमों, सिर्फ़ सड़कों या सामूहिक सवारी में, वे सिर्फ़ ब्योरे में पथ गिनी जाती हैं। रात हर दिन 9 बजे रात से 7 बजे सुबह तक है, सप्ताहांत समेत, और भीड़ से बाहर का समय 9 बजे रात ख़त्म होता है। व्यस्त सड़क पार करना भीड़ के समय ज़्यादा गिना जाता है, और सप्ताहांत और रात में कम, जब ट्रैफ़िक आमतौर पर शांत होता है। हर चौराहा चेतावनी बताती है कि समय ने उसे कब बदला।",
   "Bike": "साइकिल",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "साइकिल चुनने से पहाड़ी स्लाइडर उस साइकिल की शुरुआती जगह पर चला जाता है।",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "दूसरा रास्ता हो तो रास्ता इससे कठिन पगडंडियाँ नहीं लेता, और मजबूरी में बताता है।",
   " (above your hardest level)": " (आपके सबसे कठिन स्तर से ऊपर)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "इस स्तर की पगडंडियों वाले रास्ते पहले आते हैं, फिर एक स्तर आसान या कठिन; उससे दूर की पगडंडियाँ बाक़ी जैसी गिनी जाती हैं। आपके सबसे कठिन स्तर से कठिन नहीं हो सकता: कठिन पसंद करने के लिए उसे बढ़ाएँ।",
   "Electric assist": "बिजली की मदद",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "सिर्फ़ सड़कें चालू रहने पर इसका इस्तेमाल नहीं होता।",
   "easy MTB trails": "आसान MTB ट्रेल",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel की तरह ऑफ़-रोड नक्शे पर योजना बनाता है, इसलिए किसी भी पैमाने पर 0 या 1 दर्जे वाले, या बिल्कुल बिना दर्जे वाले माउंटेन-बाइक ट्रेल पर चला जा सकता है। 2 या उससे कठिन दर्जे वाले ट्रेल, जहाँ भी कोई दूसरा रास्ता हो, छोड़ दिए जाते हैं; अगर फिर भी कोई इस्तेमाल होता है, तो रूट बताता है। ट्रैफ़िक का तनाव हमेशा की तरह तौला जाता है। बारिश के बाद मिट्टी कीचड़ भरी हो सकती है।",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "यह रूट 2 या उससे कठिन दर्जे वाले माउंटेन-बाइक ट्रेल का {distance} इस्तेमाल करता है: कोई दूसरा रास्ता नहीं मिला।",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "यह रूट {level} या उससे कठिन दर्जे वाले माउंटेन-बाइक ट्रेल का {distance} इस्तेमाल करता है: कोई दूसरा रास्ता नहीं मिला।",
   "Uses a harder MTB trail.": "एक कठिन MTB ट्रेल इस्तेमाल करता है।",
   "The off-road map isn't available, so this route keeps to the usual trails.": "ऑफ़-रोड नक्शा उपलब्ध नहीं है, इसलिए यह रूट सामान्य ट्रेल पर ही रहता है।",
   "Off-road map unavailable: usual trails.": "ऑफ़-रोड नक्शा नहीं: सामान्य ट्रेल।",
@@ -2294,4 +2293,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "पक्की और बजरी वाली सड़कें और रास्ते, जैसे यह सवारी प्रकार योजना बनाता है।",
   "paved only": "केवल पक्की सड़क",
   "surface": "सतह",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "पक्की और बजरी वाली सड़कें और रास्ते, बिना माउंटेन बाइक ट्रेल के।",
+  "MTB trails up to {level}": "MTB ट्रेल {level} तक",
 };

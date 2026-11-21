@@ -3060,7 +3060,7 @@ class TestEasyMtbTrails:
         assert dirt["distance_m"] == plain["distance_m"]
         assert dirt["duration_s"] > plain["duration_s"]
 
-    @pytest.mark.parametrize("name", ["fast", "gravel", "mountain-bike"])
+    @pytest.mark.parametrize("name", ["road-bike", "ebike", "mountain-bike"])
     def test_other_ride_types_are_refused(self, name, client, facility_segments, router):
         fake = router(standard_router())
         assert post(client, {**good_body(name), "easy_mtb": True}).status_code == 400
@@ -3291,7 +3291,7 @@ class TestMountainBike:
         assert mtb["over_level_m"] > 0
         assert mtb["limited"] == "no_way_round"
 
-    @pytest.mark.parametrize("level", [0, 5, "2", 2.5])
+    @pytest.mark.parametrize("level", [-1, 5, "2", 2.5])
     def test_a_level_out_of_range_is_refused(self, client, facility_segments, router, level):
         router(standard_router())
         assert post(client, {**good_body("mountain-bike"), "mtb_level": level}).status_code == 400

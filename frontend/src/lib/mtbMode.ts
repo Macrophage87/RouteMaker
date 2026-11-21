@@ -36,7 +36,6 @@ export const MTB_LEVEL_OPTIONS: readonly { level: MtbLevel; label: string; hint:
   { level: 4, label: t("Level 4 (red)"), hint: t("Very difficult and above: expert features, drops and exposure.") },
 ];
 
-export const MTB_LEVEL_LEGEND = t("Hardest trail level");
 export const MTB_PREFERRED_LEGEND = t("Preferred trail level");
 
 export function isMtb(preset: PresetId): boolean {

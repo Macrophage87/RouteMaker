@@ -1442,7 +1442,22 @@ OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
 # MTB trails too, some are definitely fine for that", "But it's opt in there too", "And
 # default"; "Steer on Gravel's graph"): with it on they ride the off-road graph as Gravel does,
 # and `core.easy_mtb` steers them off the trails rated 2 or harder. Off by default.
-EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
+# Since 2026-11-21 (the owner: "a surface setting: paved only, gravel, easy MTB, and then MTB2-4
+# as max", "People here can and should be able to adjust to anything") every ride type on the
+# standard graph with a bike of the rider's own takes it, and a hardest level of 2, 3 or 4 too
+# (the API's `mtb_level` beside `easy_mtb`): that ride takes Mountain Bike's graph, where every
+# level is open, and `core.easy_mtb` holds it to the level chosen.
+EASY_MTB_PRESETS = frozenset(
+    {
+        "default",
+        "trailmaxxing",
+        "group-ride",
+        "fast",
+        "cargo",
+        "novice",
+        "tandem",
+    }
+)
 
 
 def variant_for_ride(
@@ -1450,7 +1465,7 @@ def variant_for_ride(
     when: str,
     assist: bool = False,
     trails_off: bool = False,
-    easy_mtb: bool = False,
+    easy_mtb: bool | int = False,
     mtb_done: bool = False,
 ) -> str:
     """The graph a ride routes on.
@@ -1502,10 +1517,14 @@ def variant_for_ride(
         return Variant.NO_TRAIL.value
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
-    easy = easy_mtb and name in EASY_MTB_PRESETS and not mtb_done
+    # `easy_mtb` may also be the hardest trail level (`routing._easy_asked`): 2 to 4 rides the
+    # Mountain Bike graph, where those levels are open; True (1) the off-road one.
+    easy = int(easy_mtb) if name in EASY_MTB_PRESETS and not mtb_done else 0
     mtb_graph = preset.variant == Variant.MTB.value or name in OFFROAD_PRESETS
     if mtb_done and mtb_graph:
         return Variant.WEEKEND.value if when == WEEKEND else Variant.STANDARD.value
+    if easy >= 2 and preset.variant == Variant.STANDARD.value:
+        return Variant.MTB.value
     if (name in OFFROAD_PRESETS or easy) and preset.variant == Variant.STANDARD.value:
         return Variant.OFFROAD.value
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
@@ -1532,7 +1551,7 @@ def weekend_too(
     when: str,
     assist: bool = False,
     trails_off: bool = False,
-    easy_mtb: bool = False,
+    easy_mtb: bool | int = False,
     mtb_done: bool = False,
 ) -> bool:
     """Whether a ride is planned on the weekend graph as well as on its own (`routing.plan`):

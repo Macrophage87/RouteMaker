@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "Hafta sonları, o günler araçlara kapalı yollar, Montgomery County'deki Beach Drive ve Sligo Creek Parkway gibi, trafiksiz yol olarak hesaplanır. Elektrikli bisiklet kurallarıyla, yalnızca yollarda veya kitlesel sürüşte bunlar dökümde yalnızca yol olarak sayılır. Gece her gün 21.00'den 07.00'ye kadardır, hafta sonları dahil; sakin saatler 21.00'de biter. Yoğun bir yolu geçmek yoğun saatte daha fazla, trafiğin genelde daha sakin olduğu hafta sonları ve gece daha az sayılır. Her kavşak uyarısı zamanın onu ne zaman değiştirdiğini söyler.",
   "Bike": "Bisiklet",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "Bir bisiklet seçmek yokuş kaydırıcısını o bisikletin başlangıç konumuna taşır.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "Rota, başka yol varken bundan daha zor patika kullanmaz ve kullanmak zorunda kaldığında söyler.",
   " (above your hardest level)": " (en zor seviyenizin üstünde)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "Bu seviyedeki patikalı rotalar önce gelir, sonra bir seviye daha kolay veya zor olanlar; ondan daha uzak patikalar diğer patikalar gibi sayılır. En zor seviyenizden zor olamaz: daha zorunu tercih etmek için onu yükseltin.",
   "Electric assist": "Elektrik desteği",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "Yalnızca yollar açıkken kullanılmaz.",
   "easy MTB trails": "kolay MTB patikaları",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel gibi arazi haritasında planlar; bu yüzden iki ölçekten herhangi birinde 0 ya da 1 derecelendirilmiş veya hiç derecelendirilmemiş dağ bisikleti patikaları kullanılabilir. 2 ya da daha zor derecelendirilmiş patikalar, başka bir yol olan her yerde dışarıda bırakılır; yine de biri kullanılırsa rota bunu söyler. Trafik stresi her zamanki gibi tartılır. Toprak yağmurdan sonra çamurlu olabilir.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Bu rota 2 ya da daha zor derecelendirilmiş dağ bisikleti patikasında {distance} kullanıyor: başka yol bulunamadı.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "Bu rota {level} ya da daha zor derecelendirilmiş dağ bisikleti patikasında {distance} kullanıyor: başka yol bulunamadı.",
   "Uses a harder MTB trail.": "Daha zor bir MTB patikası kullanır.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Arazi haritası kullanılamıyor, bu yüzden bu rota olağan patikalarda kalıyor.",
   "Off-road map unavailable: usual trails.": "Arazi haritası yok: olağan patikalar.",
@@ -2294,4 +2293,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Bu sürüş türünün planladığı gibi asfalt ve çakıl yollar ve patikalar.",
   "paved only": "yalnızca asfalt",
   "surface": "yüzey",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "Asfalt ve çakıl yollar ve patikalar, MTB parkurları olmadan.",
+  "MTB trails up to {level}": "{level} seviyesine kadar MTB parkurları",
 };

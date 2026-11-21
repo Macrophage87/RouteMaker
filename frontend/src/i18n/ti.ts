@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "ኣብ ቀዳመ ሰንበት፣ ኣብተን መዓልትታት ንመካይን ዝተዓጽዉ ጽርግያታት፣ ከም ኣብ Montgomery County ዘሎ Beach Drive ን Sligo Creek Parkway ን፣ ከም ብዘይ መካይን መንገድታት ይቑጸሩ። ብሕግታት ኢ-ብሽክለታ፣ ጽርግያታት ጥራይ ወይ ናይ ጉጅለ ጉዕዞ፣ ኣብ ዝርዝር ጥራይ ከም መንገዲ ይቑጸሩ። ለይቲ ኣብ ነፍሲ ወከፍ መዓልቲ ካብ 21:00 ክሳብ 7:00 እዩ፣ ቀዳመ ሰንበት ሓዊሱ፣ ካብ መጨናነቕ ወጻኢ ድማ ኣብ 21:00 ይውዳእ። ዝተጨናነቐ ጽርግያ ምስጋር ኣብ ግዜ መጨናነቕ ዝያዳ ይቑጸር፣ ትራፊክ መብዛሕትኡ ግዜ ኣብ ዝሃድኣሉ ቀዳመ ሰንበትን ለይትን ድማ ዝወሓደ። ነፍሲ ወከፍ መጠንቀቕታ መስቀላዊ መንገዲ ግዜ መዓስ ከም ዝቐየሮ ይነግር።",
   "Bike": "ብሽክለታ",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "ብሽክለታ ምምራጽ ተንሸራታቲ ጎቦታት ናብ መበገሲ ቦታ እታ ብሽክለታ የንቀሳቕሶ።",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "ካልእ መንገዲ እንተሃልዩ መንገዲ ካብዚ ዝኸበዱ መንገድታት ጎቦ ኣይጥቀምን፣ ምስ ዝግደድ ድማ ይነግረካ።",
   " (above your hardest level)": " (ካብ ዝኸበደ ደረጃኻ ንላዕሊ)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "ብዚ ደረጃ መንገድታት ጎቦ ዘለዎም መንገድታት ቅድም ይመጹ፣ ድሕሪኡ ሓደ ደረጃ ዝቐለለ ወይ ዝኸበደ፤ ካብኡ ዝረሓቑ መንገድታት ጎቦ ከም ካልኦት ይቑጸሩ። ካብ ዝኸበደ ደረጃኻ ክኸብድ ኣይክእልን፦ ዝኸበደ ንምምራጽ ንእኡ ኣልዕሎ።",
   "Electric assist": "ሓገዝ ኤሌክትሪክ",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "ጽርግያታት ጥራይ ክሳብ ዝበርህ ኣይጥቀመሉን።",
   "easy MTB trails": "ቀለልቲ ናይ MTB መንገድታት",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "ከም Gravel ኣብ ካርታ ካብ ጽርግያ ወጻኢ ይውጥን፤ ስለዚ ኣብ ዝኾነ መዐቀኒ 0 ወይ 1 ዝተዋህቦም ወይ ፈጺሙ ደረጃ ዘይብሎም ናይ ጎቦ ብሽክለታ መንገድታት ክጥቀመሎም ይኽእል። 2 ወይ ካብኡ ዝኸበዱ መንገድታት ካልእ መገዲ ኣብ ዘለዎ ኩሉ ይግደፉ፤ ሓደ ገና እንተ ተጠቐመ እቲ መስመር ይነግር። ጸቕጢ ትራፊክ ከም ልሙድ ይምዘን። ድሕሪ ዝናብ ሓመድ ጭቃ ክኸውን ይኽእል።",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "እዚ መስመር 2 ወይ ካብኡ ዝኸበደ ናይ ጎቦ ብሽክለታ መንገዲ {distance} ይጥቀም፤ ካልእ መገዲ ኣይተረኽበን።",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "እዚ መስመር {level} ወይ ካብኡ ዝኸበደ ናይ ጎቦ ብሽክለታ መንገዲ {distance} ይጥቀም፤ ካልእ መገዲ ኣይተረኽበን።",
   "Uses a harder MTB trail.": "ዝኸበደ ናይ MTB መንገዲ ይጥቀም።",
   "The off-road map isn't available, so this route keeps to the usual trails.": "ካርታ ካብ ጽርግያ ወጻኢ ኣይርከብን፤ ስለዚ እዚ መስመር ኣብ ልሙዳት መንገድታት ይጸንሕ።",
   "Off-road map unavailable: usual trails.": "ካርታ ካብ ጽርግያ ወጻኢ የለን፦ ልሙዳት መንገድታት።",
@@ -2294,4 +2293,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "ዝተነጽፉን ናይ ጸጸርን መንገድታትን መገድታትን፣ ከምቲ እዚ ዓይነት ጉዕዞ ዝውጥኖ።",
   "paved only": "ዝተነጽፈ ጥራይ",
   "surface": "ገጽ መንገዲ",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "ዝተነጽፉን ናይ ጸጸርን መንገድታትን መገድታትን፣ ብዘይ ናይ ጎቦ ብሽክለታ መገድታት።",
+  "MTB trails up to {level}": "ናይ MTB መገድታት ክሳብ {level}",
 };

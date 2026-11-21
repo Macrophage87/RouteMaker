@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "آخر هفته‌ها، جاده‌هایی که آن روزها برای ماشین بسته‌اند، مثل Beach Drive در شهرستان Montgomery و Sligo Creek Parkway، مسیر بی‌ماشین حساب می‌شوند. با قوانین دوچرخه برقی، فقط جاده یا سواری گروهی، فقط در جزئیات مسیر حساب می‌شوند. شب از ۹ شب تا ۷ صبح هر روز است، آخر هفته هم، و بیرون از ساعت شلوغ ساعت ۹ شب تمام می‌شود. گذشتن از جاده شلوغ در ساعت شلوغ بیشتر و در آخر هفته و شب، که ترافیک معمولاً آرام‌تر است، کمتر حساب می‌شود. هر هشدار تقاطع می‌گوید زمان کی آن را تغییر می‌دهد.",
   "Bike": "دوچرخه",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "انتخاب دوچرخه لغزنده تپه‌ها را به جای شروع آن دوچرخه می‌برد.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "مسیر اگر راه دیگری باشد از مسیرهای سخت‌تر از این استفاده نمی‌کند، و وقتی ناچار باشد می‌گوید.",
   " (above your hardest level)": " (بالاتر از سخت‌ترین سطح شما)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "مسیرهایی با راه در این سطح اول می‌آیند، سپس یک سطح آسان‌تر یا سخت‌تر؛ راه‌های دورتر مثل بقیه حساب می‌شوند. نمی‌تواند از سخت‌ترین سطح شما سخت‌تر باشد: برای ترجیح سخت‌تر آن را بالا ببرید.",
   "Electric assist": "کمک برقی",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "تا وقتی فقط جاده روشن است به کار نمی‌رود.",
   "easy MTB trails": "مسیرهای آسان دوچرخه کوهستان",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "مانند Gravel روی نقشه خارج از جاده برنامه‌ریزی می‌کند، پس مسیرهای دوچرخه کوهستان با درجه 0 یا 1 در هر یک از دو مقیاس، یا بدون هیچ درجه‌ای، ممکن است پیموده شوند. مسیرهای درجه 2 یا سخت‌تر هر جا راه دیگری باشد کنار گذاشته می‌شوند؛ اگر یکی هنوز به کار رود، مسیر آن را می‌گوید. فشار ترافیک مثل همیشه سنجیده می‌شود. خاک ممکن است پس از باران گِلی باشد.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "این مسیر {distance} از مسیر دوچرخه کوهستان با درجه 2 یا سخت‌تر را می‌پیماید: راه دیگری پیدا نشد.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "این مسیر {distance} از مسیر دوچرخه کوهستان با درجه {level} یا سخت‌تر را می‌پیماید: راه دیگری پیدا نشد.",
   "Uses a harder MTB trail.": "از یک مسیر سخت‌تر دوچرخه کوهستان می‌رود.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "نقشه خارج از جاده در دسترس نیست، پس این مسیر روی مسیرهای همیشگی می‌ماند.",
   "Off-road map unavailable: usual trails.": "نقشه خارج از جاده نیست: مسیرهای همیشگی.",
@@ -2294,4 +2293,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "راه‌ها و مسیرهای آسفالت و شنی، همان‌طور که این نوع سواری برنامه‌ریزی می‌کند.",
   "paved only": "فقط آسفالت",
   "surface": "سطح",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "راه‌ها و مسیرهای آسفالت و شنی، بدون مسیرهای دوچرخه کوهستان.",
+  "MTB trails up to {level}": "مسیرهای دوچرخه کوهستان تا {level}",
 };

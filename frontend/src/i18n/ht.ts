@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "Nan wikenn, wout ki fèmen pou machin lè sa a, tankou Beach Drive nan Konte Montgomery ak Sligo Creek Parkway, kalkile kòm chemen san machin. Avèk règ bisiklèt elektrik, wout sèlman, oswa nan yon woulib an mas, yo konte kòm chemen sèlman nan detay la. Lannwit soti 9 PM rive 7 AM chak jou, wikenn ladan l, epi lè ki pa pik yo fini a 9 PM. Travèse yon wout ki gen anpil sikilasyon konte plis nan lè pik, epi mwens nan wikenn ak lannwit, lè sikilasyon an konn pi kal. Chak avètisman kafou di kilè lè a te chanje l.",
   "Bike": "Bisiklèt",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "Lè ou chwazi yon bisiklèt, kontwòl mòn yo ale kote li kòmanse pou bisiklèt sa a.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "Wout la pa sèvi ak okenn chemen ki pi difisil pase sa a kote gen yon lòt chemen, epi li di l kote li oblije.",
   " (above your hardest level)": " (plis pase nivo ki pi difisil ou a)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "Wout ki gen chemen nivo sa a vin an premye, apre yon nivo pi fasil oswa pi difisil; chemen ki pi lwen li konte tankou nenpòt chemen. Li pa ka pi difisil pase nivo ki pi difisil ou a: monte l pou pito yon pi difisil.",
   "Electric assist": "Asistans elektrik",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "Li pa sèvi pandan Wout sèlman limen.",
   "easy MTB trails": "chemen MTB fasil",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Li planifye sou kat tout-teren an, menm jan ak Gravel, kidonk li ka pran chemen bisiklèt mòn ki make 0 oswa 1 sou nenpòt nan de echèl yo, oswa ki pa make ditou. Chemen ki make 2 oswa pi difisil yo rete deyò toutkote gen yon lòt chemen; si youn toujou sèvi, wout la di sa. Estrès sikilasyon an toujou konte menm jan an. Tè a ka plen labou apre lapli.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Wout sa a pran {distance} chemen bisiklèt mòn ki make 2 oswa pi difisil: yo pa jwenn okenn lòt chemen.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "Wout sa a pran {distance} chemen bisiklèt mòn ki make {level} oswa pi difisil: yo pa jwenn okenn lòt chemen.",
   "Uses a harder MTB trail.": "Li pran yon chemen MTB pi difisil.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Kat tout-teren an pa disponib, kidonk wout sa a rete sou chemen abityèl yo.",
   "Off-road map unavailable: usual trails.": "Pa gen kat tout-teren: chemen abityèl.",
@@ -2294,4 +2293,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Wout ak chemen asfalt ak gravye, jan kalite woulib sa a planifye yo.",
   "paved only": "asfalt sèlman",
   "surface": "sifas",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "Wout ak chemen asfalt ak gravye, san santye MTB.",
+  "MTB trails up to {level}": "Santye MTB jiska {level}",
 };
