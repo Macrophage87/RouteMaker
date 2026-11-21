@@ -5162,8 +5162,8 @@ dialog.plan-ride-settings h2 {
    (the v0.30.0 release review). */
 dialog.plan-ride-settings .plan-ride-settings-body > .closure-choices:last-child {
   position: sticky;
-  bottom: -16px;
-  margin: 0 -16px -16px;
+  bottom: 0;
+  margin: 12px -16px -16px;
   padding: 8px 16px 16px;
   background: var(--bg);
   border-top: 1px solid var(--border);

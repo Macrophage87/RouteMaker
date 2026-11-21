@@ -79,7 +79,8 @@ class TestThePlan:
             ("fast", routing.Dials(stress=20), False),
             ("fast", routing.Dials(stress=0), False),
             ("fast", routing.Dials(follow=((-77.0, 38.9), (-77.04, 38.9))), False),
-            # A rider's own drawn leg comes out the same at 0: no second router pass for it.
+            # A plan with a drawn leg is planned once (a drawn leg is the same at 0; the routed
+            # legs beside it keep the ride's own traffic position).
             ("fast", routing.Dials(straight=(0,)), False),
         ],
     )

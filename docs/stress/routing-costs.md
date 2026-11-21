@@ -54,7 +54,7 @@ More turn rules (2026-11-12 on):
 - **Wait weight** (`presets.WAIT_WEIGHTS`). A second stopped at a junction counts this many seconds of
   riding when routes are ranked; the time shown stays the real wait. 3x on Road Bike (the owner,
   2026-11-02); 2x on Tandem, Cargo Bike, Group Ride, Trailmaxxing, Gravel, Mountain Goat and Mountain Bike
-  (the owner, 2026-11-20, for pleasure and training rides; the 2s are our defaults, not measured); 1x on
+  (the owner, 2026-11-20, for pleasure and training rides; the 2s are our defaults, not measured); 3x on Run; 1x on
   every other ride type, Fast included ("as close to real time as possible"). A rider or the connector
   can raise it, never lower it, up to 5 (`MAX_WAIT_WEIGHT`, `junction_delay.MAX_STACKED_WEIGHT`) in half
   steps: `wait_weight` on POST /api/route, the "Waiting at lights and stops" slider in the Ride

@@ -8091,9 +8091,9 @@ wide gates), so the beta agent stops on the tag.
 ## Deploying v0.30.0
 
 The release train's v0.30.0, on the owner's ask (2026-11-21, "Get ready to ship 0.30 when the map is
-rebuilt"): Plan's Adjust opens every ride setting in a popup with "Waiting at lights and stops",
+rebuilt"): Adjust, in Plan and now Go, opens every ride setting in a popup with "Waiting at lights and stops",
 "Sharp turns" (both in half steps) and "Fewer turns" (#1367, #1374, #1376); waits weigh 2x on
-pleasure and training rides, Group Ride, Cargo and Tandem, and the connector can raise them
+pleasure and training rides, Group Ride and Cargo (Tandem's was already 2x), and the connector can raise them
 (#1364, #1377, #1378); sharp turns, U-turns and jogs rank as more than one turn and turns are priced
 by the speed they cost (#1363, #1366); Fast is as direct as possible at real time (#1378, #1381); Go
 locks the route on the map until Edit route is opened (#1360), drops drawn icons on ride type chips
