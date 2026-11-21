@@ -390,6 +390,10 @@ export interface ExportDials {
   trailsOff?: boolean;
   /** "Easy MTB trails" on Default and Trailmaxxing, so the file reopens on the MTB trails it rode. */
   easyMtb?: boolean;
+  /** "Paved only" (the Surface setting), as the link carries it (paved=1). */
+  paved?: boolean;
+  /** The hardest trail level (the Surface setting), as the link carries it (level=N, 0 included). */
+  mtbLevel?: number;
   /** Fewer turns, as the link carries it (fewerturns=1). */
   fewerTurns?: boolean;
   /** The rider's wait weight, above the ride type's own, as the link carries it (waits=N). */
@@ -406,6 +410,8 @@ export function dialsComment(dials: ExportDials): string {
   if (dials.loop) parts.push("loop=1");
   if (dials.trailsOff) parts.push("trailsoff=1");
   if (dials.easyMtb) parts.push("easymtb=1");
+  if (dials.paved) parts.push("paved=1");
+  if (typeof dials.mtbLevel === "number") parts.push(`level=${dials.mtbLevel}`);
   if (dials.fewerTurns) parts.push("fewerturns=1");
   if (dials.waitWeight) parts.push(`waits=${dials.waitWeight}`);
   if (typeof dials.sharpTurnWeight === "number") parts.push(`sharpturns=${dials.sharpTurnWeight}`);

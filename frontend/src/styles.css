@@ -5166,23 +5166,60 @@ dialog.plan-ride-settings {
 dialog.plan-ride-settings h2 {
   margin-top: 0;
 }
+/* In Go, below Go's top bar (its Start/Roam button sat over the popup's title at 1280 px). */
+@media (min-width: 721px) {
+  .app.go-mode dialog.plan-ride-settings {
+    top: 124px;
+    height: calc(100dvh - 124px);
+    max-height: calc(100dvh - 124px);
+  }
+}
+/* Done stays at the popup's foot while its settings scroll, so a phone's sheet closes without scrolling to the end
+   (the v0.30.0 release review). */
+dialog.plan-ride-settings .plan-ride-settings-body > .closure-choices:last-child {
+  position: sticky;
+  bottom: 0;
+  margin: 12px -16px -16px;
+  padding: 8px 16px 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
 dialog.plan-ride-settings h2:focus {
   outline: none;
 }
-@media (max-width: 899px) {
+/* Not a popover (the owner, 2026-11-21: "Don't do a popover. That's messy"; "Litterally make it a full size new screen";
+   on a computer "that should just be a side panel"): on a computer a full-height panel beside the sidebar, square and
+   flush; on a phone the whole screen. */
+@media (min-width: 721px) {
   dialog.plan-ride-settings {
-    inset: 72px 12px auto auto;
-    width: min(440px, calc(100vw - 24px));
+    /* Below the map bar's line (Route stays in reach), down to the foot of the screen. */
+    inset: 64px auto 0 412px;
+    height: calc(100dvh - 64px);
+    max-height: calc(100dvh - 64px);
+    border-width: 1px 1px 0 1px;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
-/* Where the panel becomes a bottom sheet (720 px), the popup does too. */
+@media (min-width: 721px) and (max-width: 899px) {
+  dialog.plan-ride-settings {
+    inset: 64px 0 0 auto;
+    width: min(440px, 100vw);
+  }
+}
 @media (max-width: 720px) {
   dialog.plan-ride-settings {
-    inset: auto 0 0 0;
+    inset: 0;
     width: 100vw;
     max-width: 100vw;
-    max-height: 70dvh;
-    border-radius: 16px 16px 0 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  dialog.plan-ride-settings::backdrop {
+    background: var(--bg);
   }
 }
 .ride-settings-dialog h2:focus {
@@ -12207,3 +12244,106 @@ button.route-note:focus-visible {
   stroke: #fad5ff;
 }
 
+
+/* Go's default from the ride type list (the owner, 2026-11-21): a "Go" button left of the star (or Remove), a 44px
+   target; filled where it is what Go starts on (and said so: aria-pressed). The card's text keeps clear of both. */
+.ride-type-card.has-go > button:not(.ride-fav):first-child {
+  padding-inline-end: 100px;
+}
+
+.ride-fav.ride-go-default {
+  inset-inline-end: 48px;
+  width: auto;
+  min-width: 44px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  border: 2px solid var(--border);
+  border-radius: 22px;
+  font-weight: 700;
+}
+
+.ride-fav.ride-go-default[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Save as my own ride type, at the foot of the Ride settings popup. */
+.own-ride-save {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.own-ride-save input[type="text"] {
+  font-size: 1rem;
+  padding: 8px;
+}
+
+/* Advanced: Copy these settings, and settings pasted in to load (JSON). */
+.own-ride-share {
+  margin-top: 12px;
+}
+
+.own-ride-share .fold-body {
+  display: grid;
+  gap: 8px;
+}
+
+.own-ride-share textarea {
+  font: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Create custom, first under My ride types. */
+.own-ride-create {
+  margin-top: 8px;
+  min-height: 44px;
+}
+
+/* The Ride settings popup, scaled down (the owner, 2026-11-21: "See if you can scale it down so less scrolling.
+   expand, perhaps"): tighter rows, and on a wide screen twice as wide with the rows in two columns. */
+dialog.plan-ride-settings .dials .dial {
+  margin: 6px 0;
+}
+dialog.plan-ride-settings .dials input[type="range"] {
+  margin: 0;
+}
+dialog.plan-ride-settings .dial-ends {
+  margin-top: -6px;
+}
+@media (min-width: 1280px) {
+  dialog.plan-ride-settings {
+    width: min(760px, calc(100vw - 412px));
+  }
+  dialog.plan-ride-settings .dials {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+    align-items: start;
+  }
+  /* The When choices, warnings and the like across both columns. */
+  dialog.plan-ride-settings .dials > :not(.dial) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* When as a dropdown: its name beside the picker. */
+.dials .when-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  font-weight: 600;
+}
+.dials .when-pick select {
+  min-height: 44px;
+  font: inherit;
+  font-weight: 400;
+  max-width: 70%;
+}

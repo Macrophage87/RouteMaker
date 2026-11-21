@@ -122,6 +122,8 @@ export function encodePlan(
     if (dials.trailsOff) params.set("trailsoff", "1");
     // "Easy MTB trails" (2026-11-08), Default and Trailmaxxing only; absent is off.
     if (dials.easyMtb) params.set("easymtb", "1");
+    // "Paved only" (the Surface setting, 2026-11-21), on the ride types that take it; absent is off.
+    if (dials.paved) params.set("paved", "1");
     // Fewer turns and Waiting at lights and stops (2026-11-20, Plan's Ride settings); absent is off and the ride type's own.
     if (dials.fewerTurns) params.set("fewerturns", "1");
     if (typeof dials.waitWeight === "number" && dials.waitWeight > 1) params.set("waits", String(dials.waitWeight));
@@ -144,7 +146,8 @@ export function encodePlan(
     if (dials.rideSize) params.set("riders", String(dials.rideSize));
     // Mountain Bike's hardest trail level (slice 6); absent is level 2. Its preferred level (the second
     // pass); absent is min(2, the hardest), so an older link with only `level` plans as it did.
-    if (dials.mtbLevel) params.set("level", String(dials.mtbLevel));
+    // 0 included: Mountain Bike with no mountain-bike trails (the Surface setting).
+    if (typeof dials.mtbLevel === "number") params.set("level", String(dials.mtbLevel));
     if (dials.mtbPreferred) params.set("prefer", String(dials.mtbPreferred));
   }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
@@ -208,6 +211,7 @@ export function decodePlan(hash: string): Plan {
     assist: params.get("assist") === "1",
     trailsOff: params.get("trailsoff") === "1",
     easyMtb: params.get("easymtb") === "1",
+    paved: params.get("paved") === "1",
     fewerTurns: params.get("fewerturns") === "1",
     waitWeight: numberOrUndefined(params.get("waits")),
     sharpTurnWeight: numberOrUndefined(params.get("sharpturns")),

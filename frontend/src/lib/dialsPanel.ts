@@ -18,6 +18,8 @@ import {
 import { runs, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
 import { metricFirst } from "./units.ts";
+import { GRAVEL_HINT, GRAVEL_LABEL, MTB_GRAVEL_HINT, PAVED_HINT, PAVED_LABEL, offersSurface, offersTrails, surfaceOf, type Surface } from "./surface.ts";
+import { MTB_LEVEL_OPTIONS, isMtb } from "./mtbMode.ts";
 import {
   HILLS_MIN,
   RIDE_SIZE_DEFAULT,
@@ -40,8 +42,8 @@ import {
   hillsWords,
   seeksClimbs,
   offersAssist,
-  offersEasyMtb,
   offersStopsAndTurns,
+  fitTrailLevel,
   showsFewerTurns,
   fitWaitWeight,
   ownWaitWeight,
@@ -106,13 +108,17 @@ export interface PanelView {
   target: TargetView | null;
   /** The "Keep to roads, not trails" switch (OWNER-DECISIONS 463, 463b), on every ride type. */
   trailsOff: TrailsOffView;
-  /** The "Easy MTB trails" switch (the owner, 2026-11-08), on Default and Trailmaxxing; null on any other ride type. */
-  easyMtb: EasyMtbView | null;
+  /**
+   * The Surface picker (lib/surface.ts; the owner, 2026-11-21), on a bike of the rider's own but Road Bike and Mountain
+   * Bike; null on any other ride type. Easy MTB trails (the owner, 2026-11-08) is its third choice on Default and
+   * Trailmaxxing.
+   */
+  surface: SurfaceView | null;
   /** "Waiting at lights and stops" (the owner, 2026-11-20), on a bike of the rider's own; null on any other ride type. */
   waits: SliderView | null;
   /** "Sharp turns" (the owner, 2026-11-20), on the same ride types; null on any other. */
   sharpTurns: SliderView | null;
-  /** "Fewer turns" (2026-11-20, in Plan's Ride settings), on the same ride types; null on any other. */
+  /** "Fewer turns" (2026-11-20, in the Ride settings popup, Plan and Go), on the same ride types; null on any other. */
   fewerTurns: FewerTurnsView | null;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;
@@ -160,8 +166,12 @@ export function waitsView(preset: PresetId, weight: number): SliderView {
     min: own,
     max: WAIT_WEIGHT_MAX,
     step: WEIGHT_STEP,
-    words: waitsWords(weight),
-    ends: [t("Don't mind"), "", t("Rather ride")],
+    // What the number is (the owner, 2026-11-21: "make the multiple indicate that it's what you're expecting the app to
+    // use. The expected slowdown/stop").
+    words: t("{weight}x the expected stop", { weight }),
+    // The real numbers at the ends (the owner, 2026-11-21: "what's the top what's the end ... The others want an actual
+    // number"); Traffic keeps its words.
+    ends: [waitsWords(own), "", waitsWords(WAIT_WEIGHT_MAX)],
     disabled: own >= WAIT_WEIGHT_MAX,
     note: WAITS_NOTE,
     how: WAITS_HOW,
@@ -173,8 +183,8 @@ export function sharpTurnsView(weight: number): SliderView {
     min: 0,
     max: SHARP_TURN_WEIGHT_MAX,
     step: WEIGHT_STEP,
-    words: waitsWords(weight),
-    ends: [t("Fun"), "", t("Avoid")],
+    words: t("{weight}x the expected slowdown", { weight }),
+    ends: [waitsWords(0), "", waitsWords(SHARP_TURN_WEIGHT_MAX)],
     disabled: false,
     note: SHARP_TURNS_NOTE,
     how: SHARP_TURNS_HOW,
@@ -210,22 +220,17 @@ export interface TrailsOffView {
   howAbout: string;
 }
 
-/** The "Easy MTB trails" switch: off by default; with Keep to roads on it is moot, and says so. */
-export interface EasyMtbView {
-  label: string;
-  checked: boolean;
-  /** Keep to roads is on, which wins: the switch stays in the Tab order, but a press changes nothing. */
-  locked: boolean;
-  hint: string;
-  how: string;
-  howAbout: string;
+/** The Surface picker: its choice, its choices smoothest first, and what each does for the row's (i). */
+export interface SurfaceView {
+  value: Surface;
+  /** Easy MTB trails is left out while Keep to roads is on, which wins. */
+  options: readonly (readonly [Surface, string])[];
+  info: readonly (readonly [string, string])[];
 }
 
 /** The owner, 2026-11-08: "allow trailmaxxing to use MTB trails too", opt in, "And default". API `easy_mtb`, link `easymtb`. */
 export const EASY_MTB_LABEL = t("Easy MTB trails");
-export const EASY_MTB_HINT = t("Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.");
 export const EASY_MTB_LOCKED_HINT = t("Not used while Keep to roads is on.");
-export const EASY_MTB_HOW_ABOUT = t("easy MTB trails");
 export const EASY_MTB_HOW =
   t("Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.");
 
@@ -422,6 +427,9 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     ...(dials.trailsOff ? { trailsOff: true } : {}),
     // The rider's own switch, as Keep to roads: going back to the ride type's settings keeps it.
     ...(dials.easyMtb ? { easyMtb: true } : {}),
+    // Paved only and the trail level likewise (the Surface setting, 2026-11-21).
+    ...(dials.paved ? { paved: true } : {}),
+    ...(fitTrailLevel(preset, dials) !== undefined ? { mtbLevel: dials.mtbLevel } : {}),
     ...(hiddenLoop ? { loop: true } : {}),
   };
   const moved =
@@ -458,7 +466,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
           min: HILLS_MIN,
           max: hillsMax(preset),
           words: hillsWords(draft.hills, climbs),
-          ends: [t("Avoid hills"), t("Fastest"), t("Seek hills")],
+          // Grades where the slider sets one (its left half); its right half seeks climbs, which has no grade.
+          ends: [`${LT1_GRADE_MIN_PCT}%`, `${hillsGradePosition(0)}%`, t("Seek hills")],
           disabled: false,
           ...shortNote(hillsNote, hillsNote && HILLS_NOTE_SHORT.get(hillsNote)),
           how: HILLS_HOW,
@@ -486,16 +495,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       how: TRAILS_OFF_HOW,
       howAbout: TRAILS_OFF_HOW_ABOUT,
     },
-    easyMtb: offersEasyMtb(preset)
-      ? {
-          label: EASY_MTB_LABEL,
-          checked: dials.easyMtb === true && !trailsAreOff(preset, dials),
-          locked: trailsAreOff(preset, dials),
-          hint: trailsAreOff(preset, dials) ? EASY_MTB_LOCKED_HINT : EASY_MTB_HINT,
-          how: EASY_MTB_HOW,
-          howAbout: EASY_MTB_HOW_ABOUT,
-        }
-      : null,
+    surface: surfaceView(preset, dials),
     waits: offersStopsAndTurns(preset) ? waitsView(preset, waitWeightOf(preset, draft)) : null,
     sharpTurns: offersStopsAndTurns(preset) ? sharpTurnsView(sharpTurnWeightOf(preset, draft)) : null,
     fewerTurns: showsFewerTurns(preset)
@@ -503,6 +503,37 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       : null,
     reset: moved ? start : null,
   };
+}
+
+/** The Surface picker on this ride type, or null where it has none (lib/surface.ts). */
+export function surfaceView(preset: PresetId, dials: Dials): SurfaceView | null {
+  if (!offersSurface(preset)) return null;
+  const trails = offersTrails(preset);
+  const open = trails && !trailsAreOff(preset, dials);
+  const levels = MTB_LEVEL_OPTIONS.filter((option) => option.level >= 2);
+  // Mountain Bike's level 1 is its own easiest level; elsewhere Easy MTB trails also rides unrated trails.
+  const easyHow = isMtb(preset) ? MTB_LEVEL_OPTIONS[0].hint : EASY_MTB_HOW;
+  return {
+    value: surfaceOf(preset, dials),
+    options: [
+      ["paved", PAVED_LABEL],
+      ["gravel", GRAVEL_LABEL],
+      ...(open
+        ? [["easy-mtb", EASY_MTB_LABEL] as const, ...levels.map((option) => [`mtb-${option.level}` as Surface, mtbUpTo(option.label)] as const)]
+        : []),
+    ],
+    info: [
+      [PAVED_LABEL, PAVED_HINT],
+      [GRAVEL_LABEL, isMtb(preset) ? MTB_GRAVEL_HINT : GRAVEL_HINT],
+      ...(trails && !open ? [[EASY_MTB_LABEL, EASY_MTB_LOCKED_HINT] as const] : []),
+      ...(open ? [[EASY_MTB_LABEL, easyHow] as const, ...levels.map((option) => [mtbUpTo(option.label), option.hint] as const)] : []),
+    ],
+  };
+}
+
+/** "MTB trails up to Level 3 (black)": a trail choice's name, from the level's own words. */
+function mtbUpTo(level: string): string {
+  return t("MTB trails up to {level}", { level });
 }
 
 /** The ride size slider's name: its unit is in it, so it is said with the number (riders). */

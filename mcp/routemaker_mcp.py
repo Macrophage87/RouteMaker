@@ -45,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.29.0"
+SERVER_VERSION = "0.30.0"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
@@ -1434,6 +1434,9 @@ def plan_fragment(
         parts.append("trailsoff=1")
     if dials.get("easy_mtb"):
         parts.append("easymtb=1")
+    # "Paved only" (Ride settings' Surface, 2026-11-21; planHash.ts), where the ride type takes it.
+    if (dials.get("paved") or sent.get("paved")) and preset in PAVED_PRESETS:
+        parts.append("paved=1")
     # Fewer turns and the rider's wait weight (Plan's Ride settings, 2026-11-20; planHash.ts).
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
         parts.append("fewerturns=1")
@@ -1452,7 +1455,8 @@ def plan_fragment(
         parts.append(f"bike={sent['bike']}")
         if sent["bike"] == "ebike" and sent.get("ending") == "outside_dock":
             parts.append("ending=outside")
-    if sent.get("mtb_level"):
+    # 0 included: Mountain Bike with no mountain-bike trails (the Surface setting).
+    if sent.get("mtb_level") is not None:
         parts.append(f"level={sent['mtb_level']}")
     if sent.get("mtb_preferred"):
         parts.append(f"prefer={sent['mtb_preferred']}")
@@ -1479,6 +1483,9 @@ def page_dials(dials: dict, sent: dict) -> dict:
     }
     if dials.get("easy_mtb"):
         kept["easyMtb"] = True
+    # The page's fitDials keeps it on `PAVED_PRESETS` alone.
+    if dials.get("paved") or sent.get("paved"):
+        kept["paved"] = True
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
         kept["fewerTurns"] = True
     optional = {
@@ -1494,6 +1501,8 @@ def page_dials(dials: dict, sent: dict) -> dict:
         else None,
     }
     kept.update({k: v for k, v in optional.items() if v})
+    if sent.get("mtb_level") == 0:
+        kept["mtbLevel"] = 0
     if sent.get("sharp_turn_weight") is not None:
         kept["sharpTurnWeight"] = half_step(sent["sharp_turn_weight"], 0)
     return kept
@@ -1643,6 +1652,8 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "trails_off": one("trailsoff") == "1",
         # Default and Trailmaxxing only, as the page reads it (dials.ts fitDials).
         "easy_mtb": one("easymtb") == "1" and preset in EASY_MTB_PRESETS,
+        # Ride settings' Surface (2026-11-21), as the page reads it (dials.ts offersPaved).
+        "paved": one("paved") == "1" and preset in PAVED_PRESETS,
         "novice_legs": one("novice") == "1",
         "fewer_turns": one("fewerturns") == "1",
         "wait_weight": weight("waits", 1),
@@ -1654,6 +1665,13 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "mtb_preferred": number("prefer"),
         "ride_size": (None if number("riders") is None else min(2000, max(100, number("riders")))),
     }
+    # The trail level as the page reads it (dials.ts fitTrailLevel): Mountain Bike's 0 to 4,
+    # elsewhere 2 to 4 beside Easy MTB trails, never with Paved only.
+    level = options["mtb_level"]
+    if preset == "mountain-bike":
+        options["mtb_level"] = level if level in (0, 1, 3, 4) else None
+    elif not (options["easy_mtb"] and not options["paved"] and level in (2, 3, 4)):
+        options["mtb_level"] = None
     if one("targetmi"):
         try:
             options["target_distance_m"] = int(float(one("targetmi")) * METRES_PER_MILE)
@@ -1776,8 +1794,37 @@ def refusal(status: int, message) -> str:
     return f"the site refused the route ({status}): {message}"
 
 
-# The ride types that offer Easy MTB trails (core/presets.py EASY_MTB_PRESETS).
-EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
+# The ride types that offer Easy MTB trails, and a hardest level of 2 to 4 beside it
+# (core/presets.py EASY_MTB_PRESETS; the Surface setting, 2026-11-21).
+EASY_MTB_PRESETS = frozenset(
+    {
+        "default",
+        "trailmaxxing",
+        "group-ride",
+        "fast",
+        "cargo",
+        "novice",
+        "tandem",
+    }
+)
+# The ride types whose links keep Ride settings' "Paved only" (frontend lib/dials.ts offersPaved):
+# a bike of the rider's own, but Road Bike (always paved).
+PAVED_PRESETS = frozenset(
+    {
+        "default",
+        "trailmaxxing",
+        "group-ride",
+        "mass-ride",
+        "mountain-goat",
+        "gravel",
+        "fast",
+        "cargo",
+        "tandem",
+        "ebike",
+        "novice",
+        "mountain-bike",
+    }
+)
 
 
 def easy_mtb_said(info: object) -> str | None:
@@ -1792,8 +1839,8 @@ def easy_mtb_said(info: object) -> str | None:
     harder = info.get("harder_m") or 0.0
     if harder > 1.0:
         return (
-            f"{miles_text(harder)} on mountain-bike trails rated 2 or harder (no way round"
-            " was found)"
+            f"{miles_text(harder)} on mountain-bike trails rated"
+            f" {int(info.get('max_level') or 1) + 1} or harder (no way round was found)"
         )
     return None
 
@@ -5030,9 +5077,15 @@ RIDE_OPTIONS = {
     "assist": {"type": "boolean", "description": "Cargo only: electric assist."},
     "mtb_level": {
         "type": "integer",
-        "minimum": 1,
+        "minimum": 0,
         "maximum": 4,
-        "description": "Mountain Bike only: the hardest trail level, 1 (green) to 4 (red).",
+        "description": (
+            "The app's Surface setting, as the hardest mountain-bike trail level. On"
+            " mountain-bike: 1 (green) to 4 (red), default 2; 0 is no mountain-bike trails at all"
+            " (Gravel, or Paved only with `paved`). With `easy_mtb` on another ride type that"
+            " takes it: 2 to 4 rides the trails up to that level on the mountain-bike map"
+            " (default 1, the easy trails)."
+        ),
     },
     "mtb_preferred": {
         "type": "integer",
@@ -5136,7 +5189,8 @@ RIDE_OPTIONS = {
             " or training ride). A second stopped counts this many seconds of riding when"
             " routes are ranked; 1 to 5 in half steps. It only raises the ride type's own weight"
             " (1; 2 on"
-            " trailmaxxing, gravel, mountain-goat, mountain-bike, group-ride, cargo and tandem; 3 on"
+            " trailmaxxing, gravel, mountain-goat, mountain-bike, group-ride, cargo and tandem;"
+            " 3 on"
             " road-bike)."
             " Compare summary.junction_waits before and after; the waits shown stay real."
         ),
@@ -5151,7 +5205,8 @@ RIDE_OPTIONS = {
             "Bike ride types: how much sharp turns, U-turns and the time a turn loses braking"
             " from speed count when routes are ranked, apart from waits at lights. 0 for a"
             " rider who enjoys sharp turns (they cost no more than any other turn), up to 5 to"
-            " avoid them (half steps). The ride type's own is 1 (3 on road-bike, 2 on tandem and cargo)."
+            " avoid them (half steps). The ride type's own is 1 (3 on road-bike, 2 on tandem and"
+            " cargo)."
             " Every turn"
             " still costs its plain price; compare summary.turns."
         ),
@@ -5160,7 +5215,8 @@ RIDE_OPTIONS = {
         "type": "boolean",
         "default": False,
         "description": (
-            "default and trailmaxxing only: Easy MTB trails. Also ride mountain-bike trails"
+            "A bike of the rider's own (not road-bike, ebike, mass-ride or mountain-bike):"
+            " Easy MTB trails, up to `mtb_level` where given. Also ride mountain-bike trails"
             " rated easy (mtb:scale or IMBA 0 or 1) or unrated (grass and dirt), on the"
             " off-road graph as gravel does, steering off trails rated 2 or harder. The"
             " summary's `easy_mtb` says where the route still rides a harder one, or where"
@@ -7396,12 +7452,12 @@ class Server:
             for key, what in (
                 ("blocked_lines", "the roads avoided"),
                 ("follow", "the line followed"),
-                # The app has no control for this (its named option sets it for a ride). Fewer
-                # turns and the wait weight ride in the link since Plan's Ride settings took them
-                # (2026-11-20).
+                # Fewer turns and the wait weight ride in the link since Plan's Ride settings
+                # took them (2026-11-20), and "All paved" as Surface's Paved only (2026-11-21),
+                # except on the ride types whose link does not keep it (`PAVED_PRESETS`).
                 ("paved", "All paved"),
             )
-            if plan.sent.get(key)
+            if plan.sent.get(key) and not (key == "paved" and plan.preset in PAVED_PRESETS)
         ]
         # The link carries half steps (Plan's sliders): a weight between them opens rounded.
         weight = plan.sent.get("wait_weight")
@@ -8167,6 +8223,9 @@ class Server:
                 kept = (*kept, "cycling_speed_kmh")
             if preset in EASY_MTB_PRESETS:
                 kept = (*kept, "easy_mtb")
+                # A harder trail level beside it (the Surface setting) stays with it.
+                if options.get("easy_mtb") and (options.get("mtb_level") or 0) >= 2:
+                    kept = (*kept, "mtb_level")
             options = {k: v for k, v in options.items() if k in kept}
         # The legs drawn in the app and the stops' names are the rider's: they stay, on the
         # revised points, whatever the ride type.
@@ -8197,6 +8256,12 @@ class Server:
             options.pop("run_pace_kmh", None)
             field, kmh = pace_option(args["pace_mph"], preset)
             options[field] = kmh
+        # A harder trail level off Mountain Bike rides only beside Easy MTB trails (the API
+        # refuses it alone), as the page's fitDials keeps it.
+        if preset != "mountain-bike" and not (
+            options.get("easy_mtb") and (options.get("mtb_level") or 0) >= 2
+        ):
+            options.pop("mtb_level", None)
         limit = args.get("max_miles_from_metro", draft.limit)
         early_notes: list[str] = []
         if reshaped and options.get("follow"):

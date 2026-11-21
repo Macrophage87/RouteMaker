@@ -28,7 +28,7 @@ export const REFINE_GOAL = 0.97;
 import { COVERAGE_BBOX, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { PLAN_TYPE_PREFIX, parseDialsComment, type GpxFile, type GpxRoute } from "./gpx.ts";
 import { DEFAULT_PRESET, resolvePreset, type PresetId } from "./presets.ts";
-import { fitSharpTurnWeight, fitWaitWeight, isCarrying, isWhen, offersEasyMtb, offersStopsAndTurns, type Dials } from "./dials.ts";
+import { fitSharpTurnWeight, fitWaitWeight, isCarrying, isWhen, fitTrailLevel, offersEasyMtb, offersPaved, offersStopsAndTurns, type Dials } from "./dials.ts";
 import { cumulative, dedupe, fidelity, placesAlong, refineVias, significantIndexes, viaPoints, type Fidelity } from "./trackMatch.ts";
 
 /** Most vertices the reference line keeps for drawing and measuring. */
@@ -312,6 +312,11 @@ function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<Imported
   // "Easy MTB trails", on the ride types that offer it, as a link's easymtb=1: without it the plan
   // would reopen off the MTB trails it rode.
   if (fields.easymtb === "1" && offersEasyMtb(id)) dials.easyMtb = true;
+  // "Paved only" (the Surface setting), as a link's paved=1.
+  if (fields.paved === "1" && offersPaved(id)) dials.paved = true;
+  // The hardest trail level (the Surface setting), as a link's level=N; held to what the ride type takes.
+  const level = Number(fields.level);
+  if (fields.level !== undefined && fitTrailLevel(id, { ...dials, mtbLevel: level }) !== undefined) dials.mtbLevel = level;
   // Plan's Fewer turns and wait weight (Ride settings popup), as a link's fewerturns=1 and waits=N.
   if (fields.fewerturns === "1" && offersStopsAndTurns(id)) dials.fewerTurns = true;
   const waits = fitWaitWeight(id, Number(fields.waits));

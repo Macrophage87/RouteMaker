@@ -15,7 +15,7 @@
  * RIDE-TYPE-ORGANISE (Stephen, 2026-10-12): a search box over the cards, and the
  * cards under their group's heading (lib/rideTypeGroups.ts).
  */
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { t } from "./lib/i18n.ts";
 import { PRESETS, presetDescription, presetSaid, presetSummary, type PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
@@ -25,11 +25,15 @@ import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/ri
 import { mtbChosen } from "./lib/mtbMode.ts";
 import { rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "./lib/rideTypeGroups.ts";
 import { FavoriteStar, toggleFromPicker, useFavoriteRides } from "./lib/favoriteRides.ts";
+import { matchingOwn, ownSetup, removeOwn, requestCreate, useOwnRideTypes, type OwnRideType } from "./lib/ownRideTypes.ts";
+import { GoDefaultButton, OwnRideCards, ownSummary, takesGoDefault, type GoDefault } from "./lib/rideTypeCards.ts";
 
 interface Props {
   preset: PresetId;
   dials: Dials;
   onChoose: (preset: PresetId, dials: Dials) => void;
+  /** Each card's Go button (the owner, 2026-11-21: "make a button in the ride type list that will make it the default for go"). */
+  go?: GoDefault;
 }
 
 /** The groups shown open in the dialog: the rider's favorites and the common ride types. */
@@ -49,7 +53,7 @@ function GroupFold({ fold, label, count, open, children }: { fold: boolean; labe
 // A fold's summary too, and only what shows: a card in a closed fold cannot take the focus.
 const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), summary, [tabindex]:not([tabindex='-1'])";
 
-export function RideTypePicker({ preset, dials, onChoose }: Props) {
+export function RideTypePicker({ preset, dials, onChoose, go }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
   const cardRefs = useRef(new Map<PresetId, HTMLButtonElement>());
@@ -66,7 +70,10 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   const folded = rideSections(query, undefined, favorites).folded;
   const current = PRESETS.find((p) => p.id === preset);
   const carrying = CARRYINGS.find((c) => c.id === dials.carrying);
-  const custom = isCustom(preset, dials);
+  // The rider's own ride types (lib/ownRideTypes.ts), first; the one in use names the button.
+  const own = useOwnRideTypes();
+  const mine = matchingOwn(own.list, preset, dials);
+  const custom = !mine && isCustom(preset, dials);
 
   const open = () => {
     dialogRef.current?.showModal();
@@ -96,6 +103,33 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
     close();
   };
 
+  const pickOwn = (choice: OwnRideType) => {
+    const setup = ownSetup(choice);
+    onChoose(setup.preset, setup.dials);
+    close();
+  };
+
+  // My ride types and Create custom (the owner, 2026-11-21: "Put it after favorites"): after Favorites, else first.
+  const ownSection =
+    query === "" ? (
+            <section className="ride-type-group" aria-labelledby="ride-types-own">
+              <h3 id="ride-types-own">{t("My ride types")}</h3>
+              {/* Create custom (the owner, 2026-11-21): Ride settings opens with its name box ready. */}
+              <button
+                type="button"
+                className="secondary own-ride-create"
+                onClick={() => {
+                  close();
+                  requestCreate();
+                }}
+              >
+                {t("Create custom")}
+              </button>
+              <OwnRideCards list={own.list} inUse={mine?.id ?? null} onPick={pickOwn} onRemove={(o) => removeOwn(o.id)} idPrefix="ride-types" go={go} />
+            </section>
+    ) : null;
+  const hasFavorites = groups.some((group) => group.id === "favorites");
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
@@ -124,7 +158,9 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
         <button type="button" ref={openerRef} onClick={open} aria-haspopup="dialog" aria-describedby={current ? "ride-type-gist" : undefined}>
           <span className="ride-type-text">
             <strong>
-              {custom ? (
+              {mine ? (
+                mine.name
+              ) : custom ? (
                 <>
                   {t("Custom (based on")} <PresetName id={preset} />)
                 </>
@@ -136,7 +172,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
               {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
             </strong>
             <span className="hint" aria-hidden="true">
-              {current && presetSummary(current)}
+              {mine ? ownSummary(mine) : current && presetSummary(current)}
             </span>
           </span>
           <span className="ride-type-change">{t("Change")}</span>
@@ -166,12 +202,15 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
           </header>
           <p className="hint">
             {t("Sets traffic and hills for this kind of ride.")}{" "}
+            {go ? `${t("Go on a card makes it what Go starts on.")} ` : ""}
             <button type="button" className="link ride-types-full" aria-pressed={full} onClick={() => setFull(!full)}>
               {t("What each does")}
             </button>
           </p>
           <RideTypeSearch id="ride-types-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
+          {!hasFavorites && ownSection}
           {groups.map((group) => (
+            <Fragment key={group.id}>
             <GroupFold key={group.id} fold={folded && !OPEN_GROUPS.includes(group.id)} label={group.label} count={group.ids.length} open={group.ids.includes(preset)}>
             <section className="ride-type-group" aria-labelledby={`ride-types-${group.id}`}>
               <h3 id={`ride-types-${group.id}`} className={folded && !OPEN_GROUPS.includes(group.id) ? "visually-hidden" : undefined}>{group.label}</h3>
@@ -179,7 +218,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                 {group.ids.map((id) => PRESETS.find((p) => p.id === id)!).map((option) => (
                   <li
                     key={option.id}
-                    className={["ride-type-card", "has-fav", option.id === preset && "current", carries(option.id) && "with-loads"].filter(Boolean).join(" ")}
+                    className={["ride-type-card", "has-fav", go && takesGoDefault(option.id) && "has-go", option.id === preset && !mine && "current", carries(option.id) && "with-loads"].filter(Boolean).join(" ")}
                   >
                     <button
                       type="button"
@@ -187,7 +226,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                         if (el) cardRefs.current.set(option.id, el);
                         else cardRefs.current.delete(option.id);
                       }}
-                      aria-pressed={option.id === preset && (!carries(option.id) || dials.carrying === "cargo")}
+                      aria-pressed={option.id === preset && !mine && (!carries(option.id) || dials.carrying === "cargo")}
                       onClick={() => pick(option.id, carries(option.id) ? "cargo" : null)}
                     >
                       <strong>
@@ -204,6 +243,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                         </>
                       )}
                     </button>
+                    {go && <GoDefaultButton goKey={option.id} said={presetSaid(option.id)} go={go} />}
                     <FavoriteStar id={option.id} on={favorites.includes(option.id)} onToggle={(id) => toggleFromPicker(id, dialogRef.current)} />
                     {carries(option.id) && (
                       <div className="ride-type-loads" role="group" aria-label={t("{ride}: cargo or passengers", { ride: presetSaid(option.id) })}>
@@ -235,6 +275,8 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
               </ul>
             </section>
             </GroupFold>
+            {group.id === "favorites" && ownSection}
+            </Fragment>
           ))}
         </div>
       </dialog>

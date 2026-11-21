@@ -347,7 +347,8 @@ saved routes, with the same search, tag chips and Archive, and the routes kept o
 In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly as drawn</strong> applies in Plan
 only.</li>
 <li><strong>The route card</strong> shows the start, the stops and via points between, counted apart ("1 stop · 3 via points"), and the destination; Edit
-opens the points. <strong>Add a stop</strong> under it puts a place where it adds the least distance,
+opens the points. In Go the line and pins stay put on the map until Edit is open, so a stray drag or tap
+changes nothing (the owner's ask). <strong>Add a stop</strong> under it puts a place where it adds the least distance,
 and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out. With a route to
 a place, the three nearest bike racks within 500 ft [152 m] of its end are pins. For a destination you picked or pressed in Go,
 <strong>End at the bike rack</strong> under the card moves the end to the nearest in one change, so Undo puts it back; <strong>Ride here</strong> on a rack's card
@@ -361,8 +362,8 @@ only these two, under Other routes), each with how much time or busy riding it s
 looked for when a route has 6 or more turns and shown only when it has at least 3 and a quarter fewer; All paved is
 shown only when it takes at least 0.1 mi [160 m] of unpaved riding off (both our defaults). Neither is offered on
 transit ride types, Bikeshare, Mass Ride, Rebalance Ride or Run, nor Fewer turns where turns already count 30
-seconds, nor All paved on Road Bike. Picking one keeps it for that ride's re-plans; it is never a setting or in a
-link. More direct is
+seconds, nor All paved on Road Bike. Picking one keeps it for that ride's re-plans; the same two are also Ride settings (Fewer turns, and
+Surface's Paved only), kept in a link. More direct is
 up to two notches more tolerant of traffic and is shown only when it saves at least a minute.
 Trailmaxxed is planned at the top of the traffic slider and is shown only when it takes at least
 250 ft [80 m] off busy riding. Press a line, or its row, to choose it; your own setting doesn't
@@ -623,13 +624,23 @@ router won't take; turning it on during a loop turns the loop off, and "Loop off
 <h3>How it rides</h3>
 <ul>
 <li><strong>Ride type</strong> and its <strong>traffic</strong> and <strong>hills</strong> sliders:
-<a href="/about/ride-types.html">Ride types</a>. In Plan, <strong>Adjust</strong> on the Ride settings line opens
-every ride setting in a popup over the map, titled with the ride type (a sheet from the bottom on a narrow screen).
-The map and Route stay in reach while it is open, and Done or Escape closes it. In Go the settings open under the
-line.</li>
-<li><strong>Waiting at lights and stops</strong>, <strong>Sharp turns</strong> and <strong>Fewer turns</strong>, in Plan's Ride settings, on every
-ride type but those on foot, Run, the transit ride types and the share-bike types. Waiting at lights and stops is a slider from
-<strong>Don't mind</strong> to <strong>Rather ride</strong>: each second waiting at a signal, a stop sign or a gap in
+<a href="/about/ride-types.html">Ride types</a>. In Plan and Go, <strong>Adjust</strong> on the Ride settings line opens
+every ride setting on a screen of its own, titled with the ride type: on a computer a full-height panel beside the
+sidebar, with the map and Route still in reach; on a phone the whole screen. Done or Escape closes it. When is a dropdown, and
+<strong>Riding speed</strong> a slider from the ride type's own speed to 30 mph [48 km/h], starting at 6 mph [10 km/h]
+for the slowest cargo bikes.</li>
+<li><strong>My ride types</strong>: <strong>Save as my own ride type</strong> at the foot of Ride settings, once a
+slider is moved, keeps the ride type and every slider under a name you give; <strong>Create custom</strong> in the ride
+type list opens Ride settings with the name box ready. Your own are listed after Favorites in the ride type list;
+picking one sets its ride type and every slider, and its bin removes it (Undo brings it back). Saving under a name you
+used replaces that one; up to 20 are kept, and a full list says so rather than dropping one. They are kept on this device, and in your account when signed in. Ride settings' <strong>Advanced</strong> copies
+the settings as a short JSON text to send to someone, and loads one pasted in: only a ride type and its sliders,
+never a place or a route.</li>
+<li><strong>Go</strong> on a ride type's card, your own too, makes it what Go starts on (filled where it is);
+pressed again, Go starts on Default. It is the same choice as Settings' Primary Go method.</li>
+<li><strong>Waiting at lights and stops</strong>, <strong>Sharp turns</strong> and <strong>Fewer turns</strong>, in the Ride settings, on every
+ride type but those on foot, Run, the transit ride types and the share-bike types. Waiting at lights and stops is a slider shown as a multiple of the expected stop, from the ride type's own
+weight to 5x: each second waiting at a signal, a stop sign or a gap in
 traffic counts that many seconds of riding when routes are compared, so a route with fewer stops can win even if it
 is a little longer. It starts at the ride type's own weight (Road Bike 3x; Group Ride, Cargo Bike, Tandem,
 Trailmaxxing, Gravel, Mountain Goat and Mountain Bike 2x; others 1x) and goes up to 5x (our default). The wait times shown stay the real ones.
@@ -637,10 +648,10 @@ Sharp turns, from 0 to 5, sets how much a sharp turn or U-turn and the time lost
 starts at 3 on Road Bike, 2 on Tandem and Cargo Bike and 1 on others (our defaults), and at 0 a sharp turn counts as a plain one.
 Fewer turns counts each turn as 30 seconds of riding instead of 15 when routes are compared. It is not shown on
 Group Ride, Mass Ride, Road Bike and Tandem, which count 30 already. All three are kept in the plan's link and its GPX
-file. Go has none of them, so opening the plan in Go drops them. See
+file, and Go plans with them too. See
 <a href="/about/routing.html#junction-time">time lost at junctions</a>.</li>
 <li><strong>Riding speed</strong>, under the Hills slider: <strong>Ride type's speed</strong> (the default) or your
-own pace on the flat, 8 to 30 mph [13 to 48 km/h]. Route times, the arrival time and the ride's times to go follow
+own pace on the flat, 6 to 30 mph [10 to 48 km/h]. Route times, the arrival time and the ride's times to go follow
 it; hills and junction waits still count. Not on Mass Ride or the share-bike types, which keep their own pace. Kept on
 this device, and with your account when you are signed in; never in a shared link (see
 <a href="/about/routing.html#route-time">how a route's time is worked out</a>).</li>
@@ -653,8 +664,15 @@ share-bike types, <strong>Leave at</strong> plans for a day and start time from 
 hour at first, our default): that moment's ride time, the closures in force then, transit times and daylight. Go,
 Start ride, Best order and the nearest places always plan for now, and the time is never kept in a link or a saved
 route.</li>
-<li><strong>Easy MTB trails</strong> (Default and Trailmaxxing, off at first) lets the route use mountain-bike
-trails rated Green and unrated ones: <a href="/about/trails.html#easy-mtb">Easy MTB trails</a>.</li>
+<li><strong>Surface</strong>, the roughest the route may use: <strong>Paved only</strong> keeps off gravel and dirt
+wherever pavement runs near, <strong>Gravel</strong> (at first) plans as the ride type does, <strong>Easy MTB trails</strong> also
+uses mountain-bike trails rated Green and unrated ones (<a href="/about/trails.html#easy-mtb">Easy MTB trails</a>), and
+<strong>MTB trails up to Level 2, 3 or 4</strong> uses any trail up to that level, planned on Mountain Bike's map. All
+six are on Default, Trailmaxxing, Group Ride, Fast, Cargo Bike, Novice, Tandem and Mountain Bike; Gravel, Mountain
+Goat, E-bike and Mass Ride have Paved only and Gravel. On Mountain Bike it is the hardest trail level (MTB trails up to
+Level 2 at first), and Gravel or Paved only rides no mountain-bike trail. Not on Road Bike, always paved; or on foot,
+Run, the share-bike and transit ride types. Kept in the plan's link
+and its GPX file.</li>
 <li><strong>Cargo Bike</strong> asks what you carry: Carrying cargo, or Cargo with passengers.</li>
 <li><strong>Rider and bike weight</strong> (Settings, Riding) makes climbs cost what they cost you;
 it is kept private.</li>

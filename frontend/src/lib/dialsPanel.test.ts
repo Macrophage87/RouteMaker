@@ -78,7 +78,7 @@ test("the hills slider is in grade percent and Mass Ride's stops at 8%; Mountain
   assert.match(TOLERATE_NOTE, /16 mi \(25 km\)/);
   const goat = startDials("mountain-goat");
   const climbing = panelView("mountain-goat", goat).hills;
-  assert.deepEqual(climbing.ends, ["Avoid hills", "Fastest", "Seek hills"]);
+  assert.deepEqual(climbing.ends, ["1%", "8%", "Seek hills"]);
   assert.deepEqual([climbing.min, climbing.max, climbing.scale], [HILLS_MIN, HILLS_MAX, undefined]);
   assert.equal(climbing.noteSaid, SEEK_NOTE);
   assert.equal(climbing.words, "Seeks hills");

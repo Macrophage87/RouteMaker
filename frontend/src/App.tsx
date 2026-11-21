@@ -323,6 +323,8 @@ import { rideTooLong } from "./lib/navigate.ts";
 import { installState } from "./lib/installOffer.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
+import { matchingOwn, ownNow, ownSetup, reloadOwn, setGoOwn, useOwnRideTypes, type OwnRideType } from "./lib/ownRideTypes.ts";
+import type { GoDefault } from "./lib/rideTypeCards.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
@@ -444,6 +446,16 @@ const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length
 const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, wide: !window.matchMedia(NARROW).matches });
 // Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
 const GO_START_RIDE = OPENING.mode === "go" && !PLAN_LINK && START_MY_GO.myGo.ride ? START_MY_GO.myGo.ride : null;
+// Or one of the rider's own ride types (lib/ownRideTypes.ts), made Go's from the ride type list: its ride type and
+// every slider.
+const GO_START_OWN = ((): { preset: PresetId; dials: Dials } | null => {
+  if (OPENING.mode !== "go" || PLAN_LINK) return null;
+  const { list, goOwn } = ownNow();
+  const own = list.find((o) => o.id === goOwn);
+  if (!own) return null;
+  // Its own ride type, even where My Go's ride is another (it was saved again on another base since).
+  return ownSetup(own);
+})();
 // A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
 const OPEN_AT = atFromHash(window.location.hash);
 // A shared route's link (v0.7.0, "share the identical route"; lib/sharedRoutes.ts): the exact line it names is
@@ -522,8 +534,8 @@ export function App() {
   // The parts loaded on first use start arriving once the first screen is up (app/later.tsx).
   usePreloadLater();
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
-  const [preset, setPreset] = useState<PresetId>(GO_START_RIDE ?? initialPlan.preset);
-  const [dials, setDials] = useState<Dials>(() => (GO_START_RIDE ? startDials(GO_START_RIDE) : initialPlan.dials));
+  const [preset, setPreset] = useState<PresetId>(GO_START_OWN?.preset ?? GO_START_RIDE ?? initialPlan.preset);
+  const [dials, setDials] = useState<Dials>(() => GO_START_OWN?.dials ?? (GO_START_RIDE ? startDials(GO_START_RIDE) : initialPlan.dials));
   // Go or Plan (lib/appMode.ts), and why it opened so (a later account My Go may still move it).
   const [mode, setModeState] = useState<AppMode>(OPENING.mode);
   const modeSwitched = useRef(false);
@@ -656,12 +668,6 @@ export function App() {
     if (!dials.startAt) return;
     if (mode === "go" || fitStart(dials.startAt, startClock) === undefined) setDials((now) => ({ ...now, startAt: undefined }));
   }, [mode, dials.startAt, startClock]);
-  // Waiting at lights and stops, Sharp turns and Fewer turns are set in Plan's Ride settings popup alone; Go has no control for
-  // them, so coming into Go drops them rather than plan with settings it never shows.
-  useEffect(() => {
-    if (mode !== "go" || (dials.waitWeight === undefined && !dials.fewerTurns && dials.sharpTurnWeight === undefined)) return;
-    setDials((now) => ({ ...now, waitWeight: undefined, fewerTurns: undefined, sharpTurnWeight: undefined }));
-  }, [mode, dials.waitWeight, dials.fewerTurns, dials.sharpTurnWeight]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
   // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
   // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
@@ -1980,6 +1986,7 @@ export function App() {
   const lastSettings = useRef<SettingsDoc | null>(null);
   // The favorite ride types are saved with the rest (lib/favoriteRides.ts); a star pressed is a change.
   const favoriteRides = useFavoriteRides();
+  const ownRides = useOwnRideTypes();
   const [settingsSynced, setSettingsSynced] = useState(false);
   const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
   // This device's settings when the page first asked for the account's: a read that comes later (retryUntil) keeps
@@ -2008,6 +2015,7 @@ export function App() {
     } else {
       applyToDevice(step.doc);
       reloadFavorites();
+      reloadOwn();
       // The account's weight, or cleared when it was cleared elsewhere; an account from before it kept one
       // leaves this device's, which the save below then puts in the account.
       if (step.doc.weight === null) {
@@ -3255,6 +3263,13 @@ export function App() {
     pickRide(id);
     if (modeRef.current === "go" && viewNow.current === "ride") backToPlanner();
   };
+  // One of the rider's own ride types (lib/ownRideTypes.ts) from Go's Ride sheet: its ride type and every slider.
+  const pickOwnAndClose = (own: OwnRideType) => {
+    const setup = ownSetup(own);
+    choosePreset(setup.preset, setup.dials);
+    announceExtra(`${own.name}.`);
+    if (modeRef.current === "go" && viewNow.current === "ride") backToPlanner();
+  };
   // Search prefers places near the rider: the location the app already has (`here`, rounded to about 1 km)
   // while it is in the map's view, else the map's centre.
   const searchBias = (): LonLat | undefined => {
@@ -3576,7 +3591,8 @@ export function App() {
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick }, { now: true });
   // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
   // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
-  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
+  // Nor one with no mountain-bike trails (the Surface setting's Gravel or Paved only, level 0).
+  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) && dials.mtbLevel !== 0 ? mtbLevelOf(dials) : null;
   useEffect(() => {
     setRoutableMtb(routableLevel);
   }, [routableLevel]);
@@ -4248,7 +4264,7 @@ export function App() {
       void saveSettings(window.location.origin, doc).then((saved) => saved && setUnitsPending(false));
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight, ridingSpeed]);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, ownRides, weight, ridingSpeed]);
   const answerHome = (move: boolean) => {
     const offer = homeAsk;
     if (!offer) return;
@@ -6920,6 +6936,19 @@ export function App() {
   };
   // Go's ride types: before a route under the place chips, with one under the route card (edit-route redesign).
   // P3: the ride type in use first, pressed, then the rider's own and starred ones, in one row that scrolls sideways.
+  // Go's default from the ride type list (the owner, 2026-11-21): a built-in ride type is My Go's ride; one of the
+  // rider's own is My Go's ride set to its ride type, and Go starts on its sliders too (GO_START_OWN).
+  const goDefault: GoDefault = {
+    current: ownRides.goOwn ? `own:${ownRides.goOwn}` : (myGo.ride ?? "default"),
+    onSet: (key) => {
+      const own = key.startsWith("own:") ? ownRides.list.find((o) => `own:${o.id}` === key) : undefined;
+      const ride: PresetId = own ? ownSetup(own).preset : (key as PresetId);
+      setGoOwn(own ? own.id : null);
+      saveMyGoNow({ ...myGoRef.current, ride: ride === "default" ? null : ride });
+      announceExtra(t("Go starts on {ride}.", { ride: own ? own.name : presetSaid(ride) }));
+    },
+  };
+  const ownInUse = matchingOwn(ownRides.list, preset, dials);
   const goRides = (
     <RideChips
       ids={goRideChips(myGo.ride, preset, favoriteRides)}
@@ -6930,6 +6959,7 @@ export function App() {
       ownHint={OWN_RIDE_HINT}
       own={myGo.ride ?? "default"}
       changed={isCustom(preset, dials)}
+      mine={ownInUse?.name ?? null}
     />
   );
   const go = {
@@ -7071,8 +7101,12 @@ export function App() {
           hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
           // A day and start time, in Plan only (the owner, 2026-11-13: Go always plans from now).
           startTime: mode === "plan" && offersStartTime(preset),
-          // Every ride setting in a popup, in Plan only (the owner, 2026-11-20: "Have it pop out to all ride parameters").
-          popout: mode === "plan",
+          // Every ride setting in a popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"), the same one
+          // in Go (2026-11-21: "just have the same control popout for both"), so a link's waits, sharp turns and Fewer
+          // turns are planned with, and seen, in Go too.
+          popout: true,
+          go: goDefault,
+          shown: mode !== "go" || view === "ride",
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,
@@ -8063,7 +8097,7 @@ export function App() {
             <EditRouteSheet nav={sheetNav}>{goMode && view === "points" && sections.points}</EditRouteSheet>
             <RideSheet nav={sheetNav}>
               {/* A pick closes the sheet (P3: it saved the Close press), back to the route and its totals. */}
-              <RideGroupChips preset={preset} onPick={pickRideAndClose} open={view === "ride"} />
+              <RideGroupChips preset={preset} dials={dials} onPick={pickRideAndClose} onPickOwn={pickOwnAndClose} go={goDefault} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
               {/* Start from here (the owner, 2026-10-16: "You should be able to make changes then start from the edit

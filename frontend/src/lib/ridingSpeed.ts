@@ -20,7 +20,7 @@ import { t } from "./i18n.ts";
 
 export const SPEED_STORAGE_KEY = "routemaker.speed";
 /** The picker's range, whole mph: below the slowest ride type's pace is not "faster", and 30 mph is a fast pack. */
-export const SPEED_MIN_MPH = 8;
+export const SPEED_MIN_MPH = 6;
 export const SPEED_MAX_MPH = 30;
 /**
  * What the key holds once the rider picked the ride type's own again: kept, not removed, so the account's
@@ -85,6 +85,32 @@ export interface RidingSpeedControl {
 /** Whether a ride type takes the rider's speed: not Mass Ride (its speed band) nor a share bike (core presets.rider_speed). */
 export function takesRiderSpeed(preset: PresetId): boolean {
   return !["mass-ride", "bikeshare", "rebalance", "bikeshare-transit", "walk", "walk-transit", "run"].includes(preset);
+}
+
+/**
+ * The Riding speed slider (the owner, 2026-11-21: "Maybe put speed on a slider too"; "Start around 6, there are some
+ * very slow cargo bikes"): its left end, one step below SPEED_MIN_MPH, is the ride type's own speed; then each mph to
+ * SPEED_MAX_MPH.
+ */
+export const SPEED_OWN_POSITION = SPEED_MIN_MPH - 1;
+export function speedSliderView(mph: number | null): {
+  min: number;
+  max: number;
+  step: number;
+  words: string;
+  ends: [string, string, string];
+  disabled: boolean;
+  how: string;
+} {
+  return {
+    min: SPEED_OWN_POSITION,
+    max: SPEED_MAX_MPH,
+    step: 1,
+    words: mph === null ? t("Ride type's speed") : formatSpeed(speedKmh(mph)),
+    ends: [t("Ride type's"), "", formatSpeed(speedKmh(SPEED_MAX_MPH))],
+    disabled: false,
+    how: SPEED_HINT,
+  };
 }
 
 export const SPEED_LABEL = t("Riding speed");

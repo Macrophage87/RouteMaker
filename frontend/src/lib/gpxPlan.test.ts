@@ -121,7 +121,7 @@ test("an export's sliders and its points' names come back with its ride type", (
       ),
     ).dials;
   assert.deepEqual(easy("trailmaxxing"), { stress: 70, hills: 0, easyMtb: true });
-  assert.equal(easy("gravel")?.easyMtb, undefined);
+  assert.equal(easy("ebike")?.easyMtb, undefined);
   // So do Fewer turns and the rider's wait weight (Plan's Ride settings).
   const stops = planFromGpx(
     parseGpx(

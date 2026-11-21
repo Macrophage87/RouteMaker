@@ -14,6 +14,7 @@ import { t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
 import { formatDistanceChange, formatDuration } from "./format.ts";
 import { isTransit, type PresetId } from "./presets.ts";
+import { isMtb } from "./mtbMode.ts";
 import { turnTotal, unpavedMetres } from "./quickFigures.ts";
 import type { StressKey } from "./stressBar.ts";
 
@@ -54,7 +55,8 @@ export function neighbourKinds(final: RouteResponse, go: boolean): NeighbourKind
   if (final.preset === "bikeshare") return kinds.length ? kinds : null;
   // Not where the route was already planned with Fewer turns (Plan's switch, 2026-11-20): it would be the same route.
   if (turnsOf(final) >= ASK_FEWER_TURNS_AT && final.dials?.fewer_turns !== true) kinds.push("fewer_turns");
-  if (unpavedOf(final) >= PAVED_BY_M) kinds.push("paved");
+  // Nor where it was already planned Paved only (the Surface setting): the API answers none.
+  if (unpavedOf(final) >= PAVED_BY_M && final.dials?.paved !== true) kinds.push("paved");
   return kinds.length ? kinds : null;
 }
 
@@ -292,10 +294,17 @@ export function rideDials(planDials: Dials, shown: RouteResponse | null): Dials 
   const neighbour = shown?.neighbour;
   if (!neighbour) return planDials;
   // A named option's re-plans keep its choice too ("Fewer turns", "All paved").
-  return {
+  const dials: Dials = {
     ...planDials,
     stress: neighbour.stress,
     ...(neighbour.kind === "fewer_turns" ? { fewerTurns: true } : {}),
     ...(neighbour.kind === "paved" ? { paved: true } : {}),
   };
+  // All paved and Easy MTB trails are never both (the Surface setting, 2026-11-21): All paved wins.
+  if (neighbour.kind === "paved") {
+    delete dials.easyMtb;
+    // A harder trail level goes with Easy MTB trails, but on Mountain Bike, where it is its own.
+    if (!isMtb(shown.preset)) delete dials.mtbLevel;
+  }
+  return dials;
 }

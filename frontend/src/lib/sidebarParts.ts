@@ -7,7 +7,7 @@
  * Each is a real button or a real <details>, with its state in aria-expanded (or the element's own)
  * and its words in text; none depends on colour.
  */
-import { Fragment, createElement as h, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Fragment, createElement as h, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { t } from "./i18n.ts";
 import { RIDE_ACTION_SPOKEN, RIDE_SETTINGS_LABEL, foldTitle, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
@@ -42,6 +42,16 @@ export function lineIcon(name: IconName, size = 18): ReactElement {
  * edit (the a11y review's N4). The action is shown as Adjust or Done but heard as Adjust, its state in
  * aria-expanded, so a screen reader does not say "Done, expanded" (N8).
  */
+/**
+ * Open Ride settings. On a phone it is the whole screen (the owner, 2026-11-21: "make it a full size new screen"), so
+ * modal there: nothing behind it to tab into. On a computer a side panel, and the map bar's Route stays in reach.
+ */
+function openDialog(dialog: HTMLDialogElement): void {
+  const phone = typeof window !== "undefined" && window.matchMedia?.("(max-width: 720px)").matches;
+  if (phone && dialog.showModal) dialog.showModal();
+  else dialog.show?.();
+}
+
 export function RideSettings({
   summary,
   spoken,
@@ -54,9 +64,10 @@ export function RideSettings({
   typeCard?: ReactNode;
   /**
    * Plan (the owner, 2026-11-20: "Have it pop out to all ride parameters"): Adjust opens every control in a popup over
-   * the map, titled `popout.title`, instead of under the line. Go keeps them under the line.
+   * the map, titled `popout.title`, instead of under the line; Go too (2026-11-21). `shown` false (Go's Ride sheet
+   * closed) closes the popup with it, so it is never left open behind a closed sheet.
    */
-  popout?: { title: string };
+  popout?: { title: string; shown?: boolean; openSignal?: number };
   children?: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -64,6 +75,22 @@ export function RideSettings({
   const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const hidden = popout?.shown === false;
+  useEffect(() => {
+    if (!hidden) return;
+    dialogRef.current?.close?.();
+    setOpen(false);
+  }, [hidden]);
+  // Opened from elsewhere (the ride type list's Create custom): each new count opens it; the count at mount does not.
+  const openSignal = popout?.openSignal ?? 0;
+  const signalAtMount = useRef(openSignal);
+  useEffect(() => {
+    if (openSignal === signalAtMount.current || hidden) return;
+    signalAtMount.current = openSignal;
+    const dialog = dialogRef.current;
+    setOpen(true);
+    if (dialog && !dialog.open) openDialog(dialog);
+  }, [openSignal, hidden]);
   // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (traffic, hills, when, then
   // anything else set), all one button, so the row is one press and one name.
   const chips = summary === "" ? [] : summary.split(" · ");
@@ -86,7 +113,7 @@ export function RideSettings({
       setOpen(next);
       if (!dialog) return;
       if (next && !dialog.open) {
-        dialog.show?.();
+        openDialog(dialog);
         dialog.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
       } else if (!next && dialog.open) {
         dialog.close();
