@@ -5336,11 +5336,12 @@ if (mine(8)) {
     planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + 🚆🚌Own bike plus train or bus"]), JSON.stringify({ taps, trip }));
   check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
     list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 &&
-      /* a ride step says its traffic stress in words since 8a7c1c1e ("Transit: colour every ride of the trip by traffic stress") */
-      /^Ride 4 min to Eastern Market\. Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
+      /* Go's steps are the steps alone, without each ride's stress shares (intuitiveness review, Go, #1395); Plan's keep them */
+      /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
-  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock and riding the whole way beside it",
-    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+  // "Riding the whole way" shows only where it is quicker (intuitiveness review, Go, #1395): here transit is quicker.
+  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock, and no riding-the-whole-way line where transit is quicker",
+    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && trip.compare === undefined,
     JSON.stringify(trip));
   check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
     trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",
