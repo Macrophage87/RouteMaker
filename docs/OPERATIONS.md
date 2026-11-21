@@ -10739,6 +10739,15 @@ done. Then it runs the runbook's "New data only" steps 2 to 5:
 4. The stress-tile pre-draw started in the background (`$RM_STATE/predraw.log`).
 5. The local smoke test, tried again while the app and routers start.
 
+It holds the deploy agent's lock from its checks to its end, so the router timer
+(`restart-routers.sh`) skips its passes meanwhile: on 2026-11-21 the timer restarted
+valhalla-mtb in the same seconds as the swap's `up -d --force-recreate` of the trail
+routers, and docker left offroad, paved and paved-weekend created but never started.
+When a trail router it started is not running, it says so and exits 3, without its
+"installed." line (auto-release.sh's ship-held says the same and stays paused; the map is
+good, so do not roll it back): start it (`beta-compose.sh up -d --force-recreate <router>`), run
+`scripts/beta/smoke-test.sh --local --trails`, and only then resume deployment.
+
 Then run `scripts/beta/smoke-test.sh --public` yourself once the pre-draw has finished,
 and resume continuous deployment. The box builds home's commit, so a beta on a
 different release needs `--allow-sha-mismatch`, exactly as for a bundle sent from here; the
