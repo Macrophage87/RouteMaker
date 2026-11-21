@@ -31,6 +31,13 @@ test("nothing is asked until the map is at its two closest zooms", () => {
   assert.match(closest.path, /&every=true$/);
 });
 
+test("a view at the server's largest asks a box still inside it", () => {
+  const ask = ratedMapAsk({ west: -77.0312, south: 38.9007, east: -77.0312 + 0.03, north: 38.9007 + 0.02 }, 17);
+  assert.ok(ask);
+  assert.ok(ask.box.east - ask.box.west <= 0.04 - 1e-9, "never wider than the server answers");
+  assert.ok(ask.box.north - ask.box.south <= 0.03 - 1e-9, "never taller than the server answers");
+});
+
 test("the dot is a small colour-only button named by its level, and its card lists the movements", () => {
   const dot = ratedMapDot(J);
   assert.equal(dot.getAttribute("aria-label"), "Junction rated LTS 4");

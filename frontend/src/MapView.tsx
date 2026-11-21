@@ -2795,7 +2795,7 @@ export function MapView(props: Props) {
         // A click on a dot is not a click on the map: it must not add a point.
         event.stopPropagation();
         ratedPopup.current?.remove();
-        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 10, className: "junction-popup" })
+        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 10, className: "junction-popup junction-popup-plain" })
           .setLngLat([junction.lon, junction.lat])
           .setDOMContent(ratedMapCardBody(junction))
           .addTo(map);
@@ -2804,6 +2804,13 @@ export function MapView(props: Props) {
         card.setAttribute("role", "dialog");
         card.setAttribute("aria-label", ratedMapName(junction));
         card.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button")?.setAttribute("aria-label", CARD_CLOSE_LABEL);
+        // Escape closes it, as it does the closure card (showClosureCard).
+        card.addEventListener("keydown", (key) => {
+          if (key.key === "Escape") {
+            key.stopPropagation();
+            popup.remove();
+          }
+        });
         popup.on("close", () => {
           if (ratedPopup.current === popup) ratedPopup.current = null;
           const active = document.activeElement;

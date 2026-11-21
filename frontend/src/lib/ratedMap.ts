@@ -42,8 +42,9 @@ export function ratedMapAsk(view: View, zoom: number): { path: string; box: View
   if (view.east - view.west > MAX_LON || view.north - view.south > MAX_LAT) return null;
   const cx = (view.west + view.east) / 2;
   const cy = (view.south + view.north) / 2;
-  const halfLon = Math.min((view.east - view.west) * 2, MAX_LON) / 2;
-  const halfLat = Math.min((view.north - view.south) * 2, MAX_LAT) / 2;
+  // A hair under the server's largest, so rounding never takes the box over it (a 400 draws nothing).
+  const halfLon = Math.min((view.east - view.west) * 2, MAX_LON - 2e-4) / 2;
+  const halfLat = Math.min((view.north - view.south) * 2, MAX_LAT - 2e-4) / 2;
   const r = (v: number) => Math.round(v * 1e4) / 1e4;
   const box = { west: r(cx - halfLon), south: r(cy - halfLat), east: r(cx + halfLon), north: r(cy + halfLat) };
   const every = zoom >= RATED_EVERY_ZOOM;
