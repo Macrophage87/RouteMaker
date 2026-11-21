@@ -590,6 +590,8 @@ class Point:
     calm_m: float
     kind: str  # "junction" or "avoid_entry"
     severity: str | None = None
+    # The raters' level where a rating priced a flagged junction (the chart draws its dot).
+    rated_level: float | None = None
 
 
 def steps_of(spans: Sequence[dict], pricing: Pricing) -> list[Step]:
@@ -680,7 +682,8 @@ def points_of(steps: Sequence[Step], events: Sequence | None, pricing: Pricing) 
             float(getattr(event, "cost_ft", 0.0) or 0.0), severity, flagged, pricing
         )
         if counted > 0 and _rated_at(steps, starts, float(event.m)):
-            out.append(Point(float(event.m), counted, "junction", severity))
+            rated = getattr(event, "rater_level", None) if severity else None
+            out.append(Point(float(event.m), counted, "junction", severity, rated))
     entry = avoid_entry_m(pricing)
     previous: Step | None = None
     for step in steps:
@@ -852,7 +855,13 @@ def score(
         # Only what the chart marks: the flagged junctions and the Avoid entries. Every
         # junction is in `ratio` and the total (operations review: the answer's size).
         "points": [
-            {"m": round(p.m), "calm_m": round(p.calm_m), "kind": p.kind, "severity": p.severity}
+            {
+                "m": round(p.m),
+                "calm_m": round(p.calm_m),
+                "kind": p.kind,
+                "severity": p.severity,
+                **({} if p.rated_level is None else {"rated_level": p.rated_level}),
+            }
             for p in points
             if p.kind != "junction" or p.severity is not None
         ],

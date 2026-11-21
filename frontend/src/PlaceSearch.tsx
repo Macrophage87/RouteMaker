@@ -167,6 +167,7 @@ export function PlaceSearch({
   current,
   inputRef,
   onDismiss,
+  onEmptyEnter,
   onFocusBox,
   savedFor,
   typed,
@@ -205,6 +206,11 @@ export function PlaceSearch({
   inputRef?: RefObject<HTMLInputElement | null>;
   /** Escape on an empty box (Plan's From or To while changing a point): the box is put away. */
   onDismiss?: () => void;
+  /**
+   * Enter on the empty, closed box (Plan's Add a stop, intuitiveness review 2026-11-21): the plan is routed, where the
+   * focus already is after the last pick, so a keyboard rider need not find Route on the map's bar.
+   */
+  onEmptyEnter?: () => void;
   /** The box takes the focus (Go's Where to?: a warm look-up of the location; routing audit S28). */
   onFocusBox?: () => void;
   /** Go's Where to?: the rider's Home, Work and favorites the words name (lib/savedPlaceSearch.ts), listed first. */
@@ -522,6 +528,12 @@ export function PlaceSearch({
     if (event.key === "Escape" && query === "" && !expanded && onDismiss) {
       event.preventDefault();
       onDismiss();
+      return;
+    }
+    // Recent places may be listed on focus (after the last pick): with none highlighted, Enter still routes.
+    if (event.key === "Enter" && query === "" && active < 0 && onEmptyEnter && !event.nativeEvent.isComposing && !(event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) {
+      event.preventDefault();
+      onEmptyEnter();
       return;
     }
     if (action.kind === "none") return;

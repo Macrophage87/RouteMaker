@@ -313,6 +313,20 @@ def test_a_confirmed_load_replaces_the_table_and_reads_near_a_route(tmp_path) ->
     (j2,) = junction_raters.near([(-77.01, 38.9)])
     assert j2.stress == (None, None, 1.0)
     assert junction_raters.near([(-76.9, 38.9)]) == ()
+    # The map's view: j1 once, at the middle of its two nodes, coloured by its hardest
+    # movement; j2 (only riding along, at 1) is below 3 and not shown.
+    (dot,) = junction_raters.in_box((-77.02, 38.89, -76.99, 38.91))
+    assert dot["level"] == 4.0
+    assert [(m["move"], m["level"], m["wait_s"]) for m in dot["moves"]] == [
+        ("cross", 3.5, 30),
+        ("left", 4.0, 45),
+        ("along", 1.0, 6),
+    ]
+    assert junction_raters.in_box((-76.95, 38.89, -76.92, 38.91)) == []
+    # At the very closest zoom the quiet ones too.
+    found = junction_raters.in_box((-77.02, 38.89, -76.99, 38.91), every=True)
+    levels = sorted(j["level"] for j in found)
+    assert levels == [1.0, 4.0]
     medians = junction_raters.medians()
     assert medians[("signal", "cross")] == pytest.approx(30.0)
     assert junction_raters.digest()
@@ -343,3 +357,76 @@ def test_a_jog_across_a_two_way_road_does_not_share_a_rating() -> None:
     onto = junction(movement=Movement.LEFT, outgoing=BUSY, crossed=(BUSY,))
     off = junction(m=40.0, lon=-76.9996, movement=Movement.LEFT, incoming=BUSY, crossed=(BUSY,))
     assert m.with_raters([onto, off], [rater(left=5.0)])[1].rater is None
+
+
+# --- The marker and the junction's panel (the owner, 2026-11-15: a dot "at each crossing
+# rated 3+", "The junction should be clickable") -------------------------------------
+
+
+def test_a_rated_junction_is_marked_from_three_up() -> None:
+    low = m.assess(junction(rater=rater(cross=2.5)))
+    assert low is not None and low.cost_ft == pytest.approx(800.0), "a 2.5 still costs"
+    assert not low.flagged and low.severity is None, "but is not marked"
+    for level in (3.0, 3.5, 4.0, 5.0):
+        event = m.assess(junction(rater=rater(cross=level)))
+        assert event is not None and event.flagged, level
+
+
+def test_a_rated_event_carries_its_movement_and_the_whole_reading() -> None:
+    r = RaterRating(-77.0, 38.9, (4.0, 5.0, 1.5), (40.0, None, 3.0), "stop")
+    event = m.assess(junction(rater=r))
+    assert event is not None
+    assert (event.rater_move, event.rater_level, event.rater) == ("cross", 4.0, r)
+
+
+def test_the_route_answer_says_the_rated_movements() -> None:
+    from core.routing import _intersection_rows
+
+    r = RaterRating(-77.0, 38.9, (4.0, None, 1.5), (40.4, None, None), "stop")
+    rated = m.assess(junction(rater=r))
+    model = m.assess(junction())
+    assert rated is not None and model is not None
+    rows = _intersection_rows([rated, model])
+    assert rows[0]["rated"] == {
+        "move": "cross",
+        "level": 4.0,
+        "moves": [
+            {"move": "cross", "level": 4.0, "wait_s": 40},
+            {"move": "along", "level": 1.5, "wait_s": None},
+        ],
+    }, "a movement that cannot be made (left) is left out"
+    assert rows[1]["rated"] is None
+
+
+def test_a_rated_turns_description_carries_its_level() -> None:
+    from routemaker.describe import _rated_level
+
+    hard = m.assess(junction(rater=rater(cross=4.0)))
+    mild = m.assess(junction(rater=rater(cross=2.5)))
+    assert _rated_level(hard) == {"rated_level": 4.0}
+    assert _rated_level(mild) == {}, "not marked below 3"
+    assert _rated_level(None) == {}
+
+
+def test_the_map_view_must_be_zoomed_in() -> None:
+    from core import junction_raters
+
+    assert junction_raters.parse_box("-77.02,38.89,-76.99,38.91") == (-77.02, 38.89, -76.99, 38.91)
+    for bad in ("-77.2,38.89,-76.99,38.91", "1,2,3", "a,b,c,d", "-76.99,38.89,-77.02,38.91"):
+        with pytest.raises(ValueError):
+            junction_raters.parse_box(bad)
+
+
+def test_a_map_junction_takes_its_hardest_movements_level() -> None:
+    from core import junction_raters
+
+    (row,) = junction_raters.box_rows([("j1", -77.0, 38.9, 3.0, None, 4.5, 20.4, None, None)])
+    assert row == {
+        "lon": -77.0,
+        "lat": 38.9,
+        "level": 4.5,
+        "moves": [
+            {"move": "cross", "level": 3.0, "wait_s": 20},
+            {"move": "along", "level": 4.5, "wait_s": None},
+        ],
+    }
