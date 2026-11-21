@@ -63,3 +63,33 @@ test("the bottom panel's height reaches the map (onSheetHeight) and the page (--
     proto.getBoundingClientRect = measured;
   }
 });
+
+// The turn card at a rated junction (the owner, 2026-11-15: a plain arrow, the card bordered in the move's stress colour).
+test("a hard move at a rated junction: the turn card is bordered in its level's colour and says the level; an unrated turn's card is plain", async () => {
+  const { ratedDotFill } = await import("./lib/intersectionMarkers.ts");
+  const fix = { coords: { longitude: LINE[0][0], latitude: LINE[0][1], accuracy: 5, heading: 90, speed: 4 }, timestamp: Date.now() };
+  const withFix = { isSecureContext: true, geolocation: { watchPosition: (ok: (p: unknown) => void) => (setTimeout(() => ok(fix), 0), 1), clearWatch: () => {}, getCurrentPosition: () => {} } };
+  const turn = (rated_level?: number) => ({ movement: "left", onto: "Big Road", control: "signal", severity: rated_level ? "red" : null, ...(rated_level ? { rated_level } : {}) });
+  const routeWith = (rated_level?: number) =>
+    ({
+      ...ROUTE,
+      description: [
+        { kind: "stretch", from_m: 0, to_m: 1000, street: "Side Street", tier: 2, text: "Start on Side Street.", turn: null },
+        { kind: "stretch", from_m: 1000, to_m: 2150, street: "Big Road", tier: 2, text: "Left onto Big Road.", turn: turn(rated_level) },
+      ],
+    }) as unknown as RouteResponse;
+  const shown = async (route: RouteResponse) => {
+    const screen = await render(<RideMode {...ride().props} route={route} geoEnv={withFix as never} />);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return screen.container.querySelector<HTMLElement>(".cue-next");
+  };
+  const rated = await shown(routeWith(4));
+  assert.ok(rated, "the turn card is shown");
+  assert.ok(rated.classList.contains("cue-next-rated"));
+  assert.equal(rated.style.getPropertyValue("--cue-rated"), ratedDotFill(4));
+  assert.match(rated.textContent ?? "", /LTS 4\./);
+  const plain = await shown(routeWith());
+  assert.ok(plain, "the turn card is shown");
+  assert.ok(!plain.classList.contains("cue-next-rated"));
+  assert.doesNotMatch(plain.textContent ?? "", /LTS 4/);
+});
