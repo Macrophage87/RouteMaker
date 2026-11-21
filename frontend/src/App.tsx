@@ -7125,6 +7125,7 @@ export function App() {
           go: goDefault,
           shown: mode !== "go" || view === "ride",
           onDone: mode === "go" ? backToPlanner : undefined,
+          onSaid: announce,
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,

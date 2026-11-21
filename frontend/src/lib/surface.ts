@@ -24,9 +24,9 @@ export const SURFACE_ABOUT = "surface";
 export const PAVED_LABEL = t("Paved only");
 export const PAVED_HINT = t("Avoids gravel and dirt wherever pavement runs near.");
 export const GRAVEL_LABEL = t("Paved and gravel");
-export const GRAVEL_HINT = t("Paved and gravel roads and paths, as this ride type plans them.");
+export const GRAVEL_HINT = t("As this ride type plans them.");
 /** On Mountain Bike: its roads and paths with none of the mountain-bike trails, as after End mountain biking. */
-export const MTB_GRAVEL_HINT = t("Paved and gravel roads and paths, with no mountain-bike trails.");
+export const MTB_GRAVEL_HINT = t("No mountain-bike trails.");
 
 /** Whether the ride type has the Surface picker: a bike of the rider's own, but Road Bike. */
 export function offersSurface(preset: PresetId): boolean {

@@ -21,7 +21,7 @@ export function differsFromStart(preset: PresetId, dials: Dials): boolean {
  * screen's top (`create`), so the name comes first and the four main settings are under it (intuitiveness review,
  * Stephen 2026-11-21). Sharing (ShareSettings) is at the foot of the Advanced fold.
  */
-export function SaveOwnRideType(props: { preset: PresetId; dials: Dials; matching: OwnRideType | null; create?: boolean }) {
+export function SaveOwnRideType(props: { preset: PresetId; dials: Dials; matching: OwnRideType | null; create?: boolean; onSaid?: (text: string) => void }) {
   return <SaveButton {...props} />;
 }
 
@@ -71,7 +71,7 @@ export function ShareSettings({ preset, dials, matching, onLoad }: { preset: Pre
   );
 }
 
-function SaveButton({ preset, dials, matching, create = false }: { preset: PresetId; dials: Dials; matching: OwnRideType | null; create?: boolean }) {
+function SaveButton({ preset, dials, matching, create = false, onSaid }: { preset: PresetId; dials: Dials; matching: OwnRideType | null; create?: boolean; onSaid?: (text: string) => void }) {
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [said, setSaid] = useState("");
@@ -111,7 +111,11 @@ function SaveButton({ preset, dials, matching, create = false }: { preset: Prese
     }
     const own = saveOwn(kept, preset, dials);
     setNaming(false);
-    setSaid(own ? t("Saved as {name}. It is first in the ride types.", { name: own.name }) : "");
+    const savedSaid = own ? t("Saved as {name}. It is first in the ride types.", { name: own.name }) : "";
+    // Create custom's screen closes at once: what it says goes to the page's own status line (onSaid), not a line in
+    // a closed screen that is never heard and is still there next time (review of the intuitiveness PR).
+    if (create) onSaid?.(savedSaid);
+    else setSaid(savedSaid);
     // Create custom's save is done (the tap-count review: Save, then Done, then Close): the screen closes as Done closes
     // it, back to the route (in Go, the Ride sheet with it), and the focus goes where Done sends it.
     const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => run();
@@ -127,6 +131,11 @@ function SaveButton({ preset, dials, matching, create = false }: { preset: Prese
       {naming ? (
         <form
           className="own-ride-save"
+          onKeyDown={(event) => {
+            // Escape closes the screen (sidebarParts.ts): the name box goes with it, so it is not there, with no Done,
+            // when the screen opens again.
+            if (create && (event.key === "Escape" || event.key === "Esc")) setNaming(false);
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             save();

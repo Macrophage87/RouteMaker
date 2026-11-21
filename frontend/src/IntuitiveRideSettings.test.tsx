@@ -83,7 +83,7 @@ test("the ride's summary offers Make Go's default, then says Go starts on it", a
   let set = 0;
   const props = { stats: statsStart(Date.now() - 600_000), endedAt: Date.now(), onDone: () => {}, onUndo: () => {}, onReports: () => {} };
   const screen = await render(<RideSummaryCard {...props} goDefault={{ name: "Cargo Bike", set: false, onSet: () => set++ }} />);
-  await click(screen.button("Make Cargo Bike Go's default"));
+  await click(screen.button("Make Go's default: Cargo Bike"));
   assert.equal(set, 1);
   await screen.rerender(<RideSummaryCard {...props} goDefault={{ name: "Cargo Bike", set: true, onSet: () => set++ }} />);
   assert.match(screen.text(), /Go starts on Cargo Bike\./);

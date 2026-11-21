@@ -392,6 +392,12 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
     if (mtbClamp && mtbClamp.key !== mtbKey) setMtbClamp(null);
   }, [mtbKey, mtbClamp]);
   const mtbClampSaid = mtbClamp?.key === mtbKey ? mtbClamp.said : "";
+  const advancedSet =
+    fitWaitWeight(preset, dials.waitWeight) !== undefined ||
+    fitSharpTurnWeight(preset, dials.sharpTurnWeight) !== undefined ||
+    dials.fewerTurns === true ||
+    (view.trailsOff.checked && !view.trailsOff.locked) ||
+    (ridingSpeed?.mph ?? null) !== null;
   return (
     <Compact.Provider value={stopsAndTurns === true}>
     <section className="dials" aria-labelledby="dials-heading">
@@ -500,8 +506,9 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
         />
       )}
       {/* Surface (the owner, 2026-11-21: "paved only, gravel, easy MTB, and then MTB2-4 as max"; "People here can and
-          should be able to adjust to anything"): one picker, under Keep to roads, which wins over the trail choices. On
-          Mountain Bike it is the hardest trail level too; its preferred level stays above. */}
+          should be able to adjust to anything"): one picker; Keep to roads (under Advanced, which opens
+          when it is on) wins over its trail choices. On Mountain Bike it is the hardest trail level too; its preferred
+          level follows it. */}
       {view.surface && (
         <SettingRow
           infoId={surfaceInfoId}
@@ -657,7 +664,9 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           four a rider changes most, Traffic, Hills, Surface and When, first; speed, waits, turns and Keep to roads a
           tap away), with sharing ride settings at its foot. Under the line (no screen) they stay as they were. */}
       {stopsAndTurns ? (
-        <details className="fold dials-advanced">
+        // Open where something in it is set away from the ride type's own (a link's waits, Keep to roads), so what is
+        // planning the route is never hidden (review of the intuitiveness PR); else folded.
+        <details className="fold dials-advanced" open={advancedSet || undefined}>
           <summary>{t("Advanced")}</summary>
           <div className="fold-body">
       {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the

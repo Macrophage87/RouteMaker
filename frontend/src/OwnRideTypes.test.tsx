@@ -84,10 +84,10 @@ test("each card's Go's default button says so in words, is heard by name, and pr
       <GoDefaultButton goKey="mass-ride" said="Mass Ride" go={go} />
     </>,
   );
-  const cargo = screen.button("Make Cargo Bike Go's default");
+  const cargo = screen.button("Make Go's default: Cargo Bike");
   assert.equal(cargo.getAttribute("aria-pressed"), "true");
   assert.equal(cargo.textContent, "Go's default", "the one Go starts on says it is");
-  const fast = screen.button("Make Fast Go's default");
+  const fast = screen.button("Make Go's default: Fast");
   assert.equal(fast.getAttribute("aria-pressed"), "false");
   assert.equal(fast.textContent, "Make Go's default", "words, not a bare Go (the owner, 2026-11-21)");
   assert.equal(screen.all("button", /Mass Ride/).length, 0, "Mass Ride is never Go's");
@@ -101,10 +101,10 @@ test("the ride type list offers Make Go's default on every card, the rider's own
   const set: string[] = [];
   const screen = await render(<RideTypePicker preset="default" dials={startDials("default")} onChoose={() => {}} go={{ current: "own:a1", onSet: (k) => set.push(k) }} />);
   await act(async () => screen.button(/^Default/).click());
-  assert.equal(screen.button("Make Coffee Go's default").getAttribute("aria-pressed"), "true");
-  await click(screen.all("button", "Make Gravel Go's default")[0]);
+  assert.equal(screen.button("Make Go's default: Coffee").getAttribute("aria-pressed"), "true");
+  await click(screen.all("button", "Make Go's default: Gravel")[0]);
   assert.deepEqual(set, ["gravel"]);
-  assert.ok([...document.querySelectorAll("button")].some((b) => nameOf(b) === "Make Default Go's default"));
+  assert.ok([...document.querySelectorAll("button")].some((b) => nameOf(b) === "Make Go's default: Default"));
   assert.doesNotMatch(screen.text(), /Go on a card/, "no line explaining a bare Go");
 });
 

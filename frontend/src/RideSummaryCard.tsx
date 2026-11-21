@@ -128,6 +128,11 @@ export function RideSummaryCard({
   goDefault?: { name: string; set: boolean; onSet: () => void } | null;
 }) {
   const done = useRef<HTMLButtonElement>(null);
+  const goDefaultLine = useRef<HTMLParagraphElement>(null);
+  const goDefaultSet = goDefault?.set ?? false;
+  useEffect(() => {
+    if (goDefaultSet && (document.activeElement === null || document.activeElement === document.body)) goDefaultLine.current?.focus();
+  }, [goDefaultSet]);
   const titleId = useId();
   // The ride's cue log, as it was when the ride ended; "" when every cue went as planned (then no link at all).
   const [cueLog] = useState(() => (rideCueLog.wentWrong() ? rideCueLog.text() : ""));
@@ -215,9 +220,12 @@ export function RideSummaryCard({
         )}
         {goDefault && (
           <div className="ride-summary-favorite ride-summary-go-default">
-            <p>{goDefault.set ? t("Go starts on {ride}.", { ride: goDefault.name }) : goDefault.name}</p>
+            {/* Pressed, the button gives way to this line, and the focus goes to it, not the page (review). */}
+            <p ref={goDefaultLine} tabIndex={goDefault.set ? -1 : undefined}>
+              {goDefault.set ? t("Go starts on {ride}.", { ride: goDefault.name }) : goDefault.name}
+            </p>
             {!goDefault.set && (
-              <button type="button" className="secondary" aria-label={t("Make {ride} Go's default", { ride: goDefault.name })} onClick={goDefault.onSet}>
+              <button type="button" className="secondary" aria-label={t("Make Go's default: {ride}", { ride: goDefault.name })} onClick={goDefault.onSet}>
                 {t("Make Go's default")}
               </button>
             )}

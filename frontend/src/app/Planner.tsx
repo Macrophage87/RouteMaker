@@ -505,6 +505,8 @@ export interface RideSectionProps {
   shown?: boolean;
   /** Done (and a save) also does this: Go closes its Ride sheet, so one press lands back on the route. */
   onDone?: () => void;
+  /** The page's status line: Create custom's "Saved as …", as its screen closes. */
+  onSaid?: (text: string) => void;
 }
 
 /**
@@ -512,7 +514,7 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown, go, onDone } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown, go, onDone, onSaid } = props;
   // The rider's own ride type this is, if any (lib/ownRideTypes.ts): the popup is named for it.
   const matching = matchingOwn(useOwnRideTypes().list, preset, dials);
   const creates = useCreateRequests();
@@ -520,7 +522,7 @@ export function RideSection(props: RideSectionProps) {
   return (
     <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: matching ? matching.name : presetLabel(preset) }), shown, openSignal: creates, onDone } : undefined}>
       {/* Create custom's name first, then the settings it names (intuitiveness review, Stephen 2026-11-21). */}
-      {popout && <SaveOwnRideType preset={preset} dials={dials} matching={matching} create />}
+      {popout && <SaveOwnRideType preset={preset} dials={dials} matching={matching} create onSaid={onSaid} />}
       <DialsPanel
         preset={preset}
         dials={dials}

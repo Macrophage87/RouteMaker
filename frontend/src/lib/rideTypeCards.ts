@@ -38,8 +38,8 @@ export const takesGoDefault = (key: string) => key !== "mass-ride";
 
 /**
  * The card's Go's-default button, under the card: "Make Go's default" shown, or "Go's default" where it is (the owner,
- * 2026-11-21, after the intuitiveness review: a bare "Go" read as "use this now"). Heard as "Make Cargo Bike Go's
- * default" either way, its state in aria-pressed; pressing the pressed one puts Go back on Default.
+ * 2026-11-21, after the intuitiveness review: a bare "Go" read as "use this now"). Heard as "Make Go's default:
+ * Cargo Bike" either way (the words shown come first, for voice control), its state in aria-pressed; pressing the pressed one puts Go back on Default.
  */
 export function GoDefaultButton({ goKey, said, go }: { goKey: string; said: string; go: GoDefault }): ReactElement | null {
   if (!takesGoDefault(goKey)) return null;
@@ -52,7 +52,7 @@ export function GoDefaultButton({ goKey, said, go }: { goKey: string; said: stri
       className: "ride-fav ride-go-default",
       "data-go": goKey,
       "aria-pressed": on,
-      "aria-label": t("Make {ride} Go's default", { ride: said }),
+      "aria-label": t("Make Go's default: {ride}", { ride: said }),
       onClick: () => go.onSet(on ? "default" : goKey),
     },
     on ? t("Go's default") : t("Make Go's default"),
