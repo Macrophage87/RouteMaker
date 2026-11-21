@@ -409,6 +409,21 @@ def test_easy_mtb_trails_is_passed_read_from_a_link_and_said(tools, stand_in) ->
     assert said["easy_mtb"].startswith("0.5 mi")
 
 
+def test_paved_only_travels_in_the_link_as_the_page_keeps_it() -> None:
+    """Ride settings' Surface (the owner, 2026-11-21): "Paved only" is the link's paved=1."""
+    points = [(-77.03651, 38.89768), (-77.00911, 38.88990)]
+    dials = {"stress": 70, "hills": 0, "paved": True}
+    fragment = mcp.plan_fragment(points, [], "default", dials, {})
+    assert "paved=1" in fragment
+    assert mcp.parse_fragment(fragment)[3]["paved"] is True
+    assert mcp.page_dials(dials, {})["paved"] is True
+    # Road Bike is always paved and Mountain Bike's surface is its trail level: no link carries it.
+    for preset in ("road-bike", "mountain-bike"):
+        assert "paved=1" not in mcp.plan_fragment(points, [], preset, dials, {})
+        assert mcp.parse_fragment(fragment.replace("default", preset))[3]["paved"] is False
+    assert "paved" not in mcp.page_dials({"stress": 70, "hills": 0}, {})
+
+
 def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path) -> None:
     out = tools.call(
         "plan_route",

@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "আপনার মধ্যবিন্দুগুলো তাদের পথে রাখতে, থামার জায়গাগুলো এই ক্রমেই থাকছে।",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "সহজ MTB ট্রেইল",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "সহজ মানের বা মানহীন মাউন্টেন-বাইক ট্রেইলেও চলে, যার বেশিরভাগ ঘাস আর মাটি।",
   "Not used while Keep to roads is on.": "শুধু রাস্তা চালু থাকলে এটি ব্যবহার হয় না।",
   "easy MTB trails": "সহজ MTB ট্রেইল",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel-এর মতো অফ-রোড মানচিত্রে পরিকল্পনা করে, তাই যেকোনো স্কেলে 0 বা 1 মানের, বা একেবারে মানহীন মাউন্টেন-বাইক ট্রেইলে চলা যেতে পারে। 2 বা তার চেয়ে কঠিন ট্রেইল যেখানে অন্য পথ আছে সেখানে বাদ দেওয়া হয়; তবুও একটি ব্যবহার হলে রুট তা জানায়। যানজটের চাপ বরাবরের মতোই বিবেচনা করা হয়। বৃষ্টির পরে মাটি কাদাময় হতে পারে।",
@@ -2268,4 +2267,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Download all ({size})": "সব ডাউনলোড করুন ({size})",
   "Map of {date}": "{date}-এর মানচিত্র",
   "Southern Maryland": "দক্ষিণ মেরিল্যান্ড",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "পৃষ্ঠ",
+  "Paved only": "শুধু পাকা রাস্তা",
+  "Avoids gravel and dirt wherever pavement runs near.": "কাছে পাকা রাস্তা থাকলে নুড়ি ও মাটির পথ এড়ায়।",
+  "Paved and gravel roads and paths, as this ride type plans them.": "পাকা ও নুড়ির রাস্তা ও পথ, এই রাইডের ধরন যেভাবে পরিকল্পনা করে।",
+  "paved only": "শুধু পাকা রাস্তা",
+  "surface": "পৃষ্ঠ",
 };

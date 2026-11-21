@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "各站保持此顺序，让您的经过点留在原来的路段上。",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "简易MTB步道",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "也会走评为简易或未评级的山地车步道，多为草地和土路。",
   "Not used while Keep to roads is on.": "开启只走道路时不使用。",
   "easy MTB trails": "简易MTB步道",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "像Gravel一样在越野地图上规划，因此可能会走任一等级体系评为0或1、或完全未评级的山地车步道。评为2级或更难的步道，只要有其他路就会避开；如果仍需使用，路线会说明。交通压力照常计算。雨后土路可能泥泞。",
@@ -2268,4 +2267,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Download all ({size})": "全部下载（{size}）",
   "Map of {date}": "{date}的地图",
   "Southern Maryland": "马里兰州南部",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "路面",
+  "Paved only": "仅铺装路面",
+  "Avoids gravel and dirt wherever pavement runs near.": "附近有铺装路面时避开砾石和土路。",
+  "Paved and gravel roads and paths, as this ride type plans them.": "铺装和砾石道路及小径，按此骑行类型规划。",
+  "paved only": "仅铺装路面",
+  "surface": "路面",
 };

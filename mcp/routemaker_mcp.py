@@ -1434,6 +1434,9 @@ def plan_fragment(
         parts.append("trailsoff=1")
     if dials.get("easy_mtb"):
         parts.append("easymtb=1")
+    # "Paved only" (Ride settings' Surface, 2026-11-21; planHash.ts), where the ride type takes it.
+    if (dials.get("paved") or sent.get("paved")) and preset in PAVED_PRESETS:
+        parts.append("paved=1")
     # Fewer turns and the rider's wait weight (Plan's Ride settings, 2026-11-20; planHash.ts).
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
         parts.append("fewerturns=1")
@@ -1479,6 +1482,9 @@ def page_dials(dials: dict, sent: dict) -> dict:
     }
     if dials.get("easy_mtb"):
         kept["easyMtb"] = True
+    # The page's fitDials keeps it on `PAVED_PRESETS` alone.
+    if dials.get("paved") or sent.get("paved"):
+        kept["paved"] = True
     if dials.get("fewer_turns") or sent.get("fewer_turns"):
         kept["fewerTurns"] = True
     optional = {
@@ -1643,6 +1649,8 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "trails_off": one("trailsoff") == "1",
         # Default and Trailmaxxing only, as the page reads it (dials.ts fitDials).
         "easy_mtb": one("easymtb") == "1" and preset in EASY_MTB_PRESETS,
+        # Ride settings' Surface (2026-11-21), as the page reads it (dials.ts offersPaved).
+        "paved": one("paved") == "1" and preset in PAVED_PRESETS,
         "novice_legs": one("novice") == "1",
         "fewer_turns": one("fewerturns") == "1",
         "wait_weight": weight("waits", 1),
@@ -1778,6 +1786,24 @@ def refusal(status: int, message) -> str:
 
 # The ride types that offer Easy MTB trails (core/presets.py EASY_MTB_PRESETS).
 EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
+# The ride types whose links keep Ride settings' "Paved only" (frontend lib/dials.ts offersPaved):
+# a bike of the rider's own, but Road Bike (always paved) and Mountain Bike (its surface is its
+# hardest trail level).
+PAVED_PRESETS = frozenset(
+    {
+        "default",
+        "trailmaxxing",
+        "group-ride",
+        "mass-ride",
+        "mountain-goat",
+        "gravel",
+        "fast",
+        "cargo",
+        "tandem",
+        "ebike",
+        "novice",
+    }
+)
 
 
 def easy_mtb_said(info: object) -> str | None:
@@ -7398,12 +7424,12 @@ class Server:
             for key, what in (
                 ("blocked_lines", "the roads avoided"),
                 ("follow", "the line followed"),
-                # The app has no control for this (its named option sets it for a ride). Fewer
-                # turns and the wait weight ride in the link since Plan's Ride settings took them
-                # (2026-11-20).
+                # Fewer turns and the wait weight ride in the link since Plan's Ride settings
+                # took them (2026-11-20), and "All paved" as Surface's Paved only (2026-11-21),
+                # except on the ride types whose link does not keep it (`PAVED_PRESETS`).
                 ("paved", "All paved"),
             )
-            if plan.sent.get(key)
+            if plan.sent.get(key) and not (key == "paved" and plan.preset in PAVED_PRESETS)
         ]
         # The link carries half steps (Plan's sliders): a weight between them opens rounded.
         weight = plan.sent.get("wait_weight")
