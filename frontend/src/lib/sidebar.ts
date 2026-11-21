@@ -74,7 +74,7 @@ export interface BarItem {
  * (each key in its layer's section since 2026-10-19), and Suggest took its slot: the one way in to the suggest tools.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
-  { id: "plan", label: "Plan", opens: "planner", description: t("Shows the planner: the points, the ride settings and the route.") },
+  { id: "plan", label: t("Planner"), opens: "planner", description: t("Shows the planner: the points, the ride settings and the route.") },
   { id: "layers", label: t("Layers"), opens: "layers", description: t("Opens the map layers, their switches and each layer's key.") },
   { id: "suggest", label: t("Reports"), opens: "suggest", description: t("Opens your 311 checklist and the ways to suggest a change to the map.") },
   { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: t("Opens Save & load: save or share the route, find My routes, or open or export a route file.") },

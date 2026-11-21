@@ -89,7 +89,8 @@ test("the panel: the plan in words as its description, Route with Enter or Ctrl+
   assert.match(app, /onSay=\{announce\}/);
   // One Route (P10): Plan's bar's; the panel has no Route button, and a route up to date shows no row, said out of sight.
   assert.doesNotMatch(panel, /✓ up to date|More: Reset and Clear|aria-keyshortcuts="Control\+Enter Meta\+Enter"\s*onFocus/);
-  assert.match(panel, /\{button\.unavailable && !locate && !routing && \(\s*<p id=\{routeWhy\} className="visually-hidden plan-route-state">\s*\{button\.unavailable\}/);
+  // With something to route, how to (Enter in Add a stop) is said there instead (the intuitiveness review, 2026-11-21).
+  assert.match(panel, /\{whySaid && \(\s*<p id=\{routeWhy\} className="visually-hidden plan-route-state">\s*\{stateSaid\}/);
   assert.equal(planRowShown({ routing: false, locate: false, unavailable: ROUTE_UP_TO_DATE }), false);
   assert.equal(planRowShown({ routing: false, locate: false, unavailable: null }), true);
   assert.equal(planRowShown({ routing: true, locate: false, unavailable: ROUTE_UP_TO_DATE }), true);

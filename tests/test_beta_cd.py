@@ -3117,6 +3117,17 @@ def test_a_failed_map_swap_leaves_the_code_live_and_the_agent_paused(beta: Beta)
     assert (beta.cd / "PAUSED").exists()
 
 
+def test_a_trail_router_left_unstarted_is_not_called_a_failed_swap(beta: Beta) -> None:
+    # import-result.sh exits 3 when the map is in but a trail router did not start: rolling
+    # the map back would undo a good map (2026-11-21).
+    _map_release(beta)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_SWAP_RC="3")
+    assert done.returncode == 1
+    assert "a trail router did not start" in beta.status()
+    assert "rollback-map" not in beta.status() and "Do not roll the map back" in beta.status()
+    assert (beta.cd / "PAUSED").exists()
+
+
 def test_a_map_that_does_not_download_never_reaches_the_swap(beta: Beta) -> None:
     _map_release(beta)
     done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP, STUB_IMPORT_RC="1")
