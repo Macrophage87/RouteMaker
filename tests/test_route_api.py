@@ -1017,6 +1017,12 @@ class TestWhatIsSentToTheRouter:
             assert presets.wait_weight_for(name) > 1.0
             assert fake.endpoints() == ["route", "trace_attributes", "route"]
             assert "alternates" in fake.calls[2][1]
+        elif name == "fast":
+            # Fast at its own position is planned a second time at the most direct end of the
+            # slider (#1381, `routing._fast_direct`), each traced.
+            assert fake.endpoints() == ["route", "trace_attributes", "route", "trace_attributes"]
+            at_zero = presets.costing(name, presets.STRESS_MIN, 0)
+            assert fake.calls[2][1]["costing_options"] == at_zero
         else:
             assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
@@ -1025,7 +1031,8 @@ class TestWhatIsSentToTheRouter:
         on_foot = [p for _, p in fake.calls if p["costing"] == "pedestrian"]
         assert not on_foot or name == "novice"
         ridden = [p for _, p in fake.calls if p["costing"] != "pedestrian"]
-        assert all(p["costing_options"] in (presets.costing(name), middle) for p in ridden)
+        direct = presets.costing(name, presets.STRESS_MIN, 0) if name == "fast" else middle
+        assert all(p["costing_options"] in (presets.costing(name), middle, direct) for p in ridden)
         assert fake.calls[0][1]["costing_options"] == presets.costing(name)
         assert all(p["costing"] == "bicycle" for p in ridden)
 
