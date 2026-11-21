@@ -85,8 +85,16 @@ BOX_LIMIT = 1500
 # map asks for every level only at its very closest zoom (the owner, 2026-11-20).
 BOX_FROM = 3.0
 
+# A junction's dot sits at its own node: the run names a junction after the smallest OSM node
+# id of its nodes ("j" and that id): the oldest node, usually where its roads were first
+# joined. Not their middle: the run's nodes include driveway, alley and sidewalk nodes along a
+# street, and their middle lands partway up the block (the owner, 2026-11-21: "The junction
+# dots are misaligned", at 3rd St and Rhode Island Ave NW). A divided road's dot sits on one of
+# its carriageways. When that node is outside the view, the smallest one inside it.
 _BOX_SQL = """
-SELECT t.junction, AVG(ST_X(t.location)), AVG(ST_Y(t.location)),
+SELECT t.junction,
+       ST_X((array_agg(t.location ORDER BY t.node))[1]),
+       ST_Y((array_agg(t.location ORDER BY t.node))[1]),
        MAX(t.cross_stress), MAX(t.left_stress), MAX(t.along_stress),
        MAX(t.cross_delay_s), MAX(t.left_delay_s), MAX(t.along_delay_s)
 FROM {table} AS t
@@ -116,9 +124,9 @@ def parse_box(text: str) -> tuple[float, float, float, float]:
 
 
 def box_rows(rows: Sequence[Sequence]) -> list[dict]:
-    """The answer's junctions from the query's rows: one a junction, at the middle of its
-    nodes, with its hardest movement's level (the dot's colour) and every movement that can
-    be made there."""
+    """The answer's junctions from the query's rows: one a junction, at its own node, with
+    its hardest movement's level (the dot's colour) and every movement that can be made
+    there."""
     from routemaker.intersections import RATER_MOVES
 
     out = []
