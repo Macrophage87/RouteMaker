@@ -44,6 +44,10 @@ count them as the router prices them, not as a quiet trail.
   meets at one of its ends and that reaches another bicycle-open way (the road it crosses
   at least), priced as a link: the crossing's stress belongs to the junction (Little Falls
   Parkway, 2026-11-19).
+- `gap_links`: a run of footways with no bicycle tag, at most `GAP_M` long, whose ends meet
+  bicycle-open ways (a trail among them) that the open network joins only by riding
+  `GAP_DETOUR_M` or more, priced as a link: the owner, 2026-11-20, "Do a search for places
+  that could match this and open them. This happens a lot."
 - An informal connector (`is_informal_connector`, `informal=yes`, no bicycle tag) is a
   link only where the whole way is a short hop (`INFORMAL_WAY_MAX_M`), and it is walked,
   not ridden: the pipeline drops its `informal` closure and opens it as walk your bike
@@ -110,6 +114,9 @@ INFORMAL_WAY_MAX_M = GAP_M
 # The longest walk a street-end cut-through may take (about 500 ft), along the footways it
 # opens, each of which is wholly within it (`cut_throughs`).
 CUT_THROUGH_M = 150.0
+# A gap link (`gap_links`) bridges two bicycle-open ways the open network itself joins only
+# by riding at least this far (about 1,000 ft). Our default, unmeasured.
+GAP_DETOUR_M = 300.0
 # How many footways off one dead-end stretch a cut-through is looked for from, nearest the
 # end first (a short path to a door may leave nearer the end than the cut-through does).
 STRETCH_FOOTWAYS = 4
@@ -438,6 +445,158 @@ def trail_crossings(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> s
         reached = set().union(*(open_at.get(node, ()) for node in node_ids))
         if trails and reached - trails:
             found.add(osm_id)
+    return found
+
+
+# The grid `gap_links` loads the open network on, in degrees (about 450 m north-south),
+# and how many cells round each gap's end it loads: two, so a ride of `GAP_DETOUR_M` from
+# an end stays on the loaded cells.
+GAP_CELL_DEG = 0.004
+GAP_CELL_REACH = 2
+
+
+def _cell(point: tuple[float, float]) -> tuple[int, int]:
+    return (math.floor(point[0] / GAP_CELL_DEG), math.floor(point[1] / GAP_CELL_DEG))
+
+
+def gap_links(
+    ways: Sequence[Placed],
+    closed: Set[int] = frozenset(),
+    locate: Callable[[int], Sequence[tuple[float, float] | None]] | None = None,
+    also_open: Set[int] = frozenset(),
+) -> set[int]:
+    """The footways with no bicycle tag to price as links (`TIER`) because they close a gap:
+    a run of link candidates (`is_link_candidate`: plain footways, sidewalks, crosswalks) at
+    most `GAP_M` long whose ends meet two or more bicycle-open ways, a trail-class one among
+    them, where the open network joins those ends only by riding `GAP_DETOUR_M` or more. A
+    gap the network bridges nearby is left as it is (last resort, or closed).
+
+    The owner, 2026-11-20, after Little Falls and the Medical Center side path: "Do a search
+    for places that could match this and open them. This happens a lot." `links` opens a gap
+    only where a bike way dead-ends; here the bike way may run on (a cycleway whose spur to
+    a service road is a 35 m footway, OSM 39941547 by the Bethesda Trolley Trail), and the
+    test is that nothing else nearby joins the two sides.
+
+    `ways` as `links` takes them. `locate(i)` gives the coordinates (one per node id) of
+    `ways[i]` where it carries none (the rebuild passes only link candidates'). `also_open`
+    are footways another link rule opens, ridden as open ways here. Three passes, so a
+    region costs little memory: the candidates and their runs, the open ways at their ends,
+    then only the open ways near those ends for the searches. Pure."""
+    candidates: dict[int, float] = {}
+    nodes_of: dict[int, Sequence[int]] = {}
+    coords_at: dict[int, tuple[float, float]] = {}
+
+    def is_open(osm_id: int, tags: dict[str, str]) -> bool:
+        return osm_id in also_open or bicycle_open(tags)
+
+    for osm_id, tags, node_ids, coords in ways:
+        if osm_id in closed or osm_id in also_open or len(node_ids) < 2:
+            continue
+        if is_link_candidate(tags) and len(coords) == len(node_ids):
+            metres = _length(coords)
+            if 0 < metres <= GAP_M:
+                candidates[osm_id] = metres
+                nodes_of[osm_id] = node_ids
+                for k in (0, -1):
+                    if coords[k] is not None:
+                        coords_at[node_ids[k]] = coords[k]
+    if not candidates:
+        return set()
+    parent = {w: w for w in candidates}
+
+    def find(w: int) -> int:
+        while parent[w] != w:
+            parent[w] = parent[parent[w]]
+            w = parent[w]
+        return w
+
+    at: dict[int, list[int]] = defaultdict(list)
+    for osm_id in candidates:
+        for node in set(nodes_of[osm_id]):
+            at[node].append(osm_id)
+    for here in at.values():
+        for other in here[1:]:
+            parent[find(other)] = find(here[0])
+    del at
+    runs: dict[int, list[int]] = defaultdict(list)
+    for osm_id in candidates:
+        runs[find(osm_id)].append(osm_id)
+    run_ends = {
+        root: {nodes_of[w][k] for w in run for k in (0, -1)}
+        for root, run in runs.items()
+        if sum(candidates[w] for w in run) <= GAP_M
+    }
+    # Pass two: the open ways at the runs' ends.
+    end_nodes = set().union(*run_ends.values()) if run_ends else set()
+    ways_at: dict[int, set[int]] = defaultdict(set)
+    trail_at: set[int] = set()
+    for osm_id, tags, node_ids, _coords in ways:
+        if osm_id in closed or osm_id in candidates or not is_open(osm_id, tags):
+            continue
+        touched = end_nodes.intersection(node_ids)
+        for node in touched:
+            ways_at[node].add(osm_id)
+        if touched and tags.get("highway") in TRAIL_HIGHWAY:
+            trail_at.update(touched)
+    gaps: dict[int, list[int]] = {}
+    for root, ends in run_ends.items():
+        met = sorted(e for e in ends if e in ways_at)
+        if len(met) < 2 or trail_at.isdisjoint(met):
+            continue
+        if len(set().union(*(ways_at[e] for e in met))) >= 2:
+            gaps[root] = met
+    if not gaps:
+        return set()
+    # Pass three: the open ways near those ends, as a graph.
+    cells: set[tuple[int, int]] = set()
+    for met in gaps.values():
+        for node in met:
+            if node in coords_at:
+                cx, cy = _cell(coords_at[node])
+                cells.update(
+                    (cx + dx, cy + dy)
+                    for dx in range(-GAP_CELL_REACH, GAP_CELL_REACH + 1)
+                    for dy in range(-GAP_CELL_REACH, GAP_CELL_REACH + 1)
+                )
+    adjacent: dict[int, list[tuple[int, float]]] = defaultdict(list)
+    for index, (osm_id, tags, node_ids, coords) in enumerate(ways):
+        if osm_id in closed or osm_id in candidates or not is_open(osm_id, tags):
+            continue
+        if not coords and locate is not None:
+            coords = locate(index)
+        if len(coords) != len(node_ids):
+            continue
+        if not any(c is not None and _cell(c) in cells for c in coords):
+            continue
+        for k in range(len(node_ids) - 1):
+            a, b = coords[k], coords[k + 1]
+            if a is None or b is None:
+                continue
+            metres = _metres(a, b)
+            adjacent[node_ids[k]].append((node_ids[k + 1], metres))
+            adjacent[node_ids[k + 1]].append((node_ids[k], metres))
+
+    def near(start: int, goals: set[int]) -> bool:
+        """Whether the open network reaches a goal from `start` within GAP_DETOUR_M."""
+        best = {start: 0.0}
+        heap = [(0.0, start)]
+        while heap:
+            dist, node = heapq.heappop(heap)
+            if dist > best.get(node, math.inf):
+                continue
+            if node in goals:
+                return True
+            for other, metres in adjacent.get(node, ()):
+                step = dist + metres
+                if step < GAP_DETOUR_M and step < best.get(other, math.inf):
+                    best[other] = step
+                    heapq.heappush(heap, (step, other))
+        return False
+
+    found: set[int] = set()
+    for root, met in gaps.items():
+        if any(not near(end, set(met) - {end}) for end in met):
+            found.update(runs[root])
     return found
 
 

@@ -19,7 +19,7 @@ with one exception: above 80 (`STRESS_TODAYS_TOP`) the turn charge (`maneuver_pe
 to 15 s (`CALM_MANEUVER_PENALTY_S`, our default, not measured), and the calm search's ranking
 adds each turn at that price (`refine.turn_m`). A ride type that already charges more keeps its own.
 
-Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
+More turn rules (2026-11-12 on):
 
 - **Every setting** (the owner's yes, 2026-11-12). `presets.TURN_CHARGE_EVERY_SETTING` (True) builds owner
   decision 254's "every preset": 15 s at every position, Default's 70 included; `turn_m` at every position
@@ -28,11 +28,52 @@ Two more turn rules (2026-11-12, the backlog's "fewer turns" item):
   metres of LTS 3 (`dedodge.turn_lts3_m`, about 22 m a turn at 70). The route scorecard's before/after
   (38 trips): at 70, 4% fewer turns with LTS 4 flat; at 25 (Go's More direct), 7% fewer turns but 1.7 mi
   more LTS 4 in all (Germantown to Poolesville, Old Town Bowie). The owner chose every setting anyway.
+- **Sharp turns and jogs weigh more** (2026-11-20, the owner: "see if you can find ways to further
+  penalize repeated sharp turns"). The ranking counts a route's turns as `refine.turn_load` weighs them:
+  one a turn, one more for a sharp turn (Valhalla's sharp right or left), two more for a U-turn, and one
+  more for a turn within 100 m (`refine.JOG_M`, the jog Ride says as one cue) of the turn before it, a
+  slight bend included, as Ride counts it. So
+  two sharp turns 40 m apart rank as five turns, not two, at a sharp-turn weight of 1 (see Sharp-turn weight below). The router itself can't price a turn by what
+  came before it, so this works where routes are compared (`turn_m`), not inside Valhalla. The turns
+  shown stay a plain count. The side-street dodge pass still counts a dodge's turns plainly
+  (`dedodge.turn_count`, by heading). Our defaults, not measured.
+- **Turns cost by speed** (2026-11-20, the owner: "Turns should be penalised by turning speed/estimated
+  time. Road bikes that go at 20 miles an hour really don't like them. However switchbacks on climbs are
+  less of an issue"). Each turn type has a cornering speed from its path radius and a comfortable 15°
+  lean (`refine.corner_speed_ms`: about 20 mph for a slight bend, 11.5 mph for a plain turn, 8 mph
+  sharp, 6 mph for a U-turn). A rider arriving faster brakes to it and speeds up again after, and the
+  seconds that loses (`refine.turn_lost_s`, braking 1.5 m/s² and picking up 0.8 m/s², the junction
+  model's) are ranked at the ride's sharp-turn weight. The speeds are the router's own before and after the turn, so they carry
+  the ride type's pace, the rider's and the hills. A sharp turn costs about 3.1 s at 20 mph and 0.3 s at
+  11 mph. A turn at a junction that already has a wait (a stop, a signal, a give-way) loses nothing
+  more, and a speed is read only off a stretch of 100 m or more (a maneuver's time holds the router's
+  own seconds for its turn). A turn reached no faster than its cornering speed (a switchback on a climb)
+  counts as one plain turn, without the sharp, U-turn or jog extras. Radii and lean are our defaults,
+  not measured. A bend along one road or trail is not a turn in the router's directions, so it is not
+  charged at all.
+- **Wait weight** (`presets.WAIT_WEIGHTS`). A second stopped at a junction counts this many seconds of
+  riding when routes are ranked; the time shown stays the real wait. 3x on Road Bike (the owner,
+  2026-11-02); 2x on Tandem, Cargo Bike, Group Ride, Trailmaxxing, Gravel, Mountain Goat and Mountain Bike
+  (the owner, 2026-11-20, for pleasure and training rides; the 2s are our defaults, not measured); 3x on Run; 1x on
+  every other ride type, Fast included ("as close to real time as possible"). A rider or the connector
+  can raise it, never lower it, up to 5 (`MAX_WAIT_WEIGHT`, `junction_delay.MAX_STACKED_WEIGHT`) in half
+  steps: `wait_weight` on POST /api/route, the "Waiting at lights and stops" slider in the Ride
+  settings popup (Plan and Go), `waits=N` in a link.
+- **Sharp-turn weight** (2026-11-20, the owner: "I find sharp turns pretty fun, but I hate standing at
+  lights"). The sharp and U-turn extras and the seconds lost braking for a turn are multiplied by a
+  weight of their own, apart from the wait weight (`presets.sharp_turn_weight_for`): 3x on Road Bike,
+  2x on Tandem and Cargo Bike, 1x on every other ride type (our defaults, not measured). A rider sets it from 0 to 5
+  in half steps
+  (`sharp_turn_weight` on POST /api/route, the "Sharp turns" slider in the Ride settings popup (Plan and Go),
+  `sharpturns=N` in a link), below the ride type's own included. At 0 a sharp turn counts as a plain
+  turn and braking costs nothing; the plain per-turn charge and the jog extra stay.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
-  Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
+  Ride's, Mass Ride's, Road Bike's and Tandem's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
   to 0.9 (`PAVED_SURFACE_AVOIDANCE`). Both our defaults, not measured. Plan and Go offer them as routes to
-  choose from only where they do what their name says (frontend `lib/neighbours.ts`).
+  choose from only where they do what their name says (frontend `lib/neighbours.ts`); Fewer turns is also a
+  switch in the Ride settings popup, Plan and Go (`fewerturns=1` in a link), not shown on the four ride types that
+  charge 30 s already.
 
 ## 1. Valhalla: graph tags (`lua/routemaker_remap.lua`)
 
@@ -71,7 +112,7 @@ today's positions like this:
 
 | `use_roads` | 1.0 | 0.871 | 0.486 | 0.10 | 0.0 |
 |---|---|---|---|---|---|
-| Position today | 0 | 10 (Fast) | 40 (Group, Goat, Gravel) | 70 (Default, E-bike, Cargo) | 80 (Cargo with passengers) and above |
+| Position today | 0 | 10 (Fast) | 40 (Group, Goat) | 70 (Default, Gravel, E-bike, Cargo) | 80 (Cargo with passengers) and above |
 | Old position | 0 | 12.9 | 51.4 | 90 | 100 |
 | LTS 3 added (5 road types) | 0 | 0.47-0.80 (interpolated) | 2.05-4.06 (interpolated) | 4.13-10.54 | 4.75-12.84 |
 | LTS 4 added (standard graph) | 0.82-1.14 | 2.44-2.94 (interpolated) | 9.63-11.56 (interpolated) | 26.08-32.62 | 32.14-40.52 |
@@ -108,13 +149,24 @@ every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py
 | Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
 | Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1208-1209`) |
 | Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else crossing rounds |
-| Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
+| Gravel | off-road | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
 | Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, crossing rounds |
 | Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, crossing rounds |
 | Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, crossing rounds |
 | E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14.9 mph [24 km/h] | yes, crossing rounds |
 | Bikeshare | standard (e-bike graph for the e-bike) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.1 mph [13 km/h] (12.4 mph [20 km/h] on the e-bike) | yes, crossing rounds |
 | Riding with kids | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.5 | yes | Hybrid, 6.2 mph [10 km/h] | yes, except past 18.6 mi [30 km] of straight line |
+
+**Fast, as direct as possible** (the owner, 2026-11-20: "Make fast faster. Have that as the
+subtitle, direct as possible."). A Fast ride left at its own traffic position (10) is planned a
+second time at position 0, the most direct, and that route is answered where it is at least one
+minute quicker door to door (riding plus waits) and adds no more than a quarter mile [0.4 km] of
+LTS 4 and Avoid (`presets.fast_direct_wins`, `routing._fast_direct`). The minute and the quarter
+mile are our defaults, not measured. Measured on 16 public trips (2026-11-20): planning every
+Fast ride at 0 saved 20.7 minutes in total but doubled the LTS 4 miles (4.1 to 8.6) and made one
+trip 8.2 minutes slower; this rule saved 14.8 minutes with LTS 4 flat (+0.12 mi). A moved slider,
+Go's quick first route, a followed line and a plan with under half its time left are planned once, as before. The slider the
+rider sees stays at 10.
 
 Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means
 `refine.refine` is called: at a calm rate of 0 it makes up to five crossing-only rounds, each

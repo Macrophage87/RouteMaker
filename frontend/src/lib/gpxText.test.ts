@@ -88,7 +88,19 @@ test("an Easy MTB trails route carries it in the file, on the ride types that of
   const dials = { stress: 70, hills: 0, when: "weekend" as const, carrying: null, easy_mtb: true };
   assert.equal(exportOf({ ...ROUTE, preset: "trailmaxxing", dials }, []).dials?.easyMtb, true);
   assert.equal(exportOf({ ...ROUTE, preset: "default", dials: { ...dials, easy_mtb: false } }, []).dials?.easyMtb, undefined);
-  assert.equal(exportOf({ ...ROUTE, preset: "gravel", dials }, []).dials?.easyMtb, undefined);
+  assert.equal(exportOf({ ...ROUTE, preset: "ebike", dials }, []).dials?.easyMtb, undefined);
+});
+
+test("Fewer turns and a wait weight above the ride type's own go in the file, as the link carries them", () => {
+  const dials = { stress: 70, hills: 0, when: null, carrying: null, fewer_turns: true, wait_weight: 4 };
+  const out = exportOf({ ...ROUTE, preset: "gravel", dials }, []).dials;
+  assert.equal(out?.fewerTurns, true);
+  assert.equal(out?.waitWeight, 4);
+  // Gravel's own 2x is the ride type's, not the rider's: not written.
+  assert.equal(exportOf({ ...ROUTE, preset: "gravel", dials: { ...dials, wait_weight: 2 } }, []).dials?.waitWeight, undefined);
+  // A sharp-turn weight goes in at 0 too; Road Bike's own 3x is not written.
+  assert.equal(exportOf({ ...ROUTE, preset: "road-bike", dials: { ...dials, sharp_turn_weight: 0 } }, []).dials?.sharpTurnWeight, 0);
+  assert.equal(exportOf({ ...ROUTE, preset: "road-bike", dials: { ...dials, sharp_turn_weight: 3 } }, []).dials?.sharpTurnWeight, undefined);
 });
 
 test("the fidelity notice warns exactly when either share is under the threshold", () => {

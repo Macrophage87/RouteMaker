@@ -5068,6 +5068,33 @@ fine". So the closure is built into one graph. A ride chooses its graph through
 request has `trails_off` (the "Keep to roads, not trails" switch, below). Group Ride with trails
 on is on the standard graph, which keeps contraflow.
 
+### Plan's Ride settings popup (the owner, 2026-11-20)
+
+The owner: "Have it pop out to all ride parameters", then, on the mockup, "That looks good." In
+Plan, Adjust on the Ride settings line opens a non-modal `<dialog>` (`lib/sidebarParts.ts`
+`RideSettings` with `popout`; a bottom sheet at 720 px and below) holding every ride setting,
+plus two Plan alone offers: "Waiting at lights and stops", a slider from the ride type's own
+wait weight to 5x (`dials.ts` `WAIT_WEIGHTS`, `WAIT_WEIGHT_MAX`, `fitWaitWeight`; 5x is our
+default, unmeasured, `junction_delay.MAX_STACKED_WEIGHT`), and "Fewer turns". Neither is offered
+on foot, Run, transit or bikeshare (`offersStopsAndTurns`). They travel as `waits=N` (half
+steps, kept only above the ride type's own) and `fewerturns=1` in a plan link (`planHash.ts`), as
+`wait_weight` and `fewer_turns` on `POST /api/route`, in a GPX export's dials comment, and in the
+connector's links (`mcp/routemaker_mcp.py` `plan_fragment`; a weight between half steps opens
+rounded, and the notes say so). Since 2026-11-21 (the owner: "just have the same control popout for both") Go opens
+the same popup, so Go plans with these settings too, from a link or from Plan (`App.tsx` passes `popout` in both views).
+
+A third, "Sharp turns" (the owner: "I find sharp turns pretty fun, but I hate standing at lights"),
+sits under the waits slider: 0 to 5 from the ride type's own weight (`dials.ts`
+`SHARP_TURN_WEIGHTS`, `fitSharpTurnWeight`; Road Bike 3x, Tandem and Cargo Bike 2x, others 1x, our defaults,
+unmeasured), so a rider can lower it below the ride type's own, to 0. It weighs the sharp and
+U-turn extras and the seconds lost braking for turns (docs/stress/routing-costs.md), not waits.
+It travels as `sharpturns=N` (the app keeps it only when it differs from the ride type's own), `sharp_turn_weight`
+on `POST /api/route` and in the connector, and in a GPX export's dials comment; Go drops it too.
+
+Both sliders move in half steps (`dials.ts` `WEIGHT_STEP`; the owner, 2026-11-20: "maybe put some
+fractional levels too, like half"), so `waits=2.5` and `sharpturns=0.5` are kept as they are; the
+connector takes the same half steps (`half_step`).
+
 ### Easy MTB trails (the owner, 2026-11-08)
 
 The owner: "allow trailmaxxing to use MTB trails too, some are definitely fine for that",
@@ -5075,9 +5102,9 @@ The owner: "allow trailmaxxing to use MTB trails too, some are definitely fine f
 control, "yes"; the design, "Steer on Gravel's graph" (no new graph and no new router); which
 trails, "yes 0 1 and unknown are counted." and "Unknown is typically grass and dirt."
 
-One switch, "Easy MTB trails", off by default, on the Default and Trailmaxxing ride types in
-Plan (`frontend/src/lib/dials.ts` `offersEasyMtb`, `EASY_MTB_PRESETS`; `dialsPanel.ts`
-`EASY_MTB_*`; `DialsPanel.tsx`). It travels as the other dials do: `easymtb=1` in a plan link
+"Easy MTB trails", off by default, on the Default and Trailmaxxing ride types
+(`frontend/src/lib/dials.ts` `offersEasyMtb`, `EASY_MTB_PRESETS`; `dialsPanel.ts`
+`EASY_MTB_*`). Since 2026-11-21 it is the third choice of Ride settings' Surface picker, below. It travels as the other dials do: `easymtb=1` in a plan link
 (`planHash.ts`), `easyMtb` in a saved route's dials, `easy_mtb` on `POST /api/route`
 (`core.api.RouteIn`, a strict boolean, refused on any other ride type), on Best order and the
 nearest-places search, on the MCP's `plan_route` and `revise_route` (mcp/README.md), and in a
@@ -5086,7 +5113,32 @@ on the ride types that offer it, so the file reopens on the MTB trails it rode).
 Reach does not take it (`lib/reach.ts`). Changing between Default and Trailmaxxing keeps it
 (`rideTypeDialog.choose`, and the MCP's `revise_route`, which also keeps Keep to roads on any
 ride type); `fitDials` drops it elsewhere. Keep to roads wins: with trails off the
-switch shows off, says why, and the ride takes the no-trail graph.
+choice is not offered, the Surface (i) says why, and the ride takes the no-trail graph.
+
+### Surface (the owner, 2026-11-21)
+
+The owner: "a surface setting: paved only, gravel, easy MTB, and then MTB2-4 as max", then
+"People here can and should be able to adjust to anything." One picker in Ride settings, Plan
+and Go alike (`frontend/src/lib/surface.ts`, `dialsPanel.ts` `surfaceView`, `DialsPanel.tsx`),
+on every bike of the rider's own but Road Bike (always paved), made of dials the API takes:
+
+| Surface | Mountain Bike | A ride type in `EASY_MTB_PRESETS` |
+| --- | --- | --- |
+| Paved only | `paved`, `mtb_level` 0 | `paved` |
+| Gravel | `mtb_level` 0 | the ride type as it plans |
+| Easy MTB trails | `mtb_level` 1 | `easy_mtb` |
+| MTB trails up to level 2-4 | `mtb_level` 2-4 (2 the default) | `easy_mtb`, `mtb_level` 2-4 |
+
+E-bike and Mass Ride (graphs of their own), and Gravel and Mountain Goat (whose off-road graph has the trails already), get Paved only and Gravel. Mountain Bike's level 0
+plans as after Ride's End mountain biking (`api._no_mtb_trails` sets `Dials.mtb_done`: the
+standard graph, Default's `use_roads`), with no preferred level. On the other ride types a level
+of 2 to 4 rides the Mountain Bike graph, where every level is open, with the ride type's own
+costing, and `core.easy_mtb.settle` holds it to that level (`max_level`) as it holds Easy MTB
+trails to 1; `routing._easy_asked` gives the level, which `presets.variant_for_ride` takes as
+its `easy_mtb`. Keep to roads wins over every trail choice. Paved only and the trails are never
+both. It travels as `paved=1` and `level=N` (0 included) in a plan link and a GPX dials comment,
+in a saved route's dials, through a change of ride type where the new one takes it, Back to this
+ride type's settings, and the MCP's links and `revise_route`. Reach takes none of it.
 
 With it on, `presets.variant_for_ride(..., easy_mtb=True)` gives the off-road graph
 (`Variant.OFFROAD`), as Gravel's, at the weekend too, with the ride type's own costing, so the

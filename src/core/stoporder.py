@@ -96,8 +96,8 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
         when,
         assist,
         bool(dials.trails_off),
-        bool(dials.easy_mtb),
-        dials.ride_replan and dials.mtb_done,
+        routing._easy_asked(preset_name, dials),
+        dials.mtb_done,
     )
     # Down the fallback chain as the plan goes (hunt 3, P3-2: a weekend Road Bike ride's stops
     # were ordered on the standard graph, where its route is planned on the paved one).
