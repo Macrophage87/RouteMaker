@@ -86,7 +86,8 @@ def _depth(value, level: int = 0) -> int:
 
 # A plan's stops in either form: `q=` (the app's links since v0.15.0) or the older `p=`.
 PLAN_POINTS_RE = re.compile(r"(^|[#&])[pq]=")
-# An own ride type holds a ride type and its sliders only: no points, vias, a drawn line or notes (release review of #1385).
+# An own ride type holds a ride type and its sliders only: no points, vias, a drawn line or notes
+# (release review of #1385).
 OWN_PLAN_PLACES_RE = re.compile(r"(^|[#&])(p|q|via|line|sn|nt)=")
 
 

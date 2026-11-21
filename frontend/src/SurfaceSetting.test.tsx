@@ -16,7 +16,7 @@ import { REACH_DEFAULT, reachBody } from "./lib/reach.ts";
 import { rideDials } from "./lib/neighbours.ts";
 import { PRESETS, type PresetId } from "./lib/presets.ts";
 
-const ALL = ["Paved only", "Gravel", "Easy MTB trails", "MTB trails up to Level 2 (blue)", "MTB trails up to Level 3 (black)", "MTB trails up to Level 4 (red)"];
+const ALL = ["Paved only", "Paved and gravel", "Easy MTB trails", "MTB trails up to Level 2 (blue)", "MTB trails up to Level 3 (black)", "MTB trails up to Level 4 (red)"];
 
 async function section(preset: PresetId, popout: boolean, dials: Dials = startDials(preset)) {
   const commits: Dials[] = [];
@@ -161,7 +161,7 @@ test("Paved only and the trails are never both: picking one takes the other off"
 test("with Keep to roads on, the trail choices are not offered and the (i) says why", async () => {
   await section("default", true, { ...startDials("default"), trailsOff: true, easyMtb: true });
   const select = picker()!;
-  assert.deepEqual(choices(select), ["Paved only", "Gravel"]);
+  assert.deepEqual(choices(select), ["Paved only", "Paved and gravel"]);
   assert.equal(select.value, "gravel");
   const info = document.getElementById(select.getAttribute("aria-describedby")!)!;
   assert.match(info.textContent ?? "", /Easy MTB trails: Not used while Keep to roads is on\./);

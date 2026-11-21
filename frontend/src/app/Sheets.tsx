@@ -994,7 +994,6 @@ export function RideGroupChips({
         {t("Every ride type")}
       </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
-      {go && <p className="hint">{t("Go on a card makes it what Go starts on.")}</p>}
       {favs.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
           <h4 id="ride-sheet-favorites">{t("Favorites")}</h4>

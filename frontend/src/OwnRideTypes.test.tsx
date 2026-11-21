@@ -74,7 +74,7 @@ test("saving under a name already used replaces that one; names are folded and c
   assert.deepEqual(parseOwn([{ id: "a1", name: "x", plan: "#preset=fast&q=1,2" }]), [], "never a route's points");
 });
 
-test("each card's Go button: pressed on what Go starts on, heard by name, and pressed again puts Go back on Default", async () => {
+test("each card's Go's default button says so in words, is heard by name, and pressed again puts Go back on Default", async () => {
   const set: string[] = [];
   const go = { current: "cargo", onSet: (key: string) => set.push(key) };
   const screen = await render(
@@ -84,25 +84,28 @@ test("each card's Go button: pressed on what Go starts on, heard by name, and pr
       <GoDefaultButton goKey="mass-ride" said="Mass Ride" go={go} />
     </>,
   );
-  const cargo = screen.button("Go starts on Cargo Bike");
+  const cargo = screen.button("Make Go's default: Cargo Bike");
   assert.equal(cargo.getAttribute("aria-pressed"), "true");
-  assert.equal(cargo.textContent, "Go");
-  assert.equal(screen.button("Go starts on Fast").getAttribute("aria-pressed"), "false");
+  assert.equal(cargo.textContent, "Go's default", "the one Go starts on says it is");
+  const fast = screen.button("Make Go's default: Fast");
+  assert.equal(fast.getAttribute("aria-pressed"), "false");
+  assert.equal(fast.textContent, "Make Go's default", "words, not a bare Go (the owner, 2026-11-21)");
   assert.equal(screen.all("button", /Mass Ride/).length, 0, "Mass Ride is never Go's");
-  await click(screen.button("Go starts on Fast"));
+  await click(fast);
   await click(cargo);
   assert.deepEqual(set, ["fast", "default"]);
 });
 
-test("the ride type list offers Go on every card, the rider's own too", async () => {
+test("the ride type list offers Make Go's default on every card, the rider's own too", async () => {
   setOwn(withSaved([], "Coffee", "fast", coffee, "a1"));
   const set: string[] = [];
   const screen = await render(<RideTypePicker preset="default" dials={startDials("default")} onChoose={() => {}} go={{ current: "own:a1", onSet: (k) => set.push(k) }} />);
   await act(async () => screen.button(/^Default/).click());
-  assert.equal(screen.button("Go starts on Coffee").getAttribute("aria-pressed"), "true");
-  await click(screen.all("button", "Go starts on Gravel")[0]);
+  assert.equal(screen.button("Make Go's default: Coffee").getAttribute("aria-pressed"), "true");
+  await click(screen.all("button", "Make Go's default: Gravel")[0]);
   assert.deepEqual(set, ["gravel"]);
-  assert.ok([...document.querySelectorAll("button")].some((b) => nameOf(b) === "Go starts on Default"));
+  assert.ok([...document.querySelectorAll("button")].some((b) => nameOf(b) === "Make Go's default: Default"));
+  assert.doesNotMatch(screen.text(), /Go on a card/, "no line explaining a bare Go");
 });
 
 test("own ride types and Go's choice of one follow the rider in the account's settings", () => {
@@ -148,8 +151,10 @@ test("Advanced: settings pasted in and loaded are used at once and kept in My ri
     <RideSection preset="default" dials={startDials("default")} choosePreset={(preset, dials) => chosen.push({ preset, dials })} commitDials={() => {}} route={null} typeCard popout />,
   );
   await click(screen.button(/Adjust$/));
-  const fold = document.querySelector<HTMLDetailsElement>(".own-ride-share")!;
+  // Sharing is at the foot of the one Advanced fold (intuitiveness review, 2026-11-21).
+  const fold = document.querySelector<HTMLDetailsElement>(".dials-advanced")!;
   assert.equal(fold.querySelector("summary")?.textContent, "Advanced");
+  assert.ok(fold.querySelector(".own-ride-share"), "sharing is in it");
   fold.open = true;
   await type(fold.querySelector("textarea")!, shareJson("Coffee", "fast", coffee));
   await click(screen.button("Load"));
