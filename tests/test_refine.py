@@ -536,9 +536,10 @@ class TestTurnsBySpeed:
         sharp = analysis("c")
         sharp.turns, sharp.turn_sharp = 2, 1.0
         extra = refine.turn_m(sharp, dear) - refine.turn_m(few, dear)
-        assert extra == pytest.approx(refine.QUIET_COST_FACTOR * refine.TURN_RANK_S / dear.quiet_cost)
+        rank = refine.QUIET_COST_FACTOR * refine.TURN_RANK_S
+        assert extra == pytest.approx(rank / dear.quiet_cost)
         usual = refine.turn_m(many, base) - refine.turn_m(few, base)
-        assert usual == pytest.approx(refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 4 / base.quiet_cost)
+        assert usual == pytest.approx(rank * 4 / base.quiet_cost)
 
     def test_legs_add_their_lost_seconds(self) -> None:
         one, two = analysis("a"), analysis("b")

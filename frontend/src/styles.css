@@ -5158,6 +5158,16 @@ dialog.plan-ride-settings {
 dialog.plan-ride-settings h2 {
   margin-top: 0;
 }
+/* Done stays at the popup's foot while its settings scroll, so a phone's sheet closes without scrolling to the end
+   (the v0.30.0 release review). */
+dialog.plan-ride-settings .plan-ride-settings-body > .closure-choices:last-child {
+  position: sticky;
+  bottom: -16px;
+  margin: 0 -16px -16px;
+  padding: 8px 16px 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
 dialog.plan-ride-settings h2:focus {
   outline: none;
 }

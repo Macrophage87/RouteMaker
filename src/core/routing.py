@@ -5304,7 +5304,9 @@ def _fast_direct_applies(preset_name: str, dials: Dials, own: dict) -> bool:
     """Whether a plan is a Fast ride at its own traffic position, planned in full: not a
     provisional answer (Go's quick first route, which is asked again in full), nor a followed
     file or a rider's own line."""
-    if preset_name != presets.FAST or own.get("provisional") or dials.follow is not None:
+    if preset_name != presets.FAST or own.get("provisional"):
+        return False
+    if dials.follow is not None or dials.straight:
         return False
     return dials.stress is None or dials.stress == presets.stress_start(preset_name)
 

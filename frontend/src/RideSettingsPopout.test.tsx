@@ -106,6 +106,10 @@ test("the settings ride in the link, the request and the line's words, and stay 
   const plan = decodePlan(`#${encodePlan([[-77.03, 38.9], [-77.0, 38.9]], "default", dials)}`.replace("##", "#"));
   assert.equal(plan.dials?.waitWeight, 4);
   assert.equal(plan.dials?.fewerTurns, true);
+  // Sharp turns at 0 is a setting of its own (a sharp turn as a plain one), not an absent one.
+  const flat: Dials = { ...startDials("road-bike"), sharpTurnWeight: 0 };
+  const flatPlan = decodePlan(`#${encodePlan([[-77.03, 38.9], [-77.0, 38.9]], "road-bike", flat)}`.replace("##", "#"));
+  assert.equal(flatPlan.dials?.sharpTurnWeight, 0);
   const fields = dialFields(dials);
   assert.equal(fields.wait_weight, 4);
   assert.equal(fields.fewer_turns, true);

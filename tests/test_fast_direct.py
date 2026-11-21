@@ -79,6 +79,8 @@ class TestThePlan:
             ("fast", routing.Dials(stress=20), False),
             ("fast", routing.Dials(stress=0), False),
             ("fast", routing.Dials(follow=((-77.0, 38.9), (-77.04, 38.9))), False),
+            # A rider's own drawn leg comes out the same at 0: no second router pass for it.
+            ("fast", routing.Dials(straight=(0,)), False),
         ],
     )
     def test_only_a_full_fast_plan_at_its_own_position_is_planned_twice(
