@@ -46,6 +46,9 @@ export interface PlanPanelProps {
 /** The button on an empty plan. */
 export const START_HERE_LABEL = t("Start at current location");
 
+/** How to plan, said with the plan once there is something to route. */
+export const ROUTE_HOW = t("Press Enter in Add a stop, or Route on the map, to plan.");
+
 export function PlanPanel(props: PlanPanelProps) {
   const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, locate, onSay } = props;
   const compare = routing ? null : (props.compare ?? null);
@@ -87,7 +90,9 @@ export function PlanPanel(props: PlanPanelProps) {
     else onSay?.(button.unavailable);
   };
   // Why Route is not offered now, said out of sight below, is part of the panel's description too.
-  const whySaid = !!button.unavailable && !locate && !routing;
+  // With a route to plan, how (intuitiveness review, 2026-11-21: by keyboard nothing said it): Enter in Add a stop.
+  const stateSaid = button.unavailable ?? ROUTE_HOW;
+  const whySaid = !locate && !routing;
   // Enter on the panel itself, or Ctrl+Enter (Cmd+Enter) anywhere in it, routes; Enter on a link opens its editor.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Enter") return;
@@ -118,9 +123,9 @@ export function PlanPanel(props: PlanPanelProps) {
         {sentences.map((sentence) => sentence.map((phrase) => phrase.text).join("")).join(" ")}
       </p>
       {/* Why Route is not offered now ("The route shown is up to date."), said, not shown: the bar has no Route then. */}
-      {button.unavailable && !locate && !routing && (
+      {whySaid && (
         <p id={routeWhy} className="visually-hidden plan-route-state">
-          {button.unavailable}
+          {stateSaid}
         </p>
       )}
       {routing ? (
