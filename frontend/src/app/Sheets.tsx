@@ -48,7 +48,8 @@ import { FederalLandFor, type FederalStatus } from "../lib/federalLegend.ts";
 import { CAPACITY_LEGEND_TITLE, isMassRide } from "../lib/massCapacity.ts";
 import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
-import { DocsPageLink, MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
+import { DocsPageLink, GoMapKey, MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
+import { METRO_LINES } from "../lib/railStations.ts";
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
@@ -140,6 +141,8 @@ export interface LayersSheetProps {
   intervals?: { on: boolean; onChange: (on: boolean) => void; status: string; minutes?: IntervalsMinutes; onMinutesChange?: (minutes: IntervalsMinutes) => void } | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
+  /** Go: the short map key first (GoMapKey), before the switches. */
+  goKey?: boolean;
 }
 
 export const PLACES_LAYER_TITLE = t("Places to see");
@@ -147,7 +150,7 @@ export const PLACES_LAYER_HINT = t("Museums, gardens, viewpoints and more. Place
 
 /** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, intervals, permits } = props;
+  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, intervals, permits, goKey } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus, ...(intervals ? { intervals: intervals.on, intervalsStatus: intervals.status } : {}) };
   return (
@@ -159,6 +162,10 @@ export function LayersSheet(props: LayersSheetProps) {
       backLabel={nav.backLabel("layers")}
       popup
     >
+      {/* Go: what the colours and dots are, in plain words, before any switch (intuitiveness review, 2026-11-21). */}
+      {goKey === true && !massMap && (
+        <GoMapKey levels={stress === "available" && stressVisible} stations={rail.metro} stationColours={[METRO_LINES.red.color, METRO_LINES.blue.color, METRO_LINES.orange.color]} />
+      )}
       {/* The mockup's order: the stress map, lanes on busy roads, federal land (Mass Ride's alone), water and
           restrooms, Metro and MARC, then trails and terrain. High contrast is in Settings. Each section is one
           row, its name, one switch for the whole section and a disclosure; its layers are inside (lib/layerSection.ts). */}

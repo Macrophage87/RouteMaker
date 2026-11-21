@@ -2987,4 +2987,12 @@ export const ES: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "Hacer predeterminado de Go: {ride}",
   "As this ride type plans them.": "Como los planea este tipo de paseo.",
   "No mountain-bike trails.": "Sin senderos de bicicleta de montaña.",
+  "Map key": "Leyenda del mapa",
+  "Calm: comfortable for everyone": "Tranquilo: cómodo para todos",
+  "Fine for most adults": "Bien para la mayoría de los adultos",
+  "For experienced riders": "Para ciclistas con experiencia",
+  "Busy, fast traffic": "Tráfico intenso y rápido",
+  "Best avoided": "Mejor evitar",
+  "Metro station: its colour is the line": "Estación de Metro: su color es la línea",
+  "Route locked. Open Edit route to change it.": "Ruta bloqueada. Abre Editar ruta para cambiarla.",
 };

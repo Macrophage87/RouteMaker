@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "Go 기본으로 설정: {ride}",
   "As this ride type plans them.": "이 라이딩 유형이 계획하는 대로.",
   "No mountain-bike trails.": "산악자전거 트레일 없음.",
+  "Map key": "지도 범례",
+  "Calm: comfortable for everyone": "조용함: 누구나 편안함",
+  "Fine for most adults": "대부분의 성인에게 괜찮음",
+  "For experienced riders": "숙련된 라이더용",
+  "Busy, fast traffic": "혼잡하고 빠른 교통",
+  "Best avoided": "피하는 것이 좋음",
+  "Metro station: its colour is the line": "메트로역: 색이 노선",
+  "Route locked. Open Edit route to change it.": "경로가 잠겨 있습니다. 바꾸려면 경로 편집을 여세요.",
 };

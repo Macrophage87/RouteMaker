@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "Jadikan bawaan Go: {ride}",
   "As this ride type plans them.": "Seperti jenis perjalanan ini merencanakannya.",
   "No mountain-bike trails.": "Tanpa jalur sepeda gunung.",
+  "Map key": "Keterangan peta",
+  "Calm: comfortable for everyone": "Tenang: nyaman untuk semua",
+  "Fine for most adults": "Cocok untuk kebanyakan orang dewasa",
+  "For experienced riders": "Untuk pesepeda berpengalaman",
+  "Busy, fast traffic": "Lalu lintas padat dan cepat",
+  "Best avoided": "Sebaiknya dihindari",
+  "Metro station: its colour is the line": "Stasiun Metro: warnanya adalah jalurnya",
+  "Route locked. Open Edit route to change it.": "Rute terkunci. Buka Ubah rute untuk mengubahnya.",
 };

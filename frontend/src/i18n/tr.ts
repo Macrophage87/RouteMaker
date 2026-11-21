@@ -2302,4 +2302,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Make Go's default: {ride}": "Go varsayılanı yap: {ride}",
   "As this ride type plans them.": "Bu sürüş türünün planladığı gibi.",
   "No mountain-bike trails.": "Dağ bisikleti parkuru yok.",
+  "Map key": "Harita açıklaması",
+  "Calm: comfortable for everyone": "Sakin: herkes için rahat",
+  "Fine for most adults": "Çoğu yetişkin için uygun",
+  "For experienced riders": "Deneyimli sürücüler için",
+  "Busy, fast traffic": "Yoğun, hızlı trafik",
+  "Best avoided": "Kaçınmak en iyisi",
+  "Metro station: its colour is the line": "Metro istasyonu: rengi hattıdır",
+  "Route locked. Open Edit route to change it.": "Rota kilitli. Değiştirmek için Rotayı düzenle'yi açın.",
 };
