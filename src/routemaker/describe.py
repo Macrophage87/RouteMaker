@@ -1553,6 +1553,15 @@ def group_sentence(group: CrossingGroup, start_m: float, end_m: float) -> str:
     return f"{group_words(group, start_m, end_m)}{severity}."
 
 
+def _rated_level(event: object | None) -> dict:
+    """`rated_level` for a turn's or a junction entry's dict: the raters' level where a
+    rating priced the flagged junction, nothing where the model did."""
+    level = getattr(event, "rater_level", None)
+    if level is None or not getattr(event, "flagged", False):
+        return {}
+    return {"rated_level": level}
+
+
 @dataclass
 class _Turn:
     movement: str | None
@@ -2822,6 +2831,7 @@ def describe_both(
                         "onto": _street_words(run),
                         "control": turn.event.control.value if turn.event is not None else None,
                         "severity": severity,
+                        **_rated_level(turn.event if severity else None),
                         **({"stay": True} if turn.stay else {}),
                         **({"shape": turn.shape} if turn.shape else {}),
                         **({"exit": turn.exit} if turn.exit else {}),
@@ -2913,6 +2923,7 @@ def describe_both(
                         "onto": None,
                         "control": event.control.value,
                         "severity": event.severity,
+                        **_rated_level(event),
                     },
                 ),
             )
@@ -2957,6 +2968,7 @@ def describe_both(
                         "onto": _street_words(runs[first]),
                         "control": turn.event.control.value if turn.event is not None else None,
                         "severity": severity,
+                        **_rated_level(turn.event if severity else None),
                         **({"stay": True} if turn.stay else {}),
                         **({"shape": turn.shape} if turn.shape else {}),
                         **({"exit": turn.exit} if turn.exit else {}),

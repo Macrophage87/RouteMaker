@@ -2659,11 +2659,23 @@ ul.station-links {
 .junction-popup-red .maplibregl-popup-content {
   border-left-color: #dc2626;
 }
+/* A plain-map rated junction's card: no warning bar, whose orange would contradict an LTS 1 or 2. */
+.junction-popup-plain .maplibregl-popup-content {
+  border-left: none;
+}
 .junction-popup .maplibregl-popup-close-button {
   color: var(--text);
 }
 .junction-card p {
   margin: 4px 0 0;
+}
+.junction-card-moves {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.junction-card-yours {
+  font-weight: 700;
 }
 .junctions {
   margin: 12px 0;
@@ -5627,11 +5639,50 @@ dialog.plan-ride-settings h2:focus {
   margin: 8px 0 0;
 }
 
+/* A rated junction on the plain map: a small colour dot in a button large enough to press. */
+.rated-map-dot {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+/* On a touch screen, a 44 px target round the small drawn dot. */
+@media (pointer: coarse) {
+  .rated-map-dot {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+  }
+}
+
 .cue-next,
 .cue-off {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+/* The same border and padding as a rated move's (transparent), so the card keeps its height between turns
+   and when it goes off route. */
+.cue-next,
+.cue-off {
+  border: 5px solid transparent;
+  border-radius: 10px;
+  padding: 4px 6px;
+}
+
+/* A hard move at a rated junction: the card bordered in the move's stress colour, inside an edge of the text colour
+   (black on light, white on dark) so the border reads whatever the colour. The arrow stays plain. */
+.cue-next-rated {
+  border: 5px solid var(--cue-rated);
+  outline: 2px solid var(--text);
+  border-radius: 10px;
+  padding: 4px 6px;
 }
 
 .cue-shape {
@@ -12390,4 +12441,28 @@ dialog.plan-ride-settings .dial-ends {
 .route-edited .hint {
   flex: none;
   margin: 4px 0 0;
+}
+
+/* Accessibility mode: one map scale, in the rider's units (intuitiveness review, 2026-11-21: two enlarged scales and
+   Map tools hid the End pin). The route is framed clear of the map's right-hand controls too (App framePadding). */
+:root.access-mode .maplibregl-ctrl-scale.scale-second {
+  display: none;
+}
+
+/* The map's zoom buttons at 44 px on a touch screen, and its compass only while the map is turned (intuitiveness review,
+   2026-11-21: three 29 px buttons, touching, on a phone meant for a handlebar mount). */
+.maplibregl-map:not(.map-turned) .maplibregl-ctrl-compass {
+  display: none;
+}
+@media (pointer: coarse) {
+  .maplibregl-ctrl-group button.maplibregl-ctrl-zoom-in,
+  .maplibregl-ctrl-group button.maplibregl-ctrl-zoom-out,
+  .maplibregl-ctrl-group button.maplibregl-ctrl-compass {
+    width: 44px;
+    height: 44px;
+  }
+}
+/* A ride has its own compass (.ride-compass): the map's stays away there. */
+.app.riding .maplibregl-ctrl-compass {
+  display: none;
 }
