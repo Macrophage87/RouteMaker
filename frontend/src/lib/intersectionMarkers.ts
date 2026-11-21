@@ -8,7 +8,9 @@
  * and why (src/routemaker/intersections.py); this is how they are listed,
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
-import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RouteResponse } from "./api.ts";
+import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RatedJunction, RatedMove, RouteResponse } from "./api.ts";
+import { currentPalette } from "../stressStyle.js";
+import { ratedDotFill, ratedLevelText } from "./ratedDot.ts";
 import { FEET_PER_MILE, KM_PER_MILE, both, formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { corkersFor } from "./profileChart.ts";
@@ -107,8 +109,8 @@ export function junctionItems(route: (Pick<RouteResponse, "intersections"> & Par
     ...junction,
     index,
     where: `At ${formatDistance(junction.m)}`,
-    label: `${SEVERITY_COLOURS[junction.severity].label}: ${junction.reason}`,
-    severityText: SEVERITY_COLOURS[junction.severity].short,
+    label: `${junction.rated ? ratedTitle(junction.rated) : SEVERITY_COLOURS[junction.severity].label}: ${junction.reason}`,
+    severityText: junction.rated ? ratedTitle(junction.rated) : SEVERITY_COLOURS[junction.severity].short,
     costText: mass ? junctionCorkText(route?.profile?.crossings, junction.m) : junctionCostText(junction),
   }));
 }
@@ -311,4 +313,78 @@ export function junctionsOnMap(items: readonly JunctionItem[]): JunctionItem[] {
  */
 export function rowName(severity: string, where: string, reason: string, cost?: string): string {
   return `${severity}, ${where}: ${reason}${cost ? `. ${cost}` : ""}`;
+}
+
+// --- Rated junctions: a dot in the stress colour (the owner, 2026-11-15) ---------------
+
+export { ratedDotFill, ratedLevelText };
+
+/** Black or white, whichever reads better on `fill` (WCAG relative luminance). */
+export function inkOn(fill: string): "#111111" | "#ffffff" {
+  const channel = (i: number) => {
+    const v = parseInt(fill.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  return luminance > 0.3 ? "#111111" : "#ffffff";
+}
+
+/** The dot, as inline SVG markup: a white-ringed, dark-edged small disc in the level's colour, nothing written
+ * on it (the owner, 2026-11-20: "Just colors as small dots"). */
+export function ratedDotSvg(level: number, size = ICON_PX, palette: string = currentPalette()): string {
+  const fill = ratedDotFill(level, palette);
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
+    `<circle cx="12" cy="12" r="6.6" fill="#ffffff" stroke="#111111" stroke-width="1.2"/>` +
+    `<circle cx="12" cy="12" r="4.8" fill="${fill}"/>` +
+    "</svg>"
+  );
+}
+
+/** A junction's icon: the rated dot where the raters set its cost, else the warning shape. */
+export function junctionIconSvg(junction: Pick<JunctionWarning, "severity" | "rated">, size = ICON_PX): string {
+  return junction.rated ? ratedDotSvg(junction.rated.level, size) : warningIconSvg(junction.severity, size);
+}
+
+/** A drawn group's icon: its hardest rated member's dot where every member is rated, else the worst severity's shape. */
+export function groupIconSvg(group: JunctionGroup, size = ICON_PX): string {
+  const levels = group.members.map((m) => m.rated?.level);
+  if (levels.every((l): l is number => typeof l === "number")) return ratedDotSvg(Math.max(...levels), size);
+  return warningIconSvg(group.severity, size);
+}
+
+const RATED_MOVE_WORDS: Record<RatedMove["move"], string> = {
+  cross: "Crossing",
+  left: "Turning left",
+  along: "Riding along",
+};
+
+/** "about 40 s": a rated wait, to the nearest 5 seconds from 10 up; "" where none is given or it is nothing. */
+export function ratedWaitText(wait_s: number | null | undefined): string {
+  if (typeof wait_s !== "number" || wait_s < 1) return "";
+  return `about ${wait_s >= 10 ? Math.round(wait_s / 5) * 5 : Math.round(wait_s)} s`;
+}
+
+export interface RatedLine {
+  /** "Crossing: LTS 4, about 40 s". */
+  text: string;
+  /** The movement this route makes. */
+  yours: boolean;
+}
+
+/** The junction panel's lines, one for each movement that can be made there, in the raters' order. */
+export function ratedLines(rated: Pick<RatedJunction, "moves"> & { move?: RatedJunction["move"] }): RatedLine[] {
+  return rated.moves.map((move) => {
+    const wait = ratedWaitText(move.wait_s);
+    return {
+      text: `${RATED_MOVE_WORDS[move.move]}: ${ratedLevelText(move.level)}${wait ? `, ${wait}` : ""}`,
+      yours: move.move === rated.move,
+    };
+  });
+}
+
+/** "Rated LTS 4 crossing": what a rated junction's marker and card are called. */
+export function ratedTitle(rated: RatedJunction): string {
+  const what = { cross: "crossing", left: "left turn", along: "junction to ride through" }[rated.move];
+  return `Rated ${ratedLevelText(rated.level)} ${what}`;
 }

@@ -31,6 +31,7 @@ import { Protocol } from "pmtiles";
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { loadRatedMap, ratedMapAsk, ratedMapCardBody, ratedMapDot, ratedMapName, ratedMapShown, type RatedMapJunction } from "./lib/ratedMap.ts";
 import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
@@ -169,6 +170,7 @@ import {
   focusAfterClose,
   groupHolding,
   type CardOpener,
+  junctionCardBody,
 } from "./lib/junctionCard.ts";
 import { wrapCredits } from "./lib/mapInfo.ts";
 import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
@@ -178,7 +180,7 @@ import {
   groupLabel,
   junctionItems,
   junctionsOnMap,
-  warningIconSvg,
+  groupIconSvg,
   ICON_PX,
   type JunctionGroup,
   type JunctionItem,
@@ -2538,7 +2540,7 @@ export function MapView(props: Props) {
         element.className = `junction-marker junction-${group.severity}${single ? "" : " junction-group"}`;
         element.dataset.junctionIndex = String(first.index);
         element.innerHTML =
-          warningIconSvg(group.severity, ICON_PX) +
+          groupIconSvg(group, ICON_PX) +
           (single ? "" : `<span class="junction-count" aria-hidden="true">${group.members.length}</span>`);
         // The name alone: a title as well was read a second time, as the
         // description (a11y review, int-2).
@@ -2734,6 +2736,83 @@ export function MapView(props: Props) {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [props.permitsOn]);
+  // The rated junctions on the plain map (lib/ratedMap.ts): small colour dots at the two closest zooms only (the owner,
+  // 2026-11-20), asked after the map settles there; each a button that opens a card of its movements. A planned
+  // route's own junction markers stand for the dots at their spots.
+  const [ratedMap, setRatedMap] = useState<RatedMapJunction[]>([]);
+  const ratedMarkers = useRef<Marker[]>([]);
+  const ratedPopup = useRef<Popup | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let controller: AbortController | null = null;
+    let settle = 0;
+    let asked: { west: number; south: number; east: number; north: number } | null = null;
+    let askedEvery = false;
+    const refresh = async () => {
+      const b = map.getBounds();
+      const view = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+      const ask = ratedMapAsk(view, map.getZoom());
+      // Zoomed in to the closest or back out of it: asked again, with or without the quiet junctions.
+      if (ask && ask.every === askedEvery && viewInside(view, asked)) return;
+      controller?.abort();
+      if (!ask) {
+        if (asked) setRatedMap([]);
+        asked = null;
+        return;
+      }
+      const mine = new AbortController();
+      controller = mine;
+      const found = await loadRatedMap(ask.path, mine.signal);
+      if (!found || mine.signal.aborted) return;
+      asked = ask.box;
+      askedEvery = ask.every;
+      setRatedMap(found);
+    };
+    const onMove = () => {
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => void refresh(), 400);
+    };
+    map.on("moveend", onMove);
+    void refresh();
+    return () => {
+      controller?.abort();
+      window.clearTimeout(settle);
+      map.off("moveend", onMove);
+    };
+  }, []);
+  useEffect(() => {
+    const map = mapRef.current;
+    ratedPopup.current?.remove();
+    ratedPopup.current = null;
+    ratedMarkers.current.forEach((marker) => marker.remove());
+    ratedMarkers.current = [];
+    if (!map) return;
+    const onRoute = props.route && !props.stale ? junctionsOnMap(junctionItems(props.route)).map((item): LonLat => [item.lon, item.lat]) : [];
+    for (const junction of ratedMapShown(ratedMap, onRoute)) {
+      const element = ratedMapDot(junction);
+      element.addEventListener("click", (event) => {
+        // A click on a dot is not a click on the map: it must not add a point.
+        event.stopPropagation();
+        ratedPopup.current?.remove();
+        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 10, className: "junction-popup" })
+          .setLngLat([junction.lon, junction.lat])
+          .setDOMContent(ratedMapCardBody(junction))
+          .addTo(map);
+        ratedPopup.current = popup;
+        const card = popup.getElement();
+        card.setAttribute("role", "dialog");
+        card.setAttribute("aria-label", ratedMapName(junction));
+        card.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button")?.setAttribute("aria-label", CARD_CLOSE_LABEL);
+        popup.on("close", () => {
+          if (ratedPopup.current === popup) ratedPopup.current = null;
+          const active = document.activeElement;
+          if (element.isConnected && (!active || active === document.body || card.contains(active))) element.focus();
+        });
+      });
+      ratedMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat([junction.lon, junction.lat]).addTo(map));
+    }
+  }, [ratedMap, props.route, props.stale]);
   useEffect(() => {
     const map = mapRef.current;
     closurePopup.current?.remove();
@@ -3397,20 +3476,7 @@ function focusPlace(card: Popup | null, map: MapLibreMap): "card" | "opener" | "
  * than "Close popup, button".
  */
 function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boolean): Popup {
-  const body = document.createElement("div");
-  body.className = "junction-card";
-  const title = document.createElement("strong");
-  title.textContent = item.label.split(":")[0];
-  const reason = document.createElement("p");
-  reason.textContent = item.reason;
-  const cost = document.createElement("p");
-  cost.className = "junction-card-cost";
-  cost.textContent = `${item.costText}.`;
-  const where = document.createElement("p");
-  where.className = "hint";
-  where.textContent = `${item.where}. Drag the route away to plan around it.`;
-  // A Mass Ride's junction with no major junction of the profile there has no line (lib/intersectionMarkers.ts junctionCorkText).
-  body.append(...(item.costText ? [title, reason, cost, where] : [title, reason, where]));
+  const body = junctionCardBody(item);
   const card = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,

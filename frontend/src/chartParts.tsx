@@ -7,6 +7,7 @@
 import type { ReactNode } from "react";
 import type { RouteProfile, RouteResponse } from "./lib/api.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
+import { ratedDotFill, ratedLevelText } from "./lib/ratedDot.ts";
 import {
   AVOID_FRAME,
   FLOW_BANDS,
@@ -87,8 +88,22 @@ export function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** A junction's marker: the planner's triangle (higher stress) or diamond (very high), or a dot where it is major only for its busy road. */
-export function CrossingMarker({ severity, x, y }: { severity: "orange" | "red" | null; x: number; y: number }): ReactNode {
+/**
+ * A rated junction's dot, as on the map (lib/intersectionMarkers ratedDotSvg): small, its level's stress colour inside a white
+ * ring with a dark edge, no number on it (the owner, 2026-11-20: "Just colors as small dots"); the level is its name.
+ */
+export function RatedDot({ level, x, y, r = 4.5 }: { level: number; x: number; y: number; r?: number }): ReactNode {
+  return (
+    <g className="rated-dot" role="img" aria-label={ratedLevelText(level)}>
+      <circle cx={x} cy={y} r={r} fill="#ffffff" stroke="#111111" strokeWidth="1" />
+      <circle cx={x} cy={y} r={r * 0.72} fill={ratedDotFill(level)} />
+    </g>
+  );
+}
+
+/** A junction's marker: its rated dot where the raters set its level, else the planner's triangle (higher stress) or diamond (very high), or a dot where it is major only for its busy road. */
+export function CrossingMarker({ severity, x, y, rated }: { severity: "orange" | "red" | null; x: number; y: number; rated?: number | null }): ReactNode {
+  if (rated != null && severity !== null) return <RatedDot level={rated} x={x} y={y} />;
   if (severity === "orange") {
     const c = SEVERITY_COLOURS.orange;
     return <path d={`M${x} ${y - 6} L${x + 6} ${y + 5} L${x - 6} ${y + 5} Z`} fill={c.fill} stroke={c.stroke} strokeWidth="1" strokeLinejoin="round" />;

@@ -40,6 +40,7 @@ from routemaker import (
     pavement,
     scenic,
     setting,
+    sidewalks,
     singletrack,
     trail_facts,
 )
@@ -623,6 +624,8 @@ def rule_words(rule: str) -> str:
 def _rule_words(rule: str) -> str:
     rule = (rule or "").strip()
     rule = re.sub(r"\s*\(Furth: [^)]*\)", "", rule)
+    if rule in LAST_RESORT_WHY:
+        return LAST_RESORT_WHY[rule]
     if rule.startswith(f"override: stress adjustment {COUNTY_ADJUSTMENT_PREFIX}"):
         # The county's 5 is very high stress, our 4.5 (`agency_lts.READ_AS`).
         return f"Montgomery County rates it LTS 5, {COUNTY_FIVE_WORDS}"
@@ -705,6 +708,31 @@ ADJUSTMENT_CATEGORIES = {
 }
 
 
+# A sidewalk or crosswalk ridden only as a last resort (`routemaker.sidewalks`): the level the
+# rebuild writes on it (3 or 4) is how the router prices it, not a judgement of its stress, so
+# the panel says "Last resort" in place of a level (the owner, 2026-11-14: "we should have a
+# special last resort tag").
+LAST_RESORT_LEVEL = "Last resort: sidewalk"
+LAST_RESORT_SHORT = "Last resort"
+LAST_RESORT_WHY = {
+    sidewalks.RULE: (
+        "A sidewalk or short footway link with no bike marking: routes use it only to "
+        "connect, or beside a road rated LTS 4.5 or Avoid"
+    ),
+    sidewalks.LAST_RESORT_RULE: (
+        "A sidewalk with no bike marking: routes use it only where nothing else connects"
+    ),
+}
+
+
+def is_last_resort(row: dict) -> bool:
+    """Whether the row's level is the ridden-sidewalk rule's, not a rating of its own."""
+    return (
+        row.get("stress_adjustment_id") is None
+        and str(row.get("stress_rule") or "").strip() in LAST_RESORT_WHY
+    )
+
+
 def tier_text(tier: int, half: bool = False) -> str:
     words = words_for(tier, half)
     return words if tier == 5 else f"LTS {step_label(step_value(tier, half))}: {words}"
@@ -740,7 +768,7 @@ def stress_rows(row: dict) -> list[dict]:
     county = whose == "moco"
     why = override_note(row) or rule_words(row["stress_rule"])
     rows = [
-        _row("Level", tier_text(tier, half), source),
+        _row("Level", LAST_RESORT_LEVEL if is_last_resort(row) else tier_text(tier, half), source),
         _row("Why", why, source),
     ]
     computed = row.get("stress_computed_tier")
@@ -1405,6 +1433,8 @@ def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     # after the level"; `evidence_grade`).
     grade = evidence_grade(row)
     level = stress_short(tier, half) + (f" · {GRADE_WORDS[grade]}" if grade else "")
+    if is_last_resort(row):
+        level = LAST_RESORT_SHORT
     rows = [{"id": "stress", "label": "Traffic stress", "value": level}]
 
     def add(id_: str, label: str, value: str) -> None:
@@ -2063,6 +2093,8 @@ def describe(row: dict, router: dict) -> dict:
         # Whether the live table can hold a half step yet: the suggestion form offers whole
         # steps only until it can.
         "half_steps": "stress_half" in row,
+        # A ridden sidewalk: the panel says "Last resort" in place of the level (`is_last_resort`).
+        "last_resort": is_last_resort(row),
         "open": open_,
         "osm_way_id": int(row["osm_way_id"]),
         "distance_m": round(float(row["distance_m"]), 1),
