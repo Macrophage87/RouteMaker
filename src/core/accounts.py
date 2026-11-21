@@ -31,7 +31,8 @@ SETTINGS_KEYS = frozenset(
         "sections",  # which Layers sections' switches were on
         "bikeshare",  # the bikeshare and micromobility service switches
         "favorites",  # the favorite ride types, listed first in the ride type pickers
-        "own",  # the rider's own named ride types: [{id, name, plan}] (frontend lib/ownRideTypes.ts)
+        # the rider's own named ride types: [{id, name, plan}] (frontend lib/ownRideTypes.ts)
+        "own",
         "goOwn",  # which of them Go starts on, or null
         "weight",  # the rider and bike weight (frontend lib/weight.ts); personal, never logged
         "speed",  # the rider's riding speed, whole mph, or null for the ride type's own
@@ -42,8 +43,8 @@ SETTINGS_MAX_BYTES = 16 * 1024
 SETTINGS_MAX_DEPTH = 4
 # A list of short ride type names, each once; room for every ride type and some to come.
 FAVORITES_MAX = 32
-# The rider's own ride types (frontend lib/ownRideTypes.ts OWN_MAX, OWN_NAME_MAX): a short id, a name and the
-# ride type and dials as a plan fragment with no points.
+# The rider's own ride types (frontend lib/ownRideTypes.ts OWN_MAX, OWN_NAME_MAX): a short id, a
+# name and the ride type and dials as a plan fragment with no points.
 OWN_MAX = 20
 OWN_NAME_MAX = 40
 OWN_PLAN_MAX = 2048
