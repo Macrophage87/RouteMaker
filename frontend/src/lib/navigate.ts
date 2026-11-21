@@ -498,6 +498,8 @@ export interface Cue {
   /** The street the cue turns onto or is on, as the API names it; null where unnamed. */
   street: string | null;
   severity: "orange" | "red" | "avoid" | null;
+  /** The raters' level for the move made at a flagged junction (3 to 5): the card's border and the ribbon's dot. */
+  ratedLevel?: number;
   /** The stretch's tier after the cue, 1-5, or null. */
   tier: number | null;
   /** A stop's number (from 1); null on any other cue. */
@@ -1244,6 +1246,7 @@ export function rideModel(
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
+        ...(entry.turn?.rated_level != null ? { ratedLevel: entry.turn.rated_level } : {}),
         tier: entry.tier,
         stop: kind === "stop" ? (placeNumber ?? cues.filter((c) => c.kind === "stop").length + 1) : null,
         // Its place in the request where its number is the plan's (stopsAhead and Already done? find the point by it).
@@ -1471,6 +1474,9 @@ function joinJogs(cues: Cue[]): void {
       if (j > 0) cue.joined = true;
       const after = jog.slice(j + 1);
       if (!after.length) return;
+      // A compound move takes its hardest part's level (the owner, 2026-11-15).
+      const worst = Math.max(...[cue, ...after].map((c) => c.ratedLevel ?? 0));
+      if (worst) cue.ratedLevel = worst;
       cue.then = after.map((t) => ({ movement: t.movement!, street: t.street, ...(t.exit ? { exit: t.exit } : {}), ...(t.stay ? { stay: true } : {}), ...(t.toward ? { toward: t.toward } : {}) }));
       cue.text = plain[j] + cue.then.map((t, n) => withoutFullStop(thenWords(t, n === 0 && cue.cross !== undefined))).join("") + fullStop();
     });

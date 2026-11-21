@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.30.1](#deploying-v0301)
 - [Deploying v0.30.0](#deploying-v0300)
 - [Deploying v0.29.0](#deploying-v0290)
 - [Deploying v0.28.1](#deploying-v0281)
@@ -8088,6 +8089,45 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.30.1
+
+A patch on v0.30.0, on the owner's ask (2026-11-21, "Let's send the Junction markers and other fixes
+as a patch"): the raters' junction ratings shown as small dots in the stress colour, level 3 and up,
+on a planned route (map, list, stress chart, Ride ribbon) and on the plain map from zoom 17 (every
+rated junction at the closest zoom), with a card of each movement's level and wait, and Ride's turn
+card bordered in a hard move's colour (#1291, with the new `GET /api/junctions/rated`); the Go
+location dot refreshed every 15 s before a destination (#1406); accessibility fixes and the bottom
+bar's "Plan" renamed "Planner" (#1401); the beta map swap holds the deploy lock against the router
+timer and stops (exit 3) when a trail router did not start (#1409). #1291 also adds two rater briefs
+and a pipeline change (short sidewalk links walked on the e-bike and Road Bike graphs) that takes
+effect only at the next map rebuild.
+
+What changes for a deploy:
+
+- no migration; no `lua/`, `valhalla/`, compose, nginx, Dockerfile or requirements change, so the
+  beta's release agent takes a tag made by the Release workflow by itself; no router restart, no map
+  step;
+- `scripts/beta/auto-release.sh` changed (#1409), so after the deploy the agent puts its own new
+  files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"); only if the
+  log says "WARNING: the agent's files could not all be reinstalled", run
+  `scripts/beta/auto-release.sh install` from the v0.30.1 checkout;
+- the segment panel names a sidewalk ridden as a last resort ("Last resort", a new `last_resort`
+  field in the segment answer), on today's map;
+- the pipeline change takes effect only with a map rebuilt from v0.30.1 or later: the e-bike and
+  both Road Bike graphs then ride no sidewalk at all (the owner, 2026-11-14) and walk only the short
+  links where a bike way meets a footway, so their routes beside Avoid roads may get longer;
+- the dots read the `JunctionRater` table already loaded on beta; with no rows, the API answers
+  `{"junctions": []}` and nothing is drawn.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.30.1`, then approve).
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
+- [ ] **Beta check.** The app says 0.30.1; a planned route through a busy junction shows a coloured
+  dot there, and tapping it lists each movement's level and wait; the plain map at zoom 17 or closer
+  shows dots; the bottom bar says "Planner".
+- [ ] **Rollback.** The `pre-rel` api image and the v0.30.0 front end, together (the old front end
+  never asks the new path; the new front end draws no map dots on the old api).
+
 ## Deploying v0.30.0
 
 The release train's v0.30.0, on the owner's ask (2026-11-21, "Get ready to ship 0.30 when the map is
@@ -10710,6 +10750,15 @@ done. Then it runs the runbook's "New data only" steps 2 to 5:
    four routers restarted one at a time.
 4. The stress-tile pre-draw started in the background (`$RM_STATE/predraw.log`).
 5. The local smoke test, tried again while the app and routers start.
+
+It holds the deploy agent's lock from its checks to its end, so the router timer
+(`restart-routers.sh`) skips its passes meanwhile: on 2026-11-21 the timer restarted
+valhalla-mtb in the same seconds as the swap's `up -d --force-recreate` of the trail
+routers, and docker left offroad, paved and paved-weekend created but never started.
+When a trail router it started is not running, it says so and exits 3, without its
+"installed." line (auto-release.sh's ship-held says the same and stays paused; the map is
+good, so do not roll it back): start it (`beta-compose.sh up -d --force-recreate <router>`), run
+`scripts/beta/smoke-test.sh --local --trails`, and only then resume deployment.
 
 Then run `scripts/beta/smoke-test.sh --public` yourself once the pre-draw has finished,
 and resume continuous deployment. The box builds home's commit, so a beta on a
