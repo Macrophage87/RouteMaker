@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.30.0](#deploying-v0300)
 - [Deploying v0.29.0](#deploying-v0290)
 - [Deploying v0.28.1](#deploying-v0281)
 - [Deploying v0.28.0](#deploying-v0280)
@@ -8086,6 +8087,46 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.30.0
+
+The release train's v0.30.0, on the owner's ask (2026-11-21, "Get ready to ship 0.30 when the map is
+rebuilt"): Plan's Adjust opens every ride setting in a popup with "Waiting at lights and stops",
+"Sharp turns" (both in half steps) and "Fewer turns" (#1367, #1374, #1376); waits weigh 2x on
+pleasure and training rides, Group Ride, Cargo and Tandem, and the connector can raise them
+(#1364, #1377, #1378); sharp turns, U-turns and jogs rank as more than one turn and turns are priced
+by the speed they cost (#1363, #1366); Fast is as direct as possible at real time (#1378, #1381); Go
+locks the route on the map until Edit route is opened (#1360), drops drawn icons on ride type chips
+(#1361) and its route sheet never scrolls sideways (#1383); short bike-open links inside closed
+campuses (#1359) and footways that close a gap between bike ways (#1362) are priced as links, which
+takes effect with the map rebuilt from this branch (cloud-20261120b, commit e6c6f6a7; the commits
+after it are front end only); Geofabrik's per-state download folders (#1380). Junction dots, method C
+trail levels and Virginia stay out.
+
+What changes for a deploy:
+
+- no migration; no `lua/`, `valhalla/`, compose, nginx, Dockerfile or requirements change, so the
+  beta's release agent takes a tag made by the Release workflow by itself; no router restart;
+- the api code runs on the old map too (#1359 and #1362 only change what the rebuild writes), so the
+  tag and the map swap are separate steps, in either order;
+- new link and API parameters (`waits=`, `sharpturns=`, `fewerturns=`; `wait_weight`,
+  `sharp_turn_weight`) are optional; old links plan as before.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.30.0`, then approve).
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point, fast-forward the
+  checkout, `docker compose build api`, recreate api and worker with no job todo or doing, then the
+  front end.
+- [ ] **Beta.** The release agent deploys it; `auto-release.sh status` shows it.
+- [ ] **Beta check.** The app says 0.30.0; Plan, Adjust opens the popup with both sliders and Fewer
+  turns, and a link made there carries `waits=` and `sharpturns=`; Go keeps the route fixed on the
+  map until Edit route; Fast's card reads "As direct as possible."
+- [ ] **The map swap (owner's go)**, as "Rebuilding on the cloud box", once cloud-20261120b's bundle
+  is checked. Then: the Rockville Pike side path at Medical Center (NIH) is routed through; the
+  JunctionRater table still holds its rows; `scripts/refresh_places.py`, the barrier snapshot and
+  `build_intervals` (commit `intervals.json`).
+- [ ] **Rollback.** The `pre-rel` api image and the v0.29.0 front end; the map has its own rollback
+  (the previous graph), and either runs with the other.
 
 ## Deploying v0.29.0
 
