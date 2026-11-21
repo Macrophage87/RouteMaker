@@ -507,6 +507,52 @@ export function StressLegend({
   );
 }
 
+/**
+ * Go's short map key, first in its Layers sheet (intuitiveness review, Stephen 2026-11-21: a newcomer read the Metro
+ * dots as hazards, and the full key was two taps in and spoke "LTS"): the whole levels in plain words, Avoid, and what
+ * a station dot is; the codes, half steps and surfaces stay in Traffic stress's own key, with How stress ratings work.
+ */
+export const GO_KEY_TITLE = t("Map key");
+export const GO_KEY_WORDS: Readonly<Record<number, string>> = {
+  1: t("Calm: comfortable for everyone"),
+  2: t("Fine for most adults"),
+  3: t("For experienced riders"),
+  4: t("Busy, fast traffic"),
+  5: t("Best avoided"),
+};
+export const GO_KEY_STATION = t("Metro station: its colour is the line");
+
+export function GoMapKey({ stations, stationColours, levels = true }: { stations: boolean; stationColours: readonly string[]; levels?: boolean }): ReactElement | null {
+  useStressStyle();
+  if (!levels && !stations) return null;
+  const tiers = levels ? currentTiers().filter((tier) => tier.tier in GO_KEY_WORDS) : [];
+  const widths = legendWidths(currentTiers());
+  const all = currentTiers();
+  return h(
+    "section",
+    { className: "go-map-key", "aria-labelledby": "go-map-key-title" },
+    h("h3", { id: "go-map-key-title" }, GO_KEY_TITLE),
+    h(
+      "ul",
+      { className: "legend go-key" },
+      ...tiers.map((tier) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[all.indexOf(tier)] }), GO_KEY_WORDS[tier.tier], GO_KEY_WORDS[tier.tier])),
+      stations
+        ? row(
+            "station",
+            h(
+              "svg",
+              { width: SVG_WIDTH, height: 14, "aria-hidden": "true" },
+              ...stationColours.slice(0, 3).map((colour, i) => h("circle", { key: colour, cx: X1 + 6 + i * 14, cy: 7, r: 5.5, fill: colour, stroke: "#ffffff", strokeWidth: 1.5 })),
+            ),
+            GO_KEY_STATION,
+            GO_KEY_STATION,
+          )
+        : null,
+    ),
+    levels ? h(StressPageLink, null) : null,
+  );
+}
+
 /** The map key's heading and its hint (the owner, 2026-10-19). */
 export const MTB_MAP_KEY_TITLE = "Mountain-bike trails";
 export const MTB_MAP_KEY_HINT = "Tap a trail for details";

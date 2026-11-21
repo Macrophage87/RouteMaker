@@ -519,10 +519,37 @@ def test_turns_are_counted_as_the_app_counts_them() -> None:
 
 
 def test_fewer_turns_and_all_paved_are_sent_kept_and_said_missing_from_the_link(tools, api) -> None:
-    out = tools.call("plan_route", {"points": [east(0), east(4)], "fewer_turns": True})
+    out = tools.call(
+        "plan_route", {"points": [east(0), east(4)], "fewer_turns": True, "wait_weight": 4}
+    )
     assert api.routes[-1]["fewer_turns"] is True
+    assert api.routes[-1]["wait_weight"] == 4
     assert "paved" not in api.routes[-1]
-    assert any("Fewer turns" in n and "not in it" in n for n in out["notes"])
+    # Since Plan's Ride settings took them (2026-11-20), Fewer turns and the wait weight
+    # ride in the link.
+    assert "fewerturns=1" in out["link"] and "waits=4" in out["link"]
+    assert not any("Fewer turns" in n or "waits" in n for n in out.get("notes") or [])
+    # Half steps ride in the link as they are (the owner, 2026-11-20: "maybe put some
+    # fractional levels too, like half"); a weight between them opens rounded, and the notes
+    # say so.
+    half = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 2.5})
+    assert "waits=2.5" in half["link"]
+    assert not any("exact wait weight" in n for n in half.get("notes") or [])
+    odd = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 2.3})
+    assert "waits=2.5" in odd["link"]
+    assert any("exact wait weight" in n for n in odd["notes"])
+    # Just above 1 rounds to the ride type's own 1x: no waits= in the link, and said.
+    low = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 1.2})
+    assert "waits=" not in low["link"]
+    assert any("exact wait weight" in n for n in low["notes"])
+    # Above 5 is planned at 5, as the link says: nothing lost.
+    high = tools.call("plan_route", {"points": [east(0), east(4)], "wait_weight": 7})
+    assert "waits=5" in high["link"]
+    assert not any("exact wait weight" in n for n in high.get("notes") or [])
+    paved = tools.call("plan_route", {"points": [east(0), east(4)], "paved": True})
+    # Surface's Paved only rides in the link on a bike of the rider's own (#1386, #1388).
+    assert "paved=1" in paved["link"]
+    assert not any("All paved" in n for n in paved.get("notes") or [])
     # A revision keeps it, as Keep to roads; a new ride type too; clear_settings drops it.
     tools.call("revise_route", {"draft_id": out["draft_id"], "paved": True})
     assert api.routes[-1]["fewer_turns"] is True and api.routes[-1]["paved"] is True
@@ -716,3 +743,27 @@ def test_the_new_tools_only_read() -> None:
     for tool in mcp.TOOLS:
         if tool["name"] in names:
             assert tool["annotations"]["readOnlyHint"] is True
+
+
+def test_the_sharp_turn_weight_is_sent_kept_and_in_the_link(tools, api) -> None:
+    # The owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights".
+    out = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 0})
+    assert api.routes[-1]["sharp_turn_weight"] == 0
+    # 0 is a weight, not "none": it rides in the link.
+    assert "sharpturns=0" in out["link"]
+    tools.call("revise_route", {"draft_id": out["draft_id"], "preset": "gravel"})
+    assert api.routes[-1]["sharp_turn_weight"] == 0
+    tools.call(
+        "revise_route", {"draft_id": out["draft_id"], "clear_settings": ["sharp_turn_weight"]}
+    )
+    assert "sharp_turn_weight" not in api.routes[-1]
+    fun = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 4})
+    assert "sharpturns=4" in fun["link"]
+    # A link with sharpturns=0 reads back as 0, and a weight between steps is said rounded.
+    assert mcp.parse_fragment(out["link"].split("#", 1)[1])[3]["sharp_turn_weight"] == 0
+    half = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 0.5})
+    assert "sharpturns=0.5" in half["link"]
+    assert mcp.parse_fragment(half["link"].split("#", 1)[1])[3]["sharp_turn_weight"] == 0.5
+    odd = tools.call("plan_route", {"points": [east(0), east(4)], "sharp_turn_weight": 1.2})
+    assert "sharpturns=1" in odd["link"]
+    assert any("exact sharp-turn weight" in n for n in odd["notes"])

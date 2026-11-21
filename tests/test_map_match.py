@@ -492,7 +492,8 @@ class TestTheRidesGraph:
         assert post(client, {**body, "when": "weekend"}).status_code == 200
         assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["weekend"] + "/")
         # Easy MTB trails only on the ride types that offer it.
-        assert post(client, {**body, "preset": "fast", "easy_mtb": True}).status_code == 200
-        assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["standard"] + "/")
+        # (Every bike of the rider's own on the standard graph since 2026-11-21; not E-bike.)
+        assert post(client, {**body, "preset": "ebike", "easy_mtb": True}).status_code == 200
+        assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["ebike"] + "/")
         assert post(client, {**body, "when": "tuesday"}).status_code == 400
         assert post(client, {**body, "easy_mtb": "yes"}).status_code == 400
