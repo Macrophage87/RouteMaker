@@ -682,7 +682,9 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   // goes to the dot and Go's start only, as the destination's own look-up's does.
   // A sixth (the owner, 2026-10-30): Go's look-up again after a rough fix, quiet and around the gate as the warm one
   // is, whose fix goes to the dot, Go's start and the camera only.
-  assert.equal((app.match(/locate\(/g) ?? []).length, 6, "six look-up paths");
+  // A seventh (the owner, 2026-11-21): Go's dot following the rider (GO_FOLLOW_MS), quiet and around the gate as the
+  // rough one is (in the same body, checked below), whose fix goes to the dot and Go's start only.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 7, "seven look-up paths");
   const rough = body(app, "const roughTries", "const goStartPick");
   assert.match(rough, /void locate\(geoEnv, undefined, undefined, true\)\.then\(/);
   assert.doesNotMatch(rough, /gate\.begin|setLocating/, "never holds the gate or shows the button busy");

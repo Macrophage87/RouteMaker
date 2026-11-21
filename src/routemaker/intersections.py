@@ -516,6 +516,9 @@ RATER_COST_FT = {
 # node the live map has added since is given its junction's rating from the node beside it
 # (`with_raters`). Not the rider ratings' 15 m: a sidepath's crossing of a side street lies
 # that close to an arterial's junction, and would read its crossing (review, 2026-11-20).
+# A rated junction is marked on the route from this level up (the owner, 2026-11-15: a dot
+# "at each crossing rated 3+"); a 2.5 still costs (`RATER_COST_FT`) but is not marked.
+RATER_MARK_FROM = 3.0
 RATER_MATCH_M = 3.0
 RATER_MOVES = ("cross", "left", "along")
 
@@ -881,6 +884,11 @@ class Event:
     crossed_half: bool = field(default=False, compare=False)
     # The raters' level that set this event's cost (`rater_event`), or None.
     rater_level: float | None = field(default=None, compare=False)
+    # The movement that level is for (`RATER_MOVES`) and the raters' whole reading of the
+    # junction, for the junction panel's three lines (the owner, 2026-11-15: "The junction
+    # should be clickable"); None where no rating set the cost.
+    rater_move: str | None = field(default=None, compare=False)
+    rater: RaterRating | None = field(default=None, compare=False)
     # The points of the junction's nodes the model reads as signalised (its control
     # SIGNAL, shared across the junction's nodes: `share_controls`), and of every node
     # merged into it (`merge_nearby`): the junction-delay model times a wait there as a
@@ -1384,7 +1392,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         level = None if move is None else junction.rater.level(move)
         if level is not None:
             if rater_cost_ft(level) > 0.0:
-                return rater_event(junction, kind, about, level, when)
+                return rater_event(junction, kind, about, level, when, move)
             # Rated below RATER_FREE_BELOW: no stress cost. At a signal the model's event is
             # kept at nothing, so the signal still carries its points to the delay model
             # (`_with_signal`; v0.29.0 release review); elsewhere there is nothing to say.
@@ -1537,7 +1545,12 @@ def rated(
 
 
 def rater_event(
-    junction: Junction, kind: str, about: Road | None, level: float, when: str | None = None
+    junction: Junction,
+    kind: str,
+    about: Road | None,
+    level: float,
+    when: str | None = None,
+    move: str | None = None,
 ) -> Event | None:
     """The event at a junction the raters rated for the movement the route makes there:
     `rater_cost_ft` of the `level`, times the ride time's factor (`time_factor`), and the
@@ -1555,7 +1568,7 @@ def rater_event(
     severe = level >= 4.0
     factor = time_factor(when, about.urban, junction.control, severe, kind)
     cost = base * factor
-    severity = severity_of(cost)
+    severity = severity_of(cost) if level >= RATER_MARK_FROM else None
     band = when if abs(cost - base) >= 1.0 else None
     return Event(
         junction.m,
@@ -1581,6 +1594,8 @@ def rater_event(
         beacon=junction.beacon,
         crossed_half=_named_half(about),
         rater_level=level,
+        rater_move=move,
+        rater=junction.rater,
     )
 
 

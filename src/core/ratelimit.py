@@ -143,6 +143,10 @@ BIKESHARE_DOCKS = Limit(scope="bikeshare-docks", requests=120, window_s=60)
 # few minutes, like the docks.
 CLOSURES_MAP = Limit(scope="closures-map", requests=120, window_s=60)
 
+# The rated junctions in the map's view at its closest zooms (GET /api/junctions/rated): after
+# each move there, like the closures.
+JUNCTIONS_RATED = Limit(scope="junctions-rated", requests=120, window_s=60)
+
 # A short map link followed (POST /api/share/resolve, v0.7.0): one per link shared or pasted.
 SHARE_RESOLVE = Limit(scope="share-resolve", requests=30, window_s=60)
 

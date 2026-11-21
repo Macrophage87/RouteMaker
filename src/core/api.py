@@ -1346,6 +1346,29 @@ class HillsTolerateOut(Schema):
     )
 
 
+class RatedMoveOut(Schema):
+    """One movement at a rated junction, as the raters read it."""
+
+    move: Literal["cross", "left", "along"]
+    level: float = Field(description="Its stress level, 1 to 5 in half steps.")
+    wait_s: int | None = Field(
+        default=None, description="The seconds the raters expect it to take; null if not given."
+    )
+
+
+class RatedJunctionOut(Schema):
+    """The raters' reading of a junction (the junction run of 2026-11-19), where it set the
+    junction's cost on this route."""
+
+    move: Literal["cross", "left", "along"] = Field(
+        description="The movement the route makes there."
+    )
+    level: float = Field(description="That movement's level: the marker's colour.")
+    moves: list[RatedMoveOut] = Field(
+        description="Every movement that can be made there, for the junction's panel."
+    )
+
+
 class IntersectionOut(Schema):
     """One stressful junction of the route (OWNER-DECISIONS item 172: "put
     markers on intersections in a route, such as an orange marker for higher
@@ -1389,6 +1412,13 @@ class IntersectionOut(Schema):
             " weekday rush hours, less at the weekend or at night; null where the hour"
             " changed nothing (off-peak, a cap that holds at any hour, a rated junction)."
             " The planner says it in words."
+        ),
+    )
+    rated: RatedJunctionOut | None = Field(
+        default=None,
+        description=(
+            "The raters' reading, where it set this junction's cost (marked from level 3"
+            " up); null where the model priced it."
         ),
     )
     group: int | None = Field(
@@ -1714,6 +1744,13 @@ class DescriptionTurnOut(Schema):
     )
     severity: Literal["orange", "red"] | None = Field(
         description='"Higher stress" (orange) or "Very high stress" (red), where flagged.'
+    )
+    rated_level: float | None = Field(
+        default=None,
+        description=(
+            "The raters' level for the movement made there, where a rating priced the"
+            " flagged junction (3 or more); absent where the model priced it."
+        ),
     )
     stay: bool | None = Field(
         default=None,
@@ -2066,6 +2103,10 @@ class ProfileCalmPointOut(Schema):
     kind: Literal["junction", "avoid_entry"]
     severity: Literal["orange", "red"] | None = Field(
         default=None, description="A flagged junction's marker; null for the others."
+    )
+    rated_level: float | None = Field(
+        default=None,
+        description="The raters' level where a rating priced the flagged junction: its dot.",
     )
 
 
@@ -9811,6 +9852,50 @@ def closures_map(request, params: Query[AreaClosuresIn], response: HttpResponse)
     except ValueError as error:
         return Status(400, {"error": str(error)})
     return Status(200, {"closures": work_zones.area_rows(box, permits=params.permits)})
+
+
+class RatedJunctionsIn(Schema):
+    bbox: str = Field(
+        max_length=120,
+        description="The map's view: west,south,east,north in degrees, at most 0.04 by 0.03.",
+    )
+    every: bool = Field(
+        default=False,
+        description="Every rated junction, the quiet ones too (the map's very closest zoom).",
+    )
+
+
+class RatedMapJunctionOut(Schema):
+    lon: float
+    lat: float
+    level: float = Field(description="Its hardest movement's level, 1 to 5: the dot's colour.")
+    moves: list[RatedMoveOut] = Field(description="Every movement that can be made there.")
+
+
+class RatedJunctionsOut(Schema):
+    junctions: list[RatedMapJunctionOut]
+
+
+# GET /api/junctions/rated?bbox=west,south,east,north: the junctions the raters rated 3 or
+# more in the map's view, for its dots at the closest zooms (the owner, 2026-11-20: "They
+# should only show at intersections at the closest zoom or on a planned route"). A GET of a
+# map view, as a tile is: no point of the rider's is in it. The ratings change only at a
+# load, so the answer may be kept a while.
+@api.get(
+    "/junctions/rated",
+    response={200: RatedJunctionsOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The rated junctions (LTS 3 or more, or every one) in a zoomed-in map view",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.JUNCTIONS_RATED), errors_as_json)
+def junctions_rated(request, params: Query[RatedJunctionsIn], response: HttpResponse):
+    from . import junction_raters
+
+    try:
+        box = junction_raters.parse_box(params.bbox)
+    except ValueError as error:
+        return Status(400, {"error": str(error)})
+    response["Cache-Control"] = "public, max-age=300"
+    return Status(200, {"junctions": junction_raters.in_box(box, every=params.every)})
 
 
 class ClosuresStampOut(Schema):
