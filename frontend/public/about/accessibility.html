@@ -207,7 +207,7 @@ it.</p>
 planner; in Go, the Settings gear on the top bar.</li>
 <li><strong>Accessibility mode</strong> turns on <strong>High contrast</strong> (stronger lines, text and
 colors), <strong>Large text during a ride</strong> and the keyboard and screen reader map tools together; the
-first two, under it, can also be set on their own. <strong>Screen-reader detail</strong> sets how much a
+first two, under it, can also be set on their own. It also shows one map scale, in your units, instead of two. <strong>Screen-reader detail</strong> sets how much a
 screen reader is told.</li>
 <li>For rides: <strong>Say cues with</strong> and <strong>How much to say</strong>.</li>
 <li>Every setting is kept on the device you set it on.</li>
@@ -530,7 +530,8 @@ and focus moves to Map tools, by the map's zoom buttons. It is also in Settings,
 Plan's panel says how to use Map tools.</li>
 <li>Press Tab again for <strong>Skip to the route planner</strong> (<strong>Skip to ride mode</strong>
 during a ride). The planner is a landmark named Route planner.</li>
-<li>Type places into From, To and Add a stop in the planner. Stops can be put in another order with the
+<li>Type places into From, To and Add a stop in the planner; Enter in an empty Add a stop box plans the
+route. Stops can be put in another order with the
 keyboard, or removed, there too, without the map.</li>
 </ol>
 <h3>Map tools</h3>
@@ -538,7 +539,8 @@ keyboard, or removed, there too, without the map.</li>
 at map center</strong> (in Go, <strong>Set destination at map center</strong>) and <strong>Road info at
 map center</strong>. Move the map with the arrow keys, then choose one. Escape closes Map tools and
 returns focus to its button. The keys above work whether Accessibility mode is on or off; with NVDA or
-JAWS, the map's keys need focus mode.</p>
+JAWS, the map's keys need focus mode. On a touch screen the zoom buttons are 44 px [about 0.3 in], and the map's
+compass shows only while the map is turned away from north.</p>
 <h3>Screen-reader detail</h3>
 <p>Screen-reader detail, in Settings, Display, sets what screen readers are told. <strong>Brief</strong> says
 the route, guidance and errors. <strong>Full</strong> also says what the app is doing, such as "Finding
@@ -551,6 +553,9 @@ warning in words, one line a step. <strong>Full detail</strong> gives the full s
 text.</li>
 <li><strong>The junction list</strong> in the route summary names each stressful junction and how far
 along it is; each row opens the same card as the marker on the map.</li>
+<li><strong>Junction dots</strong> on the map are buttons: Tab reaches each one, and it is named by its level, for
+example "Junction rated LTS 4". Enter opens its card of movements; Escape closes the card and puts focus back on the
+dot.</li>
 <li><strong>Road info</strong> says a road's name, level and why, in words: street names on the map
 itself are pictures a screen reader can't reach.</li>
 <li><strong>Manual mode</strong> in Plan says when it turns on and off, and a label under the map's bar
@@ -757,7 +762,7 @@ and screen reader names.</p>
 <p class="next">Next: <a href="/about/ride-types.html">Ride types</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.30.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.30.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

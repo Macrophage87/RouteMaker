@@ -40,7 +40,7 @@
 import { NEXT_LEG } from "./lib/tripStops.ts";
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { rejoinsFirst, startsWayBack, steadyPoint, toStartRoute, wayBackRoute, wayBackShown } from "./lib/rejoin.ts";
 import { fetchOfflineNetwork, offlineWayBackRoute, type OfflineNetwork } from "./lib/offlineWayBack.ts";
@@ -301,6 +301,7 @@ import { METRO_EXITS } from "./lib/railData.ts";
 import { exitAt } from "./lib/stationExit.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
 import { fullStop, t } from "./lib/i18n.ts";
+import { ratedDotFill, ratedLevelText } from "./lib/ratedDot.ts";
 import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
@@ -3167,6 +3168,8 @@ export function RideMode({
 
   const progress = ride.progressM;
   const cue = progress === null ? null : nextAction(model, progress);
+  // A hard move at a rated junction (3 or more): the card takes a border in the move's stress colour.
+  const ratedCue = cue?.kind === "turn" && (cue.ratedLevel ?? 0) >= 3 ? (cue.ratedLevel as number) : null;
   // The time to go at the rider's own pace against the plan's (lib/arrival.ts), and the clock it ends at.
   const togo = progress === null ? null : atPace(toGo(model, progress), paceFactor(paceRef.current));
   // A tick every 30 s keeps the clock times current while no fix comes (paused, in a tunnel); a fix renders sooner.
@@ -4091,7 +4094,7 @@ export function RideMode({
             </ol>
           </div>
         ) : cue && progress !== null ? (
-          <div className="cue-next">
+          <div className={ratedCue ? "cue-next cue-next-rated" : "cue-next"} style={ratedCue ? ({ "--cue-rated": ratedDotFill(ratedCue) } as CSSProperties) : undefined}>
             <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} jog={cue.cross ? null : jogArrowPath(cue)} icon={stopIconOf(cue)} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
@@ -4108,6 +4111,8 @@ export function RideMode({
               <p className="cue-text">
                 <span aria-hidden="true">{withoutFullStop(cueShown.head)}</span>
                 <span className="visually-hidden">{unitsFirst(cue.card?.said ?? cue.rideText ?? cue.text)}</span>
+                {/* The border's colour in words: the level the raters gave this move. */}
+                {ratedCue && <span className="visually-hidden"> {ratedLevelText(ratedCue)}.</span>}
               </p>
               {/* At most one short line, always there (empty too), so the card keeps its height between turns. */}
               <p className="cue-more" aria-hidden="true">

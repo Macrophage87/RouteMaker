@@ -702,9 +702,10 @@ def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(
     tmp_path, segment_schemas, states
 ) -> None:
     """The owner, 2026-10-20: "Bikes can go on sidewalks". An untagged sidewalk outside
-    downtown carries `rm:sidewalk` into every graph but Mass Ride's and is rated LTS 3;
+    downtown carries `rm:sidewalk` into every graph but Mass Ride's, the e-bike one and Road Bike's;
     the downtown one stays barred and the circle park's crossing stays plainly open."""
     from pipeline.extract import read_ways
+    from pipeline.run import NO_SIDEWALK_VARIANTS
 
     context, _stored = run_dials_extract(tmp_path)
     assert SUBURBAN_SIDEWALK_ID in context.sidewalk_rides
@@ -719,7 +720,10 @@ def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(
         if SUBURBAN_SIDEWALK_ID not in tags:
             continue
         seen.add(variant)
-        expected = None if variant is Variant.NO_TRAIL else "last_resort"
+        # Nor on the e-bike and Road Bike graphs (the owner, 2026-11-14: "road bikes probably
+        # never. Ebikes are typically prohibited from sidewalks").
+        unridden = variant is Variant.NO_TRAIL or variant in NO_SIDEWALK_VARIANTS
+        expected = None if unridden else "last_resort"
         assert tags[SUBURBAN_SIDEWALK_ID].get("rm:sidewalk") == expected, variant.value
     assert Variant.STANDARD in seen
 

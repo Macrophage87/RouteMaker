@@ -1294,6 +1294,15 @@ case "NAME $*" in
   "smoke "*)
     left=$(cat "$FAKE_DIR/smoke_fails" 2>/dev/null || echo 0)
     if [ "$left" -gt 0 ]; then echo $((left - 1)) >"$FAKE_DIR/smoke_fails"; exit 1; fi ;;
+  # A router `up` started runs, unless the test left it only created (stuck_routers).
+  "beta-compose up -d"*)
+    for r in "$@"; do case "$r" in valhalla-*) echo "$r" >>"$FAKE_DIR/running" ;; esac; done ;;
+  "beta-compose ps -q --status running "*)
+    r=${*: -1}
+    stuck=$(cat "$FAKE_DIR/stuck_routers" 2>/dev/null)
+    if grep -qx "$r" "$FAKE_DIR/running" 2>/dev/null && ! grep -qx "$r" <<<"$stuck"; then
+      echo "id-$r"
+    fi ;;
 esac
 exit 0
 """
@@ -1343,6 +1352,7 @@ def beta(fake):
                 CLOUD_SMOKE_TRIES="3",
                 CLOUD_SMOKE_WAIT_S="0",
                 CLOUD_ROUTER_WAIT_S="0",
+                CLOUD_LOCK_WAIT_S="0",
                 **env,
             )
 
@@ -1422,6 +1432,48 @@ def test_on_the_beta_the_swap_starts_the_trail_routers_whose_tiles_are_there(fak
     positions = [calls.index(step) for step in (restart, start, sync, "smoke --local")]
     assert positions == sorted(positions), calls
     assert "valhalla-offroad" not in calls
+
+
+def test_on_the_beta_a_trail_router_left_only_created_stops_before_installed(fake, beta) -> None:
+    # cloud-20261120b, 2026-11-21: `up -d --force-recreate` left offroad, paved and
+    # paved-weekend created but never started, and the install went on to "installed." and
+    # a resume, so Gravel and Road Bike planned on the standard graph for hours.
+    (beta.data / "tiles" / "offroad" / BUILD).mkdir(parents=True, exist_ok=True)
+    (beta.data / "tiles" / "offroad" / "current").symlink_to(BUILD)
+    (fake.dir / "stuck_routers").write_text("valhalla-offroad\n")
+    assert beta.run().returncode == 0
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 3, done.stdout + done.stderr
+    assert "WARNING: a trail router did not start" in done.stdout
+    assert "import-result: installed." not in done.stdout
+    assert "--local --trails" in done.stdout
+
+
+def test_on_the_beta_the_swap_holds_the_deploy_lock_against_the_router_timer(fake, beta) -> None:
+    # The router timer (restart-routers.sh) skips its pass while the deploy lock is held; the
+    # swap holds it from its checks to its end, so the timer cannot restart a router in the
+    # same seconds as the swap's own restarts.
+    assert beta.run().returncode == 0
+    (beta.state / "cd" / "bin").mkdir(parents=True)
+    (beta.state / "cd" / "PAUSED").write_text("cloud data\n")
+    lock = beta.state / "cd" / "lock"
+    lock.touch()  # the agent's, as on the beta
+    probe = fake.root / "bin" / "smoke"
+    probe.write_text(
+        "#!/usr/bin/env bash\n"
+        f"exec 9<{lock}\n"
+        f"seen={fake.dir / 'lock-seen'}\n"
+        'if flock -n 9; then echo free >>"$seen"; else echo held >>"$seen"; fi\n'
+    )
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert (fake.dir / "lock-seen").read_text().split() == ["held"]
+    # Released at the end: the next deploy pass and the timer go on as before.
+    assert subprocess.run(["flock", "-n", str(lock), "true"]).returncode == 0
 
 
 @pytest.mark.parametrize(("available_mib", "started"), [(10500, True), (6000, False)])
