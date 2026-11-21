@@ -12196,3 +12196,106 @@ button.route-note:focus-visible {
   stroke: #fad5ff;
 }
 
+
+/* Go's default from the ride type list (the owner, 2026-11-21): a "Go" button left of the star (or Remove), a 44px
+   target; filled where it is what Go starts on (and said so: aria-pressed). The card's text keeps clear of both. */
+.ride-type-card.has-go > button:not(.ride-fav):first-child {
+  padding-inline-end: 100px;
+}
+
+.ride-fav.ride-go-default {
+  inset-inline-end: 48px;
+  width: auto;
+  min-width: 44px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  border: 2px solid var(--border);
+  border-radius: 22px;
+  font-weight: 700;
+}
+
+.ride-fav.ride-go-default[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Save as my own ride type, at the foot of the Ride settings popup. */
+.own-ride-save {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.own-ride-save input[type="text"] {
+  font-size: 1rem;
+  padding: 8px;
+}
+
+/* Advanced: Copy these settings, and settings pasted in to load (JSON). */
+.own-ride-share {
+  margin-top: 12px;
+}
+
+.own-ride-share .fold-body {
+  display: grid;
+  gap: 8px;
+}
+
+.own-ride-share textarea {
+  font: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Create custom, first under My ride types. */
+.own-ride-create {
+  margin-top: 8px;
+  min-height: 44px;
+}
+
+/* The Ride settings popup, scaled down (the owner, 2026-11-21: "See if you can scale it down so less scrolling.
+   expand, perhaps"): tighter rows, and on a wide screen twice as wide with the rows in two columns. */
+dialog.plan-ride-settings .dials .dial {
+  margin: 6px 0;
+}
+dialog.plan-ride-settings .dials input[type="range"] {
+  margin: 0;
+}
+dialog.plan-ride-settings .dial-ends {
+  margin-top: -6px;
+}
+@media (min-width: 1280px) {
+  dialog.plan-ride-settings {
+    width: min(760px, calc(100vw - 448px));
+  }
+  dialog.plan-ride-settings .dials {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+    align-items: start;
+  }
+  /* The When choices, warnings and the like across both columns. */
+  dialog.plan-ride-settings .dials > :not(.dial) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* When as a dropdown: its name beside the picker. */
+.dials .when-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  font-weight: 600;
+}
+.dials .when-pick select {
+  min-height: 44px;
+  font: inherit;
+  font-weight: 400;
+  max-width: 70%;
+}
