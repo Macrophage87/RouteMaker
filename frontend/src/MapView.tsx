@@ -2789,13 +2789,15 @@ export function MapView(props: Props) {
     ratedMarkers.current = [];
     if (!map) return;
     const onRoute = props.route && !props.stale ? junctionsOnMap(junctionItems(props.route)).map((item): LonLat => [item.lon, item.lat]) : [];
-    for (const junction of ratedMapShown(ratedMap, onRoute)) {
+    const line = props.route && !props.stale ? (props.route.geometry.coordinates as LonLat[]) : [];
+    for (const junction of ratedMapShown(ratedMap, onRoute, line)) {
       const element = ratedMapDot(junction);
       element.addEventListener("click", (event) => {
         // A click on a dot is not a click on the map: it must not add a point.
         event.stopPropagation();
         ratedPopup.current?.remove();
-        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 10, className: "junction-popup junction-popup-plain" })
+        // The focus is taken below, once the card has its name (as showJunctionCard does).
+        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, focusAfterOpen: false, offset: 10, className: "junction-popup junction-popup-plain" })
           .setLngLat([junction.lon, junction.lat])
           .setDOMContent(ratedMapCardBody(junction))
           .addTo(map);
@@ -2803,7 +2805,9 @@ export function MapView(props: Props) {
         const card = popup.getElement();
         card.setAttribute("role", "dialog");
         card.setAttribute("aria-label", ratedMapName(junction));
-        card.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button")?.setAttribute("aria-label", CARD_CLOSE_LABEL);
+        const close = card.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
+        close?.setAttribute("aria-label", CARD_CLOSE_LABEL);
+        close?.focus();
         // Escape closes it, as it does the closure card (showClosureCard).
         card.addEventListener("keydown", (key) => {
           if (key.key === "Escape") {

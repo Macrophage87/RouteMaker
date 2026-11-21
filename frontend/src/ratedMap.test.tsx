@@ -55,6 +55,10 @@ test("a planned route's own junction marker stands for the map's dot there", () 
   const far = { ...J, lon: -77.02 };
   assert.deepEqual(ratedMapShown([J, far], [[-77.03005, 38.9]]), [far]);
   assert.deepEqual(ratedMapShown([J, far], []), [J, far]);
+  // A junction the route rides through without a marker of its own (along it, say, where crossing is hard) has no
+  // map dot on the line either: the dot's hardest-movement colour would say the route makes that move.
+  const line: [number, number][] = [[-77.031, 38.9], [-77.029, 38.9]];
+  assert.deepEqual(ratedMapShown([J, far], [], line), [far]);
 });
 
 test("an answer that could not be read leaves the last dots drawn (null), a bad one draws none", async () => {
