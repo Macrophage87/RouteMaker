@@ -83,9 +83,9 @@ test("Go's Add a stop is '+ Add a stop', which opens the field with the focus in
 
 test("under a route, Go's Where to? and place chips fold into one New destination row (the owner's P1)", () => {
   const go = source("../app/Go.tsx");
-  assert.match(go, /\{routeShown && \(\s*<button type="button" className="secondary go-new-destination" aria-expanded=\{newOpen\} aria-controls=\{newId\} onClick=\{\(\) => setNewOpen\(!newOpen\)\}>/);
+  assert.match(go, /\{routeShown && \(\s*<button type="button" className="secondary go-new-destination" aria-expanded=\{newOpen\} aria-controls=\{newId\} onClick=\{\(\) => \{\s*newPressed\.current = !newOpen;\s*setNewOpen\(!newOpen\);\s*\}\}>/);
   assert.match(go, /const whereShown = !routeShown \|\| newOpen;/);
-  assert.match(go, /<div id=\{newId\} className="go-new-body" hidden=\{!whereShown\}>\s*<PlaceSearch variant="go"/);
+  assert.match(go, /<div id=\{newId\} className="go-new-body" hidden=\{!whereShown\}>\s*<PlaceSearch variant="go" inputRef=\{whereInput\}/);
   // A place picked folds it again.
   assert.match(go, /const pickWhereTo = \(place: Place\) => \{\s*setNewOpen\(false\);\s*onPick\(place\);\s*\};/);
 });

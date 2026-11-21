@@ -15,26 +15,25 @@
  * description.
  */
 import { InfoButton, SettingRow, SettingSelect } from "./SettingRow.tsx";
-import { SPEED_HINT, SPEED_LABEL, speedOptions, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { SPEED_LABEL, SPEED_OWN_POSITION, speedSliderView, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { onFoot, runs, type PresetId } from "./lib/presets.ts";
 import { AvoidStairsSwitch } from "./AvoidStairsSwitch.tsx";
 import { RunPaceSelect } from "./RunPaceSelect.tsx";
-import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
+import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, fitSharpTurnWeight, fitWaitWeight, offersBike, rideSizeOf, sharpTurnWeightOf, waitWeightOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
 import {
-  MTB_LEVEL_LEGEND,
   MTB_LEVEL_OPTIONS,
   MTB_PREFERRED_LEGEND,
   isMtb,
   mtbLevelOf,
   mtbPreferredClamped,
   mtbPreferredOf,
-  withMtbLevel,
   withMtbPreferred,
 } from "./lib/mtbMode.ts";
-import { RIDE_SIZE_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
+import { RIDE_SIZE_LABEL, SHARP_TURNS_LABEL, WAITS_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
+import { SURFACE_ABOUT, SURFACE_LABEL, withSurface } from "./lib/surface.ts";
 import { t } from "./lib/i18n.ts";
 import { defaultStart, fitStart, startBounds } from "./lib/startTime.ts";
 import { sentences } from "./lib/sentences.ts";
@@ -53,8 +52,20 @@ interface Props {
   /** Leave out the Target distance dial (Plan's Loop by distance box is showing: one distance control). */
   hideTarget?: boolean;
   /** Offer Leave at, a day and start time (lib/startTime.ts): Plan only (the owner, 2026-11-13), not the docks' ride types. */
-  startTime?: boolean;
+  startTime?: boolean;  /**
+   * Offer Waiting at lights and stops and Fewer turns (the owner, 2026-11-20): Plan's Ride settings popout only, so Go
+   * keeps one control per feature.
+   */
+  stopsAndTurns?: boolean;
+  /** At the foot of the Advanced fold (stopsAndTurns only): sharing ride settings (SaveOwnRideType.tsx). */
+  advanced?: ReactNode;
 }
+
+/**
+ * The Ride settings popup's compact rows (the owner, 2026-11-21: "See if you can scale it down so less scrolling"): a
+ * slider's note goes behind its (i) instead of under it.
+ */
+const Compact = createContext(false);
 
 function Slider(props: {
   label: string;
@@ -76,8 +87,11 @@ function Slider(props: {
   const [info, setInfo] = useState(false);
   const { view } = props;
   const [low, middle, high] = view.ends;
-  // P10: one (i) per row, where there is more than the line shows: the note in full, then the detail.
-  const more = Boolean(view.noteSaid || view.how);
+  const compact = useContext(Compact);
+  // P10: one (i) per row, where there is more than the line shows: the note in full, then the detail. Compact, the
+  // note itself goes behind the (i) too.
+  const noteBehind = compact && Boolean(view.note) && !view.noteSaid;
+  const more = Boolean(view.noteSaid || view.how || noteBehind);
   return (
     <div className="dial" data-dial={props.dial}>
       <div className="dial-head">
@@ -114,18 +128,48 @@ function Slider(props: {
         <span>{high}</span>
       </div>
       {/* The short line is shown; where it is a short form, the full sentence (behind the (i)) is the one read. */}
-      {view.note && (
+      {view.note && !compact && (
         <p className="hint" id={noteId} aria-hidden={view.noteSaid ? "true" : undefined}>
           {view.note}
         </p>
       )}
       {more && (
         <DialInfo id={infoId} open={info}>
+          {noteBehind && view.note && <Bullets id={noteId} text={view.note} />}
           {view.noteSaid && <Bullets id={saidId} text={view.noteSaid} />}
           {view.how && <Bullets text={view.how} />}
         </DialInfo>
       )}
     </div>
+  );
+}
+
+/**
+ * Riding speed as a slider (the owner, 2026-11-21: "Maybe put speed on a slider too"), from the ride type's own speed
+ * at its left end, then 6 to 30 mph. It moves freely while held and is set when let go, as the other sliders plan.
+ */
+function SpeedSlider({ speed }: { speed: RidingSpeedControl }) {
+  const [draft, setDraft] = useState<number | null>(speed.mph);
+  useEffect(() => setDraft(speed.mph), [speed.mph]);
+  const settle = useRef<Debounce | null>(null);
+  const commit = (value: number | null) => {
+    if (value !== speed.mph) speed.onChange(value);
+  };
+  return (
+    <Slider
+      label={SPEED_LABEL}
+      dial="speed"
+      about="riding speed"
+      view={speedSliderView(draft)}
+      value={draft ?? SPEED_OWN_POSITION}
+      onDraft={(position) => setDraft(position <= SPEED_OWN_POSITION ? null : position)}
+      onRelease={(keys) => {
+        if (!keys) return commit(draft);
+        settle.current ??= new Debounce(KEY_SETTLE_MS);
+        const value = draft;
+        settle.current.later(() => commit(value));
+      }}
+    />
   );
 }
 
@@ -260,6 +304,32 @@ function withField(dials: Dials, key: "targetDistanceM", value: number | undefin
   return next;
 }
 
+/** The dials with the rider's wait weight, taken off the object at the ride type's own (so the link stays as it was). */
+function withWaitWeight(dials: Dials, preset: PresetId, weight: number): Dials {
+  const next: Dials = { ...dials };
+  const fitted = fitWaitWeight(preset, weight);
+  if (fitted === undefined) delete next.waitWeight;
+  else next.waitWeight = fitted;
+  return next;
+}
+
+/** The dials with the rider's sharp-turn weight, taken off the object at the ride type's own (so the link stays as it was). */
+function withSharpTurnWeight(dials: Dials, preset: PresetId, weight: number): Dials {
+  const next: Dials = { ...dials };
+  const fitted = fitSharpTurnWeight(preset, weight);
+  if (fitted === undefined) delete next.sharpTurnWeight;
+  else next.sharpTurnWeight = fitted;
+  return next;
+}
+
+/** The dials with Fewer turns on, or taken off the object when off. */
+function withFewerTurns(dials: Dials, on: boolean): Dials {
+  const next: Dials = { ...dials };
+  if (on) next.fewerTurns = true;
+  else delete next.fewerTurns;
+  return next;
+}
+
 /** The dials with a ride size, the default taken off the object (so the link stays as it was). */
 function withRideSize(dials: Dials, riders: number): Dials {
   const next: Dials = { ...dials };
@@ -276,7 +346,7 @@ function withBike(dials: Dials, bike: Bike): Dials {
   return next;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed, hideTarget, startTime }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed, hideTarget, startTime, stopsAndTurns, advanced }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -286,7 +356,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   useEffect(() => () => keys.current.cancel(), []);
   const commitDraft = () => {
     const { draft: now, dials: was, onCommit: commit } = latest.current;
-    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize) commit(now);
+    if (now.stress !== was.stress || now.hills !== was.hills || now.rideSize !== was.rideSize || now.waitWeight !== was.waitWeight || now.sharpTurnWeight !== was.sharpTurnWeight) commit(now);
   };
   const release = (settle: boolean) => {
     if (settle) keys.current.later(commitDraft);
@@ -306,9 +376,12 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
   const [startDraft, setStartDraft] = useState<string | undefined>(undefined);
   const startHintId = useId();
   const [trailsOffInfo, setTrailsOffInfo] = useState(false);
-  const easyMtbHintId = useId();
-  const easyMtbInfoId = useId();
-  const [easyMtbInfo, setEasyMtbInfo] = useState(false);
+  const fewerTurnsHintId = useId();
+  const fewerTurnsInfoId = useId();
+  const [fewerTurnsInfo, setFewerTurnsInfo] = useState(false);
+  const surfaceInfoId = useId();
+  // Mountain Bike's trails are in use: not with no trails (Surface's Gravel or Paved only) or Keep to roads on.
+  const mtbTrails = isMtb(preset) && dials.mtbLevel !== 0 && dials.paved !== true && !dials.trailsOff;
   // What lowering the hardest trail level did to the preferred one, said politely (never a silent clamp),
   // with the ride type and levels it was said of: a change from outside the panel (a link, a ride type, a
   // reset) clears it, so it never speaks of levels no longer shown.
@@ -319,7 +392,18 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
     if (mtbClamp && mtbClamp.key !== mtbKey) setMtbClamp(null);
   }, [mtbKey, mtbClamp]);
   const mtbClampSaid = mtbClamp?.key === mtbKey ? mtbClamp.said : "";
+  const advancedSet =
+    fitWaitWeight(preset, dials.waitWeight) !== undefined ||
+    fitSharpTurnWeight(preset, dials.sharpTurnWeight) !== undefined ||
+    dials.fewerTurns === true ||
+    (view.trailsOff.checked && !view.trailsOff.locked) ||
+    (ridingSpeed?.mph ?? null) !== null;
+  // Once open, React never closes it: a setting put back to the ride type's own (Keep to roads unticked, waits back to
+  // 1x) would otherwise drop the `open` attribute, fold it shut under the rider's finger and lose the keyboard focus.
+  const advancedOpened = useRef(false);
+  if (advancedSet) advancedOpened.current = true;
   return (
+    <Compact.Provider value={stopsAndTurns === true}>
     <section className="dials" aria-labelledby="dials-heading">
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
           sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, keep to
@@ -347,67 +431,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
             </label>
           ))}
           <p className="hint">{t("Choosing a bike moves the hills slider to where it starts for that bike.")}</p>
-        </fieldset>
-      )}
-      {isMtb(preset) && (
-        // Mountain Bike's hardest trail level (slice 6): four real radio buttons, each named by its level
-        // number, colour name and words, never by colour alone.
-        <fieldset className="mtb-level">
-          <legend>{MTB_LEVEL_LEGEND}</legend>
-          {MTB_LEVEL_OPTIONS.map((option) => (
-            <label key={option.level} className="toggle">
-              <input
-                type="radio"
-                name="mtb-level"
-                value={option.level}
-                checked={mtbLevelOf(dials) === option.level}
-                onChange={() => {
-                  const next = withMtbLevel(dials, option.level);
-                  const said = mtbPreferredClamped(dials, next);
-                  setMtbClamp(said ? { said, key: `${preset}:${mtbLevelOf(next)}:${mtbPreferredOf(next)}` } : null);
-                  onCommit(next);
-                }}
-              />
-              <span>
-                {option.label}
-                <span className="hint">{option.hint}</span>
-              </span>
-            </label>
-          ))}
-          <p className="hint">{t("The route uses no trail harder than this where any other way exists, and says so where it must.")}</p>
-        </fieldset>
-      )}
-      {isMtb(preset) && (
-        // The preferred level (the second pass): the same four levels, those above the hardest level
-        // disabled (the preferred level is never above it), and a polite status when a lower hardest
-        // level lowered it.
-        <fieldset className="mtb-level mtb-preferred" aria-describedby={mtbPreferredHintId}>
-          <legend>{MTB_PREFERRED_LEGEND}</legend>
-          {MTB_LEVEL_OPTIONS.map((option) => (
-            <label key={option.level} className="toggle">
-              <input
-                type="radio"
-                name="mtb-preferred"
-                value={option.level}
-                checked={mtbPreferredOf(dials) === option.level}
-                disabled={option.level > mtbLevelOf(dials)}
-                onChange={() => {
-                  setMtbClamp(null);
-                  onCommit(withMtbPreferred(dials, option.level));
-                }}
-              />
-              <span>
-                {option.label}
-                {option.level > mtbLevelOf(dials) && <span className="visually-hidden">{t(" (above your hardest level)")}</span>}
-              </span>
-            </label>
-          ))}
-          <p className="hint" id={mtbPreferredHintId}>
-            {t("Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.")}
-          </p>
-          <p className="hint mtb-preferred-said" role="status">
-            {mtbClampSaid}
-          </p>
         </fieldset>
       )}
       {view.assistToggle && (
@@ -475,20 +498,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           <AvoidStairsSwitch idBase="dials-avoid-stairs" />
         </>
       )}
-      {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the
-          defaults would like to be able to override the speed as an advanced feature", "next to hill speed or max
-          grade"). Not on a ride type that keeps its own pace (Mass Ride, a share bike). */}
-      {ridingSpeed && takesRiderSpeed(preset) && (
-        <SettingRow infoId="dials-speed-info" about="riding speed" info={SPEED_HINT} className="riding-speed">
-          <SettingSelect
-            label={SPEED_LABEL}
-            value={ridingSpeed.mph === null ? "" : String(ridingSpeed.mph)}
-            options={speedOptions()}
-            onChange={(value) => ridingSpeed.onChange(value === "" ? null : Number(value))}
-            describedBy="dials-speed-info"
-          />
-        </SettingRow>
-      )}
       {/* Mass Ride's "Anticipated ride size" (PLAN items 128, 129, 139): the corker load's group length. */}
       {view.rideSize && (
         <Slider
@@ -500,35 +509,105 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           onRelease={release}
         />
       )}
-      <fieldset className="when">
-        <legend>{t("When")}</legend>
-        <label className="toggle">
-          <input
-            type="radio"
-            name="when"
-            value=""
-            checked={dials.when === null && !startSet}
-            onChange={() => onCommit({ ...dials, when: null, startAt: undefined })}
+      {/* Surface (the owner, 2026-11-21: "paved only, gravel, easy MTB, and then MTB2-4 as max"; "People here can and
+          should be able to adjust to anything"): one picker; Keep to roads (under Advanced, which opens
+          when it is on) wins over its trail choices. On Mountain Bike it is the hardest trail level too; its preferred
+          level follows it. */}
+      {view.surface && (
+        <SettingRow
+          infoId={surfaceInfoId}
+          about={SURFACE_ABOUT}
+          className="surface"
+          info={
+            <ul className="setting-info-list">
+              {view.surface.info.map(([label, hint]) => (
+                <li key={label}>{`${label}: ${hint}`}</li>
+              ))}
+            </ul>
+          }
+        >
+          <SettingSelect
+            label={SURFACE_LABEL}
+            value={view.surface.value}
+            options={view.surface.options}
+            onChange={(surface) => {
+              const next = withSurface(preset, dials, surface);
+              // Mountain Bike: a lower hardest level lowers the preferred one, said politely (never a silent clamp).
+              const said = isMtb(preset) && next.mtbLevel !== 0 ? mtbPreferredClamped(dials, next) : null;
+              setMtbClamp(said ? { said, key: `${preset}:${mtbLevelOf(next)}:${mtbPreferredOf(next)}` } : null);
+              onCommit(next);
+            }}
+            describedBy={surfaceInfoId}
           />
-          {t("Now")}
-          {dials.when === null && !startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
-        </label>
-        {startTime && (
-          <label className="toggle">
-            <input
-              type="radio"
-              name="when"
-              value="start"
-              checked={startSet}
-              onChange={() => {
+        </SettingRow>
+      )}
+      {isMtb(preset) && mtbTrails && (
+        // The preferred level (the second pass): the same four levels, those above the hardest level
+        // disabled (the preferred level is never above it), and a polite status when a lower hardest
+        // level lowered it.
+        <fieldset className="mtb-level mtb-preferred" aria-describedby={mtbPreferredHintId}>
+          <legend>{MTB_PREFERRED_LEGEND}</legend>
+          {MTB_LEVEL_OPTIONS.map((option) => (
+            <label key={option.level} className="toggle">
+              <input
+                type="radio"
+                name="mtb-preferred"
+                value={option.level}
+                checked={mtbPreferredOf(dials) === option.level}
+                disabled={option.level > mtbLevelOf(dials)}
+                onChange={() => {
+                  setMtbClamp(null);
+                  onCommit(withMtbPreferred(dials, option.level));
+                }}
+              />
+              <span>
+                {option.label}
+                {option.level > mtbLevelOf(dials) && <span className="visually-hidden">{t(" (above your hardest level)")}</span>}
+              </span>
+            </label>
+          ))}
+          <p className="hint" id={mtbPreferredHintId}>
+            {t("Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.")}
+          </p>
+          <p className="hint mtb-preferred-said" role="status">
+            {mtbClampSaid}
+          </p>
+        </fieldset>
+      )}
+      <fieldset className="when">
+        {/* A dropdown (the owner, 2026-11-21: "When is better as a dropdown"): one line, not six radio buttons. No
+            legend: the dropdown's own label names it, heard once (release review of #1385). */}
+        <label className="when-pick">
+          <span>{t("When")}</span>
+          <select
+            value={startSet ? "start" : (dials.when ?? "")}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              if (value === "") return onCommit({ ...dials, when: null, startAt: undefined });
+              if (value === "start") {
                 const now = Date.now();
-                onCommit({ ...dials, when: null, startAt: fitStart(lastStart, now) ?? defaultStart(now) });
-              }}
-            />
-            {t("Leave at")}
-            {startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
-          </label>
-        )}
+                return onCommit({ ...dials, when: null, startAt: fitStart(lastStart, now) ?? defaultStart(now) });
+              }
+              onCommit({ ...dials, when: value as When, startAt: undefined });
+            }}
+          >
+            <option value="">
+              {t("Now")}
+              {dials.when === null && !startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
+            </option>
+            {startTime && (
+              <option value="start">
+                {t("Leave at")}
+                {startSet && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
+              </option>
+            )}
+            {WHENS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {startSet && (
           <div className="start-time">
             <label htmlFor={startId}>{t("Day and start time")}</label>
@@ -563,18 +642,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
             )}
           </div>
         )}
-        {WHENS.map((option) => (
-          <label key={option.id} className="toggle">
-            <input
-              type="radio"
-              name="when"
-              value={option.id}
-              checked={dials.when === option.id}
-              onChange={() => onCommit({ ...dials, when: option.id as When, startAt: undefined })}
-            />
-            {option.label}
-          </label>
-        ))}
         {/* One line, the rest behind its (i) (Plan streamline, Stephen 2026-10-17; P10, one (i) per row). */}
         <div className="dial-head">
           {/* About riding: not said on foot (Walk keeps When for Walk + transit's timetable). */}
@@ -596,6 +663,64 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           parse={runs(preset) ? parseRunTarget : parseTarget}
           onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
         />
+      )}
+      {/* The rest behind one Advanced fold in the Ride settings screen (intuitiveness review, Stephen 2026-11-21: the
+          four a rider changes most, Traffic, Hills, Surface and When, first; speed, waits, turns and Keep to roads a
+          tap away), with sharing ride settings at its foot. Under the line (no screen) they stay as they were. */}
+      {stopsAndTurns ? (
+        // Open where something in it is set away from the ride type's own (a link's waits, Keep to roads), so what is
+        // planning the route is never hidden (review of the intuitiveness PR); else folded.
+        <details className="fold dials-advanced" open={advancedOpened.current || undefined}>
+          <summary>{t("Advanced")}</summary>
+          <div className="fold-body">
+      {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the
+          defaults would like to be able to override the speed as an advanced feature", "next to hill speed or max
+          grade"). Not on a ride type that keeps its own pace (Mass Ride, a share bike). */}
+      {ridingSpeed && takesRiderSpeed(preset) && <SpeedSlider speed={ridingSpeed} />}
+      {/* Stops and turns (the owner, 2026-11-20), in the Ride settings popup (Plan and Go): how much a wait counts, then Fewer turns. */}
+      {stopsAndTurns && view.waits && (
+        <Slider
+          label={WAITS_LABEL}
+          dial="waits"
+          about="waiting"
+          view={view.waits}
+          value={waitWeightOf(preset, draft)}
+          onDraft={(weight) => setDraft(withWaitWeight(draft, preset, weight))}
+          onRelease={release}
+        />
+      )}
+      {stopsAndTurns && view.sharpTurns && (
+        <Slider
+          label={SHARP_TURNS_LABEL}
+          dial="sharp-turns"
+          about="sharp turns"
+          view={view.sharpTurns}
+          value={sharpTurnWeightOf(preset, draft)}
+          onDraft={(weight) => setDraft(withSharpTurnWeight(draft, preset, weight))}
+          onRelease={release}
+        />
+      )}
+      {stopsAndTurns && view.fewerTurns && (
+        <div className="dial fewer-turns">
+          <div className="dial-head">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={view.fewerTurns.checked}
+                aria-describedby={fewerTurnsHintId}
+                onChange={(event) => onCommit(withFewerTurns(dials, event.target.checked))}
+              />
+              {view.fewerTurns.label}
+            </label>
+            <InfoButton open={fewerTurnsInfo} onToggle={() => setFewerTurnsInfo(!fewerTurnsInfo)} controls={fewerTurnsInfoId} about={view.fewerTurns.howAbout} />
+          </div>
+          <p className="hint" id={fewerTurnsHintId}>
+            {view.fewerTurns.hint}
+          </p>
+          <DialInfo id={fewerTurnsInfoId} open={fewerTurnsInfo}>
+            <Bullets text={view.fewerTurns.how} />
+          </DialInfo>
+        </div>
       )}
       {/* The rider and bike weight is in Settings (the owner, 2026-10-18: "somewhere hidden, and probably belongs in settings"). */}
       {/* Roads, not trails: a riding choice, which a walk does not take. */}
@@ -627,33 +752,46 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           </DialInfo>
         </div>
       )}
-      {/* Easy MTB trails (the owner, 2026-11-08): Default and Trailmaxxing only, off by default. */}
-      {view.easyMtb && (
-        <div className="dial easy-mtb">
+            {advanced}
+          </div>
+        </details>
+      ) : (
+        <>
+      {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the
+          defaults would like to be able to override the speed as an advanced feature", "next to hill speed or max
+          grade"). Not on a ride type that keeps its own pace (Mass Ride, a share bike). */}
+      {ridingSpeed && takesRiderSpeed(preset) && <SpeedSlider speed={ridingSpeed} />}
+      {/* The rider and bike weight is in Settings (the owner, 2026-10-18: "somewhere hidden, and probably belongs in settings"). */}
+      {/* Roads, not trails: a riding choice, which a walk does not take. */}
+      {!onFoot(preset) && !runs(preset) && (
+        <div className="dial trails-off">
           <div className="dial-head">
             <label className="toggle">
-              {/* aria-disabled while Keep to roads is on, which wins: in the Tab order with its reason said. */}
+              {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
+                  reason in its description, and a press changes nothing (as the loop box does). */}
               <input
                 type="checkbox"
-                checked={view.easyMtb.checked}
-                aria-disabled={view.easyMtb.locked || undefined}
-                aria-describedby={easyMtbHintId}
+                checked={view.trailsOff.checked}
+                aria-disabled={view.trailsOff.locked || undefined}
+                aria-describedby={trailsOffHintId}
                 onChange={(event) => {
-                  if (view.easyMtb?.locked) return;
-                  onCommit({ ...dials, easyMtb: event.target.checked });
+                  if (view.trailsOff.locked) return;
+                  onCommit({ ...dials, trailsOff: event.target.checked });
                 }}
               />
-              {view.easyMtb.label}
+              {view.trailsOff.label}
             </label>
-            <InfoButton open={easyMtbInfo} onToggle={() => setEasyMtbInfo(!easyMtbInfo)} controls={easyMtbInfoId} about={view.easyMtb.howAbout} />
+            <InfoButton open={trailsOffInfo} onToggle={() => setTrailsOffInfo(!trailsOffInfo)} controls={trailsOffInfoId} about={view.trailsOff.howAbout} />
           </div>
-          <p className="hint" id={easyMtbHintId}>
-            {view.easyMtb.hint}
+          <p className="hint" id={trailsOffHintId}>
+            {view.trailsOff.hint}
           </p>
-          <DialInfo id={easyMtbInfoId} open={easyMtbInfo}>
-            <Bullets text={view.easyMtb.how} />
+          <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
+            <Bullets text={view.trailsOff.how} />
           </DialInfo>
         </div>
+      )}
+        </>
       )}
       {view.reset && (
         <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
@@ -661,5 +799,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
         </button>
       )}
     </section>
+    </Compact.Provider>
   );
 }

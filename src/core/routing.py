@@ -1797,6 +1797,15 @@ class Dials:
     # type's own costing.
     fewer_turns: bool = False
     paved: bool = False
+    # A higher weight on the junction waits than the ride type's own (`presets.wait_weight_for`;
+    # the owner, 2026-11-20: "let the MCP server increase those penalties more"): a second
+    # stopped counts this many seconds of riding in the ranking, up to `presets.MAX_WAIT_WEIGHT`.
+    # None: the ride type's. The waits shown are unchanged.
+    wait_weight: float | None = None
+    # The rider's "Sharp turns" (`presets.sharp_turn_weight_for`; the owner, 2026-11-20: "I find
+    # sharp turns pretty fun, but I hate standing at lights"): what a sharp turn's extra and the
+    # seconds turns lose to braking count in the ranking, 0 to 5. None: the ride type's.
+    sharp_turn_weight: float | None = None
     # "Keep to roads, not trails" (trails off): plan on the no-trail graph, whatever the ride type
     # (`presets.variant_for_ride`). Mass Ride is always on it.
     trails_off: bool = False
@@ -1817,8 +1826,10 @@ class Dials:
     # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
     # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
     mtb_preferred: int | None = None
-    # Default and Trailmaxxing only, "Easy MTB trails" (the owner, 2026-11-08): plan on the
-    # off-road graph as Gravel does and steer off the trails rated 2 or harder (`core.easy_mtb`).
+    # "Easy MTB trails" (the owner, 2026-11-08; `presets.EASY_MTB_PRESETS`): plan on the off-road
+    # graph as Gravel does and steer off the trails rated 2 or harder (`core.easy_mtb`); with
+    # `mtb_level` 2 to 4 beside it (the Surface setting, 2026-11-21), on the Mountain Bike graph
+    # and off the trails harder than that.
     easy_mtb: bool = False
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
@@ -4989,16 +5000,19 @@ def weekend_closure_near(
         return True
 
 
-def _easy_asked(preset_name: str, dials: Dials) -> bool:
-    """Whether a plan rides "Easy MTB trails" (`core.easy_mtb`): asked, on a ride type that
-    offers it, and neither trails off (which wins, `presets.variant_for_ride`) nor after Ride's
-    "End mountain biking" (`Dials.mtb_done`)."""
-    return (
+def _easy_asked(preset_name: str, dials: Dials) -> int:
+    """The hardest trail level a plan rides on "Easy MTB trails" (`core.easy_mtb`), or 0 where
+    it rides none: asked, on a ride type that offers it, and neither trails off (which wins,
+    `presets.variant_for_ride`) nor after Ride's "End mountain biking" (`Dials.mtb_done`). 1 is
+    the easy trails; 2 to 4 is the rider's hardest level (the Surface setting, 2026-11-21), on
+    the Mountain Bike graph (`presets.variant_for_ride` takes this number as its `easy_mtb`)."""
+    asked = (
         bool(dials.easy_mtb)
         and preset_name in easy_mtb.PRESETS
         and not dials.trails_off
         and not dials.mtb_done
     )
+    return easy_mtb.max_level_of(dials.mtb_level) if asked else 0
 
 
 def _weekend_ride(preset_name: str, dials: Dials) -> bool:
@@ -5273,10 +5287,72 @@ def plan(
     A Mass Ride leaves the rail streets near it out (`core.mass_rails`, OWNER-DECISIONS 289);
     where that leaves no path, it is planned again with them open, and the route names the
     rails it rides (`road_hazards`).
+
+    A Fast ride left at its own traffic position is planned at the most direct end of the
+    slider too, and that route kept where it is quicker and no busier (`_fast_direct`).
     """
     dials = dials or Dials()
     if started is None:
         started = clock()
+    own = _plan_graphs(points, preset_name, long_ride, started, dials, quick, candidates)
+    if not _fast_direct_applies(preset_name, dials, own):
+        return own
+    # Only with at least half the time left, so the second plan never runs a clean first
+    # answer into the reserve (and a re-route's several plans stay inside theirs).
+    budget_s = _ride_budget_s(points, preset_name, long_ride, started, dials) - ANSWER_RESERVE_S
+    if clock() - started > budget_s / 2:
+        return own
+    return _fast_direct(own, points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _fast_direct_applies(preset_name: str, dials: Dials, own: dict) -> bool:
+    """Whether a plan is a Fast ride at its own traffic position, planned in full: not a
+    provisional answer (Go's quick first route, which is asked again in full), nor a followed
+    file or a rider's own line."""
+    if preset_name != presets.FAST or own.get("provisional"):
+        return False
+    if dials.follow is not None or dials.straight:
+        return False
+    return dials.stress is None or dials.stress == presets.stress_start(preset_name)
+
+
+def _fast_direct(own, points, preset_name, long_ride, started, dials, quick, candidates) -> dict:
+    """Fast's own route, or its most direct one where that wins (`presets.fast_direct_wins`).
+    The direct plan runs after the ride's own, in what is left of the budget, with a timing
+    recorder of its own (as `_weekend_plan`): whatever goes wrong with it, or cuts it short,
+    the ride's own is answered. The answer's dials keep the position the rider sees, the ride
+    type's own."""
+    recorder = timing.Timings()
+    token = timing.start(recorder)
+    try:
+        at_zero = dataclasses.replace(dials, stress=presets.STRESS_MIN)
+        direct = _plan_graphs(points, preset_name, long_ride, started, at_zero, quick, candidates)
+    except PlanCancelled:
+        raise
+    except Exception as error:  # noqa: BLE001 - the ride's own plan is answered
+        logger.info("no direct plan beside Fast's own: %r", error)
+        return own
+    finally:
+        timing.stop(token)
+    # A direct plan cut short may have stretches it could not rate: never weighed.
+    if recorder.failures or not presets.fast_direct_wins(direct, own):
+        return own
+    logger.info("Fast's most direct route is quicker and no busier; answered")
+    direct["dials"] = {**direct["dials"], "stress": own["dials"]["stress"]}
+    return direct
+
+
+def _plan_graphs(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float,
+    dials: Dials,
+    quick: bool,
+    candidates: bool,
+) -> dict:
+    """`plan` on the ride's graph or graphs: the weekend graph beside its own where a car-free
+    road is near (`_plan_twice`), and a Mass Ride's rail streets."""
     if dials.graph is None:
         near = _weekend_too(preset_name, dials, points)
         if near or _weekend_ride(preset_name, dials):
@@ -5673,7 +5749,9 @@ def _plan(
     ):
         dirt_closed = (
             dials.dirt_closed
-            or dials.mtb_done
+            # After "End mountain biking" in a ride; not Mountain Bike with no trails chosen
+            # (the Surface setting's Gravel), whose dirt paths open as Default's do.
+            or (dials.mtb_done and dials.ride_replan)
             or (bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked))
         )
         # "End mountain biking" pressed on a trail (the owner, 2026-11-08: "It still routes on
@@ -6232,7 +6310,8 @@ def _plan(
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
         fewer_turns=dials.fewer_turns,
-        wait_weight=presets.wait_weight_for(preset_name),
+        wait_weight=presets.wait_weight_for(preset_name, dials.wait_weight),
+        sharp_weight=presets.sharp_turn_weight_for(preset_name, dials.sharp_turn_weight),
         road_bike_buttons=presets.road_bike_buttons_for(preset_name),
         exposure=exposure,
         maxcalm=maxcalm,
@@ -6248,7 +6327,8 @@ def _plan(
         # And on a ride type that weighs its waits more than riding (Road Bike, 3x), at every
         # stress: a router alternative with fewer lights is the choice the weight is for.
         rank_alternates=(
-            presets.calm_rate_for(stress_dial) > 0 or presets.wait_weight_for(preset_name) > 1
+            presets.calm_rate_for(stress_dial) > 0
+            or presets.wait_weight_for(preset_name, dials.wait_weight) > 1
         )
         and alternates_span_ok(points),
         # Not the plan's own alternatives where the middle's route was kept: they were asked
@@ -6393,19 +6473,24 @@ def _plan(
     # off-road router was not there the ride was planned on the standard graph, as Gravel's
     # is, and the answer says so (`no_offroad_graph`).
     easy_info = None
-    easy_held = easy_asked and (variant == Variant.OFFROAD.value or weekend_beside) and not fixed
+    easy_held = (
+        easy_asked
+        and (variant in (Variant.OFFROAD.value, Variant.MTB.value) or weekend_beside)
+        and not fixed
+    )
     if easy_held:
         searched_trip = trip
         trip, easy_info = easy_mtb.settle(
             trip, request, variant, trace_costing, deadline, traces, points,
             level_excludes=refine_context.level_excludes,
             keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
+            max_level=easy_asked,
         )  # fmt: skip
         if trip is not searched_trip:
             mtb_replaced = True
             refine_context.candidates = refine_context.candidates[:1]
     elif easy_asked and not fixed:
-        easy_info = easy_mtb.no_graph()
+        easy_info = easy_mtb.no_graph(easy_asked)
     easy_trip = trip
     # Winding trails for Group Ride and Fast (hunt 4 P4-1). Asked "Should Group Ride and Fast
     # pay for winding trails the way Road Bike does?", the owner, 2026-11-09: "yes". Road Bike
@@ -6547,7 +6632,7 @@ def _plan(
         # again from the route answered.
         barriers.reread(trip, barrier_info, avoid=barriers.avoid_set(dials.barrier_avoid))
     if easy_held and easy_info is not None and trip is not easy_trip:
-        again = easy_mtb.reread(trip, variant, trace_costing, deadline, traces)
+        again = easy_mtb.reread(trip, variant, trace_costing, deadline, traces, easy_asked)
         if again is not None:
             easy_info.update({**again, "rounds": easy_info.get("rounds", 0)})
 
@@ -7033,9 +7118,13 @@ def _plan(
                 "avoid_gravel": avoid_gravel,
                 "fewer_turns": dials.fewer_turns,
                 "paved": dials.paved,
+                "wait_weight": presets.wait_weight_for(preset_name, dials.wait_weight),
+                "sharp_turn_weight": presets.sharp_turn_weight_for(
+                    preset_name, dials.sharp_turn_weight
+                ),
                 # What was planned, not what was asked: Mass Ride is always trails-off.
                 "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
-                "easy_mtb": easy_asked,
+                "easy_mtb": bool(easy_asked),
                 "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,
@@ -7195,7 +7284,7 @@ def _plan(
         harder trail on it is said when it is shown."""
         if not easy_held:
             return easy_info
-        return easy_mtb.reread(offered, variant, trace_costing, deadline, traces)
+        return easy_mtb.reread(offered, variant, trace_costing, deadline, traces, easy_asked)
 
     def _offered_mtb(offered: dict) -> dict | None:
         """The reading of a route offered beside the answer (a candidate, the way round an
@@ -7308,7 +7397,7 @@ def _plan(
             mtb=mtb_reading,
             harder_m=(easy_info or {}).get("harder_m") if easy_held else None,
             mtb_ride=preset_name == mtb.PRESET,
-            easy_ride=easy_asked,
+            easy_ride=bool(easy_asked),
         )
     return body
 
