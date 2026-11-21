@@ -94,6 +94,7 @@ from . import (
     bikeshare,
     climbprofile,
     climbs_near,
+    easy_mtb,
     follow,
     gbfs,
     geocode,
@@ -367,6 +368,37 @@ class RouteIn(Schema):
             " types only; ignored on Run and the transit and Bikeshare ride types."
         ),
     )
+    wait_weight: float | None = Field(
+        default=None,
+        ge=1.0,
+        le=10.0,
+        allow_inf_nan=False,
+        description=(
+            "Weigh junction waits (signals, stop signs, gaps in traffic) more when routes are"
+            " ranked: a second stopped counts this many seconds of riding. Raises the ride"
+            " type's own weight (1; 2 on Trailmaxxing, Gravel, Mountain Goat, Mountain Bike,"
+            " Group Ride, Cargo Bike and Tandem; 3 on Road Bike), never lowers it, and counts at"
+            " most 5"
+            " (`presets.MAX_WAIT_WEIGHT`). The waits shown are unchanged. null: the ride type's."
+            " Bike ride types only; ignored on Run, Best order and the transit and Bikeshare"
+            " ride types."
+        ),
+    )
+    sharp_turn_weight: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=5.0,
+        allow_inf_nan=False,
+        description=(
+            "Weigh sharp turns when routes are ranked: a sharp turn's or U-turn's extra price"
+            " and the seconds a turn loses braking from speed count this many times. 0: a sharp"
+            " turn costs no more than any other turn; the ride type's own is 1 (3 on Road Bike,"
+            " 2 on Tandem and Cargo Bike). Any turn still costs its plain price. null: the ride"
+            " type's. Bike"
+            " ride types only; ignored on Run, Best order and the transit and Bikeshare ride"
+            " types."
+        ),
+    )
     options: list[Literal["direct", "calmer", "fewer_turns", "paved"]] | None = Field(
         default=None,
         max_length=4,
@@ -389,7 +421,8 @@ class RouteIn(Schema):
     easy_mtb: StrictBool = Field(
         default=False,
         description=(
-            'Default and Trailmaxxing only: the "Easy MTB trails" switch (core.easy_mtb). Plan'
+            "A bike of the rider's own on the standard graph (presets.EASY_MTB_PRESETS): the"
+            ' "Easy MTB trails" choice (core.easy_mtb), up to `mtb_level` where given. Plan'
             " on the off-road graph as Gravel does, so mountain-bike trails rated 0 or 1 on"
             " `mtb:scale` or `mtb:scale:imba`, and unrated ones (grass and dirt), may be ridden,"
             " and steer off the trails rated 2 or harder; where the route still rides one,"
@@ -573,13 +606,18 @@ class RouteIn(Schema):
     )
     mtb_level: StrictInt | None = Field(
         default=None,
-        ge=1,
+        ge=0,
         le=4,
         description=(
-            "Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level the"
+            "Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level the"
             " rider takes, 1 (green, IMBA 1) to 4 (red, IMBA 4 and up); an unrated"
             " mountain-bike trail counts as 2. A route on a harder trail is answered only where"
             " none can be found without one, with `mtb.over_level_m` saying how much. Absent: 2."
+            " 0 is no mountain-bike trails at all (the Surface setting's Gravel or Paved only):"
+            " planned as after Ride's End mountain biking, on the standard graph."
+            " With `easy_mtb` on another ride type that takes it: the hardest level, 1 to 4"
+            " (absent: 1, the easy trails); 2 to 4 plan on the Mountain Bike graph, and"
+            " `easy_mtb.harder_m` says the metres on trails harder than it."
         ),
     )
     mtb_preferred: StrictInt | None = Field(
@@ -854,12 +892,18 @@ class RouteIn(Schema):
                 "Mass Ride does not look for climbs: a field that slows below balance speed on a"
                 " climb walks, so the hills slider stops at the fastest time"
             )
-        if self.mtb_level is not None and self.preset != presets.MOUNTAIN_BIKE:
-            raise ValueError("mtb_level applies to the Mountain Bike ride type only")
+        if (
+            self.mtb_level is not None
+            and self.preset != presets.MOUNTAIN_BIKE
+            and not (self.easy_mtb and self.preset in presets.EASY_MTB_PRESETS)
+        ):
+            raise ValueError("mtb_level applies to Mountain Bike, or with easy_mtb")
+        if self.mtb_level == 0 and self.preset != presets.MOUNTAIN_BIKE:
+            raise ValueError("mtb_level 0 applies to the Mountain Bike ride type only")
         if self.mtb_preferred is not None and self.preset != presets.MOUNTAIN_BIKE:
             raise ValueError("mtb_preferred applies to the Mountain Bike ride type only")
         if self.easy_mtb and self.preset not in presets.EASY_MTB_PRESETS:
-            raise ValueError("easy_mtb applies to the Default and Trailmaxxing ride types only")
+            raise ValueError("easy_mtb applies to a bike of the rider's own on the standard graph")
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
         if self.carrying is not None and self.carrying not in preset.carrying:
@@ -1125,6 +1169,20 @@ class DialsOut(Schema):
     avoid_gravel: bool = False
     fewer_turns: bool = Field(default=False, description='Whether "Fewer turns" was on.')
     paved: bool = Field(default=False, description='Whether "All paved" was on.')
+    wait_weight: float = Field(
+        default=1.0,
+        description=(
+            "How many seconds of riding a second stopped at a junction counted when routes were"
+            " ranked: the ride type's own weight, or the request's `wait_weight` where higher."
+        ),
+    )
+    sharp_turn_weight: float = Field(
+        default=1.0,
+        description=(
+            "What a sharp turn's extra and the seconds turns lose braking counted when routes"
+            " were ranked: the ride type's own, or the request's `sharp_turn_weight`."
+        ),
+    )
     trails_off: bool = False
     easy_mtb: bool = Field(
         default=False, description="Whether the ride was planned with Easy MTB trails on."
@@ -2624,11 +2682,13 @@ class BarrierRoundOut(Schema):
 class EasyMtbOut(Schema):
     """An Easy MTB trails plan's reading of its route (`core.easy_mtb`)."""
 
-    max_level: int = Field(description="The hardest trail level counted easy (1).")
+    max_level: int = Field(
+        description="The hardest trail level held: 1, the easy trails, or the rider's 2 to 4."
+    )
     rounds: int = Field(default=0, description="Rounds of excluding harder trails.")
     harder_m: float | None = Field(
         default=None,
-        description="Metres on mountain-bike trails rated 2 or harder; 0 when held off.",
+        description="Metres on mountain-bike trails harder than `max_level`; 0 when held off.",
     )
     limited: Literal["time", "untraced", "no_way_round", "no_offroad_graph"] | None = Field(
         default=None,
@@ -5176,6 +5236,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     # link carries loop=1 and targetmi and a kept route re-plans as the loop it is: without
     # them a Run loop's link opened, or re-planned, as a one-way run (routing hunt 4, X4-4).
     answer["dials"]["loop"] = bool(run.loop)
+    answer["dials"]["wait_weight"] = presets.wait_weight_for(presets.RUN)
     answer["dials"]["target_distance_m"] = int(target_m) if target_m else None
     answer["transit"] = run_plan.worded(transit.block(run_plan.as_plan(run, at)), run.seconds)
     answer["run"] = {
@@ -6165,6 +6226,8 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         avoid_gravel=body.avoid_gravel,
         fewer_turns=body.fewer_turns,
         paved=body.paved,
+        wait_weight=body.wait_weight,
+        sharp_turn_weight=body.sharp_turn_weight,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,
@@ -6173,8 +6236,9 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         loop=body.loop,
         out_and_back=body.out_and_back,
         debug_junctions=body.debug_junctions,
-        mtb_level=body.mtb_level,
-        mtb_preferred=body.mtb_preferred,
+        # Mountain Bike's level 0 (no trails, the Surface setting) is planned as `mtb_done`.
+        mtb_level=None if _no_mtb_trails(body) else body.mtb_level,
+        mtb_preferred=None if _no_mtb_trails(body) else body.mtb_preferred,
         ride_size=body.ride_size if body.preset == "mass-ride" else None,
         vias=tuple(body.via_points),
         follow=_follow_line(body),
@@ -6186,8 +6250,22 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         dirt_ridden=body.ride_replan and body.dirt_ridden,
         ahead_only=body.ahead_only,
         dirt_closed=body.ride_replan and body.dirt_closed,
-        mtb_done=body.ride_replan and body.mtb_done,
+        mtb_done=(body.ride_replan and body.mtb_done) or _no_mtb_trails(body),
     )
+
+
+def _no_mtb_trails(body: RouteIn) -> bool:
+    """Mountain Bike at level 0 (the Surface setting's Gravel or Paved only, the owner,
+    2026-11-21: "People here can and should be able to adjust to anything"): no mountain-bike
+    trail, planned as Ride's "End mountain biking" plans (`Dials.mtb_done`)."""
+    return body.preset == presets.MOUNTAIN_BIKE and body.mtb_level == 0
+
+
+def _trail_level(body: RouteIn) -> int:
+    """`routing._easy_asked` from the request alone, for the answer cache's graph."""
+    if not body.easy_mtb or body.preset not in presets.EASY_MTB_PRESETS or body.trails_off:
+        return 0
+    return easy_mtb.max_level_of(body.mtb_level)
 
 
 def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
@@ -6257,13 +6335,13 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         )
     if key is not None:
         preset = presets.PRESETS[body.preset]
-        mtb_done = bool(body.ride_replan and body.mtb_done)
+        mtb_done = bool(body.ride_replan and body.mtb_done) or _no_mtb_trails(body)
         own_variant = presets.variant_for_ride(
             body.preset,
             when,
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
-            bool(body.easy_mtb),
+            _trail_level(body),
             mtb_done,
         )
         while own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
@@ -6278,7 +6356,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             when,
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
-            bool(body.easy_mtb),
+            _trail_level(body),
             mtb_done,
         )
         if answered.get("variant") == "weekend" and presets.weekend_too(*ride_dials):
@@ -6423,8 +6501,10 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
-        mtb_level=body.mtb_level,
-        mtb_preferred=body.mtb_preferred,
+        # Mountain Bike with no trails (level 0): on the graph its plan takes (`_no_mtb_trails`).
+        mtb_level=None if _no_mtb_trails(body) else body.mtb_level,
+        mtb_preferred=None if _no_mtb_trails(body) else body.mtb_preferred,
+        mtb_done=_no_mtb_trails(body),
         loop=body.loop,
         out_and_back=body.out_and_back,
     )
@@ -6605,8 +6685,10 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
-        mtb_level=body.mtb_level,
-        mtb_preferred=body.mtb_preferred,
+        # Mountain Bike with no trails (level 0): on the graph its plan takes (`_no_mtb_trails`).
+        mtb_level=None if _no_mtb_trails(body) else body.mtb_level,
+        mtb_preferred=None if _no_mtb_trails(body) else body.mtb_preferred,
+        mtb_done=_no_mtb_trails(body),
     )
     started = getattr(request, "routing_started", None)
     try:

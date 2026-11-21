@@ -110,7 +110,7 @@ test("App: Home is said politely at once, saved to the account signed in or this
   assert.match(app, /saveDeviceMyGo\(next\);\s*if \(speak\) sayMyGo\(MY_GO_SAVED_DEVICE\);\s*onSaved\?\.\(true\);/);
   assert.match(app, /void saveMyGo\(window\.location\.origin, next\)\.then\(\(saved\) => \{/);
   // Go's sheet and Settings both set Home through it.
-  assert.match(app, /onHomePlace: \(found\) => setHome\(homeFromPlace\(found\)\),\s*onClearHome: \(\) => setHome\(null\),/);
+  assert.match(app, /onHomePlace: \(found\) => setFirstHome\(homeFromPlace\(found\)\),\s*onClearHome: \(\) => setHome\(null\),/);
   assert.match(app, /const myGoControls = \{ myGo, signedIn: me\.signed_in, save: saveMyGoNow, setHome,/);
 });
 
@@ -123,7 +123,7 @@ test("the map: Pick on the map's next tap sets Home; the road panel has no Set a
   const place = app.slice(app.indexOf("const place = useCallback("), app.indexOf("if (goTapSetsEnd(modeRef.current))"));
   assert.match(place, /if \(homePickRef\.current\) \{\s*setHomePick\(false\);\s*void setHomeAtRef\.current\(point\);\s*return;/);
   // Named by a known name, else the reverse look-up through the page's one gate.
-  assert.match(app, /const reverse = known \? null : await geoGate\.run\(\(\) => fetchPlaces\(reverseUrl\(point\)\)\)\.catch\(\(\) => null\);\s*setHome\(homeAtSpot\(point, known, reverse\)\);/);
+  assert.match(app, /const reverse = known \? null : await geoGate\.run\(\(\) => fetchPlaces\(reverseUrl\(point\)\)\)\.catch\(\(\) => null\);\s*setFirstHome\(homeAtSpot\(point, known, reverse\)\);/);
   // Picking is said, and ends when Go does or a ride starts.
   assert.match(app, /announce\(on \? HOME_PICK_LINE : HOME_PICK_CANCELLED\);/);
   assert.match(app, /if \(mode !== "go" \|\| riding\) setHomePick\(false\);/);
