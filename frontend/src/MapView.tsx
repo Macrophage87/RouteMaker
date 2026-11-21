@@ -103,7 +103,7 @@ import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
 import { ROUTE_MILES_SOURCE_ID, applyMileSizes, applyMileUnits, routeMileFeatures, routeMileLayers } from "./lib/routeMiles.ts";
-import { subscribeUnits } from "./lib/units.ts";
+import { metricFirst, subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
@@ -517,6 +517,11 @@ function ghostData(line: readonly LonLat[] | null | undefined): object {
     : { type: "FeatureCollection", features: [] };
 }
 /** The way back's dashed line: from the rider to the planned line, or nothing. */
+/** A map scale not in the rider's units: accessibility mode hides it (styles.css, .scale-second). */
+function markSecondScale(element: HTMLElement): void {
+  element.classList.toggle("scale-second", (element.dataset.unit === "metric") !== metricFirst());
+}
+
 export function wayBackData(rider: LonLat | null | undefined, to: LonLat | null | undefined): object {
   return rider && to ? ghostData([rider, to]) : ghostData(null);
 }
@@ -834,6 +839,20 @@ export function MapView(props: Props) {
     mapRef.current = map;
     let disposed = false;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    // The compass only while the map is turned (intuitiveness review, 2026-11-21): one fewer button the rest of the time.
+    // On above 5 degrees, off below 1 (no flicker as a heading-up ride crosses north); kept while it has the focus, so
+    // pressing it does not drop the focus on the page (the PR review).
+    const markTurned = () => {
+      const box = map.getContainer();
+      const turn = Math.max(Math.abs(map.getBearing()), map.getPitch());
+      const focused = box.querySelector(".maplibregl-ctrl-compass") === document.activeElement;
+      if (turn > 5) box.classList.add("map-turned");
+      else if (turn < 1 && !focused) box.classList.remove("map-turned");
+    };
+    map.on("rotate", markTurned);
+    map.on("pitch", markTurned);
+    markTurned();
+    container.current.querySelector(".maplibregl-ctrl-compass")?.addEventListener("blur", markTurned);
     // Map tools, under the zoom buttons (OWNER-DECISIONS 450): an empty control React fills.
     const toolsControl = document.createElement("div");
     toolsControl.className = "maplibregl-ctrl map-tools-ctrl";
@@ -854,8 +873,22 @@ export function MapView(props: Props) {
     });
     // Both scales, miles and feet over kilometres and metres (OWNER-DECISIONS 85):
     // a bottom corner stacks its controls upwards, so the one added last is on top.
-    map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
-    map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-right");
+    // The rider's other unit is marked: accessibility mode shows one scale, in the rider's units (intuitiveness review,
+    // 2026-11-21: the two enlarged boxes hid the End pin).
+    const scale = (unit: "metric" | "imperial") => {
+      const control = new maplibregl.ScaleControl({ unit });
+      return {
+        onAdd: (m: maplibregl.Map) => {
+          const element = control.onAdd(m);
+          element.dataset.unit = unit;
+          markSecondScale(element);
+          return element;
+        },
+        onRemove: () => control.onRemove(),
+      };
+    };
+    map.addControl(scale("metric"), "bottom-right");
+    map.addControl(scale("imperial"), "bottom-right");
     const canvas = map.getCanvas();
     canvas.setAttribute(
       "aria-label",
@@ -2408,8 +2441,9 @@ export function MapView(props: Props) {
     () =>
       subscribeUnits(() => {
         const map = mapRef.current;
-        if (!map || !loaded.current) return;
-        applyMileUnits(map, callbacks.current.stale ? null : (callbacks.current.route ?? null));
+        if (!map) return;
+        if (loaded.current) applyMileUnits(map, callbacks.current.stale ? null : (callbacks.current.route ?? null));
+        map.getContainer().querySelectorAll<HTMLElement>(".maplibregl-ctrl-scale[data-unit]").forEach(markSecondScale);
       }),
     [],
   );

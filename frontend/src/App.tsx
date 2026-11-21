@@ -5557,7 +5557,13 @@ export function App() {
       const mapTop = mapRef.current?.getContainer().getBoundingClientRect().top ?? 0;
       const bar = document.querySelector(".go-top")?.getBoundingClientRect();
       const top = bar && bar.height > 0 ? Math.max(40, bar.bottom - mapTop + 24) : 40;
-      return { top, left: 30, right: 30, bottom: Math.max(panel?.height ?? 0, (spotCard?.height ?? 0) - 50) + 90 };
+      // Accessibility mode's bigger map controls (zoom, Map tools, the scale) on the right: the route is framed clear of
+      // them (intuitiveness review, 2026-11-21: Map tools sat on the End pin).
+      const tools = document.documentElement.classList.contains(ACCESS_MODE_CLASS)
+        ? document.querySelector(".maplibregl-ctrl-top-right")?.getBoundingClientRect()
+        : null;
+      const right = tools && tools.width > 0 ? Math.max(30, tools.width + 28) : 30;
+      return { top, left: 30, right, bottom: Math.max(panel?.height ?? 0, (spotCard?.height ?? 0) - 50) + 90 };
     }
     // On a wide screen the route is a card on the map's right (styles.css, Plan on a wide screen): clear of it too.
     const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
@@ -6915,6 +6921,15 @@ export function App() {
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, historyHere: !narrow && !planFirst,
         undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive: mode !== "go", tips, setTips, tipsId,
         onKeys: mode === "plan" ? () => setKeysOpen(true) : undefined,
+        // Enter in the empty Add a stop box routes (intuitiveness review, 2026-11-21); with nothing to route, says why.
+        onEnterRoute:
+          mode === "plan" && planFirst
+            ? () => {
+                if (routingNow) return;
+                if (routeNow.unavailable === null) pressRoute();
+                else announce(routeNow.unavailable);
+              }
+            : undefined,
       }}
     />
   );
