@@ -4228,9 +4228,9 @@ export function App() {
     const last = routedPoints[routedPoints.length - 1];
     return routeTitle(fileNamed(first), fileNamed(last), routedLoop);
   };
-  const keepForOffline = async () => {
+  const keepForOffline = async (): Promise<{ said: string; kept: boolean }> => {
     const plan = routedKey.current;
-    if (!shown || keeping || !plan) return;
+    if (!shown || keeping || !plan) return { said: "", kept: false };
     setKeeping(true);
     const controller = new AbortController();
     keepAbort.current = controller;
@@ -4242,8 +4242,13 @@ export function App() {
     setKeeping(false);
     setKeptVersion((v) => v + 1);
     // Stopped by Remove of this route in Settings: Remove has said what happened; the keep says nothing.
-    if (removed) setKeepSpoken({ text: "", count: 0 });
-    else setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
+    if (removed) {
+      setKeepSpoken({ text: "", count: 0 });
+      return { said: "", kept: false };
+    }
+    const said = keepSaid(outcome, title);
+    setKeepSpoken((s) => ({ text: said, count: s.count + 1 }));
+    return { said, kept: outcome === "kept" || outcome === "partial" || outcome === "no-map" };
   };
   // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
   const openKept = (kept: KeptRoute) => {
@@ -6944,7 +6949,9 @@ export function App() {
   // to add that ride to your saved routes"): Go's Save offers sign-in, or the GPX file, as Plan's bar does.
   const sharedShown = sharedOpen !== null && shown === sharedOpen.answer;
   const actions = {
-    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+    // Signed out, Plan's Save route keeps the route on this device (intuitiveness review, 2026-11-21), so More has no
+    // second Keep for offline then.
+    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown: keepShown && me.signed_in, keepForOffline, keeping, keepSpoken, linkSaid,
     downloadRoute,
     save: saveProps ?? (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
     savedNote: savedNoteShown,
@@ -7097,6 +7104,16 @@ export function App() {
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startBusy: rideOpening === "start", broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
         barrierAvoid: planDials.barrierAvoid,
+        // Plan's card after an edit: Update route in Start's row, as the map bar's (intuitiveness review, 2026-11-21).
+        edited:
+          mode === "plan" && planEdited
+            ? {
+                label: routingNow ? ROUTING_LABEL : routeNow.label,
+                onUpdate: routeNow.unavailable === null ? pressRoute : null,
+                busy: routingNow,
+                why: routeNow.unavailable,
+              }
+            : null,
         // Check a route (the 2026-11-13 backlog, item 3): Plan only, on the route that follows the opened file as it stands.
         check:
           mode === "plan" && imported && fileShown()?.follows_file ? (
@@ -7638,7 +7655,9 @@ export function App() {
               defaultFixed={saveProps?.defaultFixed}
               label={SAVE_ROUTE}
               bar
-              onGpx={downloadRoute}
+              // Signed out, Save keeps the route on this device, with Sign in to sync beside what it says; no Download
+              // GPX here, the route row's GPX is one press away (intuitiveness review, 2026-11-21).
+              keepHere={!me.signed_in && keepShown ? keepForOffline : null}
               signIn={signInFromSave}
             />
           )}

@@ -490,7 +490,7 @@ test("a figure the planner did not send is said so, not guessed; none is 'None'"
   assert.equal(junctionFigure([{ severity: "orange" }] as never), "1 higher");
 });
 
-test("the stress bar is one image with each share in its name, and a line of text says the same", () => {
+test("the stress bar is one image with each share in its name (no text line under it in Plan since the intuitiveness review)", () => {
   const segments = [
     { short: "LTS 1", label: "Comfortable for most people", percent: 61 },
     { short: "LTS 2", label: "Comfortable for most adults", percent: 30 },
@@ -508,7 +508,7 @@ test("the stress bar is one image with each share in its name, and a line of tex
   assert.equal(stressBarLabel([{ key: "5", short: "Avoid", label: "Legal, but best avoided", percent: 2 }]), "Avoid, roads best avoided: 2 percent");
   assert.match(app, /<figure className="stress stress-main" aria-labelledby="stress-figure-caption">/);
   assert.match(app, /<div className="stress-bar" role="img" aria-label=\{stressBarLabel\(segments\)\}>/);
-  assert.match(app, /<p className="stress-key" aria-hidden="true">/);
+  // No text line under Plan's bar since the intuitiveness review: rendered in IntuitivePlan.test.tsx.
 });
 
 test("Go's stress line in plain words (the owner's P1): how calm, the paths and protected lanes, the busy road", () => {

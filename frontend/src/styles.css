@@ -12370,3 +12370,24 @@ dialog.plan-ride-settings .dial-ends {
 .legend.go-key .stress-name {
   font-weight: 400;
 }
+
+/* Plan's route card after an edit (intuitiveness review, 2026-11-21): the old figures dim, Update route in Start's place. */
+.totals-row.totals-edited .stats,
+.summary:has(.totals-edited) .stress-main {
+  opacity: 0.6;
+}
+.route-edited {
+  flex-direction: column;
+  align-items: stretch;
+}
+.route-edited .update-route {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.route-edited .hint {
+  flex: none;
+  margin: 4px 0 0;
+}

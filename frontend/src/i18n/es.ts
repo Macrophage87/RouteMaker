@@ -1535,7 +1535,6 @@ export const ES: Readonly<Record<string, string>> = {
   "{ride} trip": "Viaje {ride}",
   "Distance ridden": "Distancia en bici",
   "Distance": "Distancia",
-  "Traffic stress, stretch by stretch": "Estrés de tráfico, tramo por tramo",
   "{name} is in your Favorites.": "{name} está en sus Favoritos.",
   "Edit": "Editar",
   "Favorites hold {max} places. Remove one to add another.": "Favoritos guarda {max} lugares. Quite uno para agregar otro.",
@@ -2995,4 +2994,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Best avoided": "Mejor evitar",
   "Metro station: its colour is the line": "Estación de Metro: su color es la línea",
   "Route locked. Open Edit route to change it.": "Ruta bloqueada. Abre Editar ruta para cambiarla.",
+  "busy junction": "cruce con mucho tráfico",
+  "The figures are for the route before your change.": "Las cifras son de la ruta antes de su cambio.",
+  "Sign in to sync": "Inicie sesión para sincronizar",
 };

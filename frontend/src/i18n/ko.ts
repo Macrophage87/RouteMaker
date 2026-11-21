@@ -1102,7 +1102,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{count} routes": "경로 {count}개",
   "Descent": "내리막",
   "{percent}% quiet": "{percent}% 조용함",
-  "Traffic stress, stretch by stretch": "교통 스트레스, 구간별",
   "{ratio}× as far, to skip {distance} of busy roads.": "혼잡한 도로 {distance}를 피하려고 {ratio}× 더 깁니다.",
   "{ratio}× as far as the direct route.": "직행 경로보다 {ratio}× 더 깁니다.",
   "{over} over your target of {target}.": "목표 {target}보다 {over} 깁니다.",
