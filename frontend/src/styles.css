@@ -5162,7 +5162,8 @@ dialog.plan-ride-settings h2 {
 @media (min-width: 721px) {
   .app.go-mode dialog.plan-ride-settings {
     top: 124px;
-    max-height: calc(100dvh - 148px);
+    height: calc(100dvh - 124px);
+    max-height: calc(100dvh - 124px);
   }
 }
 /* Done stays at the popup's foot while its settings scroll, so a phone's sheet closes without scrolling to the end
@@ -5178,20 +5179,38 @@ dialog.plan-ride-settings .plan-ride-settings-body > .closure-choices:last-child
 dialog.plan-ride-settings h2:focus {
   outline: none;
 }
-@media (max-width: 899px) {
+/* Not a popover (the owner, 2026-11-21: "Don't do a popover. That's messy"; "Litterally make it a full size new screen";
+   on a computer "that should just be a side panel"): on a computer a full-height panel beside the sidebar, square and
+   flush; on a phone the whole screen. */
+@media (min-width: 721px) {
   dialog.plan-ride-settings {
-    inset: 72px 12px auto auto;
-    width: min(440px, calc(100vw - 24px));
+    inset: 0 auto 0 412px;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-width: 0 1px 0 1px;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
-/* Where the panel becomes a bottom sheet (720 px), the popup does too. */
+@media (min-width: 721px) and (max-width: 899px) {
+  dialog.plan-ride-settings {
+    inset: 0 0 0 auto;
+    width: min(440px, 100vw);
+  }
+}
 @media (max-width: 720px) {
   dialog.plan-ride-settings {
-    inset: auto 0 0 0;
+    inset: 0;
     width: 100vw;
     max-width: 100vw;
-    max-height: 70dvh;
-    border-radius: 16px 16px 0 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  dialog.plan-ride-settings::backdrop {
+    background: var(--bg);
   }
 }
 .ride-settings-dialog h2:focus {
@@ -12270,7 +12289,7 @@ dialog.plan-ride-settings .dial-ends {
 }
 @media (min-width: 1280px) {
   dialog.plan-ride-settings {
-    width: min(760px, calc(100vw - 448px));
+    width: min(760px, calc(100vw - 412px));
   }
   dialog.plan-ride-settings .dials {
     display: grid;

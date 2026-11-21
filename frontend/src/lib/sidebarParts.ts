@@ -103,7 +103,11 @@ export function RideSettings({
       setOpen(next);
       if (!dialog) return;
       if (next && !dialog.open) {
-        dialog.show?.();
+        // On a phone it is the whole screen (the owner, 2026-11-21: "make it a full size new screen"), so modal there:
+        // nothing behind it to tab into. On a computer a side panel, and the map bar's Route stays in reach.
+        const phone = typeof window !== "undefined" && window.matchMedia?.("(max-width: 720px)").matches;
+        if (phone && dialog.showModal) dialog.showModal();
+        else dialog.show?.();
         dialog.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
       } else if (!next && dialog.open) {
         dialog.close();

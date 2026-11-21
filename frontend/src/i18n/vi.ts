@@ -2294,4 +2294,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Đường và lối đi trải nhựa và sỏi, như loại chuyến đi này lên kế hoạch.",
   "paved only": "chỉ đường trải nhựa",
   "surface": "mặt đường",
+  "Removed {name}.": "Đã xóa {name}.",
+  "My ride types is full ({max}). Remove one to save another.": "Kiểu đạp xe của tôi đã đầy ({max}). Xóa một kiểu để lưu kiểu khác.",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "Đã tải {name} tạm thời. Kiểu đạp xe của tôi đã đầy ({max}): xóa một kiểu để giữ lại.",
+  "Ride settings: {type}": "Cài đặt chuyến đi: {type}",
 };

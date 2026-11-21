@@ -2294,4 +2294,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "የተነጠፉና የጠጠር መንገዶችና ዱካዎች፣ ይህ የጉዞ አይነት እንደሚያቅዳቸው።",
   "paved only": "የተነጠፈ ብቻ",
   "surface": "የመንገድ ገጽ",
+  "Removed {name}.": "{name} ተወግዷል።",
+  "My ride types is full ({max}). Remove one to save another.": "የእኔ የጉዞ ዓይነቶች ሞልተዋል ({max})። ሌላ ለማስቀመጥ አንዱን ያስወግዱ።",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} ለጊዜው ተጭኗል። የእኔ የጉዞ ዓይነቶች ሞልተዋል ({max})፦ ለማቆየት አንዱን ያስወግዱ።",
+  "Ride settings: {type}": "የጉዞ ቅንብሮች: {type}",
 };

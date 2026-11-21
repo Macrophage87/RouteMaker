@@ -2294,4 +2294,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "舗装路と砂利の道や小道。このライドタイプの計画どおり。",
   "paved only": "舗装路のみ",
   "surface": "路面",
+  "Removed {name}.": "{name} を削除しました。",
+  "My ride types is full ({max}). Remove one to save another.": "マイ走行タイプがいっぱいです（{max}）。新しく保存するには1つ削除してください。",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} を一時的に読み込みました。マイ走行タイプがいっぱいです（{max}）：残すには1つ削除してください。",
+  "Ride settings: {type}": "ライドの設定：{type}",
 };

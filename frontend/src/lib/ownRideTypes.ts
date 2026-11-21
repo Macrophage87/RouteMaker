@@ -75,7 +75,7 @@ export function parseOwn(raw: unknown): OwnRideType[] {
     if (typeof v.id !== "string" || !/^[a-z0-9]{1,16}$/.test(v.id)) continue;
     if (typeof v.name !== "string" || typeof v.plan !== "string") continue;
     const name = ownName(v.name);
-    if (!name || !/[#&]preset=/.test(v.plan) || /(^|[#&])[pq]=/.test(v.plan) || v.plan.length > 2048) continue;
+    if (!name || !/[#&]preset=/.test(v.plan) || /(^|[#&])(p|q|via|line|sn|nt)=/.test(v.plan) || v.plan.length > 2048) continue;
     if (out.some((o) => o.id === v.id || sameName(o.name, name))) continue;
     out.push({ id: v.id, name, plan: v.plan });
     if (out.length >= OWN_MAX) break;
@@ -162,15 +162,50 @@ export function setGoOwn(id: string | null, store: Store | null = local()): void
   tell();
 }
 
-/** Save this setup under a name (one of the same name replaced); returns the one kept. */
+/** Whether saving under this name needs a place the list does not have (OWN_MAX kept, none of that name). */
+export function ownFull(list: readonly OwnRideType[], name: string): boolean {
+  const kept = ownName(name);
+  return list.length >= OWN_MAX && !list.some((o) => sameName(o.name, kept));
+}
+
+/**
+ * Save this setup under a name (one of the same name replaced); returns the one kept, or null where the list is full
+ * (release review of #1385: never a silent loss of the oldest).
+ */
 export function saveOwn(name: string, preset: PresetId, dials: Dials): OwnRideType | null {
+  if (ownFull(snapshot().list, name)) return null;
   const list = withSaved(snapshot().list, name, preset, dials);
+  removed = null;
   setOwn(list);
   return list.find((o) => sameName(o.name, ownName(name))) ?? null;
 }
 
+/** The one last removed and where it was, for Undo (release review of #1385). */
+let removed: { own: OwnRideType; at: number } | null = null;
+
 export function removeOwn(id: string): void {
-  setOwn(snapshot().list.filter((o) => o.id !== id));
+  const list = snapshot().list;
+  const at = list.findIndex((o) => o.id === id);
+  if (at < 0) return;
+  removed = { own: list[at], at };
+  setOwn(list.filter((o) => o.id !== id));
+}
+
+/** Put the one last removed back where it was. */
+export function undoRemoveOwn(): void {
+  if (!removed) return;
+  const list = [...snapshot().list];
+  const back = removed;
+  removed = null;
+  if (list.length >= OWN_MAX || list.some((o) => o.id === back.own.id || sameName(o.name, back.own.name))) return tell();
+  list.splice(Math.min(back.at, list.length), 0, back.own);
+  setOwn(list);
+}
+
+const removedNow = () => removed;
+/** The one last removed, while Undo can bring it back. */
+export function useRemovedOwn(): { own: OwnRideType; at: number } | null {
+  return useSyncExternalStore(subscribe, removedNow, () => null);
 }
 
 /**

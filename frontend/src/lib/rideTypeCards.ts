@@ -8,13 +8,13 @@
  * The ride type in use is pressed (aria-pressed), so it is said as well as shown. A
  * createElement component, so a test renders it (node's runner reads .ts, not .tsx).
  */
-import { createElement as h, type ReactElement } from "react";
+import { Fragment, createElement as h, type ReactElement } from "react";
 import { PRESETS, presetLabel, presetSaid, presetSummary, type PresetId } from "./presets.ts";
 import { PresetName } from "./presetName.ts";
 import { FavoriteStar } from "./favoriteRides.ts";
 import { t } from "./i18n.ts";
 import { lineIcon } from "./sidebarParts.ts";
-import { ownSetup, type OwnRideType } from "./ownRideTypes.ts";
+import { ownSetup, undoRemoveOwn, useRemovedOwn, type OwnRideType } from "./ownRideTypes.ts";
 import { rideSummaryParts } from "./rideSummary.ts";
 
 /**
@@ -74,7 +74,16 @@ export function OwnRideCards({
   idPrefix: string;
   go?: GoDefault;
 }): ReactElement {
-  return h(
+  // Remove takes a card off at once; Undo puts it back (release review of #1385). Always in the page, so it is heard.
+  const removed = useRemovedOwn();
+  const undo = h(
+    "p",
+    { className: "hint own-ride-removed", role: "status" },
+    removed ? t("Removed {name}.", { name: removed.own.name }) : null,
+    removed ? " " : null,
+    removed ? h("button", { type: "button", className: "link", onClick: undoRemoveOwn }, t("Undo")) : null,
+  );
+  return h(Fragment, null, undo, h(
     "ul",
     { className: "ride-type-cards ride-sheet-cards own-ride-cards" },
     list.map((own) => {
@@ -115,7 +124,7 @@ export function OwnRideCards({
         ),
       );
     }),
-  );
+  ));
 }
 
 export function RideTypeCards({

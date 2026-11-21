@@ -186,3 +186,29 @@ test("settings loaded under a name already used keep both; a pasted target or lo
   assert.equal(read.dials.targetDistanceM, undefined);
   assert.equal(read.dials.loop, undefined);
 });
+
+// Release review of #1385: a full list refuses a 21st with a reason, never a silent loss of the oldest; Remove has Undo;
+// Create custom then Cancel leaves the focus on the popup's title.
+test("a full list of own ride types says so and keeps all twenty; Remove can be undone", async () => {
+  let list = withSaved([], "Ride 0", "fast", coffee, "r0");
+  for (let i = 1; i < 20; i++) list = withSaved(list, `Ride ${i}`, "fast", { ...coffee, waitWeight: (i % 5) + 1, sharpTurnWeight: i % 6 }, `r${i}`);
+  setOwn(list);
+  assert.equal(ownNow().list.length, 20);
+  const screen = await render(<RideSection preset="gravel" dials={{ ...startDials("gravel"), waitWeight: 4 }} choosePreset={() => {}} commitDials={() => {}} route={null} typeCard popout />);
+  await click(screen.button(/Adjust$/));
+  await click(screen.button("Save as my own ride type"));
+  await type(document.querySelector<HTMLInputElement>(".own-ride-save input")!, "One more");
+  await click(screen.button("Save"));
+  assert.match(screen.text(), /My ride types is full \(20\)\. Remove one to save another\./);
+  assert.equal(ownNow().list.length, 20);
+  assert.ok(ownNow().list.some((o) => o.name === "Ride 0"), "the oldest is still there");
+
+  const picker = await render(<RideTypePicker preset="default" dials={startDials("default")} onChoose={() => {}} />);
+  await click(picker.button(/^Default/));
+  const at = ownNow().list.findIndex((o) => o.name === "Ride 3");
+  await click(picker.button("Remove Ride 3"));
+  assert.equal(ownNow().list.length, 19);
+  assert.match(picker.text(), /Removed Ride 3\./);
+  await click(picker.button("Undo"));
+  assert.equal(ownNow().list[at]?.name, "Ride 3", "back where it was");
+});

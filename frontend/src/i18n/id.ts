@@ -2294,4 +2294,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Jalan dan jalur beraspal dan berkerikil, sesuai rencana jenis perjalanan ini.",
   "paved only": "hanya beraspal",
   "surface": "permukaan",
+  "Removed {name}.": "{name} dihapus.",
+  "My ride types is full ({max}). Remove one to save another.": "Jenis bersepeda saya penuh ({max}). Hapus satu untuk menyimpan yang lain.",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} dimuat untuk sementara. Jenis bersepeda saya penuh ({max}): hapus satu untuk menyimpannya.",
+  "Ride settings: {type}": "Pengaturan perjalanan: {type}",
 };

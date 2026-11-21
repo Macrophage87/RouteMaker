@@ -85,6 +85,8 @@ def _depth(value, level: int = 0) -> int:
 
 # A plan's stops in either form: `q=` (the app's links since v0.15.0) or the older `p=`.
 PLAN_POINTS_RE = re.compile(r"(^|[#&])[pq]=")
+# An own ride type holds a ride type and its sliders only: no points, vias, a drawn line or notes (release review of #1385).
+OWN_PLAN_PLACES_RE = re.compile(r"(^|[#&])(p|q|via|line|sn|nt)=")
 
 
 def _own_ok(own) -> bool:
@@ -97,10 +99,10 @@ def _own_ok(own) -> bool:
         ident, name, plan = item["id"], item["name"], item["plan"]
         if not (isinstance(ident, str) and OWN_ID_RE.fullmatch(ident)) or ident in ids:
             return False
-        if not (isinstance(name, str) and 0 < len(name) <= OWN_NAME_MAX):
+        if not (isinstance(name, str) and name.strip() and len(name) <= OWN_NAME_MAX):
             return False
         # The ride type and dials only, as "plan" is: never a route's points.
-        if not isinstance(plan, str) or len(plan) > OWN_PLAN_MAX or PLAN_POINTS_RE.search(plan):
+        if not isinstance(plan, str) or len(plan) > OWN_PLAN_MAX or OWN_PLAN_PLACES_RE.search(plan):
             return False
         ids.add(ident)
     return True

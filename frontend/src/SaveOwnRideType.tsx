@@ -6,7 +6,7 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { t } from "./lib/i18n.ts";
-import { OWN_NAME_MAX, freeName, ownName, ownNow, ownPlan, readShareJson, saveOwn, shareJson, useCreateRequests, type OwnRideType } from "./lib/ownRideTypes.ts";
+import { OWN_MAX, OWN_NAME_MAX, freeName, ownFull, ownName, ownNow, ownPlan, readShareJson, saveOwn, shareJson, useCreateRequests, type OwnRideType } from "./lib/ownRideTypes.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { startDials, type Dials } from "./lib/dials.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
@@ -47,7 +47,8 @@ function ShareSettings({ preset, dials, matching, onLoad }: { preset: PresetId; 
     onLoad(read.preset, read.dials);
     const own = saveOwn(freeName(ownNow().list, read.name, read.preset, read.dials), read.preset, read.dials);
     setPasted("");
-    setSaid(t("Loaded {name}. It is in My ride types.", { name: own?.name ?? read.name }));
+    // A full list keeps what it has (release review of #1385): the settings still apply, and the rider is told.
+    setSaid(own ? t("Loaded {name}. It is in My ride types.", { name: own.name }) : t("Loaded {name} for now. My ride types is full ({max}): remove one to keep it.", { name: read.name, max: OWN_MAX }));
   };
   return (
     <details className="fold own-ride-share">
@@ -97,6 +98,11 @@ function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dial
   const save = () => {
     const kept = ownName(name);
     if (!kept) return;
+    if (ownFull(ownNow().list, kept)) {
+      // Never a silent loss of the oldest (release review of #1385): the form stays, and says why.
+      setSaid(t("My ride types is full ({max}). Remove one to save another.", { max: OWN_MAX }));
+      return;
+    }
     const own = saveOwn(kept, preset, dials);
     setNaming(false);
     setSaid(own ? t("Saved as {name}. It is first in the ride types.", { name: own.name }) : "");
@@ -125,8 +131,11 @@ function SaveButton({ preset, dials, matching }: { preset: PresetId; dials: Dial
               className="secondary"
               onClick={() => {
                 setNaming(false);
+                setSaid("");
                 const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (run: () => void) => run();
-                frame(() => openRef.current?.focus());
+                // Back to Save as my own ride type, else (opened by Create custom with nothing moved) the popup's
+                // title (release review of #1385), not lost to the page.
+                frame(() => (openRef.current ?? rootRef.current?.closest("dialog")?.querySelector<HTMLElement>("h2"))?.focus({ preventScroll: true }));
               }}
             >
               {t("Cancel")}
