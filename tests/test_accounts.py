@@ -103,6 +103,24 @@ class TestSettings:
         assert r.status_code == 200
         assert AccountSettings.objects.get(user=user).data == doc
 
+    def test_own_ride_types_are_kept_and_checked(self) -> None:
+        # The owner, 2026-11-21: "Let people save and name their own configuration dials."
+        client, user, csrf = signed_in()
+        own = [{"id": "a1b2", "name": "Saturday coffee", "plan": "#preset=fast&s=40&waits=3"}]
+        doc = {"v": 1, "own": own, "goOwn": "a1b2"}
+        r = send(client, "post", "/api/me/settings", {"settings": doc}, csrf)
+        assert r.status_code == 200
+        assert AccountSettings.objects.get(user=user).data == doc
+        for bad in (
+            [{"id": "a1", "name": "x", "plan": "#preset=fast&q=1,2"}],  # a route's points
+            [{"id": "A!", "name": "x", "plan": "#preset=fast"}],
+            [{"id": "a1", "name": "", "plan": "#preset=fast"}],
+            [{"id": "a1", "name": "x", "plan": "#preset=fast", "extra": 1}],
+            [{"id": "a1", "name": "x", "plan": "#preset=fast"}] * 2,
+        ):
+            r = send(client, "post", "/api/me/settings", {"settings": {"v": 1, "own": bad}}, csrf)
+            assert r.status_code == 400, bad
+
     def test_the_rider_and_bike_weight_is_kept(self) -> None:
         # The owner, 2026-10-19: "Weight should be retained for signed in users".
         client, user, csrf = signed_in()

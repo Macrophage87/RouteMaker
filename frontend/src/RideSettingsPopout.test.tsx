@@ -197,3 +197,15 @@ test("Go's Ride settings (no ride type button) open the same popup, Sharp turns 
   assert.ok(slider("Sharp turns"));
   assert.ok(toggle("Fewer turns"));
 });
+
+// The owner, 2026-11-21: "what's the top what's the end ... For Traffic, we will probably have more of a narritive level
+// for each. The others want an actual number."
+test("the waits and sharp turns sliders show their real numbers at each end; Traffic keeps its words", async () => {
+  await section("default", true);
+  const ends = (name: string) =>
+    [...(slider(name)?.closest(".dial")?.querySelectorAll(".dial-ends span") ?? [])].map((el) => el.textContent).filter(Boolean);
+  assert.deepEqual(ends("Waiting at lights and stops"), ["1x", "5x"]);
+  assert.deepEqual(ends("Sharp turns"), ["0x", "5x"]);
+  assert.deepEqual(ends("Traffic"), ["Traffic tolerant", "Balanced", "Calm at any cost"]);
+  assert.deepEqual(ends("Hills"), ["1%", "8%", "15%"]);
+});

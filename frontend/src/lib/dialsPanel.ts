@@ -161,7 +161,9 @@ export function waitsView(preset: PresetId, weight: number): SliderView {
     max: WAIT_WEIGHT_MAX,
     step: WEIGHT_STEP,
     words: waitsWords(weight),
-    ends: [t("Don't mind"), "", t("Rather ride")],
+    // The real numbers at the ends (the owner, 2026-11-21: "what's the top what's the end ... The others want an actual
+    // number"); Traffic keeps its words.
+    ends: [waitsWords(own), "", waitsWords(WAIT_WEIGHT_MAX)],
     disabled: own >= WAIT_WEIGHT_MAX,
     note: WAITS_NOTE,
     how: WAITS_HOW,
@@ -174,7 +176,7 @@ export function sharpTurnsView(weight: number): SliderView {
     max: SHARP_TURN_WEIGHT_MAX,
     step: WEIGHT_STEP,
     words: waitsWords(weight),
-    ends: [t("Fun"), "", t("Avoid")],
+    ends: [waitsWords(0), "", waitsWords(SHARP_TURN_WEIGHT_MAX)],
     disabled: false,
     note: SHARP_TURNS_NOTE,
     how: SHARP_TURNS_HOW,
@@ -458,7 +460,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
           min: HILLS_MIN,
           max: hillsMax(preset),
           words: hillsWords(draft.hills, climbs),
-          ends: [t("Avoid hills"), t("Fastest"), t("Seek hills")],
+          // Grades where the slider sets one (its left half); its right half seeks climbs, which has no grade.
+          ends: [`${LT1_GRADE_MIN_PCT}%`, `${hillsGradePosition(0)}%`, t("Seek hills")],
           disabled: false,
           ...shortNote(hillsNote, hillsNote && HILLS_NOTE_SHORT.get(hillsNote)),
           how: HILLS_HOW,

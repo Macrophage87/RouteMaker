@@ -23,9 +23,10 @@
  * - Signed out, everything stays on the device as before.
  */
 import { FAVORITES_KEY, parseFavorites } from "./favoriteRides.ts";
+import { GO_OWN_KEY, OWN_KEY, parseOwn, type OwnRideType } from "./ownRideTypes.ts";
 import { t } from "./i18n.ts";
 import { CLIMBS_FROM_KEY, CLIMBS_KEY, CLIMB_CATEGORIES, type ClimbCategory } from "./climbs.ts";
-import type { Dials } from "./dials.ts";
+import { TRIP_DIALS, type Dials } from "./dials.ts";
 import { LAYER_SECTIONS_KEY } from "./layerSection.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import type { PresetId } from "./presets.ts";
@@ -49,6 +50,10 @@ export interface SettingsDoc {
   sections?: Record<string, string[]>;
   bikeshare?: Record<string, boolean>;
   favorites?: PresetId[];
+  /** The rider's own named ride types (lib/ownRideTypes.ts). */
+  own?: OwnRideType[];
+  /** Which of them Go starts on, or null for none. */
+  goOwn?: string | null;
   /** The rider and bike weight (lib/weight.ts StoredWeight), or null once cleared. */
   weight?: StoredWeight | null;
   /** The rider's riding speed in whole mph (lib/ridingSpeed.ts), or null for the ride type's own. */
@@ -88,8 +93,6 @@ function json(raw: string | null): unknown {
   }
 }
 
-/** The trip-specific dials that are not settings: a station picked, a transit option, the target of one ride. */
-const TRIP_DIALS: readonly (keyof Dials)[] = ["pickupStation", "dropoffStation", "transitOption", "targetDistanceM", "systemWeightKg", "ridingSpeedKmh", "loop"];
 
 /** The ride type and dials as a settings value: no points, nothing that belongs to one trip, never the weight. */
 export function planSetting(preset: PresetId, dials: Dials): string {
@@ -144,6 +147,8 @@ export function parseSettings(raw: unknown): SettingsDoc | null {
   const bikeshare = flagsOf(body.bikeshare);
   if (bikeshare) doc.bikeshare = bikeshare;
   if (Array.isArray(body.favorites)) doc.favorites = parseFavorites(body.favorites);
+  if (Array.isArray(body.own)) doc.own = parseOwn(body.own);
+  if (body.goOwn === null || (typeof body.goOwn === "string" && /^[a-z0-9]{1,16}$/.test(body.goOwn))) doc.goOwn = body.goOwn;
   if (body.weight === null) doc.weight = null;
   else if (body.weight !== undefined) {
     const weight = weightOf(body.weight);
@@ -185,6 +190,12 @@ export function deviceSettings(
   if (sections && Object.keys(sections).length) doc.sections = sections;
   const favorites = json(read(store, FAVORITES_KEY));
   if (Array.isArray(favorites)) doc.favorites = parseFavorites(favorites);
+  const own = json(read(store, OWN_KEY));
+  if (Array.isArray(own)) {
+    doc.own = parseOwn(own);
+    const goOwn = read(store, GO_OWN_KEY);
+    doc.goOwn = goOwn && doc.own.some((o) => o.id === goOwn) ? goOwn : null;
+  }
   if (weight !== undefined) doc.weight = weight;
   const speed = speedSetting(read(store, SPEED_STORAGE_KEY));
   if (speed !== undefined) doc.speed = speed;
@@ -208,6 +219,15 @@ export function applyToDevice(doc: SettingsDoc, store: Store | null = local()): 
   if (doc.topo !== undefined) write(TOPO_STORAGE_KEY, doc.topo ? "on" : "off");
   if (doc.sections) write(LAYER_SECTIONS_KEY, JSON.stringify(doc.sections));
   if (doc.favorites) write(FAVORITES_KEY, JSON.stringify(doc.favorites));
+  if (doc.own) write(OWN_KEY, JSON.stringify(doc.own));
+  if (doc.goOwn !== undefined) {
+    try {
+      if (doc.goOwn === null) store?.removeItem(GO_OWN_KEY);
+      else store?.setItem(GO_OWN_KEY, doc.goOwn);
+    } catch {
+      // Not kept: Go starts on My Go's ride type.
+    }
+  }
   if (doc.weight !== undefined) write(WEIGHT_STORAGE_KEY, doc.weight === null ? WEIGHT_CLEARED : JSON.stringify(doc.weight));
   if (doc.speed !== undefined) write(SPEED_STORAGE_KEY, doc.speed === null ? SPEED_OWN : String(doc.speed));
   if (doc.units) write(UNITS_STORAGE_KEY, doc.units);
@@ -224,7 +244,7 @@ export function onSignIn(account: SettingsDoc | null, device: SettingsDoc): Sign
 }
 
 /** The settings a document holds, by key, for comparing one with another. */
-const KEYS: readonly (keyof SettingsDoc)[] = ["plan", "water", "climbs", "climbsFrom", "topo", "sections", "bikeshare", "favorites", "weight", "speed", "units"];
+const KEYS: readonly (keyof SettingsDoc)[] = ["plan", "water", "climbs", "climbsFrom", "topo", "sections", "bikeshare", "favorites", "own", "goOwn", "weight", "speed", "units"];
 
 /**
  * The sign-in step where the account's settings were read late (the 2026-11-05 review: a read that failed at load

@@ -22,6 +22,9 @@ export type Bike = "classic" | "ebike";
 /** Bikeshare e-bike's ending (OWNER-DECISIONS 244): at a dock, or at the destination outside one. */
 export type Ending = "dock" | "outside_dock";
 
+/** A trip's own dials, not the ride's: left out where the ride type and sliders are kept (account settings, own ride types). */
+export const TRIP_DIALS: readonly (keyof Dials)[] = ["pickupStation", "dropoffStation", "transitOption", "targetDistanceM", "systemWeightKg", "ridingSpeedKmh", "loop"];
+
 export interface Dials {
   stress: number;
   hills: number;

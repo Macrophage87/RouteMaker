@@ -182,11 +182,11 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   // settings opens the Ride sheet with every type; the chip in use says when its sliders were moved.
   assert.match(
     appFile,
-    /<RideChips\s+ids=\{goRideChips\(myGo\.ride, preset, favoriteRides\)\}\s+preset=\{preset\}\s+onPick=\{pickRide\}\s+more=\{\(opener\) => openView\("ride", opener\)\}\s+label=\{t\("Ride type"\)\}\s+ownHint=\{OWN_RIDE_HINT\}\s+own=\{myGo\.ride \?\? "default"\}\s+changed=\{isCustom\(preset, dials\)\}\s+\/>/,
+    /<RideChips\s+ids=\{goRideChips\(myGo\.ride, preset, favoriteRides\)\}\s+preset=\{preset\}\s+onPick=\{pickRide\}\s+more=\{\(opener\) => openView\("ride", opener\)\}\s+label=\{t\("Ride type"\)\}\s+ownHint=\{OWN_RIDE_HINT\}\s+own=\{myGo\.ride \?\? "default"\}\s+changed=\{isCustom\(preset, dials\)\}\s+mine=\{ownInUse\?\.name \?\? null\}\s+\/>/,
   );
   assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && id === ownId \? "ride-own-hint" : undefined\}/);
   // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts); a pick closes it (P3).
-  assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRideAndClose\} open=\{view === "ride"\} \/>/);
+  assert.match(appFile, /<RideGroupChips preset=\{preset\} dials=\{dials\} onPick=\{pickRideAndClose\} onPickOwn=\{pickOwnAndClose\} go=\{goDefault\} open=\{view === "ride"\} \/>/);
   // A pick goes through the ride type dialog's own choice, with Mountain Bike's loop (mtbChosen).
   assert.match(appFile, /choosePreset\(id, mtbChosen\(preset, id, chooseRideType\(id, carries\(id\) \? "cargo" : null, dials\)\)\);/);
   // Toggle buttons with their state, not colour alone.

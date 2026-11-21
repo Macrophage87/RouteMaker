@@ -11,9 +11,11 @@ import type { StressAvailability } from "../MapView.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
+import type { Dials } from "../lib/dials.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, rideTypeSections, RideTypeSearch } from "../lib/rideTypeGroups.ts";
-import { RideTypeCards } from "../lib/rideTypeCards.ts";
+import { OwnRideCards, RideTypeCards, type GoDefault } from "../lib/rideTypeCards.ts";
+import { matchingOwn, removeOwn, setGoOwn, useOwnRideTypes, type OwnRideType } from "../lib/ownRideTypes.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, signInLabel, tabSession } from "../lib/signIn.ts";
 import { signInHasChoice } from "../lib/stressEditor.ts";
@@ -459,7 +461,11 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
           value={myGo.ride ?? "default"}
           options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
           groups={rideTypeSections()}
-          onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
+          onChange={(ride) => {
+            // A built-in ride type picked here: Go no longer starts on one of the rider's own.
+            setGoOwn(null);
+            save({ ...myGo, ride: ride === "default" ? null : ride });
+          }}
         />
       </SettingRow>
       <p className="hint my-go-said" role="status">
@@ -950,7 +956,23 @@ export function RideSheet({ nav, children }: { nav: SheetNav; children: ReactNod
  * heading (the chips' own group is left unnamed). The search is cleared whenever the sheet is
  * left, as Plan's dialog clears it on closing, so the next visit shows every ride type.
  */
-export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onPick: (id: PresetId) => void; open: boolean }) {
+export function RideGroupChips({
+  preset,
+  dials,
+  onPick,
+  onPickOwn,
+  go,
+  open,
+}: {
+  preset: PresetId;
+  dials: Dials;
+  onPick: (id: PresetId) => void;
+  /** One of the rider's own ride types (lib/ownRideTypes.ts), listed first under "My ride types". */
+  onPickOwn: (own: OwnRideType) => void;
+  /** Each card's Go button (the owner, 2026-11-21: "make a button in the ride type list that will make it the default for go"). */
+  go?: GoDefault;
+  open: boolean;
+}) {
   const [query, setQuery] = useState("");
   const scopeRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -961,23 +983,34 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
   // Favorites (Stephen 2026-10-19) come before Common, each card with its star (lib/favoriteRides.ts).
   const favorites = useFavoriteRides();
   const { favorites: favs, common, groups, folded } = rideSections(query, undefined, favorites);
-  const star = { favorites, onFavorite: (id: PresetId) => toggleFromPicker(id, scopeRef.current) };
+  const own = useOwnRideTypes();
+  const mine = matchingOwn(own.list, preset, dials);
+  // The one in use is the rider's own where it is one: no built-in card is pressed then.
+  const inUse: PresetId = mine ? ("" as PresetId) : preset;
+  const star = { favorites, onFavorite: (id: PresetId) => toggleFromPicker(id, scopeRef.current), go };
   return (
     <section ref={scopeRef} className="ride-groups" aria-labelledby="ride-sheet-types">
       <h3 id="ride-sheet-types" className="visually-hidden">
         {t("Every ride type")}
       </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
+      {go && <p className="hint">{t("Go on a card makes it what Go starts on.")}</p>}
+      {query === "" && own.list.length > 0 && (
+        <section className="ride-sheet-group" aria-labelledby="ride-sheet-own">
+          <h4 id="ride-sheet-own">{t("My ride types")}</h4>
+          <OwnRideCards list={own.list} inUse={mine?.id ?? null} onPick={onPickOwn} onRemove={(o) => removeOwn(o.id)} idPrefix="ride-sheet" go={go} />
+        </section>
+      )}
       {favs.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
           <h4 id="ride-sheet-favorites">{t("Favorites")}</h4>
-          <RideTypeCards ids={favs} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
+          <RideTypeCards ids={favs} preset={inUse} onPick={onPick} idPrefix="ride-sheet" {...star} />
         </section>
       )}
       {common.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-common">
           <h4 id="ride-sheet-common">{t("Common")}</h4>
-          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
+          <RideTypeCards ids={common} preset={inUse} onPick={onPick} idPrefix="ride-sheet" {...star} />
         </section>
       )}
       {groups.map((group) =>
@@ -985,13 +1018,13 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
           <details key={group.id} className="fold ride-sheet-fold" open={group.ids.includes(preset) || undefined}>
             <summary>{`${group.label} (${group.ids.length})`}</summary>
             <div className="fold-body">
-              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
+              <RideTypeCards ids={group.ids} preset={inUse} onPick={onPick} idPrefix="ride-sheet" {...star} />
             </div>
           </details>
         ) : (
           <section key={group.id} className="ride-sheet-group" aria-labelledby={`ride-sheet-${group.id}`}>
             <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
-            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" {...star} />
+            <RideTypeCards ids={group.ids} preset={inUse} onPick={onPick} idPrefix="ride-sheet" {...star} />
           </section>
         ),
       )}
@@ -1014,6 +1047,7 @@ export function RideChips({
   ownHint,
   own,
   changed = false,
+  mine = null,
 }: {
   ids: readonly PresetId[];
   preset: PresetId;
@@ -1026,6 +1060,8 @@ export function RideChips({
   own?: PresetId;
   /** The sliders are not where the ride type in use starts them (lib/rideTypeDialog.ts isCustom). */
   changed?: boolean;
+  /** The rider's own ride type in use (lib/ownRideTypes.ts), if any: the chip in use shows its name. */
+  mine?: string | null;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1042,8 +1078,8 @@ export function RideChips({
       aria-describedby={ownHint && id === ownId ? "ride-own-hint" : undefined}
     >
       {/* Name only, no drawn icon (Stephen 2026-11-20: "they look weird"); a transit name keeps its emoji. */}
-      <PresetName id={id} />
-      {changed && preset === id && (
+      {mine && preset === id ? mine : <PresetName id={id} />}
+      {changed && !mine && preset === id && (
         <>
           <span className="ride-changed" aria-hidden="true">
             {t("(changed)")}

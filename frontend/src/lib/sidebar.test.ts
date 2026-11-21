@@ -173,7 +173,7 @@ test("the Ride line is a heading holding a button with aria-expanded, whose word
 test("App puts the ride type's button first and every dial behind the Ride settings line, in the mockup's order", () => {
   // The ride type is one press from its list (edit-route redesign); Go's Ride sheet lists them itself (typeCard false).
   // The line holding the dials, popup or not, is rendered in RideSettingsPopout.test.tsx (RideSection).
-  assert.match(app, /const presetsSection = typeCard \? <RideTypePicker key="presets" preset=\{preset\} dials=\{dials\} onChoose=\{choosePreset\} \/> : null;/);
+  assert.match(app, /const presetsSection = typeCard \? <RideTypePicker key="presets" preset=\{preset\} dials=\{dials\} onChoose=\{choosePreset\} go=\{go\} \/> : null;/);
   assert.match(src("../App.tsx"), /typeCard: mode !== "go",/);
   assert.equal(settingsSummary("default", startDials("default")), "quiet streets · hills up to 8% · now");
   assert.equal(settingsSummarySpoken("default", startDials("default")), "quiet streets, hills up to 8%, now");
