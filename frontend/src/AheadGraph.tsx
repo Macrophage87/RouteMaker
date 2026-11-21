@@ -56,6 +56,8 @@ import {
 } from "./lib/aheadGraph.ts";
 import type { Cue } from "./lib/navigate.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
+import { ratedDotFill } from "./lib/ratedDot.ts";
+import { RatedDot } from "./chartParts.tsx";
 import { ROUTE_AVOID_MAGENTA } from "./lib/avoidColour.ts";
 import { GRADE_BAND_FILL } from "./lib/profileChart.ts";
 import { ACCESS_MODE_CLASS } from "./lib/accessMode.ts";
@@ -129,7 +131,7 @@ interface Props {
   views: readonly AheadView[];
   route: Pick<RouteResponse, "profile" | "stress_spans" | "trail_levels">;
   /** The ride's cues, for the turns strip. */
-  cues: readonly Pick<Cue, "kind" | "atM" | "movement" | "severity" | "joined" | "cross" | "source" | "stop" | "point">[];
+  cues: readonly Pick<Cue, "kind" | "atM" | "movement" | "severity" | "ratedLevel" | "joined" | "cross" | "source" | "stop" | "point">[];
   /** A stop cue's icon, where the planner gave the stop one (its number in a disc where not). */
   stopIcon?: (cue: Pick<Cue, "kind" | "point" | "stop">) => NoteIcon | undefined;
   /** You, metres along the route. */
@@ -427,7 +429,9 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
       {marks.map((mark, i) => {
         if (mark.stop) return null;
         const cx = x(mark.m);
-        const colour = mark.severity === "orange" || mark.severity === "red" ? SEVERITY_COLOURS[mark.severity] : null;
+        const flagged = mark.severity === "orange" || mark.severity === "red";
+        // A rated junction takes its level's stress colour, as its dot on the map does.
+        const colour = !flagged ? null : mark.rated != null ? { fill: ratedDotFill(mark.rated), stroke: "#1c1917" } : SEVERITY_COLOURS[mark.severity as "orange" | "red"];
         if (mark.movement) {
           const arrow = ARROWS[mark.movement];
           return (
@@ -441,6 +445,7 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
             </g>
           );
         }
+        if (flagged && mark.rated != null) return <RatedDot key={i} level={mark.rated} x={cx} y={cy} r={5 * scale} />;
         if (mark.severity === "orange" || mark.severity === "red") {
           const d = mark.severity === "orange" ? `M${cx} ${cy - 9}l9 16h-18z` : `M${cx} ${cy - 9}l9 9-9 9-9-9z`;
           return <path key={i} d={d} fill={colour?.fill} stroke={colour?.stroke} strokeWidth={1.5} />;

@@ -581,6 +581,8 @@ export interface TurnMark {
   movement: TurnMovementKey | null;
   /** Orange (a triangle) and red (a diamond) as the planner's junction markers; "avoid" an Avoid stretch's start. */
   severity: "orange" | "red" | "avoid" | null;
+  /** The raters' level there (3 to 5): the mark is drawn in that level's stress colour, a dot where it is not a turn. */
+  rated?: number;
   /**
    * A stop (Stephen 2026-11-19: "Add the stop symbol to the same place as the turns"): its number and its icon, where
    * the planner gave it one; drawn in the turns' row in place of an arrow.
@@ -593,6 +595,7 @@ interface CueLike {
   atM: number;
   movement: TurnMovementKey | null;
   severity: "orange" | "red" | "avoid" | null;
+  ratedLevel?: number;
   /** A jog's later turn: drawn with the jog's first, as the cue card draws it. */
   joined?: boolean;
   /** A short path straight across a road: not a turn on the card, so not one here. */
@@ -614,14 +617,18 @@ export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWi
     if (c.kind === "stop") {
       marks.push({ m: c.atM, movement: null, severity: null, stop: { number: c.stop ?? null, icon: stopIcon(c) ?? null } });
     } else if (c.kind === "turn") {
-      if (c.movement !== null && !c.joined && !c.cross) marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null });
+      if (c.movement !== null && !c.joined && !c.cross) marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null, ...rated(c) });
     } else if (c.source === "junction" && (c.severity === "orange" || c.severity === "red")) {
-      marks.push({ m: c.atM, movement: null, severity: c.severity });
+      marks.push({ m: c.atM, movement: null, severity: c.severity, ...rated(c) });
     } else if (c.source === "avoid") {
       marks.push({ m: c.atM, movement: null, severity: "avoid" });
     }
   }
   return marks;
+}
+
+function rated(c: CueLike): { rated?: number } {
+  return c.ratedLevel != null && (c.severity === "orange" || c.severity === "red") ? { rated: c.ratedLevel } : {};
 }
 
 const RANK: Record<string, number> = { red: 3, orange: 2, avoid: 1 };
@@ -636,7 +643,8 @@ export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[
     const last = out[out.length - 1];
     if (last && mark.m - last.m < minM && !last.stop && !mark.stop) {
       const severity = (RANK[mark.severity ?? ""] ?? 0) > (RANK[last.severity ?? ""] ?? 0) ? mark.severity : last.severity;
-      out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity };
+      const worst = Math.max(last.rated ?? 0, mark.rated ?? 0);
+      out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity, ...(worst ? { rated: worst } : {}) };
       continue;
     }
     out.push({ ...mark });

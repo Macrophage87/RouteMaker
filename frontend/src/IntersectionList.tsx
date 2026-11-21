@@ -20,6 +20,7 @@ import {
   type JunctionItem,
   junctionCounts,
   junctionHeadline,
+  junctionIconSvg,
   junctionItems,
   junctionRows,
   rowName,
@@ -42,7 +43,7 @@ function JunctionButton({ item, onSelect }: { item: JunctionItem; onSelect: (ind
       aria-label={rowName(item.severityText, item.where, item.reason, item.costText)}
       onClick={() => onSelect(item.index)}
     >
-      <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: warningIconSvg(item.severity, 18) }} />
+      <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: junctionIconSvg(item, 18) }} />
       <span className="junction-severity">{item.severityText}</span>
       <span className="junction-where">{item.where}</span>
       <span className="junction-reason">{item.reason}</span>

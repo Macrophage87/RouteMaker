@@ -1357,7 +1357,13 @@ ship_held_pass() { # tag map-url no-map allow dry
 		fi
 		map_importing="being swapped in"
 		say "step: swap the map in (sudo is asked for the files and the table rename)"
-		if ! "$import" --beta --state "$RM_STATE" ${allow:+--allow-sha-mismatch} --swap "$map" 2>&1 | tee -a "$run_log"; then
+		"$import" --beta --state "$RM_STATE" ${allow:+--allow-sha-mismatch} --swap "$map" 2>&1 | tee -a "$run_log"
+		swap_rc=${PIPESTATUS[0]}
+		if [ "$swap_rc" = 3 ]; then
+			# The map is in and good; only a trail router is not running (import-result.sh).
+			finish error "$tag's code is live and the map is swapped in, but a trail router did not start (above). Start it: $RM_SRC/scripts/beta/beta-compose.sh up -d --force-recreate <router>; run smoke-test.sh --local --trails; then auto-release.sh resume. Do not roll the map back for this"
+			return 1
+		elif [ "$swap_rc" != 0 ]; then
 			finish error "$tag's code is live, but the map swap failed (above; import-result.sh says what it left). The way back to the old map: auto-release.sh rollback-map. Then auto-release.sh resume"
 			return 1
 		fi

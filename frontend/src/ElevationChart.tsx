@@ -409,7 +409,7 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
                 );
               })}
               {calmMarks.map((p, i) => (
-                <CrossingMarker key={i} severity={p.severity} x={x(p.m)} y={calmLayout.markerY} />
+                <CrossingMarker key={i} severity={p.severity} rated={p.rated_level} x={x(p.m)} y={calmLayout.markerY} />
               ))}
             </g>
           )}
@@ -525,7 +525,7 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
                       {t("Avoid (A where narrow)")}
                     </li>
                   )}
-                  <JunctionKey orange={calmMarks.some((p) => p.severity === "orange")} red={calmMarks.some((p) => p.severity === "red")} dot={false} />
+                  <JunctionKey orange={calmMarks.some((p) => p.severity === "orange" && p.rated_level == null)} red={calmMarks.some((p) => p.severity === "red" && p.rated_level == null)} dot={false} />
                 </>
               ) : (
                 <li className="pc-legend-strip">{t("Strip under the elevation: traffic stress along the route")}</li>
