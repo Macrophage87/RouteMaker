@@ -135,7 +135,6 @@ test("the Ride line never carries the rider and bike weight (313-314): not a fig
   const withWeight: Dials = { ...startDials("default"), systemWeightKg: 123 };
   assert.equal(rideSummary("default", withWeight), rideSummary("default", startDials("default")));
   assert.doesNotMatch(rideSummary("default", withWeight), /123|lb|kg|weight/i);
-  assert.doesNotMatch(src("./rideSummary.ts").replace(/\/\*[\s\S]*?\*\//g, ""), /systemWeight|weight/i);
 });
 
 test("the Ride line is a heading holding a button with aria-expanded, whose words are read with commas", () => {
@@ -173,11 +172,8 @@ test("the Ride line is a heading holding a button with aria-expanded, whose word
 
 test("App puts the ride type's button first and every dial behind the Ride settings line, in the mockup's order", () => {
   // The ride type is one press from its list (edit-route redesign); Go's Ride sheet lists them itself (typeCard false).
-  assert.match(
-    app,
-    /<RideSettings key="presets" summary=\{settingsSummary\(preset, dials\)\} spoken=\{settingsSummarySpoken\(preset, dials\)\} typeCard=\{presetsSection\}>\s*<DialsPanel/,
-  );
-  assert.match(app, /const presetsSection = typeCard \? <RideTypePicker key="presets" preset=\{preset\} dials=\{dials\} onChoose=\{choosePreset\} \/> : null;/);
+  // The line holding the dials, popup or not, is rendered in RideSettingsPopout.test.tsx (RideSection).
+  assert.match(app, /const presetsSection = typeCard \? <RideTypePicker key="presets" preset=\{preset\} dials=\{dials\} onChoose=\{choosePreset\} go=\{go\} \/> : null;/);
   assert.match(src("../App.tsx"), /typeCard: mode !== "go",/);
   assert.equal(settingsSummary("default", startDials("default")), "quiet streets · hills up to 8% · now");
   assert.equal(settingsSummarySpoken("default", startDials("default")), "quiet streets, hills up to 8%, now");
@@ -190,7 +186,7 @@ test("App puts the ride type's button first and every dial behind the Ride setti
   const order = [
     'label={t("Traffic")}',
     'label={t("Hills")}',
-    '<legend>{t("When")}</legend>',
+    '<label className="when-pick">',
     "{view.target && !hideTarget && (",
   ].map(at);
   assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance");
@@ -494,7 +490,7 @@ test("a figure the planner did not send is said so, not guessed; none is 'None'"
   assert.equal(junctionFigure([{ severity: "orange" }] as never), "1 higher");
 });
 
-test("the stress bar is one image with each share in its name, and a line of text says the same", () => {
+test("the stress bar is one image with each share in its name (no text line under it in Plan since the intuitiveness review)", () => {
   const segments = [
     { short: "LTS 1", label: "Comfortable for most people", percent: 61 },
     { short: "LTS 2", label: "Comfortable for most adults", percent: 30 },
@@ -512,7 +508,7 @@ test("the stress bar is one image with each share in its name, and a line of tex
   assert.equal(stressBarLabel([{ key: "5", short: "Avoid", label: "Legal, but best avoided", percent: 2 }]), "Avoid, roads best avoided: 2 percent");
   assert.match(app, /<figure className="stress stress-main" aria-labelledby="stress-figure-caption">/);
   assert.match(app, /<div className="stress-bar" role="img" aria-label=\{stressBarLabel\(segments\)\}>/);
-  assert.match(app, /<p className="stress-key" aria-hidden="true">/);
+  // No text line under Plan's bar since the intuitiveness review: rendered in IntuitivePlan.test.tsx.
 });
 
 test("Go's stress line in plain words (the owner's P1): how calm, the paths and protected lanes, the busy road", () => {

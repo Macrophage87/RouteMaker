@@ -80,3 +80,14 @@
 .route-notices li {
   margin: 4px 0;
 }
+/* A one-line step (intuitiveness review, 2026-11-21): its level's chip, the turn and street, its length. */
+.description-brief .step-chip {
+  vertical-align: -2px;
+  margin-inline-end: 6px;
+}
+.description-brief .step-distance {
+  color: var(--text-muted);
+}
+.description-brief .step-warn {
+  font-weight: 600;
+}

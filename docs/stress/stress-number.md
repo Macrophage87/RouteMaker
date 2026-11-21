@@ -71,7 +71,7 @@ shown as quiet-street distance at the preset's planning speed
 | Mass Ride (0, locked, no-trail graph) | 1 | 1 | 1 (not graded) | 1 | 1.4 mi [2.2 km] |
 | Any ride at 0 on the standard graph | 1 | 1 | 1.37-1.52 | as LTS 4 | as the preset |
 | Fast (10) | 1 | 1.22-1.36 | 2.11-2.34 | as LTS 4 | 2.5 mi [4.1 km] |
-| Group Ride, Mountain Goat, Gravel (40) | 1 | 1.93-2.85 | 5.38-6.25 | as LTS 4 | 2.8 mi [4.5 km] |
+| Group Ride, Mountain Goat (40) | 1 | 1.93-2.85 | 5.38-6.25 | as LTS 4 | 2.8 mi [4.5 km] |
 | Default (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.5 mi [4.1 km] |
 | E-bike (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 3.4 mi [5.5 km] |
 | Cargo Bike, carrying cargo (70) | 1 | 2.88-5.79 | 12.85-15.83 | as LTS 4 | 2.0 mi [3.2 km] (2.5 mi with assist) |
@@ -129,8 +129,8 @@ drawing uses the **lower** level (460.1), and **4.5 is never Avoid** (441k).
 |---|---|---|---|---|
 | Mass Ride (0) | 1 | 1 | 1 | 1 |
 | Fast (10) | 1 | 1.11-1.18 | 1.66-1.85 | 2.11-2.34 |
-| Group, Goat, Gravel (40) | 1 | 1.47-1.92 | 3.66-4.55 | 5.38-6.25 |
-| Default, E-bike, Cargo carrying cargo (70) | 1 | 1.94-3.40 | 7.87-10.81 | 12.85-15.83 |
+| Group, Goat (40) | 1 | 1.47-1.92 | 3.66-4.55 | 5.38-6.25 |
+| Default, Gravel, E-bike, Cargo carrying cargo (70) | 1 | 1.94-3.40 | 7.87-10.81 | 12.85-15.83 |
 | Cargo with passengers (80) | 1 | 2.08-3.92 | 9.38-13.13 | 15.61-19.42 |
 | Trailmaxxing (100), no target / past target | 1 | 3.5 / 2.25 | 8.5 / 4.75 | 13.5 / 7.25 |
 
