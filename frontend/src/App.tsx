@@ -7069,6 +7069,7 @@ export function App() {
           // in Go (2026-11-21: "just have the same control popout for both"), so a link's waits, sharp turns and Fewer
           // turns are planned with, and seen, in Go too.
           popout: true,
+          shown: mode !== "go" || view === "ride",
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,

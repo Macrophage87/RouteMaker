@@ -197,3 +197,15 @@ test("Go's Ride settings (no ride type button) open the same popup, Sharp turns 
   assert.ok(slider("Sharp turns"));
   assert.ok(toggle("Fewer turns"));
 });
+
+test("the popup closes with its section: Go's Ride sheet closed leaves no popup open behind it", async () => {
+  const props = { preset: "default" as PresetId, dials: startDials("default"), choosePreset: () => {}, commitDials: () => {}, route: null, typeCard: false, popout: true };
+  const screen = await render(<RideSection {...props} shown />);
+  const adjust = screen.button(/Adjust$/);
+  await click(adjust);
+  const popup = screen.dialog("Ride settings: Default");
+  assert.equal(popup.hasAttribute("open"), true);
+  await screen.rerender(<RideSection {...props} shown={false} />);
+  assert.equal(popup.hasAttribute("open"), false, "closed with the sheet");
+  assert.equal(adjust.getAttribute("aria-expanded"), "false");
+});

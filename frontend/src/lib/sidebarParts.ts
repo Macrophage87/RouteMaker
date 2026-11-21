@@ -7,7 +7,7 @@
  * Each is a real button or a real <details>, with its state in aria-expanded (or the element's own)
  * and its words in text; none depends on colour.
  */
-import { Fragment, createElement as h, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Fragment, createElement as h, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { t } from "./i18n.ts";
 import { RIDE_ACTION_SPOKEN, RIDE_SETTINGS_LABEL, foldTitle, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
@@ -54,9 +54,10 @@ export function RideSettings({
   typeCard?: ReactNode;
   /**
    * Plan (the owner, 2026-11-20: "Have it pop out to all ride parameters"): Adjust opens every control in a popup over
-   * the map, titled `popout.title`, instead of under the line. Go keeps them under the line.
+   * the map, titled `popout.title`, instead of under the line; Go too (2026-11-21). `shown` false (Go's Ride sheet
+   * closed) closes the popup with it, so it is never left open behind a closed sheet.
    */
-  popout?: { title: string };
+  popout?: { title: string; shown?: boolean };
   children?: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -64,6 +65,12 @@ export function RideSettings({
   const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const hidden = popout?.shown === false;
+  useEffect(() => {
+    if (!hidden) return;
+    dialogRef.current?.close?.();
+    setOpen(false);
+  }, [hidden]);
   // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (traffic, hills, when, then
   // anything else set), all one button, so the row is one press and one name.
   const chips = summary === "" ? [] : summary.split(" · ");
