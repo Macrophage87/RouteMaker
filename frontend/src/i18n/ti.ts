@@ -2293,6 +2293,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "ዝተነጽፉን ናይ ጸጸርን መንገድታትን መገድታትን፣ ከምቲ እዚ ዓይነት ጉዕዞ ዝውጥኖ።",
   "paved only": "ዝተነጽፈ ጥራይ",
   "surface": "ገጽ መንገዲ",
+  "Removed {name}.": "{name} ተኣልዩ።",
+  "My ride types is full ({max}). Remove one to save another.": "ናተይ ዓይነታት ጉዕዞ መሊኦም ({max})። ካልእ ንምዕቃብ ሓደ ኣልግሱ።",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} ንሕጂ ተጻዒኑ። ናተይ ዓይነታት ጉዕዞ መሊኦም ({max})፦ ንምሓዙ ሓደ ኣልግሱ።",
+  "Ride settings: {type}": "ቅጥዕታት ጉዕዞ: {type}",
   "Paved and gravel roads and paths, with no mountain-bike trails.": "ዝተነጽፉን ናይ ጸጸርን መንገድታትን መገድታትን፣ ብዘይ ናይ ጎቦ ብሽክለታ መገድታት።",
   "MTB trails up to {level}": "ናይ MTB መገድታት ክሳብ {level}",
 };

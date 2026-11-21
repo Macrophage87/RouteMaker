@@ -2979,6 +2979,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Calles y caminos pavimentados y de grava, como los planea este tipo de paseo.",
   "paved only": "solo pavimento",
   "surface": "superficie",
+  "Removed {name}.": "Se quitó {name}.",
+  "My ride types is full ({max}). Remove one to save another.": "Mis tipos de viaje está lleno ({max}). Quite uno para guardar otro.",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "Se cargó {name} por ahora. Mis tipos de viaje está lleno ({max}): quite uno para guardarlo.",
   "Paved and gravel roads and paths, with no mountain-bike trails.": "Calles y caminos pavimentados y de grava, sin senderos de MTB.",
   "MTB trails up to {level}": "Senderos MTB hasta {level}",
 };

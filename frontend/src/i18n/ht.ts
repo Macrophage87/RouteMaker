@@ -2293,6 +2293,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "Wout ak chemen asfalt ak gravye, jan kalite woulib sa a planifye yo.",
   "paved only": "asfalt sèlman",
   "surface": "sifas",
+  "Removed {name}.": "Yo retire {name}.",
+  "My ride types is full ({max}). Remove one to save another.": "Tip pwomnad mwen yo plen ({max}). Retire youn pou anrejistre yon lòt.",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} chaje pou kounye a. Tip pwomnad mwen yo plen ({max}): retire youn pou kenbe l.",
+  "Ride settings: {type}": "Paramèt woulib: {type}",
   "Paved and gravel roads and paths, with no mountain-bike trails.": "Wout ak chemen asfalt ak gravye, san santye MTB.",
   "MTB trails up to {level}": "Santye MTB jiska {level}",
 };

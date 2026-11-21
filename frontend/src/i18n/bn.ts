@@ -2293,6 +2293,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "পাকা ও নুড়ির রাস্তা ও পথ, এই রাইডের ধরন যেভাবে পরিকল্পনা করে।",
   "paved only": "শুধু পাকা রাস্তা",
   "surface": "পৃষ্ঠ",
+  "Removed {name}.": "{name} সরানো হয়েছে।",
+  "My ride types is full ({max}). Remove one to save another.": "আমার রাইডের ধরন পূর্ণ ({max})। আরেকটি রাখতে একটি সরান।",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} আপাতত লোড হয়েছে। আমার রাইডের ধরন পূর্ণ ({max}): এটি রাখতে একটি সরান।",
+  "Ride settings: {type}": "সফরের সেটিংস: {type}",
   "Paved and gravel roads and paths, with no mountain-bike trails.": "পাকা ও নুড়ির রাস্তা ও পথ, মাউন্টেন বাইক ট্রেল ছাড়া।",
   "MTB trails up to {level}": "MTB ট্রেল {level} পর্যন্ত",
 };

@@ -2293,6 +2293,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "پخې او جغلي سړکونه او لارې، لکه څنګه چې دا ډول سفر یې پلان کوي.",
   "paved only": "یوازې پخه لاره",
   "surface": "سطحه",
+  "Removed {name}.": "{name} لرې شو.",
+  "My ride types is full ({max}). Remove one to save another.": "زما د سفر ډولونه ډک دي ({max}). د بل ساتلو لپاره یو لرې کړئ.",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} د اوس لپاره پورته شو. زما د سفر ډولونه ډک دي ({max}): د ساتلو لپاره یو لرې کړئ.",
+  "Ride settings: {type}": "د سفر تنظیمات: {type}",
   "Paved and gravel roads and paths, with no mountain-bike trails.": "پخې او جغلي سړکونه او لارې، د غرنۍ بایسکل له لارو پرته.",
   "MTB trails up to {level}": "د غرنۍ بایسکل لارې تر {level} پورې",
 };

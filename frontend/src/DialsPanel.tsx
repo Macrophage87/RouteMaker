@@ -547,8 +547,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
         />
       )}
       <fieldset className="when">
-        {/* A dropdown (the owner, 2026-11-21: "When is better as a dropdown"): one line, not six radio buttons. */}
-        <legend className="visually-hidden">{t("When")}</legend>
+        {/* A dropdown (the owner, 2026-11-21: "When is better as a dropdown"): one line, not six radio buttons. No
+            legend: the dropdown's own label names it, heard once (release review of #1385). */}
         <label className="when-pick">
           <span>{t("When")}</span>
           <select

@@ -2293,6 +2293,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Paved and gravel roads and paths, as this ride type plans them.": "이 라이드 유형이 계획하는 대로 포장도로와 자갈길, 경로.",
   "paved only": "포장도로만",
   "surface": "노면",
+  "Removed {name}.": "{name}을(를) 삭제했습니다.",
+  "My ride types is full ({max}). Remove one to save another.": "내 라이딩 유형이 가득 찼습니다({max}). 하나를 삭제해야 새로 저장할 수 있습니다.",
+  "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name}을(를) 우선 불러왔습니다. 내 라이딩 유형이 가득 찼습니다({max}): 보관하려면 하나를 삭제하세요.",
+  "Ride settings: {type}": "라이드 설정: {type}",
   "Paved and gravel roads and paths, with no mountain-bike trails.": "포장도로와 자갈길, 경로. MTB 트레일은 제외합니다.",
   "MTB trails up to {level}": "MTB 트레일 {level}까지",
 };

@@ -42,6 +42,16 @@ export function lineIcon(name: IconName, size = 18): ReactElement {
  * edit (the a11y review's N4). The action is shown as Adjust or Done but heard as Adjust, its state in
  * aria-expanded, so a screen reader does not say "Done, expanded" (N8).
  */
+/**
+ * Open Ride settings. On a phone it is the whole screen (the owner, 2026-11-21: "make it a full size new screen"), so
+ * modal there: nothing behind it to tab into. On a computer a side panel, and the map bar's Route stays in reach.
+ */
+function openDialog(dialog: HTMLDialogElement): void {
+  const phone = typeof window !== "undefined" && window.matchMedia?.("(max-width: 720px)").matches;
+  if (phone && dialog.showModal) dialog.showModal();
+  else dialog.show?.();
+}
+
 export function RideSettings({
   summary,
   spoken,
@@ -79,7 +89,7 @@ export function RideSettings({
     signalAtMount.current = openSignal;
     const dialog = dialogRef.current;
     setOpen(true);
-    if (dialog && !dialog.open) dialog.show?.();
+    if (dialog && !dialog.open) openDialog(dialog);
   }, [openSignal, hidden]);
   // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (traffic, hills, when, then
   // anything else set), all one button, so the row is one press and one name.
@@ -103,7 +113,7 @@ export function RideSettings({
       setOpen(next);
       if (!dialog) return;
       if (next && !dialog.open) {
-        dialog.show?.();
+        openDialog(dialog);
         dialog.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
       } else if (!next && dialog.open) {
         dialog.close();
