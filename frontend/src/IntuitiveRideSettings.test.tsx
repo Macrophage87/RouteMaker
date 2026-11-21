@@ -4,7 +4,7 @@
 // the rider sees it (testSupport/render.ts).
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { act } from "react";
+import { act, useState } from "react";
 import { click, render, type } from "./testSupport/render.ts";
 import { RideSection } from "./app/Planner.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
@@ -38,6 +38,27 @@ test("Ride settings opens on Traffic, Hills, Surface and When; speed, waits, tur
     assert.ok(advanced.textContent?.includes(inside), `${inside} is under Advanced`);
   }
   assert.ok(advanced.textContent?.includes("Keep to roads"), "Keep to roads is under Advanced");
+});
+
+test("Advanced stays open, the focus kept, when Keep to roads is ticked and then unticked", async () => {
+  function Section() {
+    const [dials, setDials] = useState(startDials("default"));
+    return <RideSection preset="default" dials={dials} choosePreset={() => {}} commitDials={setDials} route={null} typeCard popout />;
+  }
+  const screen = await render(<Section />);
+  await click(screen.button(/Adjust$/));
+  const advanced = document.querySelector<HTMLDetailsElement>("details.dials-advanced")!;
+  await click(advanced.querySelector("summary")!);
+  assert.equal(advanced.open, true);
+  const roads = () => document.querySelector<HTMLInputElement>(".trails-off input")!;
+  roads().focus();
+  await click(roads());
+  assert.equal(roads().checked, true);
+  roads().focus();
+  await click(roads());
+  assert.equal(roads().checked, false);
+  assert.equal(advanced.open, true, "still open with every setting back to the ride type's own");
+  assert.equal(document.activeElement, roads());
 });
 
 test("the Surface choices say what they let in: Paved and gravel, not Gravel", async () => {

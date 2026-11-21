@@ -398,6 +398,10 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
     dials.fewerTurns === true ||
     (view.trailsOff.checked && !view.trailsOff.locked) ||
     (ridingSpeed?.mph ?? null) !== null;
+  // Once open, React never closes it: a setting put back to the ride type's own (Keep to roads unticked, waits back to
+  // 1x) would otherwise drop the `open` attribute, fold it shut under the rider's finger and lose the keyboard focus.
+  const advancedOpened = useRef(false);
+  if (advancedSet) advancedOpened.current = true;
   return (
     <Compact.Provider value={stopsAndTurns === true}>
     <section className="dials" aria-labelledby="dials-heading">
@@ -666,7 +670,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
       {stopsAndTurns ? (
         // Open where something in it is set away from the ride type's own (a link's waits, Keep to roads), so what is
         // planning the route is never hidden (review of the intuitiveness PR); else folded.
-        <details className="fold dials-advanced" open={advancedSet || undefined}>
+        <details className="fold dials-advanced" open={advancedOpened.current || undefined}>
           <summary>{t("Advanced")}</summary>
           <div className="fold-body">
       {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the

@@ -187,6 +187,9 @@ async function openSection(p, id = null) {
 async function openRide(p) {
   await p.eval("(() => { const b = document.querySelector('.ride-line-button'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
   await sleep(200);
+  // v0.30.0 (intuitiveness review, #1391): Traffic, Hills, Surface and When first, the rest behind one Advanced fold.
+  await p.eval("(() => { const d = document.querySelector('details.dials-advanced'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
+  await sleep(200);
 }
 
 /** Opens the route summary's Directions fold (a native details). */
@@ -4902,9 +4905,9 @@ if (mine(14)) {
       chips: names('.go-places .place-chip'), rides: names('.go-sheet .ride-chips button'), search: !!document.querySelector('.go-sheet input[type=search], .go-sheet input[role=combobox], .go-sheet input'),
       small: [...document.querySelectorAll('.go-top button, .go-sheet button, .go-sheet input')].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().height < 44 || e.getBoundingClientRect().width < 44)).map((e) => e.className + ':' + e.textContent.trim()),
       scroll: document.documentElement.scrollWidth > innerWidth }; })()`);
-  // With no destination, the bar under them holds Roam (a ride with no destination; the owner, 2026-10-22).
-  check("go: a phone with no link opens in Go: Settings, the Go/Plan switch (Go pressed), Layers and Locate over the map, Roam under them, and no bottom bar",
-    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Settings", "Go", "Plan", "Layers", "Locate", "Roam"]), JSON.stringify(go));
+  // Roam went under More (intuitiveness review, Go, #1395), first there: a ride with no destination is rarer than a place.
+  check("go: a phone with no link opens in Go: Settings, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
+    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Settings", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
@@ -4912,8 +4915,8 @@ if (mine(14)) {
   // Food is "Eat" (P2: it lists places to eat), and More ride types "Ride type & settings" (P3: hills and traffic are there);
   // Sights is "Places to see" and Saved routes "Load route" (P12).
   // Ride type & settings second, beside the rider's own (#1335, v0.28.0: no sideways swipe to reach it).
-  check("go: the sheet has Where to?, the place chips Home, Eat, Water and Restroom (no Work), then More with Metro, Repair, Places to see, Load route and Featured routes, and the ride types Default, Ride type & settings, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Eat", "Water", "Restroom", "More", "Metro", "Repair", "Places to see", "Load route", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Ride type & settings", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus"]), JSON.stringify(go));
+  check("go: the sheet has Where to?, the place chips Home, Eat, Water and Restroom (no Work), then More with Roam, Metro, Repair, Places to see, Load route and Featured routes, and the ride types Default, Ride type & settings, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Eat", "Water", "Restroom", "More", "Roam", "Metro", "Repair", "Places to see", "Load route", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Ride type & settings", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus"]), JSON.stringify(go));
   // More > Load route (Stephen 2026-10-26; P12: it was Saved routes): Load route's popup, one title; Escape gives the focus back.
   await p.eval("document.querySelector('.go-sheet .go-more').click(); true");
   await sleep(200);
