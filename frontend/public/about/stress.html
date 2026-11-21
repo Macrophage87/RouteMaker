@@ -1268,7 +1268,12 @@ street, as set out under Table B.</figcaption>
     short footway between them counts as LTS 3. From the next map update, so does a plain footway (paved or of
 unknown surface, with no bike tag and no hiking marks) of up to 500 ft [150 m] from a street's dead end to a sidewalk,
 crosswalk, street or bike path, such as the path from the end of Flack Street to the Glenmont Metro; dirt paths and
-hiking trails are left out. A crosswalk over a slip lane adds a wait to the route's
+hiking trails are left out. From the next map update, a crosswalk that carries a trail across a road, up to
+about 160 ft [50 m] long, counts as LTS 3 too, such as the Little Falls Trail's crossing of Arlington Road; the
+crossing itself is priced as a junction. So does a run of footways with no bike tag, up to 160 ft [50 m] long,
+joining a trail to another way open to bikes where riding round would take 1,000 ft [300 m] or more (our default,
+unmeasured), such as the footway from a cycleway to the service road by the Bethesda Trolley Trail (the owner's
+ask, 2026-11-20: "This happens a lot."). A crosswalk over a slip lane adds a wait to the route's
     time. Mass Ride rides no sidewalks, DC's downtown sidewalks stay closed, and escalators are closed to bikes, so routes take the
     elevator.</p>
     <p>Mountain-bike trails are closed on most ride types. Mountain Bike rides all of
@@ -1351,8 +1356,8 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
         </thead>
         <tbody>
           <tr><th scope="row">Fast</th><td>1.2 to 1.4</td><td>2.1 to 2.3</td><td>LTS 4, plus entry charge</td></tr>
-          <tr><th scope="row">Group Ride, Mountain Goat, Gravel</th><td>1.9 to 2.9</td><td>5.4 to 6.3</td><td>LTS 4, plus entry charge</td></tr>
-          <tr><th scope="row">Default, E-bike, Cargo Bike carrying cargo</th><td>2.9 to 5.8</td><td>13 to 16</td><td>LTS 4, plus entry charge</td></tr>
+          <tr><th scope="row">Group Ride, Mountain Goat</th><td>1.9 to 2.9</td><td>5.4 to 6.3</td><td>LTS 4, plus entry charge</td></tr>
+          <tr><th scope="row">Default, Gravel, E-bike, Cargo Bike carrying cargo</th><td>2.9 to 5.8</td><td>13 to 16</td><td>LTS 4, plus entry charge</td></tr>
           <tr><th scope="row">Cargo Bike with passengers, Tandem</th><td>3.2 to 6.8</td><td>16 to 19</td><td>LTS 4, plus entry charge</td></tr>
           <tr><th scope="row">Trailmaxxing, Novice and Nervous</th><td>6</td><td>11, avoided before anything else</td><td>16, avoided before anything else</td></tr>
           <tr><th scope="row">Mass Ride</th><td>1</td><td>1</td><td>1, plus entry charge</td></tr>
@@ -1406,6 +1411,15 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
     busier roads, and rural stop signs, cost more again. The hardest junctions, on LTS
     4 roads with no signal, can cost up to 2 calm miles [3.22 km; 10,560 ft]. Quiet
     streets meeting quiet streets cost almost nothing.</p>
+<p><strong>Rated junctions</strong> (from version 0.29.0). Every junction a bike rides through has also
+been rated by hand from the evidence, movement by movement: straight across the busiest road, a left off or onto it,
+and straight on along it. Each movement has a stress level on the road scale and the seconds a rider loses there.
+The movement your route makes sets the junction's cost in place of these figures; a right turn keeps them. A
+movement rated below 2.5 costs nothing (the owner's choice). From 2.5 up it follows the same scale: about 0.15 calm
+mi [800 ft] at 2.5, 0.30 at 3, 0.53 at 3.5, 0.76 at 4 and 2 calm mi at 5; 4.5 sits halfway, about 1.4 calm mi (our
+default, unmeasured). Rush hour multiplies it as it does any junction. A divided road's crossing counts once, not at
+each half. A junction rating a rider suggested and a reviewer approved still comes first, and Mass Ride keeps its
+own junction reading.</p>
 <details class="more"><summary>More: Junction warnings</summary>
 <div class="more-body">
     
@@ -1641,7 +1655,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
 <p class="next">Next: <a href="/about/routing.html">Routing</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.29.0.</p>
+  <p>Part of RouteMaker's documentation. It describes version 0.30.0.</p>
   <p><a href="/">Back to the map</a></p>
 </footer>
 </body>

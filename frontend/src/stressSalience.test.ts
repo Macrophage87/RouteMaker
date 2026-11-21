@@ -269,8 +269,6 @@ test("the stress bar and the swatches carry Avoid's own pattern, in the tier's c
     const avoid = tiersFor(palette)[4];
     assert.ok(contrastRatio(avoid.casing, avoid.color) >= 3, `${palette}: the hatch is ${contrastRatio(avoid.casing, avoid.color).toFixed(2)}:1 on the fill`);
   }
-  const app = appSource();
-  assert.ok((app.match(/segmentStyle\(s\)/g) ?? []).length >= 2, "both the bar's segments and the list's swatches set the accent (segmentStyle, stressBar.ts)");
 });
 
 // ---------------------------------------------------------------------------

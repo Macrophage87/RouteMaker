@@ -841,10 +841,10 @@ MTB_HILLS = 50
 #   (about three times a paved road): there is no road-bike twin of that graph.
 # - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
 #   11.2 mph; the rider's own speed (`rider_speed`) still wins.
-# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`). It had
+# - Fewer turns: Group Ride's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`). It had
 #   Group Ride's higher gate cost too ("a road bike slows hard for a gate or bollard") until the
 #   owner's 2026-11-08 ruling that only Tandem and Cargo pay a large one (`GATE_COST_S`).
-# - Traffic and hills: stress 40, "Balanced" (Group Ride's and Gravel's start), and Default's
+# - Traffic and hills: stress 40, "Balanced" (Group Ride's start), and Default's
 #   hills; living streets as Fast (`FAST_LIVING_STREETS`): a shared street is slow for a road
 #   bike.
 ROAD_BIKE = "road-bike"
@@ -911,12 +911,66 @@ AVOID_GRAVEL_BECOMES = frozenset({"default", "fast", "gravel", "mountain-goat"})
 # Run's is 3 too (2026-11-02): a runner stopped at a light loses their pace as a road rider does
 # (`core.run_plan.weigh`, its signalled crossings).
 # Tandem's is 2 (2026-11-08, "Tandem" above): both riders restart in step.
-WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0, TANDEM: TANDEM_WAIT_WEIGHT})
+# The pleasure and training ride types weigh theirs twice (the owner, 2026-11-20: "Especially
+# for pleasure and training rides, being able to spend that time riding and not waiting at a
+# light is what matters", then "Add that in"): Trailmaxxing, Gravel, Mountain Goat and Mountain
+# Bike. The 2 is our default, not measured (Tandem's, for a rider who would rather keep moving).
+# Not Fast (the owner, the same day: "Fast is get there as soon as possible, so it should keep
+# as close to real time as possible, with some reduction for LTS 4+"): its waits count as the
+# real seconds they are.
+PLEASURE_WAIT_WEIGHT = 2.0
+PLEASURE_WAIT_RIDES = frozenset({"trailmaxxing", "gravel", "mountain-goat", MOUNTAIN_BIKE})
+# Group Ride's is 2 (2026-11-20: a red light splits the group, which then waits to regroup)
+# and Cargo Bike's 2, as Tandem's (a heavy bike restarts slowly). Proposed by us and agreed by
+# the owner the same day ("look good"); our defaults, not measured.
+GROUP_RIDE_WAIT_WEIGHT = 2.0
+CARGO_WAIT_WEIGHT = TANDEM_WAIT_WEIGHT
+WAIT_WEIGHTS = MappingProxyType(
+    {
+        ROAD_BIKE: 3.0,
+        RUN: 3.0,
+        TANDEM: TANDEM_WAIT_WEIGHT,
+        "group-ride": GROUP_RIDE_WAIT_WEIGHT,
+        "cargo": CARGO_WAIT_WEIGHT,
+        **{name: PLEASURE_WAIT_WEIGHT for name in PLEASURE_WAIT_RIDES},
+    }
+)
+# The most a caller may raise a ride's wait weight to (`routing.Dials.wait_weight`, the API's
+# and the connector's `wait_weight`; the owner, 2026-11-20: "let the MCP server increase those
+# penalties more"). 5 is `junction_delay.MAX_STACKED_WEIGHT`, the most any wait counts in the
+# ranking: past it a red light's price stops growing.
+MAX_WAIT_WEIGHT = 5.0
 
 
-def wait_weight_for(name: str) -> float:
-    """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`)."""
-    return WAIT_WEIGHTS.get(name, 1.0)
+# What the time a turn loses to braking and speeding up again, and a sharp turn's or U-turn's
+# extra price, weigh when routes are ranked (`refine.turn_m`): the rider's "Sharp turns" (the
+# owner, 2026-11-20: "I find sharp turns pretty fun, but I hate standing at lights", so apart
+# from the wait weight). Road Bike's is 3 (the owner, the same day: "Road bikes that go at 20
+# miles an hour really don't like them"); Tandem's 2, as its waits (both riders slow and
+# restart in step) and Cargo Bike's 2 (2026-11-20: long and heavy, it swings wide and is slow
+# back to speed); every other ride type 1. A rider may set any weight from 0 (sharp turns
+# cost no more than any other turn) to MAX_SHARP_TURN_WEIGHT, below the ride type's own too.
+# Our defaults, not measured.
+SHARP_TURN_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, TANDEM: 2.0, "cargo": 2.0})
+MAX_SHARP_TURN_WEIGHT = 5.0
+
+
+def sharp_turn_weight_for(name: str, asked: float | None = None) -> float:
+    """How much a ride's sharp turns weigh in the ranking (`SHARP_TURN_WEIGHTS`), or the
+    rider's `asked`, held between 0 and MAX_SHARP_TURN_WEIGHT."""
+    if asked is None:
+        return SHARP_TURN_WEIGHTS.get(name, 1.0)
+    return max(0.0, min(float(asked), MAX_SHARP_TURN_WEIGHT))
+
+
+def wait_weight_for(name: str, asked: float | None = None) -> float:
+    """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`), or
+    `asked` where a caller asks for more, never past MAX_WAIT_WEIGHT. An ask below the ride
+    type's own weight is ignored: it raises the price of waiting, never lowers it."""
+    own = WAIT_WEIGHTS.get(name, 1.0)
+    if asked is None:
+        return own
+    return max(own, min(float(asked), MAX_WAIT_WEIGHT))
 
 
 # The ride types whose beg-button crossings rank at Road Bike's ten minutes
@@ -928,6 +982,32 @@ def wait_weight_for(name: str) -> float:
 # included, ranks a button by the usual stacked rule at its own weight. Switched off with every
 # other button price since 2026-11-10 (`junction_delay.BUTTONS_PRICED`): kept for that rule.
 ROAD_BIKE_BUTTON_RIDES = frozenset({ROAD_BIKE, RUN, TANDEM})
+
+
+# Fast, "as direct as possible" (the owner, 2026-11-20: "Make fast faster", and, earlier the
+# same day, "as close to real time as possible, with some reduction for LTS 4+"). A Fast ride
+# left at its own traffic position is planned again at the most direct end of the slider
+# (STRESS_MIN), and that route is taken where it is at least FAST_DIRECT_SAVES_S quicker door
+# to door (riding and waiting) and adds no more than FAST_DIRECT_LTS4_M of LTS 4 and Avoid.
+# Measured on 16 trips (2026-11-20, docs/stress/routing-costs.md): planning every
+# Fast ride at 0 saved 2.3% of the time and doubled its LTS 4 miles (one trip 8 minutes
+# slower); this rule kept 14.8 of the 20.7 minutes saved with LTS 4 flat. The minute and the
+# quarter mile are our defaults, not measured.
+FAST = "fast"
+FAST_DIRECT_SAVES_S = 60.0
+FAST_DIRECT_LTS4_M = 402.336
+
+
+def fast_direct_wins(direct: dict, own: dict) -> bool:
+    """Whether Fast's most direct route (`direct`, a plan's answer) replaces its own
+    (`FAST_DIRECT_SAVES_S`, `FAST_DIRECT_LTS4_M`)."""
+
+    def busy_m(body: dict) -> float:
+        stress = body.get("stress_m") or {}
+        return float(stress.get("4") or 0.0) + float(stress.get("5") or 0.0)
+
+    saved_s = float(own["duration_s"]) - float(direct["duration_s"])
+    return saved_s >= FAST_DIRECT_SAVES_S and busy_m(direct) - busy_m(own) <= FAST_DIRECT_LTS4_M
 
 
 def road_bike_buttons_for(name: str) -> bool:
@@ -1094,7 +1174,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.STANDARD,
                 # "L2: Cross or Mountain, avoid_bad_surfaces zero". Unpaved-share
                 # ranking is layer 4 and not built.
-                stress=40,
+                # Starts where Default does (2026-11-20): 40, the early table's figure,
+                # started a pleasure ride more traffic tolerant than Default. Proposed by
+                # us, agreed by the owner ("look good"); our default, not measured.
+                stress=DEFAULT_STRESS,
                 hills=0,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=0.0,
@@ -1108,7 +1191,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.STANDARD,
                 # "Few stops, few turns, smooth pavement | L2: high use_roads,
                 # high maneuver_penalty, high surface avoidance" - high, and
-                # still below the 1.0 at which the surface exclusion arms.
+                # still below the 1.0 at which the surface exclusion arms. (The high
+                # maneuver penalty was removed on 2026-11-20, below.)
                 # The old 10 was `use_roads` 0.90. On the slider's steps of
                 # five, 10 gives 0.871 and 5 gives 0.936: 10 is the nearer
                 # (review r1; 8 would give 0.897 but is not a step), and plans
@@ -1120,7 +1204,11 @@ PRESETS: MappingProxyType = MappingProxyType(
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
                 use_living_streets=FAST_LIVING_STREETS,
-                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                # Not the high turn charge any more (the owner, 2026-11-20: Fast "should keep
+                # as close to real time as possible"): a turn's real cost, its braking time,
+                # is priced by `refine.weigh_turns`, so Fast pays the every-setting turn charge
+                # (CALM_MANEUVER_PENALTY_S) like Default.
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
             ),
@@ -1354,7 +1442,22 @@ OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
 # MTB trails too, some are definitely fine for that", "But it's opt in there too", "And
 # default"; "Steer on Gravel's graph"): with it on they ride the off-road graph as Gravel does,
 # and `core.easy_mtb` steers them off the trails rated 2 or harder. Off by default.
-EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
+# Since 2026-11-21 (the owner: "a surface setting: paved only, gravel, easy MTB, and then MTB2-4
+# as max", "People here can and should be able to adjust to anything") every ride type on the
+# standard graph with a bike of the rider's own takes it, and a hardest level of 2, 3 or 4 too
+# (the API's `mtb_level` beside `easy_mtb`): that ride takes Mountain Bike's graph, where every
+# level is open, and `core.easy_mtb` holds it to the level chosen.
+EASY_MTB_PRESETS = frozenset(
+    {
+        "default",
+        "trailmaxxing",
+        "group-ride",
+        "fast",
+        "cargo",
+        "novice",
+        "tandem",
+    }
+)
 
 
 def variant_for_ride(
@@ -1362,7 +1465,7 @@ def variant_for_ride(
     when: str,
     assist: bool = False,
     trails_off: bool = False,
-    easy_mtb: bool = False,
+    easy_mtb: bool | int = False,
     mtb_done: bool = False,
 ) -> str:
     """The graph a ride routes on.
@@ -1414,10 +1517,14 @@ def variant_for_ride(
         return Variant.NO_TRAIL.value
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
-    easy = easy_mtb and name in EASY_MTB_PRESETS and not mtb_done
+    # `easy_mtb` may also be the hardest trail level (`routing._easy_asked`): 2 to 4 rides the
+    # Mountain Bike graph, where those levels are open; True (1) the off-road one.
+    easy = int(easy_mtb) if name in EASY_MTB_PRESETS and not mtb_done else 0
     mtb_graph = preset.variant == Variant.MTB.value or name in OFFROAD_PRESETS
     if mtb_done and mtb_graph:
         return Variant.WEEKEND.value if when == WEEKEND else Variant.STANDARD.value
+    if easy >= 2 and preset.variant == Variant.STANDARD.value:
+        return Variant.MTB.value
     if (name in OFFROAD_PRESETS or easy) and preset.variant == Variant.STANDARD.value:
         return Variant.OFFROAD.value
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
@@ -1444,7 +1551,7 @@ def weekend_too(
     when: str,
     assist: bool = False,
     trails_off: bool = False,
-    easy_mtb: bool = False,
+    easy_mtb: bool | int = False,
     mtb_done: bool = False,
 ) -> bool:
     """Whether a ride is planned on the weekend graph as well as on its own (`routing.plan`):
@@ -1468,7 +1575,7 @@ VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Moun
 # the defaults would like to be able to override the speed as an advanced feature"), set once in
 # Settings: Valhalla's `cycling_speed`, the flat-ground pace its grade model, and so every time
 # and arrival estimate, starts from. The API takes 8 to 50 km/h (about 5 to 31 mph), round the
-# ride settings' picker of 8 to 30 mph and inside Valhalla's own bounds for the bicycle costing.
+# ride settings' slider of 6 to 30 mph and inside Valhalla's own bounds for the bicycle costing.
 RIDER_SPEED_MIN_KMH = 8.0
 RIDER_SPEED_MAX_KMH = 50.0
 

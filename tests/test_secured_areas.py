@@ -19,6 +19,7 @@ merged source extract of 2026-10-03 (OpenStreetMap contributors, ODbL).
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -503,3 +504,118 @@ def test_the_sykesville_land_is_closed_and_slacks_road_is_not_on_real_data():
     assert rest and not rest & set(found)
     outside = {w for w, tags, _ in ways if w not in found and ra.open_to_bicycles(tags)}
     assert ra.through_networks(list(found.values()), nodes, outside) == []
+
+
+# --- Short links between open paths (the owner, 2026-11-20) ------------------------------
+#
+# The Rockville Pike side path at NIH, as OSM has it (2026-11-20): NIH's outline runs to the
+# curb, so the path is inside it. Its pieces are `bicycle=designated` cycleways (open); the
+# crossing over Wilson Ln (770173788, with a 7 m sidewalk stub 770173787) and the one over
+# the delivery entrance (770173790) are `footway=crossing bicycle=yes`. Nodes are numbered
+# here; the shapes are the real ways' ends (OpenStreetMap contributors, ODbL).
+NIH = ra.named_area(
+    (
+        (-77.11, 38.99, -77.09, 39.01),
+        [[(-77.11, 38.99), (-77.09, 38.99), (-77.09, 39.01), (-77.11, 39.01)]],
+        [],
+    ),
+    "National Institutes of Health",
+    "w42921793",
+)
+DESIGNATED = {"highway": "cycleway", "bicycle": "designated", "foot": "designated"}
+CROSSING = {"highway": "footway", "footway": "crossing", "bicycle": "yes", "foot": "yes"}
+SIDEWALK = {"highway": "footway", "footway": "sidewalk", "bicycle": "yes", "foot": "yes"}
+NIH_WAYS = [
+    # (way, tags, nodes, coordinates)
+    (770173785, DESIGNATED, [1, 2], [(-77.0971135, 38.999578), (-77.0974097, 39.0023822)]),
+    (770173787, SIDEWALK, [2, 3], [(-77.0974097, 39.0023822), (-77.0974187, 39.0024542)]),
+    (
+        770173788,
+        CROSSING,
+        [3, 4, 5],
+        [(-77.0974187, 39.0024542), (-77.09743, 39.00254), (-77.0974397, 39.0026377)],
+    ),
+    (770173789, DESIGNATED, [5, 6], [(-77.0974397, 39.0026377), (-77.0977052, 39.0042233)]),
+    (
+        770173790,
+        CROSSING,
+        [6, 7, 8],
+        [(-77.0977052, 39.0042233), (-77.0978, 39.00426), (-77.0978611, 39.0043015)],
+    ),
+    (770173791, DESIGNATED, [8, 9], [(-77.0978611, 39.0043015), (-77.0979227, 39.0047146)]),
+    # Wilson Ln, the campus road the first crossing crosses at node 4: closed.
+    (
+        552080823,
+        {"highway": "unclassified", "name": "Wilson Lane", "access": "permissive"},
+        [4, 10],
+        [(-77.09743, 39.00254), (-77.0990, 39.0026)],
+    ),
+    # A bicycle=yes sidewalk from the path into the campus: it meets an open way at one
+    # node only, so it stays closed.
+    (900, SIDEWALK, [9, 11], [(-77.0979227, 39.0047146), (-77.0985, 39.0047)]),
+]
+
+
+def _nih_context(ways=NIH_WAYS):
+    placed = [(w, tags, coords) for w, tags, _nodes, coords in ways]
+    return SimpleNamespace(
+        ways=[
+            SimpleNamespace(osm_id=w, tags=tags, node_ids=nodes, coordinates=coords)
+            for w, tags, nodes, coords in ways
+        ]
+    ), placed
+
+
+def test_the_crossings_between_open_pieces_of_a_side_path_reopen_as_links():
+    context, placed = _nih_context()
+    secured = ra.secured_closures(placed, [NIH])
+    before = {m.way_id for m in secured if m.closed}
+    assert before == {770173787, 770173788, 770173790, 552080823, 900}
+    military, secured = run.reopen_links(context, [], secured)
+    found = {m.way_id: m for m in secured}
+    assert military == []
+    assert {w for w, m in found.items() if m.closed} == {552080823, 900}
+    for way in (770173787, 770173788, 770173790):
+        assert found[way].why == ra.WHY_LINK and not found[way].closed
+    # The link is a listed reason, so the side path's open network does not fail the
+    # rebuild's pass-through check.
+    assert ra.WHY_LINK in ra.THROUGH_EXCEPTIONS
+
+
+def test_a_link_needs_its_own_bicycle_permission_and_must_be_short():
+    untagged = [
+        (w, {k: v for k, v in tags.items() if k != "bicycle"} if w == 770173790 else tags, n, c)
+        for w, tags, n, c in NIH_WAYS
+    ]
+    context, placed = _nih_context(untagged)
+    _, secured = run.reopen_links(context, [], ra.secured_closures(placed, [NIH]))
+    assert next(m for m in secured if m.way_id == 770173790).why == ra.WHY_SECURED
+    # A run longer than LINK_MAX_M (the first crossing and its stub, made long) stays closed.
+    found = [
+        replace(m, length_m=ra.LINK_MAX_M) if m.way_id == 770173788 else m
+        for m in ra.secured_closures(_nih_context()[1], [NIH])
+    ]
+    nodes = {w: n for w, _t, n, _c in NIH_WAYS}
+    open_nodes = {n for w in (770173785, 770173789, 770173791) for n in nodes[w]}
+    assert ra.open_links(found, nodes, open_nodes) == {770173790}
+
+
+def test_no_closed_way_means_no_change():
+    context, _ = _nih_context()
+    signed = [ra.MilitaryWay(1, "x", "cycleway", "", 10.0, ra.OPEN, ra.WHY_SIGNED)]
+    assert run.reopen_links(context, signed, []) == (signed, [])
+
+
+def test_a_footway_crossing_an_open_road_midway_into_the_campus_stays_closed():
+    # Starts on an open street outside (node 1), crosses an open road inside at node 2
+    # partway along, and ends on a closed campus road (node 3): one open end only.
+    found = [
+        ra.MilitaryWay(5, "NIH", "footway", "", 30.0, ra.CLOSED, ra.WHY_SECURED_TAGGED_OPEN),
+    ]
+    assert ra.open_links(found, {5: [1, 2, 3]}, {1, 2}) == set()
+    assert ra.open_links(found, {5: [1, 2, 3]}, {1, 3}) == {5}
+
+
+def test_a_base_keeps_its_bicycle_yes_ways_closed():
+    found = [ra.MilitaryWay(5, "Fort", "footway", "", 20.0, ra.CLOSED, ra.WHY_TAGGED_OPEN)]
+    assert ra.open_links(found, {5: [1, 2]}, {1, 2}) == set()

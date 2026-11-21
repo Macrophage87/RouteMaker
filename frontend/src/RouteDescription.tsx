@@ -28,6 +28,8 @@ import { FEDERAL_UNCHECKED } from "./lib/federalStops.ts";
 import { hazardLines } from "./lib/massHazards.ts";
 import { RouteHazardSwatch } from "./lib/routeHazards.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
+import { stepLine, tierKey } from "./lib/stepLine.ts";
+import { segmentClass, segmentStyle, stressSegments } from "./lib/stressBar.ts";
 import { ROUTE_FOLDS, ROUTE_FOLD_GROUP, copyText, selectionCopy, stepsCount } from "./lib/sidebar.ts";
 import { Fold } from "./lib/sidebarParts.ts";
 import {
@@ -52,6 +54,14 @@ import {
   noticeParts,
   noticesLine,
 } from "./lib/routeDescription.ts";
+
+/** A level's chip, as the stress bar colours it ("2.5" is the half step after 2). */
+function TierChip({ tier }: { tier: number }) {
+  const key = tierKey(tier);
+  const segment = stressSegments({ [key]: 1 }).find((s) => s.key === key);
+  if (!segment) return null;
+  return <span className={`swatch step-chip ${segmentClass(segment)}`} style={segmentStyle(segment)} aria-hidden="true" />;
+}
 
 /** How long the copy reply waits after clearing, so that it is a change a screen reader says. */
 export const COPY_REPLY_DELAY_MS = 150;
@@ -78,7 +88,9 @@ export function RouteDescription({
   const [open, setOpen] = useState<boolean>(() => readOpen());
   const [chosen, setChosen] = useState<DescriptionView>(() => readView());
   const choice = hasOverview(route);
-  const view = viewFor(route, chosen);
+  // In the fold, Full detail is always offered: the steps are one line each without it (intuitiveness review).
+  const view = fold ? chosen : viewFor(route, chosen);
+  const brief = fold && view !== "full";
   const showHighLanes = useHighStressLanes(); // the entries and the text follow the "Show bike lanes on high-stress roads" switch
   const entries = descriptionEntries(route, view, showHighLanes);
   const hiddenNote = lanesHiddenNote(route, view, showHighLanes);
@@ -161,6 +173,24 @@ export function RouteDescription({
 
   const items = steps.map((entry, i) => {
     const crossings = crossingsOf(entry);
+    const line = brief ? stepLine(entry) : null;
+    if (line) {
+      return (
+        <li key={i} className="description-stretch description-brief" {...serverTextAttributes()}>
+          {line.tier !== null && <TierChip tier={line.tier} />}
+          <span className="step-words">{line.words}</span>
+          <span className="step-distance"> · {line.distance}</span>
+          {line.warn && <span className="step-warn"> · {line.warn}</span>}
+          {crossings.length > 0 && (
+            <ol className="description-crossings" aria-label={t("Crossings in this group, in route order")}>
+              {crossings.map((crossing, k) => (
+                <li key={k}>{crossing.text}</li>
+              ))}
+            </ol>
+          )}
+        </li>
+      );
+    }
     return (
       <li key={i} className={`description-${entry.kind}`} {...serverTextAttributes()}>
         {/* An Avoid-rated junction (307, 310): the symbol is seen, not heard; the text names it (309). */}
@@ -264,12 +294,10 @@ export function RouteDescription({
           }
         }}
       >
-        {choice ? (
-          <label className="description-view">
-            <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
-            {t("Full detail")}
-          </label>
-        ) : null}
+        <label className="description-view">
+          <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
+          {t("Full detail")}
+        </label>
         {lead && <p className="hint capacity-lead">{lead}</p>}
         {hazardBlock(false)}
         {federalBlock(false)}
