@@ -8093,7 +8093,7 @@ wide gates), so the beta agent stops on the tag.
 The release train's v0.30.0, on the owner's ask (2026-11-21, "Get ready to ship 0.30 when the map is
 rebuilt"): Ride settings, the same in Plan and Go and now a screen of their own (a full screen on a phone, a
 side panel on a computer), with "Waiting at lights and stops", "Sharp turns" (both in half steps) and "Fewer
-turns" (#1367, #1374, #1376, #1384, #1391); a Surface picker from Paved only and Gravel to Easy MTB trails and MTB
+turns" (#1367, #1374, #1376, #1384, #1391); a Surface picker from Paved only and Paved and gravel to Easy MTB trails and MTB
 trails up to level 4, kept in links as `paved=1` (#1386, #1388); the rider's own named ride types, kept on the
 account in `settings.own` and `goOwn` (no migration: the settings JSON; no points, vias, lines or notes accepted)
 with what Go starts on and settings shared as JSON (#1385, #1391); waits weigh 2x on
