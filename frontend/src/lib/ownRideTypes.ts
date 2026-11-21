@@ -203,6 +203,12 @@ export function undoRemoveOwn(): void {
 }
 
 const removedNow = () => removed;
+/** Undo is for now only: it goes when the list it was offered in closes (release review). */
+export function forgetRemovedOwn(): void {
+  if (removed === null) return;
+  removed = null;
+  tell();
+}
 /** The one last removed, while Undo can bring it back. */
 export function useRemovedOwn(): { own: OwnRideType; at: number } | null {
   return useSyncExternalStore(subscribe, removedNow, () => null);
@@ -225,6 +231,7 @@ export function freeName(list: readonly OwnRideType[], name: string, preset: Pre
 
 /** Read the device's again (after the account's settings are put on the device). */
 export function reloadOwn(): void {
+  removed = null;
   current = readOwn();
   goOwn = readGoOwn();
   tell();

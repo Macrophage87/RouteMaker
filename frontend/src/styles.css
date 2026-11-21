@@ -5184,17 +5184,18 @@ dialog.plan-ride-settings h2:focus {
    flush; on a phone the whole screen. */
 @media (min-width: 721px) {
   dialog.plan-ride-settings {
-    inset: 0 auto 0 412px;
-    height: 100dvh;
-    max-height: 100dvh;
-    border-width: 0 1px 0 1px;
+    /* Below the map bar's line (Route stays in reach), down to the foot of the screen. */
+    inset: 64px auto 0 412px;
+    height: calc(100dvh - 64px);
+    max-height: calc(100dvh - 64px);
+    border-width: 1px 1px 0 1px;
     border-radius: 0;
     box-shadow: none;
   }
 }
 @media (min-width: 721px) and (max-width: 899px) {
   dialog.plan-ride-settings {
-    inset: 0 0 0 auto;
+    inset: 64px 0 0 auto;
     width: min(440px, 100vw);
   }
 }

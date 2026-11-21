@@ -8,13 +8,13 @@
  * The ride type in use is pressed (aria-pressed), so it is said as well as shown. A
  * createElement component, so a test renders it (node's runner reads .ts, not .tsx).
  */
-import { Fragment, createElement as h, type ReactElement } from "react";
+import { Fragment, createElement as h, useEffect, type ReactElement } from "react";
 import { PRESETS, presetLabel, presetSaid, presetSummary, type PresetId } from "./presets.ts";
 import { PresetName } from "./presetName.ts";
 import { FavoriteStar } from "./favoriteRides.ts";
 import { t } from "./i18n.ts";
 import { lineIcon } from "./sidebarParts.ts";
-import { ownSetup, undoRemoveOwn, useRemovedOwn, type OwnRideType } from "./ownRideTypes.ts";
+import { forgetRemovedOwn, ownSetup, undoRemoveOwn, useRemovedOwn, type OwnRideType } from "./ownRideTypes.ts";
 import { rideSummaryParts } from "./rideSummary.ts";
 
 /**
@@ -76,6 +76,7 @@ export function OwnRideCards({
 }): ReactElement {
   // Remove takes a card off at once; Undo puts it back (release review of #1385). Always in the page, so it is heard.
   const removed = useRemovedOwn();
+  useEffect(() => forgetRemovedOwn, []);
   const undo = h(
     "p",
     { className: "hint own-ride-removed", role: "status" },
