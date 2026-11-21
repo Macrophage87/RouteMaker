@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "Arè yo rete nan lòd sa a, pou pwen pasaj ou yo rete sou wout yo.",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "Chemen MTB fasil",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Li pran chemen bisiklèt mòn ki make fasil oswa ki pa make tou, sitou zèb ak tè.",
   "Not used while Keep to roads is on.": "Li pa sèvi pandan Wout sèlman limen.",
   "easy MTB trails": "chemen MTB fasil",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Li planifye sou kat tout-teren an, menm jan ak Gravel, kidonk li ka pran chemen bisiklèt mòn ki make 0 oswa 1 sou nenpòt nan de echèl yo, oswa ki pa make ditou. Chemen ki make 2 oswa pi difisil yo rete deyò toutkote gen yon lòt chemen; si youn toujou sèvi, wout la di sa. Estrès sikilasyon an toujou konte menm jan an. Tè a ka plen labou apre lapli.",
@@ -2268,4 +2267,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Download all ({size})": "Telechaje tout ({size})",
   "Map of {date}": "Kat {date}",
   "Southern Maryland": "Sid Maryland",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "Sifas",
+  "Paved only": "Asfalt sèlman",
+  "Avoids gravel and dirt wherever pavement runs near.": "Evite gravye ak tè kote gen asfalt toupre.",
+  "Paved and gravel roads and paths, as this ride type plans them.": "Wout ak chemen asfalt ak gravye, jan kalite woulib sa a planifye yo.",
+  "paved only": "asfalt sèlman",
+  "surface": "sifas",
 };

@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "Остановки остаются в этом порядке, чтобы промежуточные точки остались на своём участке.",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "Лёгкие МТБ-трассы",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Также ведёт по трассам для горных велосипедов лёгкого уровня или без оценки, чаще всего по траве и грунту.",
   "Not used while Keep to roads is on.": "Не используется, пока включено «Только дороги».",
   "easy MTB trails": "лёгкие МТБ-трассы",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Планирует по внедорожной карте, как Gravel, поэтому маршрут может идти по трассам для горных велосипедов с оценкой 0 или 1 по любой из двух шкал или вовсе без оценки. Трассы с оценкой 2 и сложнее обходятся везде, где есть другой путь; если одна всё же используется, маршрут об этом скажет. Нагрузка от трафика учитывается как обычно. После дождя грунт может быть грязным.",
@@ -2268,4 +2267,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Download all ({size})": "Скачать все ({size})",
   "Map of {date}": "Карта от {date}",
   "Southern Maryland": "Южный Мэриленд",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "Покрытие",
+  "Paved only": "Только асфальт",
+  "Avoids gravel and dirt wherever pavement runs near.": "Избегает гравия и грунта, где рядом есть асфальт.",
+  "Paved and gravel roads and paths, as this ride type plans them.": "Асфальтовые и гравийные дороги и дорожки, как их планирует этот тип поездки.",
+  "paved only": "только асфальт",
+  "surface": "покрытие",
 };

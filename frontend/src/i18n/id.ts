@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "Perhentian tetap dalam urutan ini, agar titik lewat Anda tetap di jalurnya.",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "Jalur MTB mudah",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Juga melewati jalur sepeda gunung berperingkat mudah atau tanpa peringkat, kebanyakan rumput dan tanah.",
   "Not used while Keep to roads is on.": "Tidak dipakai selama Hanya jalan raya aktif.",
   "easy MTB trails": "jalur MTB mudah",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Merencanakan di peta off-road, seperti Gravel, sehingga jalur sepeda gunung berperingkat 0 atau 1 pada skala mana pun, atau tanpa peringkat sama sekali, boleh dilalui. Jalur berperingkat 2 atau lebih sulit dihindari di mana pun ada jalan lain; jika masih ada yang dipakai, rute akan memberi tahu. Tekanan lalu lintas ditimbang seperti biasa. Tanah bisa berlumpur setelah hujan.",
@@ -2268,4 +2267,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Download all ({size})": "Unduh semua ({size})",
   "Map of {date}": "Peta {date}",
   "Southern Maryland": "Maryland Selatan",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "Permukaan",
+  "Paved only": "Hanya beraspal",
+  "Avoids gravel and dirt wherever pavement runs near.": "Menghindari kerikil dan tanah di mana pun ada jalan beraspal di dekatnya.",
+  "Paved and gravel roads and paths, as this ride type plans them.": "Jalan dan jalur beraspal dan berkerikil, sesuai rencana jenis perjalanan ini.",
+  "paved only": "hanya beraspal",
+  "surface": "permukaan",
 };

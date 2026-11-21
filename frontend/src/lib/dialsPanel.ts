@@ -18,6 +18,7 @@ import {
 import { runs, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
 import { metricFirst } from "./units.ts";
+import { GRAVEL_HINT, GRAVEL_LABEL, PAVED_HINT, PAVED_LABEL, surfaceOf, type Surface } from "./surface.ts";
 import {
   HILLS_MIN,
   RIDE_SIZE_DEFAULT,
@@ -41,6 +42,7 @@ import {
   seeksClimbs,
   offersAssist,
   offersEasyMtb,
+  offersPaved,
   offersStopsAndTurns,
   showsFewerTurns,
   fitWaitWeight,
@@ -106,8 +108,12 @@ export interface PanelView {
   target: TargetView | null;
   /** The "Keep to roads, not trails" switch (OWNER-DECISIONS 463, 463b), on every ride type. */
   trailsOff: TrailsOffView;
-  /** The "Easy MTB trails" switch (the owner, 2026-11-08), on Default and Trailmaxxing; null on any other ride type. */
-  easyMtb: EasyMtbView | null;
+  /**
+   * The Surface picker (lib/surface.ts; the owner, 2026-11-21), on a bike of the rider's own but Road Bike and Mountain
+   * Bike; null on any other ride type. Easy MTB trails (the owner, 2026-11-08) is its third choice on Default and
+   * Trailmaxxing.
+   */
+  surface: SurfaceView | null;
   /** "Waiting at lights and stops" (the owner, 2026-11-20), on a bike of the rider's own; null on any other ride type. */
   waits: SliderView | null;
   /** "Sharp turns" (the owner, 2026-11-20), on the same ride types; null on any other. */
@@ -210,22 +216,17 @@ export interface TrailsOffView {
   howAbout: string;
 }
 
-/** The "Easy MTB trails" switch: off by default; with Keep to roads on it is moot, and says so. */
-export interface EasyMtbView {
-  label: string;
-  checked: boolean;
-  /** Keep to roads is on, which wins: the switch stays in the Tab order, but a press changes nothing. */
-  locked: boolean;
-  hint: string;
-  how: string;
-  howAbout: string;
+/** The Surface picker: its choice, its choices smoothest first, and what each does for the row's (i). */
+export interface SurfaceView {
+  value: Surface;
+  /** Easy MTB trails is left out while Keep to roads is on, which wins. */
+  options: readonly (readonly [Surface, string])[];
+  info: readonly (readonly [string, string])[];
 }
 
 /** The owner, 2026-11-08: "allow trailmaxxing to use MTB trails too", opt in, "And default". API `easy_mtb`, link `easymtb`. */
 export const EASY_MTB_LABEL = t("Easy MTB trails");
-export const EASY_MTB_HINT = t("Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.");
 export const EASY_MTB_LOCKED_HINT = t("Not used while Keep to roads is on.");
-export const EASY_MTB_HOW_ABOUT = t("easy MTB trails");
 export const EASY_MTB_HOW =
   t("Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.");
 
@@ -422,6 +423,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     ...(dials.trailsOff ? { trailsOff: true } : {}),
     // The rider's own switch, as Keep to roads: going back to the ride type's settings keeps it.
     ...(dials.easyMtb ? { easyMtb: true } : {}),
+    // Paved only likewise (the Surface setting, 2026-11-21).
+    ...(dials.paved ? { paved: true } : {}),
     ...(hiddenLoop ? { loop: true } : {}),
   };
   const moved =
@@ -486,22 +489,29 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       how: TRAILS_OFF_HOW,
       howAbout: TRAILS_OFF_HOW_ABOUT,
     },
-    easyMtb: offersEasyMtb(preset)
-      ? {
-          label: EASY_MTB_LABEL,
-          checked: dials.easyMtb === true && !trailsAreOff(preset, dials),
-          locked: trailsAreOff(preset, dials),
-          hint: trailsAreOff(preset, dials) ? EASY_MTB_LOCKED_HINT : EASY_MTB_HINT,
-          how: EASY_MTB_HOW,
-          howAbout: EASY_MTB_HOW_ABOUT,
-        }
-      : null,
+    surface: surfaceView(preset, dials),
     waits: offersStopsAndTurns(preset) ? waitsView(preset, waitWeightOf(preset, draft)) : null,
     sharpTurns: offersStopsAndTurns(preset) ? sharpTurnsView(sharpTurnWeightOf(preset, draft)) : null,
     fewerTurns: showsFewerTurns(preset)
       ? { label: FEWER_TURNS_LABEL, checked: dials.fewerTurns === true, hint: FEWER_TURNS_HINT, how: FEWER_TURNS_HOW, howAbout: FEWER_TURNS_HOW_ABOUT }
       : null,
     reset: moved ? start : null,
+  };
+}
+
+/** The Surface picker on this ride type, or null where it has none (lib/surface.ts). */
+export function surfaceView(preset: PresetId, dials: Dials): SurfaceView | null {
+  if (!offersPaved(preset)) return null;
+  const easy = offersEasyMtb(preset);
+  const easyOpen = easy && !trailsAreOff(preset, dials);
+  return {
+    value: surfaceOf(preset, dials),
+    options: [["paved", PAVED_LABEL], ["gravel", GRAVEL_LABEL], ...(easyOpen ? [["easy-mtb", EASY_MTB_LABEL] as const] : [])],
+    info: [
+      [PAVED_LABEL, PAVED_HINT],
+      [GRAVEL_LABEL, GRAVEL_HINT],
+      ...(easy ? [[EASY_MTB_LABEL, easyOpen ? EASY_MTB_HOW : EASY_MTB_LOCKED_HINT] as const] : []),
+    ],
   };
 }
 

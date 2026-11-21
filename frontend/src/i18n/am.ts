@@ -2128,7 +2128,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The stops stay in this order, to keep your via points on their way.": "የመተላለፊያ ነጥቦችዎ በመንገዳቸው ላይ እንዲቆዩ፣ ማቆሚያዎቹ በዚህ ቅደም ተከተል ይቆያሉ።",
   // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
   "Easy MTB trails": "ቀላል የMTB ዱካዎች",
-  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "ቀላል ተብለው የተመዘገቡ ወይም ደረጃ ያልተሰጣቸው የተራራ ብስክሌት ዱካዎችንም ይጠቀማል፤ አብዛኛው ሣርና አፈር ነው።",
   "Not used while Keep to roads is on.": "መንገዶች ብቻ ሲበራ ጥቅም ላይ አይውልም።",
   "easy MTB trails": "ቀላል የMTB ዱካዎች",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "እንደ Gravel ከመንገድ ውጭ ባለው ካርታ ላይ ያቅዳል፤ ስለዚህ በማንኛውም ልኬት 0 ወይም 1 የተሰጣቸው ወይም ምንም ደረጃ ያልተሰጣቸው የተራራ ብስክሌት ዱካዎች ሊያገለግሉ ይችላሉ። 2 ወይም ከዚያ በላይ የከበዱ ዱካዎች ሌላ መንገድ ባለበት ሁሉ ይቀራሉ፤ አንዱ አሁንም ጥቅም ላይ ከዋለ መስመሩ ይናገራል። የትራፊክ ጫና እንደተለመደው ይመዘናል። ከዝናብ በኋላ አፈሩ ጭቃ ሊሆን ይችላል።",
@@ -2268,4 +2267,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Download all ({size})": "ሁሉንም አውርድ ({size})",
   "Map of {date}": "የ{date} ካርታ",
   "Southern Maryland": "ደቡብ ሜሪላንድ",
+  // The Surface setting in Ride settings (lib/surface.ts; 2026-11-21; needs a native check).
+  "Surface": "የመንገድ ገጽ",
+  "Paved only": "የተነጠፈ ብቻ",
+  "Avoids gravel and dirt wherever pavement runs near.": "በአቅራቢያ የተነጠፈ መንገድ ባለበት ሁሉ ጠጠርና አፈርን ያስወግዳል።",
+  "Paved and gravel roads and paths, as this ride type plans them.": "የተነጠፉና የጠጠር መንገዶችና ዱካዎች፣ ይህ የጉዞ አይነት እንደሚያቅዳቸው።",
+  "paved only": "የተነጠፈ ብቻ",
+  "surface": "የመንገድ ገጽ",
 };
