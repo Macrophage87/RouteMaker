@@ -351,9 +351,9 @@ if (mine(4)) for (const [label, size] of [["phone", { width: 390, height: 844, m
   await sleep(3500);
   const handed = await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
   check(`plan bar (${label}): pressing Update route hands the focus to Save route in its place`, handed, await p.eval("document.activeElement?.textContent?.trim() || document.activeElement?.tagName"));
-  check(`plan bar (${label}): signed in, the route up to date shows Save route big in Update route's place; it opens the name form (focused, named, with Download GPX, whole on the screen), Escape and Cancel return to it, and a change brings Update route back in its place`,
+  check(`plan bar (${label}): signed in, the route up to date shows Save route big in Update route's place; it opens the name form (focused, named, whole on the screen; GPX is the route row's since #1398), Escape and Cancel return to it, and a change brings Update route back in its place`,
     JSON.stringify(upToDate) === JSON.stringify(["Save route", "Start ride", "Manual mode", "Clear the plan"]) && big?.h >= 52 && big.top <= 16 && big.expanded === "false" &&
-      form.open && form.focused && !!form.name && form.expanded === "true" && JSON.stringify(form.buttons) === JSON.stringify(["About Fixed route", "Save", "Download GPX", "Cancel"]) && back &&
+      form.open && form.focused && !!form.name && form.expanded === "true" && JSON.stringify(form.buttons) === JSON.stringify(["About Fixed route", "Save", "Cancel"]) && back &&
       JSON.stringify(changed) === JSON.stringify(["Update route", "Manual mode", "Clear the plan"]),
     JSON.stringify({ upToDate, big, form, back, changed }));
   await p.close();
@@ -373,19 +373,18 @@ if (mine(1)) {
   await p.close();
 }
 
-// ---- 1e. The bar's other buttons (the owner, 2026-10-21): signed out, Save offers Discord sign-in or the GPX file; Start
+// ---- 1e. The bar's other buttons (the owner, 2026-10-21): signed out, Save keeps the route on this device (#1398); Start
 // ride on a computer asks first; an empty plan offers Load route; a route a link shared can be saved from Go ----
 if (mine(2)) {
   const p = await open({ ride: false, signIn: true, computerAsks: true });
-  await p.eval("document.querySelector('.plan-map-bar .save-route-open').click(); true");
-  await sleep(300);
-  const form = await p.eval("(() => { const f = document.querySelector('.plan-map-bar .save-route-form'); return { input: !!f?.querySelector('input'), items: [...f.querySelectorAll('a, button')].map((x) => x.textContent.trim()), href: f.querySelector('a')?.getAttribute('href'), focused: document.activeElement?.textContent.trim() }; })()");
-  await p.eval("[...document.querySelectorAll('.plan-map-bar .save-route-form button')].find((b) => b.textContent.trim() === 'Download GPX').click(); true");
-  await p.waitFor("!!document.querySelector('.plan-map-bar .save-route-said')?.textContent.trim()", 5000);
-  const gpx = await p.eval("({ said: document.querySelector('.plan-map-bar .save-route-said').textContent.trim(), closed: !document.querySelector('.plan-map-bar .save-route-form'), focus: document.activeElement === document.querySelector('.plan-map-bar .save-route-open') })");
-  check("plan bar: signed out, Save offers Sign in with Discord (focused, to /auth/login) or Download GPX, which saves the file, says so and returns to Save",
-    !form.input && JSON.stringify(form.items) === JSON.stringify(["Sign in with Discord", "Download GPX", "Cancel"]) && form.href === "/auth/login" && form.focused === "Sign in with Discord" &&
-      /^GPX track/.test(gpx.said) && gpx.closed && gpx.focus, JSON.stringify({ form, gpx }));
+  // Signed out, Save route keeps the route on this device, with Sign in to sync on the line that says so; no sign-in
+  // form and no Download GPX in it (intuitiveness review, Plan, #1398).
+  await p.eval("document.querySelector('.plan-map-bar .save-route-open').focus(); true");
+  await p.enter();
+  await p.waitFor("(() => { const t = document.querySelector('.plan-map-bar .save-route-said')?.textContent.trim() ?? ''; return t !== '' && !/^Keeping/.test(t); })()", 15000);
+  const kept = await p.eval("(() => { const s = document.querySelector('.plan-map-bar .save-route-said'); const a = s.querySelector('a.save-route-sync'); return { form: !!document.querySelector('.plan-map-bar .save-route-form'), status: s.getAttribute('role'), said: s.textContent.trim(), sync: a ? [a.textContent.trim(), a.getAttribute('href')] : null, focus: document.activeElement === document.querySelector('.plan-map-bar .save-route-open') }; })()");
+  check("plan bar: signed out, Save keeps the route on this device, says so in its status line with Sign in to sync (to /auth/login), opens no form, and keeps the focus",
+    !kept.form && kept.status === "status" && kept.said !== "" && JSON.stringify(kept.sync) === JSON.stringify(["Sign in to sync", "/auth/login"]) && kept.focus, JSON.stringify(kept));
   await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').focus(); true");
   await p.enter();
   await sleep(500);
@@ -1681,12 +1680,18 @@ if (mine(26)) {
       await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: x + 36, y: y + 24, button: "left", clickCount: 1 });
     }
     await sleep(1500);
+    // The card is the route before the change until Update route (intuitiveness review, Plan, #1398): no Link till then.
+    const routeIfChanged = async () => {
+      if (await p.eval(`!!${BAR_ROUTE}`)) await pressRoute(p);
+    };
+    await routeIfChanged();
     await p.waitFor("!!document.querySelector('.link-note')", 20000);
     const dragged = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
     check("locate: dragging the location's marker moves it and keeps the Copy link note", !!pin?.hit && dragged.hash !== hashBefore && dragged.note === POINT_NOTE, JSON.stringify({ pin, dragged, hashBefore }));
     // Undo: the map bar's (P10: the one Undo in Plan, on every layout), an icon button named Undo.
     const undid = await p.eval("(() => { const u = document.querySelector('.plan-map-bar button[data-history=undo]'); u?.click(); return !!u && u.getAttribute('aria-label') === 'Undo'; })()");
     await sleep(1500);
+    await routeIfChanged();
     await p.waitFor("!!document.querySelector('.link-note')", 20000);
     const undone = await p.eval("({ note: document.querySelector('.link-note')?.textContent ?? '', hash: location.hash })");
     check("locate: undoing the drag puts the point back and keeps the Copy link note", undid && undone.hash === hashBefore && undone.note === POINT_NOTE, JSON.stringify({ undid, undone, hashBefore }));
@@ -4381,18 +4386,17 @@ if (mine(19)) {
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${hashFor("default", 70)}` });
   await p.waitFor("!!document.querySelector('.summary')", 40000);
   await sleep(800);
-  check("keep for offline: a browser tab offers it too (the owner's choice of 2026-10-10)", await p.eval("!!document.querySelector('.keep-offline') && !!document.querySelector('#keep-offline-said')"));
-
-  // Keep for offline: a real button under the route; what it did is said politely.
-  await p.eval("(() => { const m = document.querySelector('.route-actions .route-more'); if (m && m.getAttribute('aria-expanded') !== 'true') m.click(); return true; })()");
-  await sleep(200);
-  const keep = await p.eval("(() => { const b = document.querySelector('.route-actions .keep-offline'); const r = b?.getBoundingClientRect(); return { name: b?.textContent, tag: b?.tagName, h: r?.height ?? 0, region: document.querySelector('#keep-offline-said')?.getAttribute('role') }; })()");
-  check("keep for offline: a real button under the route, 44 px tall, with a polite status line for what it did", keep.name === "Keep for offline" && keep.tag === "BUTTON" && keep.h >= 44 && keep.region === "status", JSON.stringify(keep));
-  await p.eval("document.querySelector('.route-actions .keep-offline').focus(); true");
+  // Signed out (as here), the bar's Save route is the keep (intuitiveness review, Plan, #1398): More has no second Keep
+  // for offline. It keeps at once, with no form (no aria-expanded), and says what it did in its status line.
+  const SAVE = ".plan-map-bar .save-route-open";
+  check("keep for offline: a browser tab offers it too (the owner's choice of 2026-10-10), as the bar's Save route, signed out", await p.eval(`!!document.querySelector('${SAVE}') && !document.querySelector('${SAVE}').hasAttribute('aria-expanded') && !!document.querySelector('.plan-map-bar .save-route-said') && !document.querySelector('.route-actions .keep-offline')`));
+  const keep = await p.eval(`(() => { const b = document.querySelector('${SAVE}'); const r = b?.getBoundingClientRect(); return { name: b?.getAttribute('aria-label') ?? b?.textContent, tag: b?.tagName, h: r?.height ?? 0, region: document.querySelector('.plan-map-bar .save-route-said')?.getAttribute('role') }; })()`);
+  check("keep for offline: a real button, 44 px tall, with a polite status line for what it did", keep.name === "Save route" && keep.tag === "BUTTON" && keep.h >= 44 && keep.region === "status", JSON.stringify(keep));
+  await p.eval(`document.querySelector('${SAVE}').focus(); true`);
   await p.enter();
-  const kept = await p.waitFor("/^Kept for offline: /.test(document.querySelector('#keep-offline-said')?.textContent ?? '')", 90000);
-  const keptSaid = await p.eval("document.querySelector('#keep-offline-said').textContent.trim()");
-  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Save & load when there is no signal\.$/.test(keptSaid), keptSaid);
+  const kept = await p.waitFor("/^Kept for offline: /.test(document.querySelector('.plan-map-bar .save-route-said')?.textContent ?? '')", 90000);
+  const keptSaid = await p.eval("document.querySelector('.plan-map-bar .save-route-said').textContent.trim()");
+  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Save & load when there is no signal\./.test(keptSaid), keptSaid);
   const stored = await p.eval(`(async () => { const keys = await caches.keys(); const tiles = keys.includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).map((q) => new URL(q.url).pathname) : [];
     return { tiles: tiles.filter((t) => t.startsWith('/tiles/stress/')).length, positions: tiles.filter((t) => /lat=|lon=/.test(t)).length }; })()`);
   check("keep for offline: the stress tiles along the route are kept in the kept routes' bucket, and no URL with a position", stored.tiles > 0 && stored.positions === 0, JSON.stringify(stored));
@@ -5332,11 +5336,12 @@ if (mine(8)) {
     planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + 🚆🚌Own bike plus train or bus"]), JSON.stringify({ taps, trip }));
   check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
     list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 &&
-      /* a ride step says its traffic stress in words since 8a7c1c1e ("Transit: colour every ride of the trip by traffic stress") */
-      /^Ride 4 min to Eastern Market\. Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
+      /* Go's steps are the steps alone, without each ride's stress shares (intuitiveness review, Go, #1395); Plan's keep them */
+      /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
-  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock and riding the whole way beside it",
-    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+  // "Riding the whole way" shows only where it is quicker (intuitiveness review, Go, #1395): here transit is quicker.
+  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with its arrival clock, and no riding-the-whole-way line where transit is quicker",
+    trip.total === "about 28 min" && /^ · arrive \d{1,2}:\d{2}/.test(trip.arrive ?? "") && /^, arriving about \d{1,2}:\d{2}.* if you leave now$/.test(trip.arriveSaid ?? "") && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && trip.compare === undefined,
     JSON.stringify(trip));
   check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
     trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",
