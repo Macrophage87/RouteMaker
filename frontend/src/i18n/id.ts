@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "Pada akhir pekan, jalan yang saat itu ditutup untuk mobil, seperti Beach Drive di Montgomery County dan Sligo Creek Parkway, dihitung sebagai jalur bebas kendaraan. Dengan aturan sepeda listrik, hanya jalan raya, atau pada perjalanan massal, jalan itu hanya dihitung sebagai jalur dalam rincian. Malam berlaku pukul 21.00 sampai 07.00 setiap hari, termasuk akhir pekan, dan di luar jam sibuk berakhir pukul 21.00. Menyeberangi jalan ramai dihitung lebih berat pada jam sibuk, dan lebih ringan pada akhir pekan dan malam, saat lalu lintas biasanya lebih tenang. Setiap peringatan persimpangan menyebut kapan waktu mengubahnya.",
   "Bike": "Sepeda",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "Memilih sepeda memindahkan penggeser tanjakan ke posisi awal untuk sepeda itu.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "Rute tidak memakai jalur yang lebih sulit dari ini jika ada jalan lain, dan memberi tahu jika terpaksa.",
   " (above your hardest level)": " (di atas tingkat tersulit Anda)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "Rute dengan jalur di tingkat ini didahulukan, lalu satu tingkat lebih mudah atau lebih sulit; jalur yang lebih jauh dari tingkat ini dihitung seperti jalur lain. Tidak bisa lebih sulit dari tingkat tersulit Anda: naikkan itu untuk memilih yang lebih sulit.",
   "Electric assist": "Bantuan listrik",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "Tidak dipakai selama Hanya jalan raya aktif.",
   "easy MTB trails": "jalur MTB mudah",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Merencanakan di peta off-road, seperti Gravel, sehingga jalur sepeda gunung berperingkat 0 atau 1 pada skala mana pun, atau tanpa peringkat sama sekali, boleh dilalui. Jalur berperingkat 2 atau lebih sulit dihindari di mana pun ada jalan lain; jika masih ada yang dipakai, rute akan memberi tahu. Tekanan lalu lintas ditimbang seperti biasa. Tanah bisa berlumpur setelah hujan.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Rute ini melewati {distance} jalur sepeda gunung berperingkat 2 atau lebih sulit: tidak ditemukan jalan lain.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "Rute ini melewati {distance} jalur sepeda gunung berperingkat {level} atau lebih sulit: tidak ditemukan jalan lain.",
   "Uses a harder MTB trail.": "Melewati jalur MTB yang lebih sulit.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Peta off-road tidak tersedia, jadi rute ini tetap di jalur yang biasa.",
   "Off-road map unavailable: usual trails.": "Peta off-road tidak ada: jalur biasa.",
@@ -2298,4 +2297,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "My ride types is full ({max}). Remove one to save another.": "Jenis bersepeda saya penuh ({max}). Hapus satu untuk menyimpan yang lain.",
   "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} dimuat untuk sementara. Jenis bersepeda saya penuh ({max}): hapus satu untuk menyimpannya.",
   "Ride settings: {type}": "Pengaturan perjalanan: {type}",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "Jalan dan jalur beraspal dan berkerikil, tanpa jalur MTB.",
+  "MTB trails up to {level}": "Jalur MTB hingga {level}",
 };

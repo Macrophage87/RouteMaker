@@ -18,7 +18,8 @@ import {
 import { runs, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
 import { metricFirst } from "./units.ts";
-import { GRAVEL_HINT, GRAVEL_LABEL, PAVED_HINT, PAVED_LABEL, surfaceOf, type Surface } from "./surface.ts";
+import { GRAVEL_HINT, GRAVEL_LABEL, MTB_GRAVEL_HINT, PAVED_HINT, PAVED_LABEL, offersSurface, offersTrails, surfaceOf, type Surface } from "./surface.ts";
+import { MTB_LEVEL_OPTIONS, isMtb } from "./mtbMode.ts";
 import {
   HILLS_MIN,
   RIDE_SIZE_DEFAULT,
@@ -41,9 +42,8 @@ import {
   hillsWords,
   seeksClimbs,
   offersAssist,
-  offersEasyMtb,
-  offersPaved,
   offersStopsAndTurns,
+  fitTrailLevel,
   showsFewerTurns,
   fitWaitWeight,
   ownWaitWeight,
@@ -427,8 +427,9 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     ...(dials.trailsOff ? { trailsOff: true } : {}),
     // The rider's own switch, as Keep to roads: going back to the ride type's settings keeps it.
     ...(dials.easyMtb ? { easyMtb: true } : {}),
-    // Paved only likewise (the Surface setting, 2026-11-21).
+    // Paved only and the trail level likewise (the Surface setting, 2026-11-21).
     ...(dials.paved ? { paved: true } : {}),
+    ...(fitTrailLevel(preset, dials) !== undefined ? { mtbLevel: dials.mtbLevel } : {}),
     ...(hiddenLoop ? { loop: true } : {}),
   };
   const moved =
@@ -506,18 +507,33 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
 
 /** The Surface picker on this ride type, or null where it has none (lib/surface.ts). */
 export function surfaceView(preset: PresetId, dials: Dials): SurfaceView | null {
-  if (!offersPaved(preset)) return null;
-  const easy = offersEasyMtb(preset);
-  const easyOpen = easy && !trailsAreOff(preset, dials);
+  if (!offersSurface(preset)) return null;
+  const trails = offersTrails(preset);
+  const open = trails && !trailsAreOff(preset, dials);
+  const levels = MTB_LEVEL_OPTIONS.filter((option) => option.level >= 2);
+  // Mountain Bike's level 1 is its own easiest level; elsewhere Easy MTB trails also rides unrated trails.
+  const easyHow = isMtb(preset) ? MTB_LEVEL_OPTIONS[0].hint : EASY_MTB_HOW;
   return {
     value: surfaceOf(preset, dials),
-    options: [["paved", PAVED_LABEL], ["gravel", GRAVEL_LABEL], ...(easyOpen ? [["easy-mtb", EASY_MTB_LABEL] as const] : [])],
+    options: [
+      ["paved", PAVED_LABEL],
+      ["gravel", GRAVEL_LABEL],
+      ...(open
+        ? [["easy-mtb", EASY_MTB_LABEL] as const, ...levels.map((option) => [`mtb-${option.level}` as Surface, mtbUpTo(option.label)] as const)]
+        : []),
+    ],
     info: [
       [PAVED_LABEL, PAVED_HINT],
-      [GRAVEL_LABEL, GRAVEL_HINT],
-      ...(easy ? [[EASY_MTB_LABEL, easyOpen ? EASY_MTB_HOW : EASY_MTB_LOCKED_HINT] as const] : []),
+      [GRAVEL_LABEL, isMtb(preset) ? MTB_GRAVEL_HINT : GRAVEL_HINT],
+      ...(trails && !open ? [[EASY_MTB_LABEL, EASY_MTB_LOCKED_HINT] as const] : []),
+      ...(open ? [[EASY_MTB_LABEL, easyHow] as const, ...levels.map((option) => [mtbUpTo(option.label), option.hint] as const)] : []),
     ],
   };
+}
+
+/** "MTB trails up to Level 3 (black)": a trail choice's name, from the level's own words. */
+function mtbUpTo(level: string): string {
+  return t("MTB trails up to {level}", { level });
 }
 
 /** The ride size slider's name: its unit is in it, so it is said with the number (riders). */

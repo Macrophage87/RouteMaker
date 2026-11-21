@@ -212,3 +212,13 @@ test("a full list of own ride types says so and keeps all twenty; Remove can be 
   await click(picker.button("Undo"));
   assert.equal(ownNow().list[at]?.name, "Ride 3", "back where it was");
 });
+
+// Surface (#1388): a harder trail level is kept with the rest, and put back through the link's checks.
+test("an own ride type keeps its surface and trail level", () => {
+  const rough = ownSetup(withSaved([], "Rough", "default", { ...startDials("default"), easyMtb: true, mtbLevel: 3 }, "g1")[0]);
+  assert.equal(rough.dials.easyMtb, true);
+  assert.equal(rough.dials.mtbLevel, 3);
+  const noTrails = ownSetup(withSaved([], "No trails", "mountain-bike", { ...startDials("mountain-bike"), mtbLevel: 0 }, "m1")[0]);
+  assert.equal(noTrails.dials.mtbLevel, 0);
+  assert.equal(readShareJson(shareJson("Rough", "default", rough.dials))?.dials.mtbLevel, 3);
+});

@@ -84,12 +84,6 @@ test("App turns the ride type's map layers on with the ride type, not as the rid
   assert.match(picker, /onChoose\(id, mtbChosen\(preset, id, choose\(id, load, dials\)\)\)/);
 });
 
-test("the level picker is real radio buttons in a fieldset with a legend", () => {
-  const panel = readFileSync(new URL("../DialsPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /<fieldset className="mtb-level">\s+<legend>\{MTB_LEVEL_LEGEND\}<\/legend>/);
-  assert.match(panel, /type="radio"\s+name="mtb-level"/);
-});
-
 test("the routable layer filters on mtb_level: trails up to the choice routable, harder ones not for routes", () => {
   const trail = (level?: number) => ({ tier: 1, facility: "none", trail: true, unpaved: true, mtb: true, ...(level ? { mtb_level: level } : {}) });
   for (const chosen of [1, 2, 3, 4]) {
@@ -222,22 +216,6 @@ test("the preferred level is sent and linked on Mountain Bike only", () => {
   assert.equal(fitDials("mountain-bike", { mtbLevel: 4, mtbPreferred: 7 }).mtbPreferred, undefined);
   assert.equal(fitDials("mountain-bike", { mtbLevel: 4, mtbPreferred: 2 }).mtbPreferred, undefined);
   assert.doesNotMatch(encodePlan([], "mountain-bike", startDials("mountain-bike")), /prefer=/);
-});
-
-test("the preferred picker: real radio buttons in a fieldset with a legend, above-the-hardest disabled, a polite status", () => {
-  const panel = readFileSync(new URL("../DialsPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /<fieldset className="mtb-level mtb-preferred" aria-describedby=\{mtbPreferredHintId\}>\s+<legend>\{MTB_PREFERRED_LEGEND\}<\/legend>/);
-  assert.match(panel, /<p className="hint" id=\{mtbPreferredHintId\}>\s+\{t\("[^"]*can't be harder than your hardest level/);
-  assert.match(panel, /type="radio"\s+name="mtb-preferred"/);
-  assert.match(panel, /disabled=\{option\.level > mtbLevelOf\(dials\)\}/);
-  // A disabled level says why in its own name, not by its dimming alone.
-  assert.match(panel, /\{option\.level > mtbLevelOf\(dials\) && <span className="visually-hidden">\{t\(" \(above your hardest level\)"\)\}<\/span>\}/);
-  assert.match(panel, /const said = mtbPreferredClamped\(dials, next\);/);
-  assert.match(panel, /<p className="hint mtb-preferred-said" role="status">\s+\{mtbClampSaid\}/);
-  // The status is of the levels it was said of: a change from outside (a link, a ride type) clears it.
-  assert.match(panel, /const mtbKey = `\$\{preset\}:\$\{mtbLevelOf\(dials\)\}:\$\{mtbPreferredOf\(dials\)\}`;/);
-  assert.match(panel, /if \(mtbClamp && mtbClamp\.key !== mtbKey\) setMtbClamp\(null\);/);
-  assert.match(panel, /const mtbClampSaid = mtbClamp\?\.key === mtbKey \? mtbClamp\.said : "";/);
 });
 
 test("the route says where its trails go easier or harder than preferred", () => {

@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "주말에는 그날 차량이 통제되는 도로(Montgomery County의 Beach Drive, Sligo Creek Parkway 등)를 차 없는 길로 계획합니다. 전기자전거 규칙, 도로만, 단체 라이딩에서는 세부 내역에서만 길로 셉니다. 밤은 주말을 포함해 매일 오후 9시~오전 7시이며, 한산한 시간은 오후 9시에 끝납니다. 혼잡한 도로 횡단은 출퇴근 시간에 더 무겁게, 교통이 대체로 한산한 주말과 밤에는 가볍게 셉니다. 교차로 경고마다 시간대 때문에 바뀌었는지 알려 줍니다.",
   "Bike": "자전거",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "자전거를 고르면 언덕 슬라이더가 그 자전거의 시작 위치로 갑니다.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "다른 길이 있으면 이보다 어려운 트레일은 쓰지 않고, 써야 할 때는 알려 줍니다.",
   " (above your hardest level)": " (가장 어려운 단계보다 위)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "이 단계 트레일이 있는 경로를 먼저, 그다음 한 단계 쉽거나 어려운 것. 그보다 먼 트레일은 다른 것과 같이 셉니다. 가장 어려운 단계보다 어려울 수 없습니다: 더 어려운 쪽을 원하면 그것을 올리세요.",
   "Electric assist": "전기 보조",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "도로만 켜져 있는 동안에는 사용되지 않습니다.",
   "easy MTB trails": "쉬운 MTB 트레일",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel처럼 오프로드 지도에서 계획하므로, 어느 척도로든 0 또는 1 등급이거나 등급이 전혀 없는 산악자전거 트레일을 달릴 수 있습니다. 2 등급 이상으로 어려운 트레일은 돌아갈 길이 있는 곳이면 어디서든 뺍니다. 그래도 하나가 쓰이면 경로에서 알려 드립니다. 교통 스트레스는 평소처럼 따집니다. 비가 온 뒤에는 흙길이 진창일 수 있습니다.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "이 경로는 2 등급 이상으로 어려운 산악자전거 트레일을 {distance} 이용합니다. 돌아갈 길을 찾지 못했습니다.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "이 경로는 {level} 등급 이상으로 어려운 산악자전거 트레일을 {distance} 이용합니다. 돌아갈 길을 찾지 못했습니다.",
   "Uses a harder MTB trail.": "더 어려운 MTB 트레일을 이용합니다.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "오프로드 지도를 쓸 수 없어 이 경로는 평소의 트레일을 이용합니다.",
   "Off-road map unavailable: usual trails.": "오프로드 지도 없음: 평소 트레일.",
@@ -2298,4 +2297,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "My ride types is full ({max}). Remove one to save another.": "내 라이딩 유형이 가득 찼습니다({max}). 하나를 삭제해야 새로 저장할 수 있습니다.",
   "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name}을(를) 우선 불러왔습니다. 내 라이딩 유형이 가득 찼습니다({max}): 보관하려면 하나를 삭제하세요.",
   "Ride settings: {type}": "라이드 설정: {type}",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "포장도로와 자갈길, 경로. MTB 트레일은 제외합니다.",
+  "MTB trails up to {level}": "MTB 트레일 {level}까지",
 };

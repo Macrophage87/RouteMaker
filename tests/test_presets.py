@@ -473,7 +473,8 @@ def test_the_rides_that_keep_the_mtb_class_plan_on_the_weekend_graph_too() -> No
     twice.discard("ebike")
     for name in presets.EASY_MTB_PRESETS:
         assert presets.weekend_too(name, "weekend", easy_mtb=True)
-        assert not presets.weekend_too(name, "weekend")
+        # Gravel and Mountain Goat ride the off-road graph anyway.
+        assert presets.weekend_too(name, "weekend") == (name in presets.OFFROAD_PRESETS)
     for name in (*twice, *presets.EASY_MTB_PRESETS):
         for when in ("weekday_rush", "weekday_offpeak", "night"):
             assert not presets.weekend_too(name, when, easy_mtb=True)

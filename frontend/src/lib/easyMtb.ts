@@ -11,7 +11,7 @@ import { t } from "./i18n.ts";
 /** Metres of harder trail below which nothing is said (core/easy_mtb.py TOLERANCE_M). */
 export const EASY_MTB_SAY_FROM_M = 1;
 
-export const EASY_MTB_HARDER = "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.";
+export const EASY_MTB_HARDER = "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.";
 export const EASY_MTB_HARDER_SHORT = "Uses a harder MTB trail.";
 export const EASY_MTB_NO_MAP = "The off-road map isn't available, so this route keeps to the usual trails.";
 export const EASY_MTB_NO_MAP_SHORT = "Off-road map unavailable: usual trails.";
@@ -29,7 +29,7 @@ export function easyMtbNote(route: Pick<RouteResponse, "easy_mtb"> | null | unde
   const harder = reading.harder_m ?? 0;
   if (harder <= EASY_MTB_SAY_FROM_M) return null;
   return {
-    text: t("This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.", { distance: formatDistance(harder) }),
+    text: t("This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.", { distance: formatDistance(harder), level: (reading.max_level ?? 1) + 1 }),
     short: t("Uses a harder MTB trail."),
   };
 }

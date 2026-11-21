@@ -3591,7 +3591,8 @@ export function App() {
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick }, { now: true });
   // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
   // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
-  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
+  // Nor one with no mountain-bike trails (the Surface setting's Gravel or Paved only, level 0).
+  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) && dials.mtbLevel !== 0 ? mtbLevelOf(dials) : null;
   useEffect(() => {
     setRoutableMtb(routableLevel);
   }, [routableLevel]);

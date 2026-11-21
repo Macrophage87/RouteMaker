@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "د اونۍ په پای کې، هغه سړکونه چې په هغو ورځو د موټرو لپاره تړل وي، لکه په Montgomery County کې Beach Drive او Sligo Creek Parkway، د بې موټرو لارو په توګه شمېرل کېږي. د برېښنايي بایسکل له قواعدو، یوازې سړکونو یا ډله ییز سفر سره، یوازې په جزئیاتو کې د لارې په توګه شمېرل کېږي. شپه هره ورځ د شپې له ۹ تر سهار ۷ ده، د اونۍ پای هم، او بې ګڼې ګوڼې ساعتونه د شپې په ۹ پای ته رسېږي. د ګڼ سړک تېرېدل په ګڼه ګوڼه کې ډېر، او د اونۍ په پای او شپه کې، کله چې ترافیک معمولاً ارام وي، لږ شمېرل کېږي. د هرې څلور لارې خبرداری وايي چې وخت یې کله بدلوي.",
   "Bike": "بایسکل",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "د بایسکل ټاکل د غونډیو سلایډر د هغه بایسکل د پیل ځای ته وړي.",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "لار که بله لار وي له دې سختې لارې نه کاروي، او کله چې مجبوره وي وايي یې.",
   " (above your hardest level)": " (ستاسو له تر ټولو سختې کچې پورته)",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "په دې کچه لارې لرونکې لارې لومړی راځي، بیا یوه درجه اسانه یا سخته؛ نورې لرې لارې د نورو په څېر شمېرل کېږي. ستاسو له تر ټولو سختې کچې سخته نه شي کېدای: د سختې غوره کولو لپاره هغه لوړه کړئ.",
   "Electric assist": "برېښنايي مرسته",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "تر هغه چې یوازې سړکونه روښانه وي، نه کارول کېږي.",
   "easy MTB trails": "اسانې د MTB لارې",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "د Gravel په څېر د سړک بهر نقشې پر سر پلان جوړوي، نو د غرنۍ بایسکل هغه لارې چې په هر یوه پیمانه 0 یا 1 درجه لري، یا هېڅ درجه نه لري، کېدای شي وکارول شي. هغه لارې چې 2 یا تر هغې سختې درجه لري، هر چېرته چې بله لار وي، پرېښودل کېږي؛ که بیا هم یوه وکارول شي، لاره یې وايي. د ترافیکو فشار د تل په څېر تلل کېږي. خاوره کېدای شي له باران وروسته خټه وي.",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "دا لاره د غرنۍ بایسکل د هغې لارې {distance} کاروي چې 2 یا تر هغې سخته درجه لري: بله لار ونه موندل شوه.",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "دا لاره د غرنۍ بایسکل د هغې لارې {distance} کاروي چې {level} یا تر هغې سخته درجه لري: بله لار ونه موندل شوه.",
   "Uses a harder MTB trail.": "یوه سخته د MTB لار کاروي.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "د سړک بهر نقشه شتون نه لري، نو دا لاره په معمولو لارو پاتې کېږي.",
   "Off-road map unavailable: usual trails.": "د سړک بهر نقشه نشته: معمولې لارې.",
@@ -2298,4 +2297,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "My ride types is full ({max}). Remove one to save another.": "زما د سفر ډولونه ډک دي ({max}). د بل ساتلو لپاره یو لرې کړئ.",
   "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "{name} د اوس لپاره پورته شو. زما د سفر ډولونه ډک دي ({max}): د ساتلو لپاره یو لرې کړئ.",
   "Ride settings: {type}": "د سفر تنظیمات: {type}",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "پخې او جغلي سړکونه او لارې، د غرنۍ بایسکل له لارو پرته.",
+  "MTB trails up to {level}": "د غرنۍ بایسکل لارې تر {level} پورې",
 };

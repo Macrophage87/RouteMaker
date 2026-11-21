@@ -1559,7 +1559,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the time changed it.": "週末嗰日禁止汽車嘅路，例如 Montgomery County 嘅 Beach Drive 同 Sligo Creek Parkway，當做冇車嘅徑嚟計劃。用電動單車規則、只行馬路或者集體踩車時，只喺明細入面當徑計。夜晚係每日晚上 9 點到朝早 7 點，包括週末；非繁忙時間喺晚上 9 點完。過繁忙馬路喺繁忙時間計得重啲，喺車通常少啲嘅週末同夜晚計得輕啲。每個路口警告都會講時段有冇改變佢。",
   "Bike": "單車",
   "Choosing a bike moves the hills slider to where it starts for that bike.": "揀單車會將斜路滑桿移去嗰架車嘅起始位置。",
-  "The route uses no trail harder than this where any other way exists, and says so where it must.": "有其他路就唔會行難過呢個嘅徑，要行嘅話會話你知。",
   " (above your hardest level)": " （高過你最高難度）",
   "Routes with trails at this level come first, then a level easier or harder; trails further from it count as any other trail. It can't be harder than your hardest level: raise that to prefer a harder one.": "有呢個難度嘅徑嘅路線排先，然後易一級或者難一級；再遠嘅難度同其他徑一樣計。唔可以高過你最高難度：想揀難啲就先調高佢。",
   "Electric assist": "電動輔助",
@@ -2131,7 +2130,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Not used while Keep to roads is on.": "開咗只行馬路嗰陣唔會用。",
   "easy MTB trails": "易行MTB山徑",
   "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "好似Gravel咁喺越野地圖度規劃，所以可能會行任何一個量表評為0或者1、或者完全未評級嘅山地單車徑。評為2或者更難嘅山徑，只要有其他路就會避開；如果仍然要行，路線會講明。交通壓力照常計算。落雨之後泥地可能好濕滑。",
-  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "呢條路線行咗{distance}評為2或者更難嘅山地單車徑：搵唔到其他路。",
+  "This route uses {distance} of mountain-bike trail rated {level} or harder: no way round was found.": "呢條路線行咗{distance}評為{level}或者更難嘅山地單車徑：搵唔到其他路。",
   "Uses a harder MTB trail.": "行咗一段較難嘅MTB山徑。",
   "The off-road map isn't available, so this route keeps to the usual trails.": "越野地圖用唔到，所以呢條路線行返平時嘅徑。",
   "Off-road map unavailable: usual trails.": "冇越野地圖：行平時嘅徑。",
@@ -2298,4 +2297,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "My ride types is full ({max}). Remove one to save another.": "我嘅踩車類型已經滿咗（{max}）。刪除一個先可以儲存新嘅。",
   "Loaded {name} for now. My ride types is full ({max}): remove one to keep it.": "暫時載入咗 {name}。我嘅踩車類型已經滿咗（{max}）：刪除一個先可以保留佢。",
   "Ride settings: {type}": "踩車設定：{type}",
+  "Paved and gravel roads and paths, with no mountain-bike trails.": "鋪裝同碎石嘅道路同小徑，唔行山地車徑。",
+  "MTB trails up to {level}": "山地車徑，最高{level}",
 };

@@ -146,7 +146,8 @@ export function encodePlan(
     if (dials.rideSize) params.set("riders", String(dials.rideSize));
     // Mountain Bike's hardest trail level (slice 6); absent is level 2. Its preferred level (the second
     // pass); absent is min(2, the hardest), so an older link with only `level` plans as it did.
-    if (dials.mtbLevel) params.set("level", String(dials.mtbLevel));
+    // 0 included: Mountain Bike with no mountain-bike trails (the Surface setting).
+    if (typeof dials.mtbLevel === "number") params.set("level", String(dials.mtbLevel));
     if (dials.mtbPreferred) params.set("prefer", String(dials.mtbPreferred));
   }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
