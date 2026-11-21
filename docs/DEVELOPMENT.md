@@ -5080,8 +5080,8 @@ on foot, Run, transit or bikeshare (`offersStopsAndTurns`). They travel as `wait
 steps, kept only above the ride type's own) and `fewerturns=1` in a plan link (`planHash.ts`), as
 `wait_weight` and `fewer_turns` on `POST /api/route`, in a GPX export's dials comment, and in the
 connector's links (`mcp/routemaker_mcp.py` `plan_fragment`; a weight between half steps opens
-rounded, and the notes say so). Go has no control for either (nor for Sharp turns, below), so coming into Go drops them
-(`App.tsx`). Go's settings stay under the line.
+rounded, and the notes say so). Since 2026-11-21 (the owner: "just have the same control popout for both") Go opens
+the same popup, so Go plans with these settings too, from a link or from Plan (`App.tsx` passes `popout` in both views).
 
 A third, "Sharp turns" (the owner: "I find sharp turns pretty fun, but I hate standing at lights"),
 sits under the waits slider: 0 to 5 from the ride type's own weight (`dials.ts`

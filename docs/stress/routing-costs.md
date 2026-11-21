@@ -57,14 +57,14 @@ More turn rules (2026-11-12 on):
   (the owner, 2026-11-20, for pleasure and training rides; the 2s are our defaults, not measured); 1x on
   every other ride type, Fast included ("as close to real time as possible"). A rider or the connector
   can raise it, never lower it, up to 5 (`MAX_WAIT_WEIGHT`, `junction_delay.MAX_STACKED_WEIGHT`) in half
-  steps: `wait_weight` on POST /api/route, the "Waiting at lights and stops" slider in Plan's Ride
-  settings popup, `waits=N` in a link.
+  steps: `wait_weight` on POST /api/route, the "Waiting at lights and stops" slider in the Ride
+  settings popup (Plan and Go), `waits=N` in a link.
 - **Sharp-turn weight** (2026-11-20, the owner: "I find sharp turns pretty fun, but I hate standing at
   lights"). The sharp and U-turn extras and the seconds lost braking for a turn are multiplied by a
   weight of their own, apart from the wait weight (`presets.sharp_turn_weight_for`): 3x on Road Bike,
   2x on Tandem and Cargo Bike, 1x on every other ride type (our defaults, not measured). A rider sets it from 0 to 5
   in half steps
-  (`sharp_turn_weight` on POST /api/route, the "Sharp turns" slider in Plan's Ride settings popup,
+  (`sharp_turn_weight` on POST /api/route, the "Sharp turns" slider in the Ride settings popup (Plan and Go),
   `sharpturns=N` in a link), below the ride type's own included. At 0 a sharp turn counts as a plain
   turn and braking costs nothing; the plain per-turn charge and the jog extra stay.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
@@ -72,7 +72,7 @@ More turn rules (2026-11-12 on):
   Ride's, Mass Ride's, Road Bike's and Tandem's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
   to 0.9 (`PAVED_SURFACE_AVOIDANCE`). Both our defaults, not measured. Plan and Go offer them as routes to
   choose from only where they do what their name says (frontend `lib/neighbours.ts`); Fewer turns is also a
-  switch in Plan's Ride settings popup (`fewerturns=1` in a link), not shown on the four ride types that
+  switch in the Ride settings popup, Plan and Go (`fewerturns=1` in a link), not shown on the four ride types that
   charge 30 s already.
 
 ## 1. Valhalla: graph tags (`lua/routemaker_remap.lua`)
