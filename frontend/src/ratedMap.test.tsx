@@ -31,6 +31,13 @@ test("nothing is asked until the map is at its two closest zooms", () => {
   assert.match(closest.path, /&every=true$/);
 });
 
+test("a view at the server's largest asks a box still inside it", () => {
+  const ask = ratedMapAsk({ west: -77.0312, south: 38.9007, east: -77.0312 + 0.03, north: 38.9007 + 0.02 }, 17);
+  assert.ok(ask);
+  assert.ok(ask.box.east - ask.box.west <= 0.04 - 1e-9, "never wider than the server answers");
+  assert.ok(ask.box.north - ask.box.south <= 0.03 - 1e-9, "never taller than the server answers");
+});
+
 test("the dot is a small colour-only button named by its level, and its card lists the movements", () => {
   const dot = ratedMapDot(J);
   assert.equal(dot.getAttribute("aria-label"), "Junction rated LTS 4");
@@ -48,6 +55,10 @@ test("a planned route's own junction marker stands for the map's dot there", () 
   const far = { ...J, lon: -77.02 };
   assert.deepEqual(ratedMapShown([J, far], [[-77.03005, 38.9]]), [far]);
   assert.deepEqual(ratedMapShown([J, far], []), [J, far]);
+  // A junction the route rides through without a marker of its own (along it, say, where crossing is hard) has no
+  // map dot on the line either: the dot's hardest-movement colour would say the route makes that move.
+  const line: [number, number][] = [[-77.031, 38.9], [-77.029, 38.9]];
+  assert.deepEqual(ratedMapShown([J, far], [], line), [far]);
 });
 
 test("an answer that could not be read leaves the last dots drawn (null), a bad one draws none", async () => {

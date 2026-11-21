@@ -1306,7 +1306,7 @@ if (mine(4)) {
 if (mine(14)) {
   const p = await open();
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.querySelector('span').textContent)");
-  check("settings: the bottom bar is Plan, Layers, Reports, Save & load, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, Files in v0.8.2, then Save & load in v0.9.0)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Reports", "Save & load", "Settings"]), JSON.stringify(bar));
+  check("settings: the bottom bar is Planner, Layers, Reports, Save & load, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, Files in v0.8.2, then Save & load in v0.9.0, Plan renamed Planner in #1401)", JSON.stringify(bar) === JSON.stringify(["Planner", "Layers", "Reports", "Save & load", "Settings"]), JSON.stringify(bar));
   await openSheet(p, "Settings");
   check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
   // High contrast is in the Display tab.
@@ -1449,14 +1449,14 @@ if (mine(9)) {
   check("loop first: with a route shown and the points compact, the search stays open (more stops by search) and How the ride ends stays", !compact.searchHidden && compact.box, JSON.stringify(compact));
   // The Plan button: first in the bar, current on the planner, returns from a sheet to the planner's heading.
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => ({ text: x.querySelector('span').textContent, current: x.getAttribute('aria-current') }))");
-  check("plan: five buttons, Plan first and current on the planner, the others not", bar.length === 5 && bar[0].text === "Plan" && bar[0].current === "true" && bar.slice(1).every((x) => !x.current), JSON.stringify(bar));
+  check("plan: five buttons, Planner first and current on the planner, the others not", bar.length === 5 && bar[0].text === "Planner" && bar[0].current === "true" && bar.slice(1).every((x) => !x.current), JSON.stringify(bar));
   // Exact names: the hint is a sibling of each button, not part of its name, and is the description (said once).
   const names = [];
   for (const id of ["plan", "layers", "suggest", "gpx", "settings"]) {
     const ax = await axNode(p, `#bar-${id}`);
     names.push([ax?.role, ax?.name]);
   }
-  check("plan: the five bar buttons are named exactly Plan, Layers, Reports, Save & load, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Reports"], ["button", "Save & load"], ["button", "Settings"]]), JSON.stringify(names));
+  check("plan: the five bar buttons are named exactly Planner, Layers, Reports, Save & load, Settings", JSON.stringify(names) === JSON.stringify([["button", "Planner"], ["button", "Layers"], ["button", "Reports"], ["button", "Save & load"], ["button", "Settings"]]), JSON.stringify(names));
   const hints = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => { const h = document.getElementById(x.getAttribute('aria-describedby')); return { hidden: h.hidden && h.getBoundingClientRect().height === 0, inButton: x.contains(h), text: h.textContent.length > 0 }; })");
   const described = [];
   for (const id of ["plan", "layers", "suggest", "gpx", "settings"]) described.push((await axNode(p, `#bar-${id}`))?.description?.length > 0);
