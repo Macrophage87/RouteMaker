@@ -1102,7 +1102,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{count} routes": "{count} መንገዶች",
   "Descent": "ቁልቁለት",
   "{percent}% quiet": "{percent}% ጸጥ ያለ",
-  "Traffic stress, stretch by stretch": "የትራፊክ ጭንቀት፣ ክፍል በክፍል",
   "{ratio}× as far, to skip {distance} of busy roads.": "{distance} የተጨናነቀ መንገድ ለማስቀረት {ratio}× ይረዝማል።",
   "{ratio}× as far as the direct route.": "ከቀጥታ መንገድ {ratio}× ይረዝማል።",
   "{over} over your target of {target}.": "ከግብዎ {target} በ{over} ይበልጣል።",
