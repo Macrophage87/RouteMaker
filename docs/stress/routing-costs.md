@@ -51,6 +51,14 @@ More turn rules (2026-11-12 on):
   counts as one plain turn, without the sharp, U-turn or jog extras. Radii and lean are our defaults,
   not measured. A bend along one road or trail is not a turn in the router's directions, so it is not
   charged at all.
+- **Wait weight** (`presets.WAIT_WEIGHTS`). A second stopped at a junction counts this many seconds of
+  riding when routes are ranked; the time shown stays the real wait. 3x on Road Bike (the owner,
+  2026-11-02); 2x on Tandem, Cargo Bike, Group Ride, Trailmaxxing, Gravel, Mountain Goat and Mountain Bike
+  (the owner, 2026-11-20, for pleasure and training rides; the 2s are our defaults, not measured); 1x on
+  every other ride type, Fast included ("as close to real time as possible"). A rider or the connector
+  can raise it, never lower it, up to 5 (`MAX_WAIT_WEIGHT`, `junction_delay.MAX_STACKED_WEIGHT`) in half
+  steps: `wait_weight` on POST /api/route, the "Waiting at lights and stops" slider in Plan's Ride
+  settings popup, `waits=N` in a link.
 - **Sharp-turn weight** (2026-11-20, the owner: "I find sharp turns pretty fun, but I hate standing at
   lights"). The sharp and U-turn extras and the seconds lost braking for a turn are multiplied by a
   weight of their own, apart from the wait weight (`presets.sharp_turn_weight_for`): 3x on Road Bike,
@@ -61,9 +69,11 @@ More turn rules (2026-11-12 on):
   turn and braking costs nothing; the plain per-turn charge and the jog extra stay.
 - **The rider's "Fewer turns" and "All paved"** (`fewer_turns`, `paved` on POST /api/route, and the named
   options of POST /api/route/neighbours). Fewer turns charges 30 s a turn (`FEWER_TURNS_PENALTY_S`, Group
-  Ride's and Road Bike's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
+  Ride's, Mass Ride's, Road Bike's and Tandem's price) and ranks and de-dodges at that price; All paved raises `avoid_bad_surfaces`
   to 0.9 (`PAVED_SURFACE_AVOIDANCE`). Both our defaults, not measured. Plan and Go offer them as routes to
-  choose from only where they do what their name says (frontend `lib/neighbours.ts`).
+  choose from only where they do what their name says (frontend `lib/neighbours.ts`); Fewer turns is also a
+  switch in Plan's Ride settings popup (`fewerturns=1` in a link), not shown on the four ride types that
+  charge 30 s already.
 
 ## 1. Valhalla: graph tags (`lua/routemaker_remap.lua`)
 

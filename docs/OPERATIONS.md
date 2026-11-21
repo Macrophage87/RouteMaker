@@ -8125,8 +8125,9 @@ What changes for a deploy:
   is checked. Then: the Rockville Pike side path at Medical Center (NIH) is routed through; the
   JunctionRater table still holds its rows; `scripts/refresh_places.py`, the barrier snapshot and
   `build_intervals` (commit `intervals.json`).
-- [ ] **Rollback.** The `pre-rel` api image and the v0.29.0 front end; the map has its own rollback
-  (the previous graph), and either runs with the other.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.29.0 front end, together: the old api refuses
+  (422) the new `wait_weight` and `sharp_turn_weight` that a v0.30.0 page sends once a slider is moved.
+  The map has its own rollback (the previous graph), and either runs with the other.
 
 ## Deploying v0.29.0
 
@@ -9682,7 +9683,7 @@ EDT). First check that Geofabrik's current build is new enough (three small text
 
 ```sh
 for r in district-of-columbia maryland virginia west-virginia; do
-  curl -fsS https://download.geofabrik.de/north-america/us/$r-updates/state.txt | grep '^timestamp'
+  curl -fsS https://download.geofabrik.de/north-america/us/$r/$r-updates/state.txt | grep '^timestamp'
 done                                                             # each at or after the owner's last 2026-10-06 edit
 ```
 
