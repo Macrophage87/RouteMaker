@@ -8108,11 +8108,16 @@ What changes for a deploy:
   beta's release agent takes a tag made by the Release workflow by itself; no router restart, no map
   step;
 - `scripts/beta/auto-release.sh` changed (#1409), so after the deploy the agent puts its own new
-  files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"); only if the log
-  says "WARNING: the agent's files could not all be reinstalled", run `scripts/beta/auto-release.sh
-  install` from the v0.30.1 checkout;
-- the dots read the `JunctionRater` table already loaded on beta; with no rows, the API answers `[]`
-  and nothing is drawn.
+  files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"); only if the
+  log says "WARNING: the agent's files could not all be reinstalled", run
+  `scripts/beta/auto-release.sh install` from the v0.30.1 checkout;
+- the segment panel names a sidewalk ridden as a last resort ("Last resort", a new `last_resort`
+  field in the segment answer), on today's map;
+- the pipeline change takes effect only with a map rebuilt from v0.30.1 or later: the e-bike and
+  both Road Bike graphs then ride no sidewalk at all (the owner, 2026-11-14) and walk only the short
+  links where a bike way meets a footway, so their routes beside Avoid roads may get longer;
+- the dots read the `JunctionRater` table already loaded on beta; with no rows, the API answers
+  `{"junctions": []}` and nothing is drawn.
 
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
   (Actions, "Release", Run workflow on main, version `v0.30.1`, then approve).

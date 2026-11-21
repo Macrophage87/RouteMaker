@@ -5650,6 +5650,16 @@ dialog.plan-ride-settings h2:focus {
   line-height: 0;
 }
 
+/* On a touch screen, a 44 px target round the small drawn dot. */
+@media (pointer: coarse) {
+  .rated-map-dot {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+  }
+}
+
 .cue-next,
 .cue-off {
   display: flex;

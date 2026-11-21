@@ -166,8 +166,9 @@ if [ "$beta" = 1 ]; then
 		# and docker left offroad, paved and paved-weekend created but never started
 		# (cloud-20261120b, 2026-11-21).
 		exec 8>>"$beta_state/cd/lock" || die "cannot open $beta_state/cd/lock"
-		# -w: the router timer and the alert watch hold it a few seconds each pass.
-		flock -w "${CLOUD_LOCK_WAIT_S:-120}" 8 ||
+		# -w: the router timer holds it for its whole pass (restarts and warm-up, up to about
+		# 15 minutes), the alert watch a few seconds.
+		flock -w "${CLOUD_LOCK_WAIT_S:-900}" 8 ||
 			die "a deployment pass is still running; wait for it: \"$beta_state/cd/bin/auto-release.sh\" pause --wait \"cloud data\""
 		[ ! -e "$beta_state/cd/in-progress" ] ||
 			die "a stopped deploy is half done ($beta_state/cd/in-progress); see BETA-RUNBOOK, \"Shipping an update later\", before installing data"
@@ -275,6 +276,9 @@ if [ "$beta" = 1 ]; then
 	if [ "$trail_rc" != 0 ]; then
 		# Not "installed": a caller that goes on to resume deployment must stop here.
 		note "a trail router is not running (the WARNING above). Start it, run $smoke --local --trails, then resume continuous deployment"
+		# Exit 3 says the map is good and only a router needs starting; with the local smoke
+		# test failing too, the map itself may be bad (exit 1).
+		[ "$smoke_rc" = 0 ] || exit 1
 		exit 3
 	fi
 	note "installed. Wait for \"predraw exit 0\" in $beta_state/predraw.log, run $smoke --public,"
