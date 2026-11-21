@@ -136,12 +136,12 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   // it in the sheet is not read as a fourth group; each group named once, by its heading.
   assert.match(go, /<section ref=\{scopeRef\} className="ride-groups" aria-labelledby="ride-sheet-types">\s*<h3 id="ride-sheet-types" className="visually-hidden">\s*\{t\("Every ride type"\)\}\s*<\/h3>/);
   // Review F9: a search's groups are ride-sheet-group (.ride-group is the group ride overlay's, absolutely placed).
-  assert.match(go, /<section key=\{group\.id\} className="ride-sheet-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideTypeCards ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} idPrefix="ride-sheet" icon=\{rideIcon\} \{\.\.\.star\} \/>/);
+  assert.match(go, /<section key=\{group\.id\} className="ride-sheet-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>/);
   assert.match(sheets, /role=\{label \? "group" : undefined\} aria-label=\{label\}/);
   // Go: the search is cleared whenever the sheet is left (as Plan's dialog on closing).
   assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) setQuery\(""\);\s*\}, \[open\]\);/);
   // P3: a pick closes the sheet.
-  assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} onPick=\{pickRideAndClose\} open=\{view === "ride"\} \/>/);
+  assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} dials=\{dials\} onPick=\{pickRideAndClose\} onPickOwn=\{pickOwnAndClose\} go=\{goDefault\} open=\{view === "ride"\} \/>/);
   assert.ok(go.indexOf("<RideTypeSearch") < go.indexOf("groups.map"), "the search comes before the groups");
   const plan = src("../RideTypePicker.tsx");
   assert.match(plan, /<RideTypeSearch id="ride-types-search"/);

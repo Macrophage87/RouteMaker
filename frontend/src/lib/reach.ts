@@ -111,11 +111,11 @@ export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Di
   const sent = points.slice(0, REACH_MAX_POINTS);
   // Nor Plan's start time (lib/startTime.ts): the rings are for the ride time chosen, or now.
   const fields = dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false, startAt: undefined });
-  // A ride's own fields the rings do not take: Mass Ride's size, Mountain Bike's levels, Easy MTB trails, a share
-  // bike's docks.
+  // A ride's own fields the rings do not take: Mass Ride's size, Mountain Bike's levels, Easy MTB trails and Paved only,
+  // a share bike's docks, and Plan's waits and turns (the API's ReachIn takes none of them).
   // A share e-bike is Reach's `assist` on Bikeshare: its pace, hills and graph, as the plan rides it.
   const shareEbike = preset === "bikeshare" && fields.bike === "ebike";
-  for (const key of ["ride_size", "mtb_level", "mtb_preferred", "easy_mtb", "bike", "ending", "pickup_station", "dropoff_station", "transit_option", "novice_legs", "novice_hop"]) delete fields[key];
+  for (const key of ["ride_size", "mtb_level", "mtb_preferred", "easy_mtb", "paved", "fewer_turns", "wait_weight", "sharp_turn_weight", "bike", "ending", "pickup_station", "dropoff_station", "transit_option", "novice_legs", "novice_hop"]) delete fields[key];
   return {
     points: sent,
     preset,

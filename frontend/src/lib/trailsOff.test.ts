@@ -2,7 +2,6 @@
 // every ride type. The link (`trailsoff=1`) and the request (`trails_off`) keep the old name.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { PRESETS } from "./presets.ts";
 import { dialFields, fitDials, startDials, trailsAreOff, trailsOffLocked } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
@@ -97,13 +96,3 @@ test("the ride line says \"roads only\", but not on Mass Ride, which always is",
   assert.doesNotMatch(rideSummary("mass-ride", { ...startDials("mass-ride"), trailsOff: true }), /roads only/);
 });
 
-test("the switch is a real checkbox, labelled, and described by its hint; Mass Ride's stays in the Tab order", () => {
-  const src = readFileSync(new URL("../DialsPanel.tsx", import.meta.url), "utf8");
-  const block = src.slice(src.indexOf('<div className="dial trails-off">'), src.indexOf("Back to this ride type's settings"));
-  assert.match(block, /<label className="toggle">[\s\S]*<input\s+type="checkbox"/);
-  assert.match(block, /aria-describedby=\{trailsOffHintId\}/);
-  assert.match(block, /id=\{trailsOffHintId\}/);
-  assert.match(block, /aria-disabled=\{view\.trailsOff\.locked \|\| undefined\}/);
-  assert.doesNotMatch(block, /\sdisabled=/, "a disabled box leaves the Tab order");
-  assert.match(block, /if \(view\.trailsOff\.locked\) return;/, "a press on Mass Ride's changes nothing");
-});

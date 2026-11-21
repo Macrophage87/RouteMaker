@@ -38,6 +38,7 @@ import {
 } from "../lib/favoritePlaces.ts";
 import { savedPlacesFor } from "../lib/savedPlaceSearch.ts";
 import { t } from "../lib/i18n.ts";
+import { ROAM_NAME } from "../lib/roam.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -265,6 +266,11 @@ export interface GoPlaces {
   onSights: (chip: HTMLButtonElement) => void;
   /** Behind More (the owner, 2026-10-26): the rider's saved and kept routes, Load route's popup; a tap on one opens it in Go. */
   onSavedRoutes: () => void;
+  /**
+   * Roam, a ride with no destination (the owner, 2026-10-22), behind More (intuitiveness review, 2026-11-21: as the
+   * biggest button on the first screen it outranked Where to?); null where it is not offered (Mass Ride).
+   */
+  onRoam: (() => void) | null;
 }
 
 /**
@@ -723,6 +729,18 @@ export function GoSheet({
     // Only a new set of words opens it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whereToTyped?.n]);
+  // New destination opens Where to? ready to type: in view and focused (intuitiveness review, 2026-11-21: it opened
+  // below the fold, about 30 px of it showing, and typing went nowhere).
+  const whereInput = useRef<HTMLInputElement>(null);
+  const newPressed = useRef(false);
+  useEffect(() => {
+    if (!newOpen || !newPressed.current) return;
+    newPressed.current = false;
+    const input = whereInput.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    input.scrollIntoView?.({ block: "center" });
+  }, [newOpen]);
   const pickWhereTo = (place: Place) => {
     setNewOpen(false);
     onPick(place);
@@ -767,13 +785,16 @@ export function GoSheet({
           </div>
         )}
         {routeShown && (
-          <button type="button" className="secondary go-new-destination" aria-expanded={newOpen} aria-controls={newId} onClick={() => setNewOpen(!newOpen)}>
+          <button type="button" className="secondary go-new-destination" aria-expanded={newOpen} aria-controls={newId} onClick={() => {
+              newPressed.current = !newOpen;
+              setNewOpen(!newOpen);
+            }}>
             <Icon name="search" size={18} />
             {t("New destination")}
           </button>
         )}
         <div id={newId} className="go-new-body" hidden={!whereShown}>
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} typed={whereToTyped} onTyped={onWhereToTyped} />
+        <PlaceSearch variant="go" inputRef={whereInput} pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} typed={whereToTyped} onTyped={onWhereToTyped} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
@@ -825,6 +846,12 @@ export function GoSheet({
           </button>
         </div>
         <div id={moreId} className="chip-row go-places go-more-row" role="group" aria-label={t("More places")} hidden={!moreOpen}>
+          {places.onRoam && (
+            <button type="button" className="chip place-chip go-roam-chip" onClick={places.onRoam}>
+              <Icon name="bike" size={18} />
+              {ROAM_NAME}
+            </button>
+          )}
           <button type="button" className="chip place-chip" onClick={(event) => places.onMetro(event.currentTarget)}>
             <Icon name="train" size={18} />
             {t("Metro")}
