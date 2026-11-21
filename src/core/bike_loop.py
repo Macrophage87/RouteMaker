@@ -350,7 +350,11 @@ def _payload_of(costing: dict, when: str, exclude: list) -> Callable[[list], dic
                 {
                     "lon": float(lon),
                     "lat": float(lat),
-                    "type": "break" if i in (0, len(points) - 1) else "through",
+                    # The corners split the ride into legs without a stop or a U-turn
+                    # (`routing.VIA_LOCATION_TYPE`): Valhalla makes no leg at a "through"
+                    # point, so a triangle sent through them came back as one leg and was
+                    # never kept (beta, 2026-11-21: no loop from anywhere).
+                    "type": "break" if i in (0, len(points) - 1) else routing.VIA_LOCATION_TYPE,
                     "radius": routing.STOP_RADIUS_M,
                 }
                 for i, (lon, lat) in enumerate(points)

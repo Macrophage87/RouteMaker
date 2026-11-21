@@ -202,7 +202,6 @@ export function RideTypePicker({ preset, dials, onChoose, go }: Props) {
           </header>
           <p className="hint">
             {t("Sets traffic and hills for this kind of ride.")}{" "}
-            {go ? `${t("Go on a card makes it what Go starts on.")} ` : ""}
             <button type="button" className="link ride-types-full" aria-pressed={full} onClick={() => setFull(!full)}>
               {t("What each does")}
             </button>
@@ -243,7 +242,6 @@ export function RideTypePicker({ preset, dials, onChoose, go }: Props) {
                         </>
                       )}
                     </button>
-                    {go && <GoDefaultButton goKey={option.id} said={presetSaid(option.id)} go={go} />}
                     <FavoriteStar id={option.id} on={favorites.includes(option.id)} onToggle={(id) => toggleFromPicker(id, dialogRef.current)} />
                     {carries(option.id) && (
                       <div className="ride-type-loads" role="group" aria-label={t("{ride}: cargo or passengers", { ride: presetSaid(option.id) })}>
@@ -270,6 +268,8 @@ export function RideTypePicker({ preset, dials, onChoose, go }: Props) {
                         ))}
                       </div>
                     )}
+                    {/* Under the card, after a cargo bike's loads (the owner, 2026-11-21: "Make Go's default"). */}
+                    {go && <GoDefaultButton goKey={option.id} said={presetSaid(option.id)} go={go} />}
                   </li>
                 ))}
               </ul>
