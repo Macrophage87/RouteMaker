@@ -50,6 +50,10 @@
 #   stress-tile pre-draw in the background, and runs the local smoke test, retried while the
 #   app and routers start. Then run smoke-test.sh --public yourself. Rollback is the
 #   runbook's (rollback A for the tiles, the pre-update dump for the database).
+#   It holds the deploy agent's lock from its checks to its end, so the router timer
+#   (restart-routers.sh) never restarts a router under it. It exits 3, without its
+#   "installed." line, when a trail router it started is not running: start that router and
+#   run smoke-test.sh --local --trails before resuming deployment.
 #
 # Options:
 #   --beta                  the beta server's mode (above)
@@ -156,9 +160,14 @@ if [ "$beta" = 1 ]; then
 	if [ -d "$beta_state/cd/bin" ]; then
 		[ -f "$beta_state/cd/PAUSED" ] ||
 			die "continuous deployment is not paused; first: \"$beta_state/cd/bin/auto-release.sh\" pause --wait \"cloud data\""
-		if [ -e "$beta_state/cd/lock" ] && ! (exec 8>>"$beta_state/cd/lock" && flock -n 8); then
+		# The deploy agent's lock, held to the end of this run (fd 8): the router timer
+		# (restart-routers.sh) skips its pass while a deploy holds it. Without it, the timer
+		# restarted valhalla-mtb in the same seconds as the trail routers' force-recreate below,
+		# and docker left offroad, paved and paved-weekend created but never started
+		# (cloud-20261120b, 2026-11-21).
+		exec 8>>"$beta_state/cd/lock"
+		flock -n 8 ||
 			die "a deployment pass is still running; wait for it: \"$beta_state/cd/bin/auto-release.sh\" pause --wait \"cloud data\""
-		fi
 		[ ! -e "$beta_state/cd/in-progress" ] ||
 			die "a stopped deploy is half done ($beta_state/cd/in-progress); see BETA-RUNBOOK, \"Shipping an update later\", before installing data"
 	fi
@@ -218,7 +227,7 @@ if [ "$beta" = 1 ]; then
 		fi
 		printf '%s\n' "$((avail + ${held:-0}))"
 	}
-	trail=()
+	trail=() trail_rc=0
 	for variant in offroad mtb paved paved-weekend; do
 		[ -L "$data_root/tiles/$variant/current" ] || continue
 		if { [ "$variant" = paved ] || [ "$variant" = paved-weekend ]; } &&
@@ -232,7 +241,12 @@ if [ "$beta" = 1 ]; then
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		note "starting the trail routers on the new graphs: ${trail[*]}"
-		"$bcompose" up -d --force-recreate "${trail[@]}" ||
+		"$bcompose" up -d --force-recreate "${trail[@]}" || trail_rc=1
+		# `up` can answer 0 and still leave one only created; each must be running.
+		for router in "${trail[@]}"; do
+			[ -n "$("$bcompose" ps -q --status running "$router" </dev/null 2>/dev/null)" ] || trail_rc=1
+		done
+		[ "$trail_rc" = 0 ] ||
 			note "WARNING: a trail router did not start; Mountain Bike, Gravel, Mountain Goat and Road Bike stay on the standard graph until: $bcompose up -d --force-recreate ${trail[*]}"
 	fi
 	# The settings rows the api serves each variant by, written from the links `files` moved
@@ -241,8 +255,9 @@ if [ "$beta" = 1 ]; then
 		note "WARNING: sync_upstreams failed; run it once the api is up: $bcompose exec -T api ./manage.py sync_upstreams"
 	note "drawing the stress tiles again, in the background: $beta_state/predraw.log"
 	mkdir -p "$beta_state"
+	# Not holding the deploy lock (fd 8) for the pre-draw's hour.
 	# shellcheck disable=SC2016 # $1 and $? are the inner shell's
-	( umask 077; setsid nohup sh -c '"$1" exec -T worker ./manage.py predraw_stress_tiles; echo "predraw exit $?"' \
+	( umask 077; exec 8>&-; setsid nohup sh -c '"$1" exec -T worker ./manage.py predraw_stress_tiles; echo "predraw exit $?"' \
 		sh "$bcompose" </dev/null >"$beta_state/predraw.log" 2>&1 & )
 	# The api and the routers take a while to come up; the smoke test only reads.
 	tries=${CLOUD_SMOKE_TRIES:-20} smoke_rc=0
@@ -256,6 +271,11 @@ if [ "$beta" = 1 ]; then
 		note "the smoke test failed; the app may still be starting, so trying again"
 		sleep "${CLOUD_SMOKE_WAIT_S:-15}"
 	done
+	if [ "$trail_rc" != 0 ]; then
+		# Not "installed": a caller that goes on to resume deployment must stop here.
+		note "a trail router is not running (the WARNING above). Start it, run $smoke --local --trails, then resume continuous deployment"
+		exit 3
+	fi
 	note "installed. Wait for \"predraw exit 0\" in $beta_state/predraw.log, run $smoke --public,"
 	note "then resume continuous deployment if it was paused: \"$beta_state/cd/bin/auto-release.sh\" resume"
 	exit "$smoke_rc"
