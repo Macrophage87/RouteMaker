@@ -15,6 +15,7 @@ import {
   infoHelp,
   infoHeading,
   infoSaid,
+  levelBadge,
   isInfoKey,
   osmEditUrl,
   placeAtSpot,
@@ -301,4 +302,18 @@ test("a fact's source line joins its source and year; the evidence marks put rec
   assert.deepEqual(evidenceMarks({ records: 2, inputs: 5, strength: "thin", words: "" }), [true, true, false, false, false]);
   // An older API has no facts: the panel shows none.
   assert.deepEqual(shownFacts({ found: true, title: "x", tier: 3, open: true, osm_way_id: 1, distance_m: 1, sections: [], attribution: [] }), []);
+});
+
+test("a sidewalk ridden only as a last resort says so in place of a level", () => {
+  const sidewalk: SegmentInfo = {
+    ...INFO,
+    title: "Sidewalk",
+    tier: 4,
+    step: 4,
+    last_resort: true,
+    summary: [{ id: "stress", label: "Traffic stress", value: "Last resort" }],
+  };
+  assert.equal(levelBadge(sidewalk), "Last resort");
+  assert.equal(infoSaid({ kind: "ready", info: sidewalk }), "Sidewalk: Last resort.");
+  assert.equal(levelBadge({ ...INFO, tier: 4, step: 4 }), "LTS 4");
 });
