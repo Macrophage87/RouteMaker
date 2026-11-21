@@ -305,7 +305,7 @@ import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type
 import { letterKeyIndex, letterPlaces, placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import { detourShownSaid, frameAround, rideOpenPadding } from "./lib/detourSearch.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, mapEditsLocked, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_LOCATION_OFF, goStartSaid, GO_START_UNAVAILABLE, ROAM_LOCATION_OFF, goStartNone, GO_PICK_LOOK_MS, goHereStart, goRough, goRoughAgain, goRoughTriesAfter, GO_ROUGH_AGAIN_MS, GO_FOLLOW_MS, goFollowTo, goWarmDue, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, mapEditsLocked, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 // Ride mode, its graphs and its detours: loaded on first use, and once the page is idle. What App needs at Start (the
 // voice's unlock inside the press, the start and end sentences) is in rideStart.ts. A Start or Resume before the code
 // is in waits for it (beginRide, resumeLeft), so a ride never shows without its screen.
@@ -2902,6 +2902,30 @@ export function App() {
     }, GO_ROUGH_AGAIN_MS);
     return () => window.clearInterval(tick);
     // locate, the refs and flyToInView (refs and the DOM only) are the same for the page.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Go's dot follows the rider (lib/appMode.ts GO_FOLLOW_MS; the owner, 2026-11-21): a sure start is looked up again
+  // every GO_FOLLOW_MS while Go shows it, quietly and around the gate as the rough look-up above (whose busy flag it
+  // shares, so one look-up at a time). The dot and the start move when the rider has (goFollowTo); the map does not.
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      const inGo = () => modeRef.current === "go" && !onBikeNow.current && pointsRef.current.length === 0;
+      if (document.visibilityState !== "visible" || !inGo() || roughBusy.current) return;
+      const was = goStartRef.current;
+      if (was.kind !== "here" || goRough(hereRef.current?.accuracyM ?? 0)) return;
+      roughBusy.current = true;
+      void locate(geoEnv, undefined, undefined, true).then((result) => {
+        roughBusy.current = false;
+        if (!result.ok) return;
+        // Anything else that set the start meanwhile (Locate, a pick, a typed start) wins.
+        if (!inGo() || goStartRef.current !== was) return;
+        const to = goFollowTo(was, result.fix);
+        if (to === null) return;
+        setHere(result.fix);
+        setGoStart(goHereStart(to));
+      });
+    }, GO_FOLLOW_MS);
+    return () => window.clearInterval(tick);
+    // locate and the refs are the same for the page.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // A start typed into Go's start box: the plan's first point, in place of the location.
   const goStartPick = (found: Place) => {
