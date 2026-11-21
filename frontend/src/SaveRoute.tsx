@@ -12,10 +12,13 @@ import { signInHasChoice } from "./lib/stressEditor.ts";
 import { Icon } from "./Icon.tsx";
 import { InfoButton } from "./SettingRow.tsx";
 import { firstWordAndRest, t } from "./lib/i18n.ts";
+import { KEEPING_SAID } from "./lib/offlineRoutes.ts";
 import { FIXED_ABOUT, FIXED_HINT, FIXED_ROUTE, NAME_MAX, SAVE_ROUTE, TAGS_MAX, listRoutes, parseTags, tagHints, tagsInUse, takeHint } from "./lib/savedRoutes.ts";
 
 /** How long the bar's "Saved" line stays on the map. */
 export const SAID_ON_MAP_MS = 6000;
+/** How long a keep's line (signed out, with Sign in to sync on it) stays on the map. */
+export const KEPT_ON_MAP_MS = 20000;
 
 export interface SaveRouteProps {
   label: string;
@@ -41,9 +44,15 @@ export interface SaveRouteProps {
    * (the owner, 2026-10-21: "If someone isn't signed in allow them to sign in there via discord, or just export as
    * GPX"). The handler keeps the plan across the round trip. */
   signIn?: ((event: MouseEvent<HTMLAnchorElement>) => void) | null;
+  /**
+   * Signed out (onSave null), Plan's bar: a press keeps the route on this device (Keep for offline) and says so, with
+   * Sign in to sync beside it, in place of a sign-in form (intuitiveness review, 2026-11-21: the biggest button after
+   * planning was a sign-in wall). Resolves to the line to say ("" says nothing) and whether the route was kept.
+   */
+  keepHere?: (() => Promise<{ said: string; kept: boolean }>) | null;
 }
 
-export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags, defaultFixed }: SaveRouteProps) {
+export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags, defaultFixed, keepHere = null }: SaveRouteProps) {
   const [asking, setAsking] = useState(false);
   const [name, setName] = useState("");
   const [fixed, setFixed] = useState(false);
@@ -64,6 +73,9 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
   }, [asking, wantsTags]);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState({ text: "", count: 0 });
+  // The said line is a keep's (signed out): Sign in to sync shows beside it.
+  const [keptHere, setKeptHere] = useState(false);
+  const keepsHere = !onSave && keepHere !== null;
   const openerRef = useRef<HTMLButtonElement>(null);
   // React's autoFocus skips a link: the sign-in link takes the focus as the form opens, as the name field does.
   const signInRef = useRef<HTMLAnchorElement>(null);
@@ -73,10 +85,12 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
   const formId = useId();
   // On the map, the line that says it saved goes after a while: it would cover the map chips under the bar.
   useEffect(() => {
-    if (!bar || !said.text) return;
-    const timer = setTimeout(() => setSaid((s) => ({ ...s, text: "" })), SAID_ON_MAP_MS);
+    // Not while a keep is still under way: "Keeping…" stays until it ends (the PR review's 8).
+    if (!bar || !said.text || busy) return;
+    // A keep's line, with Sign in to sync on it, stays longer: there is a link on it to reach.
+    const timer = setTimeout(() => setSaid((s) => ({ ...s, text: "" })), keptHere ? KEPT_ON_MAP_MS : SAID_ON_MAP_MS);
     return () => clearTimeout(timer);
-  }, [bar, said]);
+  }, [bar, said, keptHere, busy]);
   const close = () => {
     setAsking(false);
     openerRef.current?.focus();
@@ -87,10 +101,24 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
         type="button"
         ref={openerRef}
         className={bar ? "plan-bar-route save-route-open" : chip ? "chip save-route-chip" : "secondary save-route-open"}
-        aria-expanded={asking}
-        aria-controls={formId}
+        aria-expanded={keepsHere ? undefined : asking}
+        aria-controls={keepsHere ? undefined : formId}
+        aria-disabled={keepsHere && busy ? true : undefined}
         aria-label={shown || bar ? label : undefined}
         onClick={() => {
+          if (keepsHere) {
+            if (busy) return;
+            setBusy(true);
+            // Keeping the map along it takes a while: said at once (the Keep for offline button's words).
+            setKeptHere(false);
+            setSaid((s) => ({ text: KEEPING_SAID, count: s.count + 1 }));
+            void keepHere().then(({ said: text, kept }) => {
+              setBusy(false);
+              setKeptHere(kept);
+              setSaid((s) => ({ text, count: s.count + 1 }));
+            });
+            return;
+          }
           if (!asking) {
             setName(defaultName());
             setFixed(defaultFixed?.() ?? false);
@@ -220,6 +248,15 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
       <p className="hint save-route-said" role="status">
         {said.text}
         {said.count % 2 === 1 ? " " : ""}
+        {/* On the line's card under the bar, while it shows. */}
+        {keepsHere && keptHere && said.text && signIn && (
+          <>
+            {" "}
+            <a className="save-route-sync" href="/auth/login" onClick={signIn}>
+              {t("Sign in to sync")}
+            </a>
+          </>
+        )}
       </p>
     </div>
   );

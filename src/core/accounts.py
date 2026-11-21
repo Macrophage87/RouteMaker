@@ -31,6 +31,9 @@ SETTINGS_KEYS = frozenset(
         "sections",  # which Layers sections' switches were on
         "bikeshare",  # the bikeshare and micromobility service switches
         "favorites",  # the favorite ride types, listed first in the ride type pickers
+        # the rider's own named ride types: [{id, name, plan}] (frontend lib/ownRideTypes.ts)
+        "own",
+        "goOwn",  # which of them Go starts on, or null
         "weight",  # the rider and bike weight (frontend lib/weight.ts); personal, never logged
         "speed",  # the rider's riding speed, whole mph, or null for the ride type's own
         "units",  # the units shown and said: "us" or "metric" (frontend lib/units.ts)
@@ -40,6 +43,12 @@ SETTINGS_MAX_BYTES = 16 * 1024
 SETTINGS_MAX_DEPTH = 4
 # A list of short ride type names, each once; room for every ride type and some to come.
 FAVORITES_MAX = 32
+# The rider's own ride types (frontend lib/ownRideTypes.ts OWN_MAX, OWN_NAME_MAX): a short id, a
+# name and the ride type and dials as a plan fragment with no points.
+OWN_MAX = 20
+OWN_NAME_MAX = 40
+OWN_PLAN_MAX = 2048
+OWN_ID_RE = re.compile(r"^[a-z0-9]{1,16}$")
 # The rider and bike weight's total, as the planner takes it (frontend lib/dials.ts
 # SYSTEM_WEIGHT_MIN_KG and SYSTEM_WEIGHT_MAX_KG), and its parts' keys.
 WEIGHT_MIN_KG = 25
@@ -48,7 +57,7 @@ WEIGHT_PARTS = ("riderKg", "bikeKg", "cargoKg")
 WEIGHT_KEYS = frozenset({"name", "totalKg", "parts", "setAt"})
 # The riding speed picker's range, whole mph (frontend lib/ridingSpeed.ts SPEED_MIN_MPH and
 # SPEED_MAX_MPH).
-SPEED_MIN_MPH = 8
+SPEED_MIN_MPH = 6
 SPEED_MAX_MPH = 30
 # The units setting's values (frontend lib/units.ts UNITS).
 UNITS = ("us", "metric")
@@ -77,6 +86,28 @@ def _depth(value, level: int = 0) -> int:
 
 # A plan's stops in either form: `q=` (the app's links since v0.15.0) or the older `p=`.
 PLAN_POINTS_RE = re.compile(r"(^|[#&])[pq]=")
+# An own ride type holds a ride type and its sliders only: no points, vias, a drawn line or notes
+# (release review of #1385).
+OWN_PLAN_PLACES_RE = re.compile(r"(^|[#&])(p|q|via|line|sn|nt)=")
+
+
+def _own_ok(own) -> bool:
+    if not isinstance(own, list) or len(own) > OWN_MAX:
+        return False
+    ids = set()
+    for item in own:
+        if not isinstance(item, dict) or set(item) != {"id", "name", "plan"}:
+            return False
+        ident, name, plan = item["id"], item["name"], item["plan"]
+        if not (isinstance(ident, str) and OWN_ID_RE.fullmatch(ident)) or ident in ids:
+            return False
+        if not (isinstance(name, str) and name.strip() and len(name) <= OWN_NAME_MAX):
+            return False
+        # The ride type and dials only, as "plan" is: never a route's points.
+        if not isinstance(plan, str) or len(plan) > OWN_PLAN_MAX or OWN_PLAN_PLACES_RE.search(plan):
+            return False
+        ids.add(ident)
+    return True
 
 
 def settings_problem(data) -> str | None:
@@ -104,6 +135,12 @@ def settings_problem(data) -> str | None:
         or len(set(favorites)) != len(favorites)
     ):
         return "The favorite ride types are not in the expected form."
+    own = data.get("own")
+    if own is not None and not _own_ok(own):
+        return "Your own ride types are not in the expected form."
+    go_own = data.get("goOwn")
+    if go_own is not None and not (isinstance(go_own, str) and OWN_ID_RE.fullmatch(go_own)):
+        return "Go's own ride type is not in the expected form."
     weight = data.get("weight")
     if weight is not None and not _weight_ok(weight):
         # Never echo the value: the weight is personal.

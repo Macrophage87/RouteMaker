@@ -677,7 +677,8 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // Ordering favorites (Stephen 2026-10-30: "order favorites"): two more, Move up and Move down, shown only in the
   // Favorites popout's Edit, beside each place's Remove.
   // Reach (Stephen 2026-11-04): one more, behind Plan's Find chip, in Plan only (PlanMapChips lives in Go.tsx).
-  assert.equal((go.match(/<button/g) ?? []).length, 44, "the same buttons as before, Plan's Reach behind Find, the Home sheet's, the route card's, Go's bar, More's Metro and Saved routes, Plan's Find, Favorites' (Move up and Move down in Edit), Add a stop's and New destination");
+  // The intuitiveness review (2026-11-21): one more, Roam, behind More (it left Go's bar, where it was the biggest button).
+  assert.equal((go.match(/<button/g) ?? []).length, 45, "the same buttons as before, Roam behind More, Plan's Reach behind Find, the Home sheet's, the route card's, Go's bar, More's Metro and Saved routes, Plan's Find, Favorites' (Move up and Move down in Edit), Add a stop's and New destination");
   assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 5, "the same search fields as before, the Home sheet's and Favorites'");
 });
 

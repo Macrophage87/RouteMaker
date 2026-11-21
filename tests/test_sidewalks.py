@@ -638,3 +638,94 @@ def test_a_trail_that_runs_on_past_its_crosswalk_is_found_where_links_is_not():
     ways[0] = placed(200, SIDE_PATH, [(0.0, 0.0), (0.0, 100.0), (-60.0, 160.0)])
     assert 201 not in sw.links(ways)
     assert sw.trail_crossings(ways) == {201}
+
+
+# --- Gap links (the owner, 2026-11-20) ----------------------------------------------------
+#
+# "Do a search for places that could match this and open them. This happens a lot." The
+# shape is the one found by the Bethesda Trolley Trail (OSM 39941547): a cycleway that runs
+# on, and a 35 m footway with no bicycle tag from it to a service road, the only join between
+# them for hundreds of metres.
+
+
+def spur(footway=None, far_join=None, length=35.0):
+    """A north-south cycleway and a north-south service road `length` metres east of it,
+    both running on, joined by a footway; `far_join` adds a street joining the two that
+    many metres north."""
+    north = [(0.0, far_join)] if far_join is not None else []
+    ways = [
+        placed(1, SIDE_PATH, [(0.0, -300.0), (0.0, 0.0), *north, (0.0, 300.0)]),
+        placed(
+            2,
+            {"highway": "service"},
+            [(length, -300.0), (length, 0.0), *[(length, n) for _e, n in north], (length, 300.0)],
+        ),
+        placed(3, footway or {"highway": "footway"}, [(0.0, 0.0), (length, 0.0)]),
+    ]
+    if far_join is not None:
+        ways.append(placed(4, {"highway": "residential"}, [(0.0, far_join), (length, far_join)]))
+    return ways
+
+
+def test_a_short_footway_that_is_the_only_join_between_a_trail_and_a_road_is_a_gap_link():
+    assert sw.gap_links(spur()) == {3}
+    # Sidewalks and crosswalks close a gap as well; a bicycle tag is left alone.
+    assert sw.gap_links(spur({"highway": "footway", "footway": "sidewalk"})) == {3}
+    assert sw.gap_links(spur({"highway": "footway", "bicycle": "no"})) == set()
+    # The trail runs on past the footway, so `links` (a dead end only) does not find it.
+    assert 3 not in sw.links(spur())
+
+
+def test_a_gap_the_network_joins_nearby_is_left_alone():
+    # A street joins the two 100 m on: 100 + 35 + 100 m round, under GAP_DETOUR_M.
+    assert sw.gap_links(spur(far_join=100.0)) == set()
+    # 200 m on: 435 m round, over it.
+    assert sw.gap_links(spur(far_join=200.0)) == {3}
+
+
+def test_a_gap_link_is_short_needs_a_trail_and_is_never_closed():
+    assert sw.gap_links(spur(length=sw.GAP_M + 5)) == set()
+    roads = [
+        (w, {"highway": "residential"}, n, c) if w == 1 else (w, t, n, c) for w, t, n, c in spur()
+    ]
+    assert sw.gap_links(roads) == set(), "a parking lot to a street is no gap link"
+    assert sw.gap_links(spur(), closed={3}) == set()
+
+
+def test_a_gap_link_reads_the_open_ways_coordinates_through_locate():
+    ways = spur()
+    bare = [(w, t, n, c if w == 3 else ()) for w, t, n, c in ways]
+    assert sw.gap_links(bare, locate=lambda index: ways[index][3]) == {3}
+
+
+def test_a_shortcut_across_one_trails_bend_is_no_gap_link():
+    # A trail bends round in a U (two 200 m legs 40 m apart, joined 40 m round the bottom
+    # by itself); a 40 m footway across the top meets only that one trail.
+    ways = [
+        placed(1, TRAIL, [(0.0, 0.0), (0.0, -200.0), (40.0, -200.0), (40.0, 0.0)]),
+        placed(3, {"highway": "footway"}, [(0.0, 0.0), (40.0, 0.0)]),
+    ]
+    assert sw.gap_links(ways) == set()
+
+
+def test_a_link_another_rule_opened_counts_as_a_nearby_join():
+    # Two parallel connectors 20 m apart: once one is open, the other is no gap.
+    ways = [
+        placed(1, SIDE_PATH, [(0.0, -300.0), (0.0, 0.0), (0.0, 20.0), (0.0, 300.0)]),
+        placed(
+            2, {"highway": "service"}, [(35.0, -300.0), (35.0, 0.0), (35.0, 20.0), (35.0, 300.0)]
+        ),
+        placed(3, {"highway": "footway"}, [(0.0, 0.0), (35.0, 0.0)]),
+        placed(6, {"highway": "footway"}, [(0.0, 20.0), (35.0, 20.0)]),
+    ]
+    assert sw.gap_links(ways) == {3, 6}
+    assert sw.gap_links(ways, also_open={6}) == set()
+
+
+def test_a_footway_with_one_end_at_a_trail_junction_and_the_other_loose_is_no_gap_link():
+    ways = [
+        placed(1, SIDE_PATH, [(0.0, -300.0), (0.0, 0.0)]),
+        placed(2, SIDE_PATH, [(0.0, 0.0), (0.0, 300.0)]),
+        placed(3, {"highway": "footway"}, [(0.0, 0.0), (35.0, 0.0)]),
+    ]
+    assert sw.gap_links(ways) == set()
