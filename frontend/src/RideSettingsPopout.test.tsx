@@ -1,5 +1,6 @@
-// Plan's Ride settings popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"), with Waiting at lights
-// and stops, Sharp turns and Fewer turns among the settings; Go keeps its settings under the line, without those three. Rendered and
+// The Ride settings popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"), with Waiting at lights
+// and stops, Sharp turns and Fewer turns among the settings, the same in Go (2026-11-21: "just have the same control popout
+// for both"); without it, the settings open under the line, without those three. Rendered and
 // looked at as the rider sees it (testSupport/render.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -90,7 +91,7 @@ test("moving Waiting at lights to 4x and ticking Fewer turns plan again with the
   assert.equal(commits.at(-1)?.fewerTurns, true);
 });
 
-test("Go keeps its settings under the line, without Waiting at lights or Fewer turns", async () => {
+test("Without the popup, the settings open under the line, without Waiting at lights or Fewer turns", async () => {
   const { screen } = await section("fast", false);
   const adjust = screen.button(/Adjust$/);
   assert.equal(adjust.getAttribute("aria-expanded"), "false");
@@ -106,6 +107,10 @@ test("the settings ride in the link, the request and the line's words, and stay 
   const plan = decodePlan(`#${encodePlan([[-77.03, 38.9], [-77.0, 38.9]], "default", dials)}`.replace("##", "#"));
   assert.equal(plan.dials?.waitWeight, 4);
   assert.equal(plan.dials?.fewerTurns, true);
+  // Sharp turns at 0 is a setting of its own (a sharp turn as a plain one), not an absent one.
+  const flat: Dials = { ...startDials("road-bike"), sharpTurnWeight: 0 };
+  const flatPlan = decodePlan(`#${encodePlan([[-77.03, 38.9], [-77.0, 38.9]], "road-bike", flat)}`.replace("##", "#"));
+  assert.equal(flatPlan.dials?.sharpTurnWeight, 0);
   const fields = dialFields(dials);
   assert.equal(fields.wait_weight, 4);
   assert.equal(fields.fewer_turns, true);
@@ -158,7 +163,7 @@ test("moving Sharp turns to 0 plans again with it and leaves the waits alone", a
   assert.equal(turns.getAttribute("aria-valuetext"), "1.5x");
 });
 
-test("Go has no Sharp turns slider", async () => {
+test("Without the popup there is no Sharp turns slider", async () => {
   const { screen } = await section("road-bike", false);
   await click(screen.button(/Adjust$/));
   assert.equal(slider("Sharp turns"), undefined);
@@ -179,4 +184,28 @@ test("a sharp-turn weight rides in the link, the request and the line's words; 0
   assert.doesNotMatch(settingsSummary("road-bike", startDials("road-bike")), /sharp turns/);
   assert.equal(choose("default", null, dials).sharpTurnWeight, 0, "kept through a change of ride type");
   assert.equal(choose("walk", null, dials).sharpTurnWeight, undefined, "nothing to weigh on foot");
+});
+
+test("Go's Ride settings (no ride type button) open the same popup, Sharp turns and Fewer turns included", async () => {
+  const dials: Dials = { ...startDials("default"), waitWeight: 3, sharpTurnWeight: 0 };
+  const screen = await render(
+    <RideSection preset="default" dials={dials} choosePreset={() => {}} commitDials={() => {}} route={null} typeCard={false} popout />,
+  );
+  await click(screen.button(/Adjust$/));
+  screen.dialog("Ride settings: Default");
+  assert.equal(slider("Waiting at lights and stops")?.getAttribute("aria-valuetext"), "3x", "a link's weight is shown, not dropped");
+  assert.ok(slider("Sharp turns"));
+  assert.ok(toggle("Fewer turns"));
+});
+
+test("the popup closes with its section: Go's Ride sheet closed leaves no popup open behind it", async () => {
+  const props = { preset: "default" as PresetId, dials: startDials("default"), choosePreset: () => {}, commitDials: () => {}, route: null, typeCard: false, popout: true };
+  const screen = await render(<RideSection {...props} shown />);
+  const adjust = screen.button(/Adjust$/);
+  await click(adjust);
+  const popup = screen.dialog("Ride settings: Default");
+  assert.equal(popup.hasAttribute("open"), true);
+  await screen.rerender(<RideSection {...props} shown={false} />);
+  assert.equal(popup.hasAttribute("open"), false, "closed with the sheet");
+  assert.equal(adjust.getAttribute("aria-expanded"), "false");
 });

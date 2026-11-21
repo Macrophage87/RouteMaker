@@ -656,12 +656,6 @@ export function App() {
     if (!dials.startAt) return;
     if (mode === "go" || fitStart(dials.startAt, startClock) === undefined) setDials((now) => ({ ...now, startAt: undefined }));
   }, [mode, dials.startAt, startClock]);
-  // Waiting at lights and stops, Sharp turns and Fewer turns are set in Plan's Ride settings popup alone; Go has no control for
-  // them, so coming into Go drops them rather than plan with settings it never shows.
-  useEffect(() => {
-    if (mode !== "go" || (dials.waitWeight === undefined && !dials.fewerTurns && dials.sharpTurnWeight === undefined)) return;
-    setDials((now) => ({ ...now, waitWeight: undefined, fewerTurns: undefined, sharpTurnWeight: undefined }));
-  }, [mode, dials.waitWeight, dials.fewerTurns, dials.sharpTurnWeight]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
   // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
   // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
@@ -7071,8 +7065,11 @@ export function App() {
           hideTarget: mode === "plan" && showsBikeLoop(preset, points, dials.loop === true),
           // A day and start time, in Plan only (the owner, 2026-11-13: Go always plans from now).
           startTime: mode === "plan" && offersStartTime(preset),
-          // Every ride setting in a popup, in Plan only (the owner, 2026-11-20: "Have it pop out to all ride parameters").
-          popout: mode === "plan",
+          // Every ride setting in a popup (the owner, 2026-11-20: "Have it pop out to all ride parameters"), the same one
+          // in Go (2026-11-21: "just have the same control popout for both"), so a link's waits, sharp turns and Fewer
+          // turns are planned with, and seen, in Go too.
+          popout: true,
+          shown: mode !== "go" || view === "ride",
           // The rider's own speed, under Hills (the owner, 2026-10-27: "next to hill speed or max grade").
           ridingSpeed: {
             mph: ridingSpeed,

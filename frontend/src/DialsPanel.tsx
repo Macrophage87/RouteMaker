@@ -522,7 +522,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed,
           />
         </SettingRow>
       )}
-      {/* Stops and turns (the owner, 2026-11-20), in Plan's popout only: how much a wait counts, then Fewer turns. */}
+      {/* Stops and turns (the owner, 2026-11-20), in the Ride settings popup (Plan and Go): how much a wait counts, then Fewer turns. */}
       {stopsAndTurns && view.waits && (
         <Slider
           label={WAITS_LABEL}

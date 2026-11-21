@@ -491,10 +491,13 @@ export interface RideSectionProps {
   /** Offer Leave at, a day and start time (lib/startTime.ts): Plan only. */
   startTime?: boolean;
   /**
-   * Plan (the owner, 2026-11-20: "Have it pop out to all ride parameters"): Adjust opens every ride setting in a popup,
-   * with Waiting at lights and stops, Sharp turns and Fewer turns among them. Go keeps them under the line, without those three.
+   * Plan and Go (the owner, 2026-11-20: "Have it pop out to all ride parameters"; 2026-11-21: "just have the same control
+   * popout for both"): Adjust opens every ride setting in a popup, with Waiting at lights and stops, Sharp turns and Fewer
+   * turns among them. Without it, the settings open under the line, without those three.
    */
   popout?: boolean;
+  /** False while the section is out of sight (Go's Ride sheet closed): the popup closes with it. */
+  shown?: boolean;
 }
 
 /**
@@ -502,10 +505,10 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard, ridingSpeed, hideTarget, startTime, popout, shown } = props;
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} /> : null;
   return (
-    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: presetLabel(preset) }) } : undefined}>
+    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection} popout={popout ? { title: t("Ride settings: {type}", { type: presetLabel(preset) }), shown } : undefined}>
       <DialsPanel
         preset={preset}
         dials={dials}

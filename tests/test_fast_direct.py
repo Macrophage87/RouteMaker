@@ -79,6 +79,9 @@ class TestThePlan:
             ("fast", routing.Dials(stress=20), False),
             ("fast", routing.Dials(stress=0), False),
             ("fast", routing.Dials(follow=((-77.0, 38.9), (-77.04, 38.9))), False),
+            # A plan with a drawn leg is planned once (a drawn leg is the same at 0; the routed
+            # legs beside it keep the ride's own traffic position).
+            ("fast", routing.Dials(straight=(0,)), False),
         ],
     )
     def test_only_a_full_fast_plan_at_its_own_position_is_planned_twice(

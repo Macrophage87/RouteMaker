@@ -112,7 +112,7 @@ export interface PanelView {
   waits: SliderView | null;
   /** "Sharp turns" (the owner, 2026-11-20), on the same ride types; null on any other. */
   sharpTurns: SliderView | null;
-  /** "Fewer turns" (2026-11-20, in Plan's Ride settings), on the same ride types; null on any other. */
+  /** "Fewer turns" (2026-11-20, in the Ride settings popup, Plan and Go), on the same ride types; null on any other. */
   fewerTurns: FewerTurnsView | null;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;

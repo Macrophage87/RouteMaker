@@ -375,11 +375,12 @@ class Context:
     fewer_turns: bool = False
     # What a second of junction waiting costs against a second of riding when routes are
     # ranked (`presets.wait_weight_for`): 1; 2 on the pleasure ride types, Group Ride,
-    # Cargo Bike and Tandem; 3 on Road Bike; or the request's higher `wait_weight`. The time shown is unchanged.
+    # Cargo Bike and Tandem; 3 on Road Bike; or the request's higher `wait_weight`. The time
+    # shown is unchanged.
     wait_weight: float = 1.0
     # What a sharp turn's or U-turn's extra and the seconds turns lose to braking count
-    # (`presets.sharp_turn_weight_for`: 1; 3 on Road Bike, 2 on Tandem and Cargo Bike; the rider's "Sharp
-    # turns", 0 to 5).
+    # (`presets.sharp_turn_weight_for`: 1; 3 on Road Bike, 2 on Tandem and Cargo Bike; the
+    # rider's "Sharp turns", 0 to 5).
     sharp_weight: float = 1.0
     # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
     # Road Bike, Run and Tandem, named, not read from `wait_weight`). No effect while

@@ -45,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.29.0"
+SERVER_VERSION = "0.30.0"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
@@ -5136,7 +5136,8 @@ RIDE_OPTIONS = {
             " or training ride). A second stopped counts this many seconds of riding when"
             " routes are ranked; 1 to 5 in half steps. It only raises the ride type's own weight"
             " (1; 2 on"
-            " trailmaxxing, gravel, mountain-goat, mountain-bike, group-ride, cargo and tandem; 3 on"
+            " trailmaxxing, gravel, mountain-goat, mountain-bike, group-ride, cargo and tandem;"
+            " 3 on"
             " road-bike)."
             " Compare summary.junction_waits before and after; the waits shown stay real."
         ),
@@ -5151,7 +5152,8 @@ RIDE_OPTIONS = {
             "Bike ride types: how much sharp turns, U-turns and the time a turn loses braking"
             " from speed count when routes are ranked, apart from waits at lights. 0 for a"
             " rider who enjoys sharp turns (they cost no more than any other turn), up to 5 to"
-            " avoid them (half steps). The ride type's own is 1 (3 on road-bike, 2 on tandem and cargo)."
+            " avoid them (half steps). The ride type's own is 1 (3 on road-bike, 2 on tandem and"
+            " cargo)."
             " Every turn"
             " still costs its plain price; compare summary.turns."
         ),
