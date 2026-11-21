@@ -547,7 +547,9 @@ def test_fewer_turns_and_all_paved_are_sent_kept_and_said_missing_from_the_link(
     assert "waits=5" in high["link"]
     assert not any("exact wait weight" in n for n in high.get("notes") or [])
     paved = tools.call("plan_route", {"points": [east(0), east(4)], "paved": True})
-    assert any("All paved" in n and "not in it" in n for n in paved["notes"])
+    # Surface's Paved only rides in the link on a bike of the rider's own (#1386, #1388).
+    assert "paved=1" in paved["link"]
+    assert not any("All paved" in n for n in paved.get("notes") or [])
     # A revision keeps it, as Keep to roads; a new ride type too; clear_settings drops it.
     tools.call("revise_route", {"draft_id": out["draft_id"], "paved": True})
     assert api.routes[-1]["fewer_turns"] is True and api.routes[-1]["paved"] is True
