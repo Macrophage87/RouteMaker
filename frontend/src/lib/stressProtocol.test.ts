@@ -251,7 +251,35 @@ test("the protocol's URL carries the real one; the loader fetches it with MapLib
   const reply = await added[0][1]({ url: protocolUrl(TILE) }, abort);
   assert.equal(reply.data.byteLength, 3);
   assert.deepEqual(asked, [TILE]);
-  assert.equal(signals[0], abort.signal);
+  // The request's signal is the attempt's own (it also carries the time limit).
+  assert.equal(signals[0]?.aborted, false);
+});
+
+test("MapLibre's cancel reaches a request in flight, and it is not asked again", async () => {
+  let calls = 0;
+  let started: () => void = () => {};
+  const inFlight = new Promise<void>((resolve) => (started = resolve));
+  const hang = ((_url: string, init?: RequestInit) => {
+    calls += 1;
+    started();
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  }) as unknown as typeof fetch;
+  const abort = new AbortController();
+  const pending = fetchTile(TILE, { get: hang, signal: abort.signal, queue: new Queue(1), wait: async () => {} });
+  await inFlight;
+  abort.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(calls, 1);
+});
+
+test("fetchTile: a last attempt cut by the time limit fails as a timeout, not a cancel", async () => {
+  const hang = ((_url: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    })) as unknown as typeof fetch;
+  await assert.rejects(fetchTile(TILE, { get: hang, retryDown: false, timeoutMs: 20, queue: new Queue(1) }), { name: "TimeoutError" });
 });
 
 test("the page's own queue caps its tile requests at MAX_IN_FLIGHT", async () => {
@@ -582,4 +610,30 @@ test("loadTile: a tile MapLibre cancelled is not answered from the kept tiles", 
     throw new DOMException("aborted", "AbortError");
   }) as unknown as typeof fetch;
   await assert.rejects(() => loadTile(TILE, abort.signal, get, k.offline), { name: "AbortError" });
+});
+
+test("fetchTile: a request that never answers is cut and asked again, not left holding its queue slot", async () => {
+  // The owner, 2026-11-22: the stress colours went and stayed gone, "flaky and irreproducible". One stalled
+  // request held a slot of the page's queue (or the check at load) for good, and no tile came after it.
+  let n = 0;
+  const get = ((_url: string, init?: RequestInit) => {
+    n += 1;
+    if (n > 1) return Promise.resolve(new Response(new Uint8Array([7]), { status: 200 }));
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    });
+  }) as unknown as typeof fetch;
+  const queue = new Queue(1);
+  const data = await fetchTile(TILE, { get, queue, timeoutMs: 20, wait: async () => {}, random: () => 0.5 });
+  assert.deepEqual([...new Uint8Array(data)], [7]);
+  assert.equal(n, 2, "asked again after the cut");
+  assert.equal(queue.inFlight, 0, "the slot is free");
+});
+
+test("stressTilesAnswer: a check that never answers says unavailable rather than waiting for ever", async () => {
+  const hang = ((_url: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    })) as unknown as typeof fetch;
+  assert.equal(await stressTilesAnswer("https://example.test", { get: hang, timeoutMs: 20, queue: new Queue(1) }), false);
 });
