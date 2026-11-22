@@ -755,3 +755,74 @@ def test_a_footway_with_one_end_at_a_trail_junction_and_the_other_loose_is_no_ga
         placed(3, {"highway": "footway"}, [(0.0, 0.0), (35.0, 0.0)]),
     ]
     assert sw.gap_links(ways) == set()
+
+
+# Delaware Ave NE between C and D Streets on the Capitol grounds (OSM, 2026-11-22): the
+# avenue closed to public driving (297226539), its west walk open to bicycles (297230913), and a
+# street the public drives (D Street NE, 911292852) the walk meets end on.
+_DELAWARE = [(-77.00805, 38.89237), (-77.00771, 38.8936), (-77.00727, 38.89452)]
+_WEST_WALK = [(-77.00771, 38.89369), (-77.00753, 38.89420), (-77.00735, 38.8947)]
+_D_STREET = [(-77.00874, 38.8948), (-77.00718, 38.8948)]
+_CLOSED_TAGS = {"highway": "residential", "access": "permissive", "motor_vehicle": "no"}
+_WALK_TAGS = {"highway": "footway", "footway": "sidewalk", "bicycle": "yes"}
+
+
+def _placed(osm_id, tags, coords):
+    return (osm_id, tags, list(range(osm_id * 10, osm_id * 10 + len(coords))), coords)
+
+
+def test_a_bicycle_open_sidewalk_of_a_street_closed_to_public_driving_is_priced_as_a_path():
+    ways = [
+        _placed(1, _CLOSED_TAGS, _DELAWARE),
+        _placed(2, _WALK_TAGS, _WEST_WALK),
+        _placed(3, {"highway": "tertiary", "name": "D Street Northeast"}, _D_STREET),
+    ]
+    assert sw.no_public_traffic_sidewalks(ways) == {2}
+
+
+def test_a_sidewalk_beside_a_street_the_public_drives_keeps_the_sidewalk_price():
+    driven = {"highway": "residential"}
+    assert (
+        sw.no_public_traffic_sidewalks(
+            [_placed(1, driven, _DELAWARE), _placed(2, _WALK_TAGS, _WEST_WALK)]
+        )
+        == set()
+    )
+    # Beside a closed street and one the public drives (a split road): still a sidewalk.
+    shifted = [(lon + 0.0001, lat) for lon, lat in _WEST_WALK]
+    ways = [
+        _placed(1, _CLOSED_TAGS, _DELAWARE),
+        _placed(3, driven, shifted),
+        _placed(2, _WALK_TAGS, _WEST_WALK),
+    ]
+    assert sw.no_public_traffic_sidewalks(ways) == set()
+
+
+def test_a_bus_street_or_a_sidewalk_no_bicycle_tag_opens_is_left_alone():
+    bus = {**_CLOSED_TAGS, "bus": "yes"}
+    assert (
+        sw.no_public_traffic_sidewalks(
+            [_placed(1, bus, _DELAWARE), _placed(2, _WALK_TAGS, _WEST_WALK)]
+        )
+        == set()
+    )
+    untagged = {"highway": "footway", "footway": "sidewalk"}
+    assert (
+        sw.no_public_traffic_sidewalks(
+            [_placed(1, _CLOSED_TAGS, _DELAWARE), _placed(2, untagged, _WEST_WALK)]
+        )
+        == set()
+    )
+
+
+def test_the_most_specific_motor_key_decides_whether_the_public_drives():
+    def found(street):
+        return sw.no_public_traffic_sidewalks(
+            [_placed(1, street, _DELAWARE), _placed(2, _WALK_TAGS, _WEST_WALK)]
+        )
+
+    assert found({"highway": "service", "vehicle": "no", "motor_vehicle": "yes"}) == set()
+    assert found({"highway": "service", "access": "no", "motorcar": "designated"}) == set()
+    assert found({"highway": "service", "access": "yes", "motor_vehicle": "no"}) == {2}
+    assert found({"highway": "service", "motor_vehicle": "no;destination"}) == {2}
+    assert found({"highway": "pedestrian"}) == {2}

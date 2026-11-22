@@ -2789,8 +2789,7 @@ export function MapView(props: Props) {
     ratedMarkers.current = [];
     if (!map) return;
     const onRoute = props.route && !props.stale ? junctionsOnMap(junctionItems(props.route)).map((item): LonLat => [item.lon, item.lat]) : [];
-    const line = props.route && !props.stale ? (props.route.geometry.coordinates as LonLat[]) : [];
-    for (const junction of ratedMapShown(ratedMap, onRoute, line)) {
+    for (const junction of ratedMapShown(ratedMap, onRoute)) {
       const element = ratedMapDot(junction);
       element.addEventListener("click", (event) => {
         // A click on a dot is not a click on the map: it must not add a point.
