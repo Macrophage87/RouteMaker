@@ -28,11 +28,11 @@ export interface RatedMapJunction {
   routeMove?: Movement;
 }
 
-/** A dot this near the route's line is one the route rides through. */
+/** A dot this near the route's line is one the route rides through (our default, unmeasured). */
 const ON_LINE_M = 8;
-/** The route's heading in and out of a junction is read this far before and after it. */
+/** The route's heading in and out of a junction is read this far before and after it (our default, unmeasured). */
 const HEADING_M = 25;
-/** A change of heading of more than this is a turn (a bend in the road less). */
+/** A change of heading of more than this is a turn, a bend in the road less (our default, unmeasured). */
 const TURN_DEG = 35;
 
 interface View {
