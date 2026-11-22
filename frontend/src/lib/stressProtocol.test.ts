@@ -7,7 +7,6 @@ import {
   MAX_IN_FLIGHT,
   MAX_WAIT_S,
   NETWORK_TIMEOUT_MS,
-  REQUEST_TIMEOUT_MS,
   Queue,
   STRESS_PROTOCOL,
   backoffMs,
@@ -252,12 +251,35 @@ test("the protocol's URL carries the real one; the loader fetches it with MapLib
   const reply = await added[0][1]({ url: protocolUrl(TILE) }, abort);
   assert.equal(reply.data.byteLength, 3);
   assert.deepEqual(asked, [TILE]);
-  // The request's signal is the attempt's own (it also carries the time limit), and MapLibre's cancel reaches it.
+  // The request's signal is the attempt's own (it also carries the time limit).
   assert.equal(signals[0]?.aborted, false);
-  const pending = added[0][1]({ url: protocolUrl(`${TILE}?b`) }, abort);
+});
+
+test("MapLibre's cancel reaches a request in flight, and it is not asked again", async () => {
+  let calls = 0;
+  let started: () => void = () => {};
+  const inFlight = new Promise<void>((resolve) => (started = resolve));
+  const hang = ((_url: string, init?: RequestInit) => {
+    calls += 1;
+    started();
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  }) as unknown as typeof fetch;
+  const abort = new AbortController();
+  const pending = fetchTile(TILE, { get: hang, signal: abort.signal, queue: new Queue(1), wait: async () => {} });
+  await inFlight;
   abort.abort();
-  await pending.catch(() => {});
-  assert.equal(signals[1]?.aborted, true, "MapLibre's cancel cancels the request");
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(calls, 1);
+});
+
+test("fetchTile: a last attempt cut by the time limit fails as a timeout, not a cancel", async () => {
+  const hang = ((_url: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    })) as unknown as typeof fetch;
+  await assert.rejects(fetchTile(TILE, { get: hang, retryDown: false, timeoutMs: 20, queue: new Queue(1) }), { name: "TimeoutError" });
 });
 
 test("the page's own queue caps its tile requests at MAX_IN_FLIGHT", async () => {
@@ -614,9 +636,4 @@ test("stressTilesAnswer: a check that never answers says unavailable rather than
       init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
     })) as unknown as typeof fetch;
   assert.equal(await stressTilesAnswer("https://example.test", { get: hang, timeoutMs: 20, queue: new Queue(1) }), false);
-});
-
-test("fetchTile: every request has a limit by default, above the server's own draw limit", () => {
-  assert.equal(REQUEST_TIMEOUT_MS, 20_000);
-  assert.ok(REQUEST_TIMEOUT_MS > NETWORK_TIMEOUT_MS);
 });

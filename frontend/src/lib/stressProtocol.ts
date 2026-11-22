@@ -175,7 +175,9 @@ export async function fetchTile(url: string, options: Fetching = {}): Promise<Ar
     const cancel = () => request.abort();
     if (outer?.aborted) request.abort();
     else outer?.addEventListener("abort", cancel, { once: true });
-    const timer = setTimeout(cancel, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    // A cut is a TimeoutError, not an AbortError, so a last attempt that times out is a failure MapLibre reports
+    // (it drops AbortErrors as cancels), and MapView's check runs.
+    const timer = setTimeout(() => request.abort(new DOMException("timed out", "TimeoutError")), options.timeoutMs ?? REQUEST_TIMEOUT_MS);
     try {
       const response = await get(url, { signal: request.signal });
       if (response.ok) return await response.arrayBuffer();
