@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "ኣስተኻኽል",
   "Copy link": "መላግቦ ቅዳሕ",
   "Link copied.": "መላግቦ ተቐዲሑ።",
-  "Could not copy. Copy the address from the browser's address bar.": "ክቕዳሕ ኣይከኣለን። ኣድራሻ ካብ መስመር ኣድራሻ መርበብ ቅዳሕ።",
+  "Could not copy the link. Select it below and copy it.": "መላግቦ ክቕዳሕ ኣይከኣለን። ኣብ ታሕቲ መሪጽካ ቅዳሕ።",
   "1 step": "1 ስጉምቲ",
   "{count} steps": "{count} ስጉምትታት",
   "Elevation and climbs": "ብራኸን ዓቐባትን",

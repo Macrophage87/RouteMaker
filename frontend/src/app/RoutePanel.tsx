@@ -42,6 +42,7 @@ import { installState } from "../lib/installOffer.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
 import { noBikeLine, restOffered, rideTripOf, rideable as rideableRoute, ridesLine, walksLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
+import { LinkBox } from "../LinkBox.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
 import { DepartureTimer } from "../DepartureTimer.tsx";
 import { transitOf, transitTime, transitTimeName } from "../lib/transit.ts";
@@ -107,6 +108,8 @@ export interface RouteActionsProps {
   keeping: boolean;
   keepSpoken: { text: string; count: number };
   linkSaid: string;
+  /** The link Copy link could not copy, shown under its line to copy by hand (LinkBox.tsx); "" with none. */
+  linkBox: string;
   /** Download GPX through the page: closures checked first, an unedited opened file as it came (v0.7.0). */
   downloadRoute: () => void;
   /** Save route (signed in): Go's Save chip (Plan's is in the Route file sheet, ShareControls); null signed out. */
@@ -483,13 +486,13 @@ function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep
 /**
  * Save route, then Share (the owner, 2026-10-17: "the share button should be in files. Basically you save then you
  * share"): in the Route file sheet, under the file's own controls, for a planned route and an opened file alike. Share
- * is there only where the browser has a share sheet (Copy link, in Plan's route row, is always there); how long its
- * exact line is kept is chosen under it. What Share did (only a failure, or a line not kept) is said here, politely.
+ * is there everywhere (Stephen 2026-11-22: "It's not intuitive to copy a link when no share sheet"): the sheet where the
+ * browser has one, else the link is copied and that is said; where neither works, the link shows in a box to copy.
+ * How long its exact line is kept is chosen under it. What Share did (a copy, a failure, a line not kept) is said here,
+ * politely.
  */
 export function ShareControls(props: {
   save: ReactNode;
-  /** The browser has a share sheet: Share's keeping and its status line are there. */
-  canShare: boolean;
   /** A route to share is shown: the Share buttons are there. */
   ready: boolean;
   /** Share route, or (ride) Share ride: the same link, ridden fixed with location sharing offered (RIDE_PARAM). */
@@ -498,10 +501,12 @@ export function ShareControls(props: {
   /** Plan only (Go keeps the default, one control per feature): how long the link is kept. */
   onShareKeep: ((keep: ShareKeep) => void) | null;
   shareSaid: { text: string; count: number };
+  /** The link Share could neither share nor copy, shown to copy by hand; "" with none. */
+  shareBox: string;
   /** The location line (OWNER-DECISIONS 395): it describes Share, so it is read before the sheet opens. */
   linkNote: string;
 }) {
-  const { save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote } = props;
+  const { save, ready, shareRoute, shareKeep, onShareKeep, shareSaid, shareBox, linkNote } = props;
   // What each button does (the owner, 2026-10-18: "Make that clear in a tooltip"): a phone has no hover, so Info
   // shows it; it is each button's description too, so a screen reader hears it on the button, and a mouse sees it
   // on hover (title).
@@ -511,7 +516,7 @@ export function ShareControls(props: {
   return (
     <div className="share-controls">
       {save}
-      {canShare && ready && (
+      {ready && (
         <div className="share-buttons">
           <button
             type="button"
@@ -537,7 +542,7 @@ export function ShareControls(props: {
           </button>
         </div>
       )}
-      {canShare && ready && (
+      {ready && (
         <div id={aboutId} className="share-about" hidden={!about}>
           <p id="share-route-about" className="hint">
             {SHARE_ROUTE_ABOUT}
@@ -547,18 +552,17 @@ export function ShareControls(props: {
           </p>
         </div>
       )}
-      {canShare && ready && linkNote && (
+      {ready && linkNote && (
         <p id="share-link-note" className="hint link-note">
           {linkNote}
         </p>
       )}
-      {canShare && ready && onShareKeep && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
-      {canShare && (
-        <p className="hint share-said" role="status">
-          {shareSaid.text}
-          {shareSaid.count % 2 === 1 ? " " : ""}
-        </p>
-      )}
+      {ready && onShareKeep && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
+      <p className="hint share-said" role="status">
+        {shareSaid.text}
+        {shareSaid.count % 2 === 1 ? " " : ""}
+      </p>
+      <LinkBox link={shareBox} />
     </div>
   );
 }
@@ -569,7 +573,7 @@ export function ShareControls(props: {
  * sheet, ShareControls). The said lines stay outside More, so a press is heard however More stands.
  */
 function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
-  const { copyLink, linkNote, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute } = props;
+  const { copyLink, linkNote, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, linkBox, start, downloadRoute } = props;
   const [more, setMore] = useState(false);
   const moreId = useId();
   return (
@@ -615,6 +619,7 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
           {linkSaid}
         </span>
       )}
+      <LinkBox link={linkBox} />
       {linkNote && (
         <p id="link-note" className="hint link-note">
           {linkNote}
