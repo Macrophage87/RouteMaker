@@ -7,13 +7,8 @@ import {
   MAX_ON_MAP,
   SEVERITY_COLOURS,
   SEVERITY_SHAPES,
-  GROUP_BELOW_ZOOM,
-  GROUP_RADIUS_PX,
+  MARKERS_FROM_ZOOM,
   groupJunctions,
-  groupRadius,
-  MAP_MAX_ZOOM,
-  OVERLAP_RADIUS_PX,
-  groupLabel,
   junctionCounts,
   junctionHeadline,
   junctionItems,
@@ -102,46 +97,18 @@ test("the two colours are an orange and a red, and stay apart", () => {
   assert.match(b, /fill="#dc2626" stroke="#7f1d1d" stroke-width="1\.6"/);
 });
 
-test("close markers are one group when zoomed out, and come apart when zoomed in", () => {
-  const at = (m: number, severity: "orange" | "red") =>
-    junctionItems({
-      intersections: [{ m, lon: -77, lat: 38.9, severity, reason: "r", crossed_tier: 4, movement: "straight", control: "none", kind: "crossing", cost_ft: 1000 }],
-    }).map((item) => ({ ...item, index: m }))[0];
-  const items = [at(0, "orange"), at(10, "red"), at(100, "orange"), at(29, "orange")];
-  // Screen x is the m figure; all on one line.
-  const project = (item: { m: number }) => ({ x: item.m, y: 0 });
-  const out = groupJunctions(items, GROUP_BELOW_ZOOM - 1, project);
-  assert.deepEqual(
-    out.map((g) => g.members.map((m) => m.m)),
-    [[0, 10], [100], [29]],
-    "joined to the first group within the radius of its anchor",
-  );
-  assert.deepEqual(out.map((g) => g.severity), ["red", "orange", "orange"], "a group is as bad as its worst");
-  assert.equal(groupLabel(out[0]), "2 stressful junctions here, 1 very high stress: zoom in to see them");
-  const close = groupJunctions(items, GROUP_BELOW_ZOOM, project);
-  assert.deepEqual(
-    close.map((g) => g.members.map((m) => m.m)),
-    [[0, 10], [100], [29]],
-    "at and above the zoom only markers that would overlap (closer than an icon) are one",
-  );
-  assert.equal(groupJunctions(items, MAP_MAX_ZOOM, project).length, 4, "at the last zoom every junction is its own marker");
-  assert.equal(groupJunctions(items, MAP_MAX_ZOOM, project, 200).length, 4, "even with a radius given");
-  assert.equal(groupJunctions(items, 17.9, project).length, 3, "just below it, overlapping ones still group");
-  // Exactly an icon apart still overlaps at the edge; a pixel more does not.
-  assert.equal(groupJunctions([at(0, "orange"), at(24, "orange")], GROUP_BELOW_ZOOM, project).length, 1);
-  assert.equal(groupJunctions([at(0, "orange"), at(25, "orange")], GROUP_BELOW_ZOOM, project).length, 2);
-  assert.equal(groupRadius(GROUP_BELOW_ZOOM - 0.1), GROUP_RADIUS_PX);
-  assert.equal(groupRadius(GROUP_BELOW_ZOOM), OVERLAP_RADIUS_PX);
-  assert.equal(groupRadius(MAP_MAX_ZOOM), 0);
-  assert.equal(OVERLAP_RADIUS_PX, ICON_PX);
-  assert.equal(MAP_MAX_ZOOM, 18);
-  assert.equal(groupJunctions(items, 10, project, 200).length, 1);
-  assert.equal(GROUP_RADIUS_PX, 28);
-  // Exactly the radius away is close enough.
-  assert.equal(groupJunctions([at(0, "orange"), at(28, "orange")], 10, project).length, 1);
-  // Within reach of two groups, a junction joins the first in route order.
-  const between = groupJunctions([at(0, "orange"), at(40, "red"), at(20, "orange")], 10, project);
-  assert.deepEqual(between.map((g) => g.members.map((m) => m.m)), [[0, 20], [40]]);
+test("each junction is its own marker from the markers' zoom, and none is drawn zoomed out past it", () => {
+  // The owner, 2026-11-22: "Any level that would show an intersection marker should show the one taken ... If you zoom
+  // out past the point where you'd see the arrows, then just omit junction markers." Never merged into one.
+  const items = junctionItems({
+    intersections: [0, 10, 100].map((m) => ({ m, lon: -77, lat: 38.9, severity: m === 10 ? "red" : "orange", reason: "r", crossed_tier: 4, movement: "straight", control: "none", kind: "crossing", cost_ft: 1000 }) as JunctionWarning),
+  });
+  assert.deepEqual(groupJunctions(items, MARKERS_FROM_ZOOM - 0.1), [], "zoomed out: no markers");
+  for (const zoom of [MARKERS_FROM_ZOOM, 17.9, 18]) {
+    const drawn = groupJunctions(items, zoom);
+    assert.deepEqual(drawn.map((g) => g.members.map((m) => m.m)), [[0], [10], [100]], `one each at zoom ${zoom}`);
+    assert.deepEqual(drawn.map((g) => g.severity), ["orange", "red", "orange"]);
+  }
 });
 
 test("every list row says its severity in words", () => {

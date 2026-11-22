@@ -77,10 +77,9 @@ test("in forced colours the switch's stronger swatch borders give way to the sys
   for (const selector of a11yBorders) assert.match(forcedFor(selector), /border:\s*1px solid CanvasText/, selector);
 });
 
-test("in forced colours the junction markers keep their shape and the count its words, with a system outline", () => {
+test("in forced colours the junction markers keep their shape, with a system outline", () => {
   for (const selector of MARKERS) assert.match(forcedFor(selector), /forced-color-adjust:\s*none/, selector);
   assert.match(forcedFor(".junction-marker"), /outline:\s*1px solid CanvasText/);
-  assert.doesNotMatch(forcedFor(".junction-count"), /forced-color-adjust:\s*none/, "the count's text follows the system's colours");
 });
 
 test("the app's own panels, buttons and text follow the system's colours: nothing else opts out", () => {
@@ -127,7 +126,7 @@ test("the premise: the selectors the forced-colors block names are in the app's 
   };
   walk(dir);
   const all = sources.join("\n");
-  for (const name of ["legend", "swatch", "stress-bar", "stress-seg", "junction-marker", "junction-icon", "junction-count", "stress-list", "switch", "switch-state"]) {
+  for (const name of ["legend", "swatch", "stress-bar", "stress-seg", "junction-marker", "junction-icon", "stress-list", "switch", "switch-state"]) {
     assert.ok(all.includes(name), `class ${name} is used`);
   }
   assert.match(all, /h\(\s*"svg",\s*\{ width: SVG_WIDTH/, "the stress legend's swatches are inline SVG in .legend (lib/stressLegend.ts)");

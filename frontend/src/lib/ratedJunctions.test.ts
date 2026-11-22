@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  groupIconSvg,
   movementIconSvg,
   junctionIconSvg,
   junctionItems,
@@ -11,7 +10,6 @@ import {
   ratedTitle,
   ratedWaitText,
   warningIconSvg,
-  type JunctionGroup,
 } from "./intersectionMarkers.ts";
 import { cardName } from "./junctionCard.ts";
 import type { JunctionWarning, RatedJunction } from "./api.ts";
@@ -73,15 +71,6 @@ test("a rated route marker is the route's movement in that movement's colour: a 
   assert.ok(left.includes("<path"), "an arrow");
   assert.ok(movementIconSvg("right", 3).includes("matrix(-1"), "a right is the left's mirror");
   assert.ok(!movementIconSvg("left", 2).includes(ratedDotFill(2)), "below 3, no stress colour");
-});
-
-test("markers drawn as one are a dot only where every one is rated, at the hardest level", () => {
-  const [a] = junctionItems({ intersections: [junction] });
-  const [b] = junctionItems({ intersections: [{ ...junction, rated: { ...rated, level: 3 } }] });
-  const [model] = junctionItems({ intersections: [{ ...junction, rated: null }] });
-  const group = (members: JunctionGroup["members"]): JunctionGroup => ({ members, severity: "red" });
-  assert.equal(groupIconSvg(group([b, a])), ratedDotSvg(4));
-  assert.equal(groupIconSvg(group([a, model])), warningIconSvg("red"));
 });
 
 test("the panel has a line for each movement that can be made, this route's marked", () => {

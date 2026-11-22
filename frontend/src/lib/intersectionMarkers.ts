@@ -233,68 +233,27 @@ export function warningIconSvg(severity: Severity, size = ICON_PX): string {
 }
 
 /**
- * Below this zoom, markers closer than GROUP_RADIUS_PX on screen are drawn as
- * one (review r1: three to five triangles overlapped at one interchange on a
- * zoomed-out calm route). A group shows the worst severity's shape and how many
- * junctions it holds, and a click on it zooms in until they come apart.
- *
- * At and above it, markers that would overlap (centres closer than an icon,
- * OVERLAP_RADIUS_PX) are still one group (a11y review, int-2: two reds 10 m
- * apart sat 2 px apart at zoom 14 and up), except at the map's last zoom, where
- * zooming in cannot part them: there each is its own marker, and the focused
- * one is drawn on top (styles.css).
+ * The route's junction markers are drawn from this zoom up, each its own marker, and none below it (the owner,
+ * 2026-11-22: "Any level that would show an intersection marker should show the one taken ... If you zoom out past
+ * the point where you'd see the arrows, then just omit junction markers"). Markers merged into one showed the hardest
+ * of them, "way too much alarm" where a junction is fine for the movement the route makes. 14 is where markers
+ * stopped being merged (review r1: three to five triangles overlapped at one interchange zoomed out); the list keeps
+ * every junction at every zoom. Where two still overlap, the focused or hovered one is drawn on top (styles.css).
  */
-export const GROUP_BELOW_ZOOM = 14;
-export const GROUP_RADIUS_PX = 28;
-export const OVERLAP_RADIUS_PX = ICON_PX;
+export const MARKERS_FROM_ZOOM = 14;
 /** The map's last zoom (MapView.tsx maxZoom). */
 export const MAP_MAX_ZOOM = 18;
 
 export interface JunctionGroup {
-  /** In route order; the first is where the group is drawn. */
+  /** The one junction the marker is drawn for. */
   members: JunctionItem[];
   severity: Severity;
 }
 
-/** How near on screen two junctions are drawn as one at `zoom`; 0 at the map's last zoom. */
-export function groupRadius(zoom: number, maxZoom = MAP_MAX_ZOOM): number {
-  if (zoom >= maxZoom) return 0;
-  return zoom < GROUP_BELOW_ZOOM ? GROUP_RADIUS_PX : OVERLAP_RADIUS_PX;
-}
-
-/**
- * The junctions as the map draws them at a zoom: each joined to the first
- * group in route order whose anchor is within the radius on screen (`project`
- * gives a junction's screen position; the radius is groupRadius's unless
- * given), or a group of its own.
- */
-export function groupJunctions(
-  items: readonly JunctionItem[],
-  zoom: number,
-  project: (item: JunctionItem) => { x: number; y: number },
-  radiusPx?: number,
-  maxZoom = MAP_MAX_ZOOM,
-): JunctionGroup[] {
-  const radius = zoom >= maxZoom ? 0 : (radiusPx ?? groupRadius(zoom, maxZoom));
-  const groups: { at: { x: number; y: number }; members: JunctionItem[] }[] = [];
-  for (const item of items) {
-    const at = project(item);
-    const near = radius > 0 ? groups.find((g) => Math.hypot(g.at.x - at.x, g.at.y - at.y) <= radius) : undefined;
-    if (near) near.members.push(item);
-    else groups.push({ at, members: [item] });
-  }
-  return groups.map(({ members }) => ({
-    members,
-    severity: members.some((m) => m.severity === "red") ? "red" : "orange",
-  }));
-}
-
-/** What a screen reader hears for a group's marker. */
-export function groupLabel(group: JunctionGroup): string {
-  const red = group.members.filter((m) => m.severity === "red").length;
-  const parts = [`${group.members.length} stressful junctions here`];
-  if (red > 0) parts.push(`${red} very high stress`);
-  return `${parts.join(", ")}: zoom in to see them`;
+/** The markers the map draws at a zoom: one for each junction from MARKERS_FROM_ZOOM up, none below it. */
+export function groupJunctions(items: readonly JunctionItem[], zoom: number): JunctionGroup[] {
+  if (zoom < MARKERS_FROM_ZOOM) return [];
+  return items.map((item) => ({ members: [item], severity: item.severity }));
 }
 
 /** The junctions to draw: all of them up to MAX_ON_MAP, the worst kept past it. */
@@ -365,15 +324,6 @@ export function movementIconSvg(movement: Movement, level: number | null, size =
  * (`movementIconSvg`), else the warning shape. */
 export function junctionIconSvg(junction: Pick<JunctionWarning, "severity" | "rated" | "movement">, size = ICON_PX): string {
   return junction.rated ? movementIconSvg(junction.movement, junction.rated.level, size) : warningIconSvg(junction.severity, size);
-}
-
-/** A drawn group's icon: a lone junction's own; of several, the hardest rated member's dot where every member is
- * rated, else the worst severity's shape. */
-export function groupIconSvg(group: JunctionGroup, size = ICON_PX): string {
-  if (group.members.length === 1) return junctionIconSvg(group.members[0], size);
-  const levels = group.members.map((m) => m.rated?.level);
-  if (levels.every((l): l is number => typeof l === "number")) return ratedDotSvg(Math.max(...levels), size);
-  return warningIconSvg(group.severity, size);
 }
 
 const RATED_MOVE_WORDS: Record<RatedMove["move"], string> = {
