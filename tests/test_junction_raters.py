@@ -313,9 +313,10 @@ def test_a_confirmed_load_replaces_the_table_and_reads_near_a_route(tmp_path) ->
     (j2,) = junction_raters.near([(-77.01, 38.9)])
     assert j2.stress == (None, None, 1.0)
     assert junction_raters.near([(-76.9, 38.9)]) == ()
-    # The map's view: j1 once, at the middle of its two nodes, coloured by its hardest
-    # movement; j2 (only riding along, at 1) is below 3 and not shown.
+    # The map's view: j1 once, at its own node (1, not the middle of its two), coloured by its
+    # hardest movement; j2 (only riding along, at 1) is below 3 and not shown.
     (dot,) = junction_raters.in_box((-77.02, 38.89, -76.99, 38.91))
+    assert (dot["lon"], dot["lat"]) == (-77.0, 38.9)
     assert dot["level"] == 4.0
     assert [(m["move"], m["level"], m["wait_s"]) for m in dot["moves"]] == [
         ("cross", 3.5, 30),
