@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.30.3](#deploying-v0303)
 - [Deploying v0.30.1](#deploying-v0301)
 - [Deploying v0.30.0](#deploying-v0300)
 - [Deploying v0.29.0](#deploying-v0290)
@@ -8089,6 +8090,41 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.30.3
+
+A patch on v0.30.2, on the owner's ask (2026-11-22, "Submit everything in flight as a patch"):
+everything merged into `release/v0.31.0` since v0.30.2. Go's tapped-spot card leads with the route
+at that spot when a route is on the map (#1420); a planned route's own junctions keep their map
+dots at the close zooms (#1423); connector drafts keep stop icons and names by number, so
+`save_route` works on them (#1426); `osm_edit.py` may set `cycleway:<side>:separation` (#1421).
+Two map changes take effect only with a map rebuilt from v0.30.3 or later: bike-open sidewalks
+beside streets closed to public driving priced as paths (#1422, the Capitol grounds) and webs of
+short walks drawn as the path network they are (#1427: anywhere a web of them runs 150 m or more
+and meets the map at two or more places; the Washington Monument and Capitol grounds among them).
+
+What changes for a deploy:
+
+- no migration; no `valhalla/`, compose, nginx, Dockerfile or requirements change;
+- `lua/graph.lua` and `lua/routemaker_remap.lua` changed (#1422), so the beta's release agent holds
+  the tag as one that needs a map; the code ships alone with `auto-release.sh ship-held v0.30.3
+  --no-map`, and the `lua/` change does nothing on today's map (no way carries
+  `rm:no_public_traffic_sidewalk` until the pipeline sets it at the next rebuild);
+- no router restart and no map step today; the rebuild these two changes need is listed below, as
+  nothing on beta records it once v0.30.3 is marked deployed.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.30.3`, then approve).
+- [ ] **Beta** **(owner)**. `~/routemaker-beta-state/cd/bin/auto-release.sh ship-held v0.30.3
+  --no-map --dry-run`, then the same without `--dry-run`.
+- [ ] **Beta check.** The app says 0.30.3; in Go, with a saved route loaded, a tap on the route
+  opens a card that leads with the distance from the start; a planned route zoomed all the way in
+  shows the dots of the rated junctions it rides through.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.30.2 front end, together.
+- [ ] **Later, the map** **(owner)**. The next map rebuilt from v0.30.3 or later, installed with
+  `scripts/cloud/import-result.sh --beta`. Its log says "sidewalks of streets closed to public
+  driving priced as paths: N ways" and "short paths hidden from the map: N ways" (fewer than the
+  last rebuild's); the walks round the Washington Monument are drawn.
+
 ## Deploying v0.30.1
 
 A patch on v0.30.0, on the owner's ask (2026-11-21, "Let's send the Junction markers and other fixes
@@ -9144,7 +9180,10 @@ the rest with the next map update).**
   `:backward`) keeps its graded speed in both directions (`directional_speeds`).
 - A signed sidepath or a trail's stretch mapped as a sidewalk (`footway=sidewalk` with
   `bicycle=designated`, or a named or `segregated` sidewalk open to bicycles) is priced as a
-  path, not as the road-priced sidewalk (`priced_as_sidepath`).
+  path, not as the road-priced sidewalk (`priced_as_sidepath`). So is a sidewalk open to
+  bicycles beside a street closed to public driving (`motor_vehicle=no` and the like) and
+  beside no street the public drives (`rm:no_public_traffic_sidewalk`,
+  `sidewalks.no_public_traffic_sidewalks`; the walks beside the Capitol grounds' streets).
 - An easy mountain-bike rating (0 or 1) on gravel, fine gravel or compacted no longer sets the
   edge's surface, so the way is priced as packed gravel (`strip_easy_gravel_ratings`), and a
   cycleway or bicycle-designated trail on such a surface rated 1 is not closed as singletrack
@@ -10838,7 +10877,8 @@ Python 3.11 or later, standard library only.
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
-  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing; `motor_vehicle` and
+  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing;
+  `cycleway:<side>:separation` for a physical divider such as flex posts seen on the street; `motor_vehicle` and
   `motor_vehicle:conditional` for a road closed or opened to cars, from the managing agency's
   own notice or what is posted there);
   `highway` only on a node, to a junction control;

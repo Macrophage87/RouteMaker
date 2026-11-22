@@ -2310,4 +2310,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro station: its colour is the line": "메트로역: 색이 노선",
   "Route locked. Open Edit route to change it.": "경로가 잠겨 있습니다. 바꾸려면 경로 편집을 여세요.",
   "Planner": "플래너",
+  "On your route": "경로 위",
+  "Ride here instead": "대신 여기로 가기",
+  "Avoid": "피하기",
+  "Dirt": "흙길",
+  "Unpaved": "비포장",
+  "{distance} from your route": "경로에서 {distance}",
+  "{distance} from the start, about {time}": "출발지에서 {distance}, 약 {time}",
+  "{distance} from the start": "출발지에서 {distance}",
+  "{distance} to the end": "도착지까지 {distance}",
 };
