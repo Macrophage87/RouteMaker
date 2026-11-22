@@ -1385,29 +1385,58 @@ def short_paths_to_hide(
     pieces, stays when it touches kept trails at two or more different nodes,
     on one trail or two, as a single way does.
 
+    A path is short by the run it belongs to, not by how OpenStreetMap splits it
+    (the owner, 2026-11-22, of the Washington Monument grounds, a web of walks split
+    at every junction, all hidden: "There are missing paths near the washington
+    monument"). So a group whose pieces, less its true dead ends (an end no other
+    way of any kind meets: a spur to a bench), still run `max_m` or more in all is
+    a network of paths, not a short one, and is drawn whatever its piece count or
+    what it meets: a walk ending at a street's sidewalk or crossing is not a dead
+    end. The bench spurs off it stay hidden.
+
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]). A kept trail is a
     trail-class way that is not a candidate and that `map_class` draws (a named
     trail, a long path, a shared-use path, a roadside trail).
     """
     ways = list(ways)
     short: dict[int, tuple[int, int]] = {}
+    nodes_of: dict[int, frozenset[int]] = {}
+    length: dict[int, float] = {}
     kept_nodes: set[int] = set()
+    # How many ways of any kind (a road, a sidewalk, a crossing, a path) meet each
+    # node, to tell a true dead end from an end that joins something.
+    meets: dict[int, int] = {}
     for osm_id, tags, node_ids, coords in ways:
+        for node in set(node_ids):
+            meets[node] = meets.get(node, 0) + 1
         if tags.get("highway") not in TRAIL_CLASS_HIGHWAY or not node_ids:
             continue
         if map_class(tags) is not MapClass.ROAD:
             continue
-        if short_path_candidate(tags) and _length_m(coords) < max_m:
+        metres = _length_m(coords)
+        if short_path_candidate(tags) and metres < max_m:
             short[osm_id] = (node_ids[0], node_ids[-1])
+            nodes_of[osm_id] = frozenset(node_ids)
+            length[osm_id] = metres
         else:
             kept_nodes.update(node_ids)
+    hidden: set[int] = set()
+    # Networks first: the pieces joined at any node, a kept trail's included.
+    networked: set[int] = set()
+    for group in _groups(nodes_of):
+        core = _network_core(group, short, nodes_of, meets)
+        if sum(length[osm_id] for osm_id in core) >= max_m:
+            # A network of paths, drawn; only its true dead ends go.
+            hidden |= group - core
+            networked |= group
+    for osm_id in networked:
+        del short[osm_id]
     # The short pieces joined end to end, at a node no kept trail has.
     by_end: dict[int, list[int]] = {}
     for osm_id, ends in short.items():
         for node in set(ends):
             if node not in kept_nodes:
                 by_end.setdefault(node, []).append(osm_id)
-    hidden = set()
     seen: set[int] = set()
     for start in short:
         if start in seen:
@@ -1542,6 +1571,61 @@ def trail_link_sidewalks(
             parent[other] = first
             drawn |= run
     return drawn
+
+
+def _groups(nodes_of: dict[int, frozenset[int]]) -> list[set[int]]:
+    """The short pieces joined at any node, an end or a middle one: each group as a
+    set of way ids."""
+    at: dict[int, list[int]] = {}
+    for osm_id, nodes in nodes_of.items():
+        for node in nodes:
+            at.setdefault(node, []).append(osm_id)
+    groups, seen = [], set()
+    for start in nodes_of:
+        if start in seen:
+            continue
+        group, stack = set(), [start]
+        while stack:
+            osm_id = stack.pop()
+            if osm_id in group:
+                continue
+            group.add(osm_id)
+            for node in nodes_of[osm_id]:
+                stack.extend(at[node])
+        seen |= group
+        groups.append(group)
+    return groups
+
+
+def _network_core(
+    group: set[int],
+    short: dict[int, tuple[int, int]],
+    nodes_of: dict[int, frozenset[int]],
+    meets: dict[int, int],
+) -> set[int]:
+    """`group` less, over and over, each piece with a true dead end: an end no
+    other piece left and no way outside the group meets (a spur to a bench). A
+    closed piece (a ring round a fountain) stays while its node joins anything."""
+    pieces_at: dict[int, int] = {}
+    for osm_id in group:
+        for node in nodes_of[osm_id]:
+            pieces_at[node] = pieces_at.get(node, 0) + 1
+    # The nodes something outside the group meets: a road, a sidewalk, a trail.
+    outside = {node for node, count in pieces_at.items() if meets.get(node, 0) > count}
+    core = set(group)
+    while True:
+        at: dict[int, int] = {}
+        for osm_id in core:
+            for node in nodes_of[osm_id]:
+                at[node] = at.get(node, 0) + 1
+        dead = {
+            osm_id
+            for osm_id in core
+            if any(node not in outside and at[node] < 2 for node in set(short[osm_id]))
+        }
+        if not dead:
+            return core
+        core -= dead
 
 
 def _trim_dead_ends(
