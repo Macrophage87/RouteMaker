@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "Sesuaikan",
   "Copy link": "Salin tautan",
   "Link copied.": "Tautan disalin.",
-  "Could not copy. Copy the address from the browser's address bar.": "Tidak bisa menyalin. Salin alamat dari bilah alamat peramban.",
+  "Could not copy the link. Select it below and copy it.": "Tidak bisa menyalin tautan. Pilih tautan di bawah lalu salin.",
   "1 step": "1 langkah",
   "{count} steps": "{count} langkah",
   "Elevation and climbs": "Ketinggian dan tanjakan",
