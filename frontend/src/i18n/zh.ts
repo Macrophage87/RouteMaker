@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "调整",
   "Copy link": "复制链接",
   "Link copied.": "链接已复制。",
-  "Could not copy. Copy the address from the browser's address bar.": "无法复制。请从浏览器地址栏复制地址。",
+  "Could not copy the link. Select it below and copy it.": "无法复制链接。请在下方选中链接并复制。",
   "1 step": "1 步",
   "{count} steps": "{count} 步",
   "Elevation and climbs": "海拔和爬坡",

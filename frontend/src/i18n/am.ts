@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "አስተካክል",
   "Copy link": "አገናኝ ቅዳ",
   "Link copied.": "አገናኙ ተቀድቷል።",
-  "Could not copy. Copy the address from the browser's address bar.": "መቅዳት አልተቻለም። አድራሻውን ከአሳሹ የአድራሻ አሞሌ ይቅዱ።",
+  "Could not copy the link. Select it below and copy it.": "ማስፈንጠሪያውን መቅዳት አልተቻለም። ከታች ይምረጡትና ይቅዱት።",
   "1 step": "1 ደረጃ",
   "{count} steps": "{count} ደረጃዎች",
   "Elevation and climbs": "ከፍታ እና አቀበቶች",
