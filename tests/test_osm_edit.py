@@ -326,6 +326,17 @@ def test_a_way_s_bike_lane_may_be_corrected(osm, tmp_path):
     assert osm_edit.edit_problem(json.loads(gone.read_text())) is None
 
 
+def test_a_way_s_lane_separation_may_be_added(osm, tmp_path):
+    # A contraflow lane behind flex posts that OSM had as paint.
+    posts = _edit(
+        tmp_path,
+        element="way",
+        expect={"cycleway:left:separation": None},
+        set={"cycleway:left:separation": "flex_post"},
+    )
+    assert osm_edit.edit_problem(json.loads(posts.read_text())) is None
+
+
 def test_a_way_s_car_access_may_be_corrected(osm, tmp_path):
     # A park road the agency closed to cars all year, still mapped with a weekend closure.
     closed = _edit(
