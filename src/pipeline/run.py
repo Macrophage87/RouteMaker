@@ -4262,7 +4262,11 @@ def build_handlers(
                 # A sidewalk open to bicycles along a street closed to public driving
                 # (`sidewalks.no_public_traffic_sidewalks`), priced as a path by
                 # lua/routemaker_remap.lua (`M.priced_as_sidepath`).
-                if way.osm_id in context.no_public_traffic_sidewalks:
+                # Never on Mass Ride's graph, a crowd on a sidewalk (`sidewalk_derived`).
+                if (
+                    way.osm_id in context.no_public_traffic_sidewalks
+                    and variant is not variants.Variant.NO_TRAIL
+                ):
                     derived["no_public_traffic_sidewalk"] = True
                 # A known hazard (v0.10.0; the owner, 2026-10-19: "Roads with hazards like
                 # this should get a major penalty"): cobbles or rails anywhere on the way,

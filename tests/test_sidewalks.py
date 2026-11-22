@@ -813,3 +813,16 @@ def test_a_bus_street_or_a_sidewalk_no_bicycle_tag_opens_is_left_alone():
         )
         == set()
     )
+
+
+def test_the_most_specific_motor_key_decides_whether_the_public_drives():
+    def found(street):
+        return sw.no_public_traffic_sidewalks(
+            [_placed(1, street, _DELAWARE), _placed(2, _WALK_TAGS, _WEST_WALK)]
+        )
+
+    assert found({"highway": "service", "vehicle": "no", "motor_vehicle": "yes"}) == set()
+    assert found({"highway": "service", "access": "no", "motorcar": "designated"}) == set()
+    assert found({"highway": "service", "access": "yes", "motor_vehicle": "no"}) == {2}
+    assert found({"highway": "service", "motor_vehicle": "no;destination"}) == {2}
+    assert found({"highway": "pedestrian"}) == {2}

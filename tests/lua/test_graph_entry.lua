@@ -1417,6 +1417,9 @@ end)()
   local _, untagged = transform_way({ highway = "footway", footway = "sidewalk",
     ["rm:no_public_traffic_sidewalk"] = "yes" })
   check("one no bicycle tag opens stays a sidewalk", tonumber(untagged.use) ~= 25, untagged.use)
+  local _, barred = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "no",
+    ["rm:no_public_traffic_sidewalk"] = "yes" })
+  check("one closed to bicycles stays closed", barred.bike_forward == "false", barred.bike_forward)
 end)()
 
 -- T8: a driveway a bicycle may not ride stays closed (before: upstream reopened it).

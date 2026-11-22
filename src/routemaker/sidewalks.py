@@ -336,14 +336,21 @@ SIDEWALK_STREET_HIGHWAY = (
 
 
 def _closed_to_public_driving(tags: dict[str, str]) -> bool:
-    """A street the public may not drive by its own tags: `highway=pedestrian`, or
-    `motor_vehicle`, `motorcar`, `vehicle` or `access` `no` (OSM's tag for a street only
-    authorized vehicles use), and no bus on it (`tags.open_to_buses`)."""
+    """A street the public may not drive by its own tags: `highway=pedestrian`, or `no` on
+    the most specific of `motorcar`, `motor_vehicle`, `vehicle` and `access` the way carries
+    (a list narrowed to its most restrictive part, as the transform reads it; `motor_vehicle=no`
+    is OSM's tag for a street only authorized vehicles use), and no bus on it
+    (`tags.open_to_buses`)."""
     if osm_tags.open_to_buses(tags):
         return False
     if tags.get("highway") == "pedestrian":
         return True
-    return any(tags.get(key) == "no" for key in ("motor_vehicle", "motorcar", "vehicle", "access"))
+    tags = osm_tags.narrow_access_lists(tags)
+    for key in ("motorcar", "motor_vehicle", "vehicle", "access"):
+        value = tags.get(key)
+        if value is not None:
+            return osm_tags.most_restrictive(value) == "no"
+    return False
 
 
 def no_public_traffic_sidewalks(ways: Sequence[Placed]) -> set[int]:
@@ -364,7 +371,8 @@ def no_public_traffic_sidewalks(ways: Sequence[Placed]) -> set[int]:
             (closed if _closed_to_public_driving(tags) else driven).append((osm_id, known))
     if not asked or not closed:
         return set()
-    return beside(asked, closed) - beside(asked, driven)
+    found = beside(asked, closed)
+    return found - beside([pair for pair in asked if pair[0] in found], driven)
 
 
 def _metres(a: tuple[float, float], b: tuple[float, float]) -> float:
