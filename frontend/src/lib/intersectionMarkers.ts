@@ -9,7 +9,7 @@
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
 import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RatedJunction, RatedMove, RouteResponse } from "./api.ts";
-import { currentPalette } from "../stressStyle.js";
+import { currentPalette, relativeLuminance } from "../stressStyle.js";
 import { ratedDotFill, ratedLevelText } from "./ratedDot.ts";
 import { FEET_PER_MILE, KM_PER_MILE, both, formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
@@ -331,13 +331,46 @@ export function ratedDotSvg(level: number, size = ICON_PX, palette: string = cur
   );
 }
 
-/** A junction's icon: the rated dot where the raters set its cost, else the warning shape. */
-export function junctionIconSvg(junction: Pick<JunctionWarning, "severity" | "rated">, size = ICON_PX): string {
-  return junction.rated ? ratedDotSvg(junction.rated.level, size) : warningIconSvg(junction.severity, size);
+export type Movement = JunctionWarning["movement"];
+
+/** A turn arrow on the marker's disc, for a left (a right is its mirror): up the middle, then off to the side. */
+const TURN_ARROW = `<path d="M14.5 17.5 V11.5 H10" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.8 7.6 L6.4 11.5 L10.8 15.4 Z"/>`;
+
+/**
+ * The movement the route makes at a junction, as its marker (the owner, 2026-11-22: "show the movement done at each
+ * intersection colored by the movement when LtS >=3. Dots for riding through"): a dot for straight through, a turn
+ * arrow for a left or a right, in that movement's stress colour where `level` is 3 or more. Below that, or with no
+ * level, it is drawn without a stress colour: white with dark ink.
+ */
+export function movementIconSvg(movement: Movement, level: number | null, size = ICON_PX, palette: string = currentPalette()): string {
+  const coloured = level !== null && level >= 3;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">`;
+  if (movement === "straight") {
+    if (coloured) return ratedDotSvg(level, size, palette);
+    return `${open}<circle cx="12" cy="12" r="6.6" fill="#ffffff" stroke="#111111" stroke-width="1.2"/><circle cx="12" cy="12" r="2.4" fill="#111111"/></svg>`;
+  }
+  const fill = coloured ? ratedDotFill(level, palette) : "#ffffff";
+  const l = relativeLuminance(fill);
+  // Near-black on a light colour, white on a dark one (the higher contrast of the two).
+  const ink = (l + 0.05) / 0.056 >= 1.05 / (l + 0.05) ? "#111111" : "#ffffff";
+  const flip = movement === "right" ? ` transform="matrix(-1 0 0 1 24 0)"` : "";
+  return (
+    `${open}<circle cx="12" cy="12" r="9.4" fill="#ffffff" stroke="#111111" stroke-width="1.2"/>` +
+    `<circle cx="12" cy="12" r="7.8" fill="${fill}"/>` +
+    `<g fill="${ink}" stroke="${ink}"${flip}>${TURN_ARROW}</g></svg>`
+  );
 }
 
-/** A drawn group's icon: its hardest rated member's dot where every member is rated, else the worst severity's shape. */
+/** A junction's icon: where the raters set its cost, the movement the route makes there in its level's colour
+ * (`movementIconSvg`), else the warning shape. */
+export function junctionIconSvg(junction: Pick<JunctionWarning, "severity" | "rated" | "movement">, size = ICON_PX): string {
+  return junction.rated ? movementIconSvg(junction.movement, junction.rated.level, size) : warningIconSvg(junction.severity, size);
+}
+
+/** A drawn group's icon: a lone junction's own; of several, the hardest rated member's dot where every member is
+ * rated, else the worst severity's shape. */
 export function groupIconSvg(group: JunctionGroup, size = ICON_PX): string {
+  if (group.members.length === 1) return junctionIconSvg(group.members[0], size);
   const levels = group.members.map((m) => m.rated?.level);
   if (levels.every((l): l is number => typeof l === "number")) return ratedDotSvg(Math.max(...levels), size);
   return warningIconSvg(group.severity, size);
