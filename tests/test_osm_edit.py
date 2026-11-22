@@ -327,7 +327,8 @@ def test_a_way_s_bike_lane_may_be_corrected(osm, tmp_path):
 
 
 def test_a_way_s_lane_separation_may_be_added(osm, tmp_path):
-    # A contraflow lane behind flex posts that OSM had as paint.
+    # A contraflow lane behind flex posts that OSM had as paint. The map draws it protected;
+    # the way's level is scored on the with-flow side, so routing does not change.
     posts = _edit(
         tmp_path,
         element="way",
