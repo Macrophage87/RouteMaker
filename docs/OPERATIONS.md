@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.30.4](#deploying-v0304)
 - [Deploying v0.30.3](#deploying-v0303)
 - [Deploying v0.30.1](#deploying-v0301)
 - [Deploying v0.30.0](#deploying-v0300)
@@ -8089,6 +8090,28 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.30.4
+
+A patch on v0.30.3, on the owner's ask (2026-11-22, "release as a patch", "the other ones in flight
+too"): everything merged into `release/v0.31.0` since v0.30.3. Each stress-tile request now has its
+own time limit (20 s), so one request that never answers can no longer hold a queue slot, or the
+load-time availability check, for the whole visit and leave the map with only the widest tiles'
+few streets (#1433). Share route and Share ride copy the link where the browser has no share sheet,
+or show it in a box to copy, and Save on Plan's map bar and Go's Save chip offers Share route
+(#1431, docs #1432).
+
+What changes for a deploy:
+
+- front end only: no migration; no `lua/`, `valhalla/`, compose, nginx, Dockerfile or requirements
+  change, so the beta's release agent deploys the tag by itself;
+- no router restart and no map step.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.30.4`, then approve).
+- [ ] **Beta check.** The app says 0.30.4; the stress colours show at every zoom after a long
+  visit; Share route in Save & load copies the link on a desktop browser.
+- [ ] **Rollback.** The v0.30.3 front end.
 
 ## Deploying v0.30.3
 
