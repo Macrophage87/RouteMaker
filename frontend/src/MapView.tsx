@@ -2788,8 +2788,12 @@ export function MapView(props: Props) {
     ratedMarkers.current.forEach((marker) => marker.remove());
     ratedMarkers.current = [];
     if (!map) return;
-    const onRoute = props.route && !props.stale ? junctionsOnMap(junctionItems(props.route)).map((item): LonLat => [item.lon, item.lat]) : [];
-    for (const junction of ratedMapShown(ratedMap, onRoute)) {
+    const planned = props.route && !props.stale ? props.route : null;
+    // Every marked junction, those past the map's most included, so a dot never stands for a marked one.
+    const onRoute = planned ? junctionItems(planned).map((item): LonLat => [item.lon, item.lat]) : [];
+    // A Mass Ride's markers are the busy roads' own tiers, not the rated movements: its dots stay as on the plain map.
+    const line = planned && planned.preset !== "mass-ride" ? (planned.geometry?.coordinates ?? []) : [];
+    for (const junction of ratedMapShown(ratedMap, onRoute, line)) {
       const element = ratedMapDot(junction);
       element.addEventListener("click", (event) => {
         // A click on a dot is not a click on the map: it must not add a point.

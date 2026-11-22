@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   groupIconSvg,
+  movementIconSvg,
   junctionIconSvg,
   junctionItems,
   ratedDotFill,
@@ -61,6 +62,17 @@ test("a junction the model priced keeps its warning shape", () => {
   const model = { ...junction, rated: null };
   assert.equal(junctionIconSvg(model), warningIconSvg("red"));
   assert.notEqual(junctionIconSvg(junction), warningIconSvg("red"));
+});
+
+test("a rated route marker is the route's movement in that movement's colour: a dot through, an arrow for a turn", () => {
+  // The owner, 2026-11-22: "show the movement done at each intersection colored by the movement when LtS >=3. Dots for riding through."
+  assert.equal(junctionIconSvg({ ...junction, movement: "straight" }), ratedDotSvg(4));
+  const left = junctionIconSvg({ ...junction, movement: "left", rated: { ...rated, move: "left", level: 3 } });
+  assert.equal(left, movementIconSvg("left", 3));
+  assert.ok(left.includes(ratedDotFill(3)), "the left's own level, not the junction's hardest");
+  assert.ok(left.includes("<path"), "an arrow");
+  assert.ok(movementIconSvg("right", 3).includes("matrix(-1"), "a right is the left's mirror");
+  assert.ok(!movementIconSvg("left", 2).includes(ratedDotFill(2)), "below 3, no stress colour");
 });
 
 test("markers drawn as one are a dot only where every one is rated, at the hardest level", () => {
