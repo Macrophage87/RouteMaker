@@ -23,8 +23,8 @@ export const BUDGET_KB = {
   firstLoad: 940,
   // App's own chunk. 329 since v0.28.0: 323 KB measured with Ride mode on first use (it was 356 before); 362 in v0.27.1.
   // 332 since v0.30.0: the intuitiveness review's Plan changes (#1398) on top of Ride settings, Surface and own ride
-  // types brought it to 329.7 KB.
-  app: 332,
+  // types brought it to 329.7 KB. 335 since v0.30.3: Go's route card at a tapped spot (#1420) brought it to 332.7 KB.
+  app: 335,
 };
 
 /** The chunks and stylesheets a first open downloads: the entry, what it imports at once, and App's (appPreloads). */
