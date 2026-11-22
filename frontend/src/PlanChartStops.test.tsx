@@ -12,7 +12,7 @@ import { chartStops } from "./lib/chartStops.ts";
 import { NOTE_ICONS } from "./lib/routeNotes.ts";
 
 const LINE: LonLat[] = Array.from({ length: 400 }, (_, i) => [-77.05 + i * 0.000128, 38.9]);
-const PROFILE = { interval_m: 100, m: Array.from({ length: 45 }, (_, i) => i * 100), elevation_m: Array(45).fill(10), grade_pct: Array(45).fill(0), climbs: [] } as unknown as RouteProfile;
+const PROFILE = { interval_m: 100, m: Array.from({ length: 45 }, (_, i) => i * 100), elevation_m: Array(45).fill(10), grade_pct: Array(45).fill(0), climbs: [], calm: { window_m: 1609, ratio: Array(45).fill(1.1), steps: [], bands: [2, 11], points: [{ m: 2000, calm_m: 50, kind: "junction", severity: "red" }], total_calm_m: 4840, rated_m: 4400 } } as unknown as RouteProfile;
 // Start, a via point (index 1) at 1 km, a stop with a coffee icon (2) at 2 km, a plain stop (3) at 3 km, the end (4).
 const POINTS: LonLat[] = [LINE[0], LINE[90], LINE[180], LINE[270], LINE[399]];
 const ROUTE = {
@@ -59,6 +59,17 @@ test("Plan's chart shows each stop: its icon, or its number where it has none", 
   // In order along the route, the plain stop to the right of the coffee stop.
   const cx = stops.map((s) => Number(s.querySelector("circle")?.getAttribute("cx")));
   assert.ok(cx[0] < cx[1]);
+  // The junction's marker is drawn after the stops, over them, so a stop never hides a busy junction.
+  const kids = [...(stops[0].parentElement?.children ?? [])];
+  assert.ok(kids.length > kids.indexOf(stops[1]) + 1, "a marker after the last stop");
+  assert.ok(!kids[kids.length - 1].classList.contains("pc-stop"));
+});
+
+test("an older answer's chart, with no rolling stress, has no row for stops and draws none", async () => {
+  const m = marks();
+  const { calm: _calm, ...older } = PROFILE as RouteProfile & { calm?: unknown };
+  const screen = await render(<ElevationChart route={ROUTE} profile={older as RouteProfile} stops={chartStops(ROUTE, POINTS, m.isVia, m.iconOf)} />);
+  assert.equal(screen.container.querySelectorAll(".pc-stop").length, 0);
 });
 
 test("Go's small chart and a chart given no stops draw none", async () => {

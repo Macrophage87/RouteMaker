@@ -310,14 +310,14 @@ export function StopMark({ number, icon, cx, cy, r, iconStyle, small = false }: 
       <circle cx={cx} cy={cy} r={r} className="ride-ahead-stop-disc" />
       {icon ? (
         iconStyle === "emoji" ? (
-          <text x={cx} y={cy + (r * 5) / 11} textAnchor="middle" className="ride-ahead-stop-emoji">
+          <text x={cx} y={cy + (small ? (r * 5) / 11 : 5)} textAnchor="middle" className="ride-ahead-stop-emoji">
             {NOTE_ICONS[icon]}
           </text>
         ) : (
           <image href={NOTO_ICON_URLS[icon]} x={cx - r + 2} y={cy - r + 2} width={2 * r - 4} height={2 * r - 4} />
         )
       ) : (
-        <text x={cx} y={cy + (r * 4.5) / 11} textAnchor="middle" className="ride-ahead-stop-number">
+        <text x={cx} y={cy + (small ? (r * 4.5) / 11 : 4.5)} textAnchor="middle" className="ride-ahead-stop-number">
           {number ?? ""}
         </text>
       )}

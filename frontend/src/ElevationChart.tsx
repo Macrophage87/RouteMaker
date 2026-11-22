@@ -116,8 +116,8 @@ interface ChartProps {
   tools?: ChartTools;
   /**
    * The route's stops (lib/chartStops.ts), each its icon or its number in the junction markers' row, as Ride's graph
-   * shows them (Stephen 2026-11-22: "Put the stop icons on the map here"). Plan's only; drawn under the junctions'
-   * markers, so a stop never hides a busy junction.
+   * shows them (Stephen 2026-11-22: "Put the stop icons on the map here"). Plan's only, on a chart with the rolling
+   * stress (an older answer's strip has no row for them); drawn under the junctions' markers, so a stop never hides a busy junction.
    */
   stops?: readonly ChartStop[];
 }
@@ -195,7 +195,7 @@ function StressChart({ route, profile, onScrub, compact = false, tools, stops = 
   const calmEdge = useMemo(() => (calm && calmY ? calmLine(profile, calm, x, calmY) : ""), [profile, calm, x, calmY]);
   const calmSteps = useMemo(() => (calm && calmY ? calmStepLine(calm, x, calmY, total) : ""), [calm, x, calmY, total]);
   const calmAvoids = useMemo(() => (calm ? calmAvoid(calm, total) : []), [calm, total]);
-  const stopMarks = compact ? [] : stops.filter((stop) => stop.m >= 0 && stop.m <= total);
+  const stopMarks = !calm ? [] : stops.filter((stop) => stop.m >= 0 && stop.m <= total);
   const calmMarks = calm ? calm.points.filter((p) => p.kind === "junction" && p.severity !== null && p.m <= total) : [];
 
   const metresAt = (event: PointerEvent<HTMLDivElement>): number => {
@@ -435,9 +435,6 @@ function StressChart({ route, profile, onScrub, compact = false, tools, stops = 
                 <StripRect key={i} section={s} x0={x(s.from_m)} w={Math.max(x(s.to_m) - x(s.from_m), 0)} uid={uid} />
               ))}
               <rect className="pc-strip-frame" x={LEFT} y={LAYOUT.stress.stripTop} width={right - LEFT} height={12} fill="none" />
-              {stopMarks.map((stop, i) => (
-                <StopMark key={`stop-${i}`} number={stop.number} icon={stop.icon} cx={x(stop.m)} cy={LAYOUT.stress.stripTop + 6} r={STOP_R} iconStyle={iconStyle} small />
-              ))}
             </g>
           )}
 
