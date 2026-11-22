@@ -2646,28 +2646,12 @@ ul.station-links {
   line-height: 0;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
-.junction-marker.junction-group {
-  position: relative;
-}
-/* Markers that still overlap (at the map's last zoom, where grouping stops):
-   the focused or hovered one is drawn on top. MapLibre positions the marker's
+/* Markers that overlap (each junction is its own marker): the focused or
+   hovered one is drawn on top. MapLibre positions the marker's
    own element, so z-index applies to it. */
 .junction-marker:focus,
 .junction-marker:hover {
   z-index: 3;
-}
-.junction-count {
-  position: absolute;
-  right: -8px;
-  top: -6px;
-  min-width: 16px;
-  padding: 0 3px;
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  font: 600 11px/14px system-ui, sans-serif;
-  text-align: center;
 }
 .junction-marker:focus-visible {
   border-radius: 4px;
@@ -2858,11 +2842,6 @@ ul.station-links {
   .maplibregl-ctrl-attrib-button:focus-visible {
     outline: 3px solid Highlight;
     outline-offset: -3px;
-  }
-
-  .junction-count {
-    forced-color-adjust: auto;
-    border-color: CanvasText;
   }
 
   button,

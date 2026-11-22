@@ -177,10 +177,9 @@ import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
 import {
   MAP_MAX_ZOOM,
   groupJunctions,
-  groupLabel,
+  junctionIconSvg,
   junctionItems,
   junctionsOnMap,
-  groupIconSvg,
   ICON_PX,
   type JunctionGroup,
   type JunctionItem,
@@ -674,8 +673,6 @@ export function MapView(props: Props) {
   // The route's junctions, which the markers are drawn from at each zoom.
   const junctionList = useRef<JunctionItem[]>([]);
   const junctionCard = useRef<Popup | null>(null);
-  // After a group's zoom, the junction whose new marker takes the focus.
-  const focusAfterZoom = useRef<number | null>(null);
   // The hover handle as last drawn (null: none), so an unchanged answer is
   // not drawn again; anything else that redraws the edit layer resets it.
   const hoverShown = useRef<LonLat | null>(null);
@@ -726,7 +723,8 @@ export function MapView(props: Props) {
       const active = document.activeElement;
       const back = focusAfterClose(opener, focusWasInCard, active === null || active === document.body);
       if (back === null) return;
-      (back === "marker" ? markerFor(item.index) : rowFor(item.index))?.focus();
+      // Zoomed out past the markers, the junction's list row takes it instead.
+      ((back === "marker" ? markerFor(item.index) : null) ?? rowFor(item.index))?.focus();
     });
     // A rider the settings allow may suggest a danger level for the junction (OWNER-DECISIONS 232): a
     // button at the card's foot opens the road panel on the junction with its suggestion form open
@@ -746,7 +744,7 @@ export function MapView(props: Props) {
       card.getElement().querySelector(".junction-card")?.append(button);
     });
   };
-  /** The marker now drawn for the junction at `index` (its group's, if it is in one). */
+  /** The marker now drawn for the junction at `index`; null when zoomed out past the markers. */
   const markerFor = (index: number): HTMLElement | null => {
     const drawn = junctionMarkers.current;
     const at = groupHolding(
@@ -2526,50 +2524,32 @@ export function MapView(props: Props) {
     if (!props.route || props.stale) return;
     junctionList.current = junctionsOnMap(junctionItems(props.route));
     const draw = () => {
-      // A marker with the focus (a zoom by keyboard from it, or a group's
-      // zoom) hands it to its junction's new marker.
+      // A marker with the focus (a zoom by keyboard from it) hands it to its junction's new marker.
       const focused = junctionMarkers.current.find(({ marker }) => marker.getElement() === document.activeElement);
-      if (focused && focusAfterZoom.current === null) focusAfterZoom.current = focused.group.members[0].index;
+      const wanted = focused ? focused.group.members[0].index : null;
       junctionMarkers.current.forEach(({ marker }) => marker.remove());
-      const groups = groupJunctions(junctionList.current, map.getZoom(), (item) => map.project([item.lon, item.lat]));
-      junctionMarkers.current = groups.map((group) => {
-        const [first] = group.members;
-        const single = group.members.length === 1;
+      // One marker for each junction, none when zoomed out (lib/intersectionMarkers.ts MARKERS_FROM_ZOOM).
+      junctionMarkers.current = groupJunctions(junctionList.current, map.getZoom()).map((group) => {
+        const [item] = group.members;
         const element = document.createElement("button");
         element.type = "button";
-        element.className = `junction-marker junction-${group.severity}${single ? "" : " junction-group"}`;
-        element.dataset.junctionIndex = String(first.index);
-        element.innerHTML =
-          groupIconSvg(group, ICON_PX) +
-          (single ? "" : `<span class="junction-count" aria-hidden="true">${group.members.length}</span>`);
+        element.className = `junction-marker junction-${group.severity}`;
+        element.dataset.junctionIndex = String(item.index);
+        element.innerHTML = junctionIconSvg(item, ICON_PX);
         // The name alone: a title as well was read a second time, as the
         // description (a11y review, int-2).
-        element.setAttribute("aria-label", single ? first.label : groupLabel(group));
-        const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([first.lon, first.lat]).addTo(map);
+        element.setAttribute("aria-label", item.label);
+        const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
         element.addEventListener("click", (event) => {
           // A click on a marker is not a click on the map: it must not add a via point.
           event.stopPropagation();
-          if (single) {
-            openCard(first, "marker");
-            return;
-          }
-          const bounds = new maplibregl.LngLatBounds();
-          group.members.forEach((m) => bounds.extend([m.lon, m.lat]));
-          // The redraw at the zoom's end takes this button away; the focus
-          // goes to the first member's new marker, not to the page's body.
-          focusAfterZoom.current = document.activeElement === element ? first.index : null;
-          // A fit that leaves the zoom as it was has no zoomend to redraw on.
-          map.once("moveend", () => {
-            if (focusAfterZoom.current !== null) draw();
-          });
-          map.fitBounds(bounds, { padding: 120, maxZoom: map.getMaxZoom(), duration: 500 });
+          openCard(item, "marker");
         });
         element.addEventListener("dblclick", (event) => event.stopPropagation());
         return { group, marker };
       });
-      const wanted = focusAfterZoom.current;
-      focusAfterZoom.current = null;
-      if (wanted !== null) markerFor(wanted)?.focus();
+      // Zoomed out past the markers, the focus goes to the junction's list row, not the page's body.
+      if (wanted !== null) (markerFor(wanted) ?? rowFor(wanted))?.focus();
     };
     draw();
     map.on("zoomend", draw);
