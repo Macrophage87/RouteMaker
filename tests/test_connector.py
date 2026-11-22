@@ -1536,6 +1536,26 @@ class TestDraftsListed:
         assert not saved["isError"], saved
         assert call(token, "my_drafts", {})["structuredContent"]["drafts"] == []
 
+    def test_a_route_with_named_stops_and_icons_saves_with_both(self, planner) -> None:
+        """Stephen 2026-11-22: "RouteMaker still won't save a route that has stop icons." Before:
+        a draft kept its stops' names and icons by index, and JSON made each index a string, so
+        save_route failed ("'<' not supported between instances of 'int' and 'str'"). After: it
+        saves, its link with both."""
+        user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        link = "#p=-77.03,38.9;-77.025,38.905;-77.02,38.91&sn=1:Coffee&si=1:coffee&preset=default"
+        opened = call(token, "open_link", {"link": link})
+        assert not opened["isError"], opened
+        draft = opened["structuredContent"]["draft_id"]
+        revised = call(token, "revise_route", {"draft_id": draft, "stop_icons": {"1": "water"}})
+        assert not revised["isError"], revised
+        for kept in (draft, revised["structuredContent"]["draft_id"]):
+            saved = call(token, "save_route", {"draft_id": kept, "name": "Kept"})
+            assert not saved["isError"], saved
+        first, second = SavedRoute.objects.filter(user=user).order_by("pk")
+        assert "sn=1%3ACoffee" in first.inputs["hash"] and "si=1%3Acoffee" in first.inputs["hash"]
+        assert "sn=1%3ACoffee" in second.inputs["hash"] and "si=1%3Awater" in second.inputs["hash"]
+
     def test_a_test_or_archived_draft_is_not_listed_in_load_route(self, planner) -> None:
         """The owner, 2026-11-12: "When a test route is made from an agent, it somehow keeps
         loading on my account in beta. Archive them when done." Before: every agent plan was
