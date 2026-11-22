@@ -181,7 +181,7 @@ test("Copy link, Share, Share ride, Broadcast and Start ride ask first; New ride
   assert.match(app, /return rideLeadFor\(sent, line, leads\.current, leadPrep\.current\);/);
   assert.match(app, /const lead = ride && kept \? rideLeadFor\(again, sharedId, leads\.current, leadPrep\.current\) : null;/);
   assert.match(app, /const copyLink = \(\) => sameRideFirst\(\(secret\) => void copyLinkWith\(secret\)\);/);
-  assert.match(app, /shareRoute=\{\(ride\) => \(ride \? sameRideFirst\(\(\) => void shareRoute\(true\), true\) : sameRideFirst\(\(secret\) => void shareRoute\(false, shareNav, secret\)\)\)\}/);
+  assert.match(app, /shareRoute=\{\(ride\) => \(ride \? sameRideFirst\(\(\) => void shareRoute\(true, routeNav\), true\) : sameRideFirst\(\(secret\) => void shareRoute\(false, routeNav, secret\)\)\)\}/);
   assert.match(app, /const startRideChecked = \(\) => sameRideFirst\(\(\) => startRideNoted\(""\), false, undefined, true\);/);
   assert.match(app, /const broadcastRide = \(\) => sameRideFirst\(broadcastRideNow, true\);/);
   assert.match(app, /const broadcastQr = \(\) => sameRideFirst\(broadcastQrNow, true\);/);
