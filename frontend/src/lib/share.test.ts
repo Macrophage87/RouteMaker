@@ -117,7 +117,7 @@ test("App shows Share in the Route file sheet everywhere (without a sheet it cop
   assert.match(appFile, /<ShareControls\s*save=\{saveProps \? <SaveRoute \{\.\.\.saveProps\} label=\{SAVE_ROUTE\} \/> : null\}\s*ready=\{!!shown\}/);
   // A failure is said in the sheet's polite status beside Share, and shown; success and cancel say nothing.
   assert.match(app, /const done = await outcome;\s*said = shareSaidFor\(done\);/);
-  assert.match(app, /if \(said\)\s*window\.setTimeout/);
+  assert.match(app, /if \(said && !quiet\)\s*window\.setTimeout/);
   assert.match(app, /if \(press === sharePresses\.current\) setShareSaid\(\(before\) => \(\{ text: said, count: before\.count \+ 1 \}\)\);/);
   assert.match(controls, /<p className="hint share-said" role="status">/);
 });
@@ -128,7 +128,7 @@ test("share() is called within the press: synchronously in shareLink, and before
   void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
   assert.equal(called, true, "share() called synchronously");
   // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
-  const start = app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string; box: string }> => {");
+  const start = app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret, quiet = false): Promise<{ led: boolean; said: string; box: string }> => {");
   assert.ok(start > 0);
   const body = app.slice(start, app.indexOf("\n  };\n", start));
   const call = body.indexOf("shareLink(nav, content)");

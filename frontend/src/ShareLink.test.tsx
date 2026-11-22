@@ -83,3 +83,13 @@ test("the sheet opening keeps the saved line as it was", async () => {
   await new Promise((r) => setTimeout(r, 5));
   assert.match(screen.text(), /Saved as Home to Work\./);
 });
+
+test("a save that failed offers no Share on its line", async () => {
+  const screen = await render(
+    <SaveRoute label="Save route" defaultName={() => "Home to Work"} onSave={async () => "Could not save."} savedOk={() => false} onShare={async () => ({ said: "", box: "" })} />,
+  );
+  await click(screen.button("Save route"));
+  await click(screen.button("Save"));
+  for (let i = 0; i < 20 && !screen.text().includes("Could not save"); i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(screen.all("button", "Share route").length, 0);
+});

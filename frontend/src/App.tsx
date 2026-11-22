@@ -1671,6 +1671,9 @@ export function App() {
     linkPresses.current += 1;
     setLinkSaid("");
     setLinkSpoken("");
+    // Nor is a link waiting in a box to be copied (LinkBox.tsx): Copy link's, Share's.
+    setLinkBox("");
+    setShareBox("");
   }, [points, preset, dials, namesVersion, notes, groupSecret]);
 
   // A link pasted into this tab, or the back button, changes the fragment
@@ -4098,7 +4101,8 @@ export function App() {
   // `nav`: the sheet to open; Broadcast passes broadcastNav, which copies the link where there is no sheet.
   // `secret`: as for sharedLinkNow.
   // Answers `box` too: the link to show for copying, where routeNav could neither share nor copy it ("" otherwise).
-  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string; box: string }> => {
+  // `quiet`: what it says goes to the caller only, not to Save & load's line (Share on Save's own line, shareAfterSave).
+  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret, quiet = false): Promise<{ led: boolean; said: string; box: string }> => {
     const ownRide = rideOwnShare();
     const sharedRoute = ownRide?.route ?? shown;
     if (!sharedRoute || sharing.current) return { led: false, said: "", box: "" };
@@ -4113,8 +4117,8 @@ export function App() {
     let led = false;
     // Shared as a ride without the leader's key (not ready, or no SHA-256 here): Broadcast says so and starts nothing.
     let unled = false;
-    setShareSaid((before) => ({ text: "", count: before.count }));
-    setShareBox("");
+    if (!quiet) setShareSaid((before) => ({ text: "", count: before.count }));
+    if (!quiet) setShareBox("");
     // Share route and Share ride's own sheet (routeNav): a copy is said, and a link neither shared nor copied is shown.
     const ownSheet = nav === routeNav;
     let box = "";
@@ -4181,7 +4185,7 @@ export function App() {
     } finally {
       sharing.current = false;
     }
-    if (said)
+    if (said && !quiet)
       window.setTimeout(() => {
         if (press === sharePresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
         if (press === sharePresses.current) setShareBox(box);
@@ -4394,7 +4398,10 @@ export function App() {
     if (mode === "plan") openSavedRoute.current = { id: route.id, name: route.name, tags: route.tags ?? tags, fixed: isFixed };
     if (isFixed !== undefined) fixedLine.current = isFixed ? (shown?.geometry.coordinates ?? null) : null;
   };
+  // Whether the last save went: Share is offered on its line only then (SaveRoute's `savedOk`).
+  const saveWent = useRef(false);
   const saveCurrent = async (name: string, tags?: string[], fixed?: boolean): Promise<string> => {
+    saveWent.current = false;
     const verbatim = imported?.verbatim;
     const body =
       verbatim && !importEdited
@@ -4416,6 +4423,7 @@ export function App() {
     if (draft && draftOpen.current === draft) draftOpen.current = null;
     setMyRoutesVersion((v) => v + 1);
     savedNow(outcome.route, tags, fixed);
+    saveWent.current = true;
     // No `versioned`: a plain save (or the route was gone, and this one is new).
     if (outcome.versioned === undefined) return savedLine(name, outcome.route);
     return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
@@ -4424,7 +4432,13 @@ export function App() {
   // copy/share a link"), on Plan's map bar and Go's Save chip; Save & load has Share right under Save. Answers what to
   // say on that line, and the link to show where it could neither be shared nor copied.
   const shareAfterSave = () =>
-    new Promise<{ said: string; box: string }>((done) => sameRideFirst((secret) => void shareRoute(false, routeNav, secret).then(({ said, box }) => done({ said, box }))));
+    new Promise<{ said: string; box: string }>((done) =>
+      sameRideFirst(
+        (secret) => void shareRoute(false, routeNav, secret, true).then(({ said, box }) => done({ said, box })),
+        false,
+        () => done({ said: "", box: "" }),
+      ),
+    );
   const saveProps = me.signed_in
     ? {
         defaultName: () =>
@@ -7040,7 +7054,7 @@ export function App() {
     // second Keep for offline then.
     routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown: keepShown && me.signed_in, keepForOffline, keeping, keepSpoken, linkSaid, linkBox,
     downloadRoute,
-    save: saveProps ? { ...saveProps, onShare: shareAfterSave } : (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
+    save: saveProps ? { ...saveProps, onShare: shareAfterSave, savedOk: () => saveWent.current } : (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
     savedNote: savedNoteShown,
   };
   // Go's ride types: before a route under the place chips, with one under the route card (edit-route redesign).
@@ -7742,6 +7756,7 @@ export function App() {
               defaultTags={saveProps?.defaultTags}
               defaultFixed={saveProps?.defaultFixed}
               onShare={saveProps ? shareAfterSave : null}
+              savedOk={() => saveWent.current}
               label={SAVE_ROUTE}
               bar
               // Signed out, Save keeps the route on this device, with Sign in to sync beside what it says; no Download

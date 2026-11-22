@@ -58,9 +58,11 @@ export interface SaveRouteProps {
    * and the link to show in a box where it could neither be shared nor copied ("" for none).
    */
   onShare?: (() => Promise<{ said: string; box: string }>) | null;
+  /** Whether the save just answered went (Share is offered only then); absent, every save counts. */
+  savedOk?: () => boolean;
 }
 
-export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags, defaultFixed, keepHere = null, onShare = null }: SaveRouteProps) {
+export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags, defaultFixed, keepHere = null, onShare = null, savedOk }: SaveRouteProps) {
   const [asking, setAsking] = useState(false);
   const [name, setName] = useState("");
   const [fixed, setFixed] = useState(false);
@@ -169,7 +171,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
             void onSave(chosen, defaultTags ? parseTags(tagText) : undefined, defaultFixed ? fixed : undefined).then((text) => {
               setBusy(false);
               setSaid((s) => ({ text, count: s.count + 1 }));
-              setSaved(true);
+              setSaved(savedOk ? savedOk() : true);
               close();
             });
           }}
