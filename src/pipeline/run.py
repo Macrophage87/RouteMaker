@@ -978,6 +978,9 @@ class RebuildContext:
     # The short links among them (`sidewalks.links`), which the graphs that ride no sidewalk
     # still walk (`sidewalk_derived`).
     sidewalk_links: set[int] = field(default_factory=set)
+    # Sidewalks open to bicycles beside a street closed to public driving and beside none
+    # the public drives, priced as a path (`sidewalks.no_public_traffic_sidewalks`).
+    no_public_traffic_sidewalks: set[int] = field(default_factory=set)
     # Footways into rail stations opened as walk-your-bike links
     # (`routemaker.station_links`), all of them in `walk_bike` too.
     walk_links: set[int] = field(default_factory=set)
@@ -3843,6 +3846,13 @@ def build_handlers(
             context.ways, context.stress_by_way, nobike.sidewalk_rides, nobike.sidewalk_links
         )
         context.sidewalk_links = set(nobike.sidewalk_links)
+        context.no_public_traffic_sidewalks = sidewalks.no_public_traffic_sidewalks(
+            [(way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways]
+        )
+        logger.info(
+            "sidewalks of streets closed to public driving priced as paths: %d ways",
+            len(context.no_public_traffic_sidewalks),
+        )
         context.walk_links = nobike.walk_links
         context.platform_walks = nobike.platform_walks
         raise_ridden_sidewalks(
@@ -4249,6 +4259,11 @@ def build_handlers(
                         context.sidewalk_links,
                     )
                 )
+                # A sidewalk open to bicycles along a street closed to public driving
+                # (`sidewalks.no_public_traffic_sidewalks`), priced as a path by
+                # lua/routemaker_remap.lua (`M.priced_as_sidepath`).
+                if way.osm_id in context.no_public_traffic_sidewalks:
+                    derived["no_public_traffic_sidewalk"] = True
                 # A known hazard (v0.10.0; the owner, 2026-10-19: "Roads with hazards like
                 # this should get a major penalty"): cobbles or rails anywhere on the way,
                 # which lua/routemaker_remap.lua prices as LTS 4 without changing its rating.

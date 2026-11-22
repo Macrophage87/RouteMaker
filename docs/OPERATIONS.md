@@ -9144,7 +9144,10 @@ the rest with the next map update).**
   `:backward`) keeps its graded speed in both directions (`directional_speeds`).
 - A signed sidepath or a trail's stretch mapped as a sidewalk (`footway=sidewalk` with
   `bicycle=designated`, or a named or `segregated` sidewalk open to bicycles) is priced as a
-  path, not as the road-priced sidewalk (`priced_as_sidepath`).
+  path, not as the road-priced sidewalk (`priced_as_sidepath`). So is a sidewalk open to
+  bicycles beside a street closed to public driving (`motor_vehicle=no` and the like) and
+  beside no street the public drives (`rm:no_public_traffic_sidewalk`,
+  `sidewalks.no_public_traffic_sidewalks`; the walks beside the Capitol grounds' streets).
 - An easy mountain-bike rating (0 or 1) on gravel, fine gravel or compacted no longer sets the
   edge's surface, so the way is priced as packed gravel (`strip_easy_gravel_ratings`), and a
   cycleway or bicycle-designated trail on such a surface rated 1 is not closed as singletrack

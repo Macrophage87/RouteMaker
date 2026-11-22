@@ -1408,6 +1408,15 @@ end)()
     and tonumber(segregated.cycle_lane_right) == 2, segregated.cycle_lane_right)
   local _, plain = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" })
   check("a sidewalk a bicycle may merely use stays a sidewalk", tonumber(plain.use) == 24, plain.use)
+  -- A sidewalk a bicycle may use beside a street closed to public driving (the Capitol
+  -- grounds, 2026-11-22).
+  local _, closed = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "yes",
+    ["rm:no_public_traffic_sidewalk"] = "yes" })
+  check("a closed street's sidewalk is a footway in the graph", tonumber(closed.use) == 25,
+    closed.use)
+  local _, untagged = transform_way({ highway = "footway", footway = "sidewalk",
+    ["rm:no_public_traffic_sidewalk"] = "yes" })
+  check("one no bicycle tag opens stays a sidewalk", tonumber(untagged.use) ~= 25, untagged.use)
 end)()
 
 -- T8: a driveway a bicycle may not ride stays closed (before: upstream reopened it).
