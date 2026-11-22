@@ -1155,7 +1155,7 @@ function M.remap_way(tags, derived)
 
   -- A signed sidepath mapped as a sidewalk is priced as the path it is
   -- (`M.priced_as_sidepath`): `footway=sidewalk` comes off.
-  if M.priced_as_sidepath(tags) and out.bicycle ~= "no" and not derived.no_bicycle then
+  if M.priced_as_sidepath(tags, derived) and out.bicycle ~= "no" and not derived.no_bicycle then
     out.footway = M.REMOVE
   end
 
@@ -1366,12 +1366,20 @@ end
 -- priced as a shared path, or a segregated one where `segregated=yes` says so. Upstream
 -- reads `footway` for the use and nothing else, so no access moves. A sidewalk a bicycle may
 -- merely use, and one ridden as a last resort (`rm:sidewalk`, no bicycle tag), keep the
--- sidewalk's price.
+-- sidewalk's price, so a route keeps the calm street beside it.
+--
+-- But not one a bicycle may use beside a street closed to public driving, and beside none
+-- the public drives (`rm:no_public_traffic_sidewalk`,
+-- routemaker.sidewalks.no_public_traffic_sidewalks; Stephen, 2026-11-22, of the walk beside
+-- Delaware Ave NE on the Capitol grounds: "People with authorization can drive on it, but the
+-- sidewalks and paths are open to everyone"). At a road's price the route rode a V of the
+-- grounds' paths 36% longer round it. Priced as the path it is.
 M.SIDEPATH_GRANTS = { yes = true, designated = true, permissive = true, official = true }
 
-function M.priced_as_sidepath(tags)
+function M.priced_as_sidepath(tags, derived)
   if tags.highway ~= "footway" or tags.footway ~= "sidewalk" then return false end
   if tags.bicycle == "designated" then return true end
+  if derived and derived.no_public_traffic_sidewalk and M.SIDEPATH_GRANTS[tags.bicycle] then return true end
   return M.SIDEPATH_GRANTS[tags.bicycle] == true and (tags.name ~= nil or tags.segregated ~= nil)
 end
 

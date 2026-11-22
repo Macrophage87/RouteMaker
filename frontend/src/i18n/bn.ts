@@ -2310,4 +2310,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro station: its colour is the line": "মেট্রো স্টেশন: রংটাই লাইন",
   "Route locked. Open Edit route to change it.": "রুট লক করা। বদলাতে রুট সম্পাদনা খুলুন।",
   "Planner": "পরিকল্পক",
+  "On your route": "আপনার রুটে",
+  "Ride here instead": "বরং এখানে চালান",
+  "Avoid": "এড়িয়ে চলুন",
+  "Dirt": "মাটি",
+  "Unpaved": "কাঁচা রাস্তা",
+  "{distance} from your route": "আপনার রুট থেকে {distance}",
+  "{distance} from the start, about {time}": "শুরু থেকে {distance}, প্রায় {time}",
+  "{distance} from the start": "শুরু থেকে {distance}",
+  "{distance} to the end": "শেষ পর্যন্ত {distance}",
 };

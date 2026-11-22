@@ -316,6 +316,65 @@ def beside(
     return found
 
 
+# A sidewalk of a street the public may not drive (`no_public_traffic_sidewalks`): one OSM
+# opens to bicycles (`bicycle=yes` and the like) running beside a street closed to public
+# motor traffic (`motor_vehicle=no` and the like: authorized vehicles at most), and beside no
+# street the public drives. Stephen, 2026-11-22, of the walk beside Delaware Ave NE on the
+# Capitol grounds, which routes left for a V of paths through Lower Senate Park 36% longer:
+# "the path is so wide it's essentially a bike path, so it doesn't make sense to do that
+# wierd kink", and "People with authorization can drive on it, but the sidewalks and paths
+# are open to everyone". A sidewalk keeps a road's price (lua/routemaker_remap.lua,
+# `M.priced_as_sidepath`) so a route keeps to the calm street beside it rather than ride
+# among people walking; beside a street only authorized vehicles drive, the walk is one of
+# the grounds' paths in all but its tag, and is priced as one.
+SIDEWALK_GRANTS = frozenset({"yes", "designated", "permissive", "official"})
+# The streets a sidewalk may run beside: every road class but cycleways and tracks, and
+# pedestrian streets (closed to motor traffic by class).
+SIDEWALK_STREET_HIGHWAY = (
+    (OPEN_ROAD_HIGHWAY - {"cycleway", "track"}) | MOTORWAY_HIGHWAY | {"pedestrian"}
+)
+
+
+def _closed_to_public_driving(tags: dict[str, str]) -> bool:
+    """A street the public may not drive by its own tags: `highway=pedestrian`, or `no` on
+    the most specific of `motorcar`, `motor_vehicle`, `vehicle` and `access` the way carries
+    (a list narrowed to its most restrictive part, as the transform reads it; `motor_vehicle=no`
+    is OSM's tag for a street only authorized vehicles use), and no bus on it
+    (`tags.open_to_buses`)."""
+    if osm_tags.open_to_buses(tags):
+        return False
+    if tags.get("highway") == "pedestrian":
+        return True
+    tags = osm_tags.narrow_access_lists(tags)
+    for key in ("motorcar", "motor_vehicle", "vehicle", "access"):
+        value = tags.get(key)
+        if value is not None:
+            return osm_tags.most_restrictive(value) == "no"
+    return False
+
+
+def no_public_traffic_sidewalks(ways: Sequence[Placed]) -> set[int]:
+    """The sidewalks (`footway=sidewalk`) OSM opens to bicycles that run beside a
+    street closed to public driving (`_closed_to_public_driving`) and beside no street the
+    public drives (`beside`)."""
+    asked, closed, driven = [], [], []
+    for osm_id, tags, _nodes, coords in ways:
+        known = [c for c in coords if c is not None]
+        if len(known) < 2:
+            continue
+        if tags.get("highway") == "footway" and tags.get("footway") == "sidewalk":
+            if tags.get("bicycle") in SIDEWALK_GRANTS:
+                asked.append((osm_id, known))
+        elif tags.get("area") == "yes":
+            continue
+        elif tags.get("highway") in SIDEWALK_STREET_HIGHWAY:
+            (closed if _closed_to_public_driving(tags) else driven).append((osm_id, known))
+    if not asked or not closed:
+        return set()
+    found = beside(asked, closed)
+    return found - beside([pair for pair in asked if pair[0] in found], driven)
+
+
 def _metres(a: tuple[float, float], b: tuple[float, float]) -> float:
     lat0 = math.radians((a[1] + b[1]) / 2)
     dx = math.radians(b[0] - a[0]) * math.cos(lat0) * _EARTH_M
