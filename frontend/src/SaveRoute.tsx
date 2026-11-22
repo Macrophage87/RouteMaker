@@ -11,6 +11,8 @@ import { signInLabel } from "./lib/signIn.ts";
 import { signInHasChoice } from "./lib/stressEditor.ts";
 import { Icon } from "./Icon.tsx";
 import { InfoButton } from "./SettingRow.tsx";
+import { LinkBox } from "./LinkBox.tsx";
+import { SHARE_LABEL } from "./lib/share.ts";
 import { firstWordAndRest, t } from "./lib/i18n.ts";
 import { KEEPING_SAID } from "./lib/offlineRoutes.ts";
 import { FIXED_ABOUT, FIXED_HINT, FIXED_ROUTE, NAME_MAX, SAVE_ROUTE, TAGS_MAX, listRoutes, parseTags, tagHints, tagsInUse, takeHint } from "./lib/savedRoutes.ts";
@@ -50,9 +52,17 @@ export interface SaveRouteProps {
    * planning was a sign-in wall). Resolves to the line to say ("" says nothing) and whether the route was kept.
    */
   keepHere?: (() => Promise<{ said: string; kept: boolean }>) | null;
+  /**
+   * Share route on the line that says it saved (Stephen 2026-11-22: "After saving, you should also be able to
+   * copy/share a link"): the share sheet, else the link copied. Resolves to the line to say ("" keeps the saved line)
+   * and the link to show in a box where it could neither be shared nor copied ("" for none).
+   */
+  onShare?: (() => Promise<{ said: string; box: string }>) | null;
+  /** Whether the save just answered went (Share is offered only then); absent, every save counts. */
+  savedOk?: () => boolean;
 }
 
-export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags, defaultFixed, keepHere = null }: SaveRouteProps) {
+export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags, defaultFixed, keepHere = null, onShare = null, savedOk }: SaveRouteProps) {
   const [asking, setAsking] = useState(false);
   const [name, setName] = useState("");
   const [fixed, setFixed] = useState(false);
@@ -76,6 +86,9 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
   // The said line is a keep's (signed out): Sign in to sync shows beside it.
   const [keptHere, setKeptHere] = useState(false);
   const keepsHere = !onSave && keepHere !== null;
+  // A save answered: Share route shows on its line; `box`, the link to copy by hand.
+  const [saved, setSaved] = useState(false);
+  const [box, setBox] = useState("");
   const openerRef = useRef<HTMLButtonElement>(null);
   // React's autoFocus skips a link: the sign-in link takes the focus as the form opens, as the name field does.
   const signInRef = useRef<HTMLAnchorElement>(null);
@@ -86,11 +99,13 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
   // On the map, the line that says it saved goes after a while: it would cover the map chips under the bar.
   useEffect(() => {
     // Not while a keep is still under way: "Keeping…" stays until it ends (the PR review's 8).
-    if (!bar || !said.text || busy) return;
+    // Nor while the link waits in its box to be copied.
+    if (!bar || !said.text || busy || box) return;
     // A keep's line, with Sign in to sync on it, stays longer: there is a link on it to reach.
-    const timer = setTimeout(() => setSaid((s) => ({ ...s, text: "" })), keptHere ? KEPT_ON_MAP_MS : SAID_ON_MAP_MS);
+    // So does one with Share route on it.
+    const timer = setTimeout(() => setSaid((s) => ({ ...s, text: "" })), keptHere || (saved && onShare) ? KEPT_ON_MAP_MS : SAID_ON_MAP_MS);
     return () => clearTimeout(timer);
-  }, [bar, said, keptHere, busy]);
+  }, [bar, said, keptHere, busy, box, saved, onShare]);
   const close = () => {
     setAsking(false);
     openerRef.current?.focus();
@@ -120,6 +135,8 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
             return;
           }
           if (!asking) {
+            setSaved(false);
+            setBox("");
             setName(defaultName());
             setFixed(defaultFixed?.() ?? false);
             setFixedInfo(false);
@@ -154,6 +171,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
             void onSave(chosen, defaultTags ? parseTags(tagText) : undefined, defaultFixed ? fixed : undefined).then((text) => {
               setBusy(false);
               setSaid((s) => ({ text, count: s.count + 1 }));
+              setSaved(savedOk ? savedOk() : true);
               close();
             });
           }}
@@ -249,6 +267,24 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
         {said.text}
         {said.count % 2 === 1 ? " " : ""}
         {/* On the line's card under the bar, while it shows. */}
+        {saved && onShare && said.text && (
+          <>
+            {" "}
+            <button
+              type="button"
+              className="link save-route-share"
+              onClick={() => {
+                setBox("");
+                void onShare().then(({ said: text, box: link }) => {
+                  if (text) setSaid((s) => ({ text, count: s.count + 1 }));
+                  setBox(link);
+                });
+              }}
+            >
+              {SHARE_LABEL}
+            </button>
+          </>
+        )}
         {keepsHere && keptHere && said.text && signIn && (
           <>
             {" "}
@@ -258,6 +294,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
           </>
         )}
       </p>
+      {saved && said.text && <LinkBox link={box} />}
     </div>
   );
 }
