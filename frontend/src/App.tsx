@@ -10,6 +10,7 @@ import { FINISH_NAME, shapePoints, showsBikeLoop } from "./lib/bikeLoop.ts";
 import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
+import { routeSpotAt, routeSpotToleranceM } from "./lib/routeSpot.ts";
 import { MapTools } from "./MapTools.tsx";
 import { ReachSheet } from "./ReachSheet.tsx";
 import { REACH_DEFAULT, reachFromHash, type ReachView } from "./lib/reach.ts";
@@ -2360,7 +2361,9 @@ export function App() {
         setNotice(OUTSIDE_NOTICE);
         return;
       }
-      setGoSpot({ point });
+      // The tolerance for "on the route" is a fingertip at the zoom the tap was made at (lib/routeSpot.ts).
+      const zoom = mapRef.current?.getZoom();
+      setGoSpot({ point, toleranceM: zoom === undefined ? undefined : routeSpotToleranceM(zoom, point[1]) });
       return;
     }
     place(point);
@@ -6317,6 +6320,13 @@ export function App() {
   );
   // The card's "Ride to the bike rack": the nearest rack, when one is near and the spot is not already at it.
   const spotRack = spotOpen && goSpot && racks ? rackOffer(goSpot.point, racks) : null;
+  // With a route on Go's map, the card asks about the route at the spot first (lib/routeSpot.ts; Stephen, 2026-11-22).
+  const spotOnRoute = useMemo(
+    // The route drawn (`shown`: none after a failed plan), and not a transit or bikeshare trip, whose body is its first
+    // bike leg alone, so its "to the end" would be to the station.
+    () => (spotOpen && goSpot && points.length >= 2 && shown && !shown.transit && !shown.bikeshare ? routeSpotAt(shown, goSpot.point, goSpot.toleranceM) : null),
+    [spotOpen, goSpot, points.length, shown],
+  );
   // `heading`: the spot card's address, which names the rack's place ("Bike rack near 1234 R Street Northwest").
   const rideToRack = (near: RackNear, heading: string | null) => {
     const name = rackPlaceName(near, heading ?? namer.name(goSpot?.point ?? rackPoint(near.rack))?.name ?? null);
@@ -7612,6 +7622,7 @@ export function App() {
         fallbackName={(point) => namer.name(point)?.name}
         here={spotOpen ? lastHere() : null}
         rows={spotRows}
+        onRoute={spotOnRoute}
         rack={spotRack ? { text: rideToRackText(spotRack), onPress: (heading) => rideToRack(spotRack, heading) } : null}
         onRouteHere={goRouteHere}
         onPick={(index) => pickSpot(index, true)}

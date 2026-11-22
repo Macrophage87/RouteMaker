@@ -2310,4 +2310,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro station: its colour is the line": "Station de métro : sa couleur est la ligne",
   "Route locked. Open Edit route to change it.": "Itinéraire verrouillé. Ouvrez Modifier l'itinéraire pour le changer.",
   "Planner": "Planificateur",
+  "On your route": "Sur votre itinéraire",
+  "Ride here instead": "Y aller à vélo plutôt",
+  "Avoid": "À éviter",
+  "Dirt": "Terre",
+  "Unpaved": "Non revêtu",
+  "{distance} from your route": "{distance} de votre itinéraire",
+  "{distance} from the start, about {time}": "{distance} depuis le départ, environ {time}",
+  "{distance} from the start": "{distance} depuis le départ",
+  "{distance} to the end": "{distance} jusqu'à l'arrivée",
 };
