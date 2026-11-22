@@ -368,6 +368,10 @@ const GO_RIDE_ALSO = [
   // is Plan's, in English, and marked lang="en" there.
   "RideFeedback.tsx",
   "lib/rideFeedback.ts",
+  // Go's tapped-spot card and, with a route on the map, the route at the spot (2026-11-22).
+  "GoSpotDialog.tsx",
+  "lib/spotNearby.ts",
+  "lib/routeSpot.ts",
 ];
 
 function goRideFiles(): string[] {
