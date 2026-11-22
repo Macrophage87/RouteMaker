@@ -40,6 +40,15 @@ export const MAX_IN_FLIGHT = 2;
 export const MAX_ATTEMPTS = 10;
 export const MAX_WAIT_S = 8;
 export const GIVE_UP_S = 30;
+/**
+ * How long one tile request may take, ride or not, before it is cut and counted as a failed request (asked
+ * again like a server that is down). Without it a request that never answered (a phone changing networks, a
+ * stalled connection) held its queue slot for the whole visit: two of them, or the one check at load, and no
+ * stress tile came again, so the map stayed on its widest tiles' few streets until a reload (the owner,
+ * 2026-11-22: "This happens fairly often, but it's flaky"). Above the server's own draw limit, which answers
+ * 503 rather than running on.
+ */
+export const REQUEST_TIMEOUT_MS = 20_000;
 
 export function protocolUrl(url: string): string {
   return `${STRESS_PROTOCOL}://${url}`;
@@ -142,6 +151,8 @@ export interface Fetching {
   now?: () => number;
   queue?: Queue;
   signal?: AbortSignal;
+  /** Each request's limit (REQUEST_TIMEOUT_MS unless a test says otherwise). */
+  timeoutMs?: number;
 }
 
 /** The tile's bytes, queued, and asked for again after a 429 or 503 (and, with `retryDown`, a 502, 504 or failed request). */
@@ -158,8 +169,15 @@ export async function fetchTile(url: string, options: Fetching = {}): Promise<Ar
     let status: number | null;
     let retryAfter: string | null = null;
     let failure: unknown = null;
+    // This attempt's own cancel: MapLibre's, or the time limit (REQUEST_TIMEOUT_MS), body included.
+    const request = new AbortController();
+    const outer = options.signal;
+    const cancel = () => request.abort();
+    if (outer?.aborted) request.abort();
+    else outer?.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(cancel, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
     try {
-      const response = await get(url, { signal: options.signal });
+      const response = await get(url, { signal: request.signal });
       if (response.ok) return await response.arrayBuffer();
       status = response.status;
       retryAfter = response.headers.get("Retry-After");
@@ -169,6 +187,8 @@ export async function fetchTile(url: string, options: Fetching = {}): Promise<Ar
       status = null;
       failure = error;
     } finally {
+      clearTimeout(timer);
+      outer?.removeEventListener("abort", cancel);
       queue.release();
     }
     const what = status ?? "request failed";
