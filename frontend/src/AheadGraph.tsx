@@ -57,6 +57,7 @@ import {
 import type { Cue } from "./lib/navigate.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
 import { ratedDotFill } from "./lib/ratedDot.ts";
+import { jogArrowPath } from "./lib/jogArrow.ts";
 import { RatedDot, StopMark } from "./chartParts.tsx";
 import { ROUTE_AVOID_MAGENTA } from "./lib/avoidColour.ts";
 import { GRADE_BAND_FILL } from "./lib/profileChart.ts";
@@ -431,6 +432,19 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
         const flagged = mark.severity === "orange" || mark.severity === "red";
         // A rated junction takes its level's stress colour, as its dot on the map does.
         const colour = !flagged ? null : mark.rated != null ? { fill: ratedDotFill(mark.rated), stroke: "#1c1917" } : SEVERITY_COLOURS[mark.severity as "orange" | "red"];
+        const jog = mark.movement && mark.then?.length ? jogArrowPath({ movement: mark.movement, then: mark.then.map((movement) => ({ movement, street: null })) }) : null;
+        if (jog) {
+          // Turns drawn as one arrow, as the cue card draws a jog (lib/jogArrow.ts, its 48 x 56 box) at the strip's size.
+          const k = 0.42 * scale;
+          const width = (w: number) => ({ strokeWidth: w / k });
+          return (
+            <g key={i} transform={`translate(${cx - 24 * k} ${cy - 30 * k}) scale(${k})`} className={colour ? `ride-ahead-arrow ride-ahead-arrow-${mark.severity}` : "ride-ahead-arrow"}>
+              {halo && <path d={jog} className="ride-ahead-arrow-halo" style={width(6)} />}
+              {colour && <path d={jog} className="ride-ahead-arrow-edge" stroke={colour.stroke} style={width(5.5)} />}
+              <path d={jog} className="ride-ahead-arrow-shaft ride-ahead-arrow-jog" style={{ ...width(3), ...(colour ? { stroke: colour.fill } : {}) }} />
+            </g>
+          );
+        }
         if (mark.movement) {
           const arrow = ARROWS[mark.movement];
           return (
