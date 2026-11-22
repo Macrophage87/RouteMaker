@@ -8110,7 +8110,7 @@ What changes for a deploy:
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
   (Actions, "Release", Run workflow on main, version `v0.30.4`, then approve).
 - [ ] **Beta check.** The app says 0.30.4; the stress colours show at every zoom after a long
-  visit; Share route in Save & load copies the link on a desktop browser.
+  visit; Share route in Save & load copies the link in Firefox on a computer (no share sheet there).
 - [ ] **Rollback.** The v0.30.3 front end.
 
 ## Deploying v0.30.3
