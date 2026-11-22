@@ -419,9 +419,16 @@ class DatabaseDrafts:
             # The stops' names (a link's `sn=`, cue_cards' stop_names); none before v0.25.0.
             names={int(k): str(v) for k, v in (data["plan"].get("names") or {}).items()},
         )
+        # JSON keeps a dict's keys as strings: the stops' names and icons are by point index, and
+        # a string index failed every later use ("'<' not supported between 'int' and 'str'" on
+        # save_route of a route with stop icons, Stephen 2026-11-22).
+        options = dict(data["options"])
+        for key in ("stop_names", "stop_icons"):
+            if isinstance(options.get(key), dict):
+                options[key] = {int(k): v for k, v in options[key].items()}
         return module.Draft(
             plan,
-            data["options"],
+            options,
             data["limit"],
             data["name"],
             # Drafts kept before v0.12.3 have neither: the module's defaults.
