@@ -76,7 +76,7 @@ test("the page gives each plan of its own its own secret, and Clear a new one, b
 test("a ride link sent whose line was not kept still gives the next ride shared a new leader key and secret", () => {
   assert.match(
     app,
-    /if \(done !== "failed" && done !== "cancelled"\) said = SHARED_INPUTS_ONLY;\s*\/\/[^\n]*\n\s*if \(ride && done === "shared" && lead && lead === leadPrep\.current\) prepareLead\(\);/,
+    /if \(done !== "failed" && done !== "cancelled"\) said = copied \? `\$\{COPY_LINK_DONE\} \$\{SHARED_INPUTS_ONLY\}` : SHARED_INPUTS_ONLY;\s*\/\/[^\n]*\n\s*if \(ride && done === "shared" && lead && lead === leadPrep\.current\) prepareLead\(\);/,
   );
   // Roam's broadcast likewise, when Roam ended while the sheet was open.
   assert.match(app, /if \(!roamingNow\.current\) \{\s*prepareLead\(\);\s*return "";\s*\}/);

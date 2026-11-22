@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "سمول",
   "Copy link": "لینک کاپي کړئ",
   "Link copied.": "لینک کاپي شو.",
-  "Could not copy. Copy the address from the browser's address bar.": "کاپي نه شو. پته د براوزر له پتې پټې کاپي کړئ.",
+  "Could not copy the link. Select it below and copy it.": "لینک کاپي نه شو. لاندې یې وټاکئ او کاپي یې کړئ.",
   "1 step": "۱ ګام",
   "{count} steps": "{count} ګامونه",
   "Elevation and climbs": "لوړوالی او ختنې",

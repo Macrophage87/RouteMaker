@@ -205,7 +205,9 @@ export const RIDE_SETTINGS_LABEL = t("Ride settings");
 
 export const COPY_LINK = t("Copy link");
 export const COPY_LINK_DONE = t("Link copied.");
-export const COPY_LINK_FAILED = t("Could not copy. Copy the address from the browser's address bar.");
+/** The copy failed (Stephen 2026-11-22: "It's not intuitive to copy a link when no share sheet"): the link is shown in a box
+ * under this line (LinkBox.tsx), for the rider to select and copy; the address bar may not hold the same link. */
+export const COPY_LINK_FAILED = t("Could not copy the link. Select it below and copy it.");
 
 /** What "Copy link" said after a press: done or not. */
 export function linkSaidFor(done: boolean): string {
