@@ -8,6 +8,11 @@
  * (lib/stopCard.ts), never a route by itself. List shows the same places as buttons, for a screen reader and the
  * keyboard, with Road info under them (the road card, as the tap opened before; a long press still opens it too).
  *
+ * With a route on Go's map (Stephen, 2026-11-22: "When loading a saved route clicking again in go should mainly let
+ * you query things about the route rather than new suggested changes"), the card leads with the route at the spot
+ * (lib/routeSpot.ts: how far along, how long from the start, the street and its stress, or how far off the route the
+ * tap was), Ride here becomes "Ride here instead" at the foot and the rack's offer is left out; focus opens on Close.
+ *
  * Placed as the road card is (dialog.road-info: a sheet from the bottom on a phone), but not modal: the map above it
  * stays live, so its pins can be pressed and another tap moves the card to that spot. Escape and Close close it; the
  * focus goes to Ride here on open and back to the map on close. The dialog is named by the address.
@@ -34,11 +39,14 @@ import {
   type SpotAddress,
   type SpotRow,
 } from "./lib/spotNearby.ts";
+import { RIDE_HERE_INSTEAD, ROUTE_SPOT_HEADING, routeSpotLines, type RouteSpot } from "./lib/routeSpot.ts";
 import { t } from "./lib/i18n.ts";
 
 /** The spot asked about: a new object per tap, so a second tap on the same spot opens the card again. */
 export interface SpotRequest {
   point: LonLat;
+  /** How near the route a tap counts as on it, in metres (lib/routeSpot.ts routeSpotToleranceM); absent: ON_ROUTE_M. */
+  toleranceM?: number;
 }
 
 interface Props {
@@ -57,6 +65,12 @@ interface Props {
    * a routing option"), under Ride here: one press rides there instead. Null with no rack near.
    */
   rack?: { text: string; onPress: (heading: string | null) => void } | null;
+  /**
+   * With a route on Go's map, the route at the tapped spot (lib/routeSpot.ts; Stephen, 2026-11-22: "clicking again in
+   * go should mainly let you query things about the route rather than new suggested changes"): its lines lead the
+   * card, Ride here moves to the foot as "Ride here instead" and the rack's offer is left out. Null with no route.
+   */
+  onRoute?: RouteSpot | null;
   onRouteHere: (point: LonLat) => void;
   /** A row of the list pressed: its index (its pin on the map does the same). */
   onPick: (index: number) => void;
@@ -66,9 +80,10 @@ interface Props {
   fallbackFocus?: () => HTMLElement | null;
 }
 
-export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows, rack = null, onRouteHere, onPick, onRoadInfo, onClose, fallbackFocus }: Props) {
+export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows, rack = null, onRoute = null, onRouteHere, onPick, onRoadInfo, onClose, fallbackFocus }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const routeRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const [address, setAddress] = useState<SpotAddress | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const base = useId();
@@ -88,7 +103,8 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
     }
     // Not modal: the map's pins stay pressable while the card is open.
     if (!dialog.open) dialog.show();
-    routeRef.current?.focus();
+    // Ride here, or with a route on the map the close button: a press of Enter never changes the route.
+    (routeRef.current ?? closeRef.current)?.focus();
     setAddress(null);
     setListOpen(false);
     let live = true;
@@ -139,11 +155,21 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
     <dialog ref={dialogRef} className="go-spot" aria-labelledby={titleId} aria-busy={address === null ? true : undefined} onKeyDown={onKeyDown}>
       <div className="road-info-body">
         <div className="go-spot-top">
-          <button type="button" className="secondary go-spot-close" aria-label={t("Close")} title={t("Close")} onClick={close}>
+          <button type="button" ref={closeRef} className="secondary go-spot-close" aria-label={t("Close")} title={t("Close")} onClick={close}>
             <Icon name="x" size={22} />
           </button>
         </div>
-        {request && (
+        {request && onRoute && (
+          <div className="go-spot-route">
+            {onRoute.on && <p className="go-spot-route-heading">{ROUTE_SPOT_HEADING}</p>}
+            {routeSpotLines(onRoute).map((line) => (
+              <p key={line} className="go-spot-route-line">
+                {line}
+              </p>
+            ))}
+          </div>
+        )}
+        {request && !onRoute && (
           <button
             type="button"
             ref={routeRef}
@@ -156,7 +182,7 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
             {ROUTE_HERE_TEXT}
           </button>
         )}
-        {request && rack && (
+        {request && rack && !onRoute && (
           <button
             type="button"
             className="secondary go-spot-rack"
@@ -225,6 +251,18 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
             </button>
           )}
         </div>
+        {request && onRoute && (
+          <button
+            type="button"
+            className="secondary go-spot-instead"
+            onClick={() => {
+              onRouteHere(request.point);
+              close();
+            }}
+          >
+            {RIDE_HERE_INSTEAD}
+          </button>
+        )}
       </div>
     </dialog>
   );

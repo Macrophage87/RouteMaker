@@ -99,6 +99,12 @@ ALLOWED_KEYS = frozenset(
         "cycleway:right",
         "cycleway:left:oneway",
         "cycleway:right:oneway",
+        # What physically separates a lane from traffic, seen on the street (owner
+        # 2026-11-22, Glenbrook Rd in Bethesda: contraflow lanes behind flex posts that
+        # OSM had as paint). Our facility rule reads these as a protected lane.
+        "cycleway:left:separation",
+        "cycleway:right:separation",
+        "cycleway:both:separation",
         # Who may drive a road, from the managing agency's own closure or what is posted on
         # the spot (owner 2026-11-13, Upper Beach Drive in Rock Creek Park: OSM still had the
         # old weekend-only closure after the park closed it to cars all year).

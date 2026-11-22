@@ -2310,4 +2310,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro station: its colour is the line": "የሜትሮ ጣቢያ: ቀለሙ መስመሩ ነው",
   "Route locked. Open Edit route to change it.": "መንገዱ ተቆልፏል። ለመቀየር መንገድ አርትዕን ይክፈቱ።",
   "Planner": "ዕቅድ አውጪ",
+  "On your route": "በመንገድዎ ላይ",
+  "Ride here instead": "በምትኩ ወደዚህ ንዱ",
+  "Avoid": "ያስወግዱ",
+  "Dirt": "አፈር",
+  "Unpaved": "ያልተነጠፈ",
+  "{distance} from your route": "ከመንገድዎ {distance}",
+  "{distance} from the start, about {time}": "ከመነሻው {distance}፣ ወደ {time} ገደማ",
+  "{distance} from the start": "ከመነሻው {distance}",
+  "{distance} to the end": "እስከ መጨረሻው {distance}",
 };

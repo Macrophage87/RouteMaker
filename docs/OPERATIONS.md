@@ -9144,7 +9144,10 @@ the rest with the next map update).**
   `:backward`) keeps its graded speed in both directions (`directional_speeds`).
 - A signed sidepath or a trail's stretch mapped as a sidewalk (`footway=sidewalk` with
   `bicycle=designated`, or a named or `segregated` sidewalk open to bicycles) is priced as a
-  path, not as the road-priced sidewalk (`priced_as_sidepath`).
+  path, not as the road-priced sidewalk (`priced_as_sidepath`). So is a sidewalk open to
+  bicycles beside a street closed to public driving (`motor_vehicle=no` and the like) and
+  beside no street the public drives (`rm:no_public_traffic_sidewalk`,
+  `sidewalks.no_public_traffic_sidewalks`; the walks beside the Capitol grounds' streets).
 - An easy mountain-bike rating (0 or 1) on gravel, fine gravel or compacted no longer sets the
   edge's surface, so the way is priced as packed gravel (`strip_easy_gravel_ratings`), and a
   cycleway or bicycle-designated trail on such a surface rated 1 is not closed as singletrack
@@ -10838,7 +10841,8 @@ Python 3.11 or later, standard library only.
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
-  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing; `motor_vehicle` and
+  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing;
+  `cycleway:<side>:separation` for a physical divider such as flex posts seen on the street; `motor_vehicle` and
   `motor_vehicle:conditional` for a road closed or opened to cars, from the managing agency's
   own notice or what is posted there);
   `highway` only on a node, to a junction control;
