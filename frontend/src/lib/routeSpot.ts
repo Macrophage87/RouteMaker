@@ -7,7 +7,7 @@
  *
  * Plain data in, plain data out (no map), so node --test runs all of it.
  */
-import { lineAlong } from "./navigate.ts";
+import { lineAlong, routeLengthM, timelineOf } from "./navigate.ts";
 import { spanAt } from "./profileChart.ts";
 import { FACILITY_WORDS } from "./aheadGraph.ts";
 import { formatDistance, formatDuration } from "./format.ts";
@@ -80,25 +80,26 @@ export function routeSpotAt(route: SpotRoute | null | undefined, point: LonLat, 
   const totalM = route.distance_m > 0 ? route.distance_m : traced;
   const span = route.stress_spans?.length ? spanAt(route.stress_spans, fraction * traced) : null;
   const entries = (route.description ?? []).filter((e) => e.kind === "stretch");
-  const described = entries.length ? Math.max(...entries.map((e) => e.to_m)) : 0;
+  // The directions' whole length (every entry, as Ride reads it), so a walk or a stop after the last stretch counts.
+  const described = entries.length ? routeLengthM({ distance_m: route.distance_m, description: route.description }, drawn) : 0;
   const atDescribed = fraction * described;
   const street = entries.find((e) => atDescribed >= e.from_m && atDescribed < e.to_m)?.street ?? (described > 0 && atDescribed >= described ? (entries[entries.length - 1].street ?? null) : null);
   return { on: best <= toleranceM, offM: best, atM: fraction * totalM, totalM, seconds: secondsAtFraction(route, fraction), street: street ?? null, span };
 }
 
-/** Seconds at a fraction of the line, from the route's time marks ([fraction, seconds]) or spread evenly. */
+/**
+ * Seconds at a fraction of the line: the route's time marks scaled so the end is its duration, as Ride reads them
+ * (lib/navigate.ts timelineOf: the marks leave out a walked stretch and singletrack pace), else spread evenly.
+ */
 function secondsAtFraction(route: SpotRoute, fraction: number): number | null {
-  const marks = route.time_marks;
-  if (marks && marks.length >= 2) {
-    if (fraction <= marks[0][0]) return marks[0][1];
-    for (let i = 1; i < marks.length; i += 1) {
-      if (fraction <= marks[i][0]) {
-        const [f0, s0] = marks[i - 1];
-        const [f1, s1] = marks[i];
-        return f1 > f0 ? s0 + ((s1 - s0) * (fraction - f0)) / (f1 - f0) : s1;
-      }
+  const line = timelineOf(route.time_marks, 1, route.duration_s);
+  if (line) {
+    const { m, s } = line;
+    if (fraction <= m[0]) return s[0];
+    for (let i = 1; i < m.length; i += 1) {
+      if (fraction <= m[i]) return m[i] > m[i - 1] ? s[i - 1] + ((s[i] - s[i - 1]) * (fraction - m[i - 1])) / (m[i] - m[i - 1]) : s[i];
     }
-    return marks[marks.length - 1][1];
+    return s[s.length - 1];
   }
   return route.duration_s > 0 ? route.duration_s * fraction : null;
 }

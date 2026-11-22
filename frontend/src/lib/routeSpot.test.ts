@@ -45,9 +45,14 @@ test("a tap away from the line says only how far off the route it is", () => {
   assert.deepEqual(routeSpotLines(spot), ["0.3 mi (0.6 km) from your route"]);
 });
 
-test("the time comes from the route's time marks where it has them", () => {
+test("the time comes from the route's time marks where it has them, scaled to the route's own duration", () => {
   const spot = routeSpotAt({ ...route, time_marks: [[0, 0], [0.5, 100], [1, 600]] }, [-77.0185, 38.9])!;
   assert.ok(Math.abs((spot.seconds ?? 0) - 100) < 10, `${spot.seconds}`);
+  // Marks that end short of the duration (a walked stretch they leave out) are stretched to it, as Ride reads them.
+  const scaled = routeSpotAt({ ...route, time_marks: [[0, 0], [0.5, 50], [1, 300]] }, [-77.0185, 38.9])!;
+  assert.ok(Math.abs((scaled.seconds ?? 0) - 100) < 10, `${scaled.seconds}`);
+  const end = routeSpotAt({ ...route, time_marks: [[0, 0], [1, 300]] }, [-77.007, 38.9])!;
+  assert.equal(end.seconds, 600);
 });
 
 test("the tolerance is a fingertip on screen, never under ON_ROUTE_M", () => {
