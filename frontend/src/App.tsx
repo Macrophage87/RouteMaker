@@ -197,6 +197,8 @@ import {
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
+  COPY_LINK_DONE,
+  COPY_LINK_FAILED,
   PLANNER_TITLE,
   focusOnViewChange,
   linkSaidFor,
@@ -1054,6 +1056,8 @@ export function App() {
   const [linkSaid, setLinkSaid] = useState("");
   const [linkSpoken, setLinkSpoken] = useState("");
   const linkPresses = useRef(0);
+  // The link Copy link could not copy, in a box under its line (LinkBox.tsx); "" with none.
+  const [linkBox, setLinkBox] = useState("");
   // Share (owner, 2026-10-10; lib/share.ts): on the page only where there is a share sheet, the browser's or the phone
   // app's (Android's WebView has none: lib/nativeShell.ts nativeShareNavigator).
   const [shareNav] = useState(() => pickShareNavigator(navigator, nativeShareNavigator()));
@@ -1065,6 +1069,14 @@ export function App() {
   const broadcastNav = useMemo<ShareNavigator | undefined>(() => {
     const copy = (text: string) => copyText(text, navigator.clipboard, selectionCopy);
     return canShare && shareNav ? sheetOrCopyNavigator(shareNav, copy, (copied) => (sheetCopied.current = copied)) : copyShareNavigator(copy);
+  }, [canShare, shareNav]);
+  // Share route and Share ride, in Save & load and after Save (Stephen 2026-11-22: "It's not intuitive to copy a link when
+  // no share sheet"): the sheet where there is one, the link copied where there is none or it fails (`routeCopied` says
+  // so), as Share live's; where the copy fails too, the link is shown in a box to copy (LinkBox.tsx).
+  const routeCopied = useRef(false);
+  const routeNav = useMemo<ShareNavigator | undefined>(() => {
+    const copy = (text: string) => copyText(text, navigator.clipboard, selectionCopy);
+    return canShare && shareNav ? sheetOrCopyNavigator(shareNav, copy, (copied) => (routeCopied.current = copied)) : copyShareNavigator(copy);
   }, [canShare, shareNav]);
   // What Share live says once its link went: `sheet` after the sheet, the copy's line where the link was copied.
   const broadcastSaid = (sheet: string) => (canShare && !sheetCopied.current ? sheet : BROADCAST_COPIED);
@@ -3918,12 +3930,14 @@ export function App() {
     const press = ++linkPresses.current;
     setLinkSaid("");
     setLinkSpoken("");
+    setLinkBox("");
     const note = linkNote;
     const { link, kept } = sharedLinkNow(secret);
     const done = await copyText(link, navigator.clipboard, selectionCopy);
     if (done) planLinkSent(secret);
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
+      if (press === linkPresses.current) setLinkBox(done ? "" : link);
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
     }, 150);
     // Said once the server answers (or gives up, SHARED_STORE_TIMEOUT_MS), never holding up "Link copied."
@@ -3948,6 +3962,8 @@ export function App() {
   // What Share said, in the Route file sheet beside it (RoutePanel.tsx ShareControls); the count makes a line said
   // again heard again.
   const [shareSaid, setShareSaid] = useState({ text: "", count: 0 });
+  // The link Share route or Share ride could neither share nor copy, in a box under its line (LinkBox.tsx).
+  const [shareBox, setShareBox] = useState("");
   // Share's own presses: a Copy link press does not swallow what Share has to say.
   const sharePresses = useRef(0);
   const sharedLine = useRef<{ of: unknown; keep: string; id: string; kept: Promise<boolean> } | null>(null);
@@ -4081,22 +4097,27 @@ export function App() {
   // and what was said.
   // `nav`: the sheet to open; Broadcast passes broadcastNav, which copies the link where there is no sheet.
   // `secret`: as for sharedLinkNow.
-  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {
+  // Answers `box` too: the link to show for copying, where routeNav could neither share nor copy it ("" otherwise).
+  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string; box: string }> => {
     const ownRide = rideOwnShare();
     const sharedRoute = ownRide?.route ?? shown;
-    if (!sharedRoute || sharing.current) return { led: false, said: "" };
+    if (!sharedRoute || sharing.current) return { led: false, said: "", box: "" };
     const press = ++sharePresses.current;
     // A ride only with its exact line, kept with the route shown for it: while the route is still being planned the
     // link would plan again, a route, so it is said rather than shared.
     if (ride && !shareExact()?.save.answer) {
       setShareSaid((before) => ({ text: SHARE_RIDE_WAIT, count: before.count + 1 }));
-      return { led: false, said: SHARE_RIDE_WAIT };
+      return { led: false, said: SHARE_RIDE_WAIT, box: "" };
     }
     sharing.current = true;
     let led = false;
     // Shared as a ride without the leader's key (not ready, or no SHA-256 here): Broadcast says so and starts nothing.
     let unled = false;
     setShareSaid((before) => ({ text: "", count: before.count }));
+    setShareBox("");
+    // Share route and Share ride's own sheet (routeNav): a copy is said, and a link neither shared nor copied is shown.
+    const ownSheet = nav === routeNav;
+    let box = "";
     const distanceM = ownRide ? ownRide.route.distance_m : !stale && routedPoints === points && shown ? shown.distance_m : null;
     // The ride's own route while riding (the plan's may have been made again since), else the one shown.
     const rideRoute = riding && rideStart ? rideStart.route : sharedRoute;
@@ -4117,6 +4138,12 @@ export function App() {
     try {
       const done = await outcome;
       said = shareSaidFor(done);
+      const copied = ownSheet && done === "shared" && (!canShare || routeCopied.current);
+      if (copied) said = COPY_LINK_DONE;
+      if (ownSheet && done === "failed") {
+        said = COPY_LINK_FAILED;
+        box = link;
+      }
       // The plan's link, with its Group or Mass Ride secret, went out (a ride link carries the leader's instead).
       if (!ride && done === "shared") planLinkSent(secret);
       // A ride link, with its leader's: when it first went out, asked about once it is 12 hours old.
@@ -4125,7 +4152,7 @@ export function App() {
       // and the next press tries again with a new id.
       if (kept && !(await kept)) {
         if (sharedLine.current?.kept === kept) sharedLine.current = null;
-        if (done !== "failed" && done !== "cancelled") said = SHARED_INPUTS_ONLY;
+        if (done !== "failed" && done !== "cancelled") said = copied ? `${COPY_LINK_DONE} ${SHARED_INPUTS_ONLY}` : SHARED_INPUTS_ONLY;
         // The link went out with the prepared lead's key and secret, kept or not: the next ride shared gets new ones.
         if (ride && done === "shared" && lead && lead === leadPrep.current) prepareLead();
       } else if (ride && kept && done === "shared") {
@@ -4157,8 +4184,9 @@ export function App() {
     if (said)
       window.setTimeout(() => {
         if (press === sharePresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
+        if (press === sharePresses.current) setShareBox(box);
       }, 150);
-    return { led, said: unled ? BROADCAST_NO_LEAD : said };
+    return { led, said: unled ? BROADCAST_NO_LEAD : said, box };
   };
 
   // Start ride (plan Q1, Q3): the ride starts at once, with the cues as Settings > Ride mode has them. The
@@ -4392,6 +4420,11 @@ export function App() {
     if (outcome.versioned === undefined) return savedLine(name, outcome.route);
     return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
   };
+  // Share route from Save's own line once a route is saved (Stephen 2026-11-22: "After saving, you should also be able to
+  // copy/share a link"), on Plan's map bar and Go's Save chip; Save & load has Share right under Save. Answers what to
+  // say on that line, and the link to show where it could neither be shared nor copied.
+  const shareAfterSave = () =>
+    new Promise<{ said: string; box: string }>((done) => sameRideFirst((secret) => void shareRoute(false, routeNav, secret).then(({ said, box }) => done({ said, box }))));
   const saveProps = me.signed_in
     ? {
         defaultName: () =>
@@ -7005,9 +7038,9 @@ export function App() {
   const actions = {
     // Signed out, Plan's Save route keeps the route on this device (intuitiveness review, 2026-11-21), so More has no
     // second Keep for offline then.
-    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown: keepShown && me.signed_in, keepForOffline, keeping, keepSpoken, linkSaid,
+    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown: keepShown && me.signed_in, keepForOffline, keeping, keepSpoken, linkSaid, linkBox,
     downloadRoute,
-    save: saveProps ?? (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
+    save: saveProps ? { ...saveProps, onShare: shareAfterSave } : (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
     savedNote: savedNoteShown,
   };
   // Go's ride types: before a route under the place chips, with one under the route card (edit-route redesign).
@@ -7271,12 +7304,12 @@ export function App() {
     shown || (imported?.verbatim && !importEdited) ? (
       <ShareControls
         save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
-        canShare={canShare}
         ready={!!shown}
-        shareRoute={(ride) => (ride ? sameRideFirst(() => void shareRoute(true), true) : sameRideFirst((secret) => void shareRoute(false, shareNav, secret)))}
+        shareRoute={(ride) => (ride ? sameRideFirst(() => void shareRoute(true, routeNav), true) : sameRideFirst((secret) => void shareRoute(false, routeNav, secret)))}
         shareKeep={shareKeep}
         onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
         shareSaid={shareSaid}
+        shareBox={shareBox}
         linkNote={linkNote}
       />
     ) : null;
@@ -7708,6 +7741,7 @@ export function App() {
               onSave={saveProps?.onSave ?? null}
               defaultTags={saveProps?.defaultTags}
               defaultFixed={saveProps?.defaultFixed}
+              onShare={saveProps ? shareAfterSave : null}
               label={SAVE_ROUTE}
               bar
               // Signed out, Save keeps the route on this device, with Sign in to sync beside what it says; no Download
