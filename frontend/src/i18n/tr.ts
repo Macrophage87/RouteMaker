@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "Ayarla",
   "Copy link": "Bağlantıyı kopyala",
   "Link copied.": "Bağlantı kopyalandı.",
-  "Could not copy. Copy the address from the browser's address bar.": "Kopyalanamadı. Adresi tarayıcının adres çubuğundan kopyalayın.",
+  "Could not copy the link. Select it below and copy it.": "Bağlantı kopyalanamadı. Aşağıdan seçip kopyalayın.",
   "1 step": "1 adım",
   "{count} steps": "{count} adım",
   "Elevation and climbs": "Yükseklik ve tırmanışlar",

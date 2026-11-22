@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "बदलें",
   "Copy link": "लिंक कॉपी करें",
   "Link copied.": "लिंक कॉपी हुआ।",
-  "Could not copy. Copy the address from the browser's address bar.": "कॉपी नहीं हुआ। ब्राउज़र के पता बार से पता कॉपी करें।",
+  "Could not copy the link. Select it below and copy it.": "लिंक कॉपी नहीं हुआ। नीचे लिंक चुनें और कॉपी करें।",
   "1 step": "1 कदम",
   "{count} steps": "{count} कदम",
   "Elevation and climbs": "ऊँचाई और चढ़ाइयाँ",
