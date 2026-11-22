@@ -10838,7 +10838,8 @@ Python 3.11 or later, standard library only.
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
-  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing; `motor_vehicle` and
+  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing;
+  `cycleway:<side>:separation` for a physical divider such as flex posts seen on the street; `motor_vehicle` and
   `motor_vehicle:conditional` for a road closed or opened to cars, from the managing agency's
   own notice or what is posted there);
   `highway` only on a node, to a junction control;
