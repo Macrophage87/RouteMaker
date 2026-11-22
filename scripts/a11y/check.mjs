@@ -4749,11 +4749,11 @@ if (mine(1)) {
 // ---- Share (owner, 2026-10-10; lib/share.ts): the share sheet for Copy link's link, where there is one ----
 // Since v0.9.0 it is in the Save & load sheet, after Save route (the owner, 2026-10-17: "Basically you save then you share").
 if (mine(1)) {
-  // No share sheet: no Share button, and Copy link is still there.
+  // No share sheet: Share route still shows (it copies the link there, #1431), and Copy link is still there.
   const p = await open({ init: "delete Navigator.prototype.share; delete Navigator.prototype.canShare;" });
   await openSheet(p, "Save & load");
   const none = await p.eval("({ share: !!document.querySelector('.share-route'), copy: !!document.querySelector('.route-actions .copy-link') })");
-  check("share: hidden where the browser has no share sheet, and Copy link stays", !none.share && none.copy, JSON.stringify(none));
+  check("share: shown where the browser has no share sheet (it copies the link, #1431), and Copy link stays", none.share && none.copy, JSON.stringify(none));
   await p.close();
 }
 // A stubbed share sheet, as strict as a browser's: no user activation (an await before share()) is
@@ -4863,14 +4863,16 @@ if (mine(8)) {
   await sleep(600);
   const afterFail = await p.eval(status);
   const polite = await p.eval("document.querySelector('.share-controls [role=status]')?.getAttribute('aria-live') !== 'assertive'");
-  check("share: another failure is said politely, shown, and offers Copy link", afterFail.spoken === "Could not open the share sheet. Use Copy link instead." && afterFail.shown === afterFail.spoken && polite && afterFail.noActivation === 0, JSON.stringify({ afterFail, polite }));
-  // The stub's own guard: a script click carries no user activation, and share() refuses it, as a browser does.
+  // Since #1431 a failed sheet copies the link instead, and says so.
+  check("share: another failure copies the link instead, said politely and shown", afterFail.spoken === "Link copied." && afterFail.shown === afterFail.spoken && polite && afterFail.noActivation === 0, JSON.stringify({ afterFail, polite }));
+  // The stub's own guard: a script click carries no user activation, and share() refuses it, as a browser does
+  // (and the clipboard too, so the link shows in the box, #1431).
   // (The last key press's transient activation lasts about 5 s: wait for it to lapse first.)
   const lapsed = await p.waitFor("!navigator.userActivation?.isActive", 10000);
   await p.eval("window.__shareMode = 'ok'; document.getElementById('__share').click(); true");
   await sleep(600);
   const guard = await p.eval(status);
-  check("share: the stub refuses share() without user activation (so an await before share() would fail the checks above)", lapsed && guard.noActivation === 1 && guard.shared === 4 && guard.spoken === "Could not open the share sheet. Use Copy link instead.", JSON.stringify(guard));
+  check("share: the stub refuses share() without user activation (so an await before share() would fail the checks above)", lapsed && guard.noActivation === 1 && guard.shared === 4 && guard.spoken === "Could not copy the link. Select it below and copy it.", JSON.stringify(guard));
   await p.close();
 }
 if (mine(1)) {
