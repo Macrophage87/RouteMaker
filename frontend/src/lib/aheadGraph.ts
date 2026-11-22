@@ -584,6 +584,8 @@ export interface TurnMark {
    * turns of marks too close to draw apart (the owner, 2026-11-22: "Can it show the merged arrow?").
    */
   then?: TurnMovementKey[];
+  /** A circle's exit: never one arrow with other turns (its ring says more), as on the cue card. */
+  exit?: true;
   /** Orange (a triangle) and red (a diamond) as the planner's junction markers; "avoid" an Avoid stretch's start. */
   severity: "orange" | "red" | "avoid" | null;
   /** The raters' level there (3 to 5): the mark is drawn in that level's stress colour, a dot where it is not a turn. */
@@ -604,7 +606,9 @@ interface CueLike {
   /** A jog's later turn: drawn with the jog's first, as the cue card draws it. */
   joined?: boolean;
   /** A jog's later turns, on its first. */
-  then?: readonly { movement: string }[];
+  then?: readonly { movement: string; exit?: unknown }[];
+  /** A circle's exit, on a turn at one. */
+  exit?: unknown;
   /** A short path straight across a road: not a turn on the card, so not one here. */
   cross?: string;
   source?: string;
@@ -625,8 +629,9 @@ export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWi
       marks.push({ m: c.atM, movement: null, severity: null, stop: { number: c.stop ?? null, icon: stopIcon(c) ?? null } });
     } else if (c.kind === "turn") {
       if (c.movement !== null && !c.joined && !c.cross) {
-        const then = (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => m in TURN_KEYS);
-        marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null, ...rated(c), ...(then.length ? { then } : {}) });
+        const exit = !!c.exit || !!c.then?.some((t) => t.exit);
+        const then = exit ? [] : (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));
+        marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null, ...rated(c), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) });
       }
     } else if (c.source === "junction" && (c.severity === "orange" || c.severity === "red")) {
       marks.push({ m: c.atM, movement: null, severity: c.severity, ...rated(c) });
@@ -657,9 +662,11 @@ export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[
     if (last && mark.m - last.m < minM && !last.stop && !mark.stop) {
       const severity = (RANK[mark.severity ?? ""] ?? 0) > (RANK[last.severity ?? ""] ?? 0) ? mark.severity : last.severity;
       const worst = Math.max(last.rated ?? 0, mark.rated ?? 0);
-      const turns = [last.movement, ...(last.then ?? []), mark.movement, ...(mark.then ?? [])].filter((m): m is TurnMovementKey => m !== null);
-      const [movement = null, ...then] = turns;
-      out[out.length - 1] = { m: last.m, movement, severity, ...(worst ? { rated: worst } : {}), ...(then.length ? { then } : {}) };
+      // A circle's exit is never joined into one arrow: the first turn's arrow is kept, as before.
+      const exit = !!last.exit || !!mark.exit;
+      const turns = exit ? [last.movement ?? mark.movement] : [last.movement, ...(last.then ?? []), mark.movement, ...(mark.then ?? [])];
+      const [movement = null, ...then] = turns.filter((m): m is TurnMovementKey => m !== null);
+      out[out.length - 1] = { m: last.m, movement, severity, ...(worst ? { rated: worst } : {}), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) };
       continue;
     }
     out.push({ ...mark });
