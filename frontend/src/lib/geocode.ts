@@ -727,19 +727,6 @@ export function placeArea(place: { name: string; label: string }): string {
   return label.startsWith(`${name}, `) ? label.slice(name.length + 2) : label;
 }
 
-/**
- * A stop the rider named (lib/pointKinds.ts `nameOf`) shows that name in the points list, with the street the
- * geocoder found under it (Stephen 2026-11-22: "We allow people to name the stops. Show the name"): four stops all
- * called "Rock Creek Trail" told him nothing.
- */
-export function withOwnName(
-  place: { name: string; label: string } | undefined,
-  own: string | undefined,
-): { name: string; label: string } | undefined {
-  if (!own) return place;
-  return { name: own, label: place ? place.label : own };
-}
-
 /** The points list the panel shows (App.tsx renders these). */
 export function pointRows(
   points: readonly LonLat[],

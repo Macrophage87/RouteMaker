@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PointsList } from "./pointsList.ts";
-import { placeArea, pointRows, withOwnName, type PointRow } from "./geocode.ts";
+import { placeArea, type PointRow } from "./geocode.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
 const ROWS: PointRow[] = [
@@ -98,20 +98,4 @@ test("the point being changed shows its search box in its own row, in place of i
   );
   assert.match(html, /<li class="point-editing"><span class="point-name">End<\/span><div class="box">search<\/div><\/li><\/ol>$/);
   assert.deepEqual([...html.matchAll(/aria-label="(Remove [^"]*)"/g)].map((m) => m[1]), ["Remove Start", "Remove Stop 1"]);
-});
-
-test("a stop the rider named shows that name, with the street it is on under it", () => {
-  const A: [number, number] = [-77.1, 39.05];
-  const B: [number, number] = [-77.11, 39.06];
-  const C: [number, number] = [-77.12, 39.07];
-  const D: [number, number] = [-77.13, 39.08];
-  const trail = { name: "Rock Creek Trail", label: "Rock Creek Trail, North Bethesda, Montgomery" };
-  const own = new Map<[number, number], string>([[B, "Water fountain"]]);
-  const names = { name: (p: [number, number]) => withOwnName(p === A ? undefined : trail, own.get(p) ?? (p === C ? "Coffee" : undefined)) };
-  const html = render(pointRows([A, B, C, D], names));
-  assert.deepEqual(cells(html, "place-name"), ["Water fountain", "Coffee", "Rock Creek Trail"]);
-  assert.deepEqual(cells(html, "place-area"), ["Rock Creek Trail, North Bethesda, Montgomery", "Rock Creek Trail, North Bethesda, Montgomery", "North Bethesda, Montgomery"]);
-  // Named before the geocoder answers: the name alone.
-  assert.deepEqual(withOwnName(undefined, "Coffee"), { name: "Coffee", label: "Coffee" });
-  assert.equal(withOwnName(trail, undefined), trail);
 });
