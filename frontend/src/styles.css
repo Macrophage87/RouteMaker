@@ -3465,6 +3465,15 @@ details.zoom-notes {
   margin: 0;
 }
 
+/* The link to select and copy where no sheet or clipboard took it (LinkBox.tsx): the panel's width, the page's size. */
+.link-box {
+  box-sizing: border-box;
+  width: 100%;
+  flex: 1 1 100%;
+  min-height: 44px;
+  font: inherit;
+}
+
 /* The bottom bar */
 .bottom-bar {
   display: grid;
