@@ -3767,11 +3767,14 @@ def build_handlers(
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
         # Last, so a way hidden by its place neither anchors a short link nor
         # leaves the rest of a link mapped in pieces drawn as a stub.
-        context.short_paths_hidden |= facility.short_paths_to_hide(
+        short_hidden = facility.short_paths_to_hide(
             (way.osm_id, way.tags, way.node_ids, way.coordinates)
             for way in context.ways
             if way.osm_id not in context.short_paths_hidden
         )
+        # A count to compare across rebuilds: #1427 draws webs of short walks anywhere.
+        logger.info("short paths hidden from the map: %d ways", len(short_hidden))
+        context.short_paths_hidden |= short_hidden
         nobike = trail_closures.closures(
             context.ways,
             routes,
