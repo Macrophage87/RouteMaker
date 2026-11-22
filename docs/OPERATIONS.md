@@ -1243,9 +1243,9 @@ and z13 the stress map is a "where to ride" view:
 
 - **Not drawn:** LTS 3, LTS 4, Avoid and the roads bikes may not use, and the
   junction warning markers. They come in from z14 with the quiet streets. (The
-  only junction markers on the map are a planned route's own, and the route
-  keeps its own busy stretches and junctions at every zoom, so nothing changes
-  there.)
+  only junction markers on the map are a planned route's own: the route keeps
+  its busy stretches at every zoom, and its junction markers come in from z14
+  too, one per junction; its junction list keeps every one at every zoom.)
 - **Drawn:** the long and connected traffic-free paths, the calm roads worth a
   long ride (402, 402a), and the roads closed to cars at set times, whatever their length
   (377). One feature per class, simplified, as before

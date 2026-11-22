@@ -723,7 +723,8 @@ export function MapView(props: Props) {
       const active = document.activeElement;
       const back = focusAfterClose(opener, focusWasInCard, active === null || active === document.body);
       if (back === null) return;
-      (back === "marker" ? markerFor(item.index) : rowFor(item.index))?.focus();
+      // Zoomed out past the markers, the junction's list row takes it instead.
+      ((back === "marker" ? markerFor(item.index) : null) ?? rowFor(item.index))?.focus();
     });
     // A rider the settings allow may suggest a danger level for the junction (OWNER-DECISIONS 232): a
     // button at the card's foot opens the road panel on the junction with its suggestion form open
@@ -743,7 +744,7 @@ export function MapView(props: Props) {
       card.getElement().querySelector(".junction-card")?.append(button);
     });
   };
-  /** The marker now drawn for the junction at `index` (its group's, if it is in one). */
+  /** The marker now drawn for the junction at `index`; null when zoomed out past the markers. */
   const markerFor = (index: number): HTMLElement | null => {
     const drawn = junctionMarkers.current;
     const at = groupHolding(
@@ -2547,7 +2548,8 @@ export function MapView(props: Props) {
         element.addEventListener("dblclick", (event) => event.stopPropagation());
         return { group, marker };
       });
-      if (wanted !== null) markerFor(wanted)?.focus();
+      // Zoomed out past the markers, the focus goes to the junction's list row, not the page's body.
+      if (wanted !== null) (markerFor(wanted) ?? rowFor(wanted))?.focus();
     };
     draw();
     map.on("zoomend", draw);
