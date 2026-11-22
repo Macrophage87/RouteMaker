@@ -2310,4 +2310,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro station: its colour is the line": "地鐵站：顏色就係路線",
   "Route locked. Open Edit route to change it.": "路線已鎖定。打開編輯路線先可以改。",
   "Planner": "規劃器",
+  "On your route": "喺你條路線上",
+  "Ride here instead": "改為踩去呢度",
+  "Avoid": "避開",
+  "Dirt": "泥路",
+  "Unpaved": "未鋪砌",
+  "{distance} from your route": "離你條路線 {distance}",
+  "{distance} from the start, about {time}": "由起點 {distance}，大約 {time}",
+  "{distance} from the start": "由起點 {distance}",
+  "{distance} to the end": "到終點 {distance}",
 };
