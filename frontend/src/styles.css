@@ -4779,6 +4779,16 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-ahead-stop-emoji {
   font: 13px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
+/* Plan's chart (ElevationChart.tsx): a smaller disc, in the junction markers' row. */
+.pc-stop .ride-ahead-stop-number {
+  font-size: 10px;
+}
+.pc-stop .ride-ahead-stop-emoji {
+  font-size: 10px;
+}
+.pc-stop .ride-ahead-stop-disc {
+  stroke-width: 1.5;
+}
 
 /* A turn drawn on the stress ribbon (no room for the turns' strip): a halo of the panel round it, so it reads on any colour. */
 /* Under a mountain-bike trail's rocks, the panel, so the trail rail's purple does not show between them. */

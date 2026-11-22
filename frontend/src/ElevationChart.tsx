@@ -70,7 +70,9 @@ import {
 } from "./lib/profileChart.ts";
 import { spanClass } from "./lib/routeColours.ts";
 import { tripPointAt, type TripRoute } from "./lib/tripRides.ts";
-import { AvoidPattern, CrossingMarker, GradePatterns, JunctionKey, LEFT, RIGHT, Tables, WIDTH, capitalise, feet, metres } from "./chartParts.tsx";
+import { AvoidPattern, CrossingMarker, GradePatterns, JunctionKey, LEFT, RIGHT, StopMark, Tables, WIDTH, capitalise, feet, metres } from "./chartParts.tsx";
+import type { ChartStop } from "./lib/chartStops.ts";
+import { useIconStyle } from "./app/iconArt.tsx";
 import { MassRideCharts } from "./MassRideCharts.tsx";
 import { metricFirst } from "./lib/units.ts";
 
@@ -88,6 +90,8 @@ const LAYOUT = {
 const DOCK_SCALE = 0.9;
 /** A pointer that moves this many px with the button down picks a stretch; less is a click (our default, unmeasured). */
 const DRAG_PX = 5;
+/** A stop's disc on Plan's chart, viewBox units: a little over the junction markers, so its icon reads (our default). */
+const STOP_R = 8;
 
 /** Plan's chart tools: the map centred on a spot, and what shows for a stretch picked (App's ChartStretch). */
 export interface ChartTools {
@@ -110,6 +114,12 @@ interface ChartProps {
   compact?: boolean;
   /** Plan's click to centre and stretch picking, on a route that is not a transit trip; absent elsewhere. */
   tools?: ChartTools;
+  /**
+   * The route's stops (lib/chartStops.ts), each its icon or its number in the junction markers' row, as Ride's graph
+   * shows them (Stephen 2026-11-22: "Put the stop icons on the map here"). Plan's only; drawn under the junctions'
+   * markers, so a stop never hides a busy junction.
+   */
+  stops?: readonly ChartStop[];
 }
 
 /** The route chart: a Mass Ride's three charts, or every other ride type's elevation and stress. */
@@ -117,7 +127,8 @@ export function ElevationChart(props: ChartProps) {
   return chartKind(props.route) === "mass" ? <MassRideCharts {...props} /> : <StressChart {...props} />;
 }
 
-function StressChart({ route, profile, onScrub, compact = false, tools }: ChartProps) {
+function StressChart({ route, profile, onScrub, compact = false, tools, stops = [] }: ChartProps) {
+  const iconStyle = useIconStyle();
   const kind = "stress" as const;
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
   const total = axisLength(route, profile);
@@ -184,6 +195,7 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
   const calmEdge = useMemo(() => (calm && calmY ? calmLine(profile, calm, x, calmY) : ""), [profile, calm, x, calmY]);
   const calmSteps = useMemo(() => (calm && calmY ? calmStepLine(calm, x, calmY, total) : ""), [calm, x, calmY, total]);
   const calmAvoids = useMemo(() => (calm ? calmAvoid(calm, total) : []), [calm, total]);
+  const stopMarks = compact ? [] : stops.filter((stop) => stop.m >= 0 && stop.m <= total);
   const calmMarks = calm ? calm.points.filter((p) => p.kind === "junction" && p.severity !== null && p.m <= total) : [];
 
   const metresAt = (event: PointerEvent<HTMLDivElement>): number => {
@@ -408,6 +420,9 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
                   </g>
                 );
               })}
+              {stopMarks.map((stop, i) => (
+                <StopMark key={`stop-${i}`} number={stop.number} icon={stop.icon} cx={x(stop.m)} cy={calmLayout.markerY} r={STOP_R} iconStyle={iconStyle} small />
+              ))}
               {calmMarks.map((p, i) => (
                 <CrossingMarker key={i} severity={p.severity} rated={p.rated_level} x={x(p.m)} y={calmLayout.markerY} />
               ))}
@@ -420,6 +435,9 @@ function StressChart({ route, profile, onScrub, compact = false, tools }: ChartP
                 <StripRect key={i} section={s} x0={x(s.from_m)} w={Math.max(x(s.to_m) - x(s.from_m), 0)} uid={uid} />
               ))}
               <rect className="pc-strip-frame" x={LEFT} y={LAYOUT.stress.stripTop} width={right - LEFT} height={12} fill="none" />
+              {stopMarks.map((stop, i) => (
+                <StopMark key={`stop-${i}`} number={stop.number} icon={stop.icon} cx={x(stop.m)} cy={LAYOUT.stress.stripTop + 6} r={STOP_R} iconStyle={iconStyle} small />
+              ))}
             </g>
           )}
 

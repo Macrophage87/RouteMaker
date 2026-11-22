@@ -34,6 +34,8 @@ import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
 import { avoidItems, avoidNoticeFor } from "../lib/avoidJunctions.ts";
 import { ElevationChart, type ChartTools } from "../ElevationChart.tsx";
+import { chartStops } from "../lib/chartStops.ts";
+import { VIA_MARKS } from "../lib/pointKinds.ts";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, corkerShort, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
@@ -1363,7 +1365,7 @@ export function RouteSummary({
           className="elevation-fold"
           name={ROUTE_FOLD_GROUP}
         >
-          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} tools={trip === route ? (chartTools ?? undefined) : undefined} />}
+          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} tools={trip === route ? (chartTools ?? undefined) : undefined} stops={trip === route ? chartStops(route, points, VIA_MARKS.isVia, VIA_MARKS.iconOf) : undefined} />}
           {/* The climbs on the route (the Climbs layer's list), in this fold (the mockup's table). */}
           {climbs && <ClimbsAlongList items={climbs} headingId="climbs-along-planner-heading" level="h4" />}
         </Fold>
