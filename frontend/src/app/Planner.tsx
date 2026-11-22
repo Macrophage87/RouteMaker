@@ -27,7 +27,7 @@ import { usePointMover } from "../lib/pointMover.ts";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import { approximateHint, type Fix, type locateSupport } from "../lib/geolocation.ts";
 import type { usePlaceNames } from "../usePlaceNames.ts";
-import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
+import { pointRows, withOwnName, type Place, type PlaceChoice } from "../lib/geocode.ts";
 import { VIA_MARKS, namePoints } from "../lib/pointKinds.ts";
 import { SaveOwnRideType, ShareSettings } from "../SaveOwnRideType.tsx";
 import { matchingOwn, useCreateRequests, useOwnRideTypes } from "../lib/ownRideTypes.ts";
@@ -326,9 +326,10 @@ function PointBoxes(props: PointBoxesProps) {
   // Best order: the start and the end stay, and a via point goes with the stop it leads to (App.tsx reorderPoint).
   const slots = namePoints(points, VIA_MARKS.isVia, loopVias).flatMap((n, i) => (n.role === "stop" ? [i] : []));
   const mover = usePointMover(slots, (from, to, by) => reorderPoint(slots[from], slots[to], by), points);
-  // A point that is the rider's location is named so, as Go's route card names it, not by its coordinates.
+  // A point that is the rider's location is named so, as Go's route card names it, not by its coordinates; a stop the
+  // rider named shows that name (withOwnName).
   const names = {
-    name: (point: LonLat) => (located.includes(point) ? { name: YOUR_LOCATION, label: YOUR_LOCATION } : namer.name(point)),
+    name: (point: LonLat) => (located.includes(point) ? { name: YOUR_LOCATION, label: YOUR_LOCATION } : withOwnName(namer.name(point), VIA_MARKS.nameOf(point))),
   };
   // The point a "Change" opened a box for (the start or the destination), until a pick, Escape or a removal.
   const [changing, setChanging] = useState<"from" | "to" | null>(null);
