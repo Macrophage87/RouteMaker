@@ -118,7 +118,8 @@ function lerp(a: LonLat, b: LonLat, f: number): LonLat {
 
 /**
  * The movement the route's line makes at a spot: "left", "right" or "straight" by its heading HEADING_M before and
- * after, or null where the line does not pass within ON_LINE_M of it.
+ * after, or null where the line does not pass within ON_LINE_M of it. A route through the same spot twice is read at
+ * its nearest pass.
  */
 export function routeMoveAt(line: readonly LonLat[], spot: LonLat): Movement | null {
   let best: { i: number; at: LonLat; m: number } | null = null;
@@ -147,13 +148,28 @@ export function routeMoveAt(line: readonly LonLat[], spot: LonLat): Movement | n
  * rides through without a marker carries the movement the route makes there (`routeMove`), drawn without a stress
  * colour: the route marks every movement it makes rated 3 or more (the owner, 2026-11-22: "show the movement done at
  * each intersection colored by the movement when LtS >=3"), so never the junction's hardest movement. */
-export function ratedMapShown(junctions: readonly RatedMapJunction[], onRoute: readonly LonLat[], line: readonly LonLat[] = []): RatedMapJunction[] {
+export function ratedMapShown(
+  junctions: readonly RatedMapJunction[],
+  onRoute: readonly LonLat[],
+  line: readonly LonLat[] = [],
+  marked: readonly LonLat[] = onRoute,
+): RatedMapJunction[] {
+  const near = (spots: readonly LonLat[], j: RatedMapJunction) => spots.some((spot) => haversineM(spot, [j.lon, j.lat]) <= SAME_SPOT_M);
   return junctions
-    .filter((j) => !onRoute.some((spot) => haversineM(spot, [j.lon, j.lat]) <= SAME_SPOT_M))
+    .filter((j) => !near(onRoute, j))
     .map((j) => {
-      const move = line.length > 1 ? routeMoveAt(line, [j.lon, j.lat]) : null;
+      // A marked junction past the map's most drawn (`marked` less `onRoute`) keeps its plain dot.
+      const move = line.length > 1 && !near(marked, j) ? routeMoveAt(line, [j.lon, j.lat]) : null;
       return move ? { ...j, routeMove: move } : j;
     });
+}
+
+/** Whether the dot's own ratings agree that the route's movement there is below 3: a left's own level, or straight
+ * through both crossing and riding along (the line cannot tell which). A right has no rating. */
+function belowThree(moves: readonly RatedMove[], move: Movement): boolean {
+  if (move === "right") return false;
+  const names: RatedMove["move"][] = move === "left" ? ["left"] : ["cross", "along"];
+  return moves.length > 0 && moves.filter((m) => names.includes(m.move)).every((m) => m.level < 3);
 }
 
 const ROUTE_MOVE_WORDS: Record<Movement, string> = {
@@ -163,9 +179,9 @@ const ROUTE_MOVE_WORDS: Record<Movement, string> = {
 };
 
 /** "Junction rated LTS 4": the dot's name, and its card's title. */
-export function ratedMapName(junction: Pick<RatedMapJunction, "level" | "routeMove">): string {
-  // A right turn has no rating (the model prices it), so it is not said to be below 3.
-  if (junction.routeMove) return junction.routeMove === "right" ? ROUTE_MOVE_WORDS.right : `${ROUTE_MOVE_WORDS[junction.routeMove]}, below LTS 3`;
+export function ratedMapName(junction: Pick<RatedMapJunction, "level" | "routeMove"> & Partial<Pick<RatedMapJunction, "moves">>): string {
+  // Said to be below 3 only where the dot's own ratings agree (a right has none: the model prices it).
+  if (junction.routeMove) return belowThree(junction.moves ?? [], junction.routeMove) ? `${ROUTE_MOVE_WORDS[junction.routeMove]}, below LTS 3` : ROUTE_MOVE_WORDS[junction.routeMove];
   return `Junction rated ${ratedLevelText(junction.level)}`;
 }
 

@@ -77,7 +77,8 @@ test("the route's own movement is read from its line: straight through, a left o
 test("a dot the route rides through shows the route's movement uncoloured, never the junction's hardest one", () => {
   // The owner, 2026-11-22: "Instead show the movement done at each intersection colored by the movement when LtS >=3.
   // Dots for riding through." J's hardest movement is an LTS 4 left; the route rides straight through, unmarked.
-  const [through] = ratedMapShown([J], [], [SOUTH, [-77.03, 38.9], NORTH]);
+  const quiet: RatedMapJunction = { ...J, moves: [{ move: "cross", level: 2, wait_s: 10 }, { move: "left", level: 4, wait_s: 45 }] };
+  const [through] = ratedMapShown([quiet], [], [SOUTH, [-77.03, 38.9], NORTH]);
   const dot = ratedMapDot(through);
   assert.equal(dot.getAttribute("aria-label"), "This route rides straight through here, below LTS 3");
   assert.ok(!dot.innerHTML.includes(PALETTES.twotone[4].color), "not in the hardest movement's colour");
@@ -86,9 +87,13 @@ test("a dot the route rides through shows the route's movement uncoloured, never
   assert.equal(card.querySelector("strong")?.textContent, "This route rides straight through here, below LTS 3");
   assert.equal(card.querySelectorAll("li").length, 2, "its movements still listed");
   assert.doesNotMatch(card.textContent ?? "", /hardest/);
-  const [turning] = ratedMapShown([J], [], [SOUTH, [-77.03, 38.9], WEST]);
-  assert.equal(ratedMapDot(turning).getAttribute("aria-label"), "This route turns left here, below LTS 3");
+  // Its left is rated 4, so the dot names the left without saying it is below 3 (its card lists the 4).
+  const [turning] = ratedMapShown([quiet], [], [SOUTH, [-77.03, 38.9], WEST]);
+  assert.equal(ratedMapDot(turning).getAttribute("aria-label"), "This route turns left here");
   assert.ok(ratedMapDot(turning).innerHTML.includes("<path"), "a turn is an arrow, not a dot");
+  // A marked junction past the map's most drawn keeps its plain dot, never "below LTS 3".
+  const [overflow] = ratedMapShown([J], [], [SOUTH, [-77.03, 38.9], NORTH], [[-77.03, 38.9]]);
+  assert.equal(ratedMapDot(overflow).getAttribute("aria-label"), "Junction rated LTS 4");
   // Off the route, the dot is the plain map's.
   const [off] = ratedMapShown([J], [], [[-77.029, 38.8991], [-77.029, 38.9009]]);
   assert.equal(ratedMapDot(off).getAttribute("aria-label"), "Junction rated LTS 4");

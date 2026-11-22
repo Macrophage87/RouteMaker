@@ -2789,11 +2789,13 @@ export function MapView(props: Props) {
     ratedMarkers.current = [];
     if (!map) return;
     const planned = props.route && !props.stale ? props.route : null;
-    // Every marked junction, those past the map's most included, so a dot never stands for a marked one.
-    const onRoute = planned ? junctionItems(planned).map((item): LonLat => [item.lon, item.lat]) : [];
+    const spot = (item: { lon: number; lat: number }): LonLat => [item.lon, item.lat];
+    const marked = planned ? junctionItems(planned) : [];
+    // The drawn markers stand for the dots at their spots; a marked junction past the map's most keeps its plain dot.
+    const onRoute = junctionsOnMap(marked).map(spot);
     // A Mass Ride's markers are the busy roads' own tiers, not the rated movements: its dots stay as on the plain map.
     const line = planned && planned.preset !== "mass-ride" ? (planned.geometry?.coordinates ?? []) : [];
-    for (const junction of ratedMapShown(ratedMap, onRoute, line)) {
+    for (const junction of ratedMapShown(ratedMap, onRoute, line, marked.map(spot))) {
       const element = ratedMapDot(junction);
       element.addEventListener("click", (event) => {
         // A click on a dot is not a click on the map: it must not add a point.
