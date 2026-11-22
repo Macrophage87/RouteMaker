@@ -88,6 +88,7 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
   const [listOpen, setListOpen] = useState(false);
   const base = useId();
   const titleId = `${base}-title`;
+  const routeId = `${base}-route`;
   const listId = `${base}-nearby`;
   const lookupRef = useRef(lookup);
   lookupRef.current = lookup;
@@ -152,7 +153,7 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
   const count = rows === null ? NEARBY_LOADING : rows.length === 0 ? NOTHING_NEAR : spotCountLine(rows.length);
 
   return (
-    <dialog ref={dialogRef} className="go-spot" aria-labelledby={titleId} aria-busy={address === null ? true : undefined} onKeyDown={onKeyDown}>
+    <dialog ref={dialogRef} className="go-spot" aria-labelledby={titleId} aria-describedby={request && onRoute ? routeId : undefined} aria-busy={address === null ? true : undefined} onKeyDown={onKeyDown}>
       <div className="road-info-body">
         <div className="go-spot-top">
           <button type="button" ref={closeRef} className="secondary go-spot-close" aria-label={t("Close")} title={t("Close")} onClick={close}>
@@ -160,7 +161,7 @@ export function GoSpotDialog({ request, lookup, fallbackName, here = null, rows,
           </button>
         </div>
         {request && onRoute && (
-          <div className="go-spot-route">
+          <div id={routeId} className="go-spot-route">
             {onRoute.on && <p className="go-spot-route-heading">{ROUTE_SPOT_HEADING}</p>}
             {routeSpotLines(onRoute).map((line) => (
               <p key={line} className="go-spot-route-line">

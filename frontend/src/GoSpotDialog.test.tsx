@@ -59,3 +59,16 @@ test("a tap off the route says how far off it is", async () => {
   assert.doesNotMatch(screen.text(), /On your route/);
   assert.ok(screen.button("Ride here instead"));
 });
+
+test("a screen reader hears the route's lines with the card, though the focus is on Close", async () => {
+  await card(onRoute);
+  const dialog = document.querySelector("dialog.go-spot")!;
+  const described = document.getElementById(dialog.getAttribute("aria-describedby") ?? "");
+  assert.ok(described, "the card is described by its route lines");
+  assert.match(described.textContent ?? "", /from the start/);
+});
+
+test("with no route, the card has no route description", async () => {
+  await card(null);
+  assert.equal(document.querySelector("dialog.go-spot")!.getAttribute("aria-describedby"), null);
+});
