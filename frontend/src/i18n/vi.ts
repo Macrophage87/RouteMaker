@@ -2310,4 +2310,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Metro station: its colour is the line": "Ga Metro: màu là tuyến",
   "Route locked. Open Edit route to change it.": "Tuyến đường đã khóa. Mở Sửa tuyến để thay đổi.",
   "Planner": "Lập kế hoạch",
+  "On your route": "Trên tuyến của bạn",
+  "Ride here instead": "Đạp đến đây thay vào đó",
+  "Avoid": "Tránh",
+  "Dirt": "Đường đất",
+  "Unpaved": "Chưa trải nhựa",
+  "{distance} from your route": "Cách tuyến của bạn {distance}",
+  "{distance} from the start, about {time}": "{distance} từ điểm đầu, khoảng {time}",
+  "{distance} from the start": "{distance} từ điểm đầu",
+  "{distance} to the end": "{distance} đến điểm cuối",
 };

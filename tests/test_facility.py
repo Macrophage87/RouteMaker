@@ -841,9 +841,11 @@ def test_a_short_link_mapped_in_pieces_is_kept_when_the_chain_joins_two_trails()
     )
     assert facility_rules.short_paths_to_hide(web) == {100, 101, 102, 103, 110}
     assert facility_rules.SHORT_LINK_PIECES == 3
-    # A spur, or a small loop, off the middle of a split link goes; the link stays.
+    # A spur off the middle of a split link goes; the link stays. The link runs 170 m in
+    # all, a path network by its length (`short_paths_to_hide`, 2026-11-22), so a ring
+    # on it (round a fountain) is drawn with it.
     side = [(9, link, [30, 70], _west_east(0, 0, 40)), (12, link, [30, 30], _west_east(0, 0, 40))]
-    assert facility_rules.short_paths_to_hide([*ways, *side]) == {9, 12}
+    assert facility_rules.short_paths_to_hide([*ways, *side]) == {9}
     branch = [
         (13, link, [30, 71], _west_east(0, 0, 40)),
         (14, link, [71, 72], _west_east(0, 0, 40)),
@@ -857,6 +859,49 @@ def test_a_short_link_mapped_in_pieces_is_kept_when_the_chain_joins_two_trails()
         (16, link, [11, 20], _west_east(0, 0, 40)),
     ]
     assert facility_rules.short_paths_to_hide(at_trail) == {15}
+
+
+def test_a_web_of_short_walks_is_drawn_as_the_path_network_it_is() -> None:
+    """The owner, 2026-11-22, of the Washington Monument grounds: "There are missing
+    paths near the washington monument". The grounds' walks (opened by
+    `routemaker.mallgrounds`) are mapped in pieces under 150 m, split at every junction
+    and joined mid-way (ways 895025349, 895025342, 895025348 and the ring 895025344 round
+    the Sylvan Theatre's marker), so each piece was hidden as a short path. A web that
+    runs 150 m or more in all, less its true dead ends, is a path network and drawn."""
+    walk = {"highway": "footway", "bicycle": "yes", "surface": "concrete:plates"}
+    loop = {"highway": "footway", "bicycle": "yes"}  # the Monument's loop: long, kept
+    sidewalk = {"highway": "footway", "footway": "sidewalk"}
+    ways = [
+        (1, loop, [10, 11, 12], _west_east(-77.036, 38.889, 600)),
+        (2, sidewalk, [50, 51, 52], _west_east(-77.032, 38.888, 300)),
+        # From the loop to a node in the middle of the next walk.
+        (3, walk, [11, 20], _west_east(0, 0, 83)),
+        (4, walk, [12, 20, 22], _west_east(0, 0, 109)),
+        # The ring round the marker, and on to the street's sidewalk.
+        (5, walk, [22, 23, 22], _west_east(0, 0, 44)),
+        (6, walk, [22, 51], _west_east(0, 0, 33)),
+        # A bench spur: an end nothing else meets.
+        (7, walk, [23, 90], _west_east(0, 0, 12)),
+    ]
+    assert facility_rules.short_paths_to_hide(ways) == {7}
+    # The same walks under 150 m in all are still a short path, hidden.
+    small = [
+        ways[0],
+        ways[1],
+        (3, walk, [11, 20], _west_east(0, 0, 40)),
+        (6, walk, [20, 51], _west_east(0, 0, 40)),
+    ]
+    assert facility_rules.short_paths_to_hide(small) == {3, 6}
+    # A loop of walks that meets nothing else is not a network on the map.
+    island = [
+        (20, walk, [60, 61], _west_east(0, 0, 60)),
+        (21, walk, [61, 62], _west_east(0, 0, 60)),
+        (22, walk, [62, 60], _west_east(0, 0, 60)),
+    ]
+    assert facility_rules.short_paths_to_hide([*ways, *island]) == {7, 20, 21, 22}
+    # A spur whose only end beyond the web is a way already hidden upstream (left
+    # out of `ways` by the caller) is a dead end.
+    assert facility_rules.short_paths_to_hide([w for w in ways if w[0] != 2]) == {6, 7}
 
 
 def test_a_sidewalk_run_that_is_the_only_link_between_two_trails_is_drawn() -> None:
