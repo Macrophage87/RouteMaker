@@ -443,14 +443,10 @@ test("go tap: a tap on the map in Go opens the spot's card, whose big Ride here 
   // Go: the spot's card (its address and what's near; GoSpotDialog.tsx), after the area check; the Home pick's tap
   // and Plan's taps still go to place. A long press and the card's Road info open the road card.
   assert.match(tap, /if \(goTapSetsEnd\(modeRef\.current\) && !homePickRef\.current\) \{/);
-  assert.match(tap, /if \(!insideCoverage\(point\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;\s*\}\s*setGoSpot\(\{ point \}\);\s*return;\s*\}\s*place\(point\);/);
+  assert.match(tap, /if \(!insideCoverage\(point\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;\s*\}[\s\S]*?setGoSpot\(\{ point, [^\n]*\);\s*return;\s*\}\s*place\(point\);/);
   assert.match(appFile, /<GoSpotDialog[\s\S]*?onRouteHere=\{goRouteHere\}[\s\S]*?onRoadInfo=\{\(point\) => setRoadInfo\(\{ point, origin: "spot" \}\)\}/);
-  const spotCard = src("../GoSpotDialog.tsx");
-  // Ride here first, then the address that names the dialog; the focus on Ride here.
-  assert.ok(spotCard.indexOf('className="road-info-route-here"') < spotCard.indexOf("<h2 id={titleId}"));
-  assert.match(spotCard, /aria-labelledby=\{titleId\}/);
-  assert.match(spotCard, /routeRef\.current\?\.focus\(\);/);
-  assert.match(spotCard, /onRouteHere\(request\.point\);\s*close\(\);/);
+  // The card itself (Ride here first and focused with no route; the route's lines first with one) is rendered in
+  // GoSpotDialog.test.tsx, no longer read here as source.
   assert.doesNotMatch(tap, /goToRef/, "a tap alone never routes");
   assert.match(appFile, /onMapClick=\{onBike \|\| reviewing \? ignore : tapMap\}/);
   // Ride here is the old tap: goTo with the same name and as a pressed destination ("Destination set").
