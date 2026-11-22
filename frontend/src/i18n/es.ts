@@ -3000,4 +3000,11 @@ export const ES: Readonly<Record<string, string>> = {
   "Sign in to sync": "Inicie sesión para sincronizar",
   "Planner": "Planificador",
   "Press Enter in Add a stop, or Route on the map, to plan.": "Pulse Intro en Agregar una parada, o Ruta en el mapa, para planificar.",
+  "On your route": "En su ruta",
+  "Ride here instead": "Ir aquí en su lugar",
+  "Dirt": "Tierra",
+  "{distance} from your route": "{distance} de su ruta",
+  "{distance} from the start, about {time}": "{distance} desde el inicio, unos {time}",
+  "{distance} from the start": "{distance} desde el inicio",
+  "{distance} to the end": "{distance} hasta el final",
 };

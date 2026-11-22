@@ -1925,6 +1925,30 @@ dialog.go-spot {
   margin: 0;
 }
 
+/* With a route on Go's map (Stephen, 2026-11-22): the route at the spot leads the card, Ride here instead at its foot. */
+.go-spot-route {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  border-inline-start: 4px solid var(--accent, currentColor);
+  border-radius: 4px;
+}
+
+.go-spot-route p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.go-spot-route .go-spot-route-heading {
+  font-weight: 700;
+}
+
+.go-spot-instead {
+  width: 100%;
+  min-height: 44px;
+  margin: 8px 0 0;
+  padding: 4px 16px;
+}
+
 /* Go's bike rack offers (Stephen, 2026-11-01): on the spot card under Ride here, and under the route card. */
 .go-spot-rack,
 .go-end-rack {
