@@ -95,7 +95,7 @@ test("the rider closing the sheet is silent; any other failure says so and offer
   assert.match(SHARE_FAILED, /Copy link/);
 });
 
-test("App shows Share beside Copy link only where it is supported, named Share route, described by the location line", () => {
+test("App shows Share in the Route file sheet everywhere (without a sheet it copies the link), named Share route, described by the location line", () => {
   assert.equal(SHARE_LABEL, "Share route");
   assert.equal(SHARE_NAME, "Share route");
   assert.ok(SHARE_NAME.startsWith(SHARE_LABEL), "the accessible name holds the visible word");
@@ -106,18 +106,18 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   const controls = app.slice(app.indexOf("export function ShareControls"), app.indexOf("function RouteActions("));
   assert.match(
     controls,
-    /\{save\}\s*\{canShare && ready && \(\s*<div className="share-buttons">\s*<button\s*type="button"\s*className="secondary share-route"\s*onClick=\{\(\) => shareRoute\(false\)\}\s*aria-describedby=\{`share-route-about\$\{note\}`\}/,
+    /\{save\}\s*\{ready && \(\s*<div className="share-buttons">\s*<button\s*type="button"\s*className="secondary share-route"\s*onClick=\{\(\) => shareRoute\(false\)\}\s*aria-describedby=\{`share-route-about\$\{note\}`\}/,
   );
-  assert.match(controls, /\{canShare && ready && linkNote && \(\s*<p id="share-link-note" className="hint link-note">/);
-  assert.match(controls, /\{canShare && ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
+  assert.match(controls, /\{ready && linkNote && \(\s*<p id="share-link-note" className="hint link-note">/);
+  assert.match(controls, /\{ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
   const more = app.slice(app.indexOf('<div id={moreId} className="route-more-body"'), app.indexOf("</div>", app.indexOf('<div id={moreId} className="route-more-body"')));
   assert.doesNotMatch(more, /share-route|SaveRoute/);
   assert.match(more, /className="secondary share-image" onClick=\{shareImage\} aria-haspopup="dialog"/);
   const appFile = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(appFile, /<ShareControls\s*save=\{saveProps \? <SaveRoute \{\.\.\.saveProps\} label=\{SAVE_ROUTE\} \/> : null\}\s*canShare=\{canShare\}\s*ready=\{!!shown\}/);
+  assert.match(appFile, /<ShareControls\s*save=\{saveProps \? <SaveRoute \{\.\.\.saveProps\} label=\{SAVE_ROUTE\} \/> : null\}\s*ready=\{!!shown\}/);
   // A failure is said in the sheet's polite status beside Share, and shown; success and cancel say nothing.
   assert.match(app, /const done = await outcome;\s*said = shareSaidFor\(done\);/);
-  assert.match(app, /if \(said\)\s*window\.setTimeout/);
+  assert.match(app, /if \(said && !quiet\)\s*window\.setTimeout/);
   assert.match(app, /if \(press === sharePresses\.current\) setShareSaid\(\(before\) => \(\{ text: said, count: before\.count \+ 1 \}\)\);/);
   assert.match(controls, /<p className="hint share-said" role="status">/);
 });
@@ -128,14 +128,14 @@ test("share() is called within the press: synchronously in shareLink, and before
   void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
   assert.equal(called, true, "share() called synchronously");
   // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
-  const start = app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {");
+  const start = app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret, quiet = false): Promise<{ led: boolean; said: string; box: string }> => {");
   assert.ok(start > 0);
   const body = app.slice(start, app.indexOf("\n  };\n", start));
   const call = body.indexOf("shareLink(nav, content)");
   assert.ok(call > 0, "shareRoute calls shareLink");
   assert.doesNotMatch(body.slice(0, call).replace(/\/\/[^\n]*/g, ""), /\bawait\b/, "no await before shareLink");
-  assert.match(body, /if \(!sharedRoute \|\| sharing\.current\) return \{ led: false, said: "" \};/);
-  assert.match(body, /return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}\s*sharing\.current = true;/);
+  assert.match(body, /if \(!sharedRoute \|\| sharing\.current\) return \{ led: false, said: "", box: "" \};/);
+  assert.match(body, /return \{ led: false, said: SHARE_RIDE_WAIT, box: "" \};\s*\}\s*sharing\.current = true;/);
   assert.match(body, /finally \{\s*sharing\.current = false;\s*\}/);
 });
 

@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "ঠিক করুন",
   "Copy link": "লিংক কপি করুন",
   "Link copied.": "লিংক কপি হয়েছে।",
-  "Could not copy. Copy the address from the browser's address bar.": "কপি হয়নি। ব্রাউজারের ঠিকানা বার থেকে ঠিকানা কপি করুন।",
+  "Could not copy the link. Select it below and copy it.": "লিংক কপি হয়নি। নিচে লিংকটি বেছে নিয়ে কপি করুন।",
   "1 step": "১টি ধাপ",
   "{count} steps": "{count}টি ধাপ",
   "Elevation and climbs": "উচ্চতা ও চড়াই",

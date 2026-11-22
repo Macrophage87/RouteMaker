@@ -102,7 +102,7 @@ function card(edited: PlanEdited | null) {
   const noop = () => {};
   const actions: RouteActionsProps = {
     shown: route(), routedPoints: [], routedLoop: false, federalRoute: [], copyLink: noop, linkNote: "", shareImage: noop, linkSpoken: "",
-    keepShown: false, keepForOffline: async () => undefined, keeping: false, keepSpoken: { text: "", count: 0 }, linkSaid: "", downloadRoute: noop, save: null, savedNote: null,
+    keepShown: false, keepForOffline: async () => undefined, keeping: false, keepSpoken: { text: "", count: 0 }, linkSaid: "", linkBox: "", downloadRoute: noop, save: null, savedNote: null,
   };
   return render(
     <RouteSummary
