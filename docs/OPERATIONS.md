@@ -93,6 +93,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.30.3](#deploying-v0303)
 - [Deploying v0.30.1](#deploying-v0301)
 - [Deploying v0.30.0](#deploying-v0300)
 - [Deploying v0.29.0](#deploying-v0290)
@@ -8088,6 +8089,36 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.30.3
+
+A patch on v0.30.2, on the owner's ask (2026-11-22, "Submit everything in flight as a patch"):
+everything merged into `release/v0.31.0` since v0.30.2. Go's tapped-spot card leads with the route
+at that spot when a route is on the map (#1420); a planned route's own junctions keep their map
+dots at the close zooms (#1423); connector drafts keep stop icons and names by number, so
+`save_route` works on them (#1426); `osm_edit.py` may set `cycleway:<side>:separation` (#1421).
+Two map changes take effect only with a map rebuilt from v0.30.3 or later: bike-open sidewalks
+beside streets closed to public driving priced as paths (#1422, the Capitol grounds) and webs of
+short park walks drawn as the path network they are (#1427, the Washington Monument and Capitol
+grounds).
+
+What changes for a deploy:
+
+- no migration; no `valhalla/`, compose, nginx, Dockerfile or requirements change;
+- `lua/graph.lua` and `lua/routemaker_remap.lua` changed (#1422), so the beta's release agent holds
+  the tag as one that needs a map; the code ships alone with `auto-release.sh ship-held v0.30.3
+  --no-map`, and the `lua/` change does nothing on today's map (no way carries
+  `rm:no_public_traffic_sidewalk` until the pipeline sets it at the next rebuild);
+- no router restart and no map step today.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.30.3`, then approve).
+- [ ] **Beta** **(owner)**. `~/routemaker-beta-state/cd/bin/auto-release.sh ship-held v0.30.3
+  --no-map`.
+- [ ] **Beta check.** The app says 0.30.3; in Go, with a saved route loaded, a tap on the route
+  opens a card that leads with the distance from the start; a planned route zoomed to 17 or closer
+  shows the dots of the junctions it rides through.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.30.2 front end, together.
 
 ## Deploying v0.30.1
 
