@@ -1390,9 +1390,10 @@ def short_paths_to_hide(
     at every junction, all hidden: "There are missing paths near the washington
     monument"). So a group whose pieces, less its true dead ends (an end no other
     way of any kind meets: a spur to a bench), still run `max_m` or more in all is
-    a network of paths, not a short one, and is drawn whatever its piece count or
-    what it meets: a walk ending at a street's sidewalk or crossing is not a dead
-    end. The bench spurs off it stay hidden.
+    a network of paths, not a short one, and is drawn whatever its piece count when
+    it meets the rest of the map (a trail, a road, a sidewalk, a crossing) at two or
+    more places: a walk ending at a street's sidewalk is not a dead end. The bench
+    spurs off it stay hidden, and so does a loop that meets nothing.
 
     `ways` is (osm id, tags, node ids, [(lon, lat), ...]). A kept trail is a
     trail-class way that is not a candidate and that `map_class` draws (a named
@@ -1403,12 +1404,7 @@ def short_paths_to_hide(
     nodes_of: dict[int, frozenset[int]] = {}
     length: dict[int, float] = {}
     kept_nodes: set[int] = set()
-    # How many ways of any kind (a road, a sidewalk, a crossing, a path) meet each
-    # node, to tell a true dead end from an end that joins something.
-    meets: dict[int, int] = {}
     for osm_id, tags, node_ids, coords in ways:
-        for node in set(node_ids):
-            meets[node] = meets.get(node, 0) + 1
         if tags.get("highway") not in TRAIL_CLASS_HIGHWAY or not node_ids:
             continue
         if map_class(tags) is not MapClass.ROAD:
@@ -1420,12 +1416,21 @@ def short_paths_to_hide(
             length[osm_id] = metres
         else:
             kept_nodes.update(node_ids)
+    # How many ways of any kind (a road, a sidewalk, a crossing, a path) meet each
+    # short piece's nodes, to tell a true dead end from an end that joins something.
+    meets: dict[int, int] = dict.fromkeys(set().union(*nodes_of.values()), 0)
+    for _, _, node_ids, _ in ways:
+        for node in set(node_ids):
+            if node in meets:
+                meets[node] += 1
     hidden: set[int] = set()
     # Networks first: the pieces joined at any node, a kept trail's included.
     networked: set[int] = set()
     for group in _groups(nodes_of):
-        core = _network_core(group, short, nodes_of, meets)
-        if sum(length[osm_id] for osm_id in core) >= max_m:
+        core, joins = _network_core(group, short, nodes_of, meets)
+        # Drawn when it runs `max_m` in all and meets the rest of the map at two or
+        # more places: a loop round a lawn that meets nothing stays hidden.
+        if len(joins) >= 2 and sum(length[osm_id] for osm_id in core) >= max_m:
             # A network of paths, drawn; only its true dead ends go.
             hidden |= group - core
             networked |= group
@@ -1602,10 +1607,11 @@ def _network_core(
     short: dict[int, tuple[int, int]],
     nodes_of: dict[int, frozenset[int]],
     meets: dict[int, int],
-) -> set[int]:
+) -> tuple[set[int], set[int]]:
     """`group` less, over and over, each piece with a true dead end: an end no
-    other piece left and no way outside the group meets (a spur to a bench). A
-    closed piece (a ring round a fountain) stays while its node joins anything."""
+    other piece left and no way outside the group meets (a spur to a bench); and
+    the nodes where what is left meets a way outside the group. A closed piece (a
+    ring round a fountain) stays while its closing node joins something."""
     pieces_at: dict[int, int] = {}
     for osm_id in group:
         for node in nodes_of[osm_id]:
@@ -1624,7 +1630,7 @@ def _network_core(
             if any(node not in outside and at[node] < 2 for node in set(short[osm_id]))
         }
         if not dead:
-            return core
+            return core, {node for osm_id in core for node in nodes_of[osm_id] if node in outside}
         core -= dead
 
 

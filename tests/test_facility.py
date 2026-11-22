@@ -892,6 +892,16 @@ def test_a_web_of_short_walks_is_drawn_as_the_path_network_it_is() -> None:
         (6, walk, [20, 51], _west_east(0, 0, 40)),
     ]
     assert facility_rules.short_paths_to_hide(small) == {3, 6}
+    # A loop of walks that meets nothing else is not a network on the map.
+    island = [
+        (20, walk, [60, 61], _west_east(0, 0, 60)),
+        (21, walk, [61, 62], _west_east(0, 0, 60)),
+        (22, walk, [62, 60], _west_east(0, 0, 60)),
+    ]
+    assert facility_rules.short_paths_to_hide([*ways, *island]) == {7, 20, 21, 22}
+    # A spur whose only end beyond the web is a way already hidden upstream (left
+    # out of `ways` by the caller) is a dead end.
+    assert facility_rules.short_paths_to_hide([w for w in ways if w[0] != 2]) == {6, 7}
 
 
 def test_a_sidewalk_run_that_is_the_only_link_between_two_trails_is_drawn() -> None:
