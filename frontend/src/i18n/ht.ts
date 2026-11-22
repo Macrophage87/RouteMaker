@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "Ajiste",
   "Copy link": "Kopye lyen an",
   "Link copied.": "Lyen kopye.",
-  "Could not copy. Copy the address from the browser's address bar.": "Pa t ka kopye. Kopye adrès la nan ba adrès navigatè a.",
+  "Could not copy the link. Select it below and copy it.": "Pa t ka kopye lyen an. Chwazi l anba a epi kopye l.",
   "1 step": "1 etap",
   "{count} steps": "{count} etap",
   "Elevation and climbs": "Wotè ak monte",

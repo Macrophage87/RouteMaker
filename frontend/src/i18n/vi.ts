@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "Điều chỉnh",
   "Copy link": "Sao chép liên kết",
   "Link copied.": "Đã sao chép liên kết.",
-  "Could not copy. Copy the address from the browser's address bar.": "Không sao chép được. Hãy sao chép địa chỉ từ thanh địa chỉ của trình duyệt.",
+  "Could not copy the link. Select it below and copy it.": "Không sao chép được liên kết. Hãy chọn liên kết bên dưới rồi sao chép.",
   "1 step": "1 bước",
   "{count} steps": "{count} bước",
   "Elevation and climbs": "Độ cao và dốc",

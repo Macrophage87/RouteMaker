@@ -1590,7 +1590,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Adjust": "ضبط",
   "Copy link": "نسخ الرابط",
   "Link copied.": "تم نسخ الرابط.",
-  "Could not copy. Copy the address from the browser's address bar.": "تعذّر النسخ. انسخ العنوان من شريط عنوان المتصفح.",
+  "Could not copy the link. Select it below and copy it.": "تعذّر نسخ الرابط. حدّده في الأسفل وانسخه.",
   "1 step": "خطوة واحدة",
   "{count} steps": "{count} خطوات",
   "Elevation and climbs": "الارتفاع والصعود",

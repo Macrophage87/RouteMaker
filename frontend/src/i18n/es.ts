@@ -666,7 +666,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Looking for the road you're on…": "Buscando la calle en la que está…",
   "Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.":
     "Siga mi recorrido en RouteMaker: mi punto y el camino que he recorrido, mientras mi aplicación esté abierta.",
-  "Could not copy. Copy the address from the browser's address bar.": "No se pudo copiar. Copie la dirección desde la barra de direcciones del navegador.",
+  "Could not copy the link. Select it below and copy it.": "No se pudo copiar el enlace. Selecciónelo abajo y cópielo.",
   // ---- v0.13.1: the rest of Go, Ride, Roam, Settings and Plan's bars (the v0.13.0 ship review) ----
   about: "aproximadamente",
   ", arriving about": ", llegada estimada",
