@@ -3708,8 +3708,9 @@ With Southwest Florida on:
   and builds a Southwest Florida offline pack. `COVERAGE_AREAS` is a classification
   checkpoint setting, so the first build with it starts fresh.
 - `install_reference_data.py --urban-areas` is run again on the new extract (the TIGER
-  urban-areas file is national), with the FDOT layers: `--fdot fdot-max-speed.geojson
-  --fdot fdot-lanes.geojson` and `--volume fdot-aadt.geojson --volume-source fdot
+  urban-areas file is national), with the FDOT layers: `--fdot /data/reference/inputs/fdot-max-speed.geojson
+  --fdot /data/reference/inputs/fdot-lanes.geojson` and `--volume
+  /data/reference/inputs/fdot-aadt.geojson --volume-source fdot
   --aadt-property AADT` (docs/SOURCES.md, "FDOT Roadway Characteristics Inventory").
 - `fetch_basemap.sh` and `import_photon.sh`, run with the same `RM_COVERAGE_AREAS`, take
   both boxes (the base map as one MultiPolygon region), and the place layers
