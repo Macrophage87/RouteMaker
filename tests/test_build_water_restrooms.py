@@ -836,3 +836,17 @@ def test_throne_only_keeps_stands_and_shops(tmp_path):
     empty.write_text('{"units": []}')
     assert mod.main(["--throne-only", "--out", str(out), "--throne", str(empty)]) == 0
     assert json.loads(out.read_text())["points"] == doc["points"]
+
+
+def test_the_layers_keep_florida_only_with_its_area(monkeypatch) -> None:
+    """Southwest Florida's box (the owner, 2026-11-23) is kept only when RM_COVERAGE_AREAS
+    names it, and is the setting's."""
+    from django.conf import settings
+
+    assert mod.SOUTHWEST_FLORIDA_BBOX == tuple(settings.SOUTHWEST_FLORIDA_BBOX)
+    monkeypatch.delenv("RM_COVERAGE_AREAS", raising=False)
+    assert not mod.in_coverage(-81.7787, 26.3398)
+    assert mod.in_coverage(-77.0365, 38.8977)
+    monkeypatch.setenv("RM_COVERAGE_AREAS", "dc-baltimore,southwest-florida")
+    assert mod.in_coverage(-81.7787, 26.3398)
+    assert not mod.in_coverage(-81.6557, 30.3322)

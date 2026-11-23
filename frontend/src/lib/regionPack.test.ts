@@ -293,3 +293,25 @@ test("each area the server builds has its name in the page's words; any other ke
   for (const id of ids) assert.notEqual(areaName(id, "x"), "x", id);
   assert.equal(areaName("shenandoah", "Shenandoah Valley"), "Shenandoah Valley");
 });
+
+test("a later map area (Southwest Florida) is its own pack: the whole map neither holds it nor removes it", async () => {
+  const FLORIDA: [number, number][] = [[-82.35, 25.85], [-81.25, 25.85], [-81.25, 27.05], [-82.35, 27.05], [-82.35, 25.85]];
+  const swfl = { id: "southwest-florida", name: "Southwest Florida", bytes: GZ2.byteLength, sha256: SHA2, url: url("southwest-florida"), area: { outline: FLORIDA, outside_beltway: false, whole: false, separate: true } };
+  const list = await fetchPackList(async () => json({ ...LISTED, packs: [...LISTED.packs, swfl] }));
+  assert.ok(list);
+  assert.equal(pack(list, "southwest-florida").area?.separate, true);
+  const bytes = { ...BYTES, [url("southwest-florida")]: GZ2 };
+  const servedToo = (async (u: string) => (bytes[u] ? new Response(bytes[u]) : new Response("", { status: 404 }))) as unknown as typeof fetch;
+  const store = memoryStore();
+  await downloadPack(pack(list, "southwest-florida"), list, servedToo, store);
+  await downloadPack(pack(list, "all"), list, servedToo, store);
+  assert.deepEqual(keptPacks().map((k) => k.id).sort(), ["all", "southwest-florida"]);
+  // Kept after the whole map, it is still kept: the whole map is the home area only.
+  await removePack("southwest-florida", store);
+  assert.equal(await downloadPack(pack(list, "southwest-florida"), list, servedToo, store), "kept");
+  const naples: [number, number] = [-81.79, 26.14];
+  assert.ok(covers("southwest-florida", naples) && !covers("all", naples));
+  assert.ok(!covers("rest", naples), "the rest of the home map does not reach Florida");
+  assert.equal(packFor(naples), "southwest-florida");
+  assert.equal(packFor([-76.6, 38.5]), "all");
+});

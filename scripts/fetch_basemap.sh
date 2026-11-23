@@ -75,6 +75,13 @@ REFRESH_AFTER_DAYS=45
 # settings.COVERAGE_BBOX, west,south,east,north; tests/test_basemap.py holds
 # the two equal.
 BBOX="-78.05,38.2,-76.02,39.72"
+# settings.SOUTHWEST_FLORIDA_BBOX: a second region of the base map when RM_COVERAGE_AREAS names
+# the area. The two boxes are then extracted as one MultiPolygon (`pmtiles extract --region`),
+# and BBOX, which the stamps record, names both, so the region is fetched again.
+FLORIDA_BBOX="-82.35,25.85,-81.25,27.05"
+case ",${RM_COVERAGE_AREAS:-}," in
+*,southwest-florida,*) BBOX="$BBOX;$FLORIDA_BBOX" ;;
+esac
 
 usage() {
 	echo "usage: DATA_ROOT=<path> fetch_basemap.sh [--build YYYYMMDD] [--print-stamps]" >&2
@@ -301,7 +308,24 @@ elif [ -n "$need_region" ]; then
 		exit 1
 	}
 	echo "extracting $BBOX from $source_url"
-	"$work/pmtiles" extract "$source_url" "$work/region.pmtiles" --bbox="$BBOX"
+	case "$BBOX" in
+	*\;*)
+		# One polygon per box, as GeoJSON.
+		printf '%s' "$BBOX" | awk -F';' '{
+			printf "{\"type\":\"MultiPolygon\",\"coordinates\":["
+			for (i = 1; i <= NF; i++) {
+				split($i, b, ",")
+				if (i > 1) printf ","
+				printf "[[[%s,%s],[%s,%s],[%s,%s],[%s,%s],[%s,%s]]]", b[1], b[2], b[3], b[2], b[3], b[4], b[1], b[4], b[1], b[2]
+			}
+			printf "]}"
+		}' >"$work/region.geojson"
+		"$work/pmtiles" extract "$source_url" "$work/region.pmtiles" --region="$work/region.geojson"
+		;;
+	*)
+		"$work/pmtiles" extract "$source_url" "$work/region.pmtiles" --bbox="$BBOX"
+		;;
+	esac
 	"$work/pmtiles" verify "$work/region.pmtiles"
 fi
 

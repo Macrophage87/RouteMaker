@@ -30,7 +30,7 @@ import { Protocol } from "pmtiles";
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { MAX_BOUNDS_PAD, coverageEnvelope, type LonLat } from "./lib/geo.ts";
 import { loadRatedMap, ratedMapAsk, ratedMapCardBody, ratedMapDot, ratedMapName, ratedMapShown, type RatedMapJunction } from "./lib/ratedMap.ts";
 import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
@@ -608,7 +608,6 @@ const PICK_UP_BUZZ_MS = 15;
 const INFO_REPEAT_MS = 800;
 /** A right-button press that moved this far rotated the map: its contextmenu is not a request. */
 const RIGHT_DRAG_PX = 5;
-const MAX_BOUNDS_PAD = 0.4;
 /** The map's widest zoom. */
 const MIN_ZOOM = 7;
 /** How long an unanswered stress endpoint is left before it is asked again. */
@@ -791,7 +790,9 @@ export function MapView(props: Props) {
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
     // The labels' faces come with the app (lib/mapGlyphs.ts), so a kept ride fetches no glyphs for them.
     setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers).filter((stack) => !bundledFace(stack)), () => stressTileTemplate(origin));
-    const [west, south, east, north] = COVERAGE_BBOX;
+    // How far the map pans: around every area the API serves (lib/geo.ts coverageEnvelope; App sets the areas and
+    // the map's maxBounds again once GET /api/coverage answers), padded.
+    const [west, south, east, north] = coverageEnvelope();
     const map = new maplibregl.Map({
       container: container.current,
       style: style as maplibregl.StyleSpecification,
@@ -806,8 +807,9 @@ export function MapView(props: Props) {
       // The bounds hold the part of the map above a phone's sheet, not the whole box (lib/coveredConstrain.ts).
       transformConstrain: (center, zoom) => {
         const box = container.current;
+        const [w, s, e, n] = coverageEnvelope();
         const { center: next, zoom: z } = constrainAbovePanel(center, zoom, {
-          bounds: [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD, east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
+          bounds: [w - MAX_BOUNDS_PAD, s - MAX_BOUNDS_PAD, e + MAX_BOUNDS_PAD, n + MAX_BOUNDS_PAD],
           minZoom: MIN_ZOOM,
           maxZoom: MAP_MAX_ZOOM,
           width: box?.clientWidth ?? 0,

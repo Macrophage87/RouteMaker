@@ -52,6 +52,10 @@ volume-conflation stage (OWNER-DECISIONS 151, 159; PLAN.md item 183):
     --roadway-block dc-roadway-block.geojson          DDOT, CC BY 4.0
     --baltimore-centerline baltimore-street-centerline.geojson   Open Baltimore
     --alexandria-streets alexandria-transport-streets.geojson    City of Alexandria, CC0
+    --fdot fdot-max-speed.geojson --fdot fdot-lanes.geojson       FDOT RCI (TDA layers)
+
+FDOT's daily counts install as a --volume: `--volume fdot-aadt.geojson --volume-source fdot
+--aadt-property AADT` (the `Annual_Average_Daily_Traffic_TDA` layer).
 
 Each is the layer exactly as `scripts/fetch_agency_layer.py` stored it; the
 posted speed, lanes by direction, one-way, bike facility, parking and count are
@@ -106,6 +110,7 @@ import math
 import os
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -149,6 +154,7 @@ SOURCE_TIERS = {
     "prince-georges": "locality",
     # State DOTs.
     "vdot": "state",
+    "fdot": "state",
     "mdot-sha": "state",
     # Derived from OSM's own tagging rather than surveyed by anyone.
     "osm": "osm",
@@ -349,6 +355,13 @@ def urban_way_ids(
 # cannot import without a configured Django; tests/test_reference_data_install.py holds
 # the two the same.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+# settings.SOUTHWEST_FLORIDA_BBOX, read too when RM_COVERAGE_AREAS names the area.
+SOUTHWEST_FLORIDA_BBOX = (-82.35, 25.85, -81.25, 27.05)
+
+
+def coverage_boxes() -> list[tuple[float, float, float, float]]:
+    names = {n.strip() for n in os.environ.get("RM_COVERAGE_AREAS", "").split(",")}
+    return [COVERAGE_BBOX] + ([SOUTHWEST_FLORIDA_BBOX] if "southwest-florida" in names else [])
 
 
 def install_setting(
@@ -362,15 +375,18 @@ def install_setting(
     jobs: dict[str, int] = {}
     for path in lodes_wac:
         jobs.update(setting.wac_jobs(path))
-    west, south, east, north = COVERAGE_BBOX
     margin = 0.05
+    boxes = coverage_boxes()
     blocks = []
     for path in census_blocks:
         rows = [
             row
             for row in setting.block_rows(path)
-            if west - margin <= row[1] <= east + margin
-            and south - margin <= row[2] <= north + margin
+            if any(
+                west - margin <= row[1] <= east + margin
+                and south - margin <= row[2] <= north + margin
+                for west, south, east, north in boxes
+            )
         ]
         blocks.extend(setting.join_jobs(rows, jobs))
     if not blocks:
@@ -393,8 +409,9 @@ def install_counties(counties: Path, target: Path) -> int:
     """The counties in `counties` that reach the coverage box, written to `target`
     as a FeatureCollection with the properties the report names them by."""
     from shapely.geometry import box, mapping
+    from shapely.ops import unary_union
 
-    area = box(*COVERAGE_BBOX)
+    area = unary_union([box(*b) for b in coverage_boxes()])
     features = [
         {
             "type": "Feature",
@@ -518,7 +535,10 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
 
 
 def roadway_rows(
-    roadway_block: Path | None, baltimore: Path | None, alexandria: Path | None = None
+    roadway_block: Path | None,
+    baltimore: Path | None,
+    alexandria: Path | None = None,
+    fdot: Sequence[Path] = (),
 ) -> list[dict]:
     """Agency street blocks in the shape `ReferenceData.load_road_blocks` reads.
 
@@ -543,6 +563,8 @@ def roadway_rows(
         (roadway_block, "dc", lambda props: agency_roads.parse_dc_roadway_block(props)),
         (baltimore, "baltimore", agency_roads.parse_baltimore_centerline),
         (alexandria, "alexandria", agency_roads.parse_alexandria_transport_streets),
+        # FDOT's speed and lane layers, one prefix each so their row numbers stay apart.
+        *((path, f"fdot-{path.stem}", agency_roads.parse_fdot_rci) for path in fdot),
     )
     for path, prefix, parse in layers:
         if path is None:
@@ -650,6 +672,16 @@ def main(argv: list[str] | None = None) -> int:
         "--baltimore-centerline", type=Path, help="Baltimore street centerline, GeoJSON as fetched"
     )
     parser.add_argument(
+        "--fdot",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "FDOT's Maximum_Speed_Limit_TDA or Number_Of_Lanes_TDA layer, GeoJSON as fetched; "
+            "repeats"
+        ),
+    )
+    parser.add_argument(
         "--alexandria-streets",
         type=Path,
         help="City of Alexandria Transport Streets (CC0), GeoJSON as fetched",
@@ -720,6 +752,7 @@ def main(argv: list[str] | None = None) -> int:
         args.roadway_block,
         args.baltimore_centerline,
         args.alexandria_streets,
+        *args.fdot,
         args.dc_pci,
         args.rustic_roads,
         args.scenic_byways,
@@ -797,10 +830,13 @@ def main(argv: list[str] | None = None) -> int:
         (reference / "volume.json").write_text(json.dumps(rows))
         print(f"wrote {reference / 'volume.json'}: {len(rows)} count lines")
 
-    if args.roadway_block or args.baltimore_centerline or args.alexandria_streets:
+    if args.roadway_block or args.baltimore_centerline or args.alexandria_streets or args.fdot:
         try:
             blocks = roadway_rows(
-                args.roadway_block, args.baltimore_centerline, args.alexandria_streets
+                args.roadway_block,
+                args.baltimore_centerline,
+                args.alexandria_streets,
+                args.fdot,
             )
         except InternalOnlySource as refused:
             parser.error(str(refused))

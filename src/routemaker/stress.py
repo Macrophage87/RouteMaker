@@ -253,11 +253,23 @@ VA_WV_URBAN_DEFAULT_MPH = {
     "tertiary": 25.0,
     "tertiary_link": 25.0,
 }
+# Florida's urban minor roads at its law's 30 (Fla. Stat. 316.183(2): 30 in a business
+# or residence district; 316.189: 30 inside a municipality; a county or city may post 20
+# or 25 on a local street after a study, which the posted figure then says). Residential
+# streets too, where Maryland's table has 25: Florida's law sets no lower default.
+FL_URBAN_DEFAULT_MPH = {
+    **MD_URBAN_DEFAULT_MPH,
+    "residential": 30.0,
+    "unclassified": 30.0,
+    "tertiary": 30.0,
+    "tertiary_link": 30.0,
+}
 # Each state's urban table, by `speed_zone`'s answer.
 URBAN_DEFAULT_MPH = {
     "MD": MD_URBAN_DEFAULT_MPH,
     "VA": VA_WV_URBAN_DEFAULT_MPH,
     "WV": VA_WV_URBAN_DEFAULT_MPH,
+    "FL": FL_URBAN_DEFAULT_MPH,
 }
 # The statutory defaults themselves, which the junction model prices an
 # unposted road at (OWNER-DECISIONS 469, 469a). The classifier above reads
@@ -283,6 +295,10 @@ VA_STATUTORY_UNPAVED_MPH = 35.0
 # same everywhere unless the law or the road differs).
 WV_STATUTORY_URBAN_MPH = 25.0
 WV_STATUTORY_OTHER_MPH = 55.0
+# Florida, Fla. Stat. 316.183(2) (https://flsenate.gov/Laws/Statutes/2025/316.183): 30 in
+# a business or residence district, 55 at all other locations, divided or not.
+FL_STATUTORY_URBAN_MPH = 30.0
+FL_STATUTORY_OTHER_MPH = 55.0
 
 
 def statutory_default_mph(
@@ -299,6 +315,8 @@ def statutory_default_mph(
         return min(district, VA_STATUTORY_UNPAVED_MPH) if is_unpaved(tags) else district
     if zone == "WV":
         return WV_STATUTORY_URBAN_MPH if urban else WV_STATUTORY_OTHER_MPH
+    if zone == "FL":
+        return FL_STATUTORY_URBAN_MPH if urban else FL_STATUTORY_OTHER_MPH
     return None
 
 

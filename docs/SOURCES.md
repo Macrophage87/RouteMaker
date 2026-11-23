@@ -283,6 +283,25 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   and route (the owner, 2026-10-31: "Keep 32, cite VDOT"). Licence: VDOT's portal
   disclaimer, as for the counts above.
 
+## FDOT Roadway Characteristics Inventory (Southwest Florida)
+
+- Credit: `FDOT`
+- Publisher: Florida Department of Transportation, Transportation Data and Analytics
+  Office (TDA), on FDOT's ArcGIS organisation (`services1.arcgis.com/O1JpcwDW8sjYuddV`),
+  updated weekly from the Roadway Characteristics Inventory (RCI). State roads only.
+- Layers read by the rebuild (`scripts/install_reference_data.py --fdot`, `--volume
+  --volume-source fdot`; `routemaker.agency_roads.parse_fdot_rci`):
+  `Maximum_Speed_Limit_TDA` (item `4a61f17ab4784202ae10d7d5fb3bf9de`, `SPEED`),
+  `Number_Of_Lanes_TDA` (item `3f217f88f25347709458ee7f9f651e03`, `LANE_CNT`) and
+  `Annual_Average_Daily_Traffic_TDA` (item `ceb698fb86d446c08f0b8e54acab6293`, `AADT`).
+  `Bike_Lane_TDA` (item `32b8fa6d23974ed7bed110ea93341a79`) is kept as raw data for the
+  raters; the build reads bike lanes from OSM. The posted speed and lane count are the
+  state's record and win over OSM's on the state road classes they are held to.
+- Licence: FDOT's "NO WARRANTIES ... DISCLAIMER OF LIABILITY" text only, no licence
+  grant. Read as VDOT's is: used and cited, linked (not copied) in the public data release.
+- Downloaded 2026-11-23 for the Southwest Florida box, each with its README (source,
+  licence text, time, count, sha256), to the project files `data/fdot-2026-11-23/`.
+
 ## Maryland traffic counts (MDOT SHA)
 
 - Credit: `State of Maryland (MDOT SHA)`

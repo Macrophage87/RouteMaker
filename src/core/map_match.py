@@ -19,8 +19,7 @@ from __future__ import annotations
 
 import math
 
-from django.conf import settings
-
+from routemaker import coverage
 from routemaker.geo import Point, haversine
 
 from . import presets, routing
@@ -88,15 +87,16 @@ def checked_points(points) -> list[tuple[float, float]]:
         raise TrackProblem("Send the track as a list of at least two [longitude, latitude] points.")
     if len(points) > MAX_POINTS:
         raise TrackProblem(f"The track has more than {MAX_POINTS:,} points.")
-    west, south, east, north = settings.COVERAGE_BBOX
     out: list[tuple[float, float]] = []
     for p in points:
         if not (isinstance(p, list) and len(p) == 2 and all(_finite(v) for v in p)):
             raise TrackProblem("Each point of the track is [longitude, latitude].")
         lon, lat = float(p[0]), float(p[1])
-        if not (west <= lon <= east and south <= lat <= north):
+        if not coverage.inside(lon, lat):
             raise TrackProblem("The track has a point outside the area this map covers.")
         out.append((lon, lat))
+    if coverage.one_area(out) is None:
+        raise TrackProblem("The track runs between two of the map's areas.")
     length = sum(haversine(Point(*a), Point(*b)) for a, b in zip(out, out[1:], strict=False))
     if length > MAX_DISTANCE_M:
         raise TrackProblem(
