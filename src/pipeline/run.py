@@ -43,6 +43,7 @@ from routemaker import (
     cbd,
     circleparks,
     corridors,
+    coverage,
     divided,
     facility,
     hazards,
@@ -80,6 +81,7 @@ from . import (
     aadt_smoothing,
     agency_ratings,
     agency_signals,
+    beaches,
     bike_network,
     bikeshare_corridors,
     borders,
@@ -984,6 +986,11 @@ class RebuildContext:
     # The node ids of the extract's rail platforms (`pipeline.station_links.read_platform_nodes`):
     # the `bicycle=yes` walkways at them are walked (`routemaker.station_links.platform_walks`).
     platform_nodes: set[int] = field(default_factory=set)
+    # The beach paths (`pipeline.beaches`; the owner, 2026-11-23): the coastline ways cut
+    # to the tide line beside a beach, and the beach accesses carried on to them. Their
+    # node lists are written into every variant's extract.
+    beach_path_ids: set[int] = field(default_factory=set)
+    beach_node_list_ways: set[int] = field(default_factory=set)
     # (the roads they lie along, the reviewed list by way), worked out once
     # (`hazard_inputs`); None until then.
     hazard_inputs: tuple | None = None
@@ -2636,6 +2643,18 @@ def build_handlers(
         # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
         context.button_nodes = set()
         context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
+        # The beach paths along the tide line, in the map areas whose beaches are ridden
+        # (`pipeline.beaches`; the owner, 2026-11-23), joined to the beach accesses.
+        beach_boxes = [
+            box for name, box in coverage.areas().items() if name in beaches.BEACH_AREAS
+        ]
+        if beach_boxes:
+            found = beaches.read(context.source_pbf, beach_boxes, context.ways)
+            logger.info("beach paths: %s", beaches.summary(found))
+            joined = beaches.apply_joins({w.osm_id: w for w in context.ways}, found.joins)
+            context.ways.extend(found.paths)
+            context.beach_path_ids = {way.osm_id for way in found.paths}
+            context.beach_node_list_ways = context.beach_path_ids | joined
         # The OSM route relations the ways are in, for the zoomed-out long trails
         # (OWNER-DECISIONS 375).
         routes = trail_routes.read_routes(context.source_pbf)
@@ -4355,6 +4374,9 @@ def build_handlers(
                 node_lists[way_id] = borders.insert_nodes_into_way(
                     context.ways_by_id[way_id].node_ids, nodes
                 )
+            # The beach paths, cut to the tide line, and the accesses carried on to them.
+            for way_id in context.beach_node_list_ways - dropped:
+                node_lists.setdefault(way_id, list(context.ways_by_id[way_id].node_ids))
 
             logger.info("%s: ways priced for a known hazard: %d", variant.value, hazard_ways)
             # No U-turn round the end of a median, from one carriageway of a divided

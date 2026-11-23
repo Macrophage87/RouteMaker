@@ -323,6 +323,8 @@ export interface RouteSectionProps {
   arriveMs: number | null;
   /** Weather along the route, leaving now (lib/weather.ts), once checked; else null. */
   weather: WeatherReport | null;
+  /** On a route on a beach path, its note with the day's low tides (lib/beaches.ts beachNote); else null. */
+  beachText?: string | null;
   /** The planner out of reach while the page is offline: the error box says offline, the one message (P11). */
   offline?: boolean;
   /** Plan's Check a route (CheckRoute.tsx) on a route that follows an opened file; null otherwise. */
@@ -444,6 +446,7 @@ export function RouteSection(props: RouteSectionProps) {
           go={go}
           transitControls={{ ...transitControls, busy: stale }}
           light={light}
+          beachText={props.beachText ?? null}
           arriveMs={arriveMs}
           startsMs={mode === "plan" ? startMs(dials.startAt) : null}
           weather={weather}
@@ -644,7 +647,14 @@ interface NoteLine {
   short?: string | null;
 }
 
-function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = [], goMode = false, barrierAvoid: readonly [number, number][] = []): NoteLine[] {
+function noteLines(
+  route: RouteResponse,
+  points: LonLat[],
+  light: readonly LightMark[] = [],
+  goMode = false,
+  barrierAvoid: readonly [number, number][] = [],
+  beachText: string | null = null,
+): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
   // A stop or the end not open to the public is a warning, shown with the route's alerts under its totals (RouteAlerts).
@@ -690,6 +700,8 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // Near dawn or dusk: where the rider will be at each light time (lib/lightTimes.ts), one line, in Go too.
   const lightText = lightLine(light);
   if (lightText) lines.push({ key: "light", className: "hint light-times", icon: "sun", text: lightText });
+  // On a beach path (lib/beaches.ts; the owner, 2026-11-23): ride it at low tide, and that day's low tides.
+  if (beachText) lines.push({ key: "beach", className: "hint beach-tide", icon: "info", text: beachText });
   return lines;
 }
 
@@ -864,6 +876,7 @@ export function RouteSummary({
   go,
   transitControls,
   light = [],
+  beachText = null,
   arriveMs = null,
   startsMs = null,
   weather = null,
@@ -907,6 +920,8 @@ export function RouteSummary({
   go: GoRouteControls;
   /** The light times on the route near dawn or dusk (lib/lightTimes.ts): one line, the map marks' accessible form. */
   light?: readonly LightMark[];
+  /** On a beach path: ride it at low tide, with the day's low tides (lib/beaches.ts beachNote); null otherwise. */
+  beachText?: string | null;
   /** When the ride ends leaving now (lib/arrival.ts leaveNowArriveMs), shown after the route's time; null for none. */
   arriveMs?: number | null;
   /** Plan's start time (lib/startTime.ts), when set: the arrival is for leaving then, not now. */
@@ -937,7 +952,7 @@ export function RouteSummary({
   const segments = capacity || noBike ? [] : stressSegments(route.stress_m, route.stress_spans);
   // Group Ride: quiet roads and its turns, in place of the shares (the 2026-10-28 audit, P6).
   const groupLine = preset === "group-ride" ? groupRideLine(route) : null;
-  const notes = noteLines(route, points, light, mode === "go", barrierAvoid);
+  const notes = noteLines(route, points, light, mode === "go", barrierAvoid, beachText);
   const pace = paceText(route);
   // A transit trip's rides joined (lib/tripRides.ts): the distance ridden, the climb and the chart are every ride's.
   const trip = tripRoute(route);

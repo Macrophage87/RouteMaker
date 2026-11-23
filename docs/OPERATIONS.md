@@ -32,6 +32,8 @@ Contents:
 - [The rebuild's own budget](#the-rebuilds-own-budget)
 - [Tile build threads](#tile-build-threads)
 - [Rebuild checkpoints](#rebuild-checkpoints)
+- [Map areas: turning on Southwest Florida](#map-areas-turning-on-southwest-florida)
+- [The beach path (Southwest Florida)](#the-beach-path-southwest-florida)
 - [The source extract](#the-source-extract)
 - [The base map](#the-base-map)
 - [Applying a Caddyfile change](#applying-a-caddyfile-change)
@@ -3718,6 +3720,36 @@ With Southwest Florida on:
 - The app reads the areas from GET /api/coverage: a grey mask with a hole for each area,
   and a map that pans over the rectangle around them.
 
+## The beach path (Southwest Florida)
+
+The owner, 2026-11-23: "you can ride your bike on the beach here, but generally only
+adviseable in low tide below the high tide lines", and the tide line as "a specific beach
+biking path". In the map areas whose beaches are ridden (`pipeline.beaches.BEACH_AREAS`:
+Southwest Florida), the rebuild's first read (`reset_and_read`) makes each coastline way's
+longest stretch within 20 m of a beach (`natural=beach`, closed ways and multipolygons; not
+one tagged `bicycle=no`, `access=no` or `private`) a path: the way keeps its id, its node
+list is cut to that stretch (at least 100 m), and it is tagged `highway=path`,
+`surface=sand`, `bicycle=yes`, `foot=yes` (`routemaker.beaches`). OSM's coastline is drawn
+at mean high water, so the path is the high-tide line. Footways, paths, steps, tracks and
+service ways that end within 15 m of a beach are carried on to the path's nearest node
+within 150 m, so it joins the network. Sand is loose ground to the router and the surface
+setting, so a ride that keeps to pavement leaves it. All four distances are our defaults
+(unmeasured). The rebuild log says what it found: `beach paths: N beaches ..., N beach
+paths, X km of Y km of coastline beside an open beach; N beach accesses joined`. A
+coastline way that passes two beaches gives only the longer stretch, which is the gap
+between X and Y. Measured on the 2026-11-23 Florida extract: 240 km of coastline lies
+within 20 m of a beach, and 3,754 coastline ways, 69 of them 90% or more on a beach
+(`/mnt/project-files/plans/beach-path/measure-output.json`, project files).
+
+The map shades the beaches and draws the paths as a dashed tide line from zoom 10
+(`frontend/src/lib/beaches.ts`, from `beach-data/beaches.json`, which
+`scripts/refresh_places.py` rebuilds with the places). A route that rides a path says so
+in its notes, with the day's low tides at the nearest of eight Gulf tide stations
+(`frontend/src/tide-data/tides.json`, NOAA's predictions, `scripts/build_tides.py`).
+Re-make the tide file with every map rebuild; it holds about 400 days:
+
+    python3 scripts/build_tides.py
+
 ## The source extract
 
 The rebuild's first stage produces the map it builds from, rather than expecting
@@ -6668,6 +6700,8 @@ it. It writes, in the checkout it runs from:
   the cities' racks were fetched);
 - `frontend/src/restricted-data/restricted-sites.json` (the restricted sites and their gates; the
   api image copies it too);
+- `frontend/src/beach-data/beaches.json` (the Southwest Florida beaches and their tide-line
+  paths, `scripts/build_beaches.py`; empty from an extract without that area);
 - `src/core/geodata/barriers.json` (with the extract's day as its `built`); the census's coverage
   report goes to `~/barrier-census-<day>.md`, kept with the release's notes, never committed.
 

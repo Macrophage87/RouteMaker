@@ -216,6 +216,10 @@ import { BROADCAST_COPIED, BROADCAST_COPY_FAILED, BROADCAST_RIDE_COPY_FAILED, SH
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+import beachesUrl from "./beach-data/beaches.json?url";
+import tidesUrl from "./tide-data/tides.json?url";
+import { beachAlongRoute, beachNote, loadBeaches, type BeachData } from "./lib/beaches.ts";
+import { loadTides, lowTidesOn, nearestStation, type TideData } from "./lib/tides.ts";
 import { climbShown, climbsAlongRoute, loadClimbs, readClimbsFrom, readClimbsOn, saveClimbsFrom, saveClimbsOn, type Climb, type ClimbCategory, type ClimbsStatus } from "./lib/climbs.ts";
 import { climbEndName, climbEnds, climbNearSpot, rideClimbEdit } from "./lib/climbCard.ts";
 // A committed snapshot, deliberately (review CH-7): `manage.py build_climbs` on the build host writes it
@@ -833,6 +837,8 @@ export function App() {
   };
   const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
   const [waterData, setWaterData] = useState<WaterPoint[] | null>(null);
+  // The beaches and their tide-line paths (lib/beaches.ts), on a map with Southwest Florida.
+  const [beachData, setBeachData] = useState<BeachData | null>(null);
   // One load at a time, shared by the layer and the nearest-water search (which loads it with the layer
   // off too); a load that failed is forgotten, so the next asks again.
   const waterLoad = useRef<Promise<WaterPoint[] | null> | null>(null);
@@ -5758,6 +5764,19 @@ export function App() {
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
   }, [shown, minute, dials.when, startsMs]);
+  // The beach path (lib/beaches.ts; the owner, 2026-11-23): on a route that rides it, ride it at low tide, with that
+  // day's low tides at the nearest NOAA station (lib/tides.ts), fetched only then.
+  const beachAlong = useMemo(() => (shown ? beachAlongRoute(shown.geometry.coordinates, beachData) : null), [shown, beachData]);
+  const [tideData, setTideData] = useState<TideData | null>(null);
+  useEffect(() => {
+    if (beachAlong && !tideData) void loadTides(tidesUrl).then(setTideData);
+  }, [beachAlong, tideData]);
+  const beachText = useMemo(() => {
+    if (!beachAlong) return null;
+    const station = tideData ? nearestStation(tideData, beachAlong.at) : null;
+    const day = new Date(startsMs ?? minute);
+    return beachNote(beachAlong, station ? lowTidesOn(station, day) : null, station?.name ?? null);
+  }, [beachAlong, tideData, startsMs, minute]);
   // The route's arrival leaving now (or at Plan's start time), after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
   const arriveMs = leaveNowArriveMs(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
@@ -7203,7 +7222,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startBusy: rideOpening === "start", broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, beachText, arriveMs, weather, offline: offlineError,
         barrierAvoid: planDials.barrierAvoid,
         // Plan's card after an edit: Update route in Start's row, as the map bar's (intuitiveness review, 2026-11-21).
         edited:
@@ -7451,6 +7470,8 @@ export function App() {
             if (coverage && mapRef.current === map) {
               // The map's areas, as the API serves them: where a point is covered, and how far the map pans.
               setCoverageAreas(coverageBoxes(coverage));
+              // A map with a second area (Southwest Florida) has its beaches (lib/beaches.ts).
+              if (coverageBoxes(coverage).length > 1) void loadBeaches(beachesUrl).then(setBeachData);
               const [w, s, e, n] = coverageEnvelope();
               map.setMaxBounds([
                 [w - MAX_BOUNDS_PAD, s - MAX_BOUNDS_PAD],
@@ -7475,6 +7496,7 @@ export function App() {
         massArea={isMassRide(preset)}
         massHazards={massHazards}
         water={waterData}
+        beaches={beachData}
         waterPrefs={waterPrefs}
         climbs={climbsData}
         climbsOn={climbsOn}

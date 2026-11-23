@@ -303,6 +303,17 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   licence text, time, count, sha256), to the project files `data/fdot-2026-11-23-wide/`
   (the wider box, Sarasota to Shark Valley; `data/fdot-2026-11-23/` is the first, smaller box).
 
+## NOAA tide predictions (the beach path)
+
+- Credit: `NOAA` ("Low tide ... (NOAA)" in the route note)
+- Publisher: NOAA Center for Operational Oceanographic Products and Services (CO-OPS),
+  `api.tidesandcurrents.noaa.gov/api/prod/datagetter`, `product=predictions`,
+  `interval=hilo`, `datum=MLLW`, `time_zone=gmt`, `units=english`.
+- Stations: eight on the open Gulf by the Southwest Florida beaches
+  (`scripts/build_tides.py` `STATIONS`, from NOAA's station list, 2026-11-23).
+- Licence: a US Government work, public domain. Kept in the repository as
+  `frontend/src/tide-data/tides.json` (low tides only, about 400 days).
+
 ## Maryland traffic counts (MDOT SHA)
 
 - Credit: `State of Maryland (MDOT SHA)`
