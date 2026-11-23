@@ -3693,6 +3693,30 @@ with a local-directory implementation and publish and restore that hash every fi
 The staging schema (bullet 2) is slice 2 of docs/CLOUD-REBUILD-PLAN.md, which has the rest and
 the questions for the owner.
 
+## Map areas: turning on Southwest Florida
+
+The map can be more than one area (`routemaker.coverage`, `config.settings.COVERAGE_AREAS`):
+DC to Baltimore, and Southwest Florida (Port Charlotte to Marco Island, east to Immokalee;
+the owner, 2026-11-23). An area is on where `RM_COVERAGE_AREAS` names it, `dc-baltimore`
+first: `RM_COVERAGE_AREAS=dc-baltimore,southwest-florida`. It must be the same on the
+rebuild box, the PC and beta, because the api's checks and the rebuild's clip read it.
+
+With Southwest Florida on:
+
+- The rebuild downloads Florida's Geofabrik extract too and clips to a MultiPolygon of the
+  areas (`coverage-areas.geojson` beside the extracts), fetches elevation for each area,
+  and builds a Southwest Florida offline pack. `COVERAGE_AREAS` is a classification
+  checkpoint setting, so the first build with it starts fresh.
+- `install_reference_data.py --urban-areas` is run again on the new extract (the TIGER
+  urban-areas file is national), with the FDOT layers: `--fdot fdot-max-speed.geojson
+  --fdot fdot-lanes.geojson` and `--volume fdot-aadt.geojson --volume-source fdot
+  --aadt-property AADT` (docs/SOURCES.md, "FDOT Roadway Characteristics Inventory").
+- `fetch_basemap.sh` and `import_photon.sh`, run with the same `RM_COVERAGE_AREAS`, take
+  both boxes (the base map as one MultiPolygon region), and the place layers
+  (`refresh_places.py`) keep points in either area.
+- The app reads the areas from GET /api/coverage: a grey mask with a hole for each area,
+  and a map that pans over the rectangle around them.
+
 ## The source extract
 
 The rebuild's first stage produces the map it builds from, rather than expecting

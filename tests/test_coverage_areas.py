@@ -25,7 +25,6 @@ NAPLES = (-81.7948, 26.1420)
 BETWEEN = (-81.6557, 30.3322)  # Jacksonville: inside the rectangle around both, in neither
 
 
-
 @pytest.fixture
 def two_areas(settings):
     settings.COVERAGE_AREAS = BOTH

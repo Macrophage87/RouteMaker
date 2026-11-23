@@ -146,6 +146,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -160,6 +161,20 @@ SOURCE_THRONE = "Throne units: throne-restrooms.json, a hand list with a source 
 # src/config/settings.py COVERAGE_BBOX (west, south, east, north); a test holds
 # the two equal.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+# settings.SOUTHWEST_FLORIDA_BBOX, kept too when RM_COVERAGE_AREAS names the area (the
+# owner, 2026-11-23); a test holds it equal to the setting.
+SOUTHWEST_FLORIDA_BBOX = (-82.35, 25.85, -81.25, 27.05)
+
+
+def coverage_boxes() -> tuple[tuple[float, float, float, float], ...]:
+    """The map's areas these layers keep points in (config.settings.COVERAGE_AREAS)."""
+    names = {n.strip() for n in os.environ.get("RM_COVERAGE_AREAS", "").split(",")}
+    return (COVERAGE_BBOX,) + ((SOUTHWEST_FLORIDA_BBOX,) if "southwest-florida" in names else ())
+
+
+def in_coverage(lon: float, lat: float) -> bool:
+    return any(w <= lon <= e and s <= lat <= n for w, s, e, n in coverage_boxes())
+
 
 PUBLIC_ACCESS = frozenset({"yes", "public", "permissive", "designated"})
 # Sources riders fill from; drinkable only when marked so.
@@ -360,8 +375,7 @@ def classify_shop(osm: str, tags: dict[str, str], lon: float, lat: float) -> Ame
 def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity | None:
     """The point's amenity, or None when it is none of public water, a public restroom, a
     public bike repair stand or a bike shop."""
-    west, south, east, north = COVERAGE_BBOX
-    if not (west <= lon <= east and south <= lat <= north):
+    if not in_coverage(lon, lat):
         return None
     water = water_of(tags)
     toilet = toilet_of(tags)
@@ -608,14 +622,13 @@ def merge_throne(amenities: list[Amenity], units: list[dict]) -> tuple[list[Amen
     merge (ids "throne-...") are dropped first, so a rerun gives the same file.
     """
     out = [a for a in amenities if not a.osm.startswith("throne-")]
-    west, south, east, north = COVERAGE_BBOX
     added = matched = 0
     claimed: set[int] = set()
     for u in units:
         if u["status"] != "open":
             continue
         lon, lat = float(u["lon"]), float(u["lat"])
-        if not (west <= lon <= east and south <= lat <= north):
+        if not in_coverage(lon, lat):
             continue
         best: tuple[float, int] | None = None
         for i, a in enumerate(out):

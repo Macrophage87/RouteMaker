@@ -355,6 +355,13 @@ def urban_way_ids(
 # cannot import without a configured Django; tests/test_reference_data_install.py holds
 # the two the same.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+# settings.SOUTHWEST_FLORIDA_BBOX, read too when RM_COVERAGE_AREAS names the area.
+SOUTHWEST_FLORIDA_BBOX = (-82.35, 25.85, -81.25, 27.05)
+
+
+def coverage_boxes() -> list[tuple[float, float, float, float]]:
+    names = {n.strip() for n in os.environ.get("RM_COVERAGE_AREAS", "").split(",")}
+    return [COVERAGE_BBOX] + ([SOUTHWEST_FLORIDA_BBOX] if "southwest-florida" in names else [])
 
 
 def install_setting(
@@ -368,15 +375,18 @@ def install_setting(
     jobs: dict[str, int] = {}
     for path in lodes_wac:
         jobs.update(setting.wac_jobs(path))
-    west, south, east, north = COVERAGE_BBOX
     margin = 0.05
+    boxes = coverage_boxes()
     blocks = []
     for path in census_blocks:
         rows = [
             row
             for row in setting.block_rows(path)
-            if west - margin <= row[1] <= east + margin
-            and south - margin <= row[2] <= north + margin
+            if any(
+                west - margin <= row[1] <= east + margin
+                and south - margin <= row[2] <= north + margin
+                for west, south, east, north in boxes
+            )
         ]
         blocks.extend(setting.join_jobs(rows, jobs))
     if not blocks:
@@ -399,8 +409,9 @@ def install_counties(counties: Path, target: Path) -> int:
     """The counties in `counties` that reach the coverage box, written to `target`
     as a FeatureCollection with the properties the report names them by."""
     from shapely.geometry import box, mapping
+    from shapely.ops import unary_union
 
-    area = box(*COVERAGE_BBOX)
+    area = unary_union([box(*b) for b in coverage_boxes()])
     features = [
         {
             "type": "Feature",
