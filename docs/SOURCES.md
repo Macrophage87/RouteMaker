@@ -295,7 +295,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `Number_Of_Lanes_TDA` (item `3f217f88f25347709458ee7f9f651e03`, `LANE_CNT`) and
   `Annual_Average_Daily_Traffic_TDA` (item `ceb698fb86d446c08f0b8e54acab6293`, `AADT`).
   `Bike_Lane_TDA` (item `32b8fa6d23974ed7bed110ea93341a79`) is kept as raw data for the
-  raters; the build reads bike lanes from OSM.
+  raters; the build reads bike lanes from OSM. The posted speed and lane count are the
+  state's record and win over OSM's on the state road classes they are held to.
 - Licence: FDOT's "NO WARRANTIES ... DISCLAIMER OF LIABILITY" text only, no licence
   grant. Read as VDOT's is: used and cited, linked (not copied) in the public data release.
 - Downloaded 2026-11-23 for the Southwest Florida box, each with its README (source,

@@ -774,7 +774,9 @@ def parse_fdot_rci(properties: Mapping) -> RoadFacts | None:
     is that carriageway's. A carriageway's lanes are recorded as a total of twice its own,
     so `lanes_per_direction` reads its count back and the block never says one-way. The
     speed is the state's posted limit and is read as DC's and Alexandria's are, over OSM's;
-    the lanes fill where OSM has none. Neither layer names the street or its class.
+    the lanes are the state's record too and win over OSM's. An odd composite count (a
+    centre turn lane, or an extra lane one way) is read up to the next even total, so the
+    busier direction's lanes count. Neither layer names the street or its class.
     None for a record with neither fact.
     """
     speed = _posted(properties.get("SPEED"))
@@ -782,7 +784,7 @@ def parse_fdot_rci(properties: Mapping) -> RoadFacts | None:
     side = (properties.get("ROAD_SIDE") or "C").strip().upper()
     lanes: dict[str, int] = {}
     if count and count > 0:
-        lanes["total"] = count if side == "C" else count * 2
+        lanes["total"] = (count + count % 2) if side == "C" else count * 2
     if speed is None and not lanes:
         return None
     return RoadFacts(

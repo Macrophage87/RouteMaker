@@ -2427,4 +2427,6 @@ def test_fdot_speed_and_lanes_are_read_by_side() -> None:
     carriageway = A.parse_fdot_rci({"ROADWAY": "12010000", "ROAD_SIDE": "R", "LANE_CNT": 3})
     assert A.lanes_per_direction(carriageway) == 3
     assert carriageway.way is None
+    odd = A.parse_fdot_rci({"ROADWAY": "12000005", "ROAD_SIDE": "C", "LANE_CNT": 3})
+    assert A.lanes_per_direction(odd) == 2  # the busier direction's two lanes count
     assert A.parse_fdot_rci({"ROADWAY": "1", "ROAD_SIDE": "C", "SPEED": 0}) is None

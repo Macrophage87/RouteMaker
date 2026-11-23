@@ -39,6 +39,9 @@ class Region:
     # The whole map in one pack (the coverage box), offered beside the areas (Stephen,
     # 2026-11-13: "Offer everything too to download").
     whole: bool = False
+    # A later map area's own pack (`regions`): far from the home box, in no other pack, and
+    # not held by the whole-map pack ("Everything" is the home area).
+    separate: bool = False
 
 
 # Our draft borders, approximate, drawn along the Beltway, the Potomac and the county lines
@@ -232,6 +235,7 @@ def regions() -> tuple[Region, ...]:
             name=AREA_PACK_NAMES.get(name, name),
             outline=_box_outline(box),
             outside_beltway=False,
+            separate=True,
         )
         for name, box in coverage.areas().items()
         if name != coverage.HOME
@@ -253,6 +257,7 @@ def area_of(region_id: str) -> dict | None:
                 "outline": [list(point) for point in region.outline] if region.outline else None,
                 "outside_beltway": region.outside_beltway and region.outline is not None,
                 "whole": region.whole,
+                "separate": region.separate,
             }
     return None
 
