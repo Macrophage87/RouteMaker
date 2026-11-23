@@ -80,6 +80,7 @@ from pydantic import (
     StrictBool,
     StrictFloat,
     StrictInt,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -995,12 +996,17 @@ class RouteIn(Schema):
 
     @field_validator("novice_hop")
     @classmethod
-    def hop_inside_coverage(cls, points: list[list[float]] | None) -> list[list[float]] | None:
+    def hop_inside_coverage(
+        cls, points: list[list[float]] | None, info: ValidationInfo
+    ) -> list[list[float]] | None:
         """A hop outside the area (an edited link) is left out, not refused: the trip is
-        still planned, without it."""
-        for lon, lat in points or ():
-            if not coverage_areas.inside(lon, lat):
-                return None
+        still planned, without it. Outside means outside the area the route's points are in
+        (`routemaker.coverage`)."""
+        if not points:
+            return points
+        route = info.data.get("points") or []
+        if coverage_areas.one_area([*route, *points]) is None:
+            return None
         return points
 
     @field_validator("follow")

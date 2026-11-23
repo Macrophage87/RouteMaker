@@ -818,11 +818,20 @@ class RebuildContext:
     coverage_bbox: tuple[float, float, float, float] = field(
         default_factory=lambda: tuple(_setting("COVERAGE_BBOX"))
     )
-    # Every map area's box, the home one (coverage_bbox) first (`routemaker.coverage`).
-    # With more than one the clip is given them as a polygon file (`clip_region`).
-    coverage_areas: tuple[tuple[float, float, float, float], ...] = field(
-        default_factory=lambda: tuple(tuple(b) for b in _setting("COVERAGE_AREAS").values())
+    # The boxes of the map's later areas (`routemaker.coverage`), the home one being
+    # coverage_bbox; with any, the clip is given all of them as a polygon file
+    # (`clip_region`). `areas` is every box, home first, so an override of coverage_bbox
+    # moves the home box everywhere it is read.
+    other_areas: tuple[tuple[float, float, float, float], ...] = field(
+        default_factory=lambda: tuple(
+            tuple(b) for name, b in _setting("COVERAGE_AREAS").items() if name != "dc-baltimore"
+        )
     )
+
+    @property
+    def coverage_areas(self) -> tuple[tuple[float, float, float, float], ...]:
+        return (tuple(self.coverage_bbox), *self.other_areas)
+
     # The coverage polygon the clip prefers over the box, when a deployment has
     # one. None everywhere today: the repository carries no polygon file, and
     # the box is what PLAN:13's clip is given until it does.
@@ -2372,7 +2381,7 @@ def build_handlers(
         if name == "COVERAGE_BBOX":
             return list(context.coverage_bbox)
         if name == "COVERAGE_AREAS":
-            return [list(b) for b in context.coverage_areas]
+            return [list(b) for b in context.other_areas]
         if name == "COVERAGE_POLYGON":
             return None if context.coverage_polygon is None else str(context.coverage_polygon)
         if name == "SEGMENT_SCHEMA_STAGING":
@@ -2663,7 +2672,7 @@ def build_handlers(
         # reads whatever is in this directory without complaint.
         context.elevation_tiles = [
             tile
-            for box in (context.coverage_areas or (context.coverage_bbox,))
+            for box in context.coverage_areas
             for tile in elevation.ensure_tiles(context.elevation_dir, box, fetch_elevation, run)
         ]
 

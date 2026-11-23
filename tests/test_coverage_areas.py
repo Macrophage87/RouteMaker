@@ -129,3 +129,51 @@ class TestFloridaLaw:
     def test_urban_minor_roads_read_at_30(self) -> None:
         for highway in ("residential", "unclassified", "tertiary"):
             assert FL_URBAN_DEFAULT_MPH[highway] == 30.0
+
+
+def test_a_hop_in_another_area_is_left_out(two_areas) -> None:
+    body = RouteIn(
+        points=[list(WHITE_HOUSE), [-77.03, 38.90]],
+        preset="default",
+        novice_hop=[list(BONITA_SPRINGS), list(NAPLES)],
+    )
+    assert body.novice_hop is None
+
+
+def test_a_track_between_two_areas_is_refused(two_areas) -> None:
+    from core import map_match
+
+    with pytest.raises(map_match.TrackProblem):
+        map_match.checked_points([list(WHITE_HOUSE), list(BONITA_SPRINGS)])
+
+
+def test_a_florida_tile_is_clipped_to_floridas_box(two_areas) -> None:
+    from core import stress_tiles
+    from core.tile_cache import tile_index
+
+    x, y = tile_index(*BONITA_SPRINGS, 10)
+    assert not stress_tiles.outside_coverage(10, x, y)
+    bounds = stress_tiles.tile_bounds(10, x, y)
+    assert coverage.box_meeting(*bounds) == FLORIDA
+    x, y = tile_index(*BETWEEN, 10)
+    assert stress_tiles.outside_coverage(10, x, y)
+
+
+def test_place_search_is_fenced_to_the_area_of_its_bias_point(two_areas) -> None:
+    from core import geocode
+
+    assert geocode._bbox_param(BONITA_SPRINGS) == ",".join(map(str, FLORIDA))
+    assert geocode._bbox_param(WHITE_HOUSE) == ",".join(map(str, HOME))
+    assert geocode._bbox_param(None) == ",".join(map(str, coverage.envelope()))
+
+
+def test_elevation_is_fetched_for_each_area() -> None:
+    from pipeline import elevation
+
+    class Context:
+        coverage_bbox = HOME
+        other_areas = (FLORIDA,)
+        coverage_areas = property(lambda self: (self.coverage_bbox, *self.other_areas))
+
+    stems = {t.stem for box in Context().coverage_areas for t in elevation.tiles_covering(*box)}
+    assert "N26W082" in stems and "N38W077" in stems

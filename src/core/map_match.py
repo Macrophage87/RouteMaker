@@ -95,6 +95,8 @@ def checked_points(points) -> list[tuple[float, float]]:
         if not coverage.inside(lon, lat):
             raise TrackProblem("The track has a point outside the area this map covers.")
         out.append((lon, lat))
+    if coverage.one_area(out) is None:
+        raise TrackProblem("The track runs between two of the map's areas.")
     length = sum(haversine(Point(*a), Point(*b)) for a, b in zip(out, out[1:], strict=False))
     if length > MAX_DISTANCE_M:
         raise TrackProblem(
