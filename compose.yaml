@@ -104,6 +104,9 @@ x-django-env: &django-env
   PGDATABASE: ${PGDATABASE:-routemaker}
   PGUSER: ${PGUSER:-routemaker}
   DJANGO_CONN_MAX_AGE: ${DJANGO_CONN_MAX_AGE:-60}
+  # The map's areas, dc-baltimore first (config.settings.COVERAGE_AREAS). Every service that
+  # loads the settings carries it: the api's checks and the rebuild's clip must agree.
+  RM_COVERAGE_AREAS: ${RM_COVERAGE_AREAS:-dc-baltimore}
   # How many stress tiles the pre-draw draws at once (config.settings): in the
   # rebuild after its swap, and in `manage.py predraw_stress_tiles` run in the
   # api. A PostgreSQL core each; two measured fastest, a third bought nothing.

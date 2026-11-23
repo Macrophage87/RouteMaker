@@ -85,6 +85,7 @@ from pydantic import (
 )
 
 from config.access_log import logged_path
+from routemaker import coverage as coverage_areas
 from routemaker import effort, lang, ridetime
 from routemaker.geo import Point, haversine
 
@@ -983,10 +984,11 @@ class RouteIn(Schema):
     @field_validator("points")
     @classmethod
     def inside_coverage(cls, points: list[list[float]]) -> list[list[float]]:
-        west, south, east, north = settings.COVERAGE_BBOX
         for index, (lon, lat) in enumerate(points):
-            if not (west <= lon <= east and south <= lat <= north):
+            if not coverage_areas.inside(lon, lat):
                 raise ValueError(f"point {index} is outside the area this map covers")
+        if coverage_areas.one_area(points) is None:
+            raise ValueError("the points are in two of the map's areas, which no road joins")
         if span_m(points) > MAX_SPAN_M:
             raise ValueError(too_long())
         return points
@@ -996,9 +998,8 @@ class RouteIn(Schema):
     def hop_inside_coverage(cls, points: list[list[float]] | None) -> list[list[float]] | None:
         """A hop outside the area (an edited link) is left out, not refused: the trip is
         still planned, without it."""
-        west, south, east, north = settings.COVERAGE_BBOX
         for lon, lat in points or ():
-            if not (west <= lon <= east and south <= lat <= north):
+            if not coverage_areas.inside(lon, lat):
                 return None
         return points
 
@@ -4133,10 +4134,8 @@ class OfflineNetworkIn(Schema):
     @field_validator("line")
     @classmethod
     def line_inside_coverage(cls, line: list[tuple[float, float]]) -> list[tuple[float, float]]:
-        west, south, east, north = settings.COVERAGE_BBOX
-        for lon, lat in line:
-            if not (west <= lon <= east and south <= lat <= north):
-                raise ValueError("the line must be inside the area this map covers")
+        if coverage_areas.one_area(line) is None:
+            raise ValueError("the line must be inside the area this map covers")
         if offline_network.line_length_m(line) > offline_network.MAX_LINE_M:
             raise ValueError("the line is longer than the offline network is fetched for")
         return line
@@ -4616,9 +4615,7 @@ class NearbyStationsIn(Schema):
     def inside_coverage(cls, point: list[float] | None) -> list[float] | None:
         if point is None:
             return None
-        west, south, east, north = settings.COVERAGE_BBOX
-        lon, lat = point
-        if not (west <= lon <= east and south <= lat <= north):
+        if not coverage_areas.inside(point[0], point[1]):
             raise ValueError("the point is outside the area this map covers")
         return point
 
@@ -6315,7 +6312,7 @@ def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
     if not body.follow:
         return None
     try:
-        return tuple(follow.checked_line(body.follow, settings.COVERAGE_BBOX))
+        return tuple(follow.checked_line(body.follow))
     except follow.LineProblem as problem:
         logger.info("a line to follow was not followed: %s", problem)
         return None
@@ -6656,9 +6653,8 @@ class NearestIn(RouteIn):
     def inside_coverage(cls, points: list[list[float]]) -> list[list[float]]:
         # Coverage only: the places are not a ride from one to the next, so the
         # route's span limit does not apply; one far off is measured in a straight line.
-        west, south, east, north = settings.COVERAGE_BBOX
         for index, (lon, lat) in enumerate(points):
-            if not (west <= lon <= east and south <= lat <= north):
+            if not coverage_areas.inside(lon, lat):
                 raise ValueError(f"point {index} is outside the area this map covers")
         return points
 
@@ -6829,9 +6825,8 @@ class ReachIn(Schema):
 
     @model_validator(mode="after")
     def fits(self):
-        west, south, east, north = settings.COVERAGE_BBOX
         for index, (lon, lat) in enumerate(self.points):
-            if not (west <= lon <= east and south <= lat <= north):
+            if not coverage_areas.inside(lon, lat):
                 raise ValueError(f"point {index} is outside the area this map covers")
         if any(not reach.MIN_MINUTES <= m <= reach.MAX_MINUTES for m in self.minutes):
             raise ValueError(f"minutes are {reach.MIN_MINUTES} to {reach.MAX_MINUTES} each")
@@ -7030,8 +7025,9 @@ def _reach_answer(request, body: ReachIn):
 
 
 class CoverageGeometry(Schema):
-    type: Literal["Polygon"]
-    coordinates: list[list[list[float]]]
+    # A Polygon for a map of one area, a MultiPolygon (one polygon per area) for more.
+    type: Literal["Polygon", "MultiPolygon"]
+    coordinates: list[list[list[float]]] | list[list[list[list[float]]]]
 
 
 class CoverageOut(Schema):
@@ -7048,12 +7044,25 @@ COVERAGE_MAX_AGE_S = 3600
 def coverage_ring() -> list[list[float]]:
     """The area this API routes in, as a closed ring, counter-clockwise.
 
-    The same `settings.COVERAGE_BBOX` that `RouteIn.inside_coverage` refuses
-    points outside of; the front end greys out everything beyond it, so what
-    it shows as covered is what the API accepts.
+    The home area's box (`settings.COVERAGE_BBOX`); `coverage_geometry` has every area.
     """
-    west, south, east, north = settings.COVERAGE_BBOX
+    return box_ring(settings.COVERAGE_BBOX)
+
+
+def box_ring(box) -> list[list[float]]:
+    west, south, east, north = box
     return [[west, south], [east, south], [east, north], [west, north], [west, south]]
+
+
+def coverage_geometry() -> dict:
+    """The areas this API routes in (`routemaker.coverage`), the same boxes
+    `RouteIn.inside_coverage` refuses points outside of; the front end greys out
+    everything beyond them, so what it shows as covered is what the API accepts. One
+    area is a Polygon, as it always was; more are a MultiPolygon, one polygon each."""
+    rings = [box_ring(box) for box in coverage_areas.boxes()]
+    if len(rings) == 1:
+        return {"type": "Polygon", "coordinates": rings}
+    return {"type": "MultiPolygon", "coordinates": [[ring] for ring in rings]}
 
 
 @api.get(
@@ -7067,7 +7076,7 @@ def coverage(request, response: HttpResponse):
     built = map_data_date()
     return {
         "type": "Feature",
-        "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
+        "geometry": coverage_geometry(),
         # The live map's date, for Settings' About line ("Map data from Nov 10, 2026"; backlog item
         # "Data that says how old it is", 2026-11-13). Left out before a first build.
         "properties": {"map_data": built.isoformat()} if built else {},
@@ -8151,8 +8160,7 @@ class HomeIn(Schema):
 
     @model_validator(mode="after")
     def inside_coverage(self):
-        west, south, east, north = settings.COVERAGE_BBOX
-        if not (west <= self.lon <= east and south <= self.lat <= north):
+        if not coverage_areas.inside(self.lon, self.lat):
             raise ValueError("Home is outside the area this map covers")
         return self
 
@@ -8306,8 +8314,7 @@ class FavoritePlaceIn(Schema):
 
     @model_validator(mode="after")
     def inside_coverage(self):
-        west, south, east, north = settings.COVERAGE_BBOX
-        if not (west <= self.lon <= east and south <= self.lat <= north):
+        if not coverage_areas.inside(self.lon, self.lat):
             raise ValueError("A favorite place is outside the area this map covers")
         if not self.label.strip():
             raise ValueError("A favorite place needs a name")

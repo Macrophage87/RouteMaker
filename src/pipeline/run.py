@@ -369,6 +369,29 @@ def _setting(name: str):
     return getattr(settings, name)
 
 
+AREAS_POLYGON_NAME = "coverage-areas.geojson"
+
+
+def clip_region(context, extracts_dir: Path):
+    """What the source extract is clipped to: the deployment's coverage polygon when it
+    has one; else, for a map of more than one area, the areas as a MultiPolygon file
+    beside the extracts (rewritten each time, so its hash in the extract's record follows
+    the areas); else the home box."""
+    if context.coverage_polygon is not None:
+        return context.coverage_polygon
+    areas = tuple(context.coverage_areas or ())
+    if len(areas) <= 1:
+        return context.coverage_bbox
+    from routemaker import coverage
+
+    path = Path(extracts_dir) / AREAS_POLYGON_NAME
+    text = coverage.polygon_geojson(areas)
+    if not path.is_file() or path.read_text() != text:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    return path
+
+
 class ValidationFailed(RuntimeError):
     """A pre-swap check did not pass, so the swap must not happen."""
 
@@ -794,6 +817,11 @@ class RebuildContext:
     config_dir: Path = field(default_factory=lambda: _setting("VALHALLA_CONFIG_DIR"))
     coverage_bbox: tuple[float, float, float, float] = field(
         default_factory=lambda: tuple(_setting("COVERAGE_BBOX"))
+    )
+    # Every map area's box, the home one (coverage_bbox) first (`routemaker.coverage`).
+    # With more than one the clip is given them as a polygon file (`clip_region`).
+    coverage_areas: tuple[tuple[float, float, float, float], ...] = field(
+        default_factory=lambda: tuple(tuple(b) for b in _setting("COVERAGE_AREAS").values())
     )
     # The coverage polygon the clip prefers over the box, when a deployment has
     # one. None everywhere today: the repository carries no polygon file, and
@@ -2343,6 +2371,8 @@ def build_handlers(
         deployment may point it elsewhere), else the setting."""
         if name == "COVERAGE_BBOX":
             return list(context.coverage_bbox)
+        if name == "COVERAGE_AREAS":
+            return [list(b) for b in context.coverage_areas]
         if name == "COVERAGE_POLYGON":
             return None if context.coverage_polygon is None else str(context.coverage_polygon)
         if name == "SEGMENT_SCHEMA_STAGING":
@@ -2543,7 +2573,7 @@ def build_handlers(
             max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
             force=_setting("SOURCE_EXTRACT_FORCE_REFRESH"),
             urls=_setting("SOURCE_EXTRACT_URLS"),
-            region=context.coverage_polygon or context.coverage_bbox,
+            region=clip_region(context, extracts_dir),
         )
 
         # The disk gate, before anything is written *and before the download*.
@@ -2565,7 +2595,7 @@ def build_handlers(
 
         produced = source.ensure_extract(
             extracts_dir,
-            context.coverage_polygon or context.coverage_bbox,
+            clip_region(context, extracts_dir),
             run,
             urls=_setting("SOURCE_EXTRACT_URLS"),
             max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
@@ -2631,9 +2661,11 @@ def build_handlers(
         # Cached across rebuilds and re-validated on each: a truncated tile
         # reads as flat terrain rather than as an error, and the build stage
         # reads whatever is in this directory without complaint.
-        context.elevation_tiles = elevation.ensure_tiles(
-            context.elevation_dir, context.coverage_bbox, fetch_elevation, run
-        )
+        context.elevation_tiles = [
+            tile
+            for box in (context.coverage_areas or (context.coverage_bbox,))
+            for tile in elevation.ensure_tiles(context.elevation_dir, box, fetch_elevation, run)
+        ]
 
     def conflate_road_blocks(entries: list) -> None:
         """Match the agency street blocks to the ways that lie along them."""
@@ -2879,7 +2911,8 @@ def build_handlers(
             raise ValidationFailed(str(missing)) from missing
         # A covered state that placed no way (West Virginia's relation may not
         # close in the extract): its speed law and urban defaults apply nowhere.
-        for state in states.unplaced_states(state_of):
+        covered = states.covered_states(tuple(_setting("COVERAGE_AREAS")))
+        for state in states.unplaced_states(state_of, covered):
             logger.warning(
                 "no way placed in %s: its boundary did not close, so its speed law "
                 "and urban defaults do not apply and its ways read the old class tables "
