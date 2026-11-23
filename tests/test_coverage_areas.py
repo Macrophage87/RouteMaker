@@ -183,3 +183,31 @@ def test_elevation_is_fetched_for_each_area() -> None:
 
     stems = {t.stem for box in Context().coverage_areas for t in elevation.tiles_covering(*box)}
     assert "N26W082" in stems and "N38W077" in stems
+
+
+def test_every_copy_of_the_florida_box_matches_the_setting() -> None:
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+
+    def load(path: str):
+        name = f"florida_box_copy_{Path(path).stem}"
+        spec = importlib.util.spec_from_file_location(name, root / path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.modules.pop(name, None)
+        return module
+
+    for path in ("scripts/install_reference_data.py", "scripts/build_bike_parking.py"):
+        assert tuple(load(path).SOUTHWEST_FLORIDA_BBOX) == FLORIDA, path
+    assert tuple(load("mcp/routemaker_mcp.py").COVERAGE_AREAS[1]) == FLORIDA
+
+
+def test_miami_and_tampa_are_outside_florida(two_areas) -> None:
+    assert coverage.area_of(-80.1918, 25.7617) is None  # Miami
+    assert coverage.area_of(-82.4572, 27.9506) is None  # Tampa
