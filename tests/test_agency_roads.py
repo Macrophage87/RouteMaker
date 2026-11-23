@@ -2413,3 +2413,18 @@ def test_a_two_way_block_of_one_lane_one_way_and_two_the_other_is_one_each_way()
 )
 def test_other_blocks_are_read_as_they_stand(block) -> None:
     assert not A.turn_bay_block(facts(**block))
+
+
+def test_fdot_speed_and_lanes_are_read_by_side() -> None:
+    """FDOT's RCI layers: `C` is the whole undivided road, `L`/`R` one carriageway of a
+    divided road, whose count is that direction's own."""
+    speed = A.parse_fdot_rci({"ROADWAY": "12000154", "ROAD_SIDE": "C", "SPEED": 45})
+    assert speed.agency == A.FDOT_AGENCY
+    assert speed.speed_mph == {"posted": 45}
+    assert speed.lanes == {}
+    composite = A.parse_fdot_rci({"ROADWAY": "12000004", "ROAD_SIDE": "C", "LANE_CNT": 4})
+    assert A.lanes_per_direction(composite) == 2
+    carriageway = A.parse_fdot_rci({"ROADWAY": "12010000", "ROAD_SIDE": "R", "LANE_CNT": 3})
+    assert A.lanes_per_direction(carriageway) == 3
+    assert carriageway.way is None
+    assert A.parse_fdot_rci({"ROADWAY": "1", "ROAD_SIDE": "C", "SPEED": 0}) is None

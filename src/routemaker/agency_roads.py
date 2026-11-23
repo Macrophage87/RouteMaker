@@ -104,6 +104,10 @@ METRES_PER_FOOT = 0.3048
 DC_AGENCY = "dc-roadway-block"
 BALTIMORE_AGENCY = "baltimore-centerline"
 ALEXANDRIA_AGENCY = "alexandria-transport-streets"
+# Florida DOT's Roadway Characteristics Inventory, as its Transportation Data and Analytics
+# office publishes it (the `Maximum_Speed_Limit_TDA` and `Number_Of_Lanes_TDA` layers):
+# the state's own record of the state roads, for the Southwest Florida area.
+FDOT_AGENCY = "fdot-rci"
 # The layers that record bike facilities on the street itself.
 BIKE_AGENCIES = frozenset({DC_AGENCY})
 
@@ -219,6 +223,26 @@ SPEED_FILLS_ONLY = frozenset(
 CITY_ONLY_AGENCIES = frozenset({ALEXANDRIA_AGENCY})
 CITY_BARRED_HIGHWAYS = frozenset({"motorway", "motorway_link", "trunk", "trunk_link"})
 CITY_MIN_COVERAGE = 0.9
+
+# The state DOT layers that record the state roads only and name no street (FDOT's RCI is
+# keyed by a roadway number): their blocks are held to the road classes a state road is
+# mapped as, so a side street or a service road beside a state road never takes its record
+# (`pipeline.conflation.road_facts_by_way`). Our default, unmeasured.
+STATE_ROAD_AGENCIES = frozenset({FDOT_AGENCY})
+STATE_ROAD_HIGHWAYS = frozenset(
+    {
+        "motorway",
+        "motorway_link",
+        "trunk",
+        "trunk_link",
+        "primary",
+        "primary_link",
+        "secondary",
+        "secondary_link",
+        "tertiary",
+        "tertiary_link",
+    }
+)
 
 # The agencies whose one-way and lane records are never used, for the classifier
 # or for routing: Baltimore's centerline (OWNER-DECISIONS 222, "Ignore it; keep
@@ -737,6 +761,35 @@ def parse_alexandria_transport_streets(properties: Mapping) -> RoadFacts | None:
         # Never a freeway class (the interstates are skipped), so a differently
         # named record never reaches a motorway or trunk way (`_freeway_block`).
         functional_class=(properties.get("MTFCC") or "").strip() or None,
+    )
+
+
+def parse_fdot_rci(properties: Mapping) -> RoadFacts | None:
+    """One record of FDOT's speed or lane layer as `RoadFacts`.
+
+    `Maximum_Speed_Limit_TDA` carries the posted limit (`SPEED`) and
+    `Number_Of_Lanes_TDA` the through lanes (`LANE_CNT`); each record is one side of the
+    road (`ROAD_SIDE`): `C`, composite, for an undivided road, whose count is both
+    directions together, and `L` or `R` for one carriageway of a divided road, whose count
+    is that carriageway's. A carriageway's lanes are recorded as a total of twice its own,
+    so `lanes_per_direction` reads its count back and the block never says one-way. The
+    speed is the state's posted limit and is read as DC's and Alexandria's are, over OSM's;
+    the lanes fill where OSM has none. Neither layer names the street or its class.
+    None for a record with neither fact.
+    """
+    speed = _posted(properties.get("SPEED"))
+    count = _int(properties.get("LANE_CNT"))
+    side = (properties.get("ROAD_SIDE") or "C").strip().upper()
+    lanes: dict[str, int] = {}
+    if count and count > 0:
+        lanes["total"] = count if side == "C" else count * 2
+    if speed is None and not lanes:
+        return None
+    return RoadFacts(
+        agency=FDOT_AGENCY,
+        speed_mph={"posted": speed} if speed is not None else {},
+        lanes=lanes,
+        block_key=(properties.get("ROADWAY") or "").strip() or None,
     )
 
 
