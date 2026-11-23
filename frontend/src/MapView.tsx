@@ -122,6 +122,7 @@ import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
+import { addBeaches, type BeachData, type BeachMap } from "./lib/beaches.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
 import { MASS_LAYER_IDS, massLayerIds } from "./massStyle.js";
 import { addClimbs, climbsUnder, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
@@ -401,6 +402,8 @@ interface Props {
   onFederalData?: (data: FederalData) => void;
   /** The public water and restrooms (lib/waterRestrooms.ts), once App has loaded them; null before. */
   water?: readonly WaterPoint[] | null;
+  /** The beaches and their tide-line paths (lib/beaches.ts), once App has loaded them; null before. Always shown. */
+  beaches?: BeachData | null;
   /** The rider's switches for their layer (lib/waterRestrooms.ts WaterPrefs): on, basic toilets, untreated water. */
   waterPrefs?: WaterPrefs;
   /** The Climbs layer's climbs (lib/climbs.ts), once App has loaded them; null before. */
@@ -757,6 +760,8 @@ export function MapView(props: Props) {
   const federalSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the water and restrooms layer in line with the props. */
   const waterSync = useRef<(() => void) | null>(null);
+  /** Set once the map has loaded: adds the beaches when their data comes. */
+  const beachSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the Climbs layer in line with the props. */
   const climbsSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: opens a climb's card with the focus in it (the road panel's "Climb details"). */
@@ -1900,6 +1905,12 @@ export function MapView(props: Props) {
       });
       waterSync.current = () => syncWater();
       syncWater();
+      // The beaches, shaded, and their tide-line paths (lib/beaches.ts): over the stress overlay, under the route.
+      beachSync.current = () => {
+        const data = callbacks.current.beaches;
+        if (data) addBeaches(map as unknown as BeachMap, data, ROUTE_BOTTOM_LAYER);
+      };
+      beachSync.current();
       climbCard = attachClimbInteraction(map, {
         visible: () => callbacks.current.climbsOn === true,
         climb: (id) => climbById.get(id),
@@ -1939,6 +1950,7 @@ export function MapView(props: Props) {
       federalSync.current = null;
       water?.detach();
       waterSync.current = null;
+      beachSync.current = null;
       climbCard?.detach();
       climbsSync.current = null;
       climbCardOpener.current = null;
@@ -3421,6 +3433,11 @@ export function MapView(props: Props) {
   useEffect(() => {
     waterSync.current?.();
   }, [props.water, props.waterPrefs]);
+
+  // The beaches: added once their data comes.
+  useEffect(() => {
+    beachSync.current?.();
+  }, [props.beaches]);
 
   // The Climbs layer: its data when it comes, and the switch.
   useEffect(() => {
