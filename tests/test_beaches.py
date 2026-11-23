@@ -162,3 +162,12 @@ def test_the_map_file_holds_the_beach_and_its_path(tmp_path) -> None:
     ]
     assert features[0]["properties"]["name"] == "Bonita Beach"
     assert features[1]["properties"]["way"] == 1000
+
+
+def test_a_coastline_way_that_is_a_highway_already_is_left_as_it_is(tmp_path) -> None:
+    pbf = tmp_path / "x.osm.pbf"
+    _write_extract(pbf)
+    promenade = Way(osm_id=1000, tags={"natural": "coastline", "highway": "footway"}, node_ids=list(range(1, 12)))
+    promenade.coordinates = list(SHORE)
+    promenade.located = list(range(11))
+    assert read_beaches.read(pbf, [BOX], [promenade]).paths == []

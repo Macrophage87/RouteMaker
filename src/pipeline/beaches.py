@@ -19,6 +19,7 @@ from pathlib import Path
 import osmium
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
+from shapely.strtree import STRtree
 from shapely.validation import make_valid
 
 from routemaker import beaches as rules
@@ -67,7 +68,8 @@ class _Reader(osmium.SimpleHandler):
         return any(_inside(box, lon, lat) for box in self.boxes for lon, lat in points)
 
     def way(self, w) -> None:  # noqa: N802 - osmium's callback name
-        if w.tags.get("natural") != "coastline":
+        # A coastline way that is a highway already (a seawall promenade) is read as one.
+        if w.tags.get("natural") != "coastline" or "highway" in w.tags:
             return
         ids, points = [], []
         for n in w.nodes:
@@ -111,17 +113,17 @@ def read(pbf: str | Path, boxes: Sequence[Box], ways: Sequence[Way] = ()) -> Bea
     reader = _Reader(boxes)
     reader.apply_file(str(pbf), locations=True)
     out.beaches = reader.beaches
+    # A stretch beside a beach closed to bicycles is not ridden: only the open beaches count.
     open_shapes = [b.shape for b in reader.beaches if not b.closed]
-    all_shapes = [b.shape for b in reader.beaches]
+    tree = STRtree(open_shapes) if open_shapes else None
     tide_nodes: list[tuple[int, float, float]] = []
+    taken = {way.osm_id for way in ways}
     for way_id, tags, ids, points in reader.coast:
-        flags = rules.beside_beach(points, all_shapes)
+        if tree is None or way_id in taken:
+            continue
+        flags = rules.beside_beach(points, tree)
         if not any(flags):
             continue
-        # A stretch beside a beach closed to bicycles is not ridden.
-        if len(open_shapes) < len(all_shapes):
-            open_flags = rules.beside_beach(points, open_shapes)
-            flags = [a and b for a, b in zip(flags, open_flags, strict=True)]
         out.beside_m += rules.runs_length_m(points, flags)
         run = rules.longest_run(points, flags)
         if run is None:
@@ -138,6 +140,8 @@ def read(pbf: str | Path, boxes: Sequence[Box], ways: Sequence[Way] = ()) -> Bea
     ends = []
     for way in ways:
         if way.tags.get("highway") not in rules.ACCESS_HIGHWAYS or not way.coordinates:
+            continue
+        if not any(_inside(box, *way.coordinates[0]) or _inside(box, *way.coordinates[-1]) for box in boxes):
             continue
         located = way.located_points()
         first, last = located[0], located[-1]

@@ -3730,9 +3730,11 @@ longest stretch within 20 m of a beach (`natural=beach`, closed ways and multipo
 one tagged `bicycle=no`, `access=no` or `private`) a path: the way keeps its id, its node
 list is cut to that stretch (at least 100 m), and it is tagged `highway=path`,
 `surface=sand`, `bicycle=yes`, `foot=yes` (`routemaker.beaches`). OSM's coastline is drawn
-at mean high water, so the path is the high-tide line. Footways, paths, steps, tracks and
-service ways that end within 15 m of a beach are carried on to the path's nearest node
-within 150 m, so it joins the network. Sand is loose ground to the router and the surface
+at mean high water, so the path is the high-tide line. Footways, paths, cycleways and
+pedestrian ways that end within 15 m of a beach are carried on to the path's nearest node
+within 150 m, so it joins the network (a way joined at its first node has its segments
+renumbered once, on the first rebuild with the beach path). A coastline way that is a
+highway already (a seawall promenade) is left as the highway it is. Sand is loose ground to the router and the surface
 setting, so a ride that keeps to pavement leaves it. All four distances are our defaults
 (unmeasured). The rebuild log says what it found: `beach paths: N beaches ..., N beach
 paths, X km of Y km of coastline beside an open beach; N beach accesses joined`. A

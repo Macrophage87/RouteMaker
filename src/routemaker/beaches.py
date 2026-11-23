@@ -36,20 +36,20 @@ MIN_PATH_M = 100.0
 JOIN_M = 150.0
 # How close a path's end must be to a beach to count as a beach access.
 ACCESS_END_M = 15.0
-ACCESS_HIGHWAYS = frozenset(
-    {"footway", "path", "steps", "track", "service", "cycleway", "pedestrian", "bridleway"}
-)
+# Only the ways a rider walks or rides onto the sand: a service road or a flight of steps
+# carried across a beach would bring its own tags with it.
+ACCESS_HIGHWAYS = frozenset({"footway", "path", "cycleway", "pedestrian"})
 
 # The tags a tide-line way carries in the graph. `surface=sand` is loose ground to the
 # router and the surface setting (lua `valhalla_surface`: gravel), so a ride that keeps to
-# pavement leaves it; `rm:beach_path` names it for the map and the route notes.
+# pavement leaves it. The map and the route notes know it by its way id
+# (scripts/build_beaches.py).
 BEACH_PATH_TAGS = {
     "highway": "path",
     "surface": "sand",
     "bicycle": "yes",
     "foot": "yes",
 }
-BEACH_PATH_MARK = "beach_path"
 
 
 def metres(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -75,16 +75,13 @@ def beside_beach(
     points: Sequence[tuple[float, float]], beaches: Sequence, near_m: float = NEAR_BEACH_M
 ) -> list[bool]:
     """For each point, whether it lies within `near_m` of one of the beach shapes."""
-    if not beaches:
+    if not beaches or not points:
         return [False] * len(points)
-    tree = STRtree(list(beaches))
-    reach = near_m / M_PER_DEG
-    out = []
-    for lon, lat in points:
-        p = Point(lon, lat)
-        out.append(
-            any(beaches[i].distance(p) <= reach for i in tree.query(p.buffer(reach)))
-        )
+    tree = beaches if isinstance(beaches, STRtree) else STRtree(list(beaches))
+    found = tree.query([Point(lon, lat) for lon, lat in points], predicate="dwithin", distance=near_m / M_PER_DEG)
+    out = [False] * len(points)
+    for index in set(found[0].tolist()):
+        out[int(index)] = True
     return out
 
 

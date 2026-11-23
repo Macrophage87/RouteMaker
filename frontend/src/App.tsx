@@ -216,8 +216,9 @@ import { BROADCAST_COPIED, BROADCAST_COPY_FAILED, BROADCAST_RIDE_COPY_FAILED, SH
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
-import beachesUrl from "./beach-data/beaches.json?url";
-import tidesUrl from "./tide-data/tides.json?url";
+// `no-inline`: a small file would be inlined as a data: URL, which the edge's connect-src refuses.
+import beachesUrl from "./beach-data/beaches.json?url&no-inline";
+import tidesUrl from "./tide-data/tides.json?url&no-inline";
 import { beachAlongRoute, beachNote, loadBeaches, type BeachData } from "./lib/beaches.ts";
 import { loadTides, lowTidesOn, nearestStation, type TideData } from "./lib/tides.ts";
 import { climbShown, climbsAlongRoute, loadClimbs, readClimbsFrom, readClimbsOn, saveClimbsFrom, saveClimbsOn, type Climb, type ClimbCategory, type ClimbsStatus } from "./lib/climbs.ts";
