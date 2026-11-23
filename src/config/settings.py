@@ -254,11 +254,12 @@ COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # later one is a separate island of map with no roads joining it to the first
 # (routemaker.coverage). The owner, 2026-11-23: "a map for the Southwest Florida area
 # to include the area around Bonita springs and maybe an hour drive from there".
-# Southwest Florida is Port Charlotte and Englewood in the north to Marco Island and
-# Everglades City in the south, out east to Immokalee: about an hour's drive from
-# Bonita Springs (our default, unmeasured). It joins COVERAGE_AREAS once its first
+# Southwest Florida is Sarasota and Siesta Key in the north to Marco Island and
+# Everglades City in the south, out east through Big Cypress to Shark Valley on the
+# Tamiami Trail (the owner, 2026-11-23: "from Sarasota to just past Shark" Valley,
+# "a lot of cycling options in big cypress"). It joins COVERAGE_AREAS once its first
 # map is built (RM_COVERAGE_AREAS lists the areas a deployment serves, by name).
-SOUTHWEST_FLORIDA_BBOX = (-82.35, 25.85, -81.25, 27.05)
+SOUTHWEST_FLORIDA_BBOX = (-82.75, 25.65, -80.70, 27.45)
 KNOWN_COVERAGE_AREAS = {
     "dc-baltimore": COVERAGE_BBOX,
     "southwest-florida": SOUTHWEST_FLORIDA_BBOX,

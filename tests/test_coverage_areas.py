@@ -36,7 +36,7 @@ def test_the_default_map_is_the_home_area_alone() -> None:
     assert coverage.boxes() == [HOME]
 
 
-def test_southwest_florida_reaches_an_hour_from_bonita_springs() -> None:
+def test_southwest_florida_reaches_sarasota_and_shark_valley() -> None:
     for lon, lat in (
         BONITA_SPRINGS,
         NAPLES,
@@ -45,6 +45,12 @@ def test_southwest_florida_reaches_an_hour_from_bonita_springs() -> None:
         (-82.0906, 26.9762),  # Port Charlotte
         (-81.4171, 26.4187),  # Immokalee
         (-81.7184, 25.9412),  # Marco Island
+        (-82.5307, 27.3364),  # Sarasota
+        (-82.5484, 27.2667),  # Siesta Key
+        (-81.3851, 25.8573),  # Everglades City
+        (-81.0828, 25.8960),  # Big Cypress, Oasis Visitor Center
+        (-80.7670, 25.7578),  # Shark Valley visitor center
+        (-80.7660, 25.6890),  # Shark Valley observation tower
     ):
         assert coverage.in_box(FLORIDA, lon, lat), (lon, lat)
 

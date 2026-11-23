@@ -78,7 +78,7 @@ BBOX="-78.05,38.2,-76.02,39.72"
 # settings.SOUTHWEST_FLORIDA_BBOX: a second region of the base map when RM_COVERAGE_AREAS names
 # the area. The two boxes are then extracted as one MultiPolygon (`pmtiles extract --region`),
 # and BBOX, which the stamps record, names both, so the region is fetched again.
-FLORIDA_BBOX="-82.35,25.85,-81.25,27.05"
+FLORIDA_BBOX="-82.75,25.65,-80.70,27.45"
 case ",${RM_COVERAGE_AREAS:-}," in
 *,southwest-florida,*) BBOX="$BBOX;$FLORIDA_BBOX" ;;
 esac

@@ -3696,7 +3696,7 @@ the questions for the owner.
 ## Map areas: turning on Southwest Florida
 
 The map can be more than one area (`routemaker.coverage`, `config.settings.COVERAGE_AREAS`):
-DC to Baltimore, and Southwest Florida (Port Charlotte to Marco Island, east to Immokalee;
+DC to Baltimore, and Southwest Florida (Sarasota to Marco Island and Everglades City, east through Big Cypress to Shark Valley;
 the owner, 2026-11-23). An area is on where `RM_COVERAGE_AREAS` names it, `dc-baltimore`
 first: `RM_COVERAGE_AREAS=dc-baltimore,southwest-florida`. It must be the same on the
 rebuild box, the PC and beta, because the api's checks and the rebuild's clip read it.
