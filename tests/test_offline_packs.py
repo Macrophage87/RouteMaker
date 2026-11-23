@@ -220,3 +220,19 @@ def test_both_web_servers_serve_only_pack_files_to_this_site() -> None:
     assert "$rmbeta_basemap_foreign" in location
     # A named capture: the same-site map is a regex map, which resets $1 (#1295).
     assert "alias @DATA_ROOT@/tiles/offline-packs/$rm_pack;" in location
+
+
+def test_a_later_area_is_a_pack_of_its_own(settings) -> None:
+    """Southwest Florida (the owner, 2026-11-23) is its own pack, its box the outline, with
+    nothing cut out of it; the home regions are unchanged."""
+    assert [r.id for r in offline_packs.regions()] == [r.id for r in offline_packs.REGIONS]
+    settings.COVERAGE_AREAS = {
+        "dc-baltimore": settings.COVERAGE_BBOX,
+        "southwest-florida": settings.SOUTHWEST_FLORIDA_BBOX,
+    }
+    *home, florida = offline_packs.regions()
+    assert [r.id for r in home] == [r.id for r in offline_packs.REGIONS]
+    assert (florida.id, florida.name) == ("southwest-florida", "Southwest Florida")
+    area = offline_packs.area_of("southwest-florida")
+    assert area["outline"][0] == area["outline"][-1]
+    assert area["outside_beltway"] is False and area["whole"] is False

@@ -215,12 +215,39 @@ REGIONS: tuple[Region, ...] = (
 )
 
 
+def _box_outline(box) -> tuple[tuple[float, float], ...]:
+    west, south, east, north = box
+    return ((west, south), (east, south), (east, north), (west, north), (west, south))
+
+
+def regions() -> tuple[Region, ...]:
+    """The packs built: REGIONS, then one pack for each later map area, whose outline is the
+    area's box (`routemaker.coverage`; Southwest Florida, the owner, 2026-11-23). Such an area
+    is a pack of its own and is in no other: the home regions are drawn inside the home box."""
+    from routemaker import coverage
+
+    extra = tuple(
+        Region(
+            id=name,
+            name=AREA_PACK_NAMES.get(name, name),
+            outline=_box_outline(box),
+            outside_beltway=False,
+        )
+        for name, box in coverage.areas().items()
+        if name != coverage.HOME
+    )
+    return REGIONS + extra
+
+
+AREA_PACK_NAMES = {"southwest-florida": "Southwest Florida"}
+
+
 def area_of(region_id: str) -> dict | None:
     """A region's area for the phone, which draws the areas on a map and opens the kept pack
     that covers the rider: its outline ([lon, lat] around; None for the map less every outlined
     area, or the whole box), whether the Beltway is cut out of it, and whether it is the whole
     map. None for an id no longer built."""
-    for region in REGIONS:
+    for region in regions():
         if region.id == region_id:
             return {
                 "outline": [list(point) for point in region.outline] if region.outline else None,

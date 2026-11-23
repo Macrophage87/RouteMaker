@@ -40,7 +40,7 @@ import {
   type RailStatus,
 } from "./lib/railClosures.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
-import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
+import { COVERAGE_BBOX, MAX_BOUNDS_PAD, MAX_POINTS, addPoint, coverageEnvelope, haversineM, insideCoverage, setCoverageAreas, type LonLat } from "./lib/geo.ts";
 import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
 import { chooseUnits, switchUnitsInRide, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
@@ -145,7 +145,7 @@ import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railD
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
-import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
+import { addCoverageMask, coverageBoxes, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
 import { STILL_RIDING_SAID, forgetStaleRideEntry, holdBackDuringRide } from "./lib/rideBack.ts";
 import { RIDE_PANEL_OPEN, closeIdlePanels, watchIdleRecentre } from "./lib/idleRecentre.ts";
 import { afterHistoryStep } from "./lib/rideFocus.ts";
@@ -7448,7 +7448,16 @@ export function App() {
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
             if (coverage) setMapDay(mapDataDay(coverage.properties));
-            if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
+            if (coverage && mapRef.current === map) {
+              // The map's areas, as the API serves them: where a point is covered, and how far the map pans.
+              setCoverageAreas(coverageBoxes(coverage));
+              const [w, s, e, n] = coverageEnvelope();
+              map.setMaxBounds([
+                [w - MAX_BOUNDS_PAD, s - MAX_BOUNDS_PAD],
+                [e + MAX_BOUNDS_PAD, n + MAX_BOUNDS_PAD],
+              ]);
+              if (addCoverageMask(map, coverage)) setCoverageShown(true);
+            }
           });
           watchForFacilities(map, setFacilitiesShown);
           watchForCapacity(map, () => setCapacityTiles(true));

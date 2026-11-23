@@ -99,6 +99,9 @@ OUT_OF_TIME = (
     " station named in metro_check as a via point (revise_route add_points), or move its points"
 )
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+# Every area the site may serve (config.settings.KNOWN_COVERAGE_AREAS): the site itself refuses
+# a point in an area it does not serve yet, so the connector only keeps out points in none.
+COVERAGE_AREAS = (COVERAGE_BBOX, (-82.35, 25.85, -81.25, 27.05))
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
 # 50 s) after a wait for its one long slot.
 ROUTE_TIMEOUT_S = 120
@@ -237,8 +240,10 @@ def destination(origin: tuple[float, float], bearing: float, miles: float) -> tu
 
 
 def inside_coverage(point: tuple[float, float]) -> bool:
-    west, south, east, north = COVERAGE_BBOX
-    return west <= point[0] <= east and south <= point[1] <= north
+    return any(
+        west <= point[0] <= east and south <= point[1] <= north
+        for west, south, east, north in COVERAGE_AREAS
+    )
 
 
 def miles_text(metres: float) -> str:
