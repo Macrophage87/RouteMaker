@@ -91,7 +91,7 @@ SOURCE_OSM = "OpenStreetMap contributors, ODbL 1.0"
 # build_water_restrooms.py has it.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # And Southwest Florida's when RM_COVERAGE_AREAS names it, as build_water_restrooms.py has it.
-SOUTHWEST_FLORIDA_BBOX = (-82.35, 25.85, -81.25, 27.05)
+SOUTHWEST_FLORIDA_BBOX = (-82.75, 25.65, -80.70, 27.45)
 PUBLIC_ACCESS = frozenset({"yes", "public", "permissive", "designated"})
 # An OSM rack this close to a DDOT rack is the same one: about 80 ft.
 SAME_RACK_M = 25.0

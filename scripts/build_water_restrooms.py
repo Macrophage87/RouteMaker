@@ -163,7 +163,7 @@ SOURCE_THRONE = "Throne units: throne-restrooms.json, a hand list with a source 
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # settings.SOUTHWEST_FLORIDA_BBOX, kept too when RM_COVERAGE_AREAS names the area (the
 # owner, 2026-11-23); a test holds it equal to the setting.
-SOUTHWEST_FLORIDA_BBOX = (-82.35, 25.85, -81.25, 27.05)
+SOUTHWEST_FLORIDA_BBOX = (-82.75, 25.65, -80.70, 27.45)
 
 
 def coverage_boxes() -> tuple[tuple[float, float, float, float], ...]:

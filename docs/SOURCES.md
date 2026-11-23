@@ -300,7 +300,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: FDOT's "NO WARRANTIES ... DISCLAIMER OF LIABILITY" text only, no licence
   grant. Read as VDOT's is: used and cited, linked (not copied) in the public data release.
 - Downloaded 2026-11-23 for the Southwest Florida box, each with its README (source,
-  licence text, time, count, sha256), to the project files `data/fdot-2026-11-23/`.
+  licence text, time, count, sha256), to the project files `data/fdot-2026-11-23-wide/`
+  (the wider box, Sarasota to Shark Valley; `data/fdot-2026-11-23/` is the first, smaller box).
 
 ## Maryland traffic counts (MDOT SHA)
 

@@ -356,7 +356,7 @@ def urban_way_ids(
 # the two the same.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # settings.SOUTHWEST_FLORIDA_BBOX, read too when RM_COVERAGE_AREAS names the area.
-SOUTHWEST_FLORIDA_BBOX = (-82.35, 25.85, -81.25, 27.05)
+SOUTHWEST_FLORIDA_BBOX = (-82.75, 25.65, -80.70, 27.45)
 
 
 def coverage_boxes() -> list[tuple[float, float, float, float]]:

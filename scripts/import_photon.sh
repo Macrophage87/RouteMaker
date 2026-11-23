@@ -39,7 +39,7 @@ IMAGE="docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429
 # the two equal.
 BBOX="-78.05,38.2,-76.02,39.72"
 # settings.SOUTHWEST_FLORIDA_BBOX: kept too when RM_COVERAGE_AREAS names the area.
-FLORIDA_BBOX="-82.35,25.85,-81.25,27.05"
+FLORIDA_BBOX="-82.75,25.65,-80.70,27.45"
 BBOX_ARGS="--bbox=$BBOX"
 case ",${RM_COVERAGE_AREAS:-}," in
 *,southwest-florida,*) BBOX_ARGS="$BBOX_ARGS --bbox=$FLORIDA_BBOX" ;;

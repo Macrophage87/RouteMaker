@@ -4,7 +4,7 @@ import { COVERAGE_BBOX, areaOf, coverageEnvelope, insideCoverage, setCoverageAre
 import { coverageBoxes, coverageMask, fetchCoverage, type Coverage } from "./mapGlue.ts";
 
 // A map of two areas (the owner, 2026-11-23): DC to Baltimore and Southwest Florida.
-const FLORIDA: Box = [-82.35, 25.85, -81.25, 27.05];
+const FLORIDA: Box = [-82.75, 25.65, -80.70, 27.45];
 const BONITA_SPRINGS: LonLat = [-81.7787, 26.3398];
 const WHITE_HOUSE: LonLat = [-77.0365, 38.8977];
 const JACKSONVILLE: LonLat = [-81.6557, 30.3322];
@@ -31,7 +31,7 @@ test("with two areas a point is covered in either and not between them", () => {
     assert.deepEqual(areaOf(BONITA_SPRINGS), FLORIDA);
     assert.equal(insideCoverage(WHITE_HOUSE), true);
     assert.equal(insideCoverage(JACKSONVILLE), false);
-    assert.deepEqual(coverageEnvelope(), [-82.35, 25.85, -76.02, 39.72]);
+    assert.deepEqual(coverageEnvelope(), [-82.75, 25.65, -76.02, 39.72]);
   } finally {
     setCoverageAreas([COVERAGE_BBOX]);
   }

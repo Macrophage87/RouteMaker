@@ -295,7 +295,7 @@ test("each area the server builds has its name in the page's words; any other ke
 });
 
 test("a later map area (Southwest Florida) is its own pack: the whole map neither holds it nor removes it", async () => {
-  const FLORIDA: [number, number][] = [[-82.35, 25.85], [-81.25, 25.85], [-81.25, 27.05], [-82.35, 27.05], [-82.35, 25.85]];
+  const FLORIDA: [number, number][] = [[-82.75, 25.65], [-80.7, 25.65], [-80.7, 27.45], [-82.75, 27.45], [-82.75, 25.65]];
   const swfl = { id: "southwest-florida", name: "Southwest Florida", bytes: GZ2.byteLength, sha256: SHA2, url: url("southwest-florida"), area: { outline: FLORIDA, outside_beltway: false, whole: false, separate: true } };
   const list = await fetchPackList(async () => json({ ...LISTED, packs: [...LISTED.packs, swfl] }));
   assert.ok(list);
