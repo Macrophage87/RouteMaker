@@ -298,8 +298,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   raters; the build reads bike lanes from OSM.
 - Licence: FDOT's "NO WARRANTIES ... DISCLAIMER OF LIABILITY" text only, no licence
   grant. Read as VDOT's is: used and cited, linked (not copied) in the public data release.
-- Not downloaded yet: each layer download waits for the owner's approval (OWNER-DECISIONS
-  151-159).
+- Downloaded 2026-11-23 for the Southwest Florida box, each with its README (source,
+  licence text, time, count, sha256), to the project files `data/fdot-2026-11-23/`.
 
 ## Maryland traffic counts (MDOT SHA)
 
