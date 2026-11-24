@@ -2254,7 +2254,7 @@ def last_resort_sidewalks(
 
     The last-resort price keeps a rider on the calmer road beside a sidewalk; with no road
     beside it there is none to keep to, and the "sidewalk" is a connector, priced as a link.
-    The owner, 2026-11-24, of the walk joining the two ends of Briggs Road in Glenmont
+    The owner, of the walk joining the two ends of Briggs Road in Glenmont
     (OSM 656603494, `footway=sidewalk`, 410 ft, no road beside it): "a short connector path
     on briggs road that was open to bikes but not included"; routes rode 0.7 mi round."""
     from routemaker.classes import TRAIL_CLASS_HIGHWAY
