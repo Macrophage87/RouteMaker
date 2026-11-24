@@ -394,8 +394,9 @@ def roadless(
     return found
 
 
-# The streets a drawn street link joins (`street_links`): public streets, never a service
-# road or a track (a parking lot's walk to the street is no link).
+# The streets a drawn street link joins (`street_links`): public streets of every class,
+# busy ones too (unlike a cut-through's `STREET_HIGHWAY`, which names where one starts),
+# never a service road or a track (a parking lot's walk to the street is no link).
 LINKED_STREET_HIGHWAY = OPEN_ROAD_HIGHWAY - {"service", "track", "cycleway"}
 
 
@@ -405,7 +406,8 @@ def street_links(
     """The `candidates` the map draws as links between streets: footways a bicycle may ride
     that the map would leave out (a sidewalk, a short unnamed path). Joined into runs at any
     node, a run is drawn where it meets public streets (`LINKED_STREET_HIGHWAY`, open to
-    bicycles) at two or more different nodes. The owner, of the walk joining the two ends
+    bicycles) at two or more different nodes, of one street or two (a walk cutting off a
+    crescent's bend is a link too). The owner, of the walk joining the two ends
     of Briggs Road in Glenmont: "This is a useful link that should be included", then
     "Similar ones probably should as well". `ways` is (osm id, tags, node ids)."""
     nodes_of = {

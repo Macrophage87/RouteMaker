@@ -883,3 +883,17 @@ def test_a_footway_joining_two_streets_is_drawn_as_a_street_link():
     ]
     assert sw.street_links(ways, {2, 4, 5, 7}) == {2}
     assert sw.street_links(ways, set()) == set()
+
+
+def test_roadless_sidewalks_feed_the_last_resort_rule():
+    from pipeline.run import last_resort_sidewalks, roadless_sidewalks
+
+    ways = [
+        way(20, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0)]),
+        way(21, dict(SIDEWALK), [(0.0, 0.0), (124.0, 0.0)]),
+        way(22, {"highway": "residential"}, [(124.0, 0.0), (400.0, 0.0)]),
+        way(23, dict(SIDEWALK), [(-280.0, 12.0), (-20.0, 12.0)]),
+    ]
+    roadless = roadless_sidewalks(ways, {21, 23}, set())
+    assert roadless == {21}
+    assert last_resort_sidewalks(ways, {}, {21, 23}, set(), roadless) == {23}

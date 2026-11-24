@@ -2251,6 +2251,7 @@ def last_resort_sidewalks(
     stress_by_way: dict,
     ridden: Collection[int],
     links: Collection[int],
+    roadless: Collection[int] | None = None,
 ) -> set[int]:
     """The ridden footways priced above an LTS 4 road (`sidewalks.LAST_RESORT`; the owner,
     2026-10-21, "Beside 4.5/Avoid only"): all but the links, the sidewalks running
@@ -2273,8 +2274,25 @@ def last_resort_sidewalks(
             roads.append((way.osm_id, way.coordinates))
             if very_stressful(stress_by_way.get(way.osm_id)):
                 stressful.append((way.osm_id, way.coordinates))
-    roadless = sidewalks.roadless(asked, roads)
-    return set(ridden) - set(links) - sidewalks.beside(asked, stressful) - roadless
+    if roadless is None:
+        roadless = sidewalks.roadless(asked, roads)
+    return set(ridden) - set(links) - sidewalks.beside(asked, stressful) - set(roadless)
+
+
+def roadless_sidewalks(
+    ways: Collection, ridden: Collection[int], links: Collection[int]
+) -> set[int]:
+    """The ridden sidewalks, links aside, that run beside no road (`sidewalks.roadless`)."""
+    from routemaker.classes import TRAIL_CLASS_HIGHWAY
+
+    asked, roads = [], []
+    for way in ways:
+        if way.osm_id in ridden:
+            if way.osm_id not in links and way.tags.get("footway") == "sidewalk":
+                asked.append((way.osm_id, way.coordinates))
+        elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
+            roads.append((way.osm_id, way.coordinates))
+    return sidewalks.roadless(asked, roads)
 
 
 # The graphs that ride no sidewalk (the owner, 2026-11-14: "Novices might use them more and
@@ -3920,8 +3938,13 @@ def build_handlers(
         context.aisle_links = nobike.aisle_links
         context.walk_bike = nobike.walk_bike
         context.sidewalk_rides = nobike.sidewalk_rides
+        roadless = roadless_sidewalks(context.ways, nobike.sidewalk_rides, nobike.sidewalk_links)
         context.sidewalk_last_resort = last_resort_sidewalks(
-            context.ways, context.stress_by_way, nobike.sidewalk_rides, nobike.sidewalk_links
+            context.ways,
+            context.stress_by_way,
+            nobike.sidewalk_rides,
+            nobike.sidewalk_links,
+            roadless,
         )
         context.sidewalk_links = set(nobike.sidewalk_links)
         context.no_public_traffic_sidewalks = sidewalks.no_public_traffic_sidewalks(
@@ -3956,21 +3979,24 @@ def build_handlers(
         # Briggs Road in Glenmont): a ridden link or connector, or an open path the
         # declutter alone hid; never one hidden by its place or closed.
         place_hidden = context.short_paths_hidden - context.short_paths_declutter
-        open_hidden = {
+        # Sidewalks and crosswalks only where they are links or beside no road: a sidewalk
+        # along a busy road, and a crosswalk, stay off the map.
+        candidates = {
             way.osm_id
             for way in context.ways
-            if way.osm_id in context.short_paths_declutter and sidewalks.bicycle_open(way.tags)
-        }
-        connectors = {
-            way.osm_id
-            for way in context.ways
-            if way.osm_id in nobike.sidewalk_rides
-            and way.osm_id not in context.sidewalk_last_resort
-            and way.tags.get("footway") != "crossing"
+            if (
+                way.osm_id in nobike.sidewalk_links
+                or way.osm_id in roadless
+                or (
+                    way.osm_id in context.short_paths_declutter
+                    and sidewalks.bicycle_open(way.tags)
+                )
+            )
+            and (way.tags.get("footway") not in sidewalks.SIDEWALK_KINDS or way.osm_id in roadless)
         }
         context.street_links = sidewalks.street_links(
             [(way.osm_id, way.tags, way.node_ids) for way in context.ways],
-            (connectors | open_hidden)
+            candidates
             - place_hidden
             - set(nobike.reasons)
             - nobike.platform_walks
