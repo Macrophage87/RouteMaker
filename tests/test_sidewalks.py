@@ -286,6 +286,22 @@ def test_only_sidewalks_beside_a_45_or_avoid_road_keep_the_lower_price():
     assert 13 not in last, "a link keeps its price"
 
 
+def test_a_sidewalk_beside_no_road_is_priced_as_a_connector():
+    """Briggs Road, Glenmont (the owner, 2026-11-24): a walk tagged `footway=sidewalk`
+    joins the two ends of the street, 124 m, with no road beside it; the last-resort price
+    sent routes 0.7 mi round. A sidewalk beside a calm street keeps the last-resort price."""
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(20, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0)]),
+        way(21, dict(SIDEWALK), [(0.0, 0.0), (124.0, 0.0)]),
+        way(22, {"highway": "residential"}, [(124.0, 0.0), (400.0, 0.0)]),
+        way(23, dict(SIDEWALK), [(-280.0, 12.0), (-20.0, 12.0)]),
+    ]
+    last = last_resort_sidewalks(ways, {20: _stress(1), 22: _stress(1)}, {21, 23}, set())
+    assert last == {23}
+
+
 def test_a_last_resort_sidewalk_is_rated_lts_4():
     from pipeline.run import raise_ridden_sidewalks
 

@@ -2248,20 +2248,28 @@ def last_resort_sidewalks(
     links: Collection[int],
 ) -> set[int]:
     """The ridden footways priced above an LTS 4 road (`sidewalks.LAST_RESORT`; the owner,
-    2026-10-21, "Beside 4.5/Avoid only"): all but the links and the sidewalks running
-    beside a road rated 4.5 or Avoid (`sidewalks.beside`)."""
+    2026-10-21, "Beside 4.5/Avoid only"): all but the links, the sidewalks running
+    beside a road rated 4.5 or Avoid (`sidewalks.beside`), and the sidewalks running beside
+    no road at all.
+
+    The last-resort price keeps a rider on the calmer road beside a sidewalk; with no road
+    beside it there is none to keep to, and the "sidewalk" is a connector, priced as a link.
+    The owner, 2026-11-24, of the walk joining the two ends of Briggs Road in Glenmont
+    (OSM 656603494, `footway=sidewalk`, 410 ft, no road beside it): "a short connector path
+    on briggs road that was open to bikes but not included"; routes rode 0.7 mi round."""
     from routemaker.classes import TRAIL_CLASS_HIGHWAY
 
-    asked, roads = [], []
+    asked, roads, stressful = [], [], []
     for way in ways:
         if way.osm_id in ridden:
             if way.osm_id not in links and way.tags.get("footway") == "sidewalk":
                 asked.append((way.osm_id, way.coordinates))
-        elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY and very_stressful(
-            stress_by_way.get(way.osm_id)
-        ):
+        elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
             roads.append((way.osm_id, way.coordinates))
-    return set(ridden) - set(links) - sidewalks.beside(asked, roads)
+            if very_stressful(stress_by_way.get(way.osm_id)):
+                stressful.append((way.osm_id, way.coordinates))
+    roadless = {osm_id for osm_id, _coords in asked} - sidewalks.beside(asked, roads)
+    return set(ridden) - set(links) - sidewalks.beside(asked, stressful) - roadless
 
 
 # The graphs that ride no sidewalk (the owner, 2026-11-14: "Novices might use them more and
