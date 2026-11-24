@@ -16,9 +16,10 @@ sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only".
 
 So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua prices them
 (`rm:sidewalk`) at one of two levels:
-- a link, and a sidewalk running beside a road rated 4.5 or Avoid (`beside`): costlier than
-  any road up to LTS 3.5, cheaper than LTS 4, 4.5 and Avoid from the slider's middle up,
-  rated LTS 3 (`TIER`);
+- a link, a sidewalk running beside a road rated 4.5 or Avoid (`beside`), and a sidewalk
+  beside no road at all (`roadless`: a walk joining two streets end to end, with no road to
+  keep to): costlier than any road up to LTS 3.5, cheaper than LTS 4, 4.5 and Avoid from the
+  slider's middle up, rated LTS 3 (`TIER`);
 - every other sidewalk and crosswalk (`LAST_RESORT`): a little costlier than an LTS 4 road
   at every slider position, so it is ridden only where nothing else connects or beside an
   Avoid road, rated LTS 4 (`LAST_RESORT_TIER`). The router prices LTS 4 and 4.5 roads alike,
@@ -312,6 +313,83 @@ def beside(
             ):
                 near += metres
         if total > 0 and near >= BESIDE_FRACTION * total:
+            found.add(osm_id)
+    return found
+
+
+# A sidewalk lies beside no road (`roadless`) when at most ROADLESS_FRACTION of its length
+# is within ROADLESS_M of a road's centreline, square to one of its segments (level with
+# it, not past a dead end) and within ROADLESS_ANGLE of parallel (a side street ending at it
+# is not beside it). Our defaults, unmeasured, looser than `beside` on purpose: a sidewalk
+# the beside test misses (a wide boulevard, a bend) is not taken for a connector.
+ROADLESS_M = 45.0
+ROADLESS_ANGLE = 45.0
+ROADLESS_FRACTION = 0.2
+
+
+def _alongside_m(p, a, b) -> float:
+    """How far `p` is from the segment a-b, measured square to it, or infinity where it lies
+    past either end: level with the road, not beyond its dead end or round a corner."""
+    (px, py), (ax, ay), (bx, by) = p, a, b
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy
+    t = -1.0 if length2 == 0 else ((px - ax) * dx + (py - ay) * dy) / length2
+    if not 0.0 <= t <= 1.0:
+        return math.inf
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def roadless(
+    sidewalks: Sequence[tuple[int, Sequence[tuple[float, float]]]],
+    roads: Sequence[tuple[int, Sequence[tuple[float, float]]]],
+) -> set[int]:
+    """The sidewalks lying beside no road, each (osm id, [(lon, lat), ...]): a walk tagged
+    `footway=sidewalk` that joins two streets end to end, say, which the rebuild prices as a
+    link rather than a last resort (`pipeline.run.last_resort_sidewalks`; the owner, of the
+    walk joining the two ends of Briggs Road in Glenmont, OSM 656603494). A sidewalk with
+    fewer than two points is never roadless."""
+    lat0 = 38.9
+    cell = ROADLESS_M
+    asked = [
+        (osm_id, [_xy(lon, lat, lat0) for lon, lat in coords])
+        for osm_id, coords in sidewalks
+        if len(coords) >= 2
+    ]
+    if not asked:
+        return set()
+    wanted: set[tuple[int, int]] = set()
+    for _osm_id, points in asked:
+        for p, _bearing_at, _metres_at in _samples(points, BESIDE_STEP_M):
+            wanted.add((int(p[0] // cell), int(p[1] // cell)))
+    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float]]]] = (
+        defaultdict(list)
+    )
+    for _road_id, coords in roads:
+        if len(coords) < 2:
+            continue
+        points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        for a, b in zip(points, points[1:], strict=False):
+            steps = max(1, math.ceil(math.dist(a, b) / (cell / 2)))
+            cells = set()
+            for k in range(steps + 1):
+                x = a[0] + (b[0] - a[0]) * k / steps
+                y = a[1] + (b[1] - a[1]) * k / steps
+                cx, cy = int(x // cell), int(y // cell)
+                cells.update((cx + di, cy + dj) for di in (-1, 0, 1) for dj in (-1, 0, 1))
+            for key in cells & wanted:
+                grid[key].append((a, b))
+    found: set[int] = set()
+    for osm_id, points in asked:
+        total = near = 0.0
+        for p, bearing, metres in _samples(points, BESIDE_STEP_M):
+            total += metres
+            if any(
+                _alongside_m(p, a, b) <= ROADLESS_M
+                and _angle_between(bearing, _bearing(a, b)) <= ROADLESS_ANGLE
+                for a, b in grid.get((int(p[0] // cell), int(p[1] // cell)), ())
+            ):
+                near += metres
+        if total > 0 and near <= ROADLESS_FRACTION * total:
             found.add(osm_id)
     return found
 
