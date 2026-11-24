@@ -287,7 +287,7 @@ def test_only_sidewalks_beside_a_45_or_avoid_road_keep_the_lower_price():
 
 
 def test_a_sidewalk_beside_no_road_is_priced_as_a_connector():
-    """Briggs Road, Glenmont (the owner, 2026-11-24): a walk tagged `footway=sidewalk`
+    """Briggs Road, Glenmont (the owner's report): a walk tagged `footway=sidewalk`
     joins the two ends of the street, 124 m, with no road beside it; the last-resort price
     sent routes 0.7 mi round. A sidewalk beside a calm street keeps the last-resort price."""
     from pipeline.run import last_resort_sidewalks
