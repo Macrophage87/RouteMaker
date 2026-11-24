@@ -349,6 +349,17 @@ def test_a_way_s_car_access_may_be_corrected(osm, tmp_path):
     assert osm_edit.edit_problem(json.loads(closed.read_text())) is None
 
 
+def test_a_walk_mapped_as_a_sidewalk_may_lose_the_sidewalk_tag(osm, tmp_path):
+    # A walk joining two street ends, beside no street, mapped as a sidewalk.
+    walk = _edit(
+        tmp_path,
+        element="way",
+        expect={"footway": "sidewalk", "bicycle": None},
+        set={"footway": None, "bicycle": "yes"},
+    )
+    assert osm_edit.edit_problem(json.loads(walk.read_text())) is None
+
+
 def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
     assert osm_edit.main(["show", str(_edit(tmp_path))]) == 0
     assert "highway: None -> 'traffic_signals'" in capsys.readouterr().out
@@ -372,6 +383,11 @@ def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
         (
             {"set": {"cycleway:lane": "advisory"}, "expect": {"cycleway:lane": None}},
             "not one this tool may change",
+        ),
+        ({"set": {"footway": None}, "expect": {"footway": "sidewalk"}}, "footway may only"),
+        (
+            {"element": "way", "set": {"footway": "path"}, "expect": {"footway": "sidewalk"}},
+            "footway may only be removed or set to",
         ),
         ({"element": "relation"}, "node or way"),
         ({"id": True}, "positive OSM id"),

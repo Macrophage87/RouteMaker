@@ -1052,6 +1052,11 @@ class RebuildContext:
     # The sidewalks and crosswalks open to bicycles the map draws after all, as the
     # only link between two pieces of the trail network (`facility.trail_link_sidewalks`).
     trail_link_sidewalks: set[int] = field(default_factory=set)
+    # The ways the short-path declutter alone hides (`facility.short_paths_to_hide`), and
+    # the footways bicycles may ride the map draws after all as links between two streets
+    # (`sidewalks.street_links`).
+    short_paths_declutter: set[int] = field(default_factory=set)
+    street_links: set[int] = field(default_factory=set)
     # The ways inside a cemetery, routed only to or from a point inside one
     # (`rm:cemetery`; OWNER-DECISIONS 98).
     cemetery_ways: set[int] = field(default_factory=set)
@@ -3844,6 +3849,7 @@ def build_handlers(
         # A count to compare across rebuilds: #1427 draws webs of short walks anywhere.
         logger.info("short paths hidden from the map: %d ways", len(short_hidden))
         context.short_paths_hidden |= short_hidden
+        context.short_paths_declutter = short_hidden
         nobike = trail_closures.closures(
             context.ways,
             routes,
@@ -3944,6 +3950,34 @@ def build_handlers(
         logger.info(
             "sidewalk runs drawn as the only link between two trails: %d ways",
             len(context.trail_link_sidewalks),
+        )
+        # And a footway bicycles may ride that joins two streets, which the map would leave
+        # out as a sidewalk or a short path (the owner, of the walk joining the two ends of
+        # Briggs Road in Glenmont): a ridden link or connector, or an open path the
+        # declutter alone hid; never one hidden by its place or closed.
+        place_hidden = context.short_paths_hidden - context.short_paths_declutter
+        open_hidden = {
+            way.osm_id
+            for way in context.ways
+            if way.osm_id in context.short_paths_declutter and sidewalks.bicycle_open(way.tags)
+        }
+        connectors = {
+            way.osm_id
+            for way in context.ways
+            if way.osm_id in nobike.sidewalk_rides
+            and way.osm_id not in context.sidewalk_last_resort
+            and way.tags.get("footway") != "crossing"
+        }
+        context.street_links = sidewalks.street_links(
+            [(way.osm_id, way.tags, way.node_ids) for way in context.ways],
+            (connectors | open_hidden)
+            - place_hidden
+            - set(nobike.reasons)
+            - nobike.platform_walks
+            - nobike.walk_links,
+        )
+        logger.info(
+            "footways drawn as links between two streets: %d ways", len(context.street_links)
         )
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
@@ -4593,6 +4627,9 @@ def build_handlers(
         """
         if osm_id in context.cbd_sidewalks:
             return facility.MapClass.BARRED
+        if osm_id in context.street_links:
+            # A footway bicycles may ride joining two streets (`sidewalks.street_links`).
+            return facility.MapClass.ROAD
         if osm_id in context.short_paths_hidden:
             return facility.MapClass.HIDDEN
         if osm_id in context.platform_walks:

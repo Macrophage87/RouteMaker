@@ -110,12 +110,18 @@ ALLOWED_KEYS = frozenset(
         # old weekend-only closure after the park closed it to cars all year).
         "motor_vehicle",
         "motor_vehicle:conditional",
+        # A footway's kind, on a way only: a walk mapped as a sidewalk that runs beside no
+        # street, seen on the spot (an owner report: the connector joining the two ends of
+        # Briggs Road in Glenmont, tagged `footway=sidewalk`).
+        "footway",
     }
 )
 NODE_HIGHWAY_VALUES = frozenset({"traffic_signals", "stop", "give_way", "crossing"})
 # A street's direction, on a way only, in OSM's plain values (owner 2026-10-26,
 # Sheridan St NW: a one-way reversed on the street before either map caught up).
 ONEWAY_VALUES = frozenset({"yes", "-1", "no"})
+# A footway's kind, on a way only, in OSM's common values.
+FOOTWAY_VALUES = frozenset({"sidewalk", "crossing"})
 MAX_KEYS = 4
 
 
@@ -206,6 +212,11 @@ def edit_problem(edit: object) -> str | None:
             return "oneway may only change on a way"
         if changes["oneway"] is not None and changes["oneway"] not in ONEWAY_VALUES:
             return f"a way's oneway may only be set to one of {sorted(ONEWAY_VALUES)}"
+    if "footway" in changes:
+        if edit["element"] != "way":
+            return "footway may only change on a way"
+        if changes["footway"] is not None and changes["footway"] not in FOOTWAY_VALUES:
+            return f"a way's footway may only be removed or set to one of {sorted(FOOTWAY_VALUES)}"
     comment = edit.get("comment")
     if not isinstance(comment, str) or not comment.strip() or len(comment) > 255:
         return "comment is the changeset note: 1 to 255 characters"

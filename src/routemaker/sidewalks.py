@@ -394,6 +394,59 @@ def roadless(
     return found
 
 
+# The streets a drawn street link joins (`street_links`): public streets, never a service
+# road or a track (a parking lot's walk to the street is no link).
+LINKED_STREET_HIGHWAY = OPEN_ROAD_HIGHWAY - {"service", "track", "cycleway"}
+
+
+def street_links(
+    ways: Sequence[tuple[int, dict[str, str], Sequence[int]]], candidates: Set[int]
+) -> set[int]:
+    """The `candidates` the map draws as links between streets: footways a bicycle may ride
+    that the map would leave out (a sidewalk, a short unnamed path). Joined into runs at any
+    node, a run is drawn where it meets public streets (`LINKED_STREET_HIGHWAY`, open to
+    bicycles) at two or more different nodes. The owner, of the walk joining the two ends
+    of Briggs Road in Glenmont: "This is a useful link that should be included", then
+    "Similar ones probably should as well". `ways` is (osm id, tags, node ids)."""
+    nodes_of = {
+        osm_id: frozenset(node_ids)
+        for osm_id, _tags, node_ids in ways
+        if osm_id in candidates and len(node_ids) >= 2
+    }
+    if not nodes_of:
+        return set()
+    wanted = set().union(*nodes_of.values())
+    street_nodes: set[int] = set()
+    for osm_id, tags, node_ids in ways:
+        if (
+            osm_id not in candidates
+            and tags.get("highway") in LINKED_STREET_HIGHWAY
+            and bicycle_open(tags)
+        ):
+            street_nodes.update(set(node_ids) & wanted)
+    by_node: dict[int, list[int]] = defaultdict(list)
+    for osm_id, nodes in nodes_of.items():
+        for node in nodes:
+            by_node[node].append(osm_id)
+    found: set[int] = set()
+    seen: set[int] = set()
+    for start in nodes_of:
+        if start in seen:
+            continue
+        run, stack = set(), [start]
+        while stack:
+            osm_id = stack.pop()
+            if osm_id in run:
+                continue
+            run.add(osm_id)
+            for node in nodes_of[osm_id]:
+                stack.extend(by_node[node])
+        seen |= run
+        if len(set().union(*(nodes_of[osm_id] for osm_id in run)) & street_nodes) >= 2:
+            found |= run
+    return found
+
+
 # A sidewalk of a street the public may not drive (`no_public_traffic_sidewalks`): one OSM
 # opens to bicycles (`bicycle=yes` and the like) running beside a street closed to public
 # motor traffic (`motor_vehicle=no` and the like: authorized vehicles at most), and beside no

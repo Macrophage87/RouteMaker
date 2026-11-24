@@ -10967,7 +10967,8 @@ Python 3.11 or later, standard library only.
   `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing;
   `cycleway:<side>:separation` for a physical divider such as flex posts seen on the street; `motor_vehicle` and
   `motor_vehicle:conditional` for a road closed or opened to cars, from the managing agency's
-  own notice or what is posted there);
+  own notice or what is posted there; `footway`, on a way only, removed or set to `sidewalk` or
+  `crossing`, for a walk mapped as a sidewalk that runs beside no street);
   `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
