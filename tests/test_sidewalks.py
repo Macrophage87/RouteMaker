@@ -864,3 +864,36 @@ def test_the_most_specific_motor_key_decides_whether_the_public_drives():
     assert found({"highway": "service", "access": "yes", "motor_vehicle": "no"}) == {2}
     assert found({"highway": "service", "motor_vehicle": "no;destination"}) == {2}
     assert found({"highway": "pedestrian"}) == {2}
+
+
+def test_a_footway_joining_two_streets_is_drawn_as_a_street_link():
+    """Briggs Road, Glenmont (the owner's report): a walk joining the two ends of the street
+    is drawn; one off a single street node, or ending at a parking lot, is not."""
+    ways = [
+        (1, {"highway": "residential"}, [10, 11]),
+        (2, dict(SIDEWALK), [11, 12]),
+        (3, {"highway": "residential"}, [12, 13]),
+        # A walk in two pieces from a street to a parking lot's service road.
+        (4, {"highway": "footway", "bicycle": "yes"}, [13, 20]),
+        (5, {"highway": "footway", "bicycle": "yes"}, [20, 21]),
+        (6, {"highway": "service"}, [21, 22]),
+        # A walk from a street to a closed street.
+        (7, {"highway": "footway", "bicycle": "yes"}, [10, 30]),
+        (8, {"highway": "residential", "access": "private"}, [30, 31]),
+    ]
+    assert sw.street_links(ways, {2, 4, 5, 7}) == {2}
+    assert sw.street_links(ways, set()) == set()
+
+
+def test_roadless_sidewalks_feed_the_last_resort_rule():
+    from pipeline.run import last_resort_sidewalks, roadless_sidewalks
+
+    ways = [
+        way(20, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0)]),
+        way(21, dict(SIDEWALK), [(0.0, 0.0), (124.0, 0.0)]),
+        way(22, {"highway": "residential"}, [(124.0, 0.0), (400.0, 0.0)]),
+        way(23, dict(SIDEWALK), [(-280.0, 12.0), (-20.0, 12.0)]),
+    ]
+    roadless = roadless_sidewalks(ways, {21, 23}, set())
+    assert roadless == {21}
+    assert last_resort_sidewalks(ways, {}, {21, 23}, set(), roadless) == {23}
