@@ -335,7 +335,7 @@ import { matchingOwn, ownNow, ownSetup, reloadOwn, setGoOwn, useOwnRideTypes, ty
 import { takesGoDefault, type GoDefault } from "./lib/rideTypeCards.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
+import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, directionsLine, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, withTodaysDirections, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import type { Planner, WorstStretch } from "./lib/worstStretches.ts";
@@ -5035,6 +5035,20 @@ export function App() {
         }
       : undefined;
     if (check) void checkThen("open", saved.line, false, () => {}, undefined, closedNote, answer ? walksLine(answer) : plan.preset === "walk" || runs(plan.preset));
+    // Today's directions for the same line, asked quietly (lib/savedRoutes.ts withTodaysDirections): a cue fixed since
+    // the save reaches the saved route, its line unchanged. Not once a ride has begun on the saved answer.
+    const follow = answer ? directionsLine(answer, plan.dials.loop) : undefined;
+    if (answer && follow)
+      void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn, vias: viaIndices(plan.points, VIA_MARKS.isVia), follow, followExact: true, routeOnly: true }).then((today) => {
+        // Only while the saved route is still the one on screen, as opened: never another plan's, nor a ride's.
+        const shown = savedShown.current;
+        const onScreen = routedKey.current === keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
+        if (!today.ok || shown?.key !== key || shown.answer !== answer || !onScreen || shownNow.current.riding) return;
+        const fresh = withTodaysDirections(answer, today.route);
+        if (!fresh) return;
+        savedShown.current = { key, answer: fresh };
+        setRoute(fresh);
+      });
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it. A
     // fixed route is never compared: its line is the route.
     if (!saved.fixed) void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
