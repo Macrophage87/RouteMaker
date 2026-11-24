@@ -5039,13 +5039,15 @@ export function App() {
     // the save reaches the saved route, its line unchanged. Not once a ride has begun on the saved answer.
     const follow = answer ? directionsLine(answer, plan.dials.loop) : undefined;
     if (answer && follow)
-      void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn, follow, followExact: true, routeOnly: true }).then((today) => {
+      void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn, vias: viaIndices(plan.points, VIA_MARKS.isVia), follow, followExact: true, routeOnly: true }).then((today) => {
+        // Only while the saved route is still the one on screen, as opened: never another plan's, nor a ride's.
         const shown = savedShown.current;
-        if (!today.ok || shown?.key !== key || shown.answer !== answer || shownNow.current.riding) return;
+        const onScreen = routedKey.current === keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
+        if (!today.ok || shown?.key !== key || shown.answer !== answer || !onScreen || shownNow.current.riding) return;
         const fresh = withTodaysDirections(answer, today.route);
         if (!fresh) return;
         savedShown.current = { key, answer: fresh };
-        retry();
+        setRoute(fresh);
       });
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it. A
     // fixed route is never compared: its line is the route.

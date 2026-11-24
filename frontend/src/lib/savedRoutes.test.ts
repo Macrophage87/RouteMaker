@@ -447,6 +447,10 @@ test("today's directions are not taken where the planner did not follow the save
   assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: false }), null);
   assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: saved.distance_m + 200 }), null);
   assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, description: [] }), null);
+  // A stop the saved route has, missing from today's directions: its legs would no longer line up.
+  const stopAt = { ...(saved.description ?? [])[0], kind: "via", turn: null } as NonNullable<RouteResponse["description"]>[number];
+  const withStop = { ...saved, description: [stopAt, ...(saved.description ?? [])] };
+  assert.equal(withTodaysDirections(withStop, { ...takoma(), follows_file: true }), null);
 });
 
 test("the saved line is asked to be followed as it is, but not on a loop", () => {

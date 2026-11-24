@@ -500,14 +500,17 @@ export const SAME_LINE_M = 25;
  * asked to keep as a test is STILL not shown!"). A save keeps the whole answer, its turn list too, so a cue fixed after
  * the save (#1310, the Metropolitan Branch Trail's jog at Aspen Street) never reached it. `today` is the planner's
  * answer following the saved line itself (`follow`, exactly): where it did follow it (`follows_file`) and comes out the
- * same length, its directions replace the saved ones. The line, and every other figure, stays as saved. Null where
- * today's answer is not that line: the saved answer then stands as it is.
+ * same length with the same stops, its directions replace the saved ones. The line, and every other figure, stays as
+ * saved. Null where today's answer is not that line: the saved answer then stands as it is.
  */
 export function withTodaysDirections(saved: RouteResponse, today: RouteResponse): RouteResponse | null {
   if (today.follows_file !== true || !today.description?.length) return null;
   const apart = Math.abs(today.distance_m - saved.distance_m);
   if (!(apart <= Math.max(SAME_LINE_M, saved.distance_m * SAME_LINE_SHARE))) return null;
-  return { ...saved, description: today.description, description_overview: today.description_overview ?? saved.description_overview };
+  // The same stops, so the saved legs (`leg_ends`) still hold the directions' stop entries.
+  const stops = (route: RouteResponse) => (route.description ?? []).filter((e) => e.kind === "via").length;
+  if (stops(today) !== stops(saved)) return null;
+  return { ...saved, description: today.description, description_overview: today.description_overview ?? null };
 }
 
 /**
