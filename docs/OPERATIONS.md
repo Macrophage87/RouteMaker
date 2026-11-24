@@ -9125,6 +9125,10 @@ length, keep `rm:sidewalk=yes` and are rated LTS 3. So does a sidewalk beside no
 (`sidewalks.roadless`: at most 20% of it within 150 ft (45 m) of a road and level with it,
 our defaults, unmeasured), such as the walk tagged `footway=sidewalk` that joins the two
 ends of Briggs Road in Glenmont (OSM 656603494), which routes rode 0.7 mi round.
+The map draws such a walk too (`sidewalks.street_links`): a footway bicycles may ride (a
+link, a cut-through, a roadless sidewalk, or an open path the short-path declutter hid) whose
+run meets public streets at two or more nodes, so a street that carries on through a short walk
+does not look broken. In six sample areas from DC to Baltimore it draws 0 to 3 ways each.
 Every other ridden sidewalk and crosswalk gets `rm:sidewalk=last_resort`, which also writes LTS 4's top lane count, and is
 rated LTS 4. A crosswalk is never beside a road, so even on a corridor beside a 4.5 or
 Avoid road its crosswalks are last resort: short, they barely move the price. A crosswalk
