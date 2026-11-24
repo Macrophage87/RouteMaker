@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import type { RouteResponse } from "./api.ts";
 import { startDials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
+import { rideModel } from "./navigate.ts";
 import { parseGpx } from "./gpx.ts";
 import { readGpx } from "./gpxImport.ts";
 import { trackGpx, verbatimDownload, verbatimFileName } from "./gpxVerbatim.ts";
@@ -20,6 +21,8 @@ import {
   defaultRouteName,
   differenceLine,
   differsTooMuch,
+  directionsLine,
+  withTodaysDirections,
   gpxSave,
   planSave,
   RESTORED_SAID,
@@ -413,4 +416,44 @@ test("a full account names the route unopened longest and asks before deleting i
   const full = async () => new Response(JSON.stringify({ error: "You have 200 saved routes", code: "full", propose }), { status: 409 });
   const outcome = await saveRoute("", { name: "x", source: "plan", line: [], distance_m: 1, inputs: { hash: "", points: [], preset: "default", dials: {} } }, full, "t");
   assert.ok(!outcome.ok && outcome.full && outcome.propose?.id === 9);
+});
+
+// Today's directions for a saved line (the owner, 2026-11-24, riding his saved commute, saved 2026-11-10: "The turn that
+// I asked to keep as a test is STILL not shown!"). The fixture is the Metropolitan Branch Trail's jog at Aspen Street
+// as the planner answers it now (fixtures/cues/takoma-mbt-jog.json); the saved answer is the same line with the
+// directions it had before #1310: no jog.
+const takoma = (): RouteResponse => JSON.parse(readFileSync(new URL("../../../fixtures/cues/takoma-mbt-jog.json", import.meta.url), "utf8")).route as RouteResponse;
+const jogSaid = (route: RouteResponse): boolean => rideModel(route).cues.some((c) => /to stay on Metropolitan Branch Trail/.test(c.text));
+const beforeTheFix = (route: RouteResponse): RouteResponse => ({
+  ...route,
+  description: (route.description ?? []).filter((e) => !e.turn?.stay),
+  description_overview: (route.description_overview ?? []).filter((e) => !e.turn?.stay),
+});
+
+test("regression: a route saved before a cue fix gets today's cues for its own line (the jog at Aspen Street)", () => {
+  const saved = beforeTheFix(takoma());
+  assert.equal(jogSaid(saved), false, "the saved answer, as kept, has no jog");
+  const today: RouteResponse = { ...takoma(), follows_file: true, distance_m: saved.distance_m + 4 };
+  const fresh = withTodaysDirections(saved, today);
+  assert.ok(fresh);
+  assert.equal(jogSaid(fresh), true);
+  // The line and the figures stay as saved: only the directions are today's.
+  assert.equal(fresh.geometry, saved.geometry);
+  assert.equal(fresh.distance_m, saved.distance_m);
+});
+
+test("today's directions are not taken where the planner did not follow the saved line", () => {
+  const saved = beforeTheFix(takoma());
+  assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: false }), null);
+  assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: saved.distance_m + 200 }), null);
+  assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, description: [] }), null);
+});
+
+test("the saved line is asked to be followed as it is, but not on a loop", () => {
+  const route = takoma();
+  const line = directionsLine(route);
+  assert.ok(line);
+  assert.deepEqual(line[0], route.geometry.coordinates[0].slice(0, 2));
+  assert.deepEqual(line.at(-1), route.geometry.coordinates.at(-1)!.slice(0, 2));
+  assert.equal(directionsLine(route, true), undefined);
 });

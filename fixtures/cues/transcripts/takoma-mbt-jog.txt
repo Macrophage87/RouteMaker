@@ -1,0 +1,64 @@
+# takoma-mbt-jog: Metropolitan Branch Trail north beside Blair Rd: a right then left in the middle of one way at Aspen St, no junction at either corner (#1310); the owner's saved commute rides it
+
+## The cues Ride made
+    26 m  #0 left Blair Rd NW: Left onto Blair Road Northwest, then immediately left onto Metropolitan Branch Trail.
+    38 m  #1 left Metropolitan Branch Trl (joined): Left onto Metropolitan Branch Trail.
+   869 m  #2 right Metropolitan Branch Trl: Right to stay on Metropolitan Branch Trail, then immediately left to stay on Metropolitan Branch Trail.
+   901 m  #3 left Metropolitan Branch Trl (joined): Left to stay on Metropolitan Branch Trail.
+  1487 m  #4 left Tulip Ave: Left onto Tulip Avenue.
+  1645 m  #5 end: The end of the route.
+
+## takoma-mbt-jog at 8 mph, steady
+    0 s      0 m  #0 left Blair Rd NW prepare: "In 90 feet, left onto Blair Road Northwest, then immediately left onto Metropolitan Branch Trail." -> said, cut 3.7 s in
+    4 s     14 m  #0 left Blair Rd NW now (urgent): "Left now onto Blair Road Northwest." -> said
+    7 s     25 m  #1 left Metropolitan Branch Trl now (urgent): "Left now onto Metropolitan Branch Trail." -> said
+  202 s    722 m  #2 right Metropolitan Branch Trl advance: "In 500 feet, right to stay on Metropolitan Branch Trail, then immediately left to stay on Metropolitan Branch Trail." -> said
+  231 s    826 m  #2 right Metropolitan Branch Trl prepare: "In 140 feet, right, then immediately left." -> said
+  239 s    855 m  #2 right Metropolitan Branch Trl now (urgent): "Right now." -> said
+  248 s    887 m  #3 left Metropolitan Branch Trl now (urgent): "Left now." -> said
+  374 s   1338 m  #4 left Tulip Ave advance: "In 500 feet, left onto Tulip Avenue." -> said
+  404 s   1445 m  #4 left Tulip Ave prepare: "In 140 feet, left onto Tulip Avenue." -> said
+  412 s   1473 m  #4 left Tulip Ave now (urgent): "Left now onto Tulip Avenue." -> said
+  455 s   1627 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! bend at 987 m: the line bends right 60 degrees with no cue within 40 m
+
+## takoma-mbt-jog at 12 mph, steady
+    0 s      0 m  #0 left Blair Rd NW prepare: "In 90 feet, left onto Blair Road Northwest, then immediately left onto Metropolitan Branch Trail." -> said, cut 2.7 s in
+    3 s     16 m  #0 left Blair Rd NW now (urgent): "Left now onto Blair Road Northwest." -> said
+    5 s     27 m  #1 left Metropolitan Branch Trl now (urgent): "Left now onto Metropolitan Branch Trail." -> held 1.0 s
+  135 s    724 m  #2 right Metropolitan Branch Trl advance: "In 500 feet, right to stay on Metropolitan Branch Trail, then immediately left to stay on Metropolitan Branch Trail." -> said
+  153 s    821 m  #2 right Metropolitan Branch Trl prepare: "In 160 feet, right, then immediately left." -> said
+  160 s    858 m  #2 right Metropolitan Branch Trl now (urgent): "Right now." -> said
+  166 s    891 m  #3 left Metropolitan Branch Trl now (urgent): "Left now." -> said
+  250 s   1341 m  #4 left Tulip Ave advance: "In 500 feet, left onto Tulip Avenue." -> said
+  268 s   1438 m  #4 left Tulip Ave prepare: "In 160 feet, left onto Tulip Avenue." -> said
+  275 s   1475 m  #4 left Tulip Ave now (urgent): "Left now onto Tulip Avenue." -> said
+  303 s   1625 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! bend at 987 m: the line bends right 60 degrees with no cue within 40 m
+
+## takoma-mbt-jog at 18 mph, steady
+    0 s      0 m  #0 left Blair Rd NW prepare: "In 90 feet, left onto Blair Road Northwest, then immediately left onto Metropolitan Branch Trail." -> said, cut 1.7 s in
+    2 s     16 m  #0 left Blair Rd NW now (urgent): "Left now onto Blair Road Northwest." -> said
+    4 s     32 m  #1 left Metropolitan Branch Trl now (urgent): "Left now onto Metropolitan Branch Trail." -> held 1.0 s
+   82 s    660 m  #2 right Metropolitan Branch Trl advance: "In 700 feet, right to stay on Metropolitan Branch Trail, then immediately left to stay on Metropolitan Branch Trail." -> said
+   99 s    797 m  #2 right Metropolitan Branch Trl prepare: "In 250 feet, right, then immediately left." -> said
+  107 s    861 m  #2 right Metropolitan Branch Trl now (urgent): "Right now." -> said
+  110 s    885 m  #3 left Metropolitan Branch Trl now (urgent): "Left now." -> said
+  158 s   1271 m  #4 left Tulip Ave advance: "In 700 feet, left onto Tulip Avenue." -> said
+  175 s   1408 m  #4 left Tulip Ave prepare: "In 250 feet, left onto Tulip Avenue." -> said
+  183 s   1473 m  #4 left Tulip Ave now (urgent): "Left now onto Tulip Avenue." -> said
+  202 s   1625 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said
+  ! bend at 987 m: the line bends right 60 degrees with no cue within 40 m
+
+## takoma-mbt-jog at 12 mph, weak-gps
+    0 s      0 m  #0 left Blair Rd NW prepare: "In 90 feet, left onto Blair Road Northwest, then immediately left onto Metropolitan Branch Trail." -> said, cut 2.7 s in
+    3 s     16 m  #0 left Blair Rd NW now (urgent): "Left now onto Blair Road Northwest." -> said
+    6 s     32 m  #1 left Metropolitan Branch Trl now (urgent): "Left now onto Metropolitan Branch Trail." -> said
+  135 s    724 m  #2 right Metropolitan Branch Trl advance: "In 500 feet, right to stay on Metropolitan Branch Trail, then immediately left to stay on Metropolitan Branch Trail." -> said
+  153 s    821 m  #2 right Metropolitan Branch Trl prepare: "In 160 feet, right, then immediately left." -> said
+  160 s    858 m  #2 right Metropolitan Branch Trl now (urgent): "About here: Right now." -> said
+  183 s           note: "GPS is weak: turn cues paused."
+  250 s   1341 m  #4 left Tulip Ave advance: "In 500 feet, left onto Tulip Avenue." -> said
+  268 s   1438 m  #4 left Tulip Ave prepare: "In 160 feet, left onto Tulip Avenue." -> said
+  275 s   1475 m  #4 left Tulip Ave now (urgent): "Left now onto Tulip Avenue." -> said
+  303 s   1625 m  #5 end arrive (urgent): "You have arrived at the end of the route." -> said

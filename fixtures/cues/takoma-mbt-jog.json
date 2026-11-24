@@ -1,0 +1,731 @@
+{
+ "name": "takoma-mbt-jog",
+ "about": "Metropolitan Branch Trail north beside Blair Rd: a right then left in the middle of one way at Aspen St, no junction at either corner (#1310); the owner's saved commute rides it",
+ "route": {
+  "preset": "default",
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     -77.0127,
+     38.965453
+    ],
+    [
+     -77.012502,
+     38.965453
+    ],
+    [
+     -77.012405,
+     38.965484
+    ],
+    [
+     -77.012429,
+     38.965534
+    ],
+    [
+     -77.012455,
+     38.965583
+    ],
+    [
+     -77.012361,
+     38.965614
+    ],
+    [
+     -77.012381,
+     38.965656
+    ],
+    [
+     -77.012476,
+     38.965865
+    ],
+    [
+     -77.012571,
+     38.966038
+    ],
+    [
+     -77.012649,
+     38.966153
+    ],
+    [
+     -77.012785,
+     38.966334
+    ],
+    [
+     -77.012916,
+     38.966507
+    ],
+    [
+     -77.013025,
+     38.966669
+    ],
+    [
+     -77.013359,
+     38.967091
+    ],
+    [
+     -77.013756,
+     38.967534
+    ],
+    [
+     -77.013859,
+     38.967675
+    ],
+    [
+     -77.013932,
+     38.967837
+    ],
+    [
+     -77.013971,
+     38.967984
+    ],
+    [
+     -77.013981,
+     38.968149
+    ],
+    [
+     -77.014013,
+     38.96829
+    ],
+    [
+     -77.014074,
+     38.968438
+    ],
+    [
+     -77.014117,
+     38.968528
+    ],
+    [
+     -77.014852,
+     38.969862
+    ],
+    [
+     -77.014897,
+     38.969941
+    ],
+    [
+     -77.015654,
+     38.971282
+    ],
+    [
+     -77.0162,
+     38.97226
+    ],
+    [
+     -77.016206,
+     38.972292
+    ],
+    [
+     -77.016196,
+     38.97231
+    ],
+    [
+     -77.016176,
+     38.97232
+    ],
+    [
+     -77.015828,
+     38.972329
+    ],
+    [
+     -77.015855,
+     38.972444
+    ],
+    [
+     -77.016205,
+     38.973009
+    ],
+    [
+     -77.016216,
+     38.97305
+    ],
+    [
+     -77.016206,
+     38.9731
+    ],
+    [
+     -77.01613,
+     38.973181
+    ],
+    [
+     -77.016093,
+     38.973135
+    ],
+    [
+     -77.015748,
+     38.973613
+    ],
+    [
+     -77.015582,
+     38.973848
+    ],
+    [
+     -77.01539,
+     38.97412
+    ],
+    [
+     -77.015315,
+     38.974227
+    ],
+    [
+     -77.015246,
+     38.974324
+    ],
+    [
+     -77.015225,
+     38.974353
+    ],
+    [
+     -77.015185,
+     38.97441
+    ],
+    [
+     -77.015101,
+     38.974529
+    ],
+    [
+     -77.015067,
+     38.974577
+    ],
+    [
+     -77.014889,
+     38.974826
+    ],
+    [
+     -77.014844,
+     38.974884
+    ],
+    [
+     -77.014787,
+     38.974952
+    ],
+    [
+     -77.014749,
+     38.975012
+    ],
+    [
+     -77.014671,
+     38.975135
+    ],
+    [
+     -77.014639,
+     38.97518
+    ],
+    [
+     -77.014577,
+     38.975267
+    ],
+    [
+     -77.014341,
+     38.975586
+    ],
+    [
+     -77.014298,
+     38.975648
+    ],
+    [
+     -77.014259,
+     38.975702
+    ],
+    [
+     -77.014213,
+     38.975765
+    ],
+    [
+     -77.013878,
+     38.976238
+    ],
+    [
+     -77.013468,
+     38.976821
+    ],
+    [
+     -77.013442,
+     38.976856
+    ],
+    [
+     -77.013495,
+     38.97688
+    ],
+    [
+     -77.014209,
+     38.977192
+    ],
+    [
+     -77.014741,
+     38.977424
+    ],
+    [
+     -77.014798,
+     38.977449
+    ],
+    [
+     -77.014846,
+     38.977466
+    ],
+    [
+     -77.014822,
+     38.977495
+    ],
+    [
+     -77.014829,
+     38.977501
+    ],
+    [
+     -77.014984,
+     38.977569
+    ],
+    [
+     -77.015013,
+     38.977582
+    ]
+   ]
+  },
+  "distance_m": 1648.0,
+  "duration_s": 424.7,
+  "time_marks": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.01582,
+    4.6
+   ],
+   [
+    0.01582,
+    44.6
+   ],
+   [
+    0.01592,
+    44.6
+   ],
+   [
+    0.02311,
+    48.5
+   ],
+   [
+    0.02848,
+    54.3
+   ],
+   [
+    0.03151,
+    56.2
+   ],
+   [
+    0.35362,
+    166.4
+   ],
+   [
+    0.35362,
+    169.7
+   ],
+   [
+    0.61015,
+    257.4
+   ],
+   [
+    0.61382,
+    262.6
+   ],
+   [
+    0.61534,
+    263.2
+   ],
+   [
+    0.61534,
+    269.8
+   ],
+   [
+    0.7462,
+    318.2
+   ],
+   [
+    0.7462,
+    325.0
+   ],
+   [
+    0.90146,
+    382.4
+   ],
+   [
+    0.90383,
+    383.1
+   ],
+   [
+    0.90383,
+    387.1
+   ],
+   [
+    0.986,
+    413.0
+   ],
+   [
+    0.986,
+    417.0
+   ],
+   [
+    0.98601,
+    417.0
+   ],
+   [
+    0.98834,
+    421.8
+   ],
+   [
+    1.0,
+    424.7
+   ]
+  ],
+  "description": [
+   {
+    "kind": "stretch",
+    "from_m": 0,
+    "to_m": 26,
+    "from_mi": 0.0,
+    "to_mi": 0.02,
+    "street": "service road",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": null,
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 86 ft (26 m): Service road, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 26,
+    "to_m": 38,
+    "from_mi": 0.02,
+    "to_mi": 0.02,
+    "street": "Blair Road Northwest",
+    "tier": 3,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Blair Road Northwest",
+     "control": "none",
+     "severity": null,
+     "rated_level": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 mi (0.0 km), for 39 ft (12 m): Left onto Blair Road Northwest, busy road (LTS 3).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 38,
+    "to_m": 871,
+    "from_mi": 0.02,
+    "to_mi": 0.54,
+    "street": "Metropolitan Branch Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "Metropolitan Branch Trail",
+     "control": null,
+     "severity": null,
+     "rated_level": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.0 to 0.5 mi (0.0 to 0.9 km): Left onto Metropolitan Branch Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 871,
+    "to_m": 903,
+    "from_mi": 0.54,
+    "to_mi": 0.56,
+    "street": "Metropolitan Branch Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "right",
+     "onto": "Metropolitan Branch Trail",
+     "control": null,
+     "severity": null,
+     "rated_level": null,
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.5 mi (0.9 km), for 110 ft (32 m): Right to stay on Metropolitan Branch Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 903,
+    "to_m": 1008,
+    "from_mi": 0.56,
+    "to_mi": 0.63,
+    "street": "Metropolitan Branch Trail",
+    "tier": 1,
+    "facility": "path",
+    "oneway": null,
+    "turn": {
+     "movement": "left",
+     "onto": "Metropolitan Branch Trail",
+     "control": null,
+     "severity": null,
+     "rated_level": null,
+     "stay": true,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 mi (0.9 km), for 340 ft (105 m): Left to stay on Metropolitan Branch Trail, traffic-free path.",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1008,
+    "to_m": 1287,
+    "from_mi": 0.63,
+    "to_mi": 0.8,
+    "street": "Maple Street Northwest",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "straight",
+     "onto": "Maple Street Northwest",
+     "control": null,
+     "severity": null,
+     "rated_level": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.6 to 0.8 mi (1.0 to 1.3 km): Continue onto Maple Street Northwest, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1287,
+    "to_m": 1490,
+    "from_mi": 0.8,
+    "to_mi": 0.93,
+    "street": "Maple Avenue",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "straight",
+     "onto": "Maple Avenue",
+     "control": null,
+     "severity": null,
+     "rated_level": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.8 to 0.9 mi (1.3 to 1.5 km): Continue onto Maple Avenue, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   },
+   {
+    "kind": "stretch",
+    "from_m": 1490,
+    "to_m": 1648,
+    "from_mi": 0.93,
+    "to_mi": 1.02,
+    "street": "Tulip Avenue",
+    "tier": 1,
+    "facility": "none",
+    "oneway": false,
+    "turn": {
+     "movement": "left",
+     "onto": "Tulip Avenue",
+     "control": null,
+     "severity": null,
+     "rated_level": null,
+     "stay": null,
+     "shape": null,
+     "exit": null,
+     "toward": null,
+     "cross": null,
+     "across": null,
+     "across_from": null,
+     "over": null
+    },
+    "severity": null,
+    "via": null,
+    "group": null,
+    "surface": null,
+    "text": "0.9 mi (1.5 km), for 520 ft (158 m): Left onto Tulip Avenue, low stress (LTS 1).",
+    "citation": null,
+    "text_lanes_hidden": null,
+    "reason": null,
+    "relation_name": false,
+    "crossings": null
+   }
+  ],
+  "leg_ends": [
+   67
+  ],
+  "arrival_side": null,
+  "leg_arrival_sides": [
+   null
+  ],
+  "stress_spans": [
+   {
+    "from_m": 0,
+    "to_m": 26,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 26,
+    "to_m": 52,
+    "tier": 3,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 52,
+    "to_m": 1011,
+    "tier": 1,
+    "facility": "path",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1011,
+    "to_m": 1251,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   },
+   {
+    "from_m": 1251,
+    "to_m": 1485,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": true
+   },
+   {
+    "from_m": 1485,
+    "to_m": 1643,
+    "tier": 1,
+    "facility": "none",
+    "unpaved": false,
+    "rough": null,
+    "rpm": null,
+    "outside_dc": null,
+    "half": null
+   }
+  ]
+ }
+}
