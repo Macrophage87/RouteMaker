@@ -302,6 +302,28 @@ def test_a_sidewalk_beside_no_road_is_priced_as_a_connector():
     assert last == {23}
 
 
+def test_a_short_walk_between_two_dead_ends_is_roadless():
+    ways = [
+        way(30, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0)]),
+        way(31, dict(SIDEWALK), [(0.0, 0.0), (60.0, 0.0)]),
+        way(32, {"highway": "residential"}, [(60.0, 0.0), (400.0, 0.0)]),
+    ]
+    from pipeline.run import last_resort_sidewalks
+
+    assert last_resort_sidewalks(ways, {}, {31}, set()) == set()
+
+
+def test_a_sidewalk_partly_along_an_lts_4_road_stays_last_resort():
+    """Half along a busy road, then off on its own: not a connector."""
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(40, {"highway": "primary"}, [(0.0, 0.0), (500.0, 0.0)]),
+        way(41, dict(SIDEWALK), [(0.0, 40.0), (500.0, 40.0), (1000.0, 300.0)]),
+    ]
+    assert last_resort_sidewalks(ways, {40: _stress(4)}, {41}, set()) == {41}
+
+
 def test_a_last_resort_sidewalk_is_rated_lts_4():
     from pipeline.run import raise_ridden_sidewalks
 

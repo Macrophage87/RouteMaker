@@ -9121,11 +9121,11 @@ take the sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only".
 router prices LTS 4 and 4.5 roads alike, so the rebuild sorts the sidewalks instead
 (`pipeline.run.last_resort_sidewalks`, `sidewalks.beside`): a link, and a sidewalk lying
 within 100 ft (30 m) of a road rated 4.5 or Avoid and parallel to it along most of its
-length, keep `rm:sidewalk=yes` and are rated LTS 3, and so does a sidewalk lying beside no
-road at all (a walk tagged `footway=sidewalk` that joins two streets end to end: the owner,
-of the one joining the two ends of Briggs Road in Glenmont, OSM 656603494,
-which routes rode 0.7 mi round; with no road beside it there is no road to keep to); every other ridden sidewalk and
-crosswalk gets `rm:sidewalk=last_resort`, which also writes LTS 4's top lane count, and is
+length, keep `rm:sidewalk=yes` and are rated LTS 3. So does a sidewalk beside no road
+(`sidewalks.roadless`: at most 20% of it within 150 ft (45 m) of a road and level with it,
+our defaults, unmeasured), such as the walk tagged `footway=sidewalk` that joins the two
+ends of Briggs Road in Glenmont (OSM 656603494), which routes rode 0.7 mi round.
+Every other ridden sidewalk and crosswalk gets `rm:sidewalk=last_resort`, which also writes LTS 4's top lane count, and is
 rated LTS 4. A crosswalk is never beside a road, so even on a corridor beside a 4.5 or
 Avoid road its crosswalks are last resort: short, they barely move the price. A crosswalk
 that carries a trail across a road (`sidewalks.trail_crossings`: at most 160 ft (50 m), a

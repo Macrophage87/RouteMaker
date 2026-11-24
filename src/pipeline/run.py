@@ -2268,7 +2268,7 @@ def last_resort_sidewalks(
             roads.append((way.osm_id, way.coordinates))
             if very_stressful(stress_by_way.get(way.osm_id)):
                 stressful.append((way.osm_id, way.coordinates))
-    roadless = {osm_id for osm_id, _coords in asked} - sidewalks.beside(asked, roads)
+    roadless = sidewalks.roadless(asked, roads)
     return set(ridden) - set(links) - sidewalks.beside(asked, stressful) - roadless
 
 
