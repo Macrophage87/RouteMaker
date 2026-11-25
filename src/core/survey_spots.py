@@ -33,7 +33,8 @@ from routemaker.survey import QUESTIONS, WHEN, answer_problems
 
 SPOTS_FILE = Path(__file__).resolve().parents[2] / "fixtures" / "survey" / "spots.json"
 METRES_PER_MILE = 1609.344
-MAX_IN_BOX = 400
+# The whole list fits one answer (about 6,000 points): the layer fetches it once.
+MAX_IN_BOX = 10_000
 MAX_NEAR = 50
 MAX_RADIUS_MI = 15.0
 #: The answer that makes a spot count toward the rider's total (the honor system).
@@ -135,10 +136,10 @@ def _out(s: Spot, p: tuple[float, float]) -> dict:
 
 
 def in_box(west: float, south: float, east: float, north: float, hide=frozenset()) -> list[dict]:
-    """The spots in a map view, at most `MAX_IN_BOX`, leaving out `hide` (a rider's done list)."""
+    """The spots in a map view as the layer draws them (id, road, point), leaving out `hide`."""
     table = spots()
     got = [
-        _out(table[i], p)
+        {"id": i, "road": table[i].road, "lon": round(p[0], 6), "lat": round(p[1], 6)}
         for i, p in points().items()
         if i not in hide and west <= p[0] <= east and south <= p[1] <= north
     ]

@@ -268,6 +268,9 @@ import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { IntervalsOverlay, useIntervals } from "./app/IntervalsOverlay.tsx";
+import { SurveyOverlay, useSurveySpots } from "./app/SurveyOverlay.tsx";
+import { SurveyCard } from "./SurveyCard.tsx";
+import { loadSurveyMine, spotsPassed, readSurveyLayer, saveSurveyLayer, surveyCountText, SURVEY_SIGN_IN, SURVEY_UNAVAILABLE, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
 import { intervalsAtLeast, intervalsStatusText, readIntervalsLayer, readIntervalsMinutes, saveIntervalsLayer, saveIntervalsMinutes, type IntervalsMinutes } from "./lib/intervals.ts";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
@@ -954,6 +957,16 @@ export function App() {
     saveIntervalsLayer(on);
   };
   // Its "At least" minutes (the owner, 2026-11-17: "a 3', 5', 8', etc interval stretch"), kept on this device.
+  // Survey spots (lib/surveySpots.ts; the owner, 2026-11-25): one switch in Layers, off by default, kept on this device.
+  const [surveyOn, setSurveyOnState] = useState<boolean>(() => readSurveyLayer());
+  const changeSurveyOn = (on: boolean) => {
+    setSurveyOnState(on);
+    saveSurveyLayer(on);
+  };
+  // The spot whose card is open, the spots still to answer after a ride (one card after another), and the rider's count.
+  const [surveySpot, setSurveySpot] = useState<SurveySpot | null>(null);
+  const [surveyQueue, setSurveyQueue] = useState<SurveySpot[]>([]);
+  const [surveyMine, setSurveyMine] = useState<SurveyMine | null>(null);
   const [intervalsMinutes, setIntervalsMinutesState] = useState<IntervalsMinutes>(() => readIntervalsMinutes());
   const changeIntervalsMinutes = (minutes: IntervalsMinutes) => {
     setIntervalsMinutesState(minutes);
@@ -5164,9 +5177,19 @@ export function App() {
     rebalance?: { day: RebalanceDay; before: RebalanceDay; from: LonLat; dock: string } | null;
     /** A ride on an assistant's draft, unchanged since it was opened (lib/drafts.ts): offered Save route. */
     draft?: OpenDraft | null;
+    /** The line ridden (the route as it stood at the end), for the survey spots it passed (lib/surveySpots.ts). */
+    line?: LonLat[];
   } | null>(null);
   // The ended ride's draft's Save: under way, done, or what the server said.
   const [draftSave, setDraftSave] = useState<{ saving: boolean; saved: boolean; said: string | null }>({ saving: false, saved: false, said: null });
+  const surveyShown = surveyOn && !massMap;
+  // Loaded with the layer on, or when a signed-in rider's ride ends (the spots it passed; lib/surveySpots.ts spotsPassed).
+  const survey = useSurveySpots(surveyShown || (rideEnded !== null && me.signed_in), window.location.origin, me.signed_in ? "in" : "out");
+  useEffect(() => {
+    if (!surveyShown || !me.signed_in) return;
+    void loadSurveyMine(window.location.origin).then((mine) => mine && setSurveyMine(mine));
+  }, [surveyShown, me.signed_in]);
+  const pickSurveySpot = useCallback((spot: SurveySpot) => setSurveySpot(spot), []);
   const saveEndedDraft = (draft: OpenDraft) => {
     if (draftSave.saving) return;
     setDraftSave({ saving: true, saved: false, said: null });
@@ -5248,7 +5271,8 @@ export function App() {
     const openDraft = draftOpen.current;
     const draft = openDraft && planRoute && Math.abs(planRoute.distance_m - openDraft.distanceM) < 1 ? openDraft : null;
     setDraftSave({ saving: false, saved: false, said: null });
-    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance, draft }));
+    const line = kept?.route.geometry.coordinates ?? [];
+    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance, draft, line }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
     // Problems still to report to 311 are said too: the focus goes to Done, past the summary's line about them.
     const owed = openCount(report311Log().list());
@@ -7554,6 +7578,21 @@ export function App() {
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !onBike} />
       {/* Go and Plan, not the Mass Ride map (lib/intervals.ts). */}
       <IntervalsOverlay getMap={getMap} on={intervalsShown} data={intervalsDrawn} />
+      <SurveyOverlay getMap={getMap} on={surveyShown} spots={survey.spots} onPick={pickSurveySpot} />
+      <SurveyCard
+        spot={surveySpot}
+        origin={window.location.origin}
+        signedIn={me.signed_in}
+        onSent={(spot, mine) => {
+          survey.drop(spot.id);
+          setSurveyMine(mine);
+        }}
+        onClose={() => {
+          const [next, ...rest] = surveyQueue;
+          setSurveyQueue(rest);
+          setSurveySpot(next ?? null);
+        }}
+      />
       <BikeshareDocksOverlay
         active={docksActive}
         getMap={getMap}
@@ -7920,6 +7959,12 @@ export function App() {
           onReports={rideEndReports}
           origin={origin}
           goDefault={endedGoDefault}
+          surveyPassed={me.signed_in && survey.spots && rideEnded.line ? spotsPassed(rideEnded.line, survey.spots) : []}
+          onSurvey={(passed) => {
+            const [first, ...rest] = passed;
+            setSurveyQueue(rest);
+            setSurveySpot(first ?? null);
+          }}
         />
       )}
       {riding && rideStart && (
@@ -8162,6 +8207,14 @@ export function App() {
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
                 // Intervals: Go and Plan, not the Mass Ride map, where it never draws.
+                survey: massMap
+                  ? null
+                  : {
+                      on: surveyOn,
+                      onChange: changeSurveyOn,
+                      status: surveyShown && survey.status === "unavailable" ? SURVEY_UNAVAILABLE : "",
+                      count: !surveyShown ? "" : me.signed_in ? (surveyMine ? surveyCountText(surveyMine.done.length, surveyMine.count) : "") : SURVEY_SIGN_IN,
+                    },
                 intervals: massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
                 bikeshare: {

@@ -57,7 +57,7 @@ class TestLayer:
         got = client.get("/api/survey/spots", BOX, **addr()).json()["spots"]
         assert [s["id"] for s in got] == ["s101", "s202"]
         assert got[0]["lon"] == pytest.approx(-77.03) and got[0]["lat"] == pytest.approx(38.87)
-        assert got[0]["questions"] == ["traffic", "speed_sign"]
+        assert got[0]["road"] == "Ohio Drive Southwest"
 
     def test_a_spot_outside_the_view_is_left_out(self, client, spots) -> None:
         box = {**BOX, "north": 38.9}
@@ -65,7 +65,9 @@ class TestLayer:
         assert [s["id"] for s in got] == ["s101"]
 
     def test_near_is_nearest_first(self, client, spots) -> None:
-        got = client.get("/api/survey/near", {"lat": 38.93, "lon": -77.0, "miles": 10}, **addr()).json()
+        got = client.get(
+            "/api/survey/near", {"lat": 38.93, "lon": -77.0, "miles": 10}, **addr()
+        ).json()
         assert [s["id"] for s in got["spots"]] == ["s202", "s101"]
         assert got["spots"][0]["away_mi"] < 0.1
 
