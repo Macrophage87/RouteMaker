@@ -21,6 +21,7 @@ import { DO_ANOTHER_TRIP, FINISH_SESSION, REBALANCE_TODAY, dayRows, type Rebalan
 import { rideCueLog } from "./lib/cueRecorder.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { closedSpots, feltStretches } from "./lib/rideFeedback.ts";
+import { surveyPassedText, type SurveySpot } from "./lib/surveySpots.ts";
 import { ClosedOffer, FeltDifferent } from "./RideFeedback.tsx";
 
 export const RIDE_SUMMARY_TITLE = t("Ride ended");
@@ -89,6 +90,8 @@ export function RideSummaryCard({
   rebalance = null,
   origin = null,
   goDefault = null,
+  surveyPassed,
+  onSurvey,
 }: {
   stats: RideStats;
   endedAt: number;
@@ -126,6 +129,9 @@ export function RideSummaryCard({
    * option after the ride is finished): its name and Make Go's default; once pressed, a line that says so.
    */
   goDefault?: { name: string; set: boolean; onSet: () => void } | null;
+  /** The survey spots the ride passed that the rider has not answered (lib/surveySpots.ts); a line opens their cards. */
+  surveyPassed?: SurveySpot[];
+  onSurvey?: (passed: SurveySpot[]) => void;
 }) {
   const done = useRef<HTMLButtonElement>(null);
   const goDefaultLine = useRef<HTMLParagraphElement>(null);
@@ -265,6 +271,13 @@ export function RideSummaryCard({
         {/* Learning from the ride (lib/rideFeedback.ts): under the figures, each one line until pressed. */}
         {origin != null && spots.length > 0 && <ClosedOffer origin={origin} spots={spots} />}
         {origin != null && felt.length > 0 && <FeltDifferent origin={origin} stretches={felt} />}
+        {surveyPassed && surveyPassed.length > 0 && onSurvey && (
+          <p className="ride-summary-survey">
+            <button type="button" className="link" onClick={() => onSurvey(surveyPassed)}>
+              {surveyPassedText(surveyPassed.length)}
+            </button>
+          </p>
+        )}
         {/* The chart and the stress behind Details (the UI review, 2026-10-28), the figures in view. */}
         {(segments.length > 0 || elevationDrawn(stats)) && (
           <details className="ride-summary-details">

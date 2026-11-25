@@ -119,6 +119,7 @@ from . import (
     segment_info,
     share_links,
     stoporder,
+    survey_spots,
     timing,
     trailprofile,
     transit,
@@ -8503,6 +8504,108 @@ def account_settings_save(request):
     # One row per account, last write wins (the plan).
     row, _ = AccountSettings.objects.update_or_create(user=request.user, defaults={"data": data})
     return _private(JsonResponse(_settings_out(row)))
+
+
+# --- Survey spots (core.survey_spots; the owner, 2026-11-25) --------------------------------
+#
+# Stretches whose rating was a low-confidence call, for riders to check on the spot. The layer
+# and the connector read them signed out; a signed-in rider's answered spots are left out. An
+# answer needs an account (it is what hides the spot and makes the count); the answer row itself
+# keeps no account (core.models.SurveyAnswer).
+
+
+class SurveyBoxIn(Schema):
+    west: Coordinate
+    south: Coordinate
+    east: Coordinate
+    north: Coordinate
+
+
+class SurveyNearIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+    miles: float = Field(default=3.0, gt=0, le=survey_spots.MAX_RADIUS_MI)
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+def _survey_hide(request) -> frozenset[str]:
+    return survey_spots.done_ids(getattr(request, "user", None))
+
+
+@api.get("/survey/spots", summary="The survey spots in a map view")
+@decorate_view(ratelimit.rate_limited(ratelimit.SURVEY_SPOTS), same_site_only, errors_as_json)
+def survey_spots_in_view(request, params: Query[SurveyBoxIn]):
+    if params.east <= params.west or params.north <= params.south:
+        return _stress_error(400, "the view's west must be less than east, south less than north")
+    try:
+        found = survey_spots.in_box(
+            params.west, params.south, params.east, params.north, _survey_hide(request)
+        )
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+    return _private(JsonResponse({"spots": found}))
+
+
+@api.get("/survey/near", summary="The survey spots near a point, nearest first")
+@decorate_view(ratelimit.rate_limited(ratelimit.SURVEY_SPOTS), same_site_only, errors_as_json)
+def survey_spots_near(request, params: Query[SurveyNearIn]):
+    try:
+        found = survey_spots.near(params.lon, params.lat, params.miles, _survey_hide(request))
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+    return _private(JsonResponse({"spots": found}))
+
+
+@api.get("/survey/spots/{spot_id}/questions", summary="A survey spot's questions")
+@decorate_view(ratelimit.rate_limited(ratelimit.SURVEY_SPOTS), same_site_only, errors_as_json)
+def survey_spot_questions(request, spot_id: str):
+    try:
+        if spot_id not in survey_spots.spots():
+            return _stress_error(404, "no such survey spot")
+        return _private(JsonResponse({"questions": survey_spots.questions_for(spot_id)}))
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+
+
+@api.get("/me/survey", summary="The spots the signed-in rider has answered, and their count")
+@decorate_view(
+    signed_in_only, same_site_editor, ratelimit.rate_limited(ratelimit.ME), errors_as_json
+)
+def survey_mine(request):
+    return _private(JsonResponse(survey_spots.mine(request.user)))
+
+
+@api.post("/survey/answer", summary="Answer a survey spot's questions")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.SURVEY_ANSWERS),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def survey_answer(request):
+    from . import report_log
+
+    body, refusal = _json_body(request, 4096)
+    if refusal is not None:
+        return refusal
+    if not isinstance(body, dict) or not isinstance(body.get("spot"), str):
+        return _stress_error(400, "say which spot", field="spot")
+    try:
+        problem, out = survey_spots.record(
+            body["spot"], body.get("answers"), request.user, report_log.today()
+        )
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+    if problem:
+        status = 409 if problem.startswith("you have already") else 400
+        return _stress_error(status, problem, field="answers")
+    return _private(JsonResponse(out))
 
 
 # The 311 log (core.report_log; core.models.Report311Log): the whole log, last write wins, like

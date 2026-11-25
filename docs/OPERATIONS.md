@@ -114,6 +114,7 @@ Contents:
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
 - [The Climbs layer (454; MTB/topo slice 5; claude/v0-5-0-climbs)](#the-climbs-layer-454-mtbtopo-slice-5-claudev0-5-0-climbs)
 - [The Intervals layer](#the-intervals-layer)
+- [Survey spots](#survey-spots)
 - [The rebuild bundle (wip/rebuild-bundle)](#the-rebuild-bundle-wiprebuild-bundle)
 - [Bikeshare feeds](#bikeshare-feeds)
 - [Work zones](#work-zones)
@@ -9683,6 +9684,28 @@ both into the running rebuild container first and remove them after, until the n
 It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
 to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's
 README, and commit. It reads only and is safe to re-run.
+
+## Survey spots
+
+The owner, 2026-11-25: highlight the roads whose rating was a low-confidence call so riders can tap
+one (or answer the ones a ride passed) and say what it is like there; a spot answered once no longer
+shows for that rider; the count of spots answered "Today" (the honor system, any ride) is for a
+Freezing Saddles side prize. Layers has one switch, "Survey spots" (off until turned on, kept per
+browser as `routemaker.surveyLayer`; not on the Mass Ride map). The connector's `survey_spots_near`
+lists spots near a point; a plan goes through them as via points.
+
+- **The list** is `fixtures/survey/spots.json`, written from a re-rate's outputs:
+  `python3 scripts/make_survey_spots.py --rerate <re-rate folder>` (the 2026-11-13 re-rate gave
+  6,019 spots, Florida left out). Write it again after each re-rate and commit it.
+  `docker/api.Dockerfile` copies `fixtures/survey` into the api image, so a new list reaches beta
+  with the next api image. No file: the endpoints answer 503 and the switch says the spots are
+  unavailable.
+- **Points** are the middle of each spot's longest segment on the live map, worked out once per
+  live segment table (a map swap is picked up by the table's oid); a spot whose way left the map is
+  not shown.
+- **Kept** (migration 0069): `survey_answer` (spot, day, answers; a random key, no account) and
+  `survey_done` (account, spot, counted; deleted with the account). Answers are evidence for the
+  next re-rate's rater, never a rating by themselves.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 

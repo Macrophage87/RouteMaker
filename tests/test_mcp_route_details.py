@@ -842,6 +842,23 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
         server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 90})
 
 
+def test_survey_spots_near_lists_spots_with_points_for_a_plan() -> None:
+    places = _Places()
+    asked = []
+
+    def survey_spots_near(near, miles):
+        asked.append((near, miles))
+        return [{"id": "s101", "road": "Ohio Drive Southwest", "lon": -77.03, "lat": 38.87}]
+
+    places.survey_spots_near = survey_spots_near
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("survey_spots_near", {"near": [-77.05, 38.94], "within_miles": 40})
+    assert asked == [((-77.05, 38.94), 15.0)], "the search is capped at 15 mi"
+    assert out["spots"] == [
+        {"id": "s101", "road": "Ohio Drive Southwest", "point": [-77.03, 38.87]}
+    ]
+
+
 def test_climb_minutes_slow_with_the_grade() -> None:
     assert mcp.climb_minutes(1.5, 0.0, 18) == pytest.approx(5.0)
     assert mcp.climb_minutes(0.75, 5.0, 18) == pytest.approx(4.0, abs=0.1)

@@ -11,6 +11,7 @@ would make the swap impossible.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
@@ -2847,3 +2848,47 @@ class JunctionRater(models.Model):
     along_stress = models.FloatField(null=True)
     along_delay_s = models.FloatField(null=True)
     loaded_at = models.DateTimeField(default=timezone.now)
+
+
+class SurveyAnswer(models.Model):
+    """A rider's answers at one survey spot (core.survey_spots; the owner, 2026-11-25).
+
+    Evidence the next re-rate gives its rater, never a rating by itself. Keeps the spot, the day
+    (never the time of day) and the answers, and no account: who answered is not kept here. Its
+    key is random, and it is written apart from the rider's `SurveyDone`, so the two rows cannot be
+    matched by id order or by transaction.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    spot_id = models.CharField(max_length=32, db_index=True)
+    day = models.DateField()
+    # {"when": "today", "traffic": "steady", ...}: keys and values from routemaker.survey.
+    answers = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "survey_answer"
+        ordering = ("spot_id", "day")
+
+    def __str__(self) -> str:
+        return f"survey {self.spot_id} on {self.day}"
+
+
+class SurveyDone(models.Model):
+    """A spot one rider has answered (core.survey_spots): the map stops marking it for them, and
+    `counted` spots (answered "Today", the honor system) make their Freezing Saddles count.
+
+    Only the spot id and whether it counted: no day, no ride, no point. Deleted with the account.
+    """
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="+")
+    spot_id = models.CharField(max_length=32)
+    counted = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "survey_done"
+        constraints = [
+            models.UniqueConstraint(fields=("user", "spot_id"), name="survey_done_one_per_spot")
+        ]
+
+    def __str__(self) -> str:
+        return f"survey {self.spot_id} done by account {self.user_id}"
