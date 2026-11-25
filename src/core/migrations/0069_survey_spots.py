@@ -1,3 +1,5 @@
+import uuid
+
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
@@ -14,8 +16,8 @@ class Migration(migrations.Migration):
             fields=[
                 (
                     "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
                     ),
                 ),
                 ("spot_id", models.CharField(db_index=True, max_length=32)),

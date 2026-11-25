@@ -24,6 +24,7 @@ const SENT = "Thanks. Your answers will help rate this road.";
 const NEED_WHEN = "Say when you were last here.";
 const FAILED = "That didn't send. Try again shortly.";
 const ALREADY = "You've already answered this spot.";
+const NEAR = "List spots near the map's centre";
 const PASSED = "You passed {n} survey spots. Answer them";
 const PASSED_ONE = "You passed 1 survey spot. Answer it";
 
@@ -38,6 +39,7 @@ export const SURVEY_SENT = t(SENT);
 export const SURVEY_NEED_WHEN = t(NEED_WHEN);
 export const SURVEY_FAILED = t(FAILED);
 export const SURVEY_ALREADY = t(ALREADY);
+export const SURVEY_NEAR = t(NEAR);
 export const surveyHeading = (road: string) => t(HEADING, { road });
 export const surveyCountText = (n: number, today: number) => t(COUNT, { n, today });
 export const surveyPassedText = (n: number) => (n === 1 ? t(PASSED_ONE) : t(PASSED, { n }));
@@ -227,4 +229,14 @@ export function spotsPassed(line: readonly [number, number][], spots: readonly S
     }
   }
   return found.sort((a, b) => a.at - b.at).map((f) => f.spot);
+}
+
+/** The `n` spots nearest a point, nearest first: the keyboard's and screen reader's way to a spot (the dots answer a
+ * pointer only). */
+export function spotsNear(at: [number, number], spots: readonly SurveySpot[], n = 5): SurveySpot[] {
+  return spots
+    .map((spot) => ({ d: metres(at, [spot.lon, spot.lat]), spot }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, n)
+    .map((f) => f.spot);
 }

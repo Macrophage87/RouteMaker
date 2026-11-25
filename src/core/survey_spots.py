@@ -218,7 +218,10 @@ def record(spot_id: str, answers: object, user, day) -> tuple[str | None, dict |
             SurveyDone.objects.create(
                 user=user, spot_id=spot_id, counted=answers[WHEN.key] == COUNTS_WHEN
             )
-            SurveyAnswer.objects.create(spot_id=spot_id, day=day, answers=answers)
     except IntegrityError:
         return "you have already answered this spot", None
+    # Its own transaction and a random key: nothing ties this row to the rider's done row but the
+    # spot (the privacy policy says so).
+    with transaction.atomic():
+        SurveyAnswer.objects.create(spot_id=spot_id, day=day, answers=answers)
     return None, mine(user)

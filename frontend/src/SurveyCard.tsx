@@ -36,7 +36,8 @@ export function SurveyCard({
   signedIn: boolean;
   /** After a send the server took: the rider's done list and count. The card says thanks and stays till closed. */
   onSent: (spot: SurveySpot, mine: SurveyMine) => void;
-  onClose: () => void;
+  /** `sent` when it closes on Done after a send (the next spot passed may follow); false on Cancel or Escape. */
+  onClose: (sent: boolean) => void;
   fetcher?: Fetch;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -102,7 +103,7 @@ export function SurveyCard({
       {...planLanguageAttributes()}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        onClose(false);
       }}
     >
       {spot && (
@@ -110,7 +111,7 @@ export function SurveyCard({
           method="dialog"
           onSubmit={(event) => {
             event.preventDefault();
-            if (sent) onClose();
+            if (sent) onClose(true);
             else void send();
           }}
         >
@@ -147,7 +148,7 @@ export function SurveyCard({
                 {SURVEY_SEND}
               </button>
             )}
-            <button type="button" className="secondary" onClick={onClose}>
+            <button type="button" className="secondary" onClick={() => onClose(sent)}>
               {sent ? SURVEY_DONE : SURVEY_CANCEL}
             </button>
           </div>

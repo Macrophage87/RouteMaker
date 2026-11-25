@@ -11,6 +11,7 @@ would make the swap impossible.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
@@ -2853,9 +2854,12 @@ class SurveyAnswer(models.Model):
     """A rider's answers at one survey spot (core.survey_spots; the owner, 2026-11-25).
 
     Evidence the next re-rate gives its rater, never a rating by itself. Keeps the spot, the day
-    (never the time of day) and the answers, and no account: who answered is not kept here.
+    (never the time of day) and the answers, and no account: who answered is not kept here. Its
+    key is random, and it is written apart from the rider's `SurveyDone`, so the two rows cannot be
+    matched by id order or by transaction.
     """
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     spot_id = models.CharField(max_length=32, db_index=True)
     day = models.DateField()
     # {"when": "today", "traffic": "steady", ...}: keys and values from routemaker.survey.

@@ -6,6 +6,8 @@ of the committed file.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from test_accounts import addr, send, signed_in
 from test_segment_info_api import insert
@@ -91,6 +93,7 @@ class TestAnswers:
         row = SurveyAnswer.objects.get()
         assert row.answers == {"when": "today", "traffic": "steady"}
         assert not hasattr(row, "user_id"), "an answer keeps no account"
+        assert isinstance(row.pk, uuid.UUID), "a random key: no matching by id order"
         got = client.get("/api/survey/spots", BOX, **addr()).json()["spots"]
         assert [s["id"] for s in got] == ["s202"], "answered spots no longer show for them"
         other, _u, _c = signed_in()

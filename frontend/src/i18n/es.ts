@@ -2708,6 +2708,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Say when you were last here.": "Di cuándo estuviste aquí por última vez.",
   "That didn't send. Try again shortly.": "No se envió. Inténtalo de nuevo en un momento.",
   "You've already answered this spot.": "Ya respondiste este punto.",
+  "List spots near the map's centre": "Ver los puntos cerca del centro del mapa",
   "You passed {n} survey spots. Answer them": "Pasaste por {n} puntos de encuesta. Respóndelos",
   "You passed 1 survey spot. Answer it": "Pasaste por 1 punto de encuesta. Respóndelo",
   // Plan's Interval stretches layer (lib/intervals.ts, the v0.27.3 review); Spanish needs a native check.

@@ -270,7 +270,7 @@ import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { IntervalsOverlay, useIntervals } from "./app/IntervalsOverlay.tsx";
 import { SurveyOverlay, useSurveySpots } from "./app/SurveyOverlay.tsx";
 import { SurveyCard } from "./SurveyCard.tsx";
-import { loadSurveyMine, spotsPassed, readSurveyLayer, saveSurveyLayer, surveyCountText, SURVEY_SIGN_IN, SURVEY_UNAVAILABLE, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
+import { loadSurveyMine, spotsNear, spotsPassed, readSurveyLayer, saveSurveyLayer, surveyCountText, SURVEY_SIGN_IN, SURVEY_UNAVAILABLE, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
 import { intervalsAtLeast, intervalsStatusText, readIntervalsLayer, readIntervalsMinutes, saveIntervalsLayer, saveIntervalsMinutes, type IntervalsMinutes } from "./lib/intervals.ts";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
@@ -5189,7 +5189,11 @@ export function App() {
     if (!surveyShown || !me.signed_in) return;
     void loadSurveyMine(window.location.origin).then((mine) => mine && setSurveyMine(mine));
   }, [surveyShown, me.signed_in]);
-  const pickSurveySpot = useCallback((spot: SurveySpot) => setSurveySpot(spot), []);
+  // A spot picked on the map (or from the Layers list) drops what was left of a ride's queue.
+  const pickSurveySpot = useCallback((spot: SurveySpot) => {
+    setSurveyQueue([]);
+    setSurveySpot(spot);
+  }, []);
   const saveEndedDraft = (draft: OpenDraft) => {
     if (draftSave.saving) return;
     setDraftSave({ saving: true, saved: false, said: null });
@@ -7587,8 +7591,9 @@ export function App() {
           survey.drop(spot.id);
           setSurveyMine(mine);
         }}
-        onClose={() => {
-          const [next, ...rest] = surveyQueue;
+        onClose={(sent) => {
+          // Done after a send moves on to the next spot the ride passed; Cancel or Escape stops there.
+          const [next, ...rest] = sent ? surveyQueue : [];
           setSurveyQueue(rest);
           setSurveySpot(next ?? null);
         }}
@@ -8214,6 +8219,13 @@ export function App() {
                       onChange: changeSurveyOn,
                       status: surveyShown && survey.status === "unavailable" ? SURVEY_UNAVAILABLE : "",
                       count: !surveyShown ? "" : me.signed_in ? (surveyMine ? surveyCountText(surveyMine.done.length, surveyMine.count) : "") : SURVEY_SIGN_IN,
+                      near: surveyShown && survey.spots
+                        ? () => {
+                            const c = getMap()?.getCenter();
+                            return c && survey.spots ? spotsNear([c.lng, c.lat], survey.spots) : [];
+                          }
+                        : undefined,
+                      onPick: pickSurveySpot,
                     },
                 intervals: massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },

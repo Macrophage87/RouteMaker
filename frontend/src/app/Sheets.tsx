@@ -62,7 +62,7 @@ import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { ClimbsLayerControls } from "../lib/climbsLegend.ts";
 import { ScenicSection } from "../lib/scenicLayer.ts";
 import { IntervalsControls, type IntervalsMinutes } from "../lib/intervals.ts";
-import { SurveySection } from "./SurveySection.tsx";
+import { SurveySection, type SurveySectionProps } from "./SurveySection.tsx";
 import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { SteepGradeKey, steepGradesFor } from "../lib/steepGrades.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
@@ -141,7 +141,7 @@ export interface LayersSheetProps {
   /** The Intervals layer (lib/intervals.ts): one switch, off by default; null on the Mass Ride map, which leaves it out. */
   intervals?: { on: boolean; onChange: (on: boolean) => void; status: string; minutes?: IntervalsMinutes; onMinutesChange?: (minutes: IntervalsMinutes) => void } | null;
   /** Survey spots (lib/surveySpots.ts): one switch, off by default; `count` is the rider's line; null on the Mass Ride map. */
-  survey?: { on: boolean; onChange: (on: boolean) => void; status: string; count: string } | null;
+  survey?: SurveySectionProps | null;
   /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   permits: { on: boolean; onChange: (on: boolean) => void } | null;
   /** Go: the short map key first (GoMapKey), before the switches. */

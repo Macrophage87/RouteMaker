@@ -5,7 +5,9 @@ import { act } from "react";
 import { click, render } from "./testSupport/render.ts";
 import { SurveyCard } from "./SurveyCard.tsx";
 import { SurveySection } from "./app/SurveySection.tsx";
-import { spotsPassed, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
+import { RideSummaryCard } from "./RideSummaryCard.tsx";
+import { statsStart } from "./lib/rideStats.ts";
+import { spotsNear, spotsPassed, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
 
 const spot: SurveySpot = { id: "s101", road: "Ohio Drive Southwest", lon: -77.03, lat: 38.87 };
 const QUESTIONS = [
@@ -32,12 +34,12 @@ async function settle() {
 async function card(signedIn = true, answer?: { status: number; body?: unknown }) {
   const { fetcher, sent } = server(answer);
   const got: SurveyMine[] = [];
-  let closed = 0;
+  const closed: boolean[] = [];
   const screen = await render(
-    <SurveyCard spot={spot} origin="" signedIn={signedIn} fetcher={fetcher} onSent={(_s, mine) => got.push(mine)} onClose={() => closed++} />,
+    <SurveyCard spot={spot} origin="" signedIn={signedIn} fetcher={fetcher} onSent={(_s, mine) => got.push(mine)} onClose={(sent) => closed.push(sent)} />,
   );
   await settle();
-  return { screen, sent, got, closed: () => closed };
+  return { screen, sent, got, closed };
 }
 
 test("the card asks when first, then the spot's own questions", async () => {
@@ -57,7 +59,7 @@ test("Send without when says to answer it and sends nothing", async () => {
 });
 
 test("a sent answer says thanks and hands back the rider's count; skipped questions are not sent", async () => {
-  const { screen, sent, got } = await card();
+  const { screen, sent, got, closed } = await card();
   await click(screen.get("radio", "Today"));
   await click(screen.button("Send"));
   await settle();
@@ -65,7 +67,14 @@ test("a sent answer says thanks and hands back the rider's count; skipped questi
   assert.deepEqual(got, [{ done: ["s101"], count: 1 }]);
   assert.match(screen.text(), /Thanks\. Your answers will help rate this road\./);
   assert.equal(screen.all("button", "Send").length, 0, "answered once");
-  assert.ok(screen.button("Done"));
+  await click(screen.button("Done"));
+  assert.deepEqual(closed, [true], "Done after a send lets the next spot passed follow");
+});
+
+test("Cancel closes as not sent, so a ride's remaining spots stop there", async () => {
+  const { screen, closed } = await card();
+  await click(screen.button("Cancel"));
+  assert.deepEqual(closed, [false]);
 });
 
 test("a spot already answered says so", async () => {
@@ -104,4 +113,29 @@ test("a ride passes the spots its line comes within 40 m of, in the order passed
     ["first", "near"],
   );
   assert.deepEqual(spotsPassed([], [near]), []);
+});
+
+test("the Layers list reaches a spot without the map: the nearest spots as buttons that open the card", async () => {
+  const near: SurveySpot = { ...spot, id: "near", road: "Water Street Southwest", lon: -77.021, lat: 38.87 };
+  const far: SurveySpot = { ...spot, id: "far", road: "Far Road", lon: -76.9, lat: 38.95 };
+  assert.deepEqual(spotsNear([-77.02, 38.87], [far, near], 1).map((s) => s.id), ["near"]);
+  const picked: string[] = [];
+  const screen = await render(
+    <SurveySection on onChange={() => {}} status="" count="" near={() => spotsNear([-77.02, 38.87], [far, near])} onPick={(s) => picked.push(s.id)} />,
+  );
+  await click(screen.button("Survey spots layers"));
+  await click(screen.button("List spots near the map's centre"));
+  await click(screen.button("Water Street Southwest"));
+  assert.deepEqual(picked, ["near"]);
+});
+
+test("the ride's summary offers the spots it passed, and the line hands them over in order", async () => {
+  const passed: SurveySpot[][] = [];
+  const two = [spot, { ...spot, id: "s202", road: "4th Street Northeast" }];
+  const props = { stats: statsStart(Date.now() - 600_000), endedAt: Date.now(), onDone: () => {}, onUndo: () => {}, onReports: () => {} };
+  const screen = await render(<RideSummaryCard {...props} surveyPassed={two} onSurvey={(p) => passed.push(p)} />);
+  await click(screen.button("You passed 2 survey spots. Answer them"));
+  assert.deepEqual(passed[0].map((s) => s.id), ["s101", "s202"]);
+  await screen.rerender(<RideSummaryCard {...props} surveyPassed={[]} onSurvey={() => {}} />);
+  assert.equal(screen.all("button", /survey spot/).length, 0, "no line when it passed none");
 });
