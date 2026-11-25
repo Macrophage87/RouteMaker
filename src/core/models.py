@@ -2854,9 +2854,9 @@ class SurveyAnswer(models.Model):
     """A rider's answers at one survey spot (core.survey_spots; the owner, 2026-11-25).
 
     Evidence the next re-rate gives its rater, never a rating by itself. Keeps the spot, the day
-    (never the time of day) and the answers, and no account: who answered is not kept here. Its
-    key is random, and it is written apart from the rider's `SurveyDone`, so the two rows cannot be
-    matched by id order or by transaction.
+    and the answers (a time of day only as a range the rider picks, never the time), and no
+    account: who answered is not kept here. Its key is random, and it is written apart from the
+    rider's `SurveyDone`, so the two rows cannot be matched by id order or by transaction.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

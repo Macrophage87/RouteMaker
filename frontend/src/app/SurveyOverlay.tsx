@@ -1,11 +1,11 @@
-// The Survey spots layer on the map (lib/surveySpots.ts): an amber dot per spot the rider has not answered, over the
+// The Survey spots layer on the map (lib/surveySpots.ts): an orange "!" per spot (a quest marker) the rider has not answered, over the
 // roads. A press on a dot opens its card (SurveyCard.tsx), never a point or the destination (app/mapOverlay.ts
 // cardLayer). App decides when it shows (its switch in Layers) and loads the spots the first time it is on.
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { cardLayer, setSource, useMap } from "./mapOverlay.ts";
 import { ROUTE_BOTTOM_LAYER } from "../lib/railLayer.ts";
-import { loadSurveySpots, surveyGeoJson, surveyLayer, SURVEY_LAYER, SURVEY_SOURCE, type SurveySpot } from "../lib/surveySpots.ts";
+import { loadSurveySpots, surveyGeoJson, surveyIcon, surveyLayer, SURVEY_ICON_ID, SURVEY_LAYER, SURVEY_SOURCE, type SurveySpot } from "../lib/surveySpots.ts";
 
 export type SurveyStatus = "loading" | "ready" | "unavailable";
 
@@ -35,6 +35,10 @@ export function SurveyOverlay({ getMap, on, spots, onPick }: { getMap: () => Map
       if (!on || !spots) {
         if (map.getLayer(SURVEY_LAYER)) map.setLayoutProperty(SURVEY_LAYER, "visibility", "none");
         return;
+      }
+      if (!map.hasImage(SURVEY_ICON_ID)) {
+        const { pixelRatio, ...image } = surveyIcon(Math.min(Math.max(globalThis.devicePixelRatio || 1, 1), 3));
+        map.addImage(SURVEY_ICON_ID, image, { pixelRatio });
       }
       setSource(map, SURVEY_SOURCE, surveyGeoJson(spots));
       if (!map.getLayer(SURVEY_LAYER)) map.addLayer(surveyLayer() as never, map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined);

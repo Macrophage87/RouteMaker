@@ -10,7 +10,8 @@ The spot list is `fixtures/survey/spots.json` (scripts/make_survey_spots.py; que
 the live segment table once per map (the table's oid changes when a rebuild swaps it in).
 
 What is kept:
-- An answer (`SurveyAnswer`): the spot, the day (never the time) and the answers. No account.
+- An answer (`SurveyAnswer`): the spot, the day, the answers (a time of day only as a range such
+  as "AM rush", never the time). No account.
 - A rider's done list (`SurveyDone`): the spot ids they answered and whether each counted, so the
   layer hides them on every device and the count can be shown. No day, no ride, no point.
 Answers are evidence for the next re-rate, never a rating by themselves.
@@ -29,7 +30,7 @@ from django.conf import settings
 from django.db import IntegrityError, connection, transaction
 
 from pipeline.schema import validate_schema_name
-from routemaker.survey import QUESTIONS, WHEN, answer_problems
+from routemaker.survey import QUESTIONS, TIME, WHEN, answer_problems
 
 SPOTS_FILE = Path(__file__).resolve().parents[2] / "fixtures" / "survey" / "spots.json"
 METRES_PER_MILE = 1609.344
@@ -166,7 +167,8 @@ def near(lon: float, lat: float, miles: float, hide=frozenset()) -> list[dict]:
 
 
 def questions_for(spot_id: str) -> list[dict]:
-    """The spot's questions as the card shows them, "When were you last here?" first."""
+    """The spot's questions as the card shows them: "When were you last here?", the time of day as
+    a range, then the spot's own."""
     s = spots()[spot_id]
     return [
         {
@@ -174,7 +176,7 @@ def questions_for(spot_id: str) -> list[dict]:
             "text": q.text,
             "options": [{"value": v, "label": label} for v, label in q.options],
         }
-        for q in (WHEN, *(QUESTIONS[k] for k in s.questions))
+        for q in (WHEN, TIME, *(QUESTIONS[k] for k in s.questions))
     ]
 
 

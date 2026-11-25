@@ -18,14 +18,16 @@ export interface SurveySectionProps {
 }
 
 export function SurveySection({ on, onChange, status, count, near, onPick }: SurveySectionProps) {
-  const [listed, setListed] = useState<SurveySpot[] | null>(null);
+  const [asked, setAsked] = useState(false);
+  // Read again on each draw, so a spot just answered leaves the list.
+  const listed = asked && near ? near() : null;
   return (
     <LayerSection id="survey" title={SURVEY_LABEL} layers={[{ key: "survey", label: SURVEY_LABEL, on }]} onLayers={(next) => onChange(next.survey)} status={status}>
       <p className="hint">{SURVEY_HINT}</p>
       {count && <p className="hint survey-count">{count}</p>}
       {on && near && onPick && (
         <>
-          <button type="button" className="link" onClick={() => setListed(near())}>
+          <button type="button" className="link" onClick={() => setAsked(true)}>
             {SURVEY_NEAR}
           </button>
           {listed && listed.length > 0 && (

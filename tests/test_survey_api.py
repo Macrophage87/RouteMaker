@@ -75,7 +75,7 @@ class TestLayer:
 
     def test_questions_start_with_when(self, client, spots) -> None:
         got = client.get("/api/survey/spots/s202/questions", **addr()).json()["questions"]
-        assert [q["key"] for q in got] == ["when", "bike_lane", "traffic"]
+        assert [q["key"] for q in got] == ["when", "time", "bike_lane", "traffic"]
         assert client.get("/api/survey/spots/nope/questions", **addr()).status_code == 404
 
 
@@ -88,10 +88,10 @@ class TestAnswers:
 
     def test_an_answer_is_kept_without_the_account_and_hides_the_spot(self, spots) -> None:
         client, user, csrf = signed_in()
-        r = answer(client, csrf, when="today", traffic="steady")
+        r = answer(client, csrf, when="today", time="pm_rush", traffic="steady")
         assert r.status_code == 200 and r.json() == {"done": ["s101"], "count": 1}
         row = SurveyAnswer.objects.get()
-        assert row.answers == {"when": "today", "traffic": "steady"}
+        assert row.answers == {"when": "today", "time": "pm_rush", "traffic": "steady"}
         assert not hasattr(row, "user_id"), "an answer keeps no account"
         assert isinstance(row.pk, uuid.UUID), "a random key: no matching by id order"
         got = client.get("/api/survey/spots", BOX, **addr()).json()["spots"]
@@ -116,7 +116,12 @@ class TestAnswers:
 
     @pytest.mark.parametrize(
         "answers",
-        [{"traffic": "quiet"}, {"when": "today", "lanes": "2"}, {"when": "today", "traffic": "x"}],
+        [
+            {"traffic": "quiet"},
+            {"when": "today", "lanes": "2"},
+            {"when": "today", "traffic": "x"},
+            {"when": "today", "time": "08:15"},
+        ],
     )
     def test_bad_answers_are_refused(self, spots, answers) -> None:
         client, user, csrf = signed_in()
