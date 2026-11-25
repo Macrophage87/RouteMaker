@@ -7,7 +7,7 @@ import { SurveyCard } from "./SurveyCard.tsx";
 import { SurveySection } from "./app/SurveySection.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import { statsStart } from "./lib/rideStats.ts";
-import { spotsNear, spotsPassed, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
+import { spotsNear, spotsPassed, surveyIcon, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
 
 const spot: SurveySpot = { id: "s101", road: "Ohio Drive Southwest", lon: -77.03, lat: 38.87 };
 const QUESTIONS = [
@@ -127,6 +127,19 @@ test("the Layers list reaches a spot without the map: the nearest spots as butto
   await click(screen.button("List spots near the map's centre"));
   await click(screen.button("Water Street Southwest"));
   assert.deepEqual(picked, ["near"]);
+  await screen.rerender(
+    <SurveySection on onChange={() => {}} status="" count="" near={() => spotsNear([-77.02, 38.87], [far, near])} spots={[far]} onPick={(s) => picked.push(s.id)} />,
+  );
+  assert.equal(screen.all("button", "Water Street Southwest").length, 0, "an answered spot leaves the list");
+});
+
+test("the marker is an orange '!' in a dark rim, clear around it", () => {
+  const icon = surveyIcon(1, 26);
+  const at = (x: number, y: number) => Array.from(icon.data.slice((y * icon.width + x) * 4, (y * icon.width + x) * 4 + 4));
+  assert.deepEqual(at(13, 8), [0xf9, 0x73, 0x16, 255], "the bar");
+  assert.deepEqual(at(13, 21), [0xf9, 0x73, 0x16, 255], "the dot");
+  assert.equal(at(13, 16)[3], 0, "a gap between them");
+  assert.equal(at(2, 2)[3], 0, "nothing in the corner");
 });
 
 test("the ride's summary offers the spots it passed, and the line hands them over in order", async () => {

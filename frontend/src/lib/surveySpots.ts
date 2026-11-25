@@ -10,9 +10,10 @@
  */
 import { t } from "./i18n.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
+import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 
 const LABEL = "Survey spots";
-const HINT = "Roads we are unsure about. Tap a dot to tell us what it is like there.";
+const HINT = "Roads we are unsure about. Tap an orange ! to tell us what it is like there.";
 const UNAVAILABLE = "Survey spots are unavailable for now.";
 const COUNT = "Spots you have surveyed: {n}. Answered on the day you rode there: {today}.";
 const SIGN_IN = "Sign in to answer survey spots.";
@@ -47,9 +48,15 @@ export const surveyPassedText = (n: number) => (n === 1 ? t(PASSED_ONE) : t(PASS
 export const SURVEY_PREF_KEY = "routemaker.surveyLayer";
 export const SURVEY_SOURCE = "survey-spots";
 export const SURVEY_LAYER = "survey-spots-dots";
-/** Amber with a dark rim: not a stress colour, the route's blue, the intervals' pink nor the places' teal. */
-export const SURVEY_COLOUR = "#f59e0b";
+/** An orange "!" with a dark rim, as a quest marker (the owner, 2026-11-25: "an orange exclamation point, so it
+ * looks like a quest"): a bare mark, never in a disc or triangle as the route-hazard, barrier and station-alert "!"s
+ * are, so it never reads as one of them or as an Orange line station. The steep-grade marks share the
+ * orange but are a ramp in a square. */
+export const SURVEY_COLOUR = "#f97316";
 export const SURVEY_RIM = "#1f2937";
+export const SURVEY_ICON_ID = "survey-quest";
+/** The marker's square, in CSS pixels. */
+export const SURVEY_ICON_PX = 26;
 /** The whole map's box: the layer fetches every spot once (about 6,000 points). */
 export const SURVEY_BOX = { west: -79.6, south: 37.9, east: -75.0, north: 40.0 } as const;
 /** A ride passes a spot when its line comes this close to the spot's point. */
@@ -161,17 +168,40 @@ export function surveyGeoJson(spots: readonly SurveySpot[]): { type: "FeatureCol
   };
 }
 
-/** A circle per spot, bigger as the map zooms in, drawn over the roads. */
+/** The "!" drawn into a square: a bar narrowing downward over a round dot, orange inside a dark rim. */
+export function surveyIcon(pixelRatio = 2, cssSize = SURVEY_ICON_PX): Raster {
+  const size = Math.round(cssSize * pixelRatio);
+  const rim = 1.6 * pixelRatio;
+  const fill = hexToRgb(SURVEY_COLOUR);
+  const dark = hexToRgb(SURVEY_RIM);
+  const c = size / 2;
+  const top = size * 0.1;
+  const barEnd = size * 0.5;
+  const dotY = size * 0.83;
+  const inBang = (x: number, y: number, grow: number) => {
+    if (Math.hypot(x - c, y - dotY) <= size * 0.09 + grow) return true;
+    if (y < top - grow || y > barEnd + grow) return false;
+    const along = Math.min(Math.max((y - top) / (barEnd - top), 0), 1);
+    const half = size * (0.14 - 0.06 * along) + grow;
+    return Math.abs(x - c) <= half;
+  };
+  return rasterise(size, pixelRatio, (x, y): Rgb | null => (inBang(x, y, 0) ? fill : inBang(x, y, rim) ? dark : null));
+}
+
+/** A "!" per spot, bigger as the map zooms in, drawn over the roads; crowded ones thin out until zoomed in. */
 export function surveyLayer(): Record<string, unknown> {
   return {
     id: SURVEY_LAYER,
-    type: "circle",
+    type: "symbol",
     source: SURVEY_SOURCE,
-    paint: {
-      "circle-color": SURVEY_COLOUR,
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 3, 13, 6, 16, 9],
-      "circle-stroke-color": SURVEY_RIM,
-      "circle-stroke-width": 1.5,
+    layout: {
+      "icon-image": SURVEY_ICON_ID,
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.55, 13, 0.85, 16, 1.15],
+      "icon-anchor": "bottom",
+      "icon-allow-overlap": ["step", ["zoom"], false, 14, true],
+      "icon-padding": 1,
+      // Never push the map's own labels out, nor be hidden by them.
+      "icon-ignore-placement": true,
     },
   };
 }

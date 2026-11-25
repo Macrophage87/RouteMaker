@@ -109,6 +109,23 @@ WHEN = Question(
     ),
 )
 
+#: Always asked, second, and may be left out: roughly when, as a range (the owner, 2026-11-25: "For
+#: when, estimate time too ... Give a range ... Am rush, pm rush, etc").
+#: Traffic differs most by it. Never the exact time.
+TIME = Question(
+    "time",
+    "About what time of day?",
+    (
+        ("early", "Early morning, before 7 AM"),
+        ("am_rush", "AM rush, 7 to 10 AM"),
+        ("midday", "Midday, 10 AM to 3 PM"),
+        ("pm_rush", "PM rush, 3 to 7 PM"),
+        ("evening", "Evening, 7 to 10 PM"),
+        ("night", "Night, after 10 PM"),
+        NOT_SURE,
+    ),
+)
+
 _ORDER = ("bike_lane", "side_path", "lanes", "traffic", "speed_sign", "shoulder", "bikes_allowed")
 
 
@@ -147,7 +164,11 @@ def answer_problems(questions: Iterable[str], answers: dict[str, str]) -> list[s
     `when` must be answered; every other question may be left out, and nothing outside the spot's
     questions is accepted.
     """
-    allowed = {WHEN.key: WHEN, **{k: QUESTIONS[k] for k in questions if k in QUESTIONS}}
+    allowed = {
+        WHEN.key: WHEN,
+        TIME.key: TIME,
+        **{k: QUESTIONS[k] for k in questions if k in QUESTIONS},
+    }
     out: list[str] = []
     if WHEN.key not in answers:
         out.append("when: required")

@@ -384,9 +384,10 @@ SECTIONS: list[tuple[str, str]] = [
                 "road you found closed), a suggestion keeps the road and the day, never the time "
                 "or your path, and no account. Your device's count for the day keeps the road only "
                 "as a one-way code, deleted after 24 hours.",
-                "A survey spot’s answers keep the spot, the day (not the time) and your answers, "
-                "and no account. They help rate the road. Where you are the only rider to answer a "
-                "spot, your answers could be matched to your done list by the spot alone.",
+                "A survey spot’s answers keep the spot, the day, your answers and the time of day "
+                "only as a range you pick, such as AM rush (never the time), and no account. "
+                "They help rate the road. Where you are the only rider to answer a spot, your "
+                "answers could be matched to your done list by the spot alone.",
                 "The 311 log keeps each problem you log: what it is, the road’s name, its GPS "
                 "position, the day (not the time) and your note. It stays on your device, and with "
                 "your account when signed in. RouteMaker shows which city or county 311 website "

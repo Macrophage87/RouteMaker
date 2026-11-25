@@ -12488,3 +12488,35 @@ dialog.plan-ride-settings .dial-ends {
 .app.riding .maplibregl-ctrl-compass {
   display: none;
 }
+
+/* A survey spot's card (SurveyCard.tsx): one answer per row, each a full-width tap target. */
+.survey-card .survey-question {
+  border: 1px solid var(--border, #9ca3af);
+  border-radius: 8px;
+  margin: 0 0 12px;
+  padding: 4px 12px 8px;
+}
+.survey-card .survey-question legend {
+  font-weight: 600;
+  padding: 0 4px;
+}
+.survey-card .survey-question label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.survey-card .survey-question input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+}
+.survey-near {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.survey-near li button {
+  min-height: 44px;
+}

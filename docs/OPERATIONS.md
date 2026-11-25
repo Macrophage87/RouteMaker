@@ -9703,7 +9703,7 @@ lists spots near a point; a plan goes through them as via points.
 - **Points** are the middle of each spot's longest segment on the live map, worked out once per
   live segment table (a map swap is picked up by the table's oid); a spot whose way left the map is
   not shown.
-- **Kept** (migration 0069): `survey_answer` (spot, day, answers; a random key, no account) and
+- **Kept** (migration 0069): `survey_answer` (spot, day, answers, a time of day only as a range such as AM rush; a random key, no account) and
   `survey_done` (account, spot, counted; deleted with the account). Answers are evidence for the
   next re-rate's rater, never a rating by themselves.
 
