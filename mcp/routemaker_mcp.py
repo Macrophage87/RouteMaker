@@ -667,6 +667,21 @@ class Api:
             raise ToolError(f"the interval stretch search failed ({status}): {message}")
         return payload.get("intervals", [])
 
+    def survey_spots_near(self, near: tuple[float, float], miles: float) -> list[dict]:
+        """GET /api/survey/near: the survey spots near a point, nearest first (the signed-in
+        rider's answered ones left out)."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles}
+        status, payload, _ = patient_request(
+            self,
+            "GET",
+            "/api/survey/near?" + urllib.parse.urlencode(params),
+            what="The survey spot search",
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the survey spot search failed ({status}): {message}")
+        return payload.get("spots", [])
+
     def reach(self, body: dict) -> dict:
         """POST /api/reach: the reach rings (isochrones) for points, a ride type and its dials."""
         status, payload, _ = patient_request(
@@ -5664,6 +5679,28 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "survey_spots_near",
+        "title": "Survey spots near a place",
+        "description": (
+            "List the survey spots near a point, nearest first: road stretches whose stress"
+            " rating was a low-confidence call, where a rider's answers on the spot (lanes, bike"
+            " lane, traffic, speed sign) help rate the road. Each has road, county, its level"
+            " now (low and high), [lon, lat], the questions it asks and away_mi. Spots the rider"
+            " has answered are left out. To ride past them, plan_route through their points as"
+            " via points (or a loop from home through them); answers are given in the app, on"
+            " the spot's card."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {"type": "number", "exclusiveMinimum": 0, "default": 3},
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "closures_near",
         "title": "Closures near a place",
         "description": (
@@ -7179,6 +7216,21 @@ class Server:
         return {
             "intervals": found,
             "source": "Intervals layer: OpenStreetMap (ODbL) and USGS 3DEP elevation",
+        }
+
+    # survey_spots_near
+    def survey_spots_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        try:
+            miles = min(15.0, max(0.25, float(args.get("within_miles") or 3)))
+        except (TypeError, ValueError):
+            raise ToolError("within_miles is a number") from None
+        found = self.api.survey_spots_near(near, miles)
+        for spot in found:
+            spot["point"] = [spot.pop("lon"), spot.pop("lat")]
+        return {
+            "spots": found,
+            "note": "Answers are evidence for the next re-rate, never a rating by themselves.",
         }
 
     # closures_near
@@ -8868,6 +8920,7 @@ class Server:
             "scenic_roads_near": self.scenic_roads_near,
             "climbs_near": self.climbs_near,
             "intervals_near": self.intervals_near,
+            "survey_spots_near": self.survey_spots_near,
             "closures_near": self.closures_near,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
