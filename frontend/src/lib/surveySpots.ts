@@ -13,7 +13,7 @@ import { csrfFromCookie } from "./stressEditor.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 
 const LABEL = "Survey spots";
-const HINT = "Roads we are unsure about. Tap a dot to tell us what it is like there.";
+const HINT = "Roads we are unsure about. Tap an orange ! to tell us what it is like there.";
 const UNAVAILABLE = "Survey spots are unavailable for now.";
 const COUNT = "Spots you have surveyed: {n}. Answered on the day you rode there: {today}.";
 const SIGN_IN = "Sign in to answer survey spots.";
@@ -50,7 +50,8 @@ export const SURVEY_SOURCE = "survey-spots";
 export const SURVEY_LAYER = "survey-spots-dots";
 /** An orange "!" with a dark rim, as a quest marker (the owner, 2026-11-25: "an orange exclamation point, so it
  * looks like a quest"): a bare mark, never in a disc or triangle as the route-hazard, barrier and station-alert "!"s
- * are, so it never reads as one of them or as an Orange line station. */
+ * are, so it never reads as one of them or as an Orange line station. The steep-grade marks share the
+ * orange but are a ramp in a square. */
 export const SURVEY_COLOUR = "#f97316";
 export const SURVEY_RIM = "#1f2937";
 export const SURVEY_ICON_ID = "survey-quest";
@@ -175,7 +176,7 @@ export function surveyIcon(pixelRatio = 2, cssSize = SURVEY_ICON_PX): Raster {
   const dark = hexToRgb(SURVEY_RIM);
   const c = size / 2;
   const top = size * 0.1;
-  const barEnd = size * 0.54;
+  const barEnd = size * 0.5;
   const dotY = size * 0.83;
   const inBang = (x: number, y: number, grow: number) => {
     if (Math.hypot(x - c, y - dotY) <= size * 0.09 + grow) return true;
@@ -199,6 +200,8 @@ export function surveyLayer(): Record<string, unknown> {
       "icon-anchor": "bottom",
       "icon-allow-overlap": ["step", ["zoom"], false, 14, true],
       "icon-padding": 1,
+      // Never push the map's own labels out, nor be hidden by them.
+      "icon-ignore-placement": true,
     },
   };
 }

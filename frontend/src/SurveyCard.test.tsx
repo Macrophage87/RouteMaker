@@ -128,7 +128,7 @@ test("the Layers list reaches a spot without the map: the nearest spots as butto
   await click(screen.button("Water Street Southwest"));
   assert.deepEqual(picked, ["near"]);
   await screen.rerender(
-    <SurveySection on onChange={() => {}} status="" count="" near={() => spotsNear([-77.02, 38.87], [far])} onPick={(s) => picked.push(s.id)} />,
+    <SurveySection on onChange={() => {}} status="" count="" near={() => spotsNear([-77.02, 38.87], [far, near])} spots={[far]} onPick={(s) => picked.push(s.id)} />,
   );
   assert.equal(screen.all("button", "Water Street Southwest").length, 0, "an answered spot leaves the list");
 });

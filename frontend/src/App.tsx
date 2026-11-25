@@ -8225,6 +8225,7 @@ export function App() {
                             return c && survey.spots ? spotsNear([c.lng, c.lat], survey.spots) : [];
                           }
                         : undefined,
+                      spots: survey.spots,
                       onPick: pickSurveySpot,
                     },
                 intervals: massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
