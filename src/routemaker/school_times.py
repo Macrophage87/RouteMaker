@@ -15,20 +15,24 @@ minor road (ROAD_CLASSES): a service road (the bus loop, the drop-off lane, the 
 park's aisle) or a residential or unclassified street. A busier road is rated for its
 own traffic already, and a path on the grounds keeps riders away from the buses.
 
-At a school time (SCHOOL_WHENS) the planner's search reads a school piece at LTS 3 at
-least (`priced`), as it reads a known hazard at LTS 4 (`core.refine`); the map, the
-graph and the route's colours keep the road's own level. Outside school times nothing
-changes.
+Each such road is rated a second time, for school times only, by the raters
+(docs/stress/briefs/SCHOOL-TIMES-BRIEF.md; the owner, 2026-11-26: "rerate each area near
+a school zone only during peak hours with the agent information that this area is near a
+school, give the school location and ask how busy you'd expect the road to be then").
+Their levels are kept in RUSH_LEVELS_FILE, a way a row, and written beside the school
+pieces at the rebuild. At a school time (SCHOOL_WHENS) the planner's search reads a
+school piece at its rush-hour level where that is higher than its own (`raised`), as it
+reads a known hazard at LTS 4 (`core.refine`); the map, the graph and the route's colours
+keep the road's own level. A road with no rush-hour rating, and every road outside
+school times, is unchanged: there is no flat bump.
 
-The numbers are our defaults, not measured and not from a published source:
+The numbers below are our defaults, not measured and not from a published source:
 
 - SCHOOL_WHENS: weekday rush (Monday to Friday 07:00-10:00 and 16:00-19:00,
   `routemaker.ridetime`) is the ride setting that holds school arrival (about 7:30 to
   9). Afternoon dismissal (about 2:30 to 4) falls in weekday off-peak, which also holds
   the quiet middle of the day, so it is left out; ride times are four settings and no
-  finer. Summer holidays and school closures are not known either: the bump holds on
-  every weekday in rush hour.
-- SCHOOL_TIER: LTS 3, the level of riding in mixed traffic that most riders avoid.
+  finer. Summer holidays and school closures are not known either.
 - FRONTAGE_M: 30 m, about a street's width past the edge of the grounds, so the street
   the drop-off queue stands on counts and the next block does not.
 - ON_SCHOOL_M: a piece counts when at least this much of it, or half of it, is on the
@@ -38,15 +42,47 @@ The numbers are our defaults, not measured and not from a published source:
 
 from __future__ import annotations
 
+import csv
 from collections.abc import Mapping
+from pathlib import Path
 
 from . import ridetime
 
 SCHOOL_WHENS = frozenset({ridetime.WEEKDAY_RUSH})
-SCHOOL_TIER = "3"
 FRONTAGE_M = 30.0
 ON_SCHOOL_M = 50.0
 ROAD_CLASSES = frozenset({"service", "residential", "unclassified", "living_street"})
+LEVELS = (1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
+RUSH_LEVELS_FILE = (
+    Path(__file__).resolve().parents[2] / "fixtures" / "school-times" / "rush-levels.csv"
+)
+
+
+class RushLevelsRefused(ValueError):
+    """A rush-hour ratings file the rebuild will not read."""
+
+
+def load(path: Path | str | None = None) -> dict[int, float]:
+    """The raters' school-time levels by OSM way id (columns `way_id`, `level`, `why`).
+    No file: no ratings yet, and nothing changes."""
+    path = Path(path or RUSH_LEVELS_FILE)
+    if not path.is_file():
+        return {}
+    levels: dict[int, float] = {}
+    with path.open(newline="") as handle:
+        for line, row in enumerate(csv.DictReader(handle), start=2):
+            try:
+                way_id, level = int(row["way_id"]), float(row["level"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise RushLevelsRefused(f"{path.name} line {line}: {error}") from error
+            if level not in LEVELS:
+                raise RushLevelsRefused(f"{path.name} line {line}: level {level} is not a level")
+            if not (row.get("why") or "").strip():
+                raise RushLevelsRefused(f"{path.name} line {line}: a rating needs its why")
+            if way_id in levels:
+                raise RushLevelsRefused(f"{path.name} line {line}: way {way_id} twice")
+            levels[way_id] = level
+    return levels
 
 
 def is_school(tags: Mapping[str, str]) -> bool:
@@ -70,9 +106,15 @@ def on_school(piece_m: float, on_m: float) -> bool:
     return piece_m > 0 and (on_m >= ON_SCHOOL_M or on_m >= piece_m / 2)
 
 
-def raised_tier(tier: str, facility: str) -> str | None:
-    """The tier a school piece is read at in school times, or None where it stays: a path
-    never changes, nor a road at SCHOOL_TIER or above, nor one whose tier is unknown."""
-    if facility == "path" or tier not in ("1", "2"):
+def raised(
+    tier: str, half: bool, facility: str, rush_level: float | None
+) -> tuple[str, bool] | None:
+    """The (tier, half step) a school piece is read at in school times, or None where it
+    stays: no rush-hour rating, a path, a tier that is not known, or a rating no higher
+    than the road's own level. Never lowers a road."""
+    if rush_level is None or facility == "path" or tier not in ("1", "2", "3", "4", "5"):
         return None
-    return SCHOOL_TIER
+    if rush_level <= int(tier) + (0.5 if half else 0.0):
+        return None
+    whole = int(rush_level)
+    return str(whole), rush_level - whole >= 0.5

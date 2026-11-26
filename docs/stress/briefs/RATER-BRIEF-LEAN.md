@@ -132,10 +132,10 @@ junctions, not here. Unpaved or narrow is a surface fact to say in `why`, not st
 - Jobs nearby say little about a residential street. Few homes nearby say little about a road that
   links places.
 - School grounds and the streets in front of a school: rate the road for its ordinary hours. A
-  bus loop or drop-off lane is usually quiet outside arrival and dismissal; the planner already
-  reads such roads busier at weekday rush (`routemaker.school_times`), so do not raise the level
-  for school times alone. Rate higher only where the evidence says the road is busy most of the
-  day (a bus depot, a through route to a large campus), and say why.
+  bus loop or drop-off lane is usually quiet outside arrival and dismissal, and its arrival-time
+  level is rated on its own (SCHOOL-TIMES-BRIEF.md), so do not raise the level for school times
+  alone. Rate higher only where the evidence says the road is busy most of the day (a bus depot,
+  a through route to a large campus), and say why.
 
 ## Rules that are not judgment
 

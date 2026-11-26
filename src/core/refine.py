@@ -1378,8 +1378,8 @@ def analyse(
     if kinds is None:
         kinds = route_hazards.kinds_of(pieces)
     priced = hazard_priced(classes, kinds)
-    # A school's bus loop or drop-off street is searched at LTS 3 at least at school times
-    # (`core.route_schools`; the owner, 2026-11-26); the rider is shown its own rating.
+    # A school's bus loop or drop-off street is searched at its raters' rush-hour level at
+    # school times (`core.route_schools`; the owner, 2026-11-26); the rider is shown its own.
     priced = route_schools.priced_at(priced, pieces, ctx.when)
     hazard_read = priced is not classes
     classes = priced

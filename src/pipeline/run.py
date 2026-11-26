@@ -53,6 +53,7 @@ from routemaker import (
     mtbmode,
     pavement,
     ridetime,
+    school_times,
     setting,
     sidewalks,
     singletrack,
@@ -4781,8 +4782,10 @@ def build_handlers(
         # and the reviewed list, for the road panel and the route's hazard marks.
         rail_roads, listed_hazards = hazard_inputs()
         hazard_ways = 0
-        # The school pieces (`pipeline.school_layer`), marked once the rows are written.
-        school_pieces: list[tuple[int, int]] = []
+        # The school pieces' rush-hour levels (`pipeline.school_layer`), the raters' level
+        # for each school piece of a rated way, written once the rows are.
+        rush_levels = school_times.load()
+        school_levels: dict[tuple[int, int], float] = {}
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
@@ -4919,13 +4922,15 @@ def build_handlers(
                     )
                 )
                 hazard_ways += rows[-1]["hazard"] is not None
-                if school_layer.is_school_piece(way.tags, piece, context.school_tree):
-                    school_pieces.append((way.osm_id, ordinal))
+                if way.osm_id in rush_levels and school_layer.is_school_piece(
+                    way.tags, piece, context.school_tree
+                ):
+                    school_levels[(way.osm_id, ordinal)] = rush_levels[way.osm_id]
         logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
         logger.info(
-            "school pieces (read busier at school times): %d",
-            writers.mark_school(context.staging_schema, school_pieces),
+            "school pieces with a rush-hour level: %d",
+            writers.mark_school(context.staging_schema, school_levels),
         )
         logger.info("ways in the offline road network: %d", offline_ways.close())
         # The indexes the staging table was created without (`reset_segment_schema`),

@@ -233,10 +233,12 @@ J4-1); where a round with it finds no route (the only way out of a cul-de-sac), 
 again without it, and it is not asked again. Mass Ride is skipped (`ctx.group`).
 
 At weekday rush (Monday to Friday 7-10 AM and 4-7 PM), a minor road on a school's grounds or
-within 98 ft [30 m] of them (a bus loop, a drop-off lane, the street in front) is read at LTS 3
-at least, so the search looks for a way round it at arrival time; the rider is shown the road's
-own level, and nothing changes at other times (`routemaker.school_times`,
-`core.route_schools`). The window, the level and the distance are our defaults, not measured.
+within 98 ft [30 m] of them (a bus loop, a drop-off lane, the street in front) is read at its
+arrival-time level where the raters gave one higher than its own
+(docs/stress/briefs/SCHOOL-TIMES-BRIEF.md, `fixtures/school-times/rush-levels.csv`), so the
+search looks for a way round it then; the rider is shown the road's own level, and nothing
+changes at other times or on a road not yet rated (`routemaker.school_times`,
+`core.route_schools`). The window and the distance are our defaults, not measured.
 
 ### The guards
 
