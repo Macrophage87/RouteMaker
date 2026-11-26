@@ -19,6 +19,7 @@ mod = importlib.util.module_from_spec(spec)
 sys.modules["build_restricted_sites"] = mod
 spec.loader.exec_module(mod)
 ra = mod.ra
+from routemaker import restricted_sites as mod_rs  # noqa: E402
 
 W, S, E, N = -76.85, 39.0, -76.84, 39.01
 SQUARE = [(W, S), (E, S), (E, N), (W, N), (W, S)]
@@ -207,3 +208,38 @@ def test_a_site_mapped_twice_is_shaded_and_gated_once():
 def test_a_public_event_venue_is_not_a_closed_site():
     venue = area(SQUARE, "w298594982", "D.C. Armory")
     assert mod.sites_of({kind: [] for kind in ra.KINDS} | {ra.MILITARY: [venue]}) == []
+
+
+def test_a_gated_community_is_shaded_in_its_own_kind_with_its_gate() -> None:
+    # A county road (1-2-3), the entrance through a closed gate (node 10), and a loop behind
+    # it (4-5-6-4), about 300 m across: the loop is shaded as kind "gated", gated at node 10.
+    pos = {
+        1: (-81.800, 26.300),
+        2: (-81.797, 26.300),
+        3: (-81.794, 26.300),
+        10: (-81.797, 26.3005),
+        4: (-81.797, 26.301),
+        5: (-81.794, 26.303),
+        6: (-81.800, 26.303),
+    }
+
+    def way(osm_id, highway, nodes):
+        return (osm_id, {"highway": highway}, nodes, [pos[n] for n in nodes])
+
+    ways = [
+        way(100, "tertiary", [1, 2, 3]),
+        way(101, "residential", [2, 10, 4]),
+        way(102, "residential", [4, 5, 6, 4]),
+    ]
+    features = mod.gated_features(ways, {10: pos[10]})
+    shaded = [f for f in features if "kind" in f["properties"]]
+    assert [f["properties"] for f in shaded] == [{"site": "g102", "kind": "gated"}]
+    gates = [f for f in features if "gate" in f["properties"]]
+    assert [(f["properties"]["gate"], f["geometry"]["coordinates"]) for f in gates] == [
+        ("g102", [-81.797, 26.3005])
+    ]
+    # The router reads it as any closed site: a point inside goes to the gate.
+    sites = mod_rs.parse({"type": "FeatureCollection", "features": features})
+    assert sites[0].gates == ((-81.797, 26.3005),)
+    # No gate, no community.
+    assert mod.gated_features(ways, {}) == []

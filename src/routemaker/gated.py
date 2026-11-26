@@ -7,8 +7,12 @@ OSM often tags only the entrance of a gated community: a gate node closed to the
 (`access=private`), with the streets behind it
 left untagged, so the router reads them as public and rides through. Here the streets are
 read as the gate says: a group of streets that reaches the rest of the street network
-only through closed gates is private too. The router then enters it only to start or end
-a ride there (a resident's or a guest's trip), as for any `access=private` street.
+only through closed gates is closed too. The owner, 2026-11-26: "Have them closed, like
+with restricted areas in dc, but with a different color." So they close to bicycles on
+every graph (`rm:no_bicycle=gated`, `pipeline.trail_closures`) and leave the stress map,
+as a military base's roads do; the map shades the community in its own colour, and a
+trip point inside one is routed to its gate (`scripts/build_restricted_sites.py`, kind
+`gated`). An owner's override with a bicycle key reopens a street.
 
 What counts as reaching the network: a through road (tertiary or above, or an
 unclassified road) in the group. A public neighbourhood always holds one, or is joined to
@@ -43,8 +47,8 @@ THROUGH = frozenset(
         "unclassified",
     }
 )
-# What the streets behind a closed gate are given.
-BEHIND_GATE_TAGS = {"access": "private"}
+# The `rm:no_bicycle` reason of a street behind a closed gate.
+NO_BICYCLE = "gated"
 
 
 def is_closed_gate(tags: Mapping[str, str]) -> bool:

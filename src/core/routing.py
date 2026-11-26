@@ -4643,7 +4643,7 @@ def move_restricted_points(
 # private or no public access (an `access` or `vehicle` of no, private, permit, restricted or
 # military, or `bicycle=private`), a military or secure site, and a farm or forest track with
 # no sign it is public.
-NOT_PUBLIC_REASONS = ("private", "military", "secured", "track")
+NOT_PUBLIC_REASONS = ("private", "military", "secured", "track", "gated")
 NOT_PUBLIC_NOTE = (
     "This end point is not typically open to the public, make sure you're authorized to go here."
 )

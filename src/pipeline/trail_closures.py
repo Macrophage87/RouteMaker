@@ -26,6 +26,7 @@ from routemaker import (
     aisle_links,
     cbd,
     facility,
+    gated,
     short_links,
     sidewalks,
     singletrack,
@@ -68,6 +69,7 @@ ORDER = (
     WORKS_NO_BICYCLE,
     GOLF_NO_BICYCLE,
     TRACK_NO_BICYCLE,
+    gated.NO_BICYCLE,
     "zoo",
     singletrack.NO_BICYCLE,
     cbd.NO_BICYCLE,
@@ -231,13 +233,15 @@ def closures(
     works: Collection[int] = frozenset(),
     golf: Collection[int] = frozenset(),
     tracks: Collection[int] = frozenset(),
+    behind_gates: Collection[int] = frozenset(),
 ) -> TrailClosures:
     """Every NO-BIKE-PATHS closure, by way, and the ways `military` names (closed
     inside a military area, owner report 2026-10-05) and `secured` names (closed
     inside a secured federal compound, 2026-10-06) and `works` names (closed inside a
     quarry, a landfill or an industrial area, 2026-10-12) and `golf` names (a golf
     course's cart paths and drives, 2026-10-21) and `tracks` names (a farm or forest
-    track with no sign it is public, 2026-10-21) under their own reasons.
+    track with no sign it is public, 2026-10-21) and `behind_gates` names (a street
+    behind a closed gate, 2026-11-26, `routemaker.gated`) under their own reasons.
 
     `reopened` are the ways an approved access override wrote a bicycle key on. A
     mountain-bike-class way whose override lets a bicycle through is open, and so
@@ -266,6 +270,7 @@ def closures(
             or osm_id in works
             or osm_id in golf
             or osm_id in tracks
+            or osm_id in behind_gates
         ):
             # Open and destination-only: no rule closes it (and nothing but the
             # Zoo rule would), so it is not asked.
@@ -282,6 +287,8 @@ def closures(
             reason = GOLF_NO_BICYCLE
         elif osm_id in tracks:
             reason = TRACK_NO_BICYCLE
+        elif osm_id in behind_gates:
+            reason = gated.NO_BICYCLE
         elif zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):
             reason = zoo.NO_BICYCLE
         elif singletrack.is_singletrack(tags):

@@ -1079,7 +1079,8 @@ class RebuildContext:
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
-    # The streets behind a closed gate given `access=private` (`routemaker.gated`).
+    # The streets behind a closed gate (`routemaker.gated`), closed but where an
+    # override's bicycle key reopens one.
     behind_gate_ways: frozenset[int] = frozenset()
     # The silent trail ways a land manager's record opened (`pipeline.trail_uses`).
     trail_use_ways: frozenset[int] = frozenset()
@@ -2687,18 +2688,15 @@ def build_handlers(
         context.ways = extract.read_ways(
             context.source_pbf, button_nodes=context.button_nodes, closed_gates=closed_gates
         )
-        # The streets behind a closed gate, private like the gate (`routemaker.gated`; the
-        # owner, 2026-11-25, of gated communities: "only open to people who are residents
-        # or guests"), so a ride enters them only to start or end there.
+        # The streets behind a closed gate (`routemaker.gated`; the owner, 2026-11-25, of
+        # gated communities: "only open to people who are residents or guests"), closed
+        # with the area rules below (2026-11-26: "like with restricted areas in dc").
         behind = gated.behind_gates(
             ((way.osm_id, way.tags, way.node_ids) for way in context.ways), closed_gates
         )
-        for way in context.ways:
-            if way.osm_id in behind:
-                way.tags.update(gated.BEHIND_GATE_TAGS)
         context.behind_gate_ways = frozenset(behind)
         logger.info(
-            "streets behind a closed gate made private: %d ways, %.0f mi (%d closed gates)",
+            "streets behind a closed gate: %d ways, %.0f mi (%d closed gates)",
             len(behind),
             sum(facility._length_m(w.coordinates) for w in context.ways if w.osm_id in behind)
             / 1609.344,
@@ -3816,6 +3814,16 @@ def build_handlers(
             trail_routes={w for w, r in routes.items() if r.bicycle_route or r.hiking},
         )
         track_closed = {m.way_id for m in context.track_ways if m.closed}
+        # And the streets behind a closed gate (`routemaker.gated`; the owner, 2026-11-26:
+        # "Have them closed, like with restricted areas in dc, but with a different
+        # color"), but where an override wrote a bicycle key since they were read.
+        gated_closed = {
+            way.osm_id
+            for way in context.ways
+            if way.osm_id in context.behind_gate_ways
+            and "bicycle" not in way.tags
+            and "access" not in way.tags
+        }
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
         if context.secured_missing:
             logger.warning(
@@ -3834,6 +3842,8 @@ def build_handlers(
             )
             if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
         }
+        # Their roads leave the map, as a base's do; the shading says why.
+        context.short_paths_hidden |= gated_closed
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
         logger.info(
             "%s",
@@ -3917,6 +3927,7 @@ def build_handlers(
             works=works_closed,
             golf=golf_closed,
             tracks=track_closed,
+            behind_gates=gated_closed,
         )
         context.no_bicycle = nobike.reasons
         write_bike_bans(placed, areas[restricted_areas.PARK])

@@ -9075,7 +9075,12 @@ line, a point whose gate is where the point before it is routed, and a point in 
 gate found. The map washes, hatches and dashes the edge of each site from zoom 10, and names
 each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and with "No public
 access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
-15 (our defaults). Sites, gates and the hand-drawn closed
+15 (our defaults). Gated communities are closed sites too (the owner, 2026-11-26: "Have them
+closed, like with restricted areas in dc, but with a different color"): the streets that reach
+the rest only through a closed gate or an entrance drive tagged private (`routemaker.gated`) are
+closed on every graph (`rm:no_bicycle=gated`) and left off the stress map, and the map washes
+the community in a warm brown (kind `gated`, unnamed) instead of grey, with its closed gates as
+the gates a trip point inside is moved to. Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
 PC against the extract (`frontend/src/restricted-data/README.md`); `scripts/refresh_places.py`
 reruns it after each map rebuild ("Refreshing the places after a map rebuild"). No map rebuild

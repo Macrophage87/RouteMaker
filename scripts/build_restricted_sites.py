@@ -26,6 +26,10 @@ One GeoJSON FeatureCollection, `frontend/src/restricted-data/restricted-sites.js
   gate takes the meeting points of its closed paths instead;
 - the same for each hand-drawn closed area in `fixtures/restricted-sites/` (`DRAWN`), kind
   "closed", labelled whatever its size;
+- a gated community per group of streets behind a closed gate (`routemaker.gated`; the owner,
+  2026-11-26: "Have them closed, like with restricted areas in dc, but with a different
+  color"): kind "gated", the streets' outline (GATED_REACH_M round each street, gaps under
+  GATED_FILL_M filled), unnamed, with its closed gates as its gates (`gated_features`);
 - a MultiLineString per site, `{"open": id}`: the ways inside it that stay open (a public road
   the outline takes in, the Goddard Visitor Center's way in, a numbered road through a base),
   so a point near one is not moved to a gate (`routemaker.restricted_sites`).
@@ -54,6 +58,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from pipeline import restricted_areas as ra  # noqa: E402
+from routemaker import gated  # noqa: E402
 
 OUT = REPO / "frontend" / "src" / "restricted-data" / "restricted-sites.json"
 # Closed areas OSM has no outline for, drawn by hand with their source (the owner, 2026-11-12, of
@@ -334,6 +339,136 @@ def collection(areas: dict, ways: Sequence) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+# Our defaults, unmeasured: a gated community is shaded GATED_REACH_M round its streets (about a
+# house lot), with the gaps between streets under GATED_FILL_M filled, so the wash covers the
+# homes, not only the roads.
+GATED_REACH_M = 30.0
+GATED_FILL_M = 60.0
+GATED_KIND = "gated"
+
+
+def gated_features(ways: Sequence, gate_nodes: dict[int, tuple[float, float]]) -> list[dict]:
+    """The gated communities: `ways` are `(osm_id, tags, node_ids, coordinates)`, the street
+    network as the rebuild reads it, and `gate_nodes` the closed gates by node id (lon, lat).
+    The streets `gated.behind_gates` closes, grouped by the nodes they share, each group a
+    shaded site `g<first way id>` with the closed gates on its streets or its entrance as its
+    gates (a community whose entrance drive is tagged private, with no gate node, takes the
+    drive's end at an open street)."""
+    from shapely.geometry import LineString, mapping
+    from shapely.ops import unary_union
+
+    closed = gated.behind_gates(((w, t, n) for w, t, n, _c in ways), set(gate_nodes))
+    if not closed:
+        return []
+    sets = gated._Sets()
+    by_id = {w: (t, n, c) for w, t, n, c in ways}
+    for osm_id in closed:
+        nodes = by_id[osm_id][1]
+        for a, b in zip(nodes, nodes[1:], strict=False):
+            sets.union(a, b)
+    groups: dict[int, list[int]] = {}
+    for osm_id in sorted(closed):
+        groups.setdefault(sets.find(by_id[osm_id][1][0]), []).append(osm_id)
+    # A node of a closed street, by group; and where an entrance (a gate's way or a drive
+    # tagged private) touches one, the entrance's gate or its open end.
+    group_of = {n: root for root, ids in groups.items() for w in ids for n in by_id[w][1]}
+    open_nodes = {
+        n
+        for w, t, nodes, _c in ways
+        if w not in closed and t.get("access") not in gated.CLOSED_VALUES
+        for n in nodes
+    }
+    gates: dict[int, dict[int, tuple[float, float]]] = {}
+    for osm_id, tags, nodes, coords in ways:
+        if osm_id in closed or len(nodes) != len(coords):
+            continue
+        roots = {group_of[n] for n in nodes if n in group_of}
+        if not roots:
+            continue
+        found = {n: gate_nodes[n] for n in nodes if n in gate_nodes}
+        if not found and tags.get("access") in gated.CLOSED_VALUES:
+            found = {n: p for n, p in zip(nodes, coords, strict=True) if n in open_nodes}
+        for root in roots:
+            gates.setdefault(root, {}).update(found)
+    features: list[dict] = []
+    for root, ids in groups.items():
+        lat = by_id[ids[0]][2][0][1]
+        kx = M_PER_DEG * math.cos(math.radians(lat))
+        # Buffered in metres on a local plane, then back to degrees.
+        lines = [
+            LineString([(x * kx, y * M_PER_DEG) for x, y in by_id[w][2]])
+            for w in ids
+            if len(by_id[w][2]) >= 2
+        ]
+        if not lines:
+            continue
+        shape = (
+            unary_union(lines)
+            .buffer(GATED_REACH_M + GATED_FILL_M / 2)
+            .buffer(-GATED_FILL_M / 2)
+            .simplify(SIMPLIFY_DEG * M_PER_DEG)
+        )
+        if shape.is_empty or shape.area < MIN_SHADE_M2:
+            continue
+        geometry = json.loads(json.dumps(mapping(shape)))
+
+        geometry["coordinates"] = _to_degrees(geometry["coordinates"], kx)
+        site = f"g{ids[0]}"
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {"site": site, "kind": GATED_KIND},
+                "geometry": geometry,
+            }
+        )
+        for n in sorted(gates.get(root, {})):
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": {"gate": site},
+                    "geometry": {"type": "Point", "coordinates": _round(gates[root][n])},
+                }
+            )
+    return features
+
+
+def _to_degrees(value, kx: float):
+    """Metres on the local plane (`kx` metres a degree of longitude) back to rounded lon, lat."""
+    if value and isinstance(value[0], (int, float)):
+        return _round((value[0] / kx, value[1] / M_PER_DEG))
+    return [_to_degrees(v, kx) for v in value]
+
+
+def read_streets(pbf: str) -> tuple[list, dict[int, tuple[float, float]]]:
+    """The street ways `routemaker.gated` reads, as `(osm_id, tags, node_ids, coordinates)`, and
+    the closed gates by node id: the whole extract, as the rebuild reads it."""
+    import osmium
+
+    keep = gated.STREETS | gated.THROUGH
+    keys = ("highway", "access", "bicycle")
+    ways: list = []
+    gate_nodes: dict[int, tuple[float, float]] = {}
+
+    class Handler(osmium.SimpleHandler):
+        def node(self, n):
+            if "barrier" in n.tags and gated.is_closed_gate(dict(n.tags)):
+                gate_nodes[n.id] = (n.location.lon, n.location.lat)
+
+        def way(self, w):
+            if w.tags.get("highway") not in keep:
+                return
+            nodes = [n for n in w.nodes if n.location.valid()]
+            if len(nodes) >= 2:
+                tags = {k: w.tags[k] for k in keys if k in w.tags}
+                # A through road is never shaded nor an entrance: its ids only, to keep the
+                # PC's memory down.
+                coords = [(n.lon, n.lat) for n in nodes] if tags["highway"] in gated.STREETS else []
+                ways.append((w.id, tags, [n.ref for n in nodes], coords))
+
+    Handler().apply_file(pbf, locations=True)
+    return ways, gate_nodes
+
+
 def drawn_features(folder: Path = DRAWN) -> list[dict]:
     """The hand-drawn closed areas (`DRAWN`): a shaded polygon and a label each."""
     from shapely.geometry import shape as to_shape
@@ -426,11 +561,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     areas = ra.restricted_areas(args.pbf)
     ways = read_ways(args.pbf, site_cells([area[0] for _kind, area in sites_of(areas)]))
     found = collection(areas, ways)
+    streets, gate_nodes = read_streets(args.pbf)
+    found["features"].extend(gated_features(streets, gate_nodes))
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(found, separators=(",", ":")) + "\n", encoding="utf-8")
     kinds = [f["properties"] for f in found["features"]]
     print(
-        f"{sum(1 for p in kinds if 'kind' in p)} sites, "
+        f"{sum(1 for p in kinds if 'kind' in p)} sites "
+        f"({sum(1 for p in kinds if p.get('kind') == GATED_KIND)} gated communities), "
         f"{sum(1 for p in kinds if 'name' in p and 'kind' not in p)} labels, "
         f"{sum(1 for p in kinds if 'gate' in p)} gates -> {args.out}"
     )

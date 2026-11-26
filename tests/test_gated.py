@@ -65,3 +65,24 @@ def test_a_private_driveway_off_a_public_street_closes_nothing() -> None:
         (102, {"highway": "service", "access": "private"}, [3, 30]),  # a driveway off it
     ]
     assert gated.behind_gates(ways, set()) == set()
+
+
+def test_a_street_behind_a_gate_is_closed_after_the_area_rules_and_worded_for_the_panel() -> None:
+    from core import segment_info
+    from core.routing import NOT_PUBLIC_REASONS
+    from pipeline import trail_closures as tc
+    from pipeline.extract import Way
+
+    assert tc.ORDER.index(gated.NO_BICYCLE) == tc.ORDER.index("track") + 1
+    line = [(-81.80, 26.30), (-81.79, 26.30)]
+    ways = [
+        Way(osm_id=i, tags={"highway": "residential"}, node_ids=[1, 2], coordinates=line)
+        for i in (1, 2, 3)
+    ]
+    nobike = tc.closures(ways, {}, [], tracks={1}, behind_gates={1, 2})
+    assert nobike.reasons == {1: "track", 2: gated.NO_BICYCLE}
+    is_open, words = segment_info.ACCESS_WORDS[gated.NO_BICYCLE]
+    assert not is_open and "gate" in words
+    assert segment_info.ACCESS_SHORT[gated.NO_BICYCLE] == "gated community"
+    # A destination on one gets the not-public end note.
+    assert gated.NO_BICYCLE in NOT_PUBLIC_REASONS
