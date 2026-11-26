@@ -286,6 +286,24 @@ def test_only_sidewalks_beside_a_45_or_avoid_road_keep_the_lower_price():
     assert 13 not in last, "a link keeps its price"
 
 
+def test_a_sidewalk_beside_a_fast_level_4_road_keeps_the_lower_price():
+    """A 45 mph road rated 4 (most of Southwest Florida's level 4 miles): its sidewalk is a
+    link. A 35 mph road rated 4, and one with no speed known, keep the last-resort price."""
+    from dataclasses import replace
+
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(10, {"highway": "primary"}, [(0.0, 0.0), (400.0, 0.0)]),
+        way(11, dict(SIDEWALK), [(20.0, 12.0), (380.0, 12.0)]),
+    ]
+    for speed, cheap in ((45.0, {11}), (55.0, {11}), (35.0, set()), (None, set())):
+        rating = replace(_stress(4), speed_mph=speed)
+        assert last_resort_sidewalks(ways, {10: rating}, {11}, set()) == {11} - cheap, speed
+    calm = replace(_stress(3), speed_mph=45.0)
+    assert last_resort_sidewalks(ways, {10: calm}, {11}, set()) == {11}
+
+
 def test_a_sidewalk_beside_no_road_is_priced_as_a_connector():
     """Briggs Road, Glenmont (the owner's report): a walk tagged `footway=sidewalk`
     joins the two ends of the street, 124 m, with no road beside it; the last-resort price

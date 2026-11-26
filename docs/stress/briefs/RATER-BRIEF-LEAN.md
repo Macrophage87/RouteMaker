@@ -155,15 +155,19 @@ A JSON array, one object per group id:
 reason when you departed by a level or more. Set `second_look` true when you are torn by 1.5 levels
 or more, or when you rate a busy or main road calm.
 
-## Law for the first region
+## Law by region
 
-## Statutory speeds (law)
+## Statutory speeds and sidewalk riding (law)
 
-| Jurisdiction | Town (residence or business district) | Open country | Other | Citation |
-|---|---|---|---|---|
-| District of Columbia | 20 mph on every street unless posted | (none) | Alleys 15 mph | 18 DCMR 2200.6 |
-| Maryland | 30 undivided, 35 divided | 50 undivided, 55 divided | | Transportation Article 21-801.1 |
-| Virginia | 25 | 55 | 35 on unpaved roads | Code of Virginia 46.2-870 to 46.2-878 |
-| West Virginia | 25 | 55 | | W. Va. Code 17C-6-1 |
+| Jurisdiction | Town (residence or business district) | Open country | Other | Bikes on sidewalks | Citation |
+|---|---|---|---|---|---|
+| District of Columbia | 20 mph on every street unless posted | (none) | Alleys 15 mph | Allowed outside the central business district | 18 DCMR 2200.6, 1201.9 |
+| Maryland | 30 undivided, 35 divided | 50 undivided, 55 divided | | Only where a local law allows it | Transportation Article 21-801.1, 21-1103 |
+| Virginia | 25 | 55 | 35 on unpaved roads | Allowed unless a local law or sign bars it | Code of Virginia 46.2-870 to 46.2-878, 46.2-904 |
+| West Virginia | 25 | 55 | | Not checked | W. Va. Code 17C-6-1 |
+| Florida | 30 | 55 | A county or city may post 20 or 25 after a study | Allowed, with a pedestrian's rights and duties, unless a local law bars it | Fla. Stat. 316.183(2), 316.189, 316.2065(9)-(10) |
+
+The sidewalk column says whether a rider may be there, not what riding there is like: rate that
+from the sidewalk's own facts (width, driveways, walkers), as the bike-facility section says.
 
 DC also has a stop-as-yield law for bikes (a junction matter, not a road level).
