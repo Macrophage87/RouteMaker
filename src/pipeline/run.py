@@ -53,7 +53,6 @@ from routemaker import (
     mtbmode,
     pavement,
     ridetime,
-    school_times,
     setting,
     sidewalks,
     singletrack,
@@ -108,7 +107,6 @@ from . import (
     retention,
     route_relations,
     scenic_layer,
-    school_layer,
     signals,
     source,
     states,
@@ -982,9 +980,6 @@ class RebuildContext:
     # The street-running rail lines of the extract (`pipeline.hazard_layer.read_rails`;
     # v0.10.0's hazard symbols, never a stress input).
     street_rails: list = field(default_factory=list)
-    # The schools' grounds, widened by their frontage, in a tree (`pipeline.school_layer`;
-    # the owner, 2026-11-26), for the school pieces the planner reads busier at school times.
-    school_tree: object | None = None
     # The ways into Metro and MARC stations (`pipeline.station_links.read_ways_in`): the
     # footways from them become walk-your-bike links (`routemaker.station_links`).
     station_ways_in: list = field(default_factory=list)
@@ -1065,6 +1060,9 @@ class RebuildContext:
     # The ways inside a cemetery, routed only to or from a point inside one
     # (`rm:cemetery`; OWNER-DECISIONS 98).
     cemetery_ways: set[int] = field(default_factory=set)
+    # A school's own service roads, destination-only for routing alike (`rm:school_grounds`;
+    # `restricted_areas.school_ways`, the owner 2026-11-26).
+    school_ways: set[int] = field(default_factory=set)
     # Every way inside a military area, and whether the rule closed it
     # (`restricted_areas.military_closures`; the rebuild's military-closures.csv).
     military_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
@@ -1198,7 +1196,6 @@ class RebuildContext:
             "track_ways",
         ):
             setattr(self, name, type(getattr(self, name))())
-        self.school_tree = None
         self.reference = None
         gc.collect()
 
@@ -2725,8 +2722,6 @@ def build_handlers(
         context.scenic_routes = scenic_layer.read_routes(context.source_pbf)
         # The street-running rails (v0.10.0), for the hazard symbols and the road panel alone.
         context.street_rails = hazard_layer.read_rails(context.source_pbf)
-        # The schools' grounds (the owner, 2026-11-26), for the school pieces alone.
-        context.school_tree = school_layer.read(context.source_pbf)
         # The stations' ways in (the owner, 2026-10-20), for the walk-your-bike links into them.
         context.station_ways_in = station_ways.read_ways_in(context.source_pbf)
         # And their platforms (the owner, 2026-10-27), for the walkways at them.
@@ -3725,6 +3720,10 @@ def build_handlers(
         areas = restricted_areas.restricted_areas(context.source_pbf)
         placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
+        # A school's own service roads: no cut-through either (the owner, 2026-11-26), but
+        # drawn as before.
+        context.school_ways = restricted_areas.school_ways(placed, areas["school"])
+        logger.info("school service roads (destination-only): %d", len(context.school_ways))
         # And closed to bicycles, everything inside a military area (by the share of
         # its length) but a numbered public road, a way signed for bicycles, the
         # Pentagon's listed ways and what an owner's override reopens (owner report
@@ -4373,6 +4372,9 @@ def build_handlers(
                 if way.osm_id in context.cemetery_ways:
                     # No cut-through: reached only from or to a point inside.
                     derived["cemetery"] = True
+                if way.osm_id in context.school_ways:
+                    # No cut-through: reached only to or from a point on it.
+                    derived["school_grounds"] = True
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
@@ -4782,10 +4784,6 @@ def build_handlers(
         # and the reviewed list, for the road panel and the route's hazard marks.
         rail_roads, listed_hazards = hazard_inputs()
         hazard_ways = 0
-        # The school pieces' rush-hour levels (`pipeline.school_layer`), the raters' level
-        # for each school piece of a rated way, written once the rows are.
-        rush_levels = school_times.load()
-        school_levels: dict[tuple[int, int], float] = {}
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
@@ -4922,16 +4920,8 @@ def build_handlers(
                     )
                 )
                 hazard_ways += rows[-1]["hazard"] is not None
-                if way.osm_id in rush_levels and school_layer.is_school_piece(
-                    way.tags, piece, context.school_tree
-                ):
-                    school_levels[(way.osm_id, ordinal)] = rush_levels[way.osm_id]
         logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
-        logger.info(
-            "school pieces with a rush-hour level: %d",
-            writers.mark_school(context.staging_schema, school_levels),
-        )
         logger.info("ways in the offline road network: %d", offline_ways.close())
         # The indexes the staging table was created without (`reset_segment_schema`),
         # now that its rows are in, and before anything below updates or joins them.

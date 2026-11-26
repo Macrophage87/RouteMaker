@@ -130,7 +130,8 @@ MILITARY, CEMETERY, PARKING, PARK = "military", "cemetery", "parking", "park"
 SECURED = "secured"
 WORKS = "works"
 GOLF = "golf"
-KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF)
+SCHOOL = "school"
+KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF, SCHOOL)
 
 # Land uses that are a working site no one may wander into (owner report 2026-10-12):
 # every way inside a quarry or a landfill, and an industrial area's own drives, close.
@@ -169,6 +170,8 @@ def area_kind(tags, osm: str = "") -> str | None:
         return CEMETERY
     if tags.get("amenity") == "parking" or tags.get("parking") in PARKING_VALUES:
         return PARKING
+    if tags.get("amenity") == "school":
+        return SCHOOL
     # Before the parks: a public course a park agency runs (`operator=National Park
     # Service`, East Potomac) is still a golf course, its cart paths no trail.
     if tags.get("leisure") == "golf_course":
@@ -402,8 +405,8 @@ class _Areas(osmium.SimpleHandler):
 
 
 def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
-    """Every military, secured, cemetery, parking, park, works and golf area in an
-    extract, by kind."""
+    """Every military, secured, cemetery, parking, park, works, golf and school area in
+    an extract, by kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
     dropped = unassembled_military(handler.military_relations, handler.areas[MILITARY])
@@ -686,6 +689,30 @@ def cemetery_ways(ways, areas: Sequence[Area]) -> set[int]:
         if share >= INSIDE_FRACTION and not _cemetery_public_road(tags, share, _length_m(coords)):
             held.add(osm_id)
     return held
+
+
+def school_ways(ways, areas: Sequence[Area]) -> set[int]:
+    """A school's own service roads: its bus loop, drop-off lane and drives, by at least
+    INSIDE_FRACTION of their length inside the school's grounds (`amenity=school`).
+    Destination-only for routing (`rm:school_grounds`): reached to or from a point on
+    them (an end, a stop or a via), never a cut-through. The owner, 2026-11-26, after a
+    commute was sent round a bus loop at 8 AM: "keep it to service roads in front of a
+    school. Allow with a destination, stop, or via." and "cutting through school grounds
+    feels weird as an adult if you don't have a reason to go there". Public streets,
+    paths on the grounds and a way signed for bicycles stay as they are; so does the map,
+    which still draws them."""
+    rows = [
+        (osm_id, coords)
+        for osm_id, tags, coords in ways
+        if tags.get("highway") == "service"
+        and coords
+        and _not_a_signed_trail(tags)
+        and not public_route(tags)
+    ]
+    if not areas or not rows:
+        return set()
+    shapes = _Shapes(areas)
+    return {osm_id for osm_id, coords in rows if shapes.share(coords)[0] >= INSIDE_FRACTION}
 
 
 def parking_ways(ways, areas: Sequence[Area]) -> set[int]:

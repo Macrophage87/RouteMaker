@@ -1630,8 +1630,12 @@ the same whatever the style decides):
   Routing: a way inside a cemetery is **destination-only** - the rebuild writes
   `rm:cemetery=yes`, and the transform (`lua/routemaker_remap.lua`) makes it
   `access=destination` where its own access leaves it open, upstream's
-  destination-only flag, so a route enters only to reach a point inside. The
-  rest of this is map only.
+  destination-only flag, so a route enters only to reach a point inside. A
+  school's own service roads (its bus loop, drop-off lane and drives: `highway=service`
+  at least half inside an `amenity=school` area, `restricted_areas.school_ways`) are
+  destination-only the same way (`rm:school_grounds`; the owner, 2026-11-26): a route
+  takes one only to reach an end, a stop or a via on it, and the map still draws them.
+  The rest of this is map only.
 
   Route-relation membership is not read: an unnamed short piece of a signed
   route is left out like any other. Routing is unchanged: Valhalla reads the

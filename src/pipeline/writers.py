@@ -11,7 +11,7 @@ promotes staging, and it is a separate step for exactly that reason.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 
 from django.db import connection
 
@@ -502,24 +502,6 @@ def segment_row(
     """Build one segment row from a piece of way geometry."""
     wkt = "LINESTRING(" + ",".join(f"{lon} {lat}" for lon, lat in coordinates) + ")"
     return {"osm_way_id": way_id, "ordinal": ordinal, "wkt": wkt, "stress": stress, **extra}
-
-
-def mark_school(schema: str, levels: Mapping[tuple[int, int], float]) -> int:
-    """Write the school pieces' rush-hour levels (`school_rush_level`;
-    `pipeline.school_layer`), by (way id, ordinal). Returns the rows written."""
-    validate_schema_name(schema)
-    refuse_live_schema(schema)
-    keys = sorted(levels)
-    if not keys:
-        return 0
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""UPDATE {schema}.segment AS s SET school_rush_level = p.level
-                FROM unnest(%s::bigint[], %s::int[], %s::real[]) AS p(way_id, ordinal, level)
-                WHERE s.osm_way_id = p.way_id AND s.ordinal = p.ordinal""",
-            [[w for w, _ in keys], [o for _, o in keys], [levels[k] for k in keys]],
-        )
-        return cursor.rowcount
 
 
 def mark_links(schema: str, way_ids: Iterable[int]) -> int:

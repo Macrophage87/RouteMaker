@@ -121,16 +121,7 @@ from routemaker import (
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
-from . import (
-    junctions,
-    legsplit,
-    parallel,
-    presets,
-    route_hazards,
-    route_schools,
-    routing,
-    trailseek,
-)
+from . import junctions, legsplit, parallel, presets, route_hazards, routing, trailseek
 
 logger = logging.getLogger(__name__)
 
@@ -1378,9 +1369,6 @@ def analyse(
     if kinds is None:
         kinds = route_hazards.kinds_of(pieces)
     priced = hazard_priced(classes, kinds)
-    # A school's bus loop or drop-off street is searched at its raters' rush-hour level at
-    # school times (`core.route_schools`; the owner, 2026-11-26); the rider is shown its own.
-    priced = route_schools.priced_at(priced, pieces, ctx.when)
     hazard_read = priced is not classes
     classes = priced
     # Read from the traces, so a bridge over or a tunnel under a junction is no pass (J6).

@@ -1466,3 +1466,26 @@ def test_bicycle_link_service_matches_the_remap() -> None:
     assert table("BICYCLE_LINK_GRANTS") == set(facility_rules.BICYCLE_LINK_GRANTS)
     assert table("PERMISSIVE_ACCESS") == set(facility_rules.PERMISSIVE_ACCESS)
     assert table("USE_SIDEPATH_CLOSING_ACCESS") == set(facility_rules.USE_SIDEPATH_CLOSING_ACCESS)
+
+
+def test_a_schools_own_service_roads_are_found_and_nothing_else():
+    """The owner, 2026-11-26, after a commute was sent round a school's bus loop at 8 AM:
+    "keep it to service roads in front of a school. Allow with a destination, stop, or
+    via." Those become destination-only (`rm:school_grounds`); public streets, paths and a
+    way signed for bicycles do not."""
+    from pipeline import restricted_areas as areas
+
+    assert areas.area_kind({"amenity": "school", "name": "Example Middle School"}) == "school"
+    school = _box(-77.05, 39.05, -77.048, 39.052)
+    inside = [(-77.0495, 39.0505), (-77.0485, 39.0505), (-77.0485, 39.0512)]
+    ways = [
+        (1, {"highway": "service", "service": "drive-through"}, inside),  # the bus loop
+        (2, {"highway": "service"}, inside),
+        (3, {"highway": "residential", "name": "Middlevale Lane"}, inside),
+        (4, {"highway": "footway"}, inside),
+        (5, {"highway": "service", "bicycle": "designated"}, inside),
+        # A service road outside the grounds.
+        (6, {"highway": "service"}, [(-77.06, 39.06), (-77.059, 39.061)]),
+    ]
+    assert areas.school_ways(ways, [school]) == {1, 2}
+    assert areas.school_ways(ways, []) == set()
