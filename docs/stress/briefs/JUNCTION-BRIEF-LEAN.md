@@ -44,9 +44,8 @@ half way, whether drivers turning can see the rider, and how many things happen 
 Waiting matters as well as fear: sitting at a stop sign for a gap in steady traffic is no fun, and
 most riders would rather keep riding a little further (rider observation). Put the wait in
 `delay_s`, and be honest about it: with no signal, steady traffic on two lanes means tens of
-seconds, and a busy multilane road at rush hour can mean a minute or more. Measured on local rides:
-about 6 seconds lost per signal riding along a main road, about 13.5 crossing one (average over
-green and red).
+seconds, and a busy multilane road at rush hour can mean a minute or more. For signals, start from
+the figures measured in the region you are rating (see "Measured waits by region" at the end).
 
 Half a level off is fine; calling a hard crossing easy is the worst miss. You are not told signal
 phasing, bike boxes, island width, sight lines, often turn lanes or which approaches stop: assume
@@ -124,3 +123,15 @@ A JSON array, one object per junction id:
 `why` is one or two plain sentences a rider can read, with the facts that decided it. Set
 `second_look` true when you are torn by 1.5 levels or more, when the control is a guess on a major
 road, or when you rate a crossing of a major road at 2 or less without a signal.
+
+
+## Measured waits by region
+
+Averages over green and red, from rides in that region. Where a region has none yet, start from the
+nearest kind of place and say so in `missing`: a signal's wait grows with how wide and fast the main
+road is, so a long-cycle signal on a six-lane 45 mph road usually costs more than a city-grid one.
+
+| Region | Riding along a main road, per signal | Crossing one | Source |
+|---|---|---|---|
+| DC to Baltimore | about 6 s | about 13.5 s | the owner's rides, 2026-11 |
+| Southwest Florida | not measured yet | not measured yet | |

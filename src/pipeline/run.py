@@ -2246,6 +2246,28 @@ def very_stressful(stress) -> bool:
     return tier >= int(Stress.AVOID) or (tier == 4 and writers._half(stress))
 
 
+# A road rated 4 whose traffic runs this fast is one a rider leaves for the sidewalk beside
+# it, as a 4.5 or Avoid road is. The audit of the home area's rules against Southwest
+# Florida (2026-11-25): the rule below was set where a level 4 road is a 30 to 35 mph city
+# artery, which "a lot of people would still ride" (the owner, 2026-10-21); there, 1,557 mi
+# are rated 4 and most are 45 mph multilane roads whose sidewalk is the place riders use
+# (and may: Fla. Stat. 316.2065(9)). The figure is our default, unmeasured. The speed is
+# the one read for the road (a tag or an agency's record): where the classifier only
+# assumed a speed there is none (`StressResult.speed_mph`), and the road does not count.
+FAST_ROAD_MPH = 45.0
+
+
+def sidewalk_beats_road(stress) -> bool:
+    """Whether a sidewalk beside a road rated so is priced as a link rather than a last
+    resort: the road is rated 4.5 or Avoid, or rated 4 with traffic at FAST_ROAD_MPH or more."""
+    if very_stressful(stress):
+        return True
+    if stress is None or stress.tier is None or int(stress.tier) != 4:
+        return False
+    speed = getattr(stress, "speed_mph", None)
+    return speed is not None and speed >= FAST_ROAD_MPH
+
+
 def last_resort_sidewalks(
     ways: Collection,
     stress_by_way: dict,
@@ -2255,8 +2277,8 @@ def last_resort_sidewalks(
 ) -> set[int]:
     """The ridden footways priced above an LTS 4 road (`sidewalks.LAST_RESORT`; the owner,
     2026-10-21, "Beside 4.5/Avoid only"): all but the links, the sidewalks running
-    beside a road rated 4.5 or Avoid (`sidewalks.beside`), and the sidewalks running beside
-    no road at all.
+    beside a road rated 4.5 or Avoid or a fast road rated 4 (`sidewalk_beats_road`,
+    `sidewalks.beside`), and the sidewalks running beside no road at all.
 
     The last-resort price keeps a rider on the calmer road beside a sidewalk; with no road
     beside it there is none to keep to, and the "sidewalk" is a connector, priced as a link.
@@ -2272,7 +2294,7 @@ def last_resort_sidewalks(
                 asked.append((way.osm_id, way.coordinates))
         elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
             roads.append((way.osm_id, way.coordinates))
-            if very_stressful(stress_by_way.get(way.osm_id)):
+            if sidewalk_beats_road(stress_by_way.get(way.osm_id)):
                 stressful.append((way.osm_id, way.coordinates))
     if roadless is None:
         roadless = sidewalks.roadless(asked, roads)
