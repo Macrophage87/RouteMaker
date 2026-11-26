@@ -86,3 +86,21 @@ def test_a_street_behind_a_gate_is_closed_after_the_area_rules_and_worded_for_th
     assert segment_info.ACCESS_SHORT[gated.NO_BICYCLE] == "gated community"
     # A destination on one gets the not-public end note.
     assert gated.NO_BICYCLE in NOT_PUBLIC_REASONS
+
+
+def test_a_communitys_own_paths_are_private_like_its_streets() -> None:
+    ways, gates = _network()
+    behind = gated.behind_gates(ways, gates)
+    ways += [
+        # Bonita Bay's: the residents' bike path, tagged private and designated.
+        (200, {"highway": "cycleway", "access": "private", "bicycle": "designated"}, [5, 20]),
+        (201, {"highway": "path", "access": "private", "bicycle": "permissive"}, [5, 21]),
+        # An untagged loop met only by the community's streets.
+        (202, {"highway": "path"}, [6, 22, 23]),
+        # An untagged path from the community out to the county road: public.
+        (203, {"highway": "footway"}, [4, 24, 2]),
+        # A path alone in a park, met by no street: left as it is.
+        (204, {"highway": "path"}, [30, 31]),
+    ]
+    # The footpath 104 (7-2) joins the community to the county road too.
+    assert gated.private_paths(ways, behind) == {200, 202}

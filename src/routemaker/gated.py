@@ -18,8 +18,16 @@ What counts as reaching the network: a through road (tertiary or above, or an
 unclassified road) in the group. A public neighbourhood always holds one, or is joined to
 one by a street with no gate; a gated community's own streets are residential and service
 roads. A street OSM tags itself (any `access`, or a bicycle tag) keeps its own tags, and
-paths and footways are not streets here: a footpath out of the community neither opens
-its streets nor is closed by this rule.
+paths and footways are not streets here: a footpath out of the community does not open
+its streets.
+
+A community's own paths are private like its streets (`private_paths`; the owner,
+2026-11-26: "There are also several bike trails on places that are in private complexes,
+such as near bonita bay boulevard"): a path tagged `access=private` (or `residents`),
+whatever its bicycle tag but `permissive` (Bonita Bay's are `access=private` +
+`bicycle=designated`: the residents' bike paths), and an untagged path whose network of
+paths meets streets only where they are private or behind a gate. Both close as the
+streets do, and an override's bicycle key reopens one.
 """
 
 from __future__ import annotations
@@ -47,6 +55,9 @@ THROUGH = frozenset(
         "unclassified",
     }
 )
+# The paths `private_paths` reads, and the access values that make one private.
+PATHS = frozenset({"path", "footway", "cycleway", "bridleway", "pedestrian"})
+PRIVATE_PATH_ACCESS = frozenset({"private", "residents"})
 # The `rm:no_bicycle` reason of a street behind a closed gate.
 NO_BICYCLE = "gated"
 
@@ -128,5 +139,51 @@ def behind_gates(
         # Every part of the way lies behind a gate: a way that runs through the gate
         # itself, out to the public side, is left as it is.
         if roots and roots <= gated and not roots & public:
+            closed.add(osm_id)
+    return closed
+
+
+def private_paths(
+    ways: Iterable[tuple[int, Mapping[str, str], Sequence[int]]], closed_streets: set[int]
+) -> set[int]:
+    """The paths (id, tags, node ids) inside a private community: those tagged private
+    (`PRIVATE_PATH_ACCESS`) but `bicycle=permissive`, and the untagged ones (no access or
+    bicycle key) whose path network meets streets only where they are private: in
+    `closed_streets` (the streets `behind_gates` closes) or tagged closed themselves. A
+    network that meets no street at all is left as it is."""
+    ways = list(ways)
+    closed: set[int] = set()
+    untagged: list[tuple[int, Sequence[int]]] = []
+    for osm_id, tags, nodes in ways:
+        if tags.get("highway") not in PATHS or len(nodes) < 2:
+            continue
+        if tags.get("access") in PRIVATE_PATH_ACCESS:
+            if tags.get("bicycle") != "permissive":
+                closed.add(osm_id)
+        elif "access" not in tags and "bicycle" not in tags:
+            untagged.append((osm_id, nodes))
+    if not untagged:
+        return closed
+    sets = _Sets()
+    path_nodes: set[int] = set()
+    for _osm_id, tags, nodes in ways:
+        if tags.get("highway") not in PATHS or len(nodes) < 2:
+            continue
+        path_nodes.update(nodes)
+        for a, b in zip(nodes, nodes[1:], strict=False):
+            sets.union(a, b)
+    private: set[int] = set()
+    public: set[int] = set()
+    for osm_id, tags, nodes in ways:
+        if tags.get("highway") not in STREETS | THROUGH:
+            continue
+        shut = osm_id in closed_streets or (
+            tags.get("access") in CLOSED_VALUES and tags.get("highway") in STREETS
+        )
+        roots = {sets.find(n) for n in nodes if n in path_nodes}
+        (private if shut else public).update(roots)
+    for osm_id, nodes in untagged:
+        root = sets.find(nodes[0])
+        if root in private and root not in public:
             closed.add(osm_id)
     return closed

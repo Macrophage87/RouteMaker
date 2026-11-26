@@ -1082,6 +1082,9 @@ class RebuildContext:
     # The streets behind a closed gate (`routemaker.gated`), closed but where an
     # override's bicycle key reopens one.
     behind_gate_ways: frozenset[int] = frozenset()
+    # The paths inside a private community (`routemaker.gated.private_paths`), closed as
+    # its streets are.
+    private_path_ways: frozenset[int] = frozenset()
     # The silent trail ways a land manager's record opened (`pipeline.trail_uses`).
     trail_use_ways: frozenset[int] = frozenset()
     # The circle parks' walkways opened to bicycles (`routemaker.circleparks`).
@@ -2695,6 +2698,23 @@ def build_handlers(
             ((way.osm_id, way.tags, way.node_ids) for way in context.ways), closed_gates
         )
         context.behind_gate_ways = frozenset(behind)
+        # And the community's own paths (the owner, 2026-11-26: "several bike trails on
+        # places that are in private complexes, such as near bonita bay boulevard").
+        context.private_path_ways = frozenset(
+            gated.private_paths(
+                ((way.osm_id, way.tags, way.node_ids) for way in context.ways), behind
+            )
+        )
+        logger.info(
+            "paths inside a private community: %d ways, %.0f mi",
+            len(context.private_path_ways),
+            sum(
+                facility._length_m(w.coordinates)
+                for w in context.ways
+                if w.osm_id in context.private_path_ways
+            )
+            / 1609.344,
+        )
         logger.info(
             "streets behind a closed gate: %d ways, %.0f mi (%d closed gates)",
             len(behind),
@@ -2704,9 +2724,7 @@ def build_handlers(
         )
         # The beach paths along the tide line, in the map areas whose beaches are ridden
         # (`pipeline.beaches`; the owner, 2026-11-23), joined to the beach accesses.
-        beach_boxes = [
-            box for name, box in coverage.areas().items() if name in beaches.BEACH_AREAS
-        ]
+        beach_boxes = [box for name, box in coverage.areas().items() if name in beaches.BEACH_AREAS]
         if beach_boxes:
             found = beaches.read(context.source_pbf, beach_boxes, context.ways)
             logger.info("beach paths: %s", beaches.summary(found))
@@ -3816,13 +3834,20 @@ def build_handlers(
         track_closed = {m.way_id for m in context.track_ways if m.closed}
         # And the streets behind a closed gate (`routemaker.gated`; the owner, 2026-11-26:
         # "Have them closed, like with restricted areas in dc, but with a different
-        # color"), but where an override wrote a bicycle key since they were read.
+        # color"), and the community's own paths, but where an override wrote a bicycle
+        # key since they were read.
         gated_closed = {
             way.osm_id
             for way in context.ways
-            if way.osm_id in context.behind_gate_ways
-            and "bicycle" not in way.tags
-            and "access" not in way.tags
+            if way.osm_id not in context.bicycle_override_ways
+            and (
+                way.osm_id in context.private_path_ways
+                or (
+                    way.osm_id in context.behind_gate_ways
+                    and "bicycle" not in way.tags
+                    and "access" not in way.tags
+                )
+            )
         }
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
         if context.secured_missing:
@@ -4038,8 +4063,7 @@ def build_handlers(
                 way.osm_id in nobike.sidewalk_links
                 or way.osm_id in roadless
                 or (
-                    way.osm_id in context.short_paths_declutter
-                    and sidewalks.bicycle_open(way.tags)
+                    way.osm_id in context.short_paths_declutter and sidewalks.bicycle_open(way.tags)
                 )
             )
             and (way.tags.get("footway") not in sidewalks.SIDEWALK_KINDS or way.osm_id in roadless)
