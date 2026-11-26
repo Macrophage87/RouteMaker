@@ -480,6 +480,10 @@ SCENIC_COLUMN = "scenic"
 # panel and by a route that rides it (`core.route_hazards`), never by the tiles. Never a
 # stress input: the graph is told by `rm:hazard` and prices the way as LTS 4.
 HAZARD_COLUMN = "hazard"
+# A school piece (`routemaker.school_times`, `pipeline.school_layer`; the owner, 2026-11-26):
+# a minor road on a school's grounds or in front of them, which the planner's search reads
+# at LTS 3 at least at school times (`core.route_schools`). Never a stress input.
+SCHOOL_COLUMN = "school"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -675,6 +679,11 @@ CREATE TABLE {schema}.segment (
     -- prices the way as LTS 4 (`rm:hazard`). Never read by the classifier. Null on every
     -- other way and on a table built before it.
     hazard          text,
+    -- A school piece (`routemaker.school_times`; the owner, 2026-11-26): a minor road
+    -- on a school's grounds or within 30 m of them, which the planner's search reads at
+    -- LTS 3 at least at school times (weekday rush). The map, the graph and the route's
+    -- colours keep the road's own level. False on a table built before it.
+    school          boolean     NOT NULL DEFAULT false,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated

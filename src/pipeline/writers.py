@@ -504,6 +504,24 @@ def segment_row(
     return {"osm_way_id": way_id, "ordinal": ordinal, "wkt": wkt, "stress": stress, **extra}
 
 
+def mark_school(schema: str, pieces: Iterable[tuple[int, int]]) -> int:
+    """Mark the school pieces (`school`; `pipeline.school_layer`) by their (way id,
+    ordinal). Returns the rows marked."""
+    validate_schema_name(schema)
+    refuse_live_schema(schema)
+    pieces = sorted(set(pieces))
+    if not pieces:
+        return 0
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""UPDATE {schema}.segment AS s SET school = true
+                FROM unnest(%s::bigint[], %s::int[]) AS p(way_id, ordinal)
+                WHERE s.osm_way_id = p.way_id AND s.ordinal = p.ordinal""",
+            [[w for w, _ in pieces], [o for _, o in pieces]],
+        )
+        return cursor.rowcount
+
+
 def mark_links(schema: str, way_ids: Iterable[int]) -> int:
     """Mark the slip roads, on- and off-ramps (`road_link`; `routemaker.agency_roads.is_link`),
     by their OSM way ids. Returns the rows marked."""

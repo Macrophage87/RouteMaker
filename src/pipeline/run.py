@@ -107,6 +107,7 @@ from . import (
     retention,
     route_relations,
     scenic_layer,
+    school_layer,
     signals,
     source,
     states,
@@ -980,6 +981,9 @@ class RebuildContext:
     # The street-running rail lines of the extract (`pipeline.hazard_layer.read_rails`;
     # v0.10.0's hazard symbols, never a stress input).
     street_rails: list = field(default_factory=list)
+    # The schools' grounds, widened by their frontage, in a tree (`pipeline.school_layer`;
+    # the owner, 2026-11-26), for the school pieces the planner reads busier at school times.
+    school_tree: object | None = None
     # The ways into Metro and MARC stations (`pipeline.station_links.read_ways_in`): the
     # footways from them become walk-your-bike links (`routemaker.station_links`).
     station_ways_in: list = field(default_factory=list)
@@ -1193,6 +1197,7 @@ class RebuildContext:
             "track_ways",
         ):
             setattr(self, name, type(getattr(self, name))())
+        self.school_tree = None
         self.reference = None
         gc.collect()
 
@@ -2719,6 +2724,8 @@ def build_handlers(
         context.scenic_routes = scenic_layer.read_routes(context.source_pbf)
         # The street-running rails (v0.10.0), for the hazard symbols and the road panel alone.
         context.street_rails = hazard_layer.read_rails(context.source_pbf)
+        # The schools' grounds (the owner, 2026-11-26), for the school pieces alone.
+        context.school_tree = school_layer.read(context.source_pbf)
         # The stations' ways in (the owner, 2026-10-20), for the walk-your-bike links into them.
         context.station_ways_in = station_ways.read_ways_in(context.source_pbf)
         # And their platforms (the owner, 2026-10-27), for the walkways at them.
@@ -4774,6 +4781,8 @@ def build_handlers(
         # and the reviewed list, for the road panel and the route's hazard marks.
         rail_roads, listed_hazards = hazard_inputs()
         hazard_ways = 0
+        # The school pieces (`pipeline.school_layer`), marked once the rows are written.
+        school_pieces: list[tuple[int, int]] = []
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
@@ -4910,8 +4919,14 @@ def build_handlers(
                     )
                 )
                 hazard_ways += rows[-1]["hazard"] is not None
+                if school_layer.is_school_piece(way.tags, piece, context.school_tree):
+                    school_pieces.append((way.osm_id, ordinal))
         logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
+        logger.info(
+            "school pieces (read busier at school times): %d",
+            writers.mark_school(context.staging_schema, school_pieces),
+        )
         logger.info("ways in the offline road network: %d", offline_ways.close())
         # The indexes the staging table was created without (`reset_segment_schema`),
         # now that its rows are in, and before anything below updates or joins them.
