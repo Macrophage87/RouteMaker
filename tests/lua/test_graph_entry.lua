@@ -330,6 +330,23 @@ check("a last-resort sidewalk reaches the graph with LTS 4's lanes",
   last_out.bike_forward == "true" and last_out["lanes:forward"] == "15",
   tostring(last_out.bike_forward) .. " " .. tostring(last_out["lanes:forward"]))
 
+-- One a rater rates a side path (rm:sidewalk=sidepath, 2026-11-26) reaches the graph open
+-- both ways, typed as the footway it is (upstream's use 25) rather than a sidewalk (24).
+local _, side_out = transform_way({
+  highway = "footway", footway = "sidewalk", ["rm:sidewalk"] = "sidepath",
+  ["rm:trail_class"] = "yes", ["rm:stress_tier"] = "2",
+})
+local _, plain_side = transform_way({
+  highway = "footway", footway = "sidewalk", ["rm:sidewalk"] = "yes", ["rm:trail_class"] = "yes",
+  ["rm:stress_tier"] = "3",
+})
+check("a rated side path sidewalk reaches the graph open to bicycles",
+  side_out.bike_forward == "true" and side_out.bike_backward == "true",
+  tostring(side_out.bike_forward) .. "/" .. tostring(side_out.bike_backward))
+check("typed as a footway, not a sidewalk", tostring(side_out.use) == "25" and tostring(plain_side.use) == "24",
+  tostring(side_out.use) .. " vs " .. tostring(plain_side.use))
+check("and the mark never reaches the tile build", side_out["rm:sidewalk"] == nil)
+
 -- A walk-your-bike station link (routemaker.station_links) reaches the graph open both ways.
 local _, walk_out = transform_way({
   highway = "footway", footway = "sidewalk", ["rm:walk_link"] = "yes", ["rm:trail_class"] = "yes",

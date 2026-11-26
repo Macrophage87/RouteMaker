@@ -15,7 +15,7 @@ Then, 2026-10-21: "a lot of people would still ride on some lts 4 roads than tak
 sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only".
 
 So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua prices them
-(`rm:sidewalk`) at one of two levels:
+(`rm:sidewalk`) at one of two levels, unless a rater rates one a side path (the last item):
 - a link, a sidewalk running beside a road rated 4.5 or Avoid, or rated 4 with traffic at
   45 mph or more (`beside`, `pipeline.run.sidewalk_beats_road`; the fast level 4 road since
   the 2026-11-25 audit against Southwest Florida, where that is the usual artery), and a sidewalk
@@ -26,6 +26,10 @@ So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua price
   at every slider position, so it is ridden only where nothing else connects or beside an
   Avoid road, rated LTS 4 (`LAST_RESORT_TIER`). The router prices LTS 4 and 4.5 roads alike,
   which is why the rebuild tells the two kinds apart rather than the price.
+- and one rated a side path (`SIDEPATH`): a ridden sidewalk whose override row, a rater's,
+  rates it below LTS 3, priced as the path it is (the rater brief rates a sidewalk where the
+  law lets bikes ride it from its own width, setback and driveways; "last resort" is the
+  rater's call, never the map's tag alone).
 The ratings let the route's stress, the rolling stress chart and RouteMaker's own ranking
 count them as the router prices them, not as a quiet trail.
 
@@ -95,6 +99,10 @@ TIER = 3
 RULE = "sidewalk ridden as a last resort (the owner, 2026-10-20)"
 # Every other ridden sidewalk and crosswalk: priced above an LTS 4 road, rated LTS 4.
 LAST_RESORT = "last_resort"
+# A ridden sidewalk an override row rates below `TIER` (a rater's side path; the rater
+# brief, "Sidewalks where the law lets bikes ride them", 2026-11-26): priced as the path it
+# is, not as a sidewalk (`pipeline.run.rated_sidepath_sidewalks`).
+SIDEPATH = "sidepath"
 LAST_RESORT_TIER = 4
 LAST_RESORT_RULE = (
     "sidewalk beside a calmer road, ridden only where nothing else connects (the owner, 2026-10-21)"

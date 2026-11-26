@@ -82,6 +82,17 @@ rated as a painted lane. A shared-lane marking or a signed route is no facility:
 sidewalk open to bikes is about 2 (walkers, driveways, kerb ramps), not a protected lane; a wide,
 railed bridge sidewalk about 1.5.
 
+**Sidewalks where the law lets bikes ride them** (the law table at the end). A sidewalk beside a
+road is usually the side path there, whatever the map calls it and whether or not it carries a
+bicycle tag: rate it as a side path from its own facts. About 1.5 to 2 where it is 8 ft or wider
+with few driveways; about 2 to 2.5 at 5 to 7 ft or with frequent driveways and side streets; its
+road crossings are junctions, not part of this level. Call it `last resort` (level 4, ridden only
+where nothing else connects) only where it is narrow (under about 5 ft), broken or missing in
+stretches, crowded with walkers, or signed against riding, and say which. With no width given,
+judge from the road it serves and any agency record, and say what you assumed. Where the law
+leaves sidewalk riding to local rules or bars it, keep `last resort` unless the facts show bikes
+are allowed there.
+
 **Road crossings are not part of this level.** Each road crossing is rated separately as a
 junction, with its own stress and delay, and the planner charges it once, where it is. So a signal,
 a multilane crossing, a slip lane or a highway ramp must not raise the level of the lane, side path

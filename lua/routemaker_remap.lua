@@ -1130,12 +1130,20 @@ function M.remap_way(tags, derived)
   -- also carries LTS 4's top lane count: on the same tile build it loses to LTS 4 and 4.5
   -- roads at every slider position and is taken only over Avoid or where nothing else
   -- connects. The links, and the sidewalks beside a 4.5 or Avoid road, keep the price above.
+  --
+  -- One a rater rates a side path (`rm:sidewalk=sidepath`, `M.SIDEPATH_SIDEWALK`; the rater
+  -- brief, 2026-11-26, "Sidewalks where the law lets bikes ride them") is opened plainly,
+  -- with no penalty or sidewalk speed, and priced as the path it is (`M.priced_as_sidepath`).
   if derived.sidewalk and tags.bicycle == nil and out.bicycle == nil and not derived.no_bicycle then
-    out.bicycle = M.STRESS_PENALTY_BICYCLE
-    out["maxspeed:practical"] = M.SIDEWALK_SPEED
-    if derived.sidewalk == M.LAST_RESORT_SIDEWALK then
-      out["lanes:forward"] = M.GRADED_LANES
-      out["lanes:backward"] = M.GRADED_LANES
+    if derived.sidewalk == M.SIDEPATH_SIDEWALK then
+      out.bicycle = "yes"
+    else
+      out.bicycle = M.STRESS_PENALTY_BICYCLE
+      out["maxspeed:practical"] = M.SIDEWALK_SPEED
+      if derived.sidewalk == M.LAST_RESORT_SIDEWALK then
+        out["lanes:forward"] = M.GRADED_LANES
+        out["lanes:backward"] = M.GRADED_LANES
+      end
     end
   end
 
@@ -1384,6 +1392,7 @@ M.SIDEPATH_GRANTS = { yes = true, designated = true, permissive = true, official
 function M.priced_as_sidepath(tags, derived)
   if tags.highway ~= "footway" or tags.footway ~= "sidewalk" then return false end
   if tags.bicycle == "designated" then return true end
+  if derived and derived.sidewalk == M.SIDEPATH_SIDEWALK and tags.bicycle == nil then return true end
   if derived and derived.no_public_traffic_sidewalk and M.SIDEPATH_GRANTS[tags.bicycle] then return true end
   return M.SIDEPATH_GRANTS[tags.bicycle] == true and (tags.name ~= nil or tags.segregated ~= nil)
 end
@@ -2311,6 +2320,8 @@ end
 M.SIDEWALK_SPEED = "90"
 -- `rm:sidewalk`'s value for a sidewalk priced above an LTS 4 road (routemaker.sidewalks).
 M.LAST_RESORT_SIDEWALK = "last_resort"
+-- `rm:sidewalk`'s value for a sidewalk a rater rates a side path (routemaker.sidewalks.SIDEPATH).
+M.SIDEPATH_SIDEWALK = "sidepath"
 
 -- Half steps' marks (see `remap_way`): 3.5's practical speed (kph) and lanes
 -- each way, between a road's own and LTS 4's `GRADED_*`, and 2.5's lanes.

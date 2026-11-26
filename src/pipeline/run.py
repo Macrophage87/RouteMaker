@@ -1019,6 +1019,8 @@ class RebuildContext:
     sidewalk_rides: set[int] = field(default_factory=set)
     # Those of them priced above an LTS 4 road (`sidewalks.LAST_RESORT`), rated LTS 4.
     sidewalk_last_resort: set[int] = field(default_factory=set)
+    # Those of them an override row rates below LTS 3, priced as paths (`sidewalks.SIDEPATH`).
+    sidewalk_sidepaths: set[int] = field(default_factory=set)
     # The short links among them (`sidewalks.links`), which the graphs that ride no sidewalk
     # still walk (`sidewalk_derived`).
     sidewalk_links: set[int] = field(default_factory=set)
@@ -2335,15 +2337,45 @@ def sidewalk_derived(
     ridden: Collection[int],
     last_resort: Collection[int],
     links: Collection[int],
+    sidepaths: Collection[int] = frozenset(),
 ) -> dict[str, object]:
     """What a graph is told of a sidewalk ridden as a last resort (`routemaker.sidewalks`),
     which lua/routemaker_remap.lua prices: nothing on Mass Ride's graph (a crowd on a
-    sidewalk), a walked link or nothing on the graphs of `NO_SIDEWALK_VARIANTS`."""
+    sidewalk), a walked link or nothing on the graphs of `NO_SIDEWALK_VARIANTS`; one a rater
+    rates a side path (`sidepaths`) is marked `sidewalks.SIDEPATH`, priced as a path."""
     if way_id not in ridden or variant is variants.Variant.NO_TRAIL:
         return {}
     if variant in NO_SIDEWALK_VARIANTS:
         return {"link_walk": True} if way_id in links else {}
+    if way_id in sidepaths:
+        return {"sidewalk": sidewalks.SIDEPATH}
     return {"sidewalk": sidewalks.LAST_RESORT if way_id in last_resort else True}
+
+
+def rated_sidepath_sidewalks(
+    ways: Collection, stress_by_way: dict, ridden: Collection[int]
+) -> set[int]:
+    """The ridden sidewalks an override row (a rater's) rates below LTS 3 (`sidewalks.TIER`):
+    the side paths they are, priced as paths (`sidewalks.SIDEPATH`), never as a last resort.
+
+    The rater brief ("Sidewalks where the law lets bikes ride them", 2026-11-26) rates a
+    sidewalk from its own width, setback and driveways, and keeps "last resort" (level 4)
+    where it is narrow, broken, crowded or signed against riding. Without a row the map's
+    tag decides, as before. Only sidewalks (`footway=sidewalk`): a crosswalk, link or
+    cut-through keeps its price, since the remap prices only a sidewalk as a path."""
+    sidewalk_ids = {
+        way.osm_id
+        for way in ways
+        if way.osm_id in ridden and way.tags.get("footway") == "sidewalk"
+    }
+    found = set()
+    for way_id in sidewalk_ids:
+        current = stress_by_way.get(way_id)
+        if current is None or getattr(current, "adjustment", None) is None:
+            continue
+        if current.tier is not None and int(current.tier) < sidewalks.TIER:
+            found.add(way_id)
+    return found
 
 
 def raise_ridden_sidewalks(
@@ -3970,12 +4002,22 @@ def build_handlers(
         context.walk_bike = nobike.walk_bike
         context.sidewalk_rides = nobike.sidewalk_rides
         roadless = roadless_sidewalks(context.ways, nobike.sidewalk_rides, nobike.sidewalk_links)
-        context.sidewalk_last_resort = last_resort_sidewalks(
-            context.ways,
-            context.stress_by_way,
-            nobike.sidewalk_rides,
-            nobike.sidewalk_links,
-            roadless,
+        context.sidewalk_sidepaths = rated_sidepath_sidewalks(
+            context.ways, context.stress_by_way, nobike.sidewalk_rides
+        )
+        context.sidewalk_last_resort = (
+            last_resort_sidewalks(
+                context.ways,
+                context.stress_by_way,
+                nobike.sidewalk_rides,
+                nobike.sidewalk_links,
+                roadless,
+            )
+            - context.sidewalk_sidepaths
+        )
+        logger.info(
+            "sidewalks a rater rates as side paths, priced as paths: %d ways",
+            len(context.sidewalk_sidepaths),
         )
         context.sidewalk_links = set(nobike.sidewalk_links)
         context.no_public_traffic_sidewalks = sidewalks.no_public_traffic_sidewalks(
@@ -4423,6 +4465,7 @@ def build_handlers(
                         context.sidewalk_rides,
                         context.sidewalk_last_resort,
                         context.sidewalk_links,
+                        context.sidewalk_sidepaths,
                     )
                 )
                 # A sidewalk open to bicycles along a street closed to public driving
