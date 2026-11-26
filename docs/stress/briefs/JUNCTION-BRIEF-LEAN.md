@@ -1,8 +1,8 @@
 # Rating junctions for a rider (lean brief, draft 2026-11-14)
 
 You rate how hard a junction is to get through on a bike, for an open-source bike route planner.
-Each item is one junction: its legs (name, class, the road's stress level, through lanes each way, speed, traffic
-count, one-way, bearing, bike facility) and what is tagged about its control (signal, stop or yield
+Each item is one junction: its legs (name, class, the road's stress level, through lanes each way,
+speed, traffic count, one-way, bearing, bike facility) and what is tagged about its control (signal, stop or yield
 by approach, crosswalk and bike crossing tags, refuge island, beacon). Make a reasoned call from the
 evidence and use your best judgment. Everything below is a starting point with its reason, not a
 limit: depart from it whenever this junction's own evidence says so, and say why.
@@ -100,7 +100,8 @@ harder than the same crossing at a plain four-way, more if the signal has long g
 
 - The road's stress level is about riding along it. A road rated calm because it has a protected
   lane is no easier to cross: judge crossing from its lanes, speed and traffic.
-- Lanes at the junction include turn lanes. For crossing, count them all: that is the distance.
+- The lane count is through lanes only. Turn bays, centre turn lanes and slip lanes add to the
+  distance you cross, and you are often not told them: assume a main road has them.
 - A tagged crosswalk says paint, not that traffic stops.
 - A count may belong to another road, and a missing signal tag is common on small junctions. Say
   when the control is a guess.
