@@ -9128,6 +9128,11 @@ parallel to it along most of its length, keep `rm:sidewalk=yes` and are rated LT
 (`sidewalks.roadless`: at most 20% of it within 150 ft (45 m) of a road and level with it,
 our defaults, unmeasured), such as the walk tagged `footway=sidewalk` that joins the two
 ends of Briggs Road in Glenmont (OSM 656603494), which routes rode 0.7 mi round.
+A ridden sidewalk an override row (a rater's) rates below LTS 3 is the side path the rater
+says it is (`pipeline.run.rated_sidepath_sidewalks`, since 2026-11-26; the rater brief's
+"Sidewalks where the law lets bikes ride them"): it gets `rm:sidewalk=sidepath`, which the
+remap opens plainly and prices as a path (`footway=sidewalk` comes off), and it is never a
+last resort. A rater's level 4, or no row, leaves the price above.
 The map draws such a walk too (`sidewalks.street_links`): a footway bicycles may ride (a
 link, a cut-through, a roadless sidewalk, or an open path the short-path declutter hid) whose
 run meets public streets at two or more nodes (never a sidewalk beside a road or a crosswalk), so a street that carries on through a short walk
