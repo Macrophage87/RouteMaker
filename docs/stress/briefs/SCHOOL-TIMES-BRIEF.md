@@ -1,7 +1,9 @@
 # Rating roads beside schools at arrival time (lean brief)
 
 Use with RATER-BRIEF-LEAN.md: same scale (1 to 4.5, 5 Avoid, half steps), same rules (rate blind,
-no Street View, no crash records, describe the road and never the people around it).
+no Street View, no crash records for the road itself, describe the road and never the people around
+it). Studies of school zones as a type of road (national or published injury data by road type and
+time of day) may be cited where they bear on the question, with the source.
 
 ## The question
 

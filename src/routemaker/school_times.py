@@ -6,8 +6,8 @@ The case that started it: a commute at about 8 AM was routed round a school's bu
 (Garden Gate and Middlevale Ln, Wheaton), which the map has at LTS 1 as a quiet drive;
 at that hour it carries school buses and a queue of cars dropping children off. The
 stress is the traffic of the hour, not the road: buses turning across it, cars stopping
-and pulling out, doors opening, children crossing between them. (Crash records are not a
-reason here: the project does not rate roads by them, 2026-11-13.)
+and pulling out, doors opening, children crossing between them. (A single road's crash records are not used, being too few to rate one road by; studies of
+school zones as a type of road may be cited: the owner, 2026-11-26.)
 
 So a piece of road counts as a school piece (`pipeline.school_layer`) where it lies on
 the grounds of an OSM `amenity=school` area or within FRONTAGE_M of its edge, and is a
