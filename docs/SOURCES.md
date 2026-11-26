@@ -297,7 +297,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `Bike_Lane_TDA` (item `32b8fa6d23974ed7bed110ea93341a79`) is kept as raw data for the
   raters; the build reads bike lanes from OSM. The posted speed and lane count are the
   state's record and win over OSM's on the state road classes they are held to.
-- Licence: Florida public records (Florida Statutes chapter 119), which a state agency may not
+- Licence: Florida public records (Florida Constitution article I, section 24; Florida Statutes chapter 119), which a state agency may not
   copyright without a statute allowing it: public domain (the owner, 2026-11-26, citing the
   Department of State's public records presentation,
   <https://soe.dos.state.fl.us/pdf/GC_Presentation-Public_Records-Final_20191210.pdf>). Published in the public data release with FDOT's "NO WARRANTIES
@@ -331,7 +331,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `trail-uses.json`; fetched with `scripts/fetch_agency_layer.py` after the owner
   approves the download (2026-11-26: 5,732 records, project files
   `data/fl-ogt-2026-11-26/`).
-- Licence: Florida public records (Florida Statutes chapter 119), which a state agency may not
+- Licence: Florida public records (Florida Constitution article I, section 24; Florida Statutes chapter 119), which a state agency may not
   copyright without a statute allowing it: public domain (the owner, 2026-11-26, citing the
   Department of State's public records presentation,
   <https://soe.dos.state.fl.us/pdf/GC_Presentation-Public_Records-Final_20191210.pdf>). Published in the public data release.
