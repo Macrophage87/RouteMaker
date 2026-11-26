@@ -141,7 +141,9 @@ def read(pbf: str | Path, boxes: Sequence[Box], ways: Sequence[Way] = ()) -> Bea
     for way in ways:
         if way.tags.get("highway") not in rules.ACCESS_HIGHWAYS or not way.coordinates:
             continue
-        if not any(_inside(box, *way.coordinates[0]) or _inside(box, *way.coordinates[-1]) for box in boxes):
+        if not any(
+            _inside(box, *way.coordinates[0]) or _inside(box, *way.coordinates[-1]) for box in boxes
+        ):
             continue
         located = way.located_points()
         first, last = located[0], located[-1]

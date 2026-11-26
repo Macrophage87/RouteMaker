@@ -46,6 +46,7 @@ from routemaker import (
     coverage,
     divided,
     facility,
+    gated,
     hazards,
     lane_overrides,
     mallgrounds,
@@ -113,6 +114,7 @@ from . import (
     tiles,
     trail_closures,
     trail_routes,
+    trail_uses,
     variants,
     writers,
 )
@@ -584,6 +586,9 @@ class ReferenceData:
     # Optional like `roadway.json`: without it the line says urban or rural alone.
     # Never read by the classifier.
     setting_by_way: dict[int, list] = field(default_factory=dict)
+    # The land managers' trail-use lines (`pipeline.trail_uses`), from `trail-uses.json`.
+    # Optional like `roadway.json`: without it no trail is opened by a manager's record.
+    trail_use_features: tuple[conflation.RoadFeature, ...] = ()
 
     @classmethod
     def load(
@@ -725,6 +730,7 @@ class ReferenceData:
                     strict=True,
                 )
             ),
+            trail_use_features=trail_uses.load(directory / trail_uses.FILE_NAME),
         )
 
     @staticmethod
@@ -1073,6 +1079,10 @@ class RebuildContext:
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
+    # The streets behind a closed gate given `access=private` (`routemaker.gated`).
+    behind_gate_ways: frozenset[int] = frozenset()
+    # The silent trail ways a land manager's record opened (`pipeline.trail_uses`).
+    trail_use_ways: frozenset[int] = frozenset()
     # The circle parks' walkways opened to bicycles (`routemaker.circleparks`).
     circle_park_ways: set[int] = field(default_factory=set)
     # The Capitol grounds' walks opened to bicycles (`routemaker.capitolgrounds`).
@@ -2673,7 +2683,27 @@ def build_handlers(
         # The ways' nodes tagged `button_operated=yes` are read in the same pass (the beg
         # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
         context.button_nodes = set()
-        context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
+        closed_gates: set[int] = set()
+        context.ways = extract.read_ways(
+            context.source_pbf, button_nodes=context.button_nodes, closed_gates=closed_gates
+        )
+        # The streets behind a closed gate, private like the gate (`routemaker.gated`; the
+        # owner, 2026-11-25, of gated communities: "only open to people who are residents
+        # or guests"), so a ride enters them only to start or end there.
+        behind = gated.behind_gates(
+            ((way.osm_id, way.tags, way.node_ids) for way in context.ways), closed_gates
+        )
+        for way in context.ways:
+            if way.osm_id in behind:
+                way.tags.update(gated.BEHIND_GATE_TAGS)
+        context.behind_gate_ways = frozenset(behind)
+        logger.info(
+            "streets behind a closed gate made private: %d ways, %.0f mi (%d closed gates)",
+            len(behind),
+            sum(facility._length_m(w.coordinates) for w in context.ways if w.osm_id in behind)
+            / 1609.344,
+            len(closed_gates),
+        )
         # The beach paths along the tide line, in the map areas whose beaches are ridden
         # (`pipeline.beaches`; the owner, 2026-11-23), joined to the beach accesses.
         beach_boxes = [
@@ -3626,6 +3656,15 @@ def build_handlers(
         }
         context.bicycle_override_directions = superseded
         context.bicycle_override_ways = frozenset(superseding)
+        # The trails a land manager lists for biking (`pipeline.trail_uses`; the owner,
+        # 2026-11-25), opened where OSM is silent, before the trail rules read the tags.
+        # Counted with the override ways, so a mountain-bike-class trail the record opens
+        # rides on every graph, as an approved bicycle override would.
+        listed = trail_uses.open_listed(
+            context.ways, getattr(reference, "trail_use_features", ()) if reference else ()
+        )
+        context.trail_use_ways = frozenset(listed)
+        context.bicycle_override_ways = frozenset(superseding) | context.trail_use_ways
         for way_id in sorted(superseded):
             way = context.ways_by_id.get(way_id)
             directions = superseded[way_id]

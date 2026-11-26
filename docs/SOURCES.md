@@ -314,6 +314,20 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: a US Government work, public domain. Kept in the repository as
   `frontend/src/tide-data/tides.json` (low tides only, about 400 days).
 
+## Florida Greenways and Trails, Existing Trails (trail uses)
+
+- Credit: `Florida DEP (Office of Greenways and Trails)`
+- Layer: **Florida Greenways and Trails System - Existing Trails**, Florida Department of
+  Environmental Protection open data
+  (<https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/OGT/MapServer/3>). The
+  field `TYPE` names each trail's uses; "Biking", "Hiking/Biking",
+  "Hiking/Biking/Equestrian" and "Multi-Use" open the trail ways OSM is silent about
+  for bicycles (`routemaker.trail_uses`; the owner, 2026-11-25, "Most of the trails that
+  are advertised for biking are closed for biking"). A way's own `bicycle` tag wins.
+- Installed with `scripts/install_reference_data.py --fl-trail-uses` as
+  `trail-uses.json`; fetched with `scripts/fetch_agency_layer.py` after the owner
+  approves the download. Licence to be read from the layer's item page at fetch time.
+
 ## Maryland traffic counts (MDOT SHA)
 
 - Credit: `State of Maryland (MDOT SHA)`

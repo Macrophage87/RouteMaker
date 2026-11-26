@@ -78,6 +78,13 @@ each as `scripts/fetch_agency_layer.py` stored it; `--byway-name-field` names th
 byway layer's name field, and `--rustic-name-field` the rustic roads' road-name field,
 where it is not one `routemaker.scenic` looks for (a layer with none is refused).
 
+Florida's biking trails go to `trail-uses.json`, optional, read by the rebuild's
+override stage (`pipeline.trail_uses`): a silent trail way along one opens to bicycles:
+
+    --fl-trail-uses fl-ogt-existing-trails.geojson   FL DEP Office of Greenways and Trails
+
+as `scripts/fetch_agency_layer.py` stored it.
+
 The agencies' traffic signal lists go to `signals.json`, optional, read by the
 rebuild's tag stage (`pipeline.agency_signals`; v0.10.0) to mark the junctions at a
 signal OSM does not map:
@@ -697,6 +704,11 @@ def main(argv: list[str] | None = None) -> int:
         "--scenic-byways", type=Path, help="MDOT SHA Scenic Byways (MD iMAP), GeoJSON as fetched"
     )
     parser.add_argument(
+        "--fl-trail-uses",
+        type=Path,
+        help="Florida Greenways and Trails, Existing Trails (FL DEP), GeoJSON as fetched",
+    )
+    parser.add_argument(
         "--dc-signals", type=Path, help="DDOT Traffic Signals (DC GIS), GeoJSON as fetched"
     )
     parser.add_argument("--md-signals", type=Path, help="MDOT SHA Traffic Signals, GeoJSON")
@@ -756,6 +768,7 @@ def main(argv: list[str] | None = None) -> int:
         args.dc_pci,
         args.rustic_roads,
         args.scenic_byways,
+        args.fl_trail_uses,
         args.dc_signals,
         args.md_signals,
         args.va_signals,
@@ -878,6 +891,21 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("two scenic lines share an id")
         (reference / "scenic.json").write_text(json.dumps(rows, separators=(",", ":")))
         print(f"wrote {reference / 'scenic.json'}: {len(rows)} scenic lines")
+
+    if args.fl_trail_uses:
+        # The trails Florida's Office of Greenways and Trails lists for biking
+        # (`routemaker.trail_uses`; the owner, 2026-11-25), read by the rebuild's
+        # override stage (`pipeline.trail_uses`).
+        from routemaker import trail_uses
+
+        rows, dropped = trail_uses.fl_ogt_rows(json.loads(args.fl_trail_uses.read_text()))
+        if len({row["id"] for row in rows}) != len(rows):
+            parser.error("two trail-use lines share an id")
+        (reference / "trail-uses.json").write_text(json.dumps(rows, separators=(",", ":")))
+        print(
+            f"wrote {reference / 'trail-uses.json'}: {len(rows)} biking trail lines, "
+            f"{dropped} records left out (not for bicycles)"
+        )
 
     signal_inputs = (
         (args.dc_signals, "ddot_rows", {}),
