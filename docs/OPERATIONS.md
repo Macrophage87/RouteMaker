@@ -9121,8 +9121,10 @@ its speed. Then, 2026-10-21: "a lot of people would still ride on some lts 4 roa
 take the sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only". The
 router prices LTS 4 and 4.5 roads alike, so the rebuild sorts the sidewalks instead
 (`pipeline.run.last_resort_sidewalks`, `sidewalks.beside`): a link, and a sidewalk lying
-within 100 ft (30 m) of a road rated 4.5 or Avoid and parallel to it along most of its
-length, keep `rm:sidewalk=yes` and are rated LTS 3. So does a sidewalk beside no road
+within 100 ft (30 m) of a road rated 4.5 or Avoid, or of a road rated 4 whose posted or
+recorded speed is 45 mph or more (`pipeline.run.sidewalk_beats_road`, since the 2026-11-25
+audit against Southwest Florida; a road whose speed is only assumed does not count), and
+parallel to it along most of its length, keep `rm:sidewalk=yes` and are rated LTS 3. So does a sidewalk beside no road
 (`sidewalks.roadless`: at most 20% of it within 150 ft (45 m) of a road and level with it,
 our defaults, unmeasured), such as the walk tagged `footway=sidewalk` that joins the two
 ends of Briggs Road in Glenmont (OSM 656603494), which routes rode 0.7 mi round.
