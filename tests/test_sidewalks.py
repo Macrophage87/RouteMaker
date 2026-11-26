@@ -915,3 +915,39 @@ def test_roadless_sidewalks_feed_the_last_resort_rule():
     roadless = roadless_sidewalks(ways, {21, 23}, set())
     assert roadless == {21}
     assert last_resort_sidewalks(ways, {}, {21, 23}, set(), roadless) == {23}
+
+
+# The rater brief, 2026-11-26 ("Sidewalks where the law lets bikes ride them"): a sidewalk a
+# rater rates below LTS 3 is the side path it is, priced as a path; a rater's level 4, a
+# formula's rating, or no row at all leaves the sidewalk's price as it was.
+def test_a_sidewalk_a_rater_rates_a_side_path_is_priced_as_a_path():
+    from dataclasses import replace
+
+    from pipeline import variants
+    from pipeline.run import rated_sidepath_sidewalks, sidewalk_derived
+
+    def rater(tier, half=False):
+        return replace(
+            _stress(tier, half), rule="override: stress adjustment 1", adjustment=object()
+        )
+
+    ratings = {
+        1: rater(1, half=True),
+        2: rater(2),
+        3: rater(4),
+        4: _stress(1),
+        6: rater(2),
+        7: rater(2),
+        8: rater(5),
+    }
+    ways = [way(i, dict(SIDEWALK), [(0.0, 0.0), (0.0, 50.0)]) for i in (1, 2, 3, 4, 5, 6, 8)]
+    ways.append(way(7, dict(CROSSWALK), [(0.0, 0.0), (0.0, 12.0)]))
+    found = rated_sidepath_sidewalks(ways, ratings, {1, 2, 3, 4, 5, 7, 8})
+    assert found == {1, 2}, "only ridden sidewalks, not a crosswalk, a rater rates below 3"
+    assert sidewalk_derived(variants.Variant.STANDARD, 1, {1, 3}, {1, 3}, set(), found) == {
+        "sidewalk": sw.SIDEPATH
+    }
+    assert sidewalk_derived(variants.Variant.STANDARD, 3, {1, 3}, {1, 3}, set(), found) == {
+        "sidewalk": sw.LAST_RESORT
+    }
+    assert sidewalk_derived(variants.Variant.EBIKE, 1, {1}, set(), set(), found) == {}
