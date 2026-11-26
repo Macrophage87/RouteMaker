@@ -93,7 +93,7 @@ local function derived_from(kv)
   if kv["rm:facility_neutral"] then derived.facility_neutral = kv["rm:facility_neutral"] == "yes" end
   if kv["rm:no_bicycle"] then derived.no_bicycle = kv["rm:no_bicycle"] end
   if kv["rm:cemetery"] then derived.cemetery = kv["rm:cemetery"] == "yes" end
-  if kv["rm:school_grounds"] then derived.school_grounds = kv["rm:school_grounds"] == "yes" end
+  if kv["rm:campus_grounds"] then derived.campus_grounds = kv["rm:campus_grounds"] == "yes" end
   if kv["rm:destination_only"] then derived.destination_only = true end
   if kv["rm:walk_link"] then derived.walk_link = kv["rm:walk_link"] == "yes" end
   if kv["rm:platform_walk"] then derived.platform_walk = kv["rm:platform_walk"] == "yes" end

@@ -1060,9 +1060,9 @@ class RebuildContext:
     # The ways inside a cemetery, routed only to or from a point inside one
     # (`rm:cemetery`; OWNER-DECISIONS 98).
     cemetery_ways: set[int] = field(default_factory=set)
-    # A school's own service roads, destination-only for routing alike (`rm:school_grounds`;
-    # `restricted_areas.school_ways`, the owner 2026-11-26).
-    school_ways: set[int] = field(default_factory=set)
+    # A school's or a hospital's own service roads, destination-only for routing alike
+    # (`rm:campus_grounds`; `restricted_areas.campus_ways`, the owner 2026-11-26).
+    campus_ways: set[int] = field(default_factory=set)
     # Every way inside a military area, and whether the rule closed it
     # (`restricted_areas.military_closures`; the rebuild's military-closures.csv).
     military_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
@@ -3720,10 +3720,12 @@ def build_handlers(
         areas = restricted_areas.restricted_areas(context.source_pbf)
         placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
-        # A school's own service roads: no cut-through either (the owner, 2026-11-26), but
-        # drawn as before.
-        context.school_ways = restricted_areas.school_ways(placed, areas["school"])
-        logger.info("school service roads (destination-only): %d", len(context.school_ways))
+        # A school's or a hospital's own service roads: no cut-through either (the owner,
+        # 2026-11-26), but drawn as before.
+        context.campus_ways = restricted_areas.campus_ways(placed, areas["campus"])
+        logger.info(
+            "school and hospital service roads (destination-only): %d", len(context.campus_ways)
+        )
         # And closed to bicycles, everything inside a military area (by the share of
         # its length) but a numbered public road, a way signed for bicycles, the
         # Pentagon's listed ways and what an owner's override reopens (owner report
@@ -4372,9 +4374,9 @@ def build_handlers(
                 if way.osm_id in context.cemetery_ways:
                     # No cut-through: reached only from or to a point inside.
                     derived["cemetery"] = True
-                if way.osm_id in context.school_ways:
+                if way.osm_id in context.campus_ways:
                     # No cut-through: reached only to or from a point on it.
-                    derived["school_grounds"] = True
+                    derived["campus_grounds"] = True
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit

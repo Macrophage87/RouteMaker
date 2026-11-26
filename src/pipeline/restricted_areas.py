@@ -130,8 +130,12 @@ MILITARY, CEMETERY, PARKING, PARK = "military", "cemetery", "parking", "park"
 SECURED = "secured"
 WORKS = "works"
 GOLF = "golf"
-SCHOOL = "school"
-KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF, SCHOOL)
+CAMPUS = "campus"
+KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF, CAMPUS)
+# The grounds whose own service roads are no cut-through (`campus_ways`): a school's (the
+# owner, 2026-11-26) and a hospital's ("it's possible that some hospitals too might have
+# that cut through issue too", the same day).
+CAMPUS_AMENITY = frozenset({"school", "hospital"})
 
 # Land uses that are a working site no one may wander into (owner report 2026-10-12):
 # every way inside a quarry or a landfill, and an industrial area's own drives, close.
@@ -170,8 +174,8 @@ def area_kind(tags, osm: str = "") -> str | None:
         return CEMETERY
     if tags.get("amenity") == "parking" or tags.get("parking") in PARKING_VALUES:
         return PARKING
-    if tags.get("amenity") == "school":
-        return SCHOOL
+    if tags.get("amenity") in CAMPUS_AMENITY:
+        return CAMPUS
     # Before the parks: a public course a park agency runs (`operator=National Park
     # Service`, East Potomac) is still a golf course, its cart paths no trail.
     if tags.get("leisure") == "golf_course":
@@ -405,7 +409,7 @@ class _Areas(osmium.SimpleHandler):
 
 
 def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
-    """Every military, secured, cemetery, parking, park, works, golf and school area in
+    """Every military, secured, cemetery, parking, park, works, golf and campus area in
     an extract, by kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
@@ -691,16 +695,17 @@ def cemetery_ways(ways, areas: Sequence[Area]) -> set[int]:
     return held
 
 
-def school_ways(ways, areas: Sequence[Area]) -> set[int]:
-    """A school's own service roads: its bus loop, drop-off lane and drives, by at least
-    INSIDE_FRACTION of their length inside the school's grounds (`amenity=school`).
-    Destination-only for routing (`rm:school_grounds`): reached to or from a point on
-    them (an end, a stop or a via), never a cut-through. The owner, 2026-11-26, after a
-    commute was sent round a bus loop at 8 AM: "keep it to service roads in front of a
-    school. Allow with a destination, stop, or via." and "cutting through school grounds
-    feels weird as an adult if you don't have a reason to go there". Public streets,
-    paths on the grounds and a way signed for bicycles stay as they are; so does the map,
-    which still draws them."""
+def campus_ways(ways, areas: Sequence[Area]) -> set[int]:
+    """A school's or a hospital's own service roads (CAMPUS_AMENITY): a bus loop, a
+    drop-off lane, an emergency entrance, the drives, by at least INSIDE_FRACTION of their
+    length inside the grounds. Destination-only for routing (`rm:campus_grounds`): reached
+    to or from a point on them (an end, a stop or a via), never a cut-through. The owner,
+    2026-11-26, after a commute was sent round a school's bus loop at 8 AM: "keep it to
+    service roads in front of a school. Allow with a destination, stop, or via." and
+    "cutting through school grounds feels weird as an adult if you don't have a reason to
+    go there"; then "some hospitals too might have that cut through issue too". Public
+    streets, paths on the grounds and a way signed for bicycles stay as they are; so does
+    the map, which still draws them."""
     rows = [
         (osm_id, coords)
         for osm_id, tags, coords in ways

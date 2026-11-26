@@ -1267,17 +1267,17 @@ for _, tags in ipairs({
     tostring(out.access) .. " " .. tostring(out.private))
   check("and the mark never reaches the tile build", out["rm:cemetery"] == nil)
 end
--- A school's own service road (the owner, 2026-11-26): destination-only the same way.
-local _, school = transform_way({ highway = "service", ["rm:school_grounds"] = "yes",
+-- A school's or hospital's own service road (the owner, 2026-11-26): destination-only the same way.
+local _, school = transform_way({ highway = "service", ["rm:campus_grounds"] = "yes",
   ["rm:stress_tier"] = "1" })
 check("a school's service road is open to bicycles",
   school.bike_forward == "true" and school.bike_backward == "true",
   tostring(school.bike_forward) .. "/" .. tostring(school.bike_backward))
 check("and destination-only", school.access == "destination" and school.private == "true",
   tostring(school.access) .. " " .. tostring(school.private))
-check("and the mark never reaches the tile build", school["rm:school_grounds"] == nil)
+check("and the mark never reaches the tile build", school["rm:campus_grounds"] == nil)
 local _, closed_school = transform_way({ highway = "service", access = "no",
-  ["rm:school_grounds"] = "yes", ["rm:stress_tier"] = "1" })
+  ["rm:campus_grounds"] = "yes", ["rm:stress_tier"] = "1" })
 check("a school road its own access closes stays closed",
   closed_school.bike_forward == "false", tostring(closed_school.bike_forward))
 local _, closed_cemetery = transform_way({ highway = "service", access = "no",

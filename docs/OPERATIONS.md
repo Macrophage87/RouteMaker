@@ -1631,9 +1631,10 @@ the same whatever the style decides):
   `rm:cemetery=yes`, and the transform (`lua/routemaker_remap.lua`) makes it
   `access=destination` where its own access leaves it open, upstream's
   destination-only flag, so a route enters only to reach a point inside. A
-  school's own service roads (its bus loop, drop-off lane and drives: `highway=service`
-  at least half inside an `amenity=school` area, `restricted_areas.school_ways`) are
-  destination-only the same way (`rm:school_grounds`; the owner, 2026-11-26): a route
+  school's or a hospital's own service roads (a bus loop, a drop-off lane, an emergency
+  entrance, the drives: `highway=service` at least half inside an `amenity=school` or
+  `amenity=hospital` area, `restricted_areas.campus_ways`) are destination-only the same
+  way (`rm:campus_grounds`; the owner, 2026-11-26): a route
   takes one only to reach an end, a stop or a via on it, and the map still draws them.
   The rest of this is map only.
 
