@@ -8684,10 +8684,10 @@ the stress tier with the step words (1 "Comfortable for everyone" to 5 "Avoid", 
 half steps' own words, 441i-441l: 1.5 "Probably comfortable for older children", 2.5 "Fine
 for most confident adults", 3.5 "Stressful even for experienced cyclists", 4.5 "A very
 high-stress road"; the answer's `step` is 3 or 3.5) and `stress_rule` in plain words (`rule_words`:
-"35 mph or above, mixed traffic", "Owner-rated corridor", "Avoid: highway-like road
+"35 mph or above, mixed traffic", "Rated from this road's own evidence" (any reviewed rating row; before v0.31.0 it said "Owner-rated corridor", which mislabelled rater ratings), "Avoid: highway-like road
 (posted 55 mph)"), an override's tier before it and its category; where the
 override row's display is `map`, its approved public note is the Why line itself, in the
-details and the summary, in place of "Owner-rated corridor" (`override_note`; from v0.17.0,
+details and the summary, in place of that line (`override_note`; from v0.17.0,
 the owner 2026-11-01; a `route_only` note is never shown on a click); the lanes, "each
 way" or, where `road_oneway` is true (a one-way street, or one carriageway of a divided
 road), "in this direction", since `road_lanes` counts one direction; and
@@ -8701,7 +8701,7 @@ lines; the sections stay the full record. "Street View" is Google's public URL f
 `on_way`, `[lon, lat]`, 441o; the spot itself when no road is found), in a new tab with
 `rel="noopener noreferrer"`, named in text only, with the note that the spot is sent to
 Google only if the link is followed. No person is ever named: an owner's row is "Owner
-override" or "Owner-rated corridor".
+override" or "Rated from this road's own evidence".
 
 **Bike access and its reason.** Open or closed is the router's answer when it gives one
 (the graph is the truth routing uses), else the table's (`map_class` barred, or a closing
