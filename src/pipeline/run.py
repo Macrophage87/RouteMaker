@@ -2349,16 +2349,24 @@ def sidewalk_derived(
     return {"sidewalk": sidewalks.LAST_RESORT if way_id in last_resort else True}
 
 
-def rated_sidepath_sidewalks(stress_by_way: dict, ridden: Collection[int]) -> set[int]:
+def rated_sidepath_sidewalks(
+    ways: Collection, stress_by_way: dict, ridden: Collection[int]
+) -> set[int]:
     """The ridden sidewalks an override row (a rater's) rates below LTS 3 (`sidewalks.TIER`):
     the side paths they are, priced as paths (`sidewalks.SIDEPATH`), never as a last resort.
 
     The rater brief ("Sidewalks where the law lets bikes ride them", 2026-11-26) rates a
     sidewalk from its own width, setback and driveways, and keeps "last resort" (level 4)
     where it is narrow, broken, crowded or signed against riding. Without a row the map's
-    tag decides, as before."""
+    tag decides, as before. Only sidewalks (`footway=sidewalk`): a crosswalk, link or
+    cut-through keeps its price, since the remap prices only a sidewalk as a path."""
+    sidewalk_ids = {
+        way.osm_id
+        for way in ways
+        if way.osm_id in ridden and way.tags.get("footway") == "sidewalk"
+    }
     found = set()
-    for way_id in ridden:
+    for way_id in sidewalk_ids:
         current = stress_by_way.get(way_id)
         if current is None or getattr(current, "adjustment", None) is None:
             continue
@@ -3986,7 +3994,7 @@ def build_handlers(
         context.sidewalk_rides = nobike.sidewalk_rides
         roadless = roadless_sidewalks(context.ways, nobike.sidewalk_rides, nobike.sidewalk_links)
         context.sidewalk_sidepaths = rated_sidepath_sidewalks(
-            context.stress_by_way, nobike.sidewalk_rides
+            context.ways, context.stress_by_way, nobike.sidewalk_rides
         )
         context.sidewalk_last_resort = (
             last_resort_sidewalks(

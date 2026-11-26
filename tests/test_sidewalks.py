@@ -931,9 +931,19 @@ def test_a_sidewalk_a_rater_rates_a_side_path_is_priced_as_a_path():
             _stress(tier, half), rule="override: stress adjustment 1", adjustment=object()
         )
 
-    ratings = {1: rater(1, half=True), 2: rater(2), 3: rater(4), 4: _stress(1), 6: rater(2)}
-    found = rated_sidepath_sidewalks(ratings, {1, 2, 3, 4, 5})
-    assert found == {1, 2}, "only ridden sidewalks a rater rates below 3"
+    ratings = {
+        1: rater(1, half=True),
+        2: rater(2),
+        3: rater(4),
+        4: _stress(1),
+        6: rater(2),
+        7: rater(2),
+        8: rater(5),
+    }
+    ways = [way(i, dict(SIDEWALK), [(0.0, 0.0), (0.0, 50.0)]) for i in (1, 2, 3, 4, 5, 6, 8)]
+    ways.append(way(7, dict(CROSSWALK), [(0.0, 0.0), (0.0, 12.0)]))
+    found = rated_sidepath_sidewalks(ways, ratings, {1, 2, 3, 4, 5, 7, 8})
+    assert found == {1, 2}, "only ridden sidewalks, not a crosswalk, a rater rates below 3"
     assert sidewalk_derived(variants.Variant.STANDARD, 1, {1, 3}, {1, 3}, set(), found) == {
         "sidewalk": sw.SIDEPATH
     }

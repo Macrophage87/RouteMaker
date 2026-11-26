@@ -15,7 +15,7 @@ Then, 2026-10-21: "a lot of people would still ride on some lts 4 roads than tak
 sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only".
 
 So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua prices them
-(`rm:sidewalk`) at one of two levels:
+(`rm:sidewalk`) at one of two levels, unless a rater rates one a side path (the last item):
 - a link, a sidewalk running beside a road rated 4.5 or Avoid, or rated 4 with traffic at
   45 mph or more (`beside`, `pipeline.run.sidewalk_beats_road`; the fast level 4 road since
   the 2026-11-25 audit against Southwest Florida, where that is the usual artery), and a sidewalk
