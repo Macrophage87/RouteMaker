@@ -10989,7 +10989,9 @@ Python 3.11 or later, standard library only.
   copy it. `--server live` only on the owner's go.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
-  absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
+  absent), `set` (null = remove), `comment` and `source` (`survey`, or for `bicycle` and
+  `motor_vehicle` keys the https link to the managing agency's own published rule, the owner,
+  2026-11-26). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
   `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing;
   `cycleway:<side>:separation` for a physical divider such as flex posts seen on the street; `motor_vehicle` and

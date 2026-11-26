@@ -394,6 +394,8 @@ def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
         ({"set": {"highway": " traffic_signals"}}, "no spaces at the ends"),
         ({"comment": ""}, "changeset note"),
         ({"source": "Google Street View"}, "survey or local_knowledge"),
+        # A linked agency rule speaks only to who may use a way, not to a signal.
+        ({"source": "https://www.nps.gov/bicy/planyourvisit/bicycling.htm"}, "may only change"),
         (
             {
                 "set": {
@@ -411,6 +413,19 @@ def test_edits_the_tool_will_not_send(osm, tmp_path, capsys, changes, words):
     assert osm_edit.main(["upload", str(_edit(tmp_path, **changes)), "--approved"]) == 1
     assert words in capsys.readouterr().err
     assert osm.calls == []
+
+
+def test_a_bicycle_rule_may_cite_the_managers_published_page(osm, tmp_path, capsys):
+    # The owner, 2026-11-26: "can we update osm with a link to the location where it says
+    # that?" (Florida trails a land manager lists for biking).
+    edit = _edit(
+        tmp_path,
+        element="way",
+        set={"bicycle": "yes"},
+        expect={"bicycle": None},
+        source="https://www.nps.gov/bicy/planyourvisit/bicycling.htm",
+    )
+    assert osm_edit.edit_problem(json.loads(edit.read_text())) is None
 
 
 def test_not_signed_in(osm, tmp_path, capsys):

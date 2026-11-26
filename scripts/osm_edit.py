@@ -116,6 +116,8 @@ ALLOWED_KEYS = frozenset(
         "footway",
     }
 )
+# The keys a linked agency rule (`source` an https link) may change: who may ride or drive.
+AGENCY_RULE_KEYS = frozenset({"bicycle", "motor_vehicle", "motor_vehicle:conditional"})
 NODE_HIGHWAY_VALUES = frozenset({"traffic_signals", "stop", "give_way", "crossing"})
 # A street's direction, on a way only, in OSM's plain values (owner 2026-10-26,
 # Sheridan St NW: a one-way reversed on the street before either map caught up).
@@ -220,8 +222,20 @@ def edit_problem(edit: object) -> str | None:
     comment = edit.get("comment")
     if not isinstance(comment, str) or not comment.strip() or len(comment) > 255:
         return "comment is the changeset note: 1 to 255 characters"
-    if edit.get("source", "survey") not in ("survey", "local_knowledge"):
-        return "source is survey or local_knowledge (the owner's own sighting)"
+    source = edit.get("source", "survey")
+    if source not in ("survey", "local_knowledge"):
+        # The managing agency's own published rule, linked, for who may use a way (the
+        # owner, 2026-11-26, of Florida trails a land manager lists for biking: "can we
+        # update osm with a link to the location where it says that?").
+        if not (isinstance(source, str) and source.startswith("https://") and " " not in source):
+            return (
+                "source is survey or local_knowledge (the owner's own sighting), or the "
+                "https link to the managing agency's own published rule"
+            )
+        if not set(changes) <= AGENCY_RULE_KEYS:
+            return f"a linked agency rule may only change {sorted(AGENCY_RULE_KEYS)}"
+        if len(source) > 255:
+            return "source is longer than OSM's 255 characters"
     return None
 
 
