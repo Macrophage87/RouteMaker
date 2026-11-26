@@ -1,7 +1,7 @@
 # Rating junctions for a rider (lean brief, draft 2026-11-14)
 
 You rate how hard a junction is to get through on a bike, for an open-source bike route planner.
-Each item is one junction: its legs (name, class, the road's stress level, lanes, speed, traffic
+Each item is one junction: its legs (name, class, the road's stress level, through lanes each way, speed, traffic
 count, one-way, bearing, bike facility) and what is tagged about its control (signal, stop or yield
 by approach, crosswalk and bike crossing tags, refuge island, beacon). Make a reasoned call from the
 evidence and use your best judgment. Everything below is a starting point with its reason, not a
@@ -27,6 +27,13 @@ can do it, 2 easy for most adults, 3 takes confidence, 4 hard even for confident
 hard but sometimes the only way, 5 not a real option. The planner turns a level into a cost in
 quiet riding: about 100 ft for 1.5, 500 ft for 2, a third of a mile for 3, three quarters of a
 mile for 4, two miles for 5.
+
+## Lane counts
+
+The input gives `through_lanes_each_way`: on a two-way road, the through lanes in EACH direction (the larger side where they differ);
+on a one-way road, all its lanes. So a two-way road showing 3 is six through lanes to cross, plus
+any turn lanes. The starting points below count lanes in total across the road, unless they say
+"each way". When a count does not fit the road's class or traffic, say so in `missing`.
 
 ## What matters
 
