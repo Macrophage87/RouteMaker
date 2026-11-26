@@ -2251,7 +2251,9 @@ def very_stressful(stress) -> bool:
 # Florida (2026-11-25): the rule below was set where a level 4 road is a 30 to 35 mph city
 # artery, which "a lot of people would still ride" (the owner, 2026-10-21); there, 1,557 mi
 # are rated 4 and most are 45 mph multilane roads whose sidewalk is the place riders use
-# (and may: Fla. Stat. 316.2065(9)). The figure is our default, unmeasured.
+# (and may: Fla. Stat. 316.2065(9)). The figure is our default, unmeasured. The speed is
+# the one read for the road (a tag or an agency's record): where the classifier only
+# assumed a speed there is none (`StressResult.speed_mph`), and the road does not count.
 FAST_ROAD_MPH = 45.0
 
 
