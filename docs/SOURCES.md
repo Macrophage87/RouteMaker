@@ -297,8 +297,11 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `Bike_Lane_TDA` (item `32b8fa6d23974ed7bed110ea93341a79`) is kept as raw data for the
   raters; the build reads bike lanes from OSM. The posted speed and lane count are the
   state's record and win over OSM's on the state road classes they are held to.
-- Licence: FDOT's "NO WARRANTIES ... DISCLAIMER OF LIABILITY" text only, no licence
-  grant. Read as VDOT's is: used and cited, linked (not copied) in the public data release.
+- Licence: Florida public records (Florida Statutes chapter 119), which a state agency may not
+  copyright without a statute allowing it: public domain (the owner, 2026-11-26, citing the
+  Department of State's public records presentation,
+  <https://soe.dos.state.fl.us/pdf/GC_Presentation-Public_Records-Final_20191210.pdf>). Published in the public data release with FDOT's "NO WARRANTIES
+  ... DISCLAIMER OF LIABILITY" text kept beside it.
 - Downloaded 2026-11-23 for the Southwest Florida box, each with its README (source,
   licence text, time, count, sha256), to the project files `data/fdot-2026-11-23-wide/`
   (the wider box, Sarasota to Shark Valley; `data/fdot-2026-11-23/` is the first, smaller box).
@@ -326,7 +329,12 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   are advertised for biking are closed for biking"). A way's own `bicycle` tag wins.
 - Installed with `scripts/install_reference_data.py --fl-trail-uses` as
   `trail-uses.json`; fetched with `scripts/fetch_agency_layer.py` after the owner
-  approves the download. Licence to be read from the layer's item page at fetch time.
+  approves the download (2026-11-26: 5,732 records, project files
+  `data/fl-ogt-2026-11-26/`).
+- Licence: Florida public records (Florida Statutes chapter 119), which a state agency may not
+  copyright without a statute allowing it: public domain (the owner, 2026-11-26, citing the
+  Department of State's public records presentation,
+  <https://soe.dos.state.fl.us/pdf/GC_Presentation-Public_Records-Final_20191210.pdf>). Published in the public data release.
 
 ## Maryland traffic counts (MDOT SHA)
 
