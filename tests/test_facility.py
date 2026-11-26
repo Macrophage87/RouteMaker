@@ -1476,7 +1476,9 @@ def test_a_schools_or_hospitals_own_service_roads_are_found_and_nothing_else():
     from pipeline import restricted_areas as areas
 
     assert areas.area_kind({"amenity": "school", "name": "Example Middle School"}) == "campus"
-    assert areas.area_kind({"amenity": "hospital", "name": "Example Hospital"}) == "campus"
+    for amenity in ("hospital", "fire_station", "police", "place_of_worship", "fuel"):
+        assert areas.area_kind({"amenity": amenity}) == "campus"
+    assert areas.area_kind({"amenity": "university"}) is None
     school = _box(-77.05, 39.05, -77.048, 39.052)
     inside = [(-77.0495, 39.0505), (-77.0485, 39.0505), (-77.0485, 39.0512)]
     ways = [
