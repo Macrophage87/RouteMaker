@@ -324,7 +324,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   Environmental Protection open data
   (<https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/OGT/MapServer/3>). The
   field `TYPE` names each trail's uses; any type that lists Biking (such as "Biking",
-  "Hiking/Biking" or "Biking/Equestrian") and "Multi-Use" open the trail ways OSM is silent about
+  "Hiking/Biking" or "Biking/Equestrian"), and "Multi-Use", opens the trail ways OSM is silent about
   for bicycles (`routemaker.trail_uses`; the owner, 2026-11-25, "Most of the trails that
   are advertised for biking are closed for biking"). A way's own `bicycle` tag wins.
 - Installed with `scripts/install_reference_data.py --fl-trail-uses` as

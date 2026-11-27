@@ -32,8 +32,8 @@ FL_OGT_SHARED_USE = "Multi-Use"
 
 def is_biking_type(kind: str) -> bool:
     """True when an "Existing Trails" TYPE lists riding a bicycle."""
-    uses = {use.strip() for use in kind.split("/")}
-    return FL_OGT_BIKING_USE in uses or kind.strip() == FL_OGT_SHARED_USE
+    uses = {use.strip().casefold() for use in kind.split("/")}
+    return FL_OGT_BIKING_USE.casefold() in uses or FL_OGT_SHARED_USE.casefold() in uses
 
 
 SOURCES = frozenset({FL_OGT_SOURCE})
