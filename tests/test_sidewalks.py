@@ -986,6 +986,19 @@ def test_a_stub_is_short_untagged_open_and_joins_a_trail_to_something_ridden():
     assert sw.stubs(ashburn(join=SIDEWALK)) == set(), "a sidewalk is ridden already"
 
 
+def test_a_stub_never_joins_a_trail_to_a_road_or_driveway():
+    for far in ({"highway": "service", "service": "driveway"}, {"highway": "secondary"}):
+        ways = ashburn()
+        ways[2] = placed(302, far, [(4.0, 50.0), (4.0, 100.0)])
+        assert sw.stubs(ways) == set(), far
+
+
+def test_a_stub_may_meet_a_sidewalk_part_way_along():
+    ways = ashburn()
+    ways[2] = placed(302, SIDEWALK, [(4.0, 0.0), (4.0, 50.0), (4.0, 100.0)])
+    assert sw.stubs(ways) == {301}
+
+
 def test_the_rebuild_rides_a_stub_as_a_link():
     ways = [
         way(osm_id, tags, [(e, n) for e, n in pts])

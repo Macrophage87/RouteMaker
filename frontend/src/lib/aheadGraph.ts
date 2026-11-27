@@ -633,8 +633,11 @@ export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWi
         // A crossing straight over is not a turn, but the turn after it, said on the same card ("Cross Shellhorn Road,
         // then left onto the path"), is: drawn here, as the jog's later turn is never drawn on its own. A busy crossing
         // with no turn after it keeps its junction marker.
-        const [movement = null, ...then] = (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));
-        if (movement || severity) marks.push({ m: c.atM, movement, severity, ...rated(c), ...(then.length ? { then } : {}) });
+        // A circle's exit after it keeps the exit's arrow alone, as on any other turn.
+        const exit = !!c.then?.some((t) => t.exit);
+        const [movement = null, ...rest] = (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));
+        const then = exit ? [] : rest;
+        if (movement || severity) marks.push({ m: c.atM, movement, severity, ...rated(c), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) });
       } else if (c.movement !== null && !c.joined) {
         const exit = !!c.exit || !!c.then?.some((t) => t.exit);
         const then = exit ? [] : (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));

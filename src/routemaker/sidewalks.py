@@ -52,7 +52,7 @@ count them as the router prices them, not as a quiet trail.
   at least), priced as a link: the crossing's stress belongs to the junction (Little Falls
   Parkway, 2026-11-19).
 - `stubs`: a plain footway with no bicycle tag, at most `STUB_M` long, joining a trail to a
-  ridden crosswalk, sidewalk or other bicycle-open way: the few metres a mapper draws at a
+  ridden crosswalk, sidewalk or another trail: the few metres a mapper draws at a
   corner, priced as a link (Ashburn Village Boulevard).
 - `gap_links`: a run of footways with no bicycle tag, at most `GAP_M` long, whose ends meet
   bicycle-open ways (a trail among them) that the open network joins only by riding
@@ -659,7 +659,8 @@ def trail_crossings(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> s
 def stubs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
     """The joins to price as links (`TIER`): a plain footway with no bicycle tag (no
     sidewalk or crosswalk, which are ridden already), at most `STUB_M` long, with a trail
-    at one end and, at the other, a ridden sidewalk or crosswalk or another bicycle-open way.
+    at one end and, at the other, a ridden sidewalk or crosswalk (at any of its nodes) or
+    another trail. Never a road, service road or track: a nub onto one is no corner join.
     `ways` as `links` takes them.
 
     At Ashburn Village Boulevard and Red Rum Drive (the owner: "Weird routing
@@ -678,18 +679,18 @@ def stubs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
             continue
         if is_link_candidate(tags):
             if tags.get("footway") in SIDEWALK_KINDS:
-                for node in (node_ids[0], node_ids[-1]):
+                for node in node_ids:
                     open_at[node].add(osm_id)
             elif 0 < _length(coords) <= STUB_M:
                 short.append((osm_id, node_ids))
             continue
-        if not bicycle_open(tags):
+        # Only a trail counts at either end: a nub from a path onto a driveway, a parking
+        # aisle or a road mid-block is no corner join.
+        if not bicycle_open(tags) or tags.get("highway") not in TRAIL_HIGHWAY:
             continue
-        trail = tags.get("highway") in TRAIL_HIGHWAY
         for node in node_ids:
             open_at[node].add(osm_id)
-            if trail:
-                trail_at[node].add(osm_id)
+            trail_at[node].add(osm_id)
     found: set[int] = set()
     for osm_id, node_ids in short:
         a, b = node_ids[0], node_ids[-1]
