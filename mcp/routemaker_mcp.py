@@ -2301,6 +2301,9 @@ MAX_DETOURS = 8
 # farther, the server asks which was meant (Moore Road went to Centreville, VA: 2026-10-25).
 NEAR_PLACE_MI = 15.0
 NAMELESS = ("path", "unnamed road")
+# Miles on bridges are said from the site's own least (`describe.BRIDGE_MIN_M`, 10 m): a
+# footbridge over a creek is often 10 to 16 m, under 0.01 mi, and still shows as 0.01.
+BRIDGE_MIN_MI = 10 / METRES_PER_MILE
 
 
 def _stretches(answer: dict) -> list[dict]:
@@ -2367,7 +2370,8 @@ def _bridged(rows: list[dict]) -> list[dict]:
 
 def road_list(answer: dict) -> dict | None:
     """The roads the route takes, in order: each with its miles, its main and worst LTS, its
-    miles at LTS 3 and up, its miles on bridges (`bridge_mi`), and its scenic designation (a rustic road, a byway); rows under
+    miles at LTS 3 and up, its miles on bridges (`bridge_mi`), and its scenic designation (a
+    rustic road, a byway); rows under
     ROAD_ROW_MIN_MI are counted as short links. None where the site sent no description."""
     stretches = _stretches(answer)
     if not stretches:
@@ -2447,7 +2451,7 @@ def road_list(answer: dict) -> dict | None:
         if unpaved >= 0.05:
             item["unpaved_mi"] = round(unpaved, 1)
         bridge = sum(r.get("bridge", 0.0) for r in group)
-        if bridge >= 0.01:
+        if bridge >= BRIDGE_MIN_MI:
             item["bridge_mi"] = round(bridge, 2)
         designations = {
             s["designation"]
@@ -4309,7 +4313,7 @@ def route_segments(
                 seg["climb_ft"] = round(gain)
         if row["_oneway"]:
             seg["one_way"] = True
-        if row["_bridge"] >= 0.01:
+        if row["_bridge"] >= BRIDGE_MIN_MI:
             seg["bridge_mi"] = round(row["_bridge"], 2)
         segments.append(seg)
     stop = next_from if next_from is not None else end

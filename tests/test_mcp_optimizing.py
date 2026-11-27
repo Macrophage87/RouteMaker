@@ -628,6 +628,10 @@ def test_a_segment_says_its_miles_on_bridges() -> None:
     # Half the stretch read: half its bridge, shared out evenly.
     part = mcp.route_segments(p, 1.1)["segments"][0]
     assert part["bridge_mi"] == pytest.approx(0.05, abs=0.005)
+    # A 12 m footbridge is under 0.01 mi and still said.
+    short = {**over, "bridge_m": 12}
+    p.answer["description"] = [entries[0], short, entries[2]]
+    assert mcp.route_segments(p)["segments"][1]["bridge_mi"] == 0.01
 
 
 def test_legs_run_between_stops_not_via_points(tools) -> None:
