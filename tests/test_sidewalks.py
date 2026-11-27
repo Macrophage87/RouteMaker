@@ -953,7 +953,7 @@ def test_a_sidewalk_a_rater_rates_a_side_path_is_priced_as_a_path():
     assert sidewalk_derived(variants.Variant.EBIKE, 1, {1}, set(), set(), found) == {}
 
 
-# Ashburn Village Boulevard at Red Rum Drive (the owner, 2026-11-27: "Weird routing here"):
+# Ashburn Village Boulevard at Red Rum Drive (the owner: "Weird routing here"):
 # the side path runs on past the corner, and a 4 m footway with no tags joins it to the
 # signalized crosswalk over the road. In metres: the side path runs north up x=0, the join
 # goes east from (0, 50) to (4, 50), and the crosswalk runs on east across the road at x=20.

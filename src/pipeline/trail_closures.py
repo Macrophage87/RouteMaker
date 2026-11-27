@@ -411,7 +411,7 @@ def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
     found |= set(sidewalks.cut_throughs(placed, closed=closed | walkable))
     # Crosswalks that carry a trail across a road (the owner, 2026-11-19), priced as links.
     found |= sidewalks.trail_crossings(placed, closed=closed | walkable)
-    # A trail's few-metre join to a crosswalk or sidewalk at a corner (the owner, 2026-11-27),
+    # A trail's few-metre join to a crosswalk or sidewalk at a corner (Ashburn Village Blvd),
     # priced as a link.
     found |= sidewalks.stubs(placed, closed=closed | walkable)
     # Short footways that close a gap between open ways the network joins only far round

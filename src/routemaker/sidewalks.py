@@ -53,7 +53,7 @@ count them as the router prices them, not as a quiet trail.
   Parkway, 2026-11-19).
 - `stubs`: a plain footway with no bicycle tag, at most `STUB_M` long, joining a trail to a
   ridden crosswalk, sidewalk or other bicycle-open way: the few metres a mapper draws at a
-  corner, priced as a link (Ashburn Village Boulevard, 2026-11-27).
+  corner, priced as a link (Ashburn Village Boulevard).
 - `gap_links`: a run of footways with no bicycle tag, at most `GAP_M` long, whose ends meet
   bicycle-open ways (a trail among them) that the open network joins only by riding
   `GAP_DETOUR_M` or more, priced as a link: the owner, 2026-11-20, "Do a search for places
@@ -662,8 +662,8 @@ def stubs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
     at one end and, at the other, a ridden sidewalk or crosswalk or another bicycle-open way.
     `ways` as `links` takes them.
 
-    The owner, 2026-11-27, at Ashburn Village Boulevard and Red Rum Drive: "Weird routing
-    here". The side path (OSM 709050181, `bicycle=yes`) meets the corner's signalized
+    At Ashburn Village Boulevard and Red Rum Drive (the owner: "Weird routing
+    here"), the side path (OSM 709050181, `bicycle=yes`) meets the corner's signalized
     crosswalk only through a 4 m footway with no tags (1138421927). Upstream closes it by
     its class, and the other rules miss it: the side path runs on past it (no dead end for
     `links`), the crosswalk is longer than a link and no trail ends on it
