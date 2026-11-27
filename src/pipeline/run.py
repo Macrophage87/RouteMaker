@@ -46,6 +46,7 @@ from routemaker import (
     coverage,
     divided,
     facility,
+    gated,
     hazards,
     lane_overrides,
     mallgrounds,
@@ -113,6 +114,7 @@ from . import (
     tiles,
     trail_closures,
     trail_routes,
+    trail_uses,
     variants,
     writers,
 )
@@ -584,6 +586,9 @@ class ReferenceData:
     # Optional like `roadway.json`: without it the line says urban or rural alone.
     # Never read by the classifier.
     setting_by_way: dict[int, list] = field(default_factory=dict)
+    # The land managers' trail-use lines (`pipeline.trail_uses`), from `trail-uses.json`.
+    # Optional like `roadway.json`: without it no trail is opened by a manager's record.
+    trail_use_features: tuple[conflation.RoadFeature, ...] = ()
 
     @classmethod
     def load(
@@ -725,6 +730,7 @@ class ReferenceData:
                     strict=True,
                 )
             ),
+            trail_use_features=trail_uses.load(directory / trail_uses.FILE_NAME),
         )
 
     @staticmethod
@@ -1078,6 +1084,14 @@ class RebuildContext:
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
+    # The streets behind a closed gate (`routemaker.gated`), closed but where an
+    # override's bicycle key reopens one.
+    behind_gate_ways: frozenset[int] = frozenset()
+    # The paths inside a private community (`routemaker.gated.private_paths`), closed as
+    # its streets are.
+    private_path_ways: frozenset[int] = frozenset()
+    # The silent trail ways a land manager's record opened (`pipeline.trail_uses`).
+    trail_use_ways: frozenset[int] = frozenset()
     # The circle parks' walkways opened to bicycles (`routemaker.circleparks`).
     circle_park_ways: set[int] = field(default_factory=set)
     # The Capitol grounds' walks opened to bicycles (`routemaker.capitolgrounds`).
@@ -2364,9 +2378,7 @@ def rated_sidepath_sidewalks(
     tag decides, as before. Only sidewalks (`footway=sidewalk`): a crosswalk, link or
     cut-through keeps its price, since the remap prices only a sidewalk as a path."""
     sidewalk_ids = {
-        way.osm_id
-        for way in ways
-        if way.osm_id in ridden and way.tags.get("footway") == "sidewalk"
+        way.osm_id for way in ways if way.osm_id in ridden and way.tags.get("footway") == "sidewalk"
     }
     found = set()
     for way_id in sidewalk_ids:
@@ -2730,12 +2742,44 @@ def build_handlers(
         # The ways' nodes tagged `button_operated=yes` are read in the same pass (the beg
         # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
         context.button_nodes = set()
-        context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
+        closed_gates: set[int] = set()
+        context.ways = extract.read_ways(
+            context.source_pbf, button_nodes=context.button_nodes, closed_gates=closed_gates
+        )
+        # The streets behind a closed gate (`routemaker.gated`; the owner, 2026-11-25, of
+        # gated communities: "only open to people who are residents or guests"), closed
+        # with the area rules below (2026-11-26: "like with restricted areas in dc").
+        behind = gated.behind_gates(
+            ((way.osm_id, way.tags, way.node_ids) for way in context.ways), closed_gates
+        )
+        context.behind_gate_ways = frozenset(behind)
+        # And the community's own paths (the owner, 2026-11-26: "several bike trails on
+        # places that are in private complexes, such as near bonita bay boulevard").
+        context.private_path_ways = frozenset(
+            gated.private_paths(
+                ((way.osm_id, way.tags, way.node_ids) for way in context.ways), behind
+            )
+        )
+        logger.info(
+            "paths inside a private community: %d ways, %.0f mi",
+            len(context.private_path_ways),
+            sum(
+                facility._length_m(w.coordinates)
+                for w in context.ways
+                if w.osm_id in context.private_path_ways
+            )
+            / 1609.344,
+        )
+        logger.info(
+            "streets behind a closed gate: %d ways, %.0f mi (%d closed gates)",
+            len(behind),
+            sum(facility._length_m(w.coordinates) for w in context.ways if w.osm_id in behind)
+            / 1609.344,
+            len(closed_gates),
+        )
         # The beach paths along the tide line, in the map areas whose beaches are ridden
         # (`pipeline.beaches`; the owner, 2026-11-23), joined to the beach accesses.
-        beach_boxes = [
-            box for name, box in coverage.areas().items() if name in beaches.BEACH_AREAS
-        ]
+        beach_boxes = [box for name, box in coverage.areas().items() if name in beaches.BEACH_AREAS]
         if beach_boxes:
             found = beaches.read(context.source_pbf, beach_boxes, context.ways)
             logger.info("beach paths: %s", beaches.summary(found))
@@ -3683,6 +3727,15 @@ def build_handlers(
         }
         context.bicycle_override_directions = superseded
         context.bicycle_override_ways = frozenset(superseding)
+        # The trails a land manager lists for biking (`pipeline.trail_uses`; the owner,
+        # 2026-11-25), opened where OSM is silent, before the trail rules read the tags.
+        # Kept apart from the override ways (it reopens no area closure and is no owner
+        # override on the panel), but passed to the trail rules with them, so a
+        # mountain-bike-class trail the record opens rides on every graph.
+        listed = trail_uses.open_listed(
+            context.ways, getattr(reference, "trail_use_features", ()) if reference else ()
+        )
+        context.trail_use_ways = frozenset(listed)
         for way_id in sorted(superseded):
             way = context.ways_by_id.get(way_id)
             directions = superseded[way_id]
@@ -3840,6 +3893,23 @@ def build_handlers(
             trail_routes={w for w, r in routes.items() if r.bicycle_route or r.hiking},
         )
         track_closed = {m.way_id for m in context.track_ways if m.closed}
+        # And the streets behind a closed gate (`routemaker.gated`; the owner, 2026-11-26:
+        # "Have them closed, like with restricted areas in dc, but with a different
+        # color"), and the community's own paths, but where an override wrote a bicycle
+        # key since they were read.
+        gated_closed = {
+            way.osm_id
+            for way in context.ways
+            if way.osm_id not in context.bicycle_override_ways
+            and (
+                way.osm_id in context.private_path_ways
+                or (
+                    way.osm_id in context.behind_gate_ways
+                    and "bicycle" not in way.tags
+                    and "access" not in way.tags
+                )
+            )
+        }
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
         if context.secured_missing:
             logger.warning(
@@ -3858,6 +3928,8 @@ def build_handlers(
             )
             if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
         }
+        # Their roads leave the map, as a base's do; the shading says why.
+        context.short_paths_hidden |= gated_closed
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
         logger.info(
             "%s",
@@ -3937,10 +4009,11 @@ def build_handlers(
             areas[restricted_areas.PARK],
             military=military_closed,
             secured=secured_closed,
-            reopened=context.bicycle_override_ways,
+            reopened=context.bicycle_override_ways | context.trail_use_ways,
             works=works_closed,
             golf=golf_closed,
             tracks=track_closed,
+            behind_gates=gated_closed,
         )
         context.no_bicycle = nobike.reasons
         write_bike_bans(placed, areas[restricted_areas.PARK])
@@ -4061,8 +4134,7 @@ def build_handlers(
                 way.osm_id in nobike.sidewalk_links
                 or way.osm_id in roadless
                 or (
-                    way.osm_id in context.short_paths_declutter
-                    and sidewalks.bicycle_open(way.tags)
+                    way.osm_id in context.short_paths_declutter and sidewalks.bicycle_open(way.tags)
                 )
             )
             and (way.tags.get("footway") not in sidewalks.SIDEWALK_KINDS or way.osm_id in roadless)

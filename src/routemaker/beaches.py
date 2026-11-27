@@ -78,7 +78,9 @@ def beside_beach(
     if not beaches or not points:
         return [False] * len(points)
     tree = beaches if isinstance(beaches, STRtree) else STRtree(list(beaches))
-    found = tree.query([Point(lon, lat) for lon, lat in points], predicate="dwithin", distance=near_m / M_PER_DEG)
+    found = tree.query(
+        [Point(lon, lat) for lon, lat in points], predicate="dwithin", distance=near_m / M_PER_DEG
+    )
     out = [False] * len(points)
     for index in set(found[0].tolist()):
         out[int(index)] = True
@@ -110,9 +112,7 @@ def longest_run(
 def runs_length_m(points: Sequence[tuple[float, float]], flags: Sequence[bool]) -> float:
     """The length of every stretch beside a beach, for the build log's what-was-left-out."""
     return sum(
-        metres(points[i - 1], points[i])
-        for i in range(1, len(points))
-        if flags[i - 1] and flags[i]
+        metres(points[i - 1], points[i]) for i in range(1, len(points)) if flags[i - 1] and flags[i]
     )
 
 

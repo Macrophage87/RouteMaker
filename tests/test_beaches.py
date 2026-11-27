@@ -16,9 +16,7 @@ from routemaker import beaches
 LON = -81.85
 SHORE = [(LON, 26.30 + i * 0.001) for i in range(11)]
 # The beach lies between the shore and 60 m inland, from the 3rd point to the 8th.
-BEACH = Polygon(
-    [(LON, 26.302), (LON + 0.0006, 26.302), (LON + 0.0006, 26.307), (LON, 26.307)]
-)
+BEACH = Polygon([(LON, 26.302), (LON + 0.0006, 26.302), (LON + 0.0006, 26.307), (LON, 26.307)])
 
 
 def test_the_tide_line_is_the_coastline_beside_a_beach() -> None:
@@ -167,7 +165,11 @@ def test_the_map_file_holds_the_beach_and_its_path(tmp_path) -> None:
 def test_a_coastline_way_that_is_a_highway_already_is_left_as_it_is(tmp_path) -> None:
     pbf = tmp_path / "x.osm.pbf"
     _write_extract(pbf)
-    promenade = Way(osm_id=1000, tags={"natural": "coastline", "highway": "footway"}, node_ids=list(range(1, 12)))
+    promenade = Way(
+        osm_id=1000,
+        tags={"natural": "coastline", "highway": "footway"},
+        node_ids=list(range(1, 12)),
+    )
     promenade.coordinates = list(SHORE)
     promenade.located = list(range(11))
     assert read_beaches.read(pbf, [BOX], [promenade]).paths == []

@@ -9082,7 +9082,19 @@ line, a point whose gate is where the point before it is routed, and a point in 
 gate found. The map washes, hatches and dashes the edge of each site from zoom 10, and names
 each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and with "No public
 access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
-15 (our defaults). Sites, gates and the hand-drawn closed
+15 (our defaults). Gated communities are closed sites too (the owner, 2026-11-26: "Have them
+closed, like with restricted areas in dc, but with a different color"): the streets that reach
+the rest only through a closed gate or an entrance drive tagged private (`routemaker.gated`) are
+closed on every graph (`rm:no_bicycle=gated`) and left off the stress map, and the map washes
+the community in a warm brown (kind `gated`, unnamed) instead of grey, with its closed gates as
+the gates a trip point inside is moved to. A community's paths close with it (the owner,
+2026-11-26, of Bonita Bay's private bike paths): a path tagged `access=private` or `residents`
+whatever its bicycle tag but `permissive`, and an untagged path whose network meets streets
+only where they are behind a gate (`gated.private_paths`). A street open to bicycles
+(`access=no` + `bicycle=yes`) and a private driveway off a public street are no gate. Trails a
+state record lists for biking open where OSM says nothing of bicycles
+(`install_reference_data.py --fl-trail-uses` writes `trail-uses.json`; without it the step
+warns and opens nothing; docs/SOURCES.md). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
 PC against the extract (`frontend/src/restricted-data/README.md`); `scripts/refresh_places.py`
 reruns it after each map rebuild ("Refreshing the places after a map rebuild"). No map rebuild
@@ -11003,7 +11015,9 @@ Python 3.11 or later, standard library only.
   copy it. `--server live` only on the owner's go.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
-  absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
+  absent), `set` (null = remove), `comment` and `source` (`survey`, or for `bicycle` and
+  `motor_vehicle` keys the https link to the managing agency's own published rule, the owner,
+  2026-11-26). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
   `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing;
   `cycleway:<side>:separation` for a physical divider such as flex posts seen on the street; `motor_vehicle` and
