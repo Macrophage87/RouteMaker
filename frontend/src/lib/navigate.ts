@@ -2679,7 +2679,10 @@ export function nearStopsStep(
   if (!next) return;
   const within = nearM(next, isVia);
   if (haversineM(next, here) > within) return;
-  if (!off) {
+  // On the line, the line's own way to it must be that short too. Off it, a stop counts by the straight distance (the
+  // rider's own way got them there); a via point still by the line's, so a loop planned to lengthen the ride is not cut
+  // short by a rider who strays near its far end.
+  if (!off || isVia(next)) {
     const lineM = stopLineM(model, kept[0]);
     if (lineM !== null && lineM - progressM > within) return;
   }
@@ -2819,6 +2822,17 @@ export function loopShapePoint(model: Pick<RideModel, "coordinates" | "along" | 
  * shouldn't skip all of the vias"), never a stop.
  */
 export const VIA_SKIP_EXTRA_S = 300;
+
+/**
+ * Whether a re-route may leave out the next via point for its cost (VIA_SKIP_EXTRA_S): only one the rider asked for
+ * (Road closed, Re-route), never an automatic one after the rider left the line (Stephen, 2026-11-27: "it drops via
+ * points that intentionally lengthen the route when a small reroute"). Off the line, a via point goes only once the
+ * rider has come near it (NEAR_VIA_M). Never for a detour, a held U-turn's check, a restart, or a Calmer or Flatter
+ * press (its route is slower by choice). A loop's own shape point, which the rider never placed, goes as before.
+ */
+export function skipsViaForCost(how: { asked: boolean; detour: boolean; check: boolean; restart: boolean; eased: boolean }): boolean {
+  return how.asked && !how.detour && !how.check && !how.restart && !how.eased;
+}
 
 /**
  * The via point a re-route may leave out (VIA_SKIP_EXTRA_S): the first of `kept` (replanKept's answer) where it is a

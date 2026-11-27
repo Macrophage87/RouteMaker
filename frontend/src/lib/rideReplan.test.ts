@@ -440,6 +440,10 @@ test("a via point is an anchor: once the rider comes within a quarter mile, a re
   const near = new WeakSet<LonLat>();
   nearStopsStep(near, model, 700, vias, false, at(1000, 250), true, marks.isVia);
   assert.equal(leftNearStop(near, vias[1], at(1000, 250), marks.isVia), true);
+  // Off the line 200 m from it, but the line's own way there is 900 m (a loop planned to lengthen the ride): kept.
+  const loop = new WeakSet<LonLat>();
+  nearStopsStep(loop, model, 100, vias, false, at(1000, 200), true, marks.isVia);
+  assert.equal(leftNearStop(loop, vias[1], at(1000, 200), marks.isVia), false);
   // Never within 400 m: kept.
   const far = new WeakSet<LonLat>();
   nearStopsStep(far, model, 500, vias, false, at(500, 300), true, marks.isVia);

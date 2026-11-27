@@ -18,6 +18,7 @@ import {
   replanTold,
   rideModel,
   skippableVia,
+  skipsViaForCost,
   stopsAhead,
   viaSkipWorth,
   viaSkippedNote,
@@ -226,6 +227,16 @@ test("only the next via point may be left out: never a stop, never a via point b
   assert.equal(skippableVia(model, [4]), null, "only the end left");
 });
 
+test("only a re-route the rider asked for leaves a via point out for its cost; an automatic one keeps it", () => {
+  const plain = { asked: false, detour: false, check: false, restart: false, eased: false };
+  // Before: an automatic re-route after a small wrong turn left out a via point placed to lengthen the ride.
+  assert.equal(skipsViaForCost(plain), false);
+  // Road closed: still left out where it costs more than VIA_SKIP_EXTRA_S.
+  assert.equal(skipsViaForCost({ ...plain, asked: true }), true);
+  // Never for a detour, a held U-turn's check, a restart or a Calmer or Flatter press.
+  for (const k of ["detour", "check", "restart", "eased"] as const) assert.equal(skipsViaForCost({ ...plain, asked: true, [k]: true }), false, k);
+});
+
 test("the via point is left out only where the new route takes more than 5 minutes longer to reach it", () => {
   const { route, vias } = ride();
   const planned = rideModel(route, vias);
@@ -250,7 +261,10 @@ test("a re-route that left out its via point says so first, and the stoker still
 test("Ride mode asks again without the via point only when that trips, and not for a detour, a check, a restart or Calmer", () => {
   const replan = src("../RideMode.tsx").slice(src("../RideMode.tsx").indexOf("const replan = useCallback("));
   // A loop's shape point (navigate.ts loopShapePoint; the hunt, 2026-11-08, V1) goes first, as the next via point there.
-  assert.match(replan, /const next = result\.ok && !via && !check && !done && !eased \? \(shape \?\? skippableVia\(modelRef\.current, keptPoints\)\) : null;/);
+  // The next via point only on a re-route the rider asked for (skipsViaForCost, tested above).
+  assert.match(replan, /const forCost = result\.ok && skipsViaForCost\(\{ asked, detour: !!via, check, restart: !!done, eased \}\);/);
+  assert.match(replan, /const loopShape = result\.ok && !via && !check && !done && !eased \? shape : null;/);
+  assert.match(replan, /const next = loopShape \?\? \(forCost \? skippableVia\(modelRef\.current, keptPoints\) : null\);/);
   assert.match(
     replan,
     /if \(result\.ok && next && viaSkipWorth\(modelRef\.current, fromM, next\.atM, modelOf\(result\.route, points\), 1\) && !voided\(\)\) \{\s*const dropped = points\[1\];\s*const without = points\.filter\(\(_, i\) => i !== 1\);\s*const again = await ask\(without\);/,

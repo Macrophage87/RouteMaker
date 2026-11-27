@@ -141,6 +141,7 @@ import {
   leftNearStop,
   nearStopsStep,
   skippableVia,
+  skipsViaForCost,
   viaSkipWorth,
   viaSkippedNote,
   replanTold,
@@ -1629,16 +1630,17 @@ export function RideMode({
         const result = await ask(points);
         found = result.ok ? result.route : null;
         failed = result.ok ? null : result.error.kind;
-        // A re-route may leave out the next via point, never a later one and never a stop (Stephen, 2026-10-27: "Vias can
-        // be skipped a little more, for instance if a road is closed, you shouldn't expect a 20 minute detour just to get
-        // to the other side. Those are guides. Stops are where you want to end up." and "Sometimes people plan very
-        // indirect routes for fun, so it shouldn't skip all of the vias"): where the new route takes more than
+        // A re-route the rider asked for (Road closed) may leave out the next via point, never a later one and never a
+        // stop (Stephen, 2026-10-27: "Vias can be skipped a little more, for instance if a road is closed, you shouldn't
+        // expect a 20 minute detour just to get to the other side."): where the new route takes more than
         // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place on it now
-        // (replanFromM), it is planned once more without it. Not for a detour, a held U-turn's check, a restart, or a
-        // Calmer or Flatter press (its route is slower by choice). The second ask is made only when that trips.
+        // (replanFromM), it is planned once more without it. Not an automatic re-route (skipsViaForCost: 2026-11-27, it
+        // dropped via points placed to lengthen the ride). The second ask is made only when that trips.
         const eased = easing.current?.ticket === ticket;
-        // A loop's shape point (above) is the next via point there, and goes as one does, unsaid: the rider placed none.
-        const next = result.ok && !via && !check && !done && !eased ? (shape ?? skippableVia(modelRef.current, keptPoints)) : null;
+        const forCost = result.ok && skipsViaForCost({ asked, detour: !!via, check, restart: !!done, eased });
+        // A loop's shape point (above) is the next via point there, and goes as one did, unsaid: the rider placed none.
+        const loopShape = result.ok && !via && !check && !done && !eased ? shape : null;
+        const next = loopShape ?? (forCost ? skippableVia(modelRef.current, keptPoints) : null);
         if (result.ok && next && viaSkipWorth(modelRef.current, fromM, next.atM, modelOf(result.route, points), 1) && !voided()) {
           const dropped = points[1];
           const without = points.filter((_, i) => i !== 1);
