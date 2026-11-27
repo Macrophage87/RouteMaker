@@ -2709,6 +2709,25 @@ def via_spurs(plan: Plan) -> list[dict]:
     return out
 
 
+def via_ways(plan: Plan) -> list[dict]:
+    """The way the route rides into each via point (the description's stretch that reaches
+    the point's leg end, `_points_along`), so a planner sees whether the point put the route
+    on the way it meant: a via sits on the way it is nearest, and "path beside X" is X's
+    sidewalk or side path, not X (Stephen, 2026-11-27)."""
+    stretches = _stretches(plan.answer)
+    if not stretches or not plan.vias:
+        return []
+    ends = [e["to_mi"] for e in stretches]
+    vias = set(plan.vias)
+    out = []
+    for i, metres in _points_along(plan):
+        if i not in vias:
+            continue
+        k = min(bisect.bisect_left(ends, metres / METRES_PER_MILE - 0.005), len(stretches) - 1)
+        out.append({"point": i, "on": _street(stretches[k])})
+    return out
+
+
 # --- Checkpoint order: an alleycat's best way round ------------------------------------------
 #
 # The owner, 2026-10-25: "Another common usage would be something for alleycat racing,
@@ -3272,6 +3291,9 @@ def route_details(
     spurs = via_spurs(plan)
     if spurs:
         out["via_spurs"] = spurs
+    on = via_ways(plan)
+    if on:
+        out["via_points_on"] = on
     legs = leg_rows(plan)
     if legs:
         out["legs"] = legs
@@ -5778,7 +5800,13 @@ TOOLS = [
             " on its own (a rustic road, a trail; scenic_roads_near lists them), add via points"
             " ON those roads, by [lon, lat]"
             " or by name: a name is searched near the route's other points, and an ambiguous"
-            " one is asked back. `closures` lists the closures it goes through or round, and"
+            " one is asked back. A via point puts the route on the way it sits nearest, so put"
+            " it on the line of the way you mean (the trail itself, or mid-block in the street,"
+            " not at a corner); a point on a road beside a trail rides the road instead, an"
+            " override for when the rider wants the road. `via_points_on` names the way each"
+            ' via point rides ("path beside X" is X\'s sidewalk or side path): if it is not'
+            " the way you meant, move the point. `closures` lists the closures it goes through"
+            " or round, and"
             " `closure_warning` says when one is on the route (often a via point only a closed"
             " path reaches: move it); `check_before_you_go` lists park notices for the ride's"
             " time, such as a deer-management closure at night (warnings, not routed round);"
@@ -5832,7 +5860,8 @@ TOOLS = [
                     "items": {"type": "integer"},
                     "description": (
                         "Indices into points of via points, which only shape the route (no stop,"
-                        " no U-turn); never the first or last."
+                        " no U-turn); never the first or last. Each rides the way it sits"
+                        " nearest: put it on the way meant."
                     ),
                 },
                 "loop": {
@@ -9220,6 +9249,8 @@ PLAYBOOK = (
     " a week only that part can plan the route again. Save to My routes only when asked. Planning"
     " only to test RouteMaker: pass test: true, or archive_draft each draft when done. Calls may"
     " be sent together; an answer with retry_after_s asks for the same call again after that."
+    " A via point rides the way it sits nearest: put it on the trail or street meant, mid-block,"
+    " and check `via_points_on`."
 )
 
 

@@ -173,6 +173,18 @@ STOP_RADIUS_M = 15
 # road that parallels a trail, it's currently difficult to have it prefer the road on that
 # stretch"). A via only shapes the route, so the ramp-beside-a-trail case above is a stop's.
 VIA_RADIUS_M = 0
+# ...but never to a sidewalk, a crosswalk or an unnamed footway where a way a rider rides lies
+# within this many metres: DC maps nearly every sidewalk, so a via dropped on a street (above
+# all at a corner) sat nearer the sidewalk than the street's centre line, and the route left the
+# street for an LTS 4 sidewalk stub to reach it (R St NW at 17th St, 2026-11-27: "the issue
+# isn't the jog, but where you put the via"). The via is moved onto the nearest such way
+# (`snap_vias`), then matched to it alone as above.
+VIA_SNAP_RADIUS_M = STOP_RADIUS_M
+VIA_PASSED_OVER_USES = frozenset({"sidewalk", "pedestrian_crossing"})
+# An unnamed footway is passed over only as part of the sidewalk network: a sidewalk or a
+# crosswalk lies within this many metres more than it (a corner's short connecting bits). A
+# via on a park path or trail connector rides it (a point on the way meant wins).
+VIA_SIDEWALK_PIECE_M = 3.0
 
 # The whole request's budget, from its arrival to its answer. gunicorn's
 # --timeout is 60 s (GUNICORN_TIMEOUT in docker/api-entrypoint.sh), and this is
@@ -1952,6 +1964,76 @@ def location_radius(index: int, count: int, vias: tuple[int, ...]) -> int:
     if location_type(index, count, vias) == VIA_LOCATION_TYPE:
         return VIA_RADIUS_M
     return STOP_RADIUS_M
+
+
+def _via_target(edges: list) -> tuple[float, float] | None:
+    """Where a via point goes from its `/locate` edges: None (it stays) where the nearest edge
+    is not a sidewalk, a crosswalk or an unnamed footway beside one (VIA_SIDEWALK_PIECE_M),
+    else the nearest other edge's own point within VIA_SNAP_RADIUS_M (None without one)."""
+    read = []
+    for edge in edges or []:
+        if not isinstance(edge, dict):
+            continue
+        distance = edge.get("distance")
+        lat, lon = edge.get("correlated_lat"), edge.get("correlated_lon")
+        if not all(isinstance(v, (int, float)) for v in (distance, lat, lon)):
+            continue
+        use = ((edge.get("edge") or {}).get("classification") or {}).get("use", "")
+        names = (edge.get("edge_info") or {}).get("names") or []
+        read.append((float(distance), use, bool(names), float(lon), float(lat)))
+    walks = [d for d, use, *_ in read if use in VIA_PASSED_OVER_USES]
+    found = []
+    for distance, use, named, lon, lat in read:
+        passed_over = use in VIA_PASSED_OVER_USES or (
+            use == "footway"
+            and not named
+            and any(w <= distance + VIA_SIDEWALK_PIECE_M for w in walks)
+        )
+        found.append((distance, passed_over, lon, lat))
+    if not found or not min(found)[1]:
+        return None
+    ridden = [f for f in found if not f[1] and f[0] <= VIA_SNAP_RADIUS_M]
+    if not ridden:
+        return None
+    _, _, lon, lat = min(ridden)
+    return lon, lat
+
+
+def snap_vias(request: dict, deadline: Deadline) -> None:
+    """Move each via point of `request` that sits nearest a sidewalk, a crosswalk or an
+    unnamed footway onto the nearest other way within VIA_SNAP_RADIUS_M (`_via_target`), in
+    place. One `/locate` for all of them; where the router does not answer, the points stay."""
+    vias = [loc for loc in request.get("locations") or [] if loc.get("type") == VIA_LOCATION_TYPE]
+    if not vias:
+        return
+    payload = {
+        "locations": [
+            {
+                "lon": loc["lon"],
+                "lat": loc["lat"],
+                "radius": VIA_SNAP_RADIUS_M,
+                # A via in a circle park is never moved onto the underpass below it.
+                **({"search_filter": loc["search_filter"]} if "search_filter" in loc else {}),
+            }
+            for loc in vias
+        ],
+        "costing": request.get("costing", "bicycle"),
+        "costing_options": request.get("costing_options") or {},
+        "verbose": True,
+    }
+    try:
+        # The standard graph: a twin (the weekend's) has the same ways, and one not served
+        # would refuse the locate before the plan falls back from it.
+        answer = _call("standard", "locate", payload, deadline)
+    except (RouterRefused, RouterUnavailable, DeadlineExceeded) as error:
+        logger.info("via points left where they are: %s", error)
+        return
+    if not isinstance(answer, list):
+        return
+    for loc, found in zip(vias, answer, strict=False):
+        target = _via_target((found or {}).get("edges") if isinstance(found, dict) else None)
+        if target is not None:
+            loc["lon"], loc["lat"] = target
 
 
 def via_boundaries(count: int, vias, legs: int) -> tuple[int, ...]:
@@ -5961,6 +6043,9 @@ def _plan(
     ):
         raise RouterUnavailable("the weekend graph is not being served")
     variant = _served_variant(variant)
+    if not following and not drawing:
+        # A drawn leg is drawn from the rider's own points (`_drawn`).
+        snap_vias(request, deadline)
     # The first router call: the plan's own request, or the trace of the followed line.
     if following:
         asked = follow.request_for(dials.follow, points, request)

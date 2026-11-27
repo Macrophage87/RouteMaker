@@ -308,6 +308,50 @@ def test_the_details_say_it_all_in_one_answer() -> None:
     ]
 
 
+def test_each_via_point_names_the_way_it_put_the_route_on() -> None:
+    # A via dropped at a corner sat on the sidewalk, and the route rode it (R St NW at 17th St,
+    # Stephen 2026-11-27): the planner is told which way each via rode, to move a wrong one.
+    line = [at(x / 20) for x in range(21)]
+    answer = answer_of(
+        [
+            stretch("Peach Tree Road", 0.0, 0.4, 2),
+            stretch("path beside Peach Tree Road", 0.4, 0.6, 4),
+            stretch("Peach Tree Road", 0.6, 1.0, 2),
+        ],
+        geometry={"coordinates": line},
+        leg_ends=[4, 10, 20],
+    )
+    points = [tuple(line[0]), tuple(at(0.2, 0.001)), tuple(at(0.5, 0.001)), tuple(line[-1])]
+    plan = mcp.Plan(points, [1, 2], "default", answer, None, {})
+    assert mcp.via_ways(plan) == [
+        {"point": 1, "on": "Peach Tree Road"},
+        {"point": 2, "on": "path beside Peach Tree Road"},
+    ]
+    assert mcp.route_details(plan)["via_points_on"] == mcp.via_ways(plan)
+
+
+def test_a_via_on_the_way_back_names_the_pass_that_reaches_it() -> None:
+    # Out along the road and back on its side path: the via is reached on the way back,
+    # though its nearest vertex is on the way out.
+    out = [at(x / 20) for x in range(11)]
+    line = out + out[-2::-1]
+    answer = answer_of(
+        [stretch("Peach Tree Road", 0.0, 0.5, 2), stretch("Peach Tree Path", 0.5, 1.0, 1)],
+        geometry={"coordinates": line},
+        leg_ends=[15, 20],
+    )
+    points = [tuple(line[0]), tuple(at(0.25)), tuple(line[-1])]
+    plan = mcp.Plan(points, [1], "default", answer, None, {})
+    assert mcp.via_ways(plan) == [{"point": 1, "on": "Peach Tree Path"}]
+
+
+def test_a_route_without_via_points_names_none() -> None:
+    line, answer = _farm_lane_loop()
+    answer["geometry"] = {"coordinates": line}
+    plan = mcp.Plan([tuple(line[0]), tuple(line[-1])], [], "default", answer, None, {})
+    assert "via_points_on" not in mcp.route_details(plan)
+
+
 # --- Place names near the route ---------------------------------------------------------------
 
 BOYDS = {"name": "Moore Road", "label": "Moore Road, Boyds, MD", "lon": -77.3703, "lat": 39.1785}

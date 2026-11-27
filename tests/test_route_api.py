@@ -217,6 +217,9 @@ class FakeRouter:
     def __call__(self, url: str, payload: dict, timeout: float) -> dict:
         self.calls.append((url, payload))
         endpoint = url.rsplit("/", 1)[1]
+        if endpoint == "locate" and endpoint not in self.answers:
+            # A plan's via points (`routing.snap_vias`): no edges, so they stay put.
+            return []
         answer = self.answers[endpoint]
         if isinstance(answer, list):
             answer = answer.pop(0)
