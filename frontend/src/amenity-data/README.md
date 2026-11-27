@@ -36,6 +36,13 @@ work; not yet in an OWNER-DECISIONS file):
   with what is inside it (unclear access is closed); a non-public node inside a
   public building is left out on its own. A `building=toilets` with no public node inside
   and no `amenity=toilets` stays out, as before.
+- A fountain beside a restroom is that restroom's water (the owner, 2026-11-27:
+  "2 public flush restrooms weren't marked"; a fountain a few feet away took the
+  restroom's spot on the map). A drinking-water point within 50 ft (15 m) of a
+  restroom (our default, unmeasured) is folded into the nearest one, which then
+  shows the drop; the fountain's bottle filler goes with it. Untreated water,
+  repair stands, shops and restrooms placed from a street address are left as
+  they are. `--throne-only` applies it too.
 - No historic springs. A `natural=spring` with `historic=*` (any value but
   `no`) or `ruins=yes` is a landmark, not a water source, and is left out unless
   it is also `drinking_water=yes` (or `amenity=drinking_water` or

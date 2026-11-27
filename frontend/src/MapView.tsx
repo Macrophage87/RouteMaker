@@ -108,7 +108,7 @@ import { metricFirst, subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
-import { ROUTE_TRAIL_SOURCE, routeTrailFeatures, routeTrailLayers } from "./lib/routeTrailLayers.ts";
+import { ROUTE_TRAIL_LAYER_IDS, ROUTE_TRAIL_SOURCE, routeTrailFeatures, routeTrailLayers } from "./lib/routeTrailLayers.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
@@ -121,7 +121,7 @@ import { addDcMask } from "./lib/dcBoundary.ts";
 import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData, type FederalMap } from "./lib/federalLand.ts";
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
-import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
+import { addWaterRestrooms, setWaterPrefs, waterLayerBefore, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { addBeaches, type BeachData, type BeachMap } from "./lib/beaches.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
 import { MASS_LAYER_IDS, massLayerIds } from "./massStyle.js";
@@ -595,6 +595,8 @@ const ONBOARD_SOURCE = "onboard-path";
 const MOUSE_HIT_PX = 8;
 /** The line layer of Go's other routes to choose from, which a press is tested against (lib/routeChoice.ts). */
 const CHOICE_LINE_LAYER = "route-choice-line";
+/** The route's line layers, for what is drawn just over them (waterLayerBefore). */
+const ROUTE_LINE_LAYERS = ["route-line", "route-drawn-gaps", ...ROUTE_TRAIL_LAYER_IDS];
 const TOUCH_HIT_PX = 18;
 
 // The stress overlay's layer ids, for a press on a mountain-bike trail's line (lib/mapGlue.ts mtbTrailPressed).
@@ -937,8 +939,10 @@ export function MapView(props: Props) {
       const data = callbacks.current.water;
       if (!data || data.length === 0) return;
       waterById = new Map(data.map((p) => [p.id, p]));
-      // Over the stress overlay and the stations, directly under the route (railLayer.ts's order).
-      addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+      // Over the stress overlay, the stations and the route's line, under the route's names and marks
+      // (waterLayerBefore): a restroom a few feet off the path is not hidden under the ride's wide line.
+      const order = map.getStyle().layers.map((layer) => layer.id);
+      addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), waterLayerBefore(order, ROUTE_LINE_LAYERS));
     };
     let climbCard: ReturnType<typeof attachClimbInteraction> | null = null;
     /** True for the rest of the click that closed a climb card, so no water or federal card opens under it. */

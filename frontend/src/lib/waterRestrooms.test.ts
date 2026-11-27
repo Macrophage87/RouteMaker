@@ -16,6 +16,7 @@ import {
   ALONG_ROUTE_TEXT,
   WATER_ICONS,
   WATER_LAYER,
+  waterLayerBefore,
   WATER_PREFS_DEFAULT,
   WATER_PREFS_KEY,
   WATER_SOURCE_ID,
@@ -549,4 +550,16 @@ test("the route's Water and restrooms fold lists the water along the route with 
   assert.doesNotMatch(app, /waterOn && waterData && shown/);
   assert.match(panel, /water=\{waterStatus === "ready" \? \{ items: waterAlong, onAddStop: addWaterStop \} : null\}/);
   assert.doesNotMatch(panel, /waterOn && waterStatus/);
+});
+
+test("the icons go just over the route's line, under its names and marks, so a restroom beside the path shows", () => {
+  // The owner, 2026-11-27: "2 public flush restrooms weren't marked"; one sat a few feet off the path, under the line.
+  const lines = ["route-line", "route-drawn-gaps", "route-trail"];
+  const order = ["base", "route-casing", "route-stress", "route-line", "route-drawn-gaps", "route-trail", "route-name", "route-hazard-marks"];
+  assert.equal(waterLayerBefore(order, lines), "route-name");
+  // In a ride the names are lifted away; the next layer up is the hazard marks.
+  assert.equal(waterLayerBefore(order.filter((id) => id !== "route-name"), lines), "route-hazard-marks");
+  // Nothing over the line, or no route at all: the very top.
+  assert.equal(waterLayerBefore(["base", "route-line"], lines), undefined);
+  assert.equal(waterLayerBefore(["base"], lines), undefined);
 });

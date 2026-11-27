@@ -525,6 +525,17 @@ export interface WaterMap {
   setFilter(id: string, filter: unknown): void;
 }
 
+/**
+ * The layer to put the water and restrooms under, in `order` (the map's layers, bottom first): the one directly over
+ * the top of `routeLines` (the route's line layers), so an icon beside the path is drawn over the route's line, under
+ * its names, mile markers and hazard marks. The owner, 2026-11-27: "2 public flush restrooms weren't marked"; one
+ * was a few feet off the path, under the ride's wide line. `undefined` (the very top) when no route line is there.
+ */
+export function waterLayerBefore(order: readonly string[], routeLines: readonly string[]): string | undefined {
+  const top = Math.max(...routeLines.map((id) => order.indexOf(id)));
+  return top < 0 ? undefined : order[top + 1];
+}
+
 /** Add the icons, the source and the layer, once, under `beforeId` (the route's lowest layer); whether they were added. */
 export function addWaterRestrooms(
   map: WaterMap,

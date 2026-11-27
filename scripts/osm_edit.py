@@ -114,6 +114,9 @@ ALLOWED_KEYS = frozenset(
         # street, seen on the spot (an owner report: the connector joining the two ends of
         # Briggs Road in Glenmont, tagged `footway=sidewalk`).
         "footway",
+        # A restroom's kind, seen on the spot (owner 2026-11-27: two park restrooms by the
+        # W&OD Trail that riders could not tell were flush ones, mapped with no kind).
+        "toilets:disposal",
     }
 )
 # The keys a linked agency rule (`source` an https link) may change: who may ride or drive.
@@ -124,6 +127,8 @@ NODE_HIGHWAY_VALUES = frozenset({"traffic_signals", "stop", "give_way", "crossin
 ONEWAY_VALUES = frozenset({"yes", "-1", "no"})
 # A footway's kind, on a way only, in OSM's common values.
 FOOTWAY_VALUES = frozenset({"sidewalk", "crossing"})
+# A restroom's kind, in OSM's common values (wiki Key:toilets:disposal).
+TOILET_DISPOSAL_VALUES = frozenset({"flush", "chemical", "pitlatrine"})
 MAX_KEYS = 4
 
 
@@ -219,6 +224,8 @@ def edit_problem(edit: object) -> str | None:
             return "footway may only change on a way"
         if changes["footway"] is not None and changes["footway"] not in FOOTWAY_VALUES:
             return f"a way's footway may only be removed or set to one of {sorted(FOOTWAY_VALUES)}"
+    if "toilets:disposal" in changes and changes["toilets:disposal"] not in TOILET_DISPOSAL_VALUES:
+        return f"a restroom's toilets:disposal may only be set to one of {sorted(TOILET_DISPOSAL_VALUES)}"
     comment = edit.get("comment")
     if not isinstance(comment, str) or not comment.strip() or len(comment) > 255:
         return "comment is the changeset note: 1 to 255 characters"
