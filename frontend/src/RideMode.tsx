@@ -86,6 +86,7 @@ import { checkClosures } from "./lib/closureCheck.ts";
 import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, keepLeftRideReplans, rideReplans, seeLeftRide, unseeLeftRide, type RideReplans } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
+import { GpsMark } from "./GpsMark.tsx";
 import { placeLetter } from "./lib/letteredPlaces.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance, unitsFirst } from "./lib/format.ts";
@@ -839,6 +840,7 @@ export function RideMode({
   replans = null,
   riderDots = NO_DOTS,
   onSheetHeight,
+  gpsMark = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -969,6 +971,8 @@ export function RideMode({
   /** The bottom panel's height in CSS pixels (0 while it is hidden), at each change: the map's follow camera keeps the
    *  rider's arrow above it (MapView ridePanelH). */
   onSheetHeight?: (px: number) => void;
+  /** The rider's GPS position in small print in a corner (GpsMark.tsx), for screenshots sent with bug reports; beta builds. */
+  gpsMark?: boolean;
 }) {
   // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
   // Kept riding after the end (Keep riding), its route is the ride to the chosen dock, on the bike's own ride type.
@@ -4679,6 +4683,7 @@ export function RideMode({
         {/* The modal makes the ride's own regions inert: its cues go on being heard from in here, as in Ride settings. */}
         {suddenAsk && <PopupLiveRegions polite={polite} assertive={assertive} />}
       </SuddenClosureDialog>
+      {gpsMark && <GpsMark point={ride.fix?.point ?? null} stale={!!gps} />}
     </section>
   );
 }

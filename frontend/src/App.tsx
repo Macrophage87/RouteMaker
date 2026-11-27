@@ -8022,6 +8022,7 @@ export function App() {
           startNote={rideStart.note}
           riderDots={rideDots}
           onSheetHeight={ridePanel.set}
+          gpsMark={isBetaBuild(import.meta.env.VITE_BETA)}
         />
       )}
       {roaming && (
