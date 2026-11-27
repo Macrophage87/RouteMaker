@@ -53,6 +53,26 @@ def test_only_the_trails_listed_for_biking_are_kept() -> None:
     assert trail_uses.fl_ogt_rows(geojson)[0][0]["name"] == "Paved Loop"
 
 
+def test_every_type_that_lists_biking_counts() -> None:
+    for kind in (
+        "Biking",
+        "Hiking/Biking",
+        "Hiking/Biking/Equestrian",
+        "Biking/Equestrian",
+        "Multi-Use",
+    ):
+        assert trail_uses.is_biking_type(kind), kind
+    for kind in (
+        "Hiking",
+        "Equestrian",
+        "Paddling",
+        "Off-Highway Vehicle",
+        "Hiking/Equestrian",
+        "",
+    ):
+        assert not trail_uses.is_biking_type(kind), kind
+
+
 def test_a_listing_opens_only_a_silent_public_trail() -> None:
     assert trail_uses.opens({"highway": "path", "foot": "yes", "surface": "grass"})
     assert trail_uses.opens({"highway": "track"})

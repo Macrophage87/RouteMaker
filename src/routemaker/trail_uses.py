@@ -22,12 +22,20 @@ from collections.abc import Iterable, Mapping
 # The "Existing Trails" layer (OpenData/OGT/MapServer/3).
 FL_OGT_SOURCE = "fl-ogt"
 FL_OGT_URL = "https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/OGT/MapServer/3"
-# The layer's uses that include riding a bicycle. "Multi-Use" is the layer's word for a
-# shared-use trail (hiking, biking and skating). Hiking, Equestrian, Paddling and
-# Off-Highway Vehicle trails are left as the tag rules read them.
-FL_OGT_BIKING_TYPES = frozenset(
-    {"Biking", "Hiking/Biking", "Hiking/Biking/Equestrian", "Multi-Use"}
-)
+# The layer's uses that include riding a bicycle: any TYPE whose "/"-separated uses
+# name Biking (Biking, Hiking/Biking, Biking/Equestrian, ...), and "Multi-Use", the
+# layer's word for a shared-use trail (hiking, biking and skating). Hiking, Equestrian,
+# Paddling and Off-Highway Vehicle trails are left as the tag rules read them.
+FL_OGT_BIKING_USE = "Biking"
+FL_OGT_SHARED_USE = "Multi-Use"
+
+
+def is_biking_type(kind: str) -> bool:
+    """True when an "Existing Trails" TYPE lists riding a bicycle."""
+    uses = {use.strip().casefold() for use in kind.split("/")}
+    return FL_OGT_BIKING_USE.casefold() in uses or FL_OGT_SHARED_USE.casefold() in uses
+
+
 SOURCES = frozenset({FL_OGT_SOURCE})
 
 # The way classes a trail record may open: the trail classes the closure rules read,
@@ -58,7 +66,7 @@ def fl_ogt_rows(document: Mapping) -> tuple[list[dict], int]:
             parts = []
         kind = _text(attributes.get("TYPE"))
         parts = [part for part in parts if len(part) >= 2]
-        if kind not in FL_OGT_BIKING_TYPES or not parts:
+        if not is_biking_type(kind) or not parts:
             dropped += 1
             continue
         record = attributes.get("OBJECTID", index)
