@@ -52,9 +52,14 @@ class TestViaTarget:
         trail = edge(0.5, "footway", -77.0, 38.9, ["Rock Creek Trail"])
         assert routing._via_target([trail, R_ST]) is None
 
-    def test_an_unnamed_footway_is_passed_over(self) -> None:
+    def test_an_unnamed_footway_at_a_sidewalk_corner_is_passed_over(self) -> None:
         corner = edge(0.2, "footway", -77.0386, 38.9127)
-        assert routing._via_target([corner, R_ST]) == (-77.03862, 38.91279)
+        assert routing._via_target([corner, SIDEWALK, R_ST]) == (-77.03862, 38.91279)
+
+    def test_a_via_on_an_unnamed_park_path_rides_the_path(self) -> None:
+        # A point on the way meant wins (Stephen, 2026-11-27): no sidewalk beside it.
+        path = edge(0.3, "footway", -77.0, 38.9)
+        assert routing._via_target([path, R_ST]) is None
 
     def test_with_no_ridden_way_near_the_via_stays(self) -> None:
         far = edge(routing.VIA_SNAP_RADIUS_M + 1, "road", -77.0, 38.9, ["R Street Northwest"])
@@ -95,6 +100,17 @@ class TestPlan:
         via = bike_routes(fake)[0]["locations"][1]
         assert (via["lon"], via["lat"]) == (-77.03862, 38.91279)
         assert via["radius"] == routing.VIA_RADIUS_M
+
+    def test_a_via_in_a_circle_park_is_located_without_the_underpass(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        tunnel_free = {"search_filter": {"exclude_tunnel": True}}
+        monkeypatch.setattr(routing, "circle_park_filter", lambda lon, lat: tunnel_free)
+        fake = router(plan_router([{"edges": []}]))
+        points = [list(VERTICES[i]) for i in (0, 1, 2)]
+        post(client, {"points": points, "preset": "default", "via_points": [1]})
+        locates = [p for url, p in fake.calls if url.endswith("/locate")]
+        assert locates[0]["locations"][0]["search_filter"] == {"exclude_tunnel": True}
 
     def test_without_via_points_nothing_is_located(self, client, segments, router) -> None:
         fake = router(plan_router([]))

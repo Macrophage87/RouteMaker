@@ -307,6 +307,7 @@ def test_each_via_point_names_the_way_it_put_the_route_on() -> None:
             stretch("Peach Tree Road", 0.6, 1.0, 2),
         ],
         geometry={"coordinates": line},
+        leg_ends=[4, 10, 20],
     )
     points = [tuple(line[0]), tuple(at(0.2, 0.001)), tuple(at(0.5, 0.001)), tuple(line[-1])]
     plan = mcp.Plan(points, [1, 2], "default", answer, None, {})
@@ -315,6 +316,21 @@ def test_each_via_point_names_the_way_it_put_the_route_on() -> None:
         {"point": 2, "on": "path beside Peach Tree Road"},
     ]
     assert mcp.route_details(plan)["via_points_on"] == mcp.via_ways(plan)
+
+
+def test_a_via_on_the_way_back_names_the_pass_that_reaches_it() -> None:
+    # Out along the road and back on its side path: the via is reached on the way back,
+    # though its nearest vertex is on the way out.
+    out = [at(x / 20) for x in range(11)]
+    line = out + out[-2::-1]
+    answer = answer_of(
+        [stretch("Peach Tree Road", 0.0, 0.5, 2), stretch("Peach Tree Path", 0.5, 1.0, 1)],
+        geometry={"coordinates": line},
+        leg_ends=[15, 20],
+    )
+    points = [tuple(line[0]), tuple(at(0.25)), tuple(line[-1])]
+    plan = mcp.Plan(points, [1], "default", answer, None, {})
+    assert mcp.via_ways(plan) == [{"point": 1, "on": "Peach Tree Path"}]
 
 
 def test_a_route_without_via_points_names_none() -> None:

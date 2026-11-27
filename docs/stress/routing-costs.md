@@ -252,7 +252,8 @@ again without it, and it is not asked again. Mass Ride is skipped (`ctx.group`).
   `radius` (`routing.STOP_RADIUS_M`), so a stop is reached by the cheapest way within
   that distance, not only the nearest. A via point is matched to the way it sits on alone
   (`routing.VIA_RADIUS_M`, 0), so a via on a road beside a trail means the road; a via
-  nearest a sidewalk or crosswalk is first moved onto the street beside it (`routing.snap_vias`).
+  nearest a sidewalk or crosswalk (or an unnamed footway joined to one) is first moved onto
+  the street beside it (`routing.snap_vias`); a via on a park path or trail stays on it.
 
 ### The top of the slider (100): strict order and worth rule
 

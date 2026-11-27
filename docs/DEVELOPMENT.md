@@ -3865,7 +3865,7 @@ from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route lef
 trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. A via point is the exception (`routing.VIA_RADIUS_M`, 0): it is
 matched to the way it sits on, so a via dropped on a road beside a trail rides the road, not
 the cheaper trail (Stephen, 2026-11-16). A via that sits nearest a sidewalk, a crosswalk or an
-unnamed footway is first moved onto the nearest other way within 15 m (`routing.snap_vias`,
+unnamed footway joined to them is first moved onto the nearest other way within 15 m (`routing.snap_vias`,
 one `/locate`), so a via on a street rides the street, not its sidewalk (2026-11-27). The search's own requests reuse
 the plan's locations, so they match alike, and so do the stop-order leg costs and
 its matrix past ten stops (`stoporder`); `core.nearest` matches the rider the same way and

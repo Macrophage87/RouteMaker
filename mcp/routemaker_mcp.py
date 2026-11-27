@@ -2690,27 +2690,21 @@ def via_spurs(plan: Plan) -> list[dict]:
 
 
 def via_ways(plan: Plan) -> list[dict]:
-    """The way the route rides at each via point (the description's stretch at the line's
-    vertex nearest the point), so a planner sees whether the point put the route on the way
-    it meant: a via sits on the way it is nearest, and "path beside X" is X's sidewalk or side
-    path, not X (Stephen, 2026-11-27)."""
+    """The way the route rides into each via point (the description's stretch that reaches
+    the point's leg end, `_points_along`), so a planner sees whether the point put the route
+    on the way it meant: a via sits on the way it is nearest, and "path beside X" is X's
+    sidewalk or side path, not X (Stephen, 2026-11-27)."""
     stretches = _stretches(plan.answer)
-    line = plan.line
-    if not stretches or len(line) < 2 or not plan.vias:
+    if not stretches or not plan.vias:
         return []
-    cum = [0.0]
-    for a, b in itertools.pairwise(line):
-        cum.append(cum[-1] + haversine_mi((a[0], a[1]), (b[0], b[1])))
-    total = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
-    scale = total / cum[-1] if cum[-1] and total else 1.0
-    starts = [e["from_mi"] for e in stretches]
+    ends = [e["to_mi"] for e in stretches]
+    vias = set(plan.vias)
     out = []
-    for i in plan.vias:
-        if not 0 < i < len(plan.points) - 1:
+    for i, metres in _points_along(plan):
+        if i not in vias:
             continue
-        k = min(range(len(line)), key=lambda j: haversine_mi(plan.points[i], tuple(line[j][:2])))
-        at = bisect.bisect_right(starts, cum[k] * scale) - 1
-        out.append({"point": i, "on": _street(stretches[max(0, at)])})
+        k = min(bisect.bisect_left(ends, metres / METRES_PER_MILE - 0.005), len(stretches) - 1)
+        out.append({"point": i, "on": _street(stretches[k])})
     return out
 
 
