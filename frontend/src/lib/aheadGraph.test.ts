@@ -82,6 +82,9 @@ test("the turns strip: each turn the card shows, flagged junctions and Avoid; ne
     cue("turn", 900, "right", "orange"),
     cue("turn", 960, "left", null, { joined: true }),
     cue("turn", 1200, "right", null, { cross: "Redland Road" }),
+    cue("turn", 1300, "right", "red", { cross: "Shellhorn Road", then: [{ movement: "left" }] }),
+    cue("turn", 1310, "left", null, { joined: true }),
+    cue("turn", 1400, "right", "orange", { cross: "Waxpool Road" }),
     cue("hazard", 1500, null, "red", { source: "junction" }),
     cue("hazard", 1600, null, "red", { source: "workzone" }),
     cue("busy", 1700, null, "avoid", { source: "avoid" }),
@@ -92,10 +95,12 @@ test("the turns strip: each turn the card shows, flagged junctions and Avoid; ne
   assert.deepEqual(marks, [
     { m: 100, movement: "left", severity: null },
     { m: 900, movement: "right", severity: "orange" },
+    { m: 1300, movement: "left", severity: "red" },
+    { m: 1400, movement: null, severity: "orange" },
     { m: 1500, movement: null, severity: "red" },
     { m: 1700, movement: null, severity: "avoid" },
-  ], "a jog's later turn, a crossing straight over and a work zone are left off");
-  assert.equal(turnsSentence(marks, 500), "Turns ahead: 1. Busy junctions: 2.");
+  ], "a jog's later turn, a quiet crossing straight over and a work zone are left off; the turn after a crossing and a busy crossing are drawn");
+  assert.equal(turnsSentence(marks, 500), "Turns ahead: 2. Busy junctions: 4.");
   assert.equal(turnsSentence([], 0), "", "nothing said where there is nothing");
   // Two marks closer than the gap are drawn as one: the arrow kept, in the worse colour.
   assert.deepEqual(spreadMarks([{ m: 900, movement: "right", severity: "orange" }, { m: 1000, movement: null, severity: "red" }, { m: 1500, movement: "left", severity: null }], 200), [

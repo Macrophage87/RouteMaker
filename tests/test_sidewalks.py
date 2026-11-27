@@ -951,3 +951,51 @@ def test_a_sidewalk_a_rater_rates_a_side_path_is_priced_as_a_path():
         "sidewalk": sw.LAST_RESORT
     }
     assert sidewalk_derived(variants.Variant.EBIKE, 1, {1}, set(), set(), found) == {}
+
+
+# Ashburn Village Boulevard at Red Rum Drive (the owner, 2026-11-27: "Weird routing here"):
+# the side path runs on past the corner, and a 4 m footway with no tags joins it to the
+# signalized crosswalk over the road. In metres: the side path runs north up x=0, the join
+# goes east from (0, 50) to (4, 50), and the crosswalk runs on east across the road at x=20.
+PLAIN = {"highway": "footway"}
+
+
+def ashburn(join=PLAIN, join_m=4.0, crosswalk=CROSSWALK, path=SIDE_PATH):
+    return [
+        placed(300, dict(path), [(0.0, 0.0), (0.0, 50.0), (0.0, 200.0)]),
+        placed(301, dict(join), [(0.0, 50.0), (join_m, 50.0)]),
+        placed(302, dict(crosswalk), [(join_m, 50.0), (20.0, 50.0), (80.0, 50.0)]),
+        placed(303, {"highway": "secondary"}, [(20.0, -100.0), (20.0, 50.0), (20.0, 200.0)]),
+    ]
+
+
+def test_a_trails_short_join_to_a_crosswalk_is_a_stub():
+    assert sw.stubs(ashburn()) == {301}
+    assert sw.links(ashburn()) == {}, "the side path runs on: no dead end"
+    assert sw.trail_crossings(ashburn()) == set(), "the crosswalk is longer than a link"
+
+
+def test_a_stub_is_short_untagged_open_and_joins_a_trail_to_something_ridden():
+    assert sw.stubs(ashburn(join_m=sw.STUB_M + 2)) == set(), "too long for a join"
+    assert sw.stubs(ashburn(join={**PLAIN, "bicycle": "no"})) == set()
+    assert sw.stubs(ashburn(), closed={301}) == set()
+    assert sw.stubs(ashburn(path={"highway": "residential"})) == set(), "no trail at an end"
+    assert sw.stubs(ashburn(crosswalk={**CROSSWALK, "bicycle": "no"})) == set(), (
+        "nothing ridden beyond"
+    )
+    assert sw.stubs(ashburn(join=SIDEWALK)) == set(), "a sidewalk is ridden already"
+
+
+def test_the_rebuild_rides_a_stub_as_a_link():
+    ways = [
+        way(osm_id, tags, [(e, n) for e, n in pts])
+        for osm_id, tags, pts in (
+            (300, SIDE_PATH, [(0.0, 0.0), (0.0, 50.0), (0.0, 200.0)]),
+            (301, PLAIN, [(0.0, 50.0), (4.0, 50.0)]),
+            (302, CROSSWALK, [(4.0, 50.0), (20.0, 50.0), (80.0, 50.0)]),
+            (303, {"highway": "secondary"}, [(20.0, -100.0), (20.0, 50.0), (20.0, 200.0)]),
+        )
+    ]
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    assert 301 in result.sidewalk_links

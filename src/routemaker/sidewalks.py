@@ -51,6 +51,9 @@ count them as the router prices them, not as a quiet trail.
   meets at one of its ends and that reaches another bicycle-open way (the road it crosses
   at least), priced as a link: the crossing's stress belongs to the junction (Little Falls
   Parkway, 2026-11-19).
+- `stubs`: a plain footway with no bicycle tag, at most `STUB_M` long, joining a trail to a
+  ridden crosswalk, sidewalk or other bicycle-open way: the few metres a mapper draws at a
+  corner, priced as a link (Ashburn Village Boulevard, 2026-11-27).
 - `gap_links`: a run of footways with no bicycle tag, at most `GAP_M` long, whose ends meet
   bicycle-open ways (a trail among them) that the open network joins only by riding
   `GAP_DETOUR_M` or more, priced as a link: the owner, 2026-11-20, "Do a search for places
@@ -128,6 +131,9 @@ CUT_THROUGH_M = 150.0
 # A gap link (`gap_links`) bridges two bicycle-open ways the open network itself joins only
 # by riding at least this far (about 1,000 ft). Our default, unmeasured.
 GAP_DETOUR_M = 300.0
+# The longest footway `stubs` opens (about 30 ft): the join a mapper draws between a trail and
+# the crosswalk or sidewalk at a corner. Our default, unmeasured.
+STUB_M = 10.0
 # How many footways off one dead-end stretch a cut-through is looked for from, nearest the
 # end first (a short path to a door may leave nearer the end than the cut-through does).
 STRETCH_FOOTWAYS = 4
@@ -647,6 +653,51 @@ def trail_crossings(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> s
         reached = set().union(*(open_at.get(node, ()) for node in node_ids))
         if trails and reached - trails:
             found.add(osm_id)
+    return found
+
+
+def stubs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
+    """The joins to price as links (`TIER`): a plain footway with no bicycle tag (no
+    sidewalk or crosswalk, which are ridden already), at most `STUB_M` long, with a trail
+    at one end and, at the other, a ridden sidewalk or crosswalk or another bicycle-open way.
+    `ways` as `links` takes them.
+
+    The owner, 2026-11-27, at Ashburn Village Boulevard and Red Rum Drive: "Weird routing
+    here". The side path (OSM 709050181, `bicycle=yes`) meets the corner's signalized
+    crosswalk only through a 4 m footway with no tags (1138421927). Upstream closes it by
+    its class, and the other rules miss it: the side path runs on past it (no dead end for
+    `links`), the crosswalk is longer than a link and no trail ends on it
+    (`trail_crossings`), and the corner's sidewalks join it into a run longer than a gap
+    (`gap_links`). So the route rode 0.1 mi on along Red Rum Drive (LTS 3) and back on the
+    side path to reach a path a step away."""
+    trail_at: dict[int, set[int]] = defaultdict(set)
+    open_at: dict[int, set[int]] = defaultdict(set)
+    short: list[tuple[int, Sequence[int]]] = []
+    for osm_id, tags, node_ids, coords in ways:
+        if osm_id in closed or len(node_ids) < 2:
+            continue
+        if is_link_candidate(tags):
+            if tags.get("footway") in SIDEWALK_KINDS:
+                for node in (node_ids[0], node_ids[-1]):
+                    open_at[node].add(osm_id)
+            elif 0 < _length(coords) <= STUB_M:
+                short.append((osm_id, node_ids))
+            continue
+        if not bicycle_open(tags):
+            continue
+        trail = tags.get("highway") in TRAIL_HIGHWAY
+        for node in node_ids:
+            open_at[node].add(osm_id)
+            if trail:
+                trail_at[node].add(osm_id)
+    found: set[int] = set()
+    for osm_id, node_ids in short:
+        a, b = node_ids[0], node_ids[-1]
+        for here, there in ((a, b), (b, a)):
+            trails = trail_at.get(here, set())
+            if trails and open_at.get(there, set()) - trails:
+                found.add(osm_id)
+                break
     return found
 
 
