@@ -536,7 +536,7 @@ export function waterLayerBefore(order: readonly string[], routeLines: readonly 
   return top < 0 ? undefined : order[top + 1];
 }
 
-/** Add the icons, the source and the layer, once, under `beforeId` (the route's lowest layer); whether they were added. */
+/** Add the icons, the source and the layer, once, under `beforeId` (waterLayerBefore: just over the route's line); whether they were added. */
 export function addWaterRestrooms(
   map: WaterMap,
   points: readonly WaterPoint[],

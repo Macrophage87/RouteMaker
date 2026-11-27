@@ -557,8 +557,9 @@ test("the icons go just over the route's line, under its names and marks, so a r
   const lines = ["route-line", "route-drawn-gaps", "route-trail"];
   const order = ["base", "route-casing", "route-stress", "route-line", "route-drawn-gaps", "route-trail", "route-name", "route-hazard-marks"];
   assert.equal(waterLayerBefore(order, lines), "route-name");
-  // In a ride the names are lifted away; the next layer up is the hazard marks.
-  assert.equal(waterLayerBefore(order.filter((id) => id !== "route-name"), lines), "route-hazard-marks");
+  // In a ride the lifted names sit just over the route's trail layers: the water goes under them.
+  const ride = ["base", "route-casing", "route-line", "route-drawn-gaps", "route-trail", "trail-label", "road-label", "route-name", "rail-names", "route-hazard-marks"];
+  assert.equal(waterLayerBefore(ride, lines), "trail-label");
   // Nothing over the line, or no route at all: the very top.
   assert.equal(waterLayerBefore(["base", "route-line"], lines), undefined);
   assert.equal(waterLayerBefore(["base"], lines), undefined);

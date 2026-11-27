@@ -682,8 +682,8 @@ def merge_fountains(amenities: list[Amenity]) -> tuple[list[Amenity], int]:
     crowd), at every zoom a rider uses. Shown as one place, the restroom holds the drop, as a
     restroom tagged drinking_water=yes already does, and Go's Water and Restroom lists both
     find it. Only a plain drinking-water point is folded (not untreated water, a repair stand
-    or a shop); the restroom keeps its own place, name and details and takes the fountain's
-    bottle filler. A restroom placed from a street address (approx) takes none, as it may be
+    or a shop, nor one with its own season or hours); the restroom keeps its own place, name
+    and details and takes the fountain's bottle filler. A restroom placed from a street address (approx) takes none, as it may be
     a block away.
     """
     restrooms = [i for i, a in enumerate(amenities) if a.toilet is not None and not a.approx]
@@ -691,6 +691,10 @@ def merge_fountains(amenities: list[Amenity]) -> tuple[list[Amenity], int]:
     gone: set[int] = set()
     for j, w in enumerate(amenities):
         if w.water != "p" or w.toilet is not None or w.repair is not None or w.shop:
+            continue
+        # A fountain with its own season or hours keeps its own point: on the restroom
+        # they would say the restroom shuts too, or the water would seem on all year.
+        if w.seasonal or w.hours:
             continue
         best: tuple[float, int] | None = None
         for i in restrooms:

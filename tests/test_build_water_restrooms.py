@@ -872,9 +872,11 @@ def test_fountain_folding_leaves_what_is_not_one_stop():
     far = _a("n2", -77.0, 39.0002, water="p")  # about 22 m: its own place
     untreated = _a("n3", -77.00005, 39.0, water="n")  # filter it first: not the restroom's water
     stand = _a("n4", -77.00005, 39.00005, water="p", repair="p")
+    summer = _a("n6", -77.00002, 39.00002, water="p", seasonal="summer")
+    daytime = _a("n7", -77.00002, 38.99998, water="p", hours="09:00-17:00")
     approx = _a("throne-x", -77.1, 39.1, toilet="f", approx=True)
     by_approx = _a("n5", -77.1, 39.10005, water="p")
-    pts = [restroom, far, untreated, stand, approx, by_approx]
+    pts = [restroom, far, untreated, stand, summer, daytime, approx, by_approx]
     out, folded = mod.merge_fountains(pts)
     assert (out, folded) == (pts, 0)
 
