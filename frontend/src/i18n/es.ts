@@ -2699,7 +2699,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Interval end": "Fin de intervalo",
   // Survey spots (lib/surveySpots.ts, 2026-11-25); Spanish needs a native check.
   "Survey spots": "Puntos de encuesta",
-  "Roads we are unsure about. Tap an orange ! to tell us what it is like there.": "Calles sobre las que tenemos dudas. Toca un ! naranja para contarnos cómo es allí.",
+  "Roads we are unsure about. Tap a blue ? to tell us what it is like there.": "Calles sobre las que tenemos dudas. Toca un ? azul para contarnos cómo es allí.",
   "Survey spots are unavailable for now.": "Los puntos de encuesta no están disponibles por ahora.",
   "Spots you have surveyed: {n}. Answered on the day you rode there: {today}.": "Puntos que has respondido: {n}. Respondidos el día que pasaste por allí: {today}.",
   "Sign in to answer survey spots.": "Inicia sesión para responder los puntos de encuesta.",

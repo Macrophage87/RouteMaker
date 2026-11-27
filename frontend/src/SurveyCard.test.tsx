@@ -133,12 +133,15 @@ test("the Layers list reaches a spot without the map: the nearest spots as butto
   assert.equal(screen.all("button", "Water Street Southwest").length, 0, "an answered spot leaves the list");
 });
 
-test("the marker is an orange '!' in a dark rim, clear around it", () => {
+test("the marker is a blue '?' in a dark rim: a hook over a stem and a dot, clear around it", () => {
   const icon = surveyIcon(1, 26);
   const at = (x: number, y: number) => Array.from(icon.data.slice((y * icon.width + x) * 4, (y * icon.width + x) * 4 + 4));
-  assert.deepEqual(at(13, 8), [0xf9, 0x73, 0x16, 255], "the bar");
-  assert.deepEqual(at(13, 21), [0xf9, 0x73, 0x16, 255], "the dot");
-  assert.equal(at(13, 16)[3], 0, "a gap between them");
+  const blue = [0x0e, 0xa5, 0xe9, 255];
+  assert.deepEqual(at(13, 2), blue, "the top of the hook");
+  assert.equal(at(13, 8)[3], 0, "the hook is open inside, not a solid '!' bar");
+  assert.deepEqual(at(17, 8), blue, "the hook's right side");
+  assert.deepEqual(at(13, 14), blue, "the stem");
+  assert.deepEqual(at(13, 22), blue, "the dot");
   assert.equal(at(2, 2)[3], 0, "nothing in the corner");
 });
 

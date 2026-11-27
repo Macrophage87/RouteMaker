@@ -1,4 +1,4 @@
-// The Survey spots layer on the map (lib/surveySpots.ts): an orange "!" per spot (a quest marker) the rider has not answered, over the
+// The Survey spots layer on the map (lib/surveySpots.ts): a blue "?" per spot (a quest marker) the rider has not answered, over the
 // roads. A press on one opens its card (SurveyCard.tsx), never a point or the destination (app/mapOverlay.ts
 // cardLayer). App decides when it shows (its switch in Layers) and loads the spots the first time it is on.
 import { useEffect, useRef, useState } from "react";
