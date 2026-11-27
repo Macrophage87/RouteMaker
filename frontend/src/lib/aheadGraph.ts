@@ -609,7 +609,7 @@ interface CueLike {
   then?: readonly { movement: string; exit?: unknown }[];
   /** A circle's exit, on a turn at one. */
   exit?: unknown;
-  /** A short path straight across a road: not a turn on the card, so not one here. */
+  /** A short path straight across a road: not a turn on the card, so not one here; the turn after it (`then`) is. */
   cross?: string;
   source?: string;
   /** A stop's number, on a "stop" cue. */
@@ -618,7 +618,7 @@ interface CueLike {
 
 /**
  * The turns and the stress markers in the window: each turn the card shows (a jog as one, a crossing straight over not
- * at all), each junction the planner flagged orange or red, and where an Avoid stretch starts. Not work zones or
+ * at all but the turn after it, a busy one as a junction marker), each junction the planner flagged orange or red, and where an Avoid stretch starts. Not work zones or
  * hazards: they are not junctions.
  */
 export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWindow, "fromM" | "toM">, stopIcon: (cue: C) => NoteIcon | undefined = () => undefined): TurnMark[] {
@@ -628,10 +628,20 @@ export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWi
     if (c.kind === "stop") {
       marks.push({ m: c.atM, movement: null, severity: null, stop: { number: c.stop ?? null, icon: stopIcon(c) ?? null } });
     } else if (c.kind === "turn") {
-      if (c.movement !== null && !c.joined && !c.cross) {
+      const severity = c.severity === "orange" || c.severity === "red" ? c.severity : null;
+      if (c.cross) {
+        // A crossing straight over is not a turn, but the turn after it, said on the same card ("Cross Shellhorn Road,
+        // then left onto the path"), is: drawn here, as the jog's later turn is never drawn on its own. A busy crossing
+        // with no turn after it keeps its junction marker.
+        // A circle's exit after it keeps the exit's arrow alone, as on any other turn.
+        const exit = !!c.then?.some((t) => t.exit);
+        const [movement = null, ...rest] = (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));
+        const then = exit ? [] : rest;
+        if (movement || severity) marks.push({ m: c.atM, movement, severity, ...rated(c), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) });
+      } else if (c.movement !== null && !c.joined) {
         const exit = !!c.exit || !!c.then?.some((t) => t.exit);
         const then = exit ? [] : (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));
-        marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null, ...rated(c), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) });
+        marks.push({ m: c.atM, movement: c.movement, severity, ...rated(c), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) });
       }
     } else if (c.source === "junction" && (c.severity === "orange" || c.severity === "red")) {
       marks.push({ m: c.atM, movement: null, severity: c.severity, ...rated(c) });
