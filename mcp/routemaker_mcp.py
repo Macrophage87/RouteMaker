@@ -2325,6 +2325,17 @@ def _scenic_rows(answer: dict) -> list[dict]:
     ]
 
 
+def _bridge_mi(entry: dict, a: float | None = None, b: float | None = None) -> float:
+    """A stretch's miles on bridges (the site's `bridge_m`: OSM `bridge=*` ways, so a short
+    unnamed path over Rock Creek is said to be a bridge, not read as a drop to the creek;
+    the owner, 2026-11-27), shared out evenly where only `a` to `b` of it is read."""
+    miles = (entry.get("bridge_m") or 0) / METRES_PER_MILE
+    span = entry["to_mi"] - entry["from_mi"]
+    if not miles or a is None or b is None or span <= 0:
+        return miles
+    return miles * max(0.0, min(1.0, (b - a) / span))
+
+
 def _street(entry: dict) -> str:
     return str(entry.get("street") or "unnamed road")
 
@@ -2347,6 +2358,7 @@ def _bridged(rows: list[dict]) -> list[dict]:
                     for key, miles in part[table].items():
                         before[table][key] = before[table].get(key, 0.0) + miles
                 before["unpaved"] = before.get("unpaved", 0.0) + part.get("unpaved", 0.0)
+                before["bridge"] = before.get("bridge", 0.0) + part.get("bridge", 0.0)
             before["to_mi"] = row["to_mi"]
             continue
         out.append(row)
@@ -2355,7 +2367,7 @@ def _bridged(rows: list[dict]) -> list[dict]:
 
 def road_list(answer: dict) -> dict | None:
     """The roads the route takes, in order: each with its miles, its main and worst LTS, its
-    miles at LTS 3 and up, and its scenic designation (a rustic road, a byway); rows under
+    miles at LTS 3 and up, its miles on bridges (`bridge_mi`), and its scenic designation (a rustic road, a byway); rows under
     ROAD_ROW_MIN_MI are counted as short links. None where the site sent no description."""
     stretches = _stretches(answer)
     if not stretches:
@@ -2375,6 +2387,7 @@ def road_list(answer: dict) -> dict | None:
         surface = entry.get("surface")
         unpaved = miles if surface == "unpaved" else miles / 2 if surface == "partly unpaved" else 0
         last["unpaved"] = last.get("unpaved", 0.0) + unpaved
+        last["bridge"] = last.get("bridge", 0.0) + _bridge_mi(entry)
         # "none" (known no facility, round-2 D28) and None (not known) are both plain street.
         kind = entry.get("facility")
         kind = kind if kind in ("path", "protected", "lane") else "street"
@@ -2433,6 +2446,9 @@ def road_list(answer: dict) -> dict | None:
         unpaved = sum(r.get("unpaved", 0.0) for r in group)
         if unpaved >= 0.05:
             item["unpaved_mi"] = round(unpaved, 1)
+        bridge = sum(r.get("bridge", 0.0) for r in group)
+        if bridge >= 0.01:
+            item["bridge_mi"] = round(bridge, 2)
         designations = {
             s["designation"]
             for s in scenic
@@ -4258,13 +4274,17 @@ def route_segments(
             facility = "trail" if b > a and _trail_mi(trails, a, b) * 2 >= b - a else None
         key = (_street(entry), entry.get("tier"), facility, entry.get("surface"))
         last = out_rows[-1] if out_rows else None
+        bridge = _bridge_mi(entry, a, b)
         if last is not None and last["_key"] == key and a - last["_b"] <= 0.01:
             last["_b"] = b
+            last["_bridge"] += bridge
             continue
         if len(out_rows) >= rows:
             next_from = round(a, 2)
             break
-        out_rows.append({"_key": key, "_a": a, "_b": b, "_oneway": entry.get("oneway")})
+        out_rows.append(
+            {"_key": key, "_a": a, "_b": b, "_oneway": entry.get("oneway"), "_bridge": bridge}
+        )
     segments = []
     for row in out_rows:
         street, tier, facility, surface = row["_key"]
@@ -4289,6 +4309,8 @@ def route_segments(
                 seg["climb_ft"] = round(gain)
         if row["_oneway"]:
             seg["one_way"] = True
+        if row["_bridge"] >= 0.01:
+            seg["bridge_mi"] = round(row["_bridge"], 2)
         segments.append(seg)
     stop = next_from if next_from is not None else end
     scale = _traced_scale(answer) / METRES_PER_MILE
@@ -6101,7 +6123,8 @@ TOOLS = [
             "Read a draft stretch by stretch, for optimizing it: each stretch's miles, road,"
             " LTS (1 calmest to 4, 5 Avoid), facility (path, trail: a mountain-bike trail,"
             " protected, lane, street), surface"
-            " where unpaved, average and steepest uphill grade, climb, one-way, and minutes at"
+            " where unpaved, miles on bridges, average and steepest uphill grade, climb,"
+            " one-way, and minutes at"
             " the draft's pace (hills and junction waits in place); every higher and very-high"
             " stress junction with its reason; steep grades and road hazards. Give from_mi and"
             " to_mi to read part of a long ride; `next_from_mi` says where the next page starts."
