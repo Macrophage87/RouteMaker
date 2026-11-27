@@ -12,6 +12,11 @@ test("the mark shows the rider's spot, latitude first, to about a metre", async 
   assert.equal(spokenText(screen.container).includes("38.88712"), false);
 });
 
+test("with the GPS weak or lost, the last spot heard is marked with a ?", async () => {
+  const screen = await render(<GpsMark point={[-77.0234149, 38.8871234]} stale />);
+  assert.equal(screen.container.querySelector(".ride-gps-mark")?.textContent, "38.88712, -77.02341 ?");
+});
+
 test("no fix yet, or a broken one: no mark", async () => {
   for (const point of [null, [Number.NaN, 38.9] as [number, number]]) {
     const screen = await render(<GpsMark point={point} />);

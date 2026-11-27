@@ -4683,7 +4683,7 @@ export function RideMode({
         {/* The modal makes the ride's own regions inert: its cues go on being heard from in here, as in Ride settings. */}
         {suddenAsk && <PopupLiveRegions polite={polite} assertive={assertive} />}
       </SuddenClosureDialog>
-      {gpsMark && <GpsMark point={ride.fix?.point ?? null} />}
+      {gpsMark && <GpsMark point={ride.fix?.point ?? null} stale={!!gps} />}
     </section>
   );
 }

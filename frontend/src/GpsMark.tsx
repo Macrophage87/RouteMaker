@@ -14,11 +14,13 @@ export function gpsMarkText(point: LonLat): string {
   return `${point[1].toFixed(5)}, ${point[0].toFixed(5)}`;
 }
 
-export function GpsMark({ point }: { point: LonLat | null }): ReactElement | null {
+/** `stale`: the GPS is weak or lost, so the point is the last one heard: shown with a "?" after it. */
+export function GpsMark({ point, stale = false }: { point: LonLat | null; stale?: boolean }): ReactElement | null {
   if (!point || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) return null;
   return (
     <p className="ride-gps-mark" aria-hidden="true" translate="no">
       {gpsMarkText(point)}
+      {stale ? " ?" : ""}
     </p>
   );
 }

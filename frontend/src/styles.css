@@ -9802,7 +9802,6 @@ summary.closure-notices-heading {
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--text);
-  opacity: 0.75;
   text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg);
   pointer-events: none;
   white-space: nowrap;
