@@ -176,11 +176,11 @@ export function surveyIcon(pixelRatio = 2, cssSize = SURVEY_ICON_PX): Raster {
   const fill = hexToRgb(SURVEY_COLOUR);
   const dark = hexToRgb(SURVEY_RIM);
   const c = size / 2;
-  const hookY = size * 0.3;
+  const hookY = size * 0.33;
   const radius = size * 0.19;
   const half = size * 0.075;
   const stemEnd = size * 0.64;
-  const dotY = size * 0.86;
+  const dotY = size * 0.855;
   const inMark = (x: number, y: number, grow: number) => {
     if (Math.hypot(x - c, y - dotY) <= size * 0.08 + grow) return true;
     if (Math.abs(x - c) <= half + grow && y >= hookY + radius - grow && y <= stemEnd + grow) return true;

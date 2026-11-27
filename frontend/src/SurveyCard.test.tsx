@@ -138,7 +138,7 @@ test("the marker is a blue '?' in a dark rim: a hook over a stem and a dot, clea
   const at = (x: number, y: number) => Array.from(icon.data.slice((y * icon.width + x) * 4, (y * icon.width + x) * 4 + 4));
   const blue = [0x0e, 0xa5, 0xe9, 255];
   assert.deepEqual(at(13, 2), blue, "the top of the hook");
-  assert.equal(at(13, 7)[3], 0, "the hook is open inside, not a solid '!' bar");
+  assert.equal(at(13, 8)[3], 0, "the hook is open inside, not a solid '!' bar");
   assert.deepEqual(at(17, 8), blue, "the hook's right side");
   assert.deepEqual(at(13, 14), blue, "the stem");
   assert.deepEqual(at(13, 22), blue, "the dot");
