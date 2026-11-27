@@ -3967,6 +3967,14 @@ headings, none of them part of its identity).
   stretch says ", unpaved" where at least half of it is unpaved and ", partly
   unpaved" where at least 0.1 mi is; `surface` is the same as a field. A change
   of surface alone does not start a stretch.
+- **Bridges** (the owner, 2026-11-27, on the P Street bridge over Rock Creek). Each
+  piece carries Valhalla's `edge.bridge` (OSM `bridge=*`), already asked for by
+  `trace_junctions.TRACE_ATTRIBUTES`; a stretch with at least `BRIDGE_MIN_M` (10 m)
+  on bridges has `bridge_m`, those metres, and no key otherwise. A change of bridge
+  alone does not start a stretch, and the name is unchanged (an unnamed path over a
+  bridge is still "path"). The MCP connector says it as `bridge_mi` on `route_segments`
+  rows and on the plan's road list, so a short path over a creek is not read as one
+  down to it. Read at plan time: no map rebuild.
 - **Painted lanes on LTS 4 and Avoid** (OWNER-DECISIONS 275). The planner's
   "Show bike lanes on high-stress roads" switch is off by default, and with it
   off such a lane is not called a bike lane. The wording stays in Python: a

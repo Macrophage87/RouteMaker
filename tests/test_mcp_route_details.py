@@ -95,6 +95,18 @@ def test_the_roads_are_listed_in_order_with_miles_stress_and_scenic_designation(
     assert roads[4]["worst_lts"] == 3 and roads[4]["miles_lts_3_up"] == 0.3
 
 
+def test_a_road_says_its_miles_on_bridges() -> None:
+    # The owner, 2026-11-27: the path over Rock Creek on the P Street bridge, said only "path".
+    over = {**stretch("path", 3.2, 3.4, 1, "path"), "bridge_m": round(0.1 * MI)}
+    roads = mcp.road_list(
+        answer_of(
+            [stretch("P Street Northwest", 0.0, 3.2, 2), over, stretch("N Street", 3.4, 4.0, 1)]
+        )
+    )["roads"]
+    assert roads[1]["road"] == "path" and roads[1]["bridge_mi"] == pytest.approx(0.1, abs=0.005)
+    assert "bridge_mi" not in roads[0] and "bridge_mi" not in roads[2]
+
+
 def test_a_known_no_facility_counts_as_street_with_the_unknown_pieces() -> None:
     # The site sends "none" for a known no-facility (round-2 D28) and None where it is not known:
     # both are plain street, so 40% lane, 30% none and 30% unknown is a street, not a lane road.

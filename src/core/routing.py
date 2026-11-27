@@ -612,6 +612,10 @@ class Piece:
     # said as a U-turn (`describe.UTURN_DEG`, round-3 audit D31). False on every piece of
     # an edge but its first.
     retrace: bool = field(default=False, compare=False)
+    # Whether the edge is on a bridge (`edge.bridge`, asked by
+    # `trace_junctions.TRACE_ATTRIBUTES`): the description says how much of a stretch is
+    # (`describe.Atom.bridge`).
+    bridge: bool = field(default=False, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -722,6 +726,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
             "heading_in": _heading(edge.get("begin_heading")),
             "heading_out": _heading(edge.get("end_heading")),
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
+            "bridge": bool(edge.get("bridge")),
         }
         line_in = line_out = turn = None
         choice = None
@@ -4073,6 +4078,7 @@ def describe_route(
                             choice=bool(pieces[i].choice),
                             oneway=getattr(classes[i], "oneway", None),
                             retrace=bool(getattr(pieces[i], "retrace", False)),
+                            bridge=bool(getattr(pieces[i], "bridge", False)),
                         )
                         for i in range(run[0], run[1])
                     ]

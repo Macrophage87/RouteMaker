@@ -1922,6 +1922,13 @@ class DescriptionEntryOut(Schema):
             "at least 0.1 mi is (OWNER-DECISIONS 280); null: paved or not known."
         ),
     )
+    bridge_m: int | None = Field(
+        default=None,
+        description=(
+            "On a stretch: its metres on bridges (OSM `bridge=*`), where at least 10 m are;"
+            " null elsewhere. A short unnamed path over a creek is then a bridge, not a drop."
+        ),
+    )
     text: str
     citation: str | None = Field(
         default=None,
