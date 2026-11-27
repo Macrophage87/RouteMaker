@@ -360,6 +360,17 @@ def test_a_walk_mapped_as_a_sidewalk_may_lose_the_sidewalk_tag(osm, tmp_path):
     assert osm_edit.edit_problem(json.loads(walk.read_text())) is None
 
 
+def test_a_restroom_s_kind_may_be_set_from_the_spot(osm, tmp_path):
+    # A park restroom mapped with no kind, seen to be a flush one.
+    restroom = _edit(
+        tmp_path,
+        element="way",
+        expect={"toilets:disposal": None},
+        set={"toilets:disposal": "flush"},
+    )
+    assert osm_edit.edit_problem(json.loads(restroom.read_text())) is None
+
+
 def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
     assert osm_edit.main(["show", str(_edit(tmp_path))]) == 0
     assert "highway: None -> 'traffic_signals'" in capsys.readouterr().out
@@ -388,6 +399,10 @@ def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
         (
             {"element": "way", "set": {"footway": "path"}, "expect": {"footway": "sidewalk"}},
             "footway may only be removed or set to",
+        ),
+        (
+            {"set": {"toilets:disposal": "fancy"}, "expect": {"toilets:disposal": None}},
+            "toilets:disposal may only be set to",
         ),
         ({"element": "relation"}, "node or way"),
         ({"id": True}, "positive OSM id"),

@@ -106,6 +106,12 @@ multipolygon relations, holes respected
 <https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dprison>). The build prints
 how many it left out, by kind.
 
+One stop, not a restroom hidden by its fountain (owner report, 2026-11-27: "2 public
+flush restrooms weren't marked"): a drinking-water point within 50 ft (15 m) of a
+restroom is folded into the nearest one (merge_fountains), which then holds the drop.
+Run after the Throne merge, in --throne-only too, so the committed file can take it
+without an extract.
+
 Throne smart restrooms (owner request, 2026-10-11: "missing some restrooms
 that were established by Throne Labs, which are often along major biking
 routes"; "They are in Maryland and Virginia too"): OSM has few of them, so a
@@ -221,6 +227,9 @@ MILITARY_OPEN = frozenset({"no", "danger_area"})
 # A Throne unit is an OSM restroom this close, or this close to one tagged as a Throne.
 THRONE_SAME_M = 15.0  # 50 ft
 THRONE_TAGGED_M = 300.0  # 1,000 ft: the list's positions are street addresses
+# A drinking fountain this close to a restroom is that restroom's water: one place (merge_fountains).
+# 50 ft, as THRONE_SAME_M: our default, unmeasured.
+FOUNTAIN_SAME_M = 15.0
 THRONE_STATUSES = frozenset({"open", "opens soon", "unverified"})
 THRONE = "Throne"
 M_PER_DEG_LAT = 111_320.0
@@ -664,6 +673,42 @@ def merge_throne(amenities: list[Amenity], units: list[dict]) -> tuple[list[Amen
     return out, added, matched
 
 
+def merge_fountains(amenities: list[Amenity]) -> tuple[list[Amenity], int]:
+    """Fold each drinking fountain within FOUNTAIN_SAME_M of a restroom into the nearest one: the points, and how many.
+
+    The owner, 2026-11-27, of a ride past a park restroom the map did not show: "2 public
+    flush restrooms weren't marked". The restroom was in the file, but a drinking fountain
+    mapped a few feet from it took its spot on the map (the layer keeps the water where two
+    crowd), at every zoom a rider uses. Shown as one place, the restroom holds the drop, as a
+    restroom tagged drinking_water=yes already does, and Go's Water and Restroom lists both
+    find it. Only a plain drinking-water point is folded (not untreated water, a repair stand
+    or a shop, nor one with its own season or hours); the restroom keeps its own place, name
+    and details and takes the fountain's bottle filler. A restroom placed from a street address (approx) takes none, as it may be
+    a block away.
+    """
+    restrooms = [i for i, a in enumerate(amenities) if a.toilet is not None and not a.approx]
+    out = list(amenities)
+    gone: set[int] = set()
+    for j, w in enumerate(amenities):
+        if w.water != "p" or w.toilet is not None or w.repair is not None or w.shop:
+            continue
+        # A fountain with its own season or hours keeps its own point: on the restroom
+        # they would say the restroom shuts too, or the water would seem on all year.
+        if w.seasonal or w.hours:
+            continue
+        best: tuple[float, int] | None = None
+        for i in restrooms:
+            d = _metres(w.lon, w.lat, out[i].lon, out[i].lat)
+            if d <= FOUNTAIN_SAME_M and (best is None or d < best[0]):
+                best = (d, i)
+        if best is None:
+            continue
+        r = out[best[1]]
+        out[best[1]] = replace(r, water="p", bottle=r.bottle or w.bottle)
+        gone.add(j)
+    return [a for k, a in enumerate(out) if k not in gone], len(gone)
+
+
 def from_document(doc: dict) -> list[Amenity]:
     """The points of a file this script wrote, back as Amenity (for --throne-only)."""
     return [
@@ -868,6 +913,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         osm_points, left_out = read_extract(args.pbf)
     amenities, added, matched = merge_throne(osm_points, units)
+    amenities, folded = merge_fountains(amenities)
     write_document(document(amenities), args.out)
     count = lambda field, value: sum(getattr(a, field) == value for a in amenities)  # noqa: E731
     print(
@@ -875,6 +921,7 @@ def main(argv: list[str] | None = None) -> int:
         f"untreated water {count('water', 'n')}; restrooms flush {count('toilet', 'f')}, "
         f"basic {count('toilet', 'b')}, type not mapped {count('toilet', 'u')}"
     )
+    print(f"drinking fountains shown as the restroom beside them: {folded}")
     stands = sum(a.repair is not None for a in amenities)
     print(f"bike repair stands {stands}; bike shops {sum(a.shop for a in amenities)}")
     waiting = sum(u["status"] != "open" for u in units)
