@@ -18,7 +18,8 @@ import {
   replanTold,
   rideModel,
   skippableVia,
-  skipsViaForCost,
+  VIA_SKIP_AUTO_EXTRA_S,
+  viaSkipLimitS,
   stopsAhead,
   viaSkipWorth,
   viaSkippedNote,
@@ -227,14 +228,19 @@ test("only the next via point may be left out: never a stop, never a via point b
   assert.equal(skippableVia(model, [4]), null, "only the end left");
 });
 
-test("only a re-route the rider asked for leaves a via point out for its cost; an automatic one keeps it", () => {
-  const plain = { asked: false, detour: false, check: false, restart: false, eased: false };
-  // Before: an automatic re-route after a small wrong turn left out a via point placed to lengthen the ride.
-  assert.equal(skipsViaForCost(plain), false);
-  // Road closed: still left out where it costs more than VIA_SKIP_EXTRA_S.
-  assert.equal(skipsViaForCost({ ...plain, asked: true }), true);
-  // Never for a detour, a held U-turn's check, a restart or a Calmer or Flatter press.
-  for (const k of ["detour", "check", "restart", "eased"] as const) assert.equal(skipsViaForCost({ ...plain, asked: true, [k]: true }), false, k);
+test("a small wrong turn keeps a via point; Road closed and a loop's own shape point still let it go after 5 minutes", () => {
+  const plain = { asked: false, detour: false, check: false, restart: false, eased: false, shape: false };
+  // Before: an automatic re-route dropped a via point placed to lengthen the ride once it cost 5 minutes more.
+  assert.equal(viaSkipLimitS(plain), VIA_SKIP_AUTO_EXTRA_S);
+  assert.equal(VIA_SKIP_AUTO_EXTRA_S, 900);
+  assert.equal(viaSkipLimitS({ ...plain, asked: true }), VIA_SKIP_EXTRA_S, "Road closed");
+  assert.equal(viaSkipLimitS({ ...plain, shape: true }), VIA_SKIP_EXTRA_S, "a loop's shape point, kept from an earlier re-route");
+  for (const k of ["detour", "check", "restart", "eased"] as const) assert.equal(viaSkipLimitS({ ...plain, asked: true, [k]: true }), null, k);
+  // 420 s more to reach it: kept on an automatic re-route, left out when asked.
+  const { route, vias } = ride();
+  const planned = rideModel(route, vias);
+  assert.equal(viaSkipWorth(planned, 1100, 2000, rideModel(fresh(3000, 4000), [1]), 1, VIA_SKIP_AUTO_EXTRA_S), false);
+  assert.equal(viaSkipWorth(planned, 1100, 2000, rideModel(fresh(3000, 4000), [1]), 1, VIA_SKIP_EXTRA_S), true);
 });
 
 test("the via point is left out only where the new route takes more than 5 minutes longer to reach it", () => {
@@ -256,20 +262,6 @@ test("a re-route that left out its via point says so first, and the stoker still
   assert.equal(viaSkippedNote(REPLAN_FAILED), REPLAN_FAILED, "no route, nothing skipped to say");
   assert.equal(replanTold(false, "stoker", viaSkippedNote(REPLAN_FOUND)), "say");
   assert.equal(replanTold(false, "quiet", viaSkippedNote(REPLAN_FOUND)), "quiet");
-});
-
-test("Ride mode asks again without the via point only when that trips, and not for a detour, a check, a restart or Calmer", () => {
-  const replan = src("../RideMode.tsx").slice(src("../RideMode.tsx").indexOf("const replan = useCallback("));
-  // A loop's shape point (navigate.ts loopShapePoint; the hunt, 2026-11-08, V1) goes first, as the next via point there.
-  // The next via point only on a re-route the rider asked for (skipsViaForCost, tested above).
-  assert.match(replan, /const forCost = result\.ok && skipsViaForCost\(\{ asked, detour: !!via, check, restart: !!done, eased \}\);/);
-  assert.match(replan, /const loopShape = result\.ok && !via && !check && !done && !eased \? shape : null;/);
-  assert.match(replan, /const next = loopShape \?\? \(forCost \? skippableVia\(modelRef\.current, keptPoints\) : null\);/);
-  assert.match(
-    replan,
-    /if \(result\.ok && next && viaSkipWorth\(modelRef\.current, fromM, next\.atM, modelOf\(result\.route, points\), 1\) && !voided\(\)\) \{\s*const dropped = points\[1\];\s*const without = points\.filter\(\(_, i\) => i !== 1\);\s*const again = await ask\(without\);/,
-  );
-  assert.match(replan, /if \(skippedVia\) note = viaSkippedNote\(note\);/);
 });
 
 test("a named stop is cued, said and drawn by its name; the stops ahead are drawn while riding, via points never", () => {
