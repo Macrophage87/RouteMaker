@@ -175,9 +175,7 @@ class TestViaPoints:
         fake = router(standard_router())
         response = post(client, {"points": three_points(), "preset": "default", "via_points": [1]})
         assert response.status_code == 200, response.content
-        # The first /route call (a /locate for the via point comes before it, `snap_vias`).
-        first = next(p for url, p in fake.calls if url.endswith("/route"))
-        types = [loc["type"] for loc in first["locations"]]
+        types = [loc["type"] for loc in fake.calls[0][1]["locations"]]
         assert types == ["break", routing.VIA_LOCATION_TYPE, "break"]
 
     def test_the_description_calls_a_via_point_so_and_numbers_only_stops(
