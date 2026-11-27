@@ -2375,9 +2375,7 @@ def rated_sidepath_sidewalks(
     tag decides, as before. Only sidewalks (`footway=sidewalk`): a crosswalk, link or
     cut-through keeps its price, since the remap prices only a sidewalk as a path."""
     sidewalk_ids = {
-        way.osm_id
-        for way in ways
-        if way.osm_id in ridden and way.tags.get("footway") == "sidewalk"
+        way.osm_id for way in ways if way.osm_id in ridden and way.tags.get("footway") == "sidewalk"
     }
     found = set()
     for way_id in sidewalk_ids:
@@ -3728,13 +3726,13 @@ def build_handlers(
         context.bicycle_override_ways = frozenset(superseding)
         # The trails a land manager lists for biking (`pipeline.trail_uses`; the owner,
         # 2026-11-25), opened where OSM is silent, before the trail rules read the tags.
-        # Counted with the override ways, so a mountain-bike-class trail the record opens
-        # rides on every graph, as an approved bicycle override would.
+        # Kept apart from the override ways (it reopens no area closure and is no owner
+        # override on the panel), but passed to the trail rules with them, so a
+        # mountain-bike-class trail the record opens rides on every graph.
         listed = trail_uses.open_listed(
             context.ways, getattr(reference, "trail_use_features", ()) if reference else ()
         )
         context.trail_use_ways = frozenset(listed)
-        context.bicycle_override_ways = frozenset(superseding) | context.trail_use_ways
         for way_id in sorted(superseded):
             way = context.ways_by_id.get(way_id)
             directions = superseded[way_id]
@@ -4002,7 +4000,7 @@ def build_handlers(
             areas[restricted_areas.PARK],
             military=military_closed,
             secured=secured_closed,
-            reopened=context.bicycle_override_ways,
+            reopened=context.bicycle_override_ways | context.trail_use_ways,
             works=works_closed,
             golf=golf_closed,
             tracks=track_closed,

@@ -247,8 +247,8 @@ ACCESS_WORDS = {
     ),
     "gated": (
         False,
-        "Closed: behind a closed gate, for residents and their guests"
-        " (closed unless there is evidence bikes are allowed)",
+        "Closed: a private community's street or path, behind a gate or tagged private,"
+        " for residents and their guests (closed unless there is evidence bikes are allowed)",
     ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
     # MDOT SHA's LTS 5, "Bicycle access is prohibited by managing roadway agency"

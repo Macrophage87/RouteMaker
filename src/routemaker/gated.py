@@ -72,6 +72,14 @@ def is_closed_gate(tags: Mapping[str, str]) -> bool:
     return any(tags.get(key) in CLOSED_VALUES for key in GATE_KEYS)
 
 
+def private_entrance(tags: Mapping[str, str]) -> bool:
+    """A street OSM closes itself (an entrance drive tagged `access=private`), but not one
+    open to bicycles (a car-free road: `access=no` + `bicycle=yes`)."""
+    if tags.get("bicycle") in {"yes", "designated", "permissive"}:
+        return False
+    return tags.get("access") in CLOSED_VALUES and tags.get("highway") in STREETS
+
+
 class _Sets:
     def __init__(self) -> None:
         self.parent: dict[int, int] = {}
@@ -105,7 +113,7 @@ def behind_gates(
     # A street OSM closes itself (the entrance drive tagged `access=private`) is a gate
     # along its whole length: nothing is joined along it, and what it touches is gated.
     def closes(tags: Mapping[str, str]) -> bool:
-        return tags.get("access") in CLOSED_VALUES and tags.get("highway") in STREETS
+        return private_entrance(tags)
 
     sets = _Sets()
     for _, tags, nodes in streets:
@@ -148,9 +156,9 @@ def private_paths(
 ) -> set[int]:
     """The paths (id, tags, node ids) inside a private community: those tagged private
     (`PRIVATE_PATH_ACCESS`) but `bicycle=permissive`, and the untagged ones (no access or
-    bicycle key) whose path network meets streets only where they are private: in
-    `closed_streets` (the streets `behind_gates` closes) or tagged closed themselves. A
-    network that meets no street at all is left as it is."""
+    bicycle key) whose path network meets streets only where they are the community's:
+    in `closed_streets` (the streets `behind_gates` closes). A network that meets no
+    street at all, or a public one anywhere, is left as it is."""
     ways = list(ways)
     closed: set[int] = set()
     untagged: list[tuple[int, Sequence[int]]] = []
@@ -177,9 +185,9 @@ def private_paths(
     for osm_id, tags, nodes in ways:
         if tags.get("highway") not in STREETS | THROUGH:
             continue
-        shut = osm_id in closed_streets or (
-            tags.get("access") in CLOSED_VALUES and tags.get("highway") in STREETS
-        )
+        # Only the community's streets say a path is the community's: a private
+        # driveway off a public street is no evidence a sidewalk past it is private.
+        shut = osm_id in closed_streets
         roots = {sets.find(n) for n in nodes if n in path_nodes}
         (private if shut else public).update(roots)
     for osm_id, nodes in untagged:

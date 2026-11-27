@@ -243,3 +243,24 @@ def test_a_gated_community_is_shaded_in_its_own_kind_with_its_gate() -> None:
     assert sites[0].gates == ((-81.797, 26.3005),)
     # No gate, no community.
     assert mod.gated_features(ways, {}) == []
+
+
+def test_a_gate_where_the_community_meets_a_through_road_is_its_gate() -> None:
+    pos = {
+        1: (-81.800, 26.300),
+        10: (-81.797, 26.300),
+        3: (-81.794, 26.300),
+        4: (-81.797, 26.301),
+        5: (-81.794, 26.303),
+        6: (-81.800, 26.303),
+    }
+
+    def way(osm_id, highway, nodes, coords=True):
+        return (osm_id, {"highway": highway}, nodes, [pos[n] for n in nodes] if coords else [])
+
+    ways = [
+        way(100, "tertiary", [1, 10, 3], coords=False),  # as read_streets keeps a through road
+        way(102, "residential", [10, 4, 5, 6, 4]),
+    ]
+    features = mod.gated_features(ways, {10: pos[10]})
+    assert [f["properties"] for f in features if "gate" in f["properties"]] == [{"gate": "g102"}]

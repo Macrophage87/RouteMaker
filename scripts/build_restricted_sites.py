@@ -375,18 +375,22 @@ def gated_features(ways: Sequence, gate_nodes: dict[int, tuple[float, float]]) -
     open_nodes = {
         n
         for w, t, nodes, _c in ways
-        if w not in closed and t.get("access") not in gated.CLOSED_VALUES
+        if w not in closed and not gated.private_entrance(t)
         for n in nodes
     }
     gates: dict[int, dict[int, tuple[float, float]]] = {}
     for osm_id, tags, nodes, coords in ways:
-        if osm_id in closed or len(nodes) != len(coords):
-            continue
         roots = {group_of[n] for n in nodes if n in group_of}
         if not roots:
             continue
+        # A gate on the community's own streets or on a way into them (a through road's
+        # node included: its place is the gate's own).
         found = {n: gate_nodes[n] for n in nodes if n in gate_nodes}
-        if not found and tags.get("access") in gated.CLOSED_VALUES:
+        if osm_id in closed:
+            for n in found:
+                gates.setdefault(group_of[n], {})[n] = found[n]
+            continue
+        if not found and gated.private_entrance(tags) and len(nodes) == len(coords):
             found = {n: p for n, p in zip(nodes, coords, strict=True) if n in open_nodes}
         for root in roots:
             gates.setdefault(root, {}).update(found)

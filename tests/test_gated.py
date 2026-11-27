@@ -104,3 +104,23 @@ def test_a_communitys_own_paths_are_private_like_its_streets() -> None:
     ]
     # The footpath 104 (7-2) joins the community to the county road too.
     assert gated.private_paths(ways, behind) == {200, 202}
+
+
+def test_a_car_free_road_open_to_bikes_is_no_private_entrance() -> None:
+    ways, _ = _network({"barrier": "gate"})
+    ways[1] = (
+        101,
+        {"highway": "service", "access": "no", "bicycle": "yes", "foot": "yes"},
+        [3, GATE, 4],
+    )
+    assert gated.behind_gates(ways, set()) == set()
+
+
+def test_a_private_driveway_does_not_make_a_sidewalk_private() -> None:
+    ways = [
+        (1, {"highway": "residential"}, [1, 2, 3]),
+        (2, {"highway": "service", "service": "driveway", "access": "private"}, [2, 20]),
+        (3, {"highway": "service", "service": "driveway", "access": "private"}, [3, 30]),
+        (5, {"highway": "footway", "footway": "sidewalk"}, [20, 30]),
+    ]
+    assert gated.private_paths(ways, gated.behind_gates(ways, set())) == set()

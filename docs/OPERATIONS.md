@@ -9080,7 +9080,14 @@ closed, like with restricted areas in dc, but with a different color"): the stre
 the rest only through a closed gate or an entrance drive tagged private (`routemaker.gated`) are
 closed on every graph (`rm:no_bicycle=gated`) and left off the stress map, and the map washes
 the community in a warm brown (kind `gated`, unnamed) instead of grey, with its closed gates as
-the gates a trip point inside is moved to. Sites, gates and the hand-drawn closed
+the gates a trip point inside is moved to. A community's paths close with it (the owner,
+2026-11-26, of Bonita Bay's private bike paths): a path tagged `access=private` or `residents`
+whatever its bicycle tag but `permissive`, and an untagged path whose network meets streets
+only where they are behind a gate (`gated.private_paths`). A street open to bicycles
+(`access=no` + `bicycle=yes`) and a private driveway off a public street are no gate. Trails a
+state record lists for biking open where OSM says nothing of bicycles
+(`install_reference_data.py --fl-trail-uses` writes `trail-uses.json`; without it the step
+warns and opens nothing; docs/SOURCES.md). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
 PC against the extract (`frontend/src/restricted-data/README.md`); `scripts/refresh_places.py`
 reruns it after each map rebuild ("Refreshing the places after a map rebuild"). No map rebuild
