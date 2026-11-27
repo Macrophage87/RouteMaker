@@ -1631,7 +1631,14 @@ the same whatever the style decides):
   `rm:cemetery=yes`, and the transform (`lua/routemaker_remap.lua`) makes it
   `access=destination` where its own access leaves it open, upstream's
   destination-only flag, so a route enters only to reach a point inside. The
-  rest of this is map only.
+  own service roads of a school, a hospital, a fire or police station, a place of worship
+  or a filling station (a bus loop, a drop-off lane, an emergency entrance, an apron, a
+  forecourt, the drives: `highway=service` at least half inside an `amenity=school`,
+  `hospital`, `fire_station`, `police`, `place_of_worship` or `fuel` area,
+  `restricted_areas.campus_ways`; not a university's) are destination-only the same
+  way (`rm:campus_grounds`; the owner, 2026-11-26): a route
+  takes one only to reach an end, a stop or a via on it, and the map still draws them.
+  The rest of this is map only.
 
   Route-relation membership is not read: an unnamed short piece of a signed
   route is left out like any other. Routing is unchanged: Valhalla reads the

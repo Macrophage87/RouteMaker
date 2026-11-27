@@ -1045,7 +1045,12 @@ function M.remap_way(tags, derived)
   -- a point inside. Written only where the way's own `access` leaves it open:
   -- a stricter statement (no, private) stays as it is, and a narrowing is
   -- never a widening.
-  if derived.cemetery and (tags.access == nil or M.PERMISSIVE_ACCESS[tags.access]) then
+  -- A school's or a hospital's own service road (`rm:campus_grounds`,
+  -- pipeline.restricted_areas `campus_ways`) the same way: the owner, 2026-11-26, "Allow
+  -- with a destination, stop, or via" and "cutting through school grounds feels weird as
+  -- an adult if you don't have a reason to go there", then "some hospitals too".
+  if (derived.cemetery or derived.campus_grounds)
+    and (tags.access == nil or M.PERMISSIVE_ACCESS[tags.access]) then
     out.access = M.CEMETERY_ACCESS
   end
 

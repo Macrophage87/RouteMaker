@@ -130,7 +130,18 @@ MILITARY, CEMETERY, PARKING, PARK = "military", "cemetery", "parking", "park"
 SECURED = "secured"
 WORKS = "works"
 GOLF = "golf"
-KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF)
+CAMPUS = "campus"
+KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF, CAMPUS)
+# The grounds whose own service roads are no cut-through (`campus_ways`): a school's (the
+# owner, 2026-11-26) and a hospital's ("it's possible that some hospitals too might have
+# that cut through issue too", the same day), then a fire or police station's, a place of
+# worship's and a filling station's ("Yes, avoid these cut throughs, but again destination
+# only. People obviously go to these places."). Not a university's or a college's, whose
+# roads are often the public way across a neighbourhood, nor landuse areas (a residential
+# or commercial area takes in public streets and alleys).
+CAMPUS_AMENITY = frozenset(
+    {"school", "hospital", "fire_station", "police", "place_of_worship", "fuel"}
+)
 
 # Land uses that are a working site no one may wander into (owner report 2026-10-12):
 # every way inside a quarry or a landfill, and an industrial area's own drives, close.
@@ -181,6 +192,10 @@ def area_kind(tags, osm: str = "") -> str | None:
         return PARK
     if tags.get("landuse") in WORKS_LANDUSE or tags.get("aeroway") in WORKS_AEROWAY:
         return WORKS
+    # Last: these amenities were no kind before (2026-11-26), so an area that is also a
+    # park or a works site keeps that stricter rule.
+    if tags.get("amenity") in CAMPUS_AMENITY:
+        return CAMPUS
     return None
 
 
@@ -402,8 +417,8 @@ class _Areas(osmium.SimpleHandler):
 
 
 def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
-    """Every military, secured, cemetery, parking, park, works and golf area in an
-    extract, by kind."""
+    """Every military, secured, cemetery, parking, park, works, golf and campus area in
+    an extract, by kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
     dropped = unassembled_military(handler.military_relations, handler.areas[MILITARY])
@@ -686,6 +701,34 @@ def cemetery_ways(ways, areas: Sequence[Area]) -> set[int]:
         if share >= INSIDE_FRACTION and not _cemetery_public_road(tags, share, _length_m(coords)):
             held.add(osm_id)
     return held
+
+
+def campus_ways(ways, areas: Sequence[Area]) -> set[int]:
+    """The own service roads of a school, a hospital, a fire or police station, a place of
+    worship or a filling station (CAMPUS_AMENITY): a bus loop, a drop-off lane, an
+    emergency entrance, a station's apron, a forecourt, the drives, by at least
+    INSIDE_FRACTION of their length inside the grounds. Destination-only for routing
+    (`rm:campus_grounds`): reached to or from a point on them (an end, a stop or a via),
+    never a cut-through. The owner, 2026-11-26, after a commute was sent round a school's
+    bus loop at 8 AM: "keep it to service roads in front of a school. Allow with a
+    destination, stop, or via." and "cutting through school grounds feels weird as an
+    adult if you don't have a reason to go there"; then "some hospitals too might have
+    that cut through issue too", and of the stations, places of worship and filling
+    stations, "People obviously go to these places", so only as a destination. Public
+    streets, paths on the grounds and a way signed for bicycles stay as they are; so does
+    the map, which still draws them."""
+    rows = [
+        (osm_id, coords)
+        for osm_id, tags, coords in ways
+        if tags.get("highway") == "service"
+        and coords
+        and _not_a_signed_trail(tags)
+        and not public_route(tags)
+    ]
+    if not areas or not rows:
+        return set()
+    shapes = _Shapes(areas)
+    return {osm_id for osm_id, coords in rows if shapes.share(coords)[0] >= INSIDE_FRACTION}
 
 
 def parking_ways(ways, areas: Sequence[Area]) -> set[int]:
