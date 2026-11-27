@@ -635,7 +635,7 @@ def _rule_words(rule: str) -> str:
         # The county's 5 is very high stress, our 4.5 (`agency_lts.READ_AS`).
         return f"Montgomery County rates it LTS 5, {COUNTY_FIVE_WORDS}"
     if rule.startswith("override: stress adjustment") or rule.startswith("named corridor:"):
-        return "Owner-rated corridor"
+        return "Rated from this road's own evidence"
     if "curated lane at" in rule:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
     if rule.startswith(BESIDE_BUSY_ROAD_RULE):
@@ -749,7 +749,7 @@ def _row(label: str, value: str, source: str | None) -> dict:
 
 def override_note(row: dict) -> str | None:
     """An override row's own approved, public note, shown as the Why line in place of
-    "Owner-rated corridor" (the owner, 2026-11-01: where we keep ours over an agency's, a
+    "Rated from this road's own evidence" (the owner, 2026-11-01: where we keep ours over an agency's, a
     short narration "available in the route lookup as to our justification"). It used to
     be a separate "Note" row. Only an approved, public row's note is ever written to the
     segment (`StressAdjustment.exposed`); one marked route_only is for a route over the
