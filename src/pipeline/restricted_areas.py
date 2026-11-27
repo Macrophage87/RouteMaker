@@ -180,8 +180,6 @@ def area_kind(tags, osm: str = "") -> str | None:
         return CEMETERY
     if tags.get("amenity") == "parking" or tags.get("parking") in PARKING_VALUES:
         return PARKING
-    if tags.get("amenity") in CAMPUS_AMENITY:
-        return CAMPUS
     # Before the parks: a public course a park agency runs (`operator=National Park
     # Service`, East Potomac) is still a golf course, its cart paths no trail.
     if tags.get("leisure") == "golf_course":
@@ -194,6 +192,10 @@ def area_kind(tags, osm: str = "") -> str | None:
         return PARK
     if tags.get("landuse") in WORKS_LANDUSE or tags.get("aeroway") in WORKS_AEROWAY:
         return WORKS
+    # Last: these amenities were no kind before (2026-11-26), so an area that is also a
+    # park or a works site keeps that stricter rule.
+    if tags.get("amenity") in CAMPUS_AMENITY:
+        return CAMPUS
     return None
 
 
