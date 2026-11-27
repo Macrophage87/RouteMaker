@@ -9786,6 +9786,28 @@ summary.closure-notices-heading {
   max-width: calc(100vw - 100px);
 }
 
+/* The rider's GPS position in small print (GpsMark.tsx, beta builds), under the scale and credits at the bottom
+   left, which move up a line for it, so a screenshot says where it was taken. Small and quiet; it takes no taps, so
+   the map drags through it. */
+.app.riding:has(.ride-gps-mark) .maplibregl-ctrl-bottom-right {
+  bottom: calc(var(--ride-sheet-h, 0px) + 14px);
+}
+
+.ride > .ride-gps-mark {
+  position: absolute;
+  left: 10px;
+  bottom: calc(var(--ride-sheet-h, 0px) + 10px);
+  margin: 0;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  opacity: 0.75;
+  text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* With the bottom panel up the side buttons may wrap into a second column: the opened credits stay clear of it. */
 .app.riding:has(.ride-controls) .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
   max-width: calc(100vw - 170px);
