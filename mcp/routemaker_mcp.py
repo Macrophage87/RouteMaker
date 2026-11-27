@@ -5805,8 +5805,8 @@ TOOLS = [
             " mid-block, not at a corner: most sidewalks are mapped, so a point by the kerb or at"
             " a corner rides the sidewalk); a point on a road beside a trail, or on a sidewalk,"
             " rides that instead, an override for when the rider wants it. `via_points_on`"
-            " names the way each"
-            ' via point rides ("path beside X" is X\'s sidewalk or side path): if it is not'
+            " names the way each via point rides"
+            ' ("path beside X" or "sidewalk beside X" is beside X, not X): if it is not'
             " the way you meant, move the point. `closures` lists the closures it goes through"
             " or round, and"
             " `closure_warning` says when one is on the route (often a via point only a closed"
