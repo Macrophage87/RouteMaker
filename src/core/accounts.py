@@ -15,7 +15,7 @@ import json
 import math
 import re
 
-from django.conf import settings
+from routemaker import coverage
 
 # The settings document: one JSON object of the planning choices the device remembers
 # (frontend/src/lib/accountSettings.ts). Only these keys are kept; anything else is refused, so
@@ -185,8 +185,7 @@ def _finite(value) -> bool:
 
 
 def _inside(lon: float, lat: float) -> bool:
-    west, south, east, north = settings.COVERAGE_BBOX
-    return west <= lon <= east and south <= lat <= north
+    return coverage.inside(lon, lat)
 
 
 def clean_tags(tags) -> tuple[list[str] | None, str | None]:

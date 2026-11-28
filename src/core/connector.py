@@ -194,6 +194,12 @@ class InProcessApi:
     def geocode(self, query, near=None):
         return self._module.Api.geocode(self, query, near)
 
+    def closure_list(self):
+        return self._module.Api.closure_list(self)
+
+    def closure_write(self, path, body):
+        return self._module.Api.closure_write(self, path, body)
+
     def reach(self, body):
         return self._module.Api.reach(self, body)
 
@@ -228,6 +234,9 @@ class InProcessApi:
 
     def intervals_near(self, near, miles, **filters):
         return self._module.Api.intervals_near(self, near, miles, **filters)
+
+    def survey_spots_near(self, near, miles):
+        return self._module.Api.survey_spots_near(self, near, miles)
 
     def closures_map(self, box, permits):
         return self._module.Api.closures_map(self, box, permits)

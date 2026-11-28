@@ -4,3 +4,7 @@
 # set from the host's cores" - the count is computed at start by
 # docker/api-entrypoint.sh, not baked into a layer.
 gunicorn==26.2.0
+
+# The closure agent's reading of the agencies' pages (v0.31.0, core.closure_agent), in the
+# worker, which runs this image.
+anthropic==2.10.0

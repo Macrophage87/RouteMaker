@@ -1316,6 +1316,35 @@ def _held_to_the_city(
     return BlockConflation(matched, coverage, result.unmatched_features)
 
 
+def _held_to_state_roads(
+    result: BlockConflation,
+    tags_of: Mapping[int, Mapping[str, str]],
+    by_id: Mapping[str, RoadFeature],
+) -> BlockConflation:
+    """`result` with a state DOT layer's blocks (`agency_roads.STATE_ROAD_AGENCIES`) taken
+    off any way that is not of a state road's class (`STATE_ROAD_HIGHWAYS`). A way left
+    with no block is unmatched."""
+    matched = dict(result.matched)
+    coverage = dict(result.coverage)
+    for way_id, shares in result.matched.items():
+        if tags_of.get(way_id, {}).get("highway") in agency_roads.STATE_ROAD_HIGHWAYS:
+            continue
+        kept = tuple(
+            share
+            for share in shares
+            if by_id[share.feature_id].facts.agency not in agency_roads.STATE_ROAD_AGENCIES
+        )
+        if len(kept) == len(shares):
+            continue
+        if kept:
+            matched[way_id] = kept
+            coverage[way_id] = min(1.0, sum(share.share for share in kept))
+        else:
+            del matched[way_id]
+            del coverage[way_id]
+    return BlockConflation(matched, coverage, result.unmatched_features)
+
+
 def road_facts_by_way(
     ways: Sequence,
     entries: Sequence[WayEntry],
@@ -1366,6 +1395,7 @@ def road_facts_by_way(
     by_id = {block.feature_id: block for block in blocks}
     tags_of = {way.osm_id: way.tags for way in ways}
     result = _held_to_the_city(result, tags_of, by_id)
+    result = _held_to_state_roads(result, tags_of, by_id)
     facts: dict[int, WayFacts] = {}
     for way_id, shares in result.matched.items():
         agreements = [share.names_agree for share in shares]

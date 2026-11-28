@@ -80,11 +80,13 @@ from pydantic import (
     StrictBool,
     StrictFloat,
     StrictInt,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
 
 from config.access_log import logged_path
+from routemaker import coverage as coverage_areas
 from routemaker import effort, lang, ridetime
 from routemaker.geo import Point, haversine
 
@@ -117,6 +119,7 @@ from . import (
     segment_info,
     share_links,
     stoporder,
+    survey_spots,
     timing,
     trailprofile,
     transit,
@@ -983,23 +986,28 @@ class RouteIn(Schema):
     @field_validator("points")
     @classmethod
     def inside_coverage(cls, points: list[list[float]]) -> list[list[float]]:
-        west, south, east, north = settings.COVERAGE_BBOX
         for index, (lon, lat) in enumerate(points):
-            if not (west <= lon <= east and south <= lat <= north):
+            if not coverage_areas.inside(lon, lat):
                 raise ValueError(f"point {index} is outside the area this map covers")
+        if coverage_areas.one_area(points) is None:
+            raise ValueError("the points are in two of the map's areas, which no road joins")
         if span_m(points) > MAX_SPAN_M:
             raise ValueError(too_long())
         return points
 
     @field_validator("novice_hop")
     @classmethod
-    def hop_inside_coverage(cls, points: list[list[float]] | None) -> list[list[float]] | None:
+    def hop_inside_coverage(
+        cls, points: list[list[float]] | None, info: ValidationInfo
+    ) -> list[list[float]] | None:
         """A hop outside the area (an edited link) is left out, not refused: the trip is
-        still planned, without it."""
-        west, south, east, north = settings.COVERAGE_BBOX
-        for lon, lat in points or ():
-            if not (west <= lon <= east and south <= lat <= north):
-                return None
+        still planned, without it. Outside means outside the area the route's points are in
+        (`routemaker.coverage`)."""
+        if not points:
+            return points
+        route = info.data.get("points") or []
+        if coverage_areas.one_area([*route, *points]) is None:
+            return None
         return points
 
     @field_validator("follow")
@@ -1912,6 +1920,13 @@ class DescriptionEntryOut(Schema):
         description=(
             "On a stretch: unpaved where at least half of it is, partly unpaved where "
             "at least 0.1 mi is (OWNER-DECISIONS 280); null: paved or not known."
+        ),
+    )
+    bridge_m: int | None = Field(
+        default=None,
+        description=(
+            "On a stretch: its metres on bridges (OSM `bridge=*`), where at least 10 m are;"
+            " null elsewhere. A short unnamed path over a creek is then a bridge, not a drop."
         ),
     )
     text: str
@@ -4133,10 +4148,8 @@ class OfflineNetworkIn(Schema):
     @field_validator("line")
     @classmethod
     def line_inside_coverage(cls, line: list[tuple[float, float]]) -> list[tuple[float, float]]:
-        west, south, east, north = settings.COVERAGE_BBOX
-        for lon, lat in line:
-            if not (west <= lon <= east and south <= lat <= north):
-                raise ValueError("the line must be inside the area this map covers")
+        if coverage_areas.one_area(line) is None:
+            raise ValueError("the line must be inside the area this map covers")
         if offline_network.line_length_m(line) > offline_network.MAX_LINE_M:
             raise ValueError("the line is longer than the offline network is fetched for")
         return line
@@ -4616,9 +4629,7 @@ class NearbyStationsIn(Schema):
     def inside_coverage(cls, point: list[float] | None) -> list[float] | None:
         if point is None:
             return None
-        west, south, east, north = settings.COVERAGE_BBOX
-        lon, lat = point
-        if not (west <= lon <= east and south <= lat <= north):
+        if not coverage_areas.inside(point[0], point[1]):
             raise ValueError("the point is outside the area this map covers")
         return point
 
@@ -6315,7 +6326,7 @@ def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
     if not body.follow:
         return None
     try:
-        return tuple(follow.checked_line(body.follow, settings.COVERAGE_BBOX))
+        return tuple(follow.checked_line(body.follow))
     except follow.LineProblem as problem:
         logger.info("a line to follow was not followed: %s", problem)
         return None
@@ -6656,9 +6667,8 @@ class NearestIn(RouteIn):
     def inside_coverage(cls, points: list[list[float]]) -> list[list[float]]:
         # Coverage only: the places are not a ride from one to the next, so the
         # route's span limit does not apply; one far off is measured in a straight line.
-        west, south, east, north = settings.COVERAGE_BBOX
         for index, (lon, lat) in enumerate(points):
-            if not (west <= lon <= east and south <= lat <= north):
+            if not coverage_areas.inside(lon, lat):
                 raise ValueError(f"point {index} is outside the area this map covers")
         return points
 
@@ -6829,9 +6839,8 @@ class ReachIn(Schema):
 
     @model_validator(mode="after")
     def fits(self):
-        west, south, east, north = settings.COVERAGE_BBOX
         for index, (lon, lat) in enumerate(self.points):
-            if not (west <= lon <= east and south <= lat <= north):
+            if not coverage_areas.inside(lon, lat):
                 raise ValueError(f"point {index} is outside the area this map covers")
         if any(not reach.MIN_MINUTES <= m <= reach.MAX_MINUTES for m in self.minutes):
             raise ValueError(f"minutes are {reach.MIN_MINUTES} to {reach.MAX_MINUTES} each")
@@ -7030,8 +7039,9 @@ def _reach_answer(request, body: ReachIn):
 
 
 class CoverageGeometry(Schema):
-    type: Literal["Polygon"]
-    coordinates: list[list[list[float]]]
+    # A Polygon for a map of one area, a MultiPolygon (one polygon per area) for more.
+    type: Literal["Polygon", "MultiPolygon"]
+    coordinates: list[list[list[float]]] | list[list[list[list[float]]]]
 
 
 class CoverageOut(Schema):
@@ -7048,12 +7058,25 @@ COVERAGE_MAX_AGE_S = 3600
 def coverage_ring() -> list[list[float]]:
     """The area this API routes in, as a closed ring, counter-clockwise.
 
-    The same `settings.COVERAGE_BBOX` that `RouteIn.inside_coverage` refuses
-    points outside of; the front end greys out everything beyond it, so what
-    it shows as covered is what the API accepts.
+    The home area's box (`settings.COVERAGE_BBOX`); `coverage_geometry` has every area.
     """
-    west, south, east, north = settings.COVERAGE_BBOX
+    return box_ring(settings.COVERAGE_BBOX)
+
+
+def box_ring(box) -> list[list[float]]:
+    west, south, east, north = box
     return [[west, south], [east, south], [east, north], [west, north], [west, south]]
+
+
+def coverage_geometry() -> dict:
+    """The areas this API routes in (`routemaker.coverage`), the same boxes
+    `RouteIn.inside_coverage` refuses points outside of; the front end greys out
+    everything beyond them, so what it shows as covered is what the API accepts. One
+    area is a Polygon, as it always was; more are a MultiPolygon, one polygon each."""
+    rings = [box_ring(box) for box in coverage_areas.boxes()]
+    if len(rings) == 1:
+        return {"type": "Polygon", "coordinates": rings}
+    return {"type": "MultiPolygon", "coordinates": [[ring] for ring in rings]}
 
 
 @api.get(
@@ -7067,7 +7090,7 @@ def coverage(request, response: HttpResponse):
     built = map_data_date()
     return {
         "type": "Feature",
-        "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
+        "geometry": coverage_geometry(),
         # The live map's date, for Settings' About line ("Map data from Nov 10, 2026"; backlog item
         # "Data that says how old it is", 2026-11-13). Left out before a first build.
         "properties": {"map_data": built.isoformat()} if built else {},
@@ -8151,8 +8174,7 @@ class HomeIn(Schema):
 
     @model_validator(mode="after")
     def inside_coverage(self):
-        west, south, east, north = settings.COVERAGE_BBOX
-        if not (west <= self.lon <= east and south <= self.lat <= north):
+        if not coverage_areas.inside(self.lon, self.lat):
             raise ValueError("Home is outside the area this map covers")
         return self
 
@@ -8306,8 +8328,7 @@ class FavoritePlaceIn(Schema):
 
     @model_validator(mode="after")
     def inside_coverage(self):
-        west, south, east, north = settings.COVERAGE_BBOX
-        if not (west <= self.lon <= east and south <= self.lat <= north):
+        if not coverage_areas.inside(self.lon, self.lat):
             raise ValueError("A favorite place is outside the area this map covers")
         if not self.label.strip():
             raise ValueError("A favorite place needs a name")
@@ -8490,6 +8511,108 @@ def account_settings_save(request):
     # One row per account, last write wins (the plan).
     row, _ = AccountSettings.objects.update_or_create(user=request.user, defaults={"data": data})
     return _private(JsonResponse(_settings_out(row)))
+
+
+# --- Survey spots (core.survey_spots; the owner, 2026-11-25) --------------------------------
+#
+# Stretches whose rating was a low-confidence call, for riders to check on the spot. The layer
+# and the connector read them signed out; a signed-in rider's answered spots are left out. An
+# answer needs an account (it is what hides the spot and makes the count); the answer row itself
+# keeps no account (core.models.SurveyAnswer).
+
+
+class SurveyBoxIn(Schema):
+    west: Coordinate
+    south: Coordinate
+    east: Coordinate
+    north: Coordinate
+
+
+class SurveyNearIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+    miles: float = Field(default=3.0, gt=0, le=survey_spots.MAX_RADIUS_MI)
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+def _survey_hide(request) -> frozenset[str]:
+    return survey_spots.done_ids(getattr(request, "user", None))
+
+
+@api.get("/survey/spots", summary="The survey spots in a map view")
+@decorate_view(ratelimit.rate_limited(ratelimit.SURVEY_SPOTS), same_site_only, errors_as_json)
+def survey_spots_in_view(request, params: Query[SurveyBoxIn]):
+    if params.east <= params.west or params.north <= params.south:
+        return _stress_error(400, "the view's west must be less than east, south less than north")
+    try:
+        found = survey_spots.in_box(
+            params.west, params.south, params.east, params.north, _survey_hide(request)
+        )
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+    return _private(JsonResponse({"spots": found}))
+
+
+@api.get("/survey/near", summary="The survey spots near a point, nearest first")
+@decorate_view(ratelimit.rate_limited(ratelimit.SURVEY_SPOTS), same_site_only, errors_as_json)
+def survey_spots_near(request, params: Query[SurveyNearIn]):
+    try:
+        found = survey_spots.near(params.lon, params.lat, params.miles, _survey_hide(request))
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+    return _private(JsonResponse({"spots": found}))
+
+
+@api.get("/survey/spots/{spot_id}/questions", summary="A survey spot's questions")
+@decorate_view(ratelimit.rate_limited(ratelimit.SURVEY_SPOTS), same_site_only, errors_as_json)
+def survey_spot_questions(request, spot_id: str):
+    try:
+        if spot_id not in survey_spots.spots():
+            return _stress_error(404, "no such survey spot")
+        return _private(JsonResponse({"questions": survey_spots.questions_for(spot_id)}))
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+
+
+@api.get("/me/survey", summary="The spots the signed-in rider has answered, and their count")
+@decorate_view(
+    signed_in_only, same_site_editor, ratelimit.rate_limited(ratelimit.ME), errors_as_json
+)
+def survey_mine(request):
+    return _private(JsonResponse(survey_spots.mine(request.user)))
+
+
+@api.post("/survey/answer", summary="Answer a survey spot's questions")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.SURVEY_ANSWERS),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def survey_answer(request):
+    from . import report_log
+
+    body, refusal = _json_body(request, 4096)
+    if refusal is not None:
+        return refusal
+    if not isinstance(body, dict) or not isinstance(body.get("spot"), str):
+        return _stress_error(400, "say which spot", field="spot")
+    try:
+        problem, out = survey_spots.record(
+            body["spot"], body.get("answers"), request.user, report_log.today()
+        )
+    except survey_spots.Unavailable:
+        return _stress_error(503, "this server has no survey spots")
+    if problem:
+        status = 409 if problem.startswith("you have already") else 400
+        return _stress_error(status, problem, field="answers")
+    return _private(JsonResponse(out))
 
 
 # The 311 log (core.report_log; core.models.Report311Log): the whole log, last write wins, like
@@ -11544,6 +11667,22 @@ class ReviewedClosureIn(Schema):
         description="Closed to people on foot too (Run and Walk route round it); false for a"
         " road closed to traffic whose sidewalk stays open.",
     )
+    agent_key: str = Field(
+        default="",
+        max_length=100,
+        description="An agent's closure only: the agency alert it follows. With no `end`, it"
+        " lasts one day until extended (core.reviewed_closures, Agent closures).",
+    )
+
+
+class ClosureExtendIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    end: str | None = Field(
+        default=None,
+        description="The new last day, YYYY-MM-DD (the region's tomorrow); one the closure"
+        " lasts to already leaves it as it is.",
+    )
 
 
 class ClosureConfirmIn(Schema):
@@ -11574,6 +11713,7 @@ class ReviewedClosureOut(Schema):
     when_text: str
     from_report: bool
     point: list[float] | None
+    agent_key: str | None = None
 
 
 class ClosureReportOut(Schema):
@@ -11683,11 +11823,38 @@ def reviewed_closure_create(request, body: ReviewedClosureIn, response: HttpResp
             url=body.url,
             line=body.line,
             on_foot=body.on_foot,
+            agent_key=body.agent_key,
         )
     except stress_edits.EditRefused as refused:
         return _edit_refusal(request, refused)
     _private(response)
     return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reviewed/{closure_id}/extend",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Move a confirmed closure's last day on (reviewer; an agent's while its alert stays)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_extend(
+    request, closure_id: int, body: ClosureExtendIn, response: HttpResponse
+):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.extend(request.user, closure_id, body.end)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    from routemaker import ridetime
+
+    if closure.end is None:
+        said = "Closed until a reviewer ends it."
+    else:
+        last = (closure.end.astimezone(ridetime.ZONE) - timedelta(seconds=1)).date()
+        said = f"Closed through {last.isoformat()}."
+    return Status(200, {"id": closure.pk, "message": said})
 
 
 @api.post(

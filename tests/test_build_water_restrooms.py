@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -836,3 +837,54 @@ def test_throne_only_keeps_stands_and_shops(tmp_path):
     empty.write_text('{"units": []}')
     assert mod.main(["--throne-only", "--out", str(out), "--throne", str(empty)]) == 0
     assert json.loads(out.read_text())["points"] == doc["points"]
+
+
+def test_the_layers_keep_florida_only_with_its_area(monkeypatch) -> None:
+    """Southwest Florida's box (the owner, 2026-11-23) is kept only when RM_COVERAGE_AREAS
+    names it, and is the setting's."""
+    from django.conf import settings
+
+    assert mod.SOUTHWEST_FLORIDA_BBOX == tuple(settings.SOUTHWEST_FLORIDA_BBOX)
+    monkeypatch.delenv("RM_COVERAGE_AREAS", raising=False)
+    assert not mod.in_coverage(-81.7787, 26.3398)
+    assert mod.in_coverage(-77.0365, 38.8977)
+    monkeypatch.setenv("RM_COVERAGE_AREAS", "dc-baltimore,southwest-florida")
+    assert mod.in_coverage(-81.7787, 26.3398)
+    assert not mod.in_coverage(-81.6557, 30.3322)
+
+
+def _a(osm, lon, lat, water=None, toilet=None, **kw):
+    return mod.Amenity(osm=osm, lon=lon, lat=lat, water=water, toilet=toilet, **kw)
+
+
+def test_a_fountain_beside_a_restroom_is_that_restroom():
+    # The owner, 2026-11-27: a park restroom hidden on the map by the fountain mapped
+    # a few feet away. About 7 m apart (Vienna Town Green): one place, with the drop.
+    restroom = _a("n2389966910", -77.26423, 38.90311, toilet="u")
+    fountain = _a("n6113568034", -77.26425, 38.90317, water="p", bottle=True)
+    out, folded = mod.merge_fountains([restroom, fountain])
+    assert folded == 1
+    assert out == [_a("n2389966910", -77.26423, 38.90311, water="p", toilet="u", bottle=True)]
+
+
+def test_fountain_folding_leaves_what_is_not_one_stop():
+    restroom = _a("w1", -77.0, 39.0, toilet="f", name="Park restroom")
+    far = _a("n2", -77.0, 39.0002, water="p")  # about 22 m: its own place
+    untreated = _a("n3", -77.00005, 39.0, water="n")  # filter it first: not the restroom's water
+    stand = _a("n4", -77.00005, 39.00005, water="p", repair="p")
+    summer = _a("n6", -77.00002, 39.00002, water="p", seasonal="summer")
+    daytime = _a("n7", -77.00002, 38.99998, water="p", hours="09:00-17:00")
+    approx = _a("throne-x", -77.1, 39.1, toilet="f", approx=True)
+    by_approx = _a("n5", -77.1, 39.10005, water="p")
+    pts = [restroom, far, untreated, stand, summer, daytime, approx, by_approx]
+    out, folded = mod.merge_fountains(pts)
+    assert (out, folded) == (pts, 0)
+
+
+def test_a_fountain_goes_to_the_nearest_restroom_only():
+    a = _a("w1", -77.0, 39.0, toilet="f")
+    b = _a("w2", -77.0001, 39.0, toilet="b")
+    fountain = _a("n3", -77.00002, 39.0, water="p")
+    out, folded = mod.merge_fountains([a, b, fountain])
+    assert folded == 1
+    assert out == [replace(a, water="p"), b]

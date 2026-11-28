@@ -9,8 +9,9 @@
 - `login` (it opens a browser sign-in) is the owner's to run, never Claude's.
 - Drafting (`draft-beacon`, `draft-signal`), `show`, `check` and `load` without `--confirm`
   write nothing and need no confirmation.
-- Evidence is what the reporter saw on the spot, never Street View or another map. No GPS
-  tracks, rider names or ride dates in edit notes, fixtures or the repo.
+- Evidence is what the reporter saw on the spot, or, for who may use a way, the managing
+  agency's own published rule linked as the source (the owner, 2026-11-26); never Street View or
+  another map. No GPS tracks, rider names or ride dates in edit notes, fixtures or the repo.
 - The procedure is in docs/OPERATIONS.md, "Fixing OSM from a ride".
 
 ## Planning routes through the RouteMaker connector

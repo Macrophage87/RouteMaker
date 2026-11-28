@@ -40,7 +40,7 @@ import {
   type RailStatus,
 } from "./lib/railClosures.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
-import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
+import { COVERAGE_BBOX, MAX_BOUNDS_PAD, MAX_POINTS, addPoint, coverageEnvelope, haversineM, insideCoverage, setCoverageAreas, type LonLat } from "./lib/geo.ts";
 import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
 import { chooseUnits, switchUnitsInRide, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
@@ -145,7 +145,7 @@ import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railD
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
-import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
+import { addCoverageMask, coverageBoxes, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
 import { STILL_RIDING_SAID, forgetStaleRideEntry, holdBackDuringRide } from "./lib/rideBack.ts";
 import { RIDE_PANEL_OPEN, closeIdlePanels, watchIdleRecentre } from "./lib/idleRecentre.ts";
 import { afterHistoryStep } from "./lib/rideFocus.ts";
@@ -216,6 +216,11 @@ import { BROADCAST_COPIED, BROADCAST_COPY_FAILED, BROADCAST_RIDE_COPY_FAILED, SH
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+// `no-inline`: a small file would be inlined as a data: URL, which the edge's connect-src refuses.
+import beachesUrl from "./beach-data/beaches.json?url&no-inline";
+import tidesUrl from "./tide-data/tides.json?url&no-inline";
+import { beachAlongRoute, beachNote, loadBeaches, type BeachData } from "./lib/beaches.ts";
+import { loadTides, lowTidesOn, nearestStation, type TideData } from "./lib/tides.ts";
 import { climbShown, climbsAlongRoute, loadClimbs, readClimbsFrom, readClimbsOn, saveClimbsFrom, saveClimbsOn, type Climb, type ClimbCategory, type ClimbsStatus } from "./lib/climbs.ts";
 import { climbEndName, climbEnds, climbNearSpot, rideClimbEdit } from "./lib/climbCard.ts";
 // A committed snapshot, deliberately (review CH-7): `manage.py build_climbs` on the build host writes it
@@ -263,6 +268,9 @@ import bikeParkingUrl from "./amenity-data/bike-parking.json?url&no-inline";
 import { useSeeEveryone } from "./app/useSeeEveryone.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { IntervalsOverlay, useIntervals } from "./app/IntervalsOverlay.tsx";
+import { SurveyOverlay, useSurveySpots } from "./app/SurveyOverlay.tsx";
+import { SurveyCard } from "./SurveyCard.tsx";
+import { loadSurveyMine, spotsNear, spotsPassed, readSurveyLayer, saveSurveyLayer, surveyCountText, SURVEY_SIGN_IN, SURVEY_UNAVAILABLE, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
 import { intervalsAtLeast, intervalsStatusText, readIntervalsLayer, readIntervalsMinutes, saveIntervalsLayer, saveIntervalsMinutes, type IntervalsMinutes } from "./lib/intervals.ts";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
@@ -330,7 +338,7 @@ import { matchingOwn, ownNow, ownSetup, reloadOwn, setGoOwn, useOwnRideTypes, ty
 import { takesGoDefault, type GoDefault } from "./lib/rideTypeCards.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
+import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, directionsLine, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, withTodaysDirections, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import type { Planner, WorstStretch } from "./lib/worstStretches.ts";
@@ -833,6 +841,8 @@ export function App() {
   };
   const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
   const [waterData, setWaterData] = useState<WaterPoint[] | null>(null);
+  // The beaches and their tide-line paths (lib/beaches.ts), on a map with Southwest Florida.
+  const [beachData, setBeachData] = useState<BeachData | null>(null);
   // One load at a time, shared by the layer and the nearest-water search (which loads it with the layer
   // off too); a load that failed is forgotten, so the next asks again.
   const waterLoad = useRef<Promise<WaterPoint[] | null> | null>(null);
@@ -947,6 +957,16 @@ export function App() {
     saveIntervalsLayer(on);
   };
   // Its "At least" minutes (the owner, 2026-11-17: "a 3', 5', 8', etc interval stretch"), kept on this device.
+  // Survey spots (lib/surveySpots.ts; the owner, 2026-11-25): one switch in Layers, off by default, kept on this device.
+  const [surveyOn, setSurveyOnState] = useState<boolean>(() => readSurveyLayer());
+  const changeSurveyOn = (on: boolean) => {
+    setSurveyOnState(on);
+    saveSurveyLayer(on);
+  };
+  // The spot whose card is open, the spots still to answer after a ride (one card after another), and the rider's count.
+  const [surveySpot, setSurveySpot] = useState<SurveySpot | null>(null);
+  const [surveyQueue, setSurveyQueue] = useState<SurveySpot[]>([]);
+  const [surveyMine, setSurveyMine] = useState<SurveyMine | null>(null);
   const [intervalsMinutes, setIntervalsMinutesState] = useState<IntervalsMinutes>(() => readIntervalsMinutes());
   const changeIntervalsMinutes = (minutes: IntervalsMinutes) => {
     setIntervalsMinutesState(minutes);
@@ -5028,6 +5048,20 @@ export function App() {
         }
       : undefined;
     if (check) void checkThen("open", saved.line, false, () => {}, undefined, closedNote, answer ? walksLine(answer) : plan.preset === "walk" || runs(plan.preset));
+    // Today's directions for the same line, asked quietly (lib/savedRoutes.ts withTodaysDirections): a cue fixed since
+    // the save reaches the saved route, its line unchanged. Not once a ride has begun on the saved answer.
+    const follow = answer ? directionsLine(answer, plan.dials.loop) : undefined;
+    if (answer && follow)
+      void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn, vias: viaIndices(plan.points, VIA_MARKS.isVia), follow, followExact: true, routeOnly: true }).then((today) => {
+        // Only while the saved route is still the one on screen, as opened: never another plan's, nor a ride's.
+        const shown = savedShown.current;
+        const onScreen = routedKey.current === keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
+        if (!today.ok || shown?.key !== key || shown.answer !== answer || !onScreen || shownNow.current.riding) return;
+        const fresh = withTodaysDirections(answer, today.route);
+        if (!fresh) return;
+        savedShown.current = { key, answer: fresh };
+        setRoute(fresh);
+      });
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it. A
     // fixed route is never compared: its line is the route.
     if (!saved.fixed) void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
@@ -5143,9 +5177,24 @@ export function App() {
     rebalance?: { day: RebalanceDay; before: RebalanceDay; from: LonLat; dock: string } | null;
     /** A ride on an assistant's draft, unchanged since it was opened (lib/drafts.ts): offered Save route. */
     draft?: OpenDraft | null;
+    /** The line ridden (the route as it stood at the end), for the survey spots it passed (lib/surveySpots.ts). */
+    line?: LonLat[];
   } | null>(null);
   // The ended ride's draft's Save: under way, done, or what the server said.
   const [draftSave, setDraftSave] = useState<{ saving: boolean; saved: boolean; said: string | null }>({ saving: false, saved: false, said: null });
+  // Not while riding: a tap mid-ride would open a modal card. The ride summary offers the spots passed instead.
+  const surveyShown = surveyOn && !massMap && !onBike;
+  // Loaded with the layer on, or when a signed-in rider's ride ends (the spots it passed; lib/surveySpots.ts spotsPassed).
+  const survey = useSurveySpots(surveyShown || (rideEnded !== null && me.signed_in), window.location.origin, me.signed_in ? "in" : "out");
+  useEffect(() => {
+    if (!surveyShown || !me.signed_in) return;
+    void loadSurveyMine(window.location.origin).then((mine) => mine && setSurveyMine(mine));
+  }, [surveyShown, me.signed_in]);
+  // A spot picked on the map (or from the Layers list) drops what was left of a ride's queue.
+  const pickSurveySpot = useCallback((spot: SurveySpot) => {
+    setSurveyQueue([]);
+    setSurveySpot(spot);
+  }, []);
   const saveEndedDraft = (draft: OpenDraft) => {
     if (draftSave.saving) return;
     setDraftSave({ saving: true, saved: false, said: null });
@@ -5227,7 +5276,8 @@ export function App() {
     const openDraft = draftOpen.current;
     const draft = openDraft && planRoute && Math.abs(planRoute.distance_m - openDraft.distanceM) < 1 ? openDraft : null;
     setDraftSave({ saving: false, saved: false, said: null });
-    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance, draft }));
+    const line = kept?.route.geometry.coordinates ?? [];
+    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance, draft, line }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
     // Problems still to report to 311 are said too: the focus goes to Done, past the summary's line about them.
     const owed = openCount(report311Log().list());
@@ -5758,6 +5808,19 @@ export function App() {
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
   }, [shown, minute, dials.when, startsMs]);
+  // The beach path (lib/beaches.ts; the owner, 2026-11-23): on a route that rides it, ride it at low tide, with that
+  // day's low tides at the nearest NOAA station (lib/tides.ts), fetched only then.
+  const beachAlong = useMemo(() => (shown ? beachAlongRoute(shown.geometry.coordinates, beachData) : null), [shown, beachData]);
+  const [tideData, setTideData] = useState<TideData | null>(null);
+  useEffect(() => {
+    if (beachAlong && !tideData) void loadTides(tidesUrl).then(setTideData);
+  }, [beachAlong, tideData]);
+  const beachText = useMemo(() => {
+    if (!beachAlong) return null;
+    const station = tideData ? nearestStation(tideData, beachAlong.at) : null;
+    const day = new Date(startsMs ?? minute);
+    return beachNote(beachAlong, tideData && station ? lowTidesOn(tideData, station, day) : null);
+  }, [beachAlong, tideData, startsMs, minute]);
   // The route's arrival leaving now (or at Plan's start time), after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
   const arriveMs = leaveNowArriveMs(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
@@ -7203,7 +7266,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startBusy: rideOpening === "start", broadcastRide: { onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote }, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, arriveMs, weather, offline: offlineError,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, beachText, arriveMs, weather, offline: offlineError,
         barrierAvoid: planDials.barrierAvoid,
         // Plan's card after an edit: Update route in Start's row, as the map bar's (intuitiveness review, 2026-11-21).
         edited:
@@ -7448,7 +7511,18 @@ export function App() {
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
             if (coverage) setMapDay(mapDataDay(coverage.properties));
-            if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
+            if (coverage && mapRef.current === map) {
+              // The map's areas, as the API serves them: where a point is covered, and how far the map pans.
+              setCoverageAreas(coverageBoxes(coverage));
+              // A map with a second area (Southwest Florida) has its beaches (lib/beaches.ts).
+              if (coverageBoxes(coverage).length > 1) void loadBeaches(beachesUrl).then(setBeachData);
+              const [w, s, e, n] = coverageEnvelope();
+              map.setMaxBounds([
+                [w - MAX_BOUNDS_PAD, s - MAX_BOUNDS_PAD],
+                [e + MAX_BOUNDS_PAD, n + MAX_BOUNDS_PAD],
+              ]);
+              if (addCoverageMask(map, coverage)) setCoverageShown(true);
+            }
           });
           watchForFacilities(map, setFacilitiesShown);
           watchForCapacity(map, () => setCapacityTiles(true));
@@ -7466,6 +7540,7 @@ export function App() {
         massArea={isMassRide(preset)}
         massHazards={massHazards}
         water={waterData}
+        beaches={beachData}
         waterPrefs={waterPrefs}
         climbs={climbsData}
         climbsOn={climbsOn}
@@ -7508,6 +7583,22 @@ export function App() {
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !onBike} />
       {/* Go and Plan, not the Mass Ride map (lib/intervals.ts). */}
       <IntervalsOverlay getMap={getMap} on={intervalsShown} data={intervalsDrawn} />
+      <SurveyOverlay getMap={getMap} on={surveyShown} spots={survey.spots} onPick={pickSurveySpot} />
+      <SurveyCard
+        spot={surveySpot}
+        origin={window.location.origin}
+        signedIn={me.signed_in}
+        onSent={(spot, mine) => {
+          survey.drop(spot.id);
+          setSurveyMine(mine);
+        }}
+        onClose={(sent) => {
+          // Done after a send moves on to the next spot the ride passed; Cancel or Escape stops there.
+          const [next, ...rest] = sent ? surveyQueue : [];
+          setSurveyQueue(rest);
+          setSurveySpot(next ?? null);
+        }}
+      />
       <BikeshareDocksOverlay
         active={docksActive}
         getMap={getMap}
@@ -7874,6 +7965,12 @@ export function App() {
           onReports={rideEndReports}
           origin={origin}
           goDefault={endedGoDefault}
+          surveyPassed={me.signed_in && survey.spots && rideEnded.line ? spotsPassed(rideEnded.line, survey.spots) : []}
+          onSurvey={(passed) => {
+            const [first, ...rest] = passed;
+            setSurveyQueue(rest);
+            setSurveySpot(first ?? null);
+          }}
         />
       )}
       {riding && rideStart && (
@@ -7926,6 +8023,7 @@ export function App() {
           startNote={rideStart.note}
           riderDots={rideDots}
           onSheetHeight={ridePanel.set}
+          gpsMark={isBetaBuild(import.meta.env.VITE_BETA)}
         />
       )}
       {roaming && (
@@ -8116,6 +8214,23 @@ export function App() {
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
                 // Intervals: Go and Plan, not the Mass Ride map, where it never draws.
+                survey: massMap
+                  ? null
+                  : {
+                      on: surveyOn,
+                      onChange: changeSurveyOn,
+                      status: surveyShown && survey.status === "unavailable" ? SURVEY_UNAVAILABLE : "",
+                      // Go: the switch alone (one control per feature); the count and the list are Plan's.
+                      count: !surveyShown || mode === "go" ? "" : me.signed_in ? (surveyMine ? surveyCountText(surveyMine.done.length, surveyMine.count) : "") : SURVEY_SIGN_IN,
+                      near: surveyShown && survey.spots && mode !== "go"
+                        ? () => {
+                            const c = getMap()?.getCenter();
+                            return c && survey.spots ? spotsNear([c.lng, c.lat], survey.spots) : [];
+                          }
+                        : undefined,
+                      spots: survey.spots,
+                      onPick: pickSurveySpot,
+                    },
                 intervals: massMap ? null : { on: intervalsOn, onChange: changeIntervalsOn, status: intervalsStatusText(intervalsShown, intervals.status), minutes: intervalsMinutes, onMinutesChange: changeIntervalsMinutes },
                 permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
                 bikeshare: {

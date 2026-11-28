@@ -95,6 +95,18 @@ def test_the_roads_are_listed_in_order_with_miles_stress_and_scenic_designation(
     assert roads[4]["worst_lts"] == 3 and roads[4]["miles_lts_3_up"] == 0.3
 
 
+def test_a_road_says_its_miles_on_bridges() -> None:
+    # The owner, 2026-11-27: the path over Rock Creek on the P Street bridge, said only "path".
+    over = {**stretch("path", 3.2, 3.4, 1, "path"), "bridge_m": round(0.1 * MI)}
+    roads = mcp.road_list(
+        answer_of(
+            [stretch("P Street Northwest", 0.0, 3.2, 2), over, stretch("N Street", 3.4, 4.0, 1)]
+        )
+    )["roads"]
+    assert roads[1]["road"] == "path" and roads[1]["bridge_mi"] == pytest.approx(0.1, abs=0.005)
+    assert "bridge_mi" not in roads[0] and "bridge_mi" not in roads[2]
+
+
 def test_a_known_no_facility_counts_as_street_with_the_unknown_pieces() -> None:
     # The site sends "none" for a known no-facility (round-2 D28) and None where it is not known:
     # both are plain street, so 40% lane, 30% none and 30% unknown is a street, not a lane road.
@@ -294,6 +306,50 @@ def test_the_details_say_it_all_in_one_answer() -> None:
     assert out["scenic_roads"] == [
         {"road": "Peach Tree Road", "designation": "Rustic", "miles": 0.5}
     ]
+
+
+def test_each_via_point_names_the_way_it_put_the_route_on() -> None:
+    # A via dropped at a corner sat on the sidewalk, and the route rode it (R St NW at 17th St,
+    # Stephen 2026-11-27): the planner is told which way each via rode, to move a wrong one.
+    line = [at(x / 20) for x in range(21)]
+    answer = answer_of(
+        [
+            stretch("Peach Tree Road", 0.0, 0.4, 2),
+            stretch("path beside Peach Tree Road", 0.4, 0.6, 4),
+            stretch("Peach Tree Road", 0.6, 1.0, 2),
+        ],
+        geometry={"coordinates": line},
+        leg_ends=[4, 10, 20],
+    )
+    points = [tuple(line[0]), tuple(at(0.2, 0.001)), tuple(at(0.5, 0.001)), tuple(line[-1])]
+    plan = mcp.Plan(points, [1, 2], "default", answer, None, {})
+    assert mcp.via_ways(plan) == [
+        {"point": 1, "on": "Peach Tree Road"},
+        {"point": 2, "on": "path beside Peach Tree Road"},
+    ]
+    assert mcp.route_details(plan)["via_points_on"] == mcp.via_ways(plan)
+
+
+def test_a_via_on_the_way_back_names_the_pass_that_reaches_it() -> None:
+    # Out along the road and back on its side path: the via is reached on the way back,
+    # though its nearest vertex is on the way out.
+    out = [at(x / 20) for x in range(11)]
+    line = out + out[-2::-1]
+    answer = answer_of(
+        [stretch("Peach Tree Road", 0.0, 0.5, 2), stretch("Peach Tree Path", 0.5, 1.0, 1)],
+        geometry={"coordinates": line},
+        leg_ends=[15, 20],
+    )
+    points = [tuple(line[0]), tuple(at(0.25)), tuple(line[-1])]
+    plan = mcp.Plan(points, [1], "default", answer, None, {})
+    assert mcp.via_ways(plan) == [{"point": 1, "on": "Peach Tree Path"}]
+
+
+def test_a_route_without_via_points_names_none() -> None:
+    line, answer = _farm_lane_loop()
+    answer["geometry"] = {"coordinates": line}
+    plan = mcp.Plan([tuple(line[0]), tuple(line[-1])], [], "default", answer, None, {})
+    assert "via_points_on" not in mcp.route_details(plan)
 
 
 # --- Place names near the route ---------------------------------------------------------------
@@ -840,6 +896,23 @@ def test_intervals_near_lists_quiet_paved_stretches_long_enough() -> None:
     assert asked[-1]["no_bollards"] is True
     with pytest.raises(mcp.ToolError, match="on_minutes"):
         server.call("intervals_near", {"near": [-77.05, 38.94], "on_minutes": 90})
+
+
+def test_survey_spots_near_lists_spots_with_points_for_a_plan() -> None:
+    places = _Places()
+    asked = []
+
+    def survey_spots_near(near, miles):
+        asked.append((near, miles))
+        return [{"id": "s101", "road": "Ohio Drive Southwest", "lon": -77.03, "lat": 38.87}]
+
+    places.survey_spots_near = survey_spots_near
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("survey_spots_near", {"near": [-77.05, 38.94], "within_miles": 40})
+    assert asked == [((-77.05, 38.94), 15.0)], "the search is capped at 15 mi"
+    assert out["spots"] == [
+        {"id": "s101", "road": "Ohio Drive Southwest", "point": [-77.03, 38.87]}
+    ]
 
 
 def test_climb_minutes_slow_with_the_grade() -> None:
