@@ -1458,25 +1458,33 @@ agent's deploy (with its automatic rollback), then runs `scripts/cloud/import-re
 RUN_URL` and `--swap RUN_URL` (which asks for sudo for the files and the table rename, restarts the
 routers one at a time, pre-draws and smoke-tests), and resumes the agent if it paused it.
 `--allow-sha-mismatch` passes through when the run was built from another commit than the tag;
-`--no-map` ships the code alone. A held release that needs nginx, sudo or a new data path is still
-refused, and so is one whose migration reads the map tables (it must run after the new map is in):
-ship those by hand. It also waits out a running pre-draw and the nightly backup's slot. If the map fails after the code is live, the code stays, the agent stays
+`--no-map` ships the code alone. A held release that needs nginx, a new data path or an api image
+built here lists those steps and stops; run again with `--accept` once you have read them, and it
+ships the same way (a data path's sudo line, printed in the refusal, goes first; the nginx site's
+sudo line is printed at the end). A compose image line, an odd file name, a removed migration and a
+migration that reads the map tables (it must run after the new map is in) are still shipped by hand. It also waits out a running pre-draw and the nightly backup's slot. If the map fails after the code is live, the code stays, the agent stays
 paused, and the report says what to run next.
 
 ### The release workflow
 
-`.github/workflows/release.yml` (the owner, 2026-11-12: a workflow he approves may make the tag and
-build the image). Once the release branch has merged into main (CI ran on its pull request): GitHub,
-Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`; `docs/releases/vX.Y.Z.md`
-must be in the commit). It releases main's newest commit, the one the run starts at, and no
-other, so the image's provenance names the tag's commit. It checks the
-version (strict, newer than every tag, not taken), the commit (on main), the notes, and that `test`
-and `a11y` are green on that commit, or on the merged pull request's head with the identical tree
-(as the agent reads them, step 4 above). Then, in the `release` environment (no required reviewer:
-the owner, 2026-11-28, his go to merge is the one gate), it builds the api image from that commit, checks that it starts, records
-GitHub build provenance for it, publishes it as `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag,
-whose message names the image by digest. The agent deploys the tag on its next pass as above,
-pulling that exact image. Tagging from the PC still works as before.
+`.github/workflows/release.yml` (the owner, 2026-11-12; from 2026-11-28 his go to merge is the one
+approval, and the workflow waits for no other). It runs by itself when the release reaches main
+(docs/RELEASING.md: main is fast-forwarded to the release branch's tested commit), and by hand
+from Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`). On the push it
+releases the version `pyproject.toml` names, if that tag is not made yet and
+`docs/releases/vX.Y.Z.md` is in the commit; any other push to main does nothing. It releases
+main's newest commit, the one the run starts at, and no other, so the image's provenance names the
+tag's commit. It checks the version (strict, newer than every tag, not taken), the commit (on
+main), the notes, and that `test` and `a11y` are green on that commit, or on the merged pull
+request's head with the identical tree (as the agent reads them, step 4 above). Then, in the
+`release` environment (no required reviewer: the owner's choice), it builds the api image from
+that commit, checks that it starts, records GitHub build provenance for it, publishes it as
+`ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag, whose
+message names the image by digest, and says `ship: code-first` when the release pull request has
+the `code-first` label (or the run's input asks): the agent then ships a release held only for
+its map by itself, as `ship-held --no-map` would, and the map follows by hand. The agent deploys
+the tag on its next pass as above, pulling that exact image. A tag pushed from the PC carries no
+image, so the agent builds the image itself and holds a change to the image's own files.
 
 Once, by the owner, before the first run:
 

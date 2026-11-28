@@ -1,20 +1,31 @@
 name: Release
 
-# The release button. Run it from GitHub (Actions, "Release", Run workflow, on main) once the
-# release branch has merged into main after the owner's go (CI ran on its pull request; ci.yml).
-# It checks the commit, then builds the api image from that commit in the `release` environment,
-# publishes it, and makes the annotated release tag, which names the image by digest. The
-# environment has no required reviewer (the owner, 2026-11-28: his go to merge is the one gate).
-# The beta's release agent (scripts/beta/auto-release.sh) deploys the tag as it always has,
-# pulling that exact image instead of building one. Nothing here touches the beta. One-time
-# setup: docs/BETA-RUNBOOK.md, "The release workflow".
+# Runs by itself when a release reaches main (the owner's go to merge is the one approval: the
+# owner, 2026-11-28), and by hand from GitHub (Actions, "Release", Run workflow, on main). On the
+# push it releases the version pyproject.toml names, if that tag is not made yet and
+# docs/releases/vX.Y.Z.md is in the commit; any other push to main (Dependabot) does nothing.
+# It checks the commit and its CI (run on the release branch: ci.yml), then builds the api image
+# from that commit in the `release` environment (no required reviewer), publishes it, and makes
+# the annotated release tag, which names the image by digest, and carries "ship: code-first"
+# when the release pull request has the `code-first` label (or the run's input says so): the
+# beta's agent then ships a release held only for its map without waiting for the owner's paste.
+# The beta's release agent (scripts/beta/auto-release.sh) deploys the tag, pulling that exact
+# image. Nothing here touches the beta. One-time setup: docs/BETA-RUNBOOK.md, "The release
+# workflow".
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
         description: "The release, as vX.Y.Z (docs/releases/vX.Y.Z.md must exist at the commit)"
         required: true
         type: string
+      code_first:
+        description: "Ship the code now and the map later (a release held only for its map)"
+        required: false
+        type: boolean
+        default: false
 
 # Nothing by default; each job asks for what it needs.
 permissions: {}
@@ -33,6 +44,8 @@ jobs:
       checks: read
     outputs:
       sha: ${{ steps.check.outputs.sha }}
+      version: ${{ steps.check.outputs.version }}
+      code_first: ${{ steps.check.outputs.code_first }}
     steps:
       # Pinned by commit (the tag each pointed to); bump deliberately.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -44,6 +57,8 @@ jobs:
         name: Check the version, the commit and its CI
         env:
           VERSION: ${{ inputs.version }}
+          CODE_FIRST: ${{ inputs.code_first }}
+          EVENT: ${{ github.event_name }}
           # The commit this run started at, main's newest: the only one it builds and tags, so the
           # image's provenance (which names the commit the workflow ran at) names the tag's commit.
           COMMIT: ${{ github.sha }}
@@ -53,9 +68,23 @@ jobs:
         run: |
           set -euo pipefail
           [ "$REF" = refs/heads/main ] || { echo "::error::run the release workflow on main, not $REF"; exit 1; }
+          git fetch --quiet --tags origin
+          if [ "$EVENT" = push ]; then
+            # The version the release branch bumped to (scripts/bump_version.py); a push whose
+            # version is tagged already, or has no notes, is not a release (Dependabot, a fix).
+            VERSION=v$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pyproject.toml | head -n 1)
+            if git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null || [ ! -f "docs/releases/$VERSION.md" ]; then
+              echo "No release in this push ($VERSION is tagged already or has no notes)." >>"$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            # The owner's "code first": the release pull request's `code-first` label.
+            labels=$(gh api "repos/$REPO/commits/$COMMIT/pulls?per_page=100" --jq \
+              "[.[] | select(.head.ref == \"release/$VERSION\") | .labels[].name] | join(\" \")" || true)
+            CODE_FIRST=false
+            case " $labels " in *" code-first "*) CODE_FIRST=true ;; esac
+          fi
           [[ $VERSION =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] ||
             { echo "::error::the version must be vX.Y.Z (no leading zeros, nothing after)"; exit 1; }
-          git fetch --quiet --tags origin
           ! git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null ||
             { echo "::error::$VERSION is already a tag; a tag is never moved: release the next patch version"; exit 1; }
           highest=$(git tag -l 'v*' | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -n 1 || true)
@@ -87,16 +116,17 @@ jobs:
             echo "CI read from pull request #$num's head $head, the same tree as $sha: $verdict"
           fi
           [ "$verdict" = green ] || { echo "::error::CI on $sha is $verdict, not green (test and a11y)"; exit 1; }
-          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          { echo "sha=$sha"; echo "version=$VERSION"; echo "code_first=${CODE_FIRST:-false}"; } >>"$GITHUB_OUTPUT"
           {
             echo "### $VERSION is ready to release"
-            echo "Commit \`$sha\`, CI green. Approve the \`release\` environment to build the image and make the tag."
+            echo "Commit \`$sha\`, CI green; code first: ${CODE_FIRST:-false}. Building the image and making the tag."
           } >>"$GITHUB_STEP_SUMMARY"
 
   # Runs in the `release` environment (no required reviewer). The only job
   # that can publish a package; it cannot write to the repository.
   image:
     needs: check
+    if: needs.check.outputs.version != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: release
@@ -150,7 +180,7 @@ jobs:
           # has logged out of ghcr.io (v0.27.2's first run failed "No credentials found for registry").
           push-to-registry: false
 
-  # Runs only after the approved image job: the annotated tag on the checked commit, naming the
+  # Runs only after the image job: the annotated tag on the checked commit, naming the
   # image by digest. The beta's agent reads that line (scripts/beta/cd_logic.py, tag-image).
   tag:
     needs: [check, image]
@@ -161,7 +191,8 @@ jobs:
     steps:
       - name: Make the annotated release tag
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.check.outputs.version }}
+          CODE_FIRST: ${{ needs.check.outputs.code_first }}
           SHA: ${{ needs.check.outputs.sha }}
           DIGEST: ${{ needs.image.outputs.digest }}
           REPO: ${{ github.repository }}
@@ -170,7 +201,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ $DIGEST =~ ^ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad digest"; exit 1; }
-          message=$(printf 'Release %s\n\napi-image: %s\n\nMade by the release workflow after the owner approved it: %s\n' "$VERSION" "$DIGEST" "$RUN_URL")
+          ship=""; [ "$CODE_FIRST" != true ] || ship=$'\nship: code-first\n'
+          message=$(printf 'Release %s\n\napi-image: %s\n%s\nMade by the release workflow, from the merge the owner gave the go for: %s\n' "$VERSION" "$DIGEST" "$ship" "$RUN_URL")
           object=$(gh api "repos/$REPO/git/tags" -f tag="$VERSION" -f message="$message" -f object="$SHA" -f type=commit --jq .sha)
           gh api "repos/$REPO/git/refs" -f ref="refs/tags/$VERSION" -f sha="$object" >/dev/null
           echo "Tagged \`$VERSION\` on \`$SHA\`. The beta's release agent deploys it on its next pass." >>"$GITHUB_STEP_SUMMARY"

@@ -20,10 +20,12 @@
 #                                     checked the stack by hand
 #   auto-release.sh retry vX.Y.Z      allow a held or failed tag to be tried again
 #   auto-release.sh hold vX.Y.Z [REASON]   keep a tag from being deployed (after a rollback by hand)
-#   auto-release.sh ship-held vX.Y.Z (--map RUN_URL | --no-map) [--allow-sha-mismatch] [--dry-run]
-#                                     the owner's one command for a release held because it needs a
-#                                     map: its code through the agent's deploy, then the cloud run's
-#                                     map (import-result.sh --beta, then --swap); "ship-held" below
+#   auto-release.sh ship-held vX.Y.Z [--map RUN_URL | --no-map] [--accept] [--allow-sha-mismatch] [--dry-run]
+#                                     the owner's one command for any held release: its code through
+#                                     the agent's deploy, then the cloud run's map if it needs one
+#                                     (import-result.sh --beta, then --swap); --accept takes the
+#                                     nginx, data-path and image stops once he has read them, and
+#                                     prints the one sudo line each needs; "ship-held" below
 #   auto-release.sh rollback [--dry-run] [--keep-db | --restore-db] [--force]
 #                                     the owner's one command to put the previous release back (the
 #                                     deployed one is then held); "rollback" below explains the flags
@@ -52,7 +54,11 @@
 #      requirements, entrypoint) is deployed rather than held for a hand ship (the owner,
 #      2026-11-12). A pull that fails waits for the next pass.
 #   5. the gate (cd_logic.py gate): only a code release is deployed by itself. Anything needing
-#      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>. A
+#      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>,
+#      except a release held only for its map whose tag says "ship: code-first" (the owner's go
+#      said code now, map later; .github/workflows/release.yml): its code is deployed, as
+#      `ship-held --no-map` would, and the map follows by hand. The graphs' Lua (lua/) is read
+#      only when a graph is built, never by a running router, so the old map keeps working. A
 #      release with nothing for the server (documentation, CI) is only recorded, if the running api
 #      image is on the host (if not, it is a full deploy): the checkout and TAG move (the running
 #      api image is tagged with it), nothing is stopped.
@@ -418,6 +424,16 @@ origin_problem() {
 }
 docker_root() { dk info -f '{{.DockerRootDir}}' 2>/dev/null </dev/null; }
 free_kib() { df -P -k "$1" 2>/dev/null | awk 'NR == 2 { print $4 }'; }
+docker_room_problem() { # prints why Docker's root is too full for the image build, or nothing
+	local root free
+	root=$(docker_root)
+	free=""; [ -z "$root" ] || free=$(free_kib "$root")
+	if [ -z "$free" ]; then
+		say "note: could not read the free space on Docker's root (docker info); going on" >&2 # not part of the answer
+	elif [ "$free" -lt $((docker_free_gib * 1048576)) ]; then
+		echo "less than $docker_free_gib GiB free on Docker's root ($root) for the image build; the owner frees space (old api images: docker image ls $API_IMAGE)"
+	fi
+}
 predraw_running() {
 	local w
 	w=$(bc ps -q worker 2>/dev/null </dev/null) || return 1
@@ -1105,7 +1121,7 @@ recover() {
 
 # --- one pass -------------------------------------------------------------------------------------
 pass() {
-	local cur cur_sha tag new verdict reason gate_file why free h root noop=0 ci_image=""
+	local cur cur_sha tag new verdict reason gate_file why free h noop=0 ci_image="" code_first="" other
 	predraw_warning=""
 	[ -f "$cd_dir/BROKEN" ] && { finish broken "a rollback failed earlier and needs the owner (see $cd_dir/BROKEN); after fixing, auto-release.sh mark-deployed <tag>"; return 1; }
 	[ -f "$cd_dir/PAUSED" ] && { finish paused "$(head -n 1 "$cd_dir/PAUSED")"; return 0; }
@@ -1152,7 +1168,10 @@ pass() {
 	# (.github/workflows/release.yml): that image is pulled instead of built, and a change to the
 	# image's own files needs no hand ship (the owner, 2026-11-12).
 	ci_image=""
-	if annotated "$tag"; then ci_image=$(gitc for-each-ref --format='%(contents)' "refs/tags/$tag" | "$py" "$logic" tag-image); fi
+	if annotated "$tag"; then
+		ci_image=$(gitc for-each-ref --format='%(contents)' "refs/tags/$tag" | "$py" "$logic" tag-image)
+		code_first=$(gitc for-each-ref --format='%(contents)' "refs/tags/$tag" | "$py" "$logic" tag-ship)
+	fi
 	[ -z "$ci_image" ] || say "the tag names the api image the release workflow built: $ci_image"
 	verdict=$(ci_status "$new")
 	case "$verdict" in
@@ -1166,10 +1185,17 @@ pass() {
 	"$py" "$logic" gate --repo "$RM_SRC" --old "$cur_sha" --new "$new" ${ci_image:+--ci-image} >"$gate_file" || { rm -f "$gate_file"; finish error "the gate failed to run"; return 1; }
 	say "gate: $(kv verdict "$gate_file") ($(kv changed_files "$gate_file") server-relevant files changed since $cur)"
 	sed -n 's/^note=/note: /p' "$gate_file" | while IFS= read -r reason; do say "$reason"; done
-	if [ "$(kv verdict "$gate_file")" != deploy ]; then
+	# Held only for its map, with the owner's "code first" in the tag: the code goes now (as
+	# `ship-held --no-map`), the map later by hand. A migration that reads the map tables never does.
+	other=$(sed -n 's/^reason=//p' "$gate_file" | grep -vxF -f <(sed -n 's/^map_reason=//p' "$gate_file" | grep .) || true)
+	if [ "$(kv verdict "$gate_file")" != deploy ] && [ "$code_first" = code-first ] && [ -z "$other" ] &&
+		! grep -q '^map_reason=.*a migration names the live schema' "$gate_file"; then
+		sed -n 's/^map_reason=/needs a map later: /p' "$gate_file" | while IFS= read -r reason; do say "$reason"; done
+		say "the tag says code first (the owner's go): the code ships now; the map follows by hand (scripts/cloud/import-result.sh --beta, or auto-release.sh ship-held $tag --map RUN_URL)"
+	elif [ "$(kv verdict "$gate_file")" != deploy ]; then
 		sed -n 's/^reason=/needs the owner: /p' "$gate_file" | while IFS= read -r reason; do say "$reason"; done
-		say "Ship it by hand with docs/BETA-RUNBOOK.md (\"Shipping an update later\"), then: auto-release.sh mark-deployed $tag"
-		rm -f "$gate_file"; hold "$tag" "the release needs the owner (data from home, sudo or nginx; reasons in the report)"; return 0
+		say "Ship it with: auto-release.sh ship-held $tag (it says what else it needs)"
+		rm -f "$gate_file"; hold "$tag" "the release needs the owner (data from home, sudo or nginx; reasons in the report): auto-release.sh ship-held $tag"; return 0
 	fi
 	[ "$(kv agent_changed "$gate_file")" = 1 ] && say "note: this release changes the release agent itself; once it is deployed, its files are reinstalled in $cd_dir/bin for the next pass (the systemd units only by auto-release.sh install)"
 	[ "$(kv migrations "$gate_file")" = 1 ] && say "note: the release carries migrations; they run after the pre-release snapshot"
@@ -1192,14 +1218,9 @@ pass() {
 			free=$(free_kib "$cd_dir/backups")
 			[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
 		fi
-		root=$(docker_root)
-		free=""; [ -z "$root" ] || free=$(free_kib "$root")
-		if [ -z "$free" ]; then
-			say "note: could not read the free space on Docker's root (docker info); going on"
-		elif [ "$free" -lt $((docker_free_gib * 1048576)) ]; then
-			rm -f "$gate_file"
-			finish waiting "$tag: less than $docker_free_gib GiB free on Docker's root ($root) for the image build; the owner frees space (old api images: docker image ls $API_IMAGE)"
-			return 0
+		why=$(docker_room_problem)
+		if [ -n "$why" ]; then
+			rm -f "$gate_file"; finish waiting "$tag: $why"; return 0
 		fi
 	fi
 	if [ "$noop" = 0 ] && [ -n "$ci_image" ] && ! dk image inspect "$API_IMAGE:${new:0:12}" >/dev/null 2>&1; then
@@ -1291,14 +1312,19 @@ cmd_run() {
 # scripts/cloud/import-result.sh --beta (download and verify, then --swap: it asks for sudo for the
 # files and the table rename, restarts the routers one at a time, pre-draws and smoke-tests). The
 # agent stays paused from the start to the end (and is resumed only if this command paused it).
-# A held release that needs nginx, sudo or a new data path (deploy/, prepare_data_root.sh, a compose
-# image or DATA_ROOT line, an odd file name) is still a hand ship: it says so and changes nothing.
+# A held release that needs nginx, sudo, a new data path or an api image built here (deploy/,
+# prepare_data_root.sh, a compose DATA_ROOT line, the Dockerfile or pins without a workflow image)
+# lists those steps and changes nothing until it is run again with --accept: then the same deploy
+# runs, after the data path's sudo line if there is one (printed in the refusal), and the nginx
+# site's sudo line is printed at the end. A compose image line, an odd file name and a removed
+# migration are still a hand ship.
 #   --map RUN_URL         the cloud run's s3://.../transfer/<run> (built with --beta-bundle)
 #   --no-map              ship the code alone; the map follows by hand (import-result.sh --beta)
+#   --accept              the owner has read the listed nginx, data-path and image steps
 #   --allow-sha-mismatch  the run was built from another commit than the tag (as import-result.sh)
 #   --dry-run             the checks and the plan; changes nothing (downloads nothing)
-ship_held_pass() { # tag map-url no-map allow dry
-	local tag=$1 map=$2 no_map=$3 allow=$4 dry=$5 cur cur_sha new verdict gate_file why ci_image="" other map_reasons we_paused=0 rc import
+ship_held_pass() { # tag map-url no-map allow dry accept
+	local tag=$1 map=$2 no_map=$3 allow=$4 dry=$5 accept=$6 cur cur_sha new verdict gate_file why ci_image="" other hard map_reasons we_paused=0 rc import rerun
 	cur=$(deployed_tag); cur_sha=$(deployed_sha)
 	[ ! -f "$cd_dir/BROKEN" ] || { finish broken "a rollback failed earlier and needs the owner (see $cd_dir/BROKEN)"; return 1; }
 	[ "$(leftover)" = none ] || { finish error "a stopped pass left $progress; let a pass deal with it first (auto-release.sh status)"; return 1; }
@@ -1325,9 +1351,21 @@ ship_held_pass() { # tag map-url no-map allow dry
 	# Reasons a map does not answer (nginx, sudo, data paths, compose images, odd names; the image's
 	# own files when the tag names no workflow-built image): still a hand ship.
 	other=$(sed -n 's/^reason=//p' "$gate_file" | grep -vxF -f <(printf '%s\n' "$map_reasons" | grep .) || true)
-	if [ -n "$other" ]; then
-		printf '%s\n' "$other" | while IFS= read -r why; do say "needs the owner by hand: $why"; done
+	# Of those, the ones --accept takes (nginx, a data path, the api image built here).
+	hard=$(printf '%s\n' "$other" | grep . | grep -vxF -f <(sed -n 's/^accept_reason=//p' "$gate_file" | grep .) || true)
+	if [ -n "$hard" ]; then
+		printf '%s\n' "$hard" | while IFS= read -r why; do say "needs the owner by hand: $why"; done
 		rm -f "$gate_file"; finish error "$tag needs steps this command does not take (listed above): ship it by hand (docs/BETA-RUNBOOK.md, \"Shipping an update later\")"; return 1
+	fi
+	if [ -n "$other" ]; then
+		printf '%s\n' "$other" | while IFS= read -r why; do say "owner step: $why"; done
+		if [ "$accept" != 1 ]; then
+			rerun="auto-release.sh ship-held $tag${map:+ --map $map}$([ "$no_map" = 1 ] && printf ' --no-map')${allow:+ --allow-sha-mismatch} --accept"
+			[ "$(kv data_root "$gate_file")" != 1 ] || say "first, with sudo (the data directories): git -C \"$RM_SRC\" show $new:scripts/prepare_data_root.sh | sudo sh -s -- --env-file \"$RM_SRC/.env\""
+			[ "$(kv nginx_template "$gate_file")" != 1 ] || say "after it, with sudo, the nginx site (this command prints the line when the code is live)"
+			rm -f "$gate_file"; finish error "$tag needs the owner steps above; once you have read them, run: $rerun"; return 1
+		fi
+		say "accepted by the owner (--accept): the deploy runs"
 	fi
 	if grep -q 'a migration names the live schema' <<<"$map_reasons"; then
 		printf '%s\n' "$map_reasons" | grep 'a migration names the live schema' | while IFS= read -r why; do say "needs the owner by hand: $why"; done
@@ -1347,6 +1385,8 @@ ship_held_pass() { # tag map-url no-map allow dry
 		rm -f "$gate_file"; finish dry-run "$tag would be shipped"; return 0
 	fi
 	! predraw_running || { rm -f "$gate_file"; finish error "a stress-tile pre-draw is running; try again after it"; return 1; }
+	why=$(docker_room_problem)
+	[ -z "$why" ] || { rm -f "$gate_file"; finish error "$why"; return 1; }
 	! in_backup_slot "$(backup_minute)" || { rm -f "$gate_file"; finish error "the nightly backup runs now; try again in half an hour"; return 1; }
 	if [ ! -f "$cd_dir/PAUSED" ]; then
 		printf '%s ship-held %s\n' "$(utc)" "$tag" >"$cd_dir/PAUSED"; we_paused=1
@@ -1358,6 +1398,8 @@ ship_held_pass() { # tag map-url no-map allow dry
 	say "deploying $tag's code ($new) over $cur at $(utc)"
 	deploy "$tag" "$new" "$gate_file"
 	rc=$?
+	local nginx_after
+	nginx_after=$(kv nginx_template "$gate_file")
 	rm -f "$gate_file"
 	if [ "$rc" != 0 ]; then
 		if [ "$rc" = 3 ]; then
@@ -1402,17 +1444,19 @@ ship_held_pass() { # tag map-url no-map allow dry
 		say "step: the map is swapped in"
 	fi
 	[ "$we_paused" = 0 ] || rm -f "$cd_dir/PAUSED"
+	[ "$nginx_after" != 1 ] || say "last step, with sudo (the nginx site changed): . \"\$HOME/routemaker-beta-state/vars.sh\" && cd \"\$RM_SRC\" && RENDER_NGINX_FORCE=1 scripts/beta/render-nginx.sh --stage full --out \"\$RM_STATE/routemaker-beta.full.conf\" && sudo install -m 644 \"\$RM_STATE/routemaker-beta.full.conf\" \"\$NGINX_SITE\" && sudo nginx -t && sudo nginx -s reload"
 	finish deployed "$tag ($new), was $cur: shipped by ship-held$([ -n "$map" ] && echo " with the map from $map")${predraw_warning:+; WARNING: $predraw_warning}$([ "$we_paused" = 0 ] && echo '; the agent was paused before and stays paused')"
 	return 0
 }
 
 cmd_ship_held() {
-	local tag="" map="" no_map=0 allow="" dry=0 stamp
+	local tag="" map="" no_map=0 allow="" dry=0 accept=0 stamp
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--map) [ $# -ge 2 ] || die "--map needs the run's s3:// address"; map=$2; shift ;;
 			--no-map) no_map=1 ;;
 			--allow-sha-mismatch) allow=1 ;;
+			--accept) accept=1 ;;
 			--dry-run) dry=1 ;;
 			-*) die "ship-held: unknown option $1" ;;
 			*) [ -z "$tag" ] || die "ship-held takes one tag"; tag=$1 ;;
@@ -1440,7 +1484,7 @@ cmd_ship_held() {
 		say "auto-release ship-held $tag at $stamp (dry run: changes nothing)"
 	fi
 	say "run log: $run_log"
-	ship_held_pass "$tag" "$map" "$no_map" "$allow" "$dry"; local rc=$?
+	ship_held_pass "$tag" "$map" "$no_map" "$allow" "$dry" "$accept"; local rc=$?
 	trap - TERM INT HUP
 	rm -f "$report"
 	return "$rc"
