@@ -44,6 +44,7 @@ from config.procrastinate import (
     BACKUP_KEEP,
     BACKUP_MAX_AGE,
     BACKUP_TIMEOUT_S,
+    CLOSURE_AGENT_CRON,
     DC_CLOSURES_CRON,
     DEGRADED_GUILD_SWEEP_CRON,
     MEMBERSHIP_SWEEP_CRON,
@@ -89,6 +90,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "refresh_dc_closures": DC_CLOSURES_CRON,
         "refresh_alertdc": ALERTDC_CRON,
         "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
+        "run_closure_agent": CLOSURE_AGENT_CRON,
     }
 
 
@@ -2585,6 +2587,7 @@ def test_every_alert_window_is_pinned() -> None:
         "refresh_dc_closures": 60 * 60,
         "refresh_alertdc": 10 * 60,
         "check_saved_route_closures": 60 * 60,
+        "run_closure_agent": 3 * 60 * 60,
     }
 
 
@@ -2618,6 +2621,7 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "refresh_dc_closures": DC_CLOSURES_CRON,
         "refresh_alertdc": ALERTDC_CRON,
         "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
+        "run_closure_agent": CLOSURE_AGENT_CRON,
     }
     assert set(crons) == set(STALE_AFTER), "every scheduled task is watched, and the reverse"
     base = timezone.now()

@@ -426,6 +426,36 @@ test("the next stop the rider came within 50 m of and rode away from is reached;
   assert.equal(end.has(points[2]), false);
 });
 
+test("a via point is an anchor: once the rider comes within a quarter mile, a re-route takes it as reached", () => {
+  const { r, points } = withStop();
+  const model = rideModel(r);
+  const marks = new ViaMarks();
+  const vias = [points[0], marks.via(points[1]), points[2]];
+  // Before: a via point counted as a stop did, within 50 m, so a rider 250 m from it on a side street was sent round
+  // the block to touch it. The same place, as a stop, is still kept.
+  const asStop = new WeakSet<LonLat>();
+  nearStopsStep(asStop, model, 700, points, false, at(1000, 250), true);
+  assert.equal(leftNearStop(asStop, points[1], at(1000, 250)), false, "a stop 250 m away is kept");
+  // Now: 250 m from the via point, off the line, and still that near: reached.
+  const near = new WeakSet<LonLat>();
+  nearStopsStep(near, model, 700, vias, false, at(1000, 250), true, marks.isVia);
+  assert.equal(leftNearStop(near, vias[1], at(1000, 250), marks.isVia), true);
+  // Off the line 200 m from it, but the line's own way there is 900 m (a loop planned to lengthen the ride): kept.
+  const loop = new WeakSet<LonLat>();
+  nearStopsStep(loop, model, 100, vias, false, at(1000, 200), true, marks.isVia);
+  assert.equal(leftNearStop(loop, vias[1], at(1000, 200), marks.isVia), false);
+  // Never within 400 m: kept.
+  const far = new WeakSet<LonLat>();
+  nearStopsStep(far, model, 500, vias, false, at(500, 300), true, marks.isVia);
+  assert.equal(leftNearStop(far, vias[1], at(500, 300), marks.isVia), false);
+  // On the line, the line's own way to it must be that short too: 600 m before it is not near.
+  const onLine = new WeakSet<LonLat>();
+  nearStopsStep(onLine, model, 400, vias, false, at(700, 0), false, marks.isVia);
+  assert.equal(leftNearStop(onLine, vias[1], at(700, 0), marks.isVia), false);
+  nearStopsStep(onLine, model, 700, vias, false, at(700, 0), false, marks.isVia);
+  assert.equal(leftNearStop(onLine, vias[1], at(700, 0), marks.isVia), true, "300 m before it on the line");
+});
+
 test("a stop across a creek, reached later by a bridge, is not passed by riding the near bank on the line", () => {
   // Out 1,000 m along the near bank, over a bridge 40 m north, back along the far bank to the cafe (point 1) at 1,540 m.
   const coordinates = [at(0, 0), at(500, 0), at(1000, 0), at(1000, 40), at(500, 40), at(0, 40), at(-200, 40)];

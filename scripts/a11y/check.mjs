@@ -94,6 +94,22 @@ const b = await connect(CDP_PORT);
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
+// The route's junction markers are drawn from zoom 14 up only (#1440, lib/intersectionMarkers.ts MARKERS_FROM_ZOOM),
+// and a planned route opens fitted, below it: Zoom in until they show, as a rider would.
+// Zoomed in, a marker may sit off screen: window.__marker() is the first one whose middle is on screen and its own.
+const ON_SCREEN_MARKER = `window.__marker = () => [...document.querySelectorAll('.junction-marker')].find((m) => {
+  const r = m.getBoundingClientRect(); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return h === m || m.contains(h); }) ?? document.querySelector('.junction-marker'); true`;
+async function zoomToMarkers(p) {
+  for (let i = 0; i < 6; i++) {
+    if (await p.eval("document.querySelectorAll('.junction-marker').length > 0")) break;
+    await p.eval("(() => { document.querySelector('.maplibregl-ctrl-zoom-in')?.click(); return true; })()");
+    await p.waitFor("document.querySelectorAll('.junction-marker').length > 0", 1500);
+  }
+  await p.eval(ON_SCREEN_MARKER);
+  return p.eval("document.querySelectorAll('.junction-marker').length > 0");
+}
+
 async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, signIn = false, computerAsks = false, hazards = null, port = PORT, before = null, init = "", view = "plan" } = {}) {
   const p = await newPage(b, { width, height, mobile, computerAsks });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
@@ -114,7 +130,7 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   if (view) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: `try { sessionStorage.setItem('routemaker.tab-mode', ${JSON.stringify(view)}); } catch {}` });
   if (before) await before(p);
   await p.s("Page.navigate", { url: `http://127.0.0.1:${port}/${hash}` });
-  const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
+  const ready = (await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-item').length > 0", 40000)) && (await zoomToMarkers(p));
   if (!ready) throw new Error("the app did not show a route");
   await sleep(800);
   // The settings are a popup over the map (the owner, 2026-11-20; Go too since 2026-11-21), opened by the checks that
@@ -549,9 +565,8 @@ if (mine(8)) {
 // ---- 3. The card from a marker: focus into it, back to the marker ----
 if (mine(5)) {
   const p = await open();
-  // Zoomed in, so each junction has its own marker.
-  await p.eval("true");
-  const single = await p.eval("(() => { const m = [...document.querySelectorAll('.junction-marker:not(.junction-group)')][0]; m.focus(); return m.dataset.junctionIndex; })()");
+  // Zoomed in (open), so each junction has its own marker; one on screen.
+  const single = await p.eval("(() => { const m = window.__marker(); m.focus(); return m.dataset.junctionIndex; })()");
   await p.enter();
   await sleep(500);
   check("marker: Enter opens its card and the focus goes to its close button", await p.eval("document.activeElement?.classList.contains('maplibregl-popup-close-button') && !!document.activeElement.closest('.junction-popup')"), await focused(p));
@@ -565,15 +580,15 @@ if (mine(5)) {
   check("marker: Escape closes the card", await p.eval("!document.querySelector('.junction-popup')"));
   check("marker: and gives the focus back to the marker", await p.eval(`document.activeElement?.dataset?.junctionIndex === "${single}" && document.activeElement.classList.contains('junction-marker')`), await focused(p));
 
-  // The group: its zoom hands the focus to the first member's new marker.
-  const group = await p.eval("(() => { const g = document.querySelector('.junction-marker.junction-group'); if (!g) return null; g.focus(); return g.dataset.junctionIndex; })()");
-  if (group === null) check("group: the two reds are a group at the opening zoom", false);
-  else {
-    await p.enter();
-    await sleep(1500);
-    const now = await p.eval("(() => { const e = document.activeElement; return { marker: e?.classList.contains('junction-marker'), index: e?.dataset?.junctionIndex, group: e?.classList.contains('junction-group'), zoom: 0 }; })()");
-    check("group: after its zoom the focus is on the first member's new marker", now.marker && now.index === group, `${JSON.stringify(now)} (first member ${group})`);
+  // Zoomed out below MARKERS_FROM_ZOOM there are no junction markers, merged or otherwise (#1440); the list keeps
+  // every junction, so each is still reached from the keyboard.
+  const rows = await p.eval("document.querySelectorAll('.junction-item').length");
+  for (let i = 0; i < 10 && (await p.eval("document.querySelectorAll('.junction-marker').length > 0")); i++) {
+    await p.eval("(() => { document.querySelector('.maplibregl-ctrl-zoom-out')?.click(); return true; })()");
+    await sleep(700);
   }
+  const out = await p.eval("({ markers: document.querySelectorAll('.junction-marker').length, rows: document.querySelectorAll('.junction-item').length })");
+  check("zoomed out: no junction markers, and the list keeps every junction", out.markers === 0 && out.rows === rows && rows > 0, JSON.stringify({ ...out, before: rows }));
   await p.close();
 }
 
@@ -632,9 +647,9 @@ if (mine(3)) {
 if (mine(17)) for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["forced-dark", { scheme: "dark", forced: true }], ["forced-light", { forced: true }]]) {
   const p = await open({ ...opts });
   // A keyboard focus, so :focus-visible applies.
-  await p.eval("document.querySelector('.junction-marker:not(.junction-group)').scrollIntoView(); document.querySelector('.junction-marker:not(.junction-group)').focus(); true");
+  await p.eval("window.__marker().focus(); true");
   await p.eval("document.activeElement.blur(); true");
-  const index = await p.eval("document.querySelector('.junction-marker:not(.junction-group)').dataset.junctionIndex");
+  const index = await p.eval("window.__marker().dataset.junctionIndex");
   // Tab to it from the skip link's side, so the focus is a keyboard one.
   await p.eval(`(() => { const all = [...document.querySelectorAll('.junction-marker')]; const m = all.find((e) => e.dataset.junctionIndex === "${index}"); const before = document.createElement('button'); before.id = '__before'; before.style.cssText = 'position:fixed;left:-99px;top:0'; m.parentElement.insertBefore(before, m); before.focus(); return true; })()`);
   await p.tab();
@@ -1206,9 +1221,10 @@ if (mine(16)) for (const mobile of [false, true]) {
   // seven with Scenic (v0.8.0), after Trails and terrain, off by default like the rest.
   // v0.9.1: DC permits, Plan's alone, off by default, after Scenic; Potential closures since v0.17.0 (#853).
   // Nine with Interval stretches (v0.27.2, #1304); eight again since it moved into Trails and terrain beside
-  // Climbs, that section named "Trails, terrain and training" in Plan (v0.27.3, #1314).
-  check(`sections (${where}): eight, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
-    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails, terrain and training", "Scenic", "Potential closures"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
+  // Climbs, that section named "Trails, terrain and training" in Plan (v0.27.3, #1314). Nine again with Survey
+  // spots (v0.31.0, #1449), after Trails, terrain and training, off by default.
+  check(`sections (${where}): nine, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
+    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water, restrooms and repair stands", "Rail stations", "Bikeshare and e-bikes", "Places to see", "Trails, terrain and training", "Survey spots", "Scenic", "Potential closures"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
   const ax = await axNode(p, "#terrain-section-switch");
   const chevron = await axNode(p, "[aria-controls=terrain-section-body]");
   check(`sections (${where}): the section's switch is a switch named for it, off; the disclosure a collapsed button named for its layers`,
@@ -2117,7 +2133,8 @@ if (mine(15)) {
   // The legend off screen: Layers closed by its Back button (Escape closes it only from inside).
   await p.eval("(() => { const s = document.querySelector('#sheet-layers'); if (s && !s.hidden) s.querySelector('.sheet-back')?.click(); return true; })()");
   await sleep(250);
-  for (let i = 0; i < 6; i++) {
+  // Room for open()'s zoom in to the junction markers too.
+  for (let i = 0; i < 10; i++) {
     if (/only wide open/.test(await p.eval(`document.querySelector('${bandsLine}')?.textContent ?? ''`))) break;
     await p.eval("document.querySelector('.maplibregl-ctrl-zoom-out')?.click(); true");
     await sleep(800);
@@ -2941,7 +2958,7 @@ if (mine(3)) {
   await p.eval("document.querySelector('.stress-page-link a').click(); true");
   const onPage = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
   await p.eval("document.querySelector('a.back')?.click(); true");
-  const back = await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
+  const back = (await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-item').length > 0", 40000)) && (await zoomToMarkers(p));
   const after = await p.eval("({ path: location.pathname, ready: document.readyState, app: !!document.querySelector('#route-planner'), hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })").catch((e) => ({ error: String(e).slice(0, 200) }));
   check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
     /[#&][pq]=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
@@ -3931,7 +3948,7 @@ if (mine(1)) {
   // From a junction marker's card: Suggest a junction change opens the panel with the form open.
   const p = await open({ suggester: true });
   p.junctionAt = JUNCTION_AT;
-  await p.eval("(() => { const m = [...document.querySelectorAll('.junction-marker:not(.junction-group)')][0]; m.focus(); return true; })()");
+  await p.eval("(() => { const m = window.__marker(); m.focus(); return true; })()");
   await p.enter();
   await p.waitFor(`[...document.querySelectorAll('.junction-popup button')].some((b) => b.textContent === '${JUNCTION_BUTTON}')`, 8000);
   const cardButton = await p.eval(`(() => { const b = [...document.querySelectorAll('.junction-popup button')].find((e) => e.textContent === '${JUNCTION_BUTTON}'); return { tag: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);

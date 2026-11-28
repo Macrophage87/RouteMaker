@@ -217,3 +217,25 @@ def test_it_streams_rather_than_reading_the_dump_whole() -> None:
     first = next(photon_trim.trim(lines(), BBOX))
     assert first == HEADER
     assert len(consumed) == 1
+
+
+def test_a_place_in_either_area_is_kept() -> None:
+    """With Southwest Florida's box too (the owner, 2026-11-23), a place there is kept and
+    one between the two areas is not."""
+    florida = tuple(settings.SOUTHWEST_FLORIDA_BBOX)
+    assert photon_trim.inside((-81.7787, 26.3398), florida)
+    lines = [
+        place((-81.7787, 26.3398)),  # Bonita Springs
+        place((-81.6557, 30.3322)),  # Jacksonville
+    ]
+    kept = list(photon_trim.trim(lines, [BBOX, florida]))
+    assert kept == lines[:1]
+
+
+def test_the_scripts_florida_box_is_the_settings() -> None:
+    script = (ROOT / "scripts" / "import_photon.sh").read_text()
+    (value,) = re.findall(r'^FLORIDA_BBOX="([^"]+)"', script, flags=re.MULTILINE)
+    assert tuple(float(x) for x in value.split(",")) == tuple(settings.SOUTHWEST_FLORIDA_BBOX)
+    basemap = (ROOT / "scripts" / "fetch_basemap.sh").read_text()
+    (value,) = re.findall(r'^FLORIDA_BBOX="([^"]+)"', basemap, flags=re.MULTILINE)
+    assert tuple(float(x) for x in value.split(",")) == tuple(settings.SOUTHWEST_FLORIDA_BBOX)

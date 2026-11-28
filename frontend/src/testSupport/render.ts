@@ -51,6 +51,11 @@ export function nameOf(el: Element): string {
   const label = el.getAttribute("aria-label");
   if (label) return label.trim();
   const by = el.getAttribute("aria-labelledby");
+  // A form control is named by its <label>: the one around it, or the one whose `for` is its id.
+  if (!by && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA")) {
+    const wrap = el.closest("label") ?? (el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null);
+    if (wrap) return spokenText(wrap).replace(/\s+/g, " ").trim();
+  }
   const text = by ? by.split(/\s+/).map((id) => { const at = document.getElementById(id); return at ? spokenText(at) : ""; }).join(" ") : spokenText(el);
   return text.replace(/\s+/g, " ").trim();
 }

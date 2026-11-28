@@ -147,16 +147,10 @@ test("MapView: the junction card is a named dialog, takes the focus only from a 
   assert.match(mapView, /setAttribute\("aria-label", CARD_CLOSE_LABEL\)/);
   assert.match(mapView, /if \(takeFocus\) close\?\.focus\(\)/);
   assert.match(mapView, /showJunctionCard\(map, item, cardTakesFocus\(opener\)\)/);
-  assert.match(mapView, /openCard\(first, "marker"\)/);
+  assert.match(mapView, /openCard\(item, "marker"\)/);
   assert.match(mapView, /openCard\(found, "list"\)/);
   assert.match(mapView, /card\.on\("close"/);
   assert.match(mapView, /escapeClosesCard\(junctionCard\.current !== null/);
-});
-
-test("MapView: a group's zoom gives the focus to the first member's new marker", () => {
-  assert.match(mapView, /focusAfterZoom\.current = document\.activeElement === element \? first\.index : null/);
-  assert.match(mapView, /if \(wanted !== null\) markerFor\(wanted\)\?\.focus\(\)/);
-  assert.match(mapView, /maxZoom: map\.getMaxZoom\(\)/);
 });
 
 test("MapView: a junction marker's name is its only text (no title read again as its description)", () => {

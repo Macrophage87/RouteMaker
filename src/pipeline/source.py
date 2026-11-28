@@ -96,11 +96,24 @@ GEOFABRIK_BASE_URL = "https://download.geofabrik.de/north-america/us/"
 # Charles Town) inside the coverage box's -78.05 west edge (config.settings.COVERAGE_BBOX). Small
 # next to Virginia and Maryland; the clip drops all but the panhandle.
 GEOFABRIK_REGIONS = ("district-of-columbia", "maryland", "virginia", "west-virginia")
+# The Geofabrik states each map area (`config.settings.COVERAGE_AREAS`) is cut from. The
+# home area's are GEOFABRIK_REGIONS; Southwest Florida's is Florida, of which the clip keeps
+# only the area's box.
+AREA_GEOFABRIK_REGIONS = {
+    "dc-baltimore": GEOFABRIK_REGIONS,
+    "southwest-florida": ("florida",),
+}
 # Each state sits in a folder of its own (Geofabrik, by 2026-11-20: the old flat
 # `us/<state>-latest.osm.pbf` now redirects to a 404, which failed cloud-20261120).
-GEOFABRIK_EXTRACTS = tuple(
-    f"{GEOFABRIK_BASE_URL}{region}/{region}-latest.osm.pbf" for region in GEOFABRIK_REGIONS
-)
+
+
+def geofabrik_extracts(areas=("dc-baltimore",)) -> tuple[str, ...]:
+    """The download URLs for the named map areas, each state once, in order."""
+    regions = dict.fromkeys(r for area in areas for r in AREA_GEOFABRIK_REGIONS[area])
+    return tuple(f"{GEOFABRIK_BASE_URL}{region}/{region}-latest.osm.pbf" for region in regions)
+
+
+GEOFABRIK_EXTRACTS = geofabrik_extracts()
 
 # The two files this stage leaves behind, by fixed name. Fixed rather than
 # derived from the configured path because the second one is what the rest of

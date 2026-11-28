@@ -62,7 +62,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-11-14", "November 14, 2026")
+LAST_UPDATED = ("2026-11-25", "November 25, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -291,6 +291,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "label).",
                 "Favorites: the places you save, Work among them (each one point and its name).",
                 "Your 311 log (below).",
+                "Survey spots you have answered: only which spots, and whether you said you were "
+                "there that day (for your count). Not which day, and not your ride.",
                 "The assistant apps you connected, with the routes each one drafted and you have "
                 "not saved, for a week.",
             ]
@@ -382,6 +384,10 @@ SECTIONS: list[tuple[str, str]] = [
                 "road you found closed), a suggestion keeps the road and the day, never the time "
                 "or your path, and no account. Your device's count for the day keeps the road only "
                 "as a one-way code, deleted after 24 hours.",
+                "A survey spot’s answers keep the spot, the day, your answers and the time of day "
+                "only as a range you pick, such as AM rush (never the time), and no account. "
+                "They help rate the road. Where you are the only rider to answer a spot, your "
+                "answers could be matched to your done list by the spot alone.",
                 "The 311 log keeps each problem you log: what it is, the road’s name, its GPS "
                 "position, the day (not the time) and your note. It stays on your device, and with "
                 "your account when signed in. RouteMaker shows which city or county 311 website "

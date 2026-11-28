@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  groupIconSvg,
+  movementIconSvg,
   junctionIconSvg,
   junctionItems,
   ratedDotFill,
@@ -10,7 +10,6 @@ import {
   ratedTitle,
   ratedWaitText,
   warningIconSvg,
-  type JunctionGroup,
 } from "./intersectionMarkers.ts";
 import { cardName } from "./junctionCard.ts";
 import type { JunctionWarning, RatedJunction } from "./api.ts";
@@ -63,13 +62,15 @@ test("a junction the model priced keeps its warning shape", () => {
   assert.notEqual(junctionIconSvg(junction), warningIconSvg("red"));
 });
 
-test("markers drawn as one are a dot only where every one is rated, at the hardest level", () => {
-  const [a] = junctionItems({ intersections: [junction] });
-  const [b] = junctionItems({ intersections: [{ ...junction, rated: { ...rated, level: 3 } }] });
-  const [model] = junctionItems({ intersections: [{ ...junction, rated: null }] });
-  const group = (members: JunctionGroup["members"]): JunctionGroup => ({ members, severity: "red" });
-  assert.equal(groupIconSvg(group([b, a])), ratedDotSvg(4));
-  assert.equal(groupIconSvg(group([a, model])), warningIconSvg("red"));
+test("a rated route marker is the route's movement in that movement's colour: a dot through, an arrow for a turn", () => {
+  // The owner, 2026-11-22: "show the movement done at each intersection colored by the movement when LtS >=3. Dots for riding through."
+  assert.equal(junctionIconSvg({ ...junction, movement: "straight" }), ratedDotSvg(4));
+  const left = junctionIconSvg({ ...junction, movement: "left", rated: { ...rated, move: "left", level: 3 } });
+  assert.equal(left, movementIconSvg("left", 3));
+  assert.ok(left.includes(ratedDotFill(3)), "the left's own level, not the junction's hardest");
+  assert.ok(left.includes("<path"), "an arrow");
+  assert.ok(movementIconSvg("right", 3).includes("matrix(-1"), "a right is the left's mirror");
+  assert.ok(!movementIconSvg("left", 2).includes(ratedDotFill(2)), "below 3, no stress colour");
 });
 
 test("the panel has a line for each movement that can be made, this route's marked", () => {
