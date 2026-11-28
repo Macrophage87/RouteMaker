@@ -43,6 +43,7 @@ import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import { IosLocationHelp } from "./IosLocationHelp.tsx";
 import { POOR_FIX_M, weighFix, type GpsWeakness, type RideFix } from "./lib/navigate.ts";
+import { stillAtLight } from "./lib/gpsStill.ts";
 import { RIDE_TEXT_BUTTON, ScreenWake, phoneKind, readRideIconsOnly, toScreenReader, wakeSaid, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { useRailFit } from "./lib/railFit.ts";
@@ -401,8 +402,12 @@ export function RoamMode({
   // only poor ones for GPS_WEAK_MS, the rider is told once (ROAM_GPS_WEAK, lib/navigate.ts weighFix).
   const weakness = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
   const [weakGps, setWeakGps] = useState(false);
+  // Waiting at a light is not weak GPS (lib/gpsStill.ts): a rough fix where the last good one was keeps the clock.
+  const lastGood = useRef<RideFix | null>(null);
   useEffect(() => {
     if (!fix) return;
+    if (!weakness.current.weak && stillAtLight(lastGood.current, lastGood.current?.at ?? 0, fix, fix.at)) weakness.current = { goodAt: fix.at, weak: false };
+    if (fix.accuracyM <= POOR_FIX_M) lastGood.current = fix;
     const weighed = weighFix(weakness.current, fix.accuracyM, fix.at);
     weakness.current = weighed;
     setWeakGps(weighed.weak);
