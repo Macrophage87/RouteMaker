@@ -2334,4 +2334,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Rated {level} crossing": "Geçiş puanı {level}",
   "Rated {level} left turn": "Sola dönüş puanı {level}",
   "Rated {level} junction to ride through": "Düz geçilen kavşak puanı {level}",
+  // A rated junction's movements and waits in its card (lib/intersectionMarkers.ts; v0.31.0); a native check is needed.
+  "Crossing": "Geçiş",
+  "Turning left": "Sola dönüş",
+  "Riding along": "Düz devam",
+  "about {s} s": "yaklaşık {s} sn",
 };

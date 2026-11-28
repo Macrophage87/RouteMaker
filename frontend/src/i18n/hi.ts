@@ -2334,4 +2334,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Rated {level} crossing": "क्रॉसिंग, रेटिंग {level}",
   "Rated {level} left turn": "बायाँ मोड़, रेटिंग {level}",
   "Rated {level} junction to ride through": "सीधे पार करने वाला चौराहा, रेटिंग {level}",
+  // A rated junction's movements and waits in its card (lib/intersectionMarkers.ts; v0.31.0); a native check is needed.
+  "Crossing": "पार करना",
+  "Turning left": "बाएँ मुड़ना",
+  "Riding along": "सीधे चलना",
+  "about {s} s": "लगभग {s} सेकंड",
 };

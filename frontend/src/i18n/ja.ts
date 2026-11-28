@@ -2334,4 +2334,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Rated {level} crossing": "評価{level}の横断",
   "Rated {level} left turn": "評価{level}の左折",
   "Rated {level} junction to ride through": "評価{level}の直進する交差点",
+  // A rated junction's movements and waits in its card (lib/intersectionMarkers.ts; v0.31.0); a native check is needed.
+  "Crossing": "横断",
+  "Turning left": "左折",
+  "Riding along": "直進",
+  "about {s} s": "約{s}秒",
 };

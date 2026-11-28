@@ -308,7 +308,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 
 ## NOAA tide predictions (the beach path)
 
-- Credit: `NOAA` ("Low tide ... (NOAA)" in the route note)
+- Credit: `NOAA` (added to the map's credits when Southwest Florida is turned on; the beach note in Go is kept short)
 - Publisher: NOAA Center for Operational Oceanographic Products and Services (CO-OPS),
   `api.tidesandcurrents.noaa.gov/api/prod/datagetter`, `product=predictions`,
   `interval=hilo`, `datum=MLLW`, `time_zone=gmt`, `units=english`.

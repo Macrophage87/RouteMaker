@@ -2334,4 +2334,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Rated {level} crossing": "تېرېدنځای درجه {level}",
   "Rated {level} left turn": "کیڼ لور ته تاوېدل درجه {level}",
   "Rated {level} junction to ride through": "د مخامخ تېرېدو څلورلارې درجه {level}",
+  // A rated junction's movements and waits in its card (lib/intersectionMarkers.ts; v0.31.0); a native check is needed.
+  "Crossing": "تېرېدل",
+  "Turning left": "کیڼ لور ته تاوېدل",
+  "Riding along": "مستقیم تلل",
+  "about {s} s": "شاوخوا {s} ثانیې",
 };

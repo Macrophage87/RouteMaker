@@ -3714,7 +3714,8 @@ rebuild box, the PC and beta, because the api's checks and the rebuild's clip re
 
 Before the front end is built for it, add `{ "text": "FDOT", "html": "FDOT" }` and
 `{ "text": "Florida DEP (Office of Greenways and Trails)", "html": "Florida DEP (Office of
-Greenways and Trails)" }` to `frontend/src/lib/credits.json`, and drop the "when Southwest Florida
+Greenways and Trails)" }` and `{ "text": "NOAA tide predictions", "html": "NOAA tide predictions" }`
+to `frontend/src/lib/credits.json`, and drop the "when Southwest Florida
 is turned on" note from their `Credit:` lines in docs/SOURCES.md (`tests/test_credits.py` then
 holds them to it).
 
@@ -8272,7 +8273,7 @@ wide gates), so the beta agent stops on the tag.
 
 ## Deploying v0.31.0
 
-Everything merged into `release/v0.31.0` since v0.30.4 (#1437, #1439 to #1466). Ships at once:
+Everything merged into `release/v0.31.0` since v0.30.4 (#1437 to #1469). Ships at once:
 survey spots (#1449, #1450, #1457: a Layers switch, a sky-blue "?" on each low-confidence road,
 a card of questions, the ride summary's list of spots passed, connector `survey_spots_near`);
 via points ride the exact way they sit on (#1459, #1460), count as reached within a quarter
@@ -8297,9 +8298,9 @@ trail's short join to a corner crosswalk ridden (#1464).
 
 What changes for a deploy:
 
-- migrations `0069_survey_spots` (survey answer and done tables), `0070_agent_closures` and
-  `0071_agent_key_db_default` (`reviewed_closure.agent_key` with a database default, and
-  `extended_at`); the release agent snapshots the database before it migrates;
+- migrations `0069_survey_spots` (survey answer and done tables), `0070_agent_closures`
+  (`reviewed_closure.agent_key` and `extended_at`) and `0071_agent_key_db_default` (a database
+  default for `agent_key`); the release agent snapshots the database before it migrates;
 - `docker/api.Dockerfile` copies `fixtures/survey` into the image; `compose.yaml` adds
   `RM_COVERAGE_AREAS` (default `dc-baltimore`) to the Django services: leave it unset on beta
   and at home until the Florida map is swapped in, or the api takes Florida points with no roads;
@@ -8310,9 +8311,10 @@ What changes for a deploy:
 - `docker/requirements-api.txt` adds `anthropic==2.10.0`, so the api image is rebuilt (the
   Release workflow's image); the worker is recreated and picks up `run_closure_agent`;
 - the closure agent stays off ("off" on its run row) until the worker has
-  `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and
-  `ANTHROPIC_IDENTITY_TOKEN_FILE` (compose.yaml passes them; env.beta.template lists them) and
-  the token file is mounted; how beta gets its token is the owner's call; when on, the worker
+  `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_WORKSPACE_ID`
+  (env.beta.template lists them; beta's `.env` holds them since 2026-11-28) and the token file
+  (`ANTHROPIC_IDENTITY_TOKEN_FILE`, compose.beta.yaml's default `/run/anthropic-wif/token`) is
+  mounted; when on, the worker
   also reaches api.anthropic.com, Nominatim, the OSM API and the agencies' pages;
 - `compose.beta.yaml`'s worker binds the host's `/run/anthropic-wif` read-only (the identity
   token, `ANTHROPIC_IDENTITY_TOKEN_FILE` defaults to `/run/anthropic-wif/token`) with

@@ -3037,4 +3037,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Rated {level} crossing": "Cruce calificado {level} para atravesar",
   "Rated {level} left turn": "Giro a la izquierda calificado {level}",
   "Rated {level} junction to ride through": "Cruce calificado {level} para seguir de largo",
+  // A rated junction's movements and waits in its card (lib/intersectionMarkers.ts; v0.31.0); a native check is needed.
+  "Crossing": "Cruce",
+  "Turning left": "Giro a la izquierda",
+  "Riding along": "Seguir recto",
+  "about {s} s": "unos {s} s",
 };
