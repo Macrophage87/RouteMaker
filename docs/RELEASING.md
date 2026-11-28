@@ -18,13 +18,12 @@ procedure"). A normal release takes about an hour. The owner is asked once.
    the branch lacks, merge main in. Open the release pull request into main as a draft now: CI
    runs on the release branch from here, and each push replaces the run still going. Post the go
    card.
-2. **Review, while CI runs.** Four reviewer agents cover the eight lenses: correctness (with spec
-   and scope), ops, tests and a11y (runs `npm run build` and the browser check when
-   `frontend/src` changed), simplicity and docs consistency (docs/releases/README.md). A patch of
-   already-reviewed pull requests gets one integration reviewer, plus ops if deploy paths changed
-   and simplicity and docs if riders see the change. A fix is re-checked by the reviewer that
-   asked for it, on the fix's diff only. Give the reviewers the known-deferred list so they don't
-   report it again.
+2. **Review, while CI runs.** Eight reviewer agents, one per lens: correctness, ops, spec,
+   scope, tests, a11y, simplicity and docs consistency (docs/releases/README.md), patches
+   included (the owner, 2026-11-28: "One reviewer per lens is better. The cost isn't huge").
+   The tests and a11y reviewers run `npm run build` and the browser check when `frontend/src`
+   changed. A fix is re-checked by the reviewer that asked for it, on the fix's diff only. Give
+   the reviewers the known-deferred list so they don't report it again.
 3. **Local checks before each push:** `ruff check src tests scripts mcp`, `ruff format --check src
    tests scripts mcp`, `npm test` and `npm run build` in `frontend/` if it changed, and pytest for
    the areas touched. The full suites, browser and a11y included, are CI's run on the release
