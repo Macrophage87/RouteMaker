@@ -95,6 +95,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.32.0](#deploying-v0320)
 - [Deploying v0.31.0](#deploying-v0310)
 - [Deploying v0.30.4](#deploying-v0304)
 - [Deploying v0.30.3](#deploying-v0303)
@@ -8271,6 +8272,24 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.32.0
+
+CI runs once per release from v0.32.0 (the owner, 2026-11-28): on the release branch's pull
+request into main, not again on the push to main. The squash merge's commit has that pull
+request head's tree, so the Release workflow and the beta's release agent take the head's `test`
+and `a11y` for it (`auto-release.sh` `ci_status`, `cd_logic.py merged-pr`): no run on the
+commit, one pull request merged as it, the identical tree, both green on its head. Anything
+else (a GitHub error, another tree, two pull requests that disagree) is not green. And a change
+to `deploy/beta/env.beta.template` alone is a note in the agent's report ("compare .env with
+it"), not a stop; the nginx site and its 401 and 502 pages still stop.
+
+- [ ] **CI on main, this release only** **(owner)**. The agent that deploys v0.32.0 is the one
+  installed before it, which takes only runs on exactly the tag's commit. After the merge, before
+  the Release workflow: Actions, "CI", Run workflow, branch `main`; wait for `test` and `a11y`
+  green. (Released without it, the old agent waits on "has not finished (or not started)" until
+  that run is green.) v0.32.0 changes `auto-release.sh` and `cd_logic.py`, so the agent
+  reinstalls itself after the deploy, and from v0.33.0 the pull request's run is enough.
+
 ## Deploying v0.31.0
 
 Everything merged into `release/v0.31.0` since v0.30.4 (#1437 to #1469). Ships at once:
@@ -8327,9 +8346,12 @@ What changes for a deploy:
   so `/run/anthropic-wif` comes back after a reboot.
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
   (Actions, "Release", Run workflow on main, version `v0.31.0`, then approve).
-- [ ] **Beta** **(owner)**. `~/routemaker-beta-state/cd/bin/auto-release.sh ship-held v0.31.0
-  --no-map --dry-run`, then the same without `--dry-run`. Its log shows the snapshot, migrations
-  0069 to 0071, api and worker recreated, and `migrate --check` OK.
+- [ ] **Beta** **(owner)**. By hand, not `ship-held --no-map`: the env template's new
+  `ANTHROPIC_*` lines are a stop that ship-held does not take (it answers map stops only), so
+  v0.31.0 went out by docs/BETA-RUNBOOK.md, "Shipping an update later" (`pause --wait` first,
+  then `mark-deployed v0.31.0` and `resume`). The ship shows the snapshot, migrations 0069 to
+  0071, api and worker recreated, and `migrate --check` OK. From v0.32.0 an env template change
+  is a note, not a stop.
 - [ ] **Beta check.** The app says 0.31.0; `/api/coverage` is still one Polygon; Layers, Survey
   spots draws blue "?" marks in DC; answering one hides it and the count goes to 1; Mark closed
   and End still work on a closure; the `closure_agent` run row says "off" (or, with the

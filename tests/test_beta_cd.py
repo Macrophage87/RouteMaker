@@ -148,6 +148,64 @@ def test_a_malformed_check_run_answer_is_pending_not_green() -> None:
     assert done.stdout.strip() == "pending"
 
 
+HEAD = "b" * 40
+
+
+def pull_(**fields) -> dict:
+    """One entry of GET /commits/{sha}/pulls: the release pull request, squash-merged as SHA."""
+    base = {
+        "number": 12,
+        "state": "closed",
+        "merged_at": "2026-11-28T12:00:00Z",
+        "merge_commit_sha": SHA,
+        "head": {"sha": HEAD},
+        "base": {"ref": "main"},
+    }
+    base.update(fields)
+    return base
+
+
+@pytest.mark.parametrize(
+    "pulls, found",
+    [
+        ([pull_()], (12, HEAD)),
+        # the same pull request twice is still one
+        ([pull_(), pull_()], (12, HEAD)),
+        # one that only contains the commit, or was closed unmerged, or merged elsewhere, is no
+        # evidence; the merged one beside it still is
+        ([pull_(number=3, merge_commit_sha="c" * 40), pull_()], (12, HEAD)),
+        ([pull_(merged_at=None)], None),
+        ([pull_(base={"ref": "release/v0.32.0"})], None),
+        ([], None),
+        # two that disagree: no verdict from either (it errs closed)
+        ([pull_(), pull_(number=13, head={"sha": "c" * 40})], None),
+        # not what GitHub sends
+        ([pull_(number="12")], None),
+        ([pull_(number=True)], None),
+        ([pull_(head={"sha": "B" * 40})], None),
+        ([pull_(head=None)], None),
+        ({"message": "API rate limit exceeded"}, None),
+        (None, None),
+    ],
+)
+def test_the_pull_request_merged_as_a_commit(pulls, found) -> None:
+    assert cd_logic.merged_pr(pulls, SHA) == found
+
+
+def test_the_merged_pull_request_from_the_command_line() -> None:
+    def run(text: str) -> str:
+        return subprocess.run(
+            [sys.executable, str(BETA / "cd_logic.py"), "merged-pr", "--sha", SHA],
+            input=text,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    assert run(json.dumps([pull_()])) == f"12 {HEAD}"
+    assert run("not json") == "" and run("") == ""
+
+
 # --- the front end's lockfile ---
 
 LOCK = {
@@ -274,7 +332,8 @@ def test_documentation_ci_and_the_phone_app_alone_change_nothing_on_the_server()
     [
         "deploy/beta/nginx-routemaker.conf.template",
         "deploy/beta/401.html",
-        "deploy/beta/env.beta.template",
+        "deploy/beta/502.html",
+        "deploy/beta/a-file-added-later.conf",
         "scripts/prepare_data_root.sh",
         "lua/graph.lua",
         "lua/routemaker_remap.lua",
@@ -292,6 +351,28 @@ def test_a_release_that_needs_the_owner_stops(path: str) -> None:
     result = _gate({path: ("a", "b")})
     assert result["verdict"] == "stop"
     assert any(path in reason for reason in result["reasons"])
+
+
+def test_an_env_template_change_is_a_note_not_a_stop() -> None:
+    # Before: v0.31.0's commented ANTHROPIC_* lines in the template held the release for a hand
+    # ship. After: the report says to compare .env with it, and the release deploys.
+    result = _gate({"deploy/beta/env.beta.template": ("A=1\n", "A=1\n# B=\n")})
+    assert result["verdict"] == "deploy" and result["reasons"] == []
+    assert result["notes"] == [
+        "deploy/beta/env.beta.template: the env template changed: compare .env with it"
+    ]
+    # The nginx site beside it still stops.
+    result = _gate(
+        {
+            "deploy/beta/env.beta.template": ("A=1\n", "A=2\n"),
+            "deploy/beta/nginx-routemaker.conf.template": ("a", "b"),
+        }
+    )
+    assert result["verdict"] == "stop"
+    assert [r.split(":")[0] for r in result["reasons"]] == [
+        "deploy/beta/nginx-routemaker.conf.template"
+    ]
+    assert (REPO / cd_logic.ENV_TEMPLATE).is_file()
 
 
 def test_every_stop_prefix_names_a_path_that_exists() -> None:
@@ -722,6 +803,12 @@ case "$url" in
   https://api.github.com/*/attestations/*)
     [ -n "$out" ] && cat "${STUB_ATTEST:-/dev/null}" > "$out"
     printf '%s' "${STUB_ATTEST_CODE:-200}" ;;
+  # the pull requests merged as a commit: $STUB_PULLS (JSON, [] unset), $STUB_PULLS_CODE [200]
+  https://api.github.com/*/pulls*)
+    if [ -n "$out" ]; then
+      if [ -n "${STUB_PULLS:-}" ]; then cat "$STUB_PULLS" > "$out"; else echo "[]" > "$out"; fi
+    fi
+    printf '%s' "${STUB_PULLS_CODE:-200}" ;;
   https://api.github.com/*)
     [ -n "$out" ] && cat "$STUB_CI" > "$out"
     printf '%s' "${STUB_CI_CODE:-200}" ;;
@@ -983,6 +1070,85 @@ def test_a_red_a11y_check_holds_the_release(beta: Beta) -> None:
     beta.agent("run")
     assert "held" in beta.status() and "a11y" in beta.status()
     assert (beta.cd / "hold" / "v0.2.0").exists()
+
+
+def _pull_request(beta: Beta, number: int, tree_of: str) -> tuple[Path, str]:
+    """A pull request in the origin merged as beta.sha, whose head has `tree_of`'s tree, with
+    `test` and `a11y` green on that head and no run on beta.sha itself."""
+    head = git(beta.origin, "commit-tree", f"{tree_of}^{{tree}}", "-p", beta.v1, "-m", "head")
+    git(beta.origin, "update-ref", f"refs/pull/{number}/head", head)
+    sha = beta.sha
+    beta.sha = head
+    beta.green()
+    beta.sha = sha
+    pulls = beta.tmp / "pulls.json"
+    entry = {
+        "number": number,
+        "merged_at": "2026-11-28T12:00:00Z",
+        "merge_commit_sha": sha,
+        "head": {"sha": head},
+        "base": {"ref": "main"},
+    }
+    pulls.write_text(json.dumps([entry]))
+    return pulls, head
+
+
+def test_ci_on_the_merged_pull_request_s_head_counts_when_the_tree_is_the_same(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    pulls, head = _pull_request(beta, 12, sha)
+    done = beta.agent("run", "--dry-run", STUB_PULLS=str(pulls))
+    assert "would deploy v0.2.0" in done.stdout, done.stdout + done.stderr
+    calls = beta.calls()
+    assert f"/commits/{sha}/check-runs" in calls and f"/commits/{sha}/pulls" in calls
+    assert f"/commits/{head}/check-runs" in calls
+
+
+def test_ci_on_a_pull_request_head_with_another_tree_is_not_green(beta: Beta) -> None:
+    # Before/after: the same pull request and green runs, but its head's tree is not the tag's.
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    pulls, head = _pull_request(beta, 12, beta.v1)
+    done = beta.agent("run", "--dry-run", STUB_PULLS=str(pulls))
+    assert "would deploy" not in done.stdout
+    assert "not the same tree" in done.stdout and "run CI on main" in done.stdout
+    assert f"/commits/{head}/check-runs" not in beta.calls()
+    beta.agent("run", STUB_PULLS=str(pulls))
+    assert "waiting" in beta.status() and not (beta.cd / "hold" / "v0.2.0").exists()
+    # CI run by hand on main's commit is then green on its own.
+    beta.green()
+    assert "would deploy v0.2.0" in beta.agent("run", "--dry-run", STUB_PULLS=str(pulls)).stdout
+    # ship-held reads it the same way: no green on the tag's commit or a same-tree head, no ship.
+    beta.ci.write_text(json.dumps({"check_runs": []}))
+    held = beta.agent("ship-held", "v0.2.0", "--dry-run", STUB_PULLS=str(pulls), **UP)
+    assert held.returncode != 0 and "not the same tree" in held.stdout + held.stderr
+    assert sha == beta.sha
+
+
+def test_no_single_merged_pull_request_or_an_api_error_waits(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    pulls, _head = _pull_request(beta, 12, sha)
+    entries = json.loads(pulls.read_text())
+    other = dict(entries[0], number=13, head={"sha": beta.v1})
+    two = beta.tmp / "two.json"
+    two.write_text(json.dumps([entries[0], other]))
+    for env in ({"STUB_PULLS": str(two)}, {"STUB_PULLS": str(pulls), "STUB_PULLS_CODE": "502"}, {}):
+        beta.agent("run", **env)
+        assert "waiting" in beta.status(), env
+        assert not (beta.cd / "hold" / "v0.2.0").exists()
+    assert (
+        "HTTP 502"
+        in beta.agent("run", "--dry-run", STUB_PULLS=str(pulls), STUB_PULLS_CODE="502").stdout
+    )
+
+
+def test_ci_runs_once_per_release_on_the_pull_request_not_again_on_main() -> None:
+    import yaml
+
+    ci = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())
+    on = ci[True]  # YAML 1.1 reads the bare key `on` as true
+    assert set(on) == {"pull_request", "workflow_dispatch"}
+    assert on["pull_request"]["branches"] == ["main"]
+    release = (REPO / ".github" / "workflows" / "release.yml").read_text()
+    assert "merged-pr --sha" in release and 'rev-parse --verify "$head^{tree}"' in release
 
 
 def test_a_release_needing_the_owner_is_held_with_the_reason(beta: Beta) -> None:

@@ -2,7 +2,7 @@ name: Release
 
 # The owner's release button (the owner, 2026-11-12: "Yes, behind your approval"). Run it from
 # GitHub (Actions, "Release", Run workflow, on main; the phone app works) once the release branch
-# has merged into main and CI is green there. It checks the commit, then WAITS for the owner's
+# has merged into main (CI ran on its pull request; ci.yml). It checks the commit, then WAITS for the owner's
 # approval in the `release` environment; once approved it builds the api image from that commit,
 # publishes it, and makes the annotated release tag, which names the image by digest. The beta's
 # release agent (scripts/beta/auto-release.sh) deploys the tag as it always has, pulling that exact
@@ -67,9 +67,25 @@ jobs:
           git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha is not on main"; exit 1; }
           git cat-file -e "$sha:docs/releases/$VERSION.md" 2>/dev/null ||
             { echo "::error::docs/releases/$VERSION.md is not in $sha: the release notes come first"; exit 1; }
-          # The same verdict the beta's agent reads: `test` and `a11y` green on exactly this commit.
+          # The same verdict the beta's agent reads (auto-release.sh, ci_status): `test` and `a11y`
+          # green on this commit or, when none has run there, on the head of the one pull request
+          # merged as it, if that head has the identical tree (CI runs once, on that pull request).
           verdict=$(gh api "repos/$REPO/commits/$sha/check-runs?filter=latest&per_page=100" |
             python3 scripts/beta/cd_logic.py ci-verdict --sha "$sha")
+          if [ "$verdict" = pending ]; then
+            pr=$(gh api "repos/$REPO/commits/$sha/pulls?per_page=100" |
+              python3 scripts/beta/cd_logic.py merged-pr --sha "$sha")
+            [ -n "$pr" ] || { echo "::error::no CI on $sha and no one pull request merged as it"; exit 1; }
+            read -r num head <<<"$pr"
+            git fetch --quiet --no-tags origin "refs/pull/$num/head"
+            ours=$(git rev-parse --verify "$sha^{tree}")
+            theirs=$(git rev-parse --verify "$head^{tree}")
+            [ "$ours" = "$theirs" ] ||
+              { echo "::error::no CI on $sha, and pull request #$num's head $head is not the same tree: run CI on main"; exit 1; }
+            verdict=$(gh api "repos/$REPO/commits/$head/check-runs?filter=latest&per_page=100" |
+              python3 scripts/beta/cd_logic.py ci-verdict --sha "$head")
+            echo "CI read from pull request #$num's head $head, the same tree as $sha: $verdict"
+          fi
           [ "$verdict" = green ] || { echo "::error::CI on $sha is $verdict, not green (test and a11y)"; exit 1; }
           echo "sha=$sha" >>"$GITHUB_OUTPUT"
           {

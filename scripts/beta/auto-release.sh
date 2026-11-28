@@ -439,20 +439,49 @@ check_report_url() {
 }
 
 # --- GitHub ---------------------------------------------------------------------------------------
-# Prints green, pending, red, or "unknown <reason>" (rate limit, network): try again next pass.
-# Green is every check run cd_logic.py names (CHECK_NAMES: `test` and `a11y`) green.
-ci_status() { # sha
-	local sha=$1 body code
-	body=$(mktemp)
-	code=$("${CURL:-curl}" -sS --max-time 30 -o "$body" -w '%{http_code}' \
+gh_get() { # api path, file: writes GitHub's answer to the file, prints the HTTP code
+	local code
+	code=$("${CURL:-curl}" -sS --max-time 30 -o "$2" -w '%{http_code}' \
 		-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' -H 'User-Agent: routemaker-beta-cd' \
-		"https://api.github.com/repos/$gh_repo/commits/$sha/check-runs?filter=latest&per_page=100" 2>>"$run_log") || code=000
-	case "$code" in
-		200) "$py" "$logic" ci-verdict --sha "$sha" <"$body" ;;
-		403 | 429) echo "unknown GitHub's rate limit (HTTP $code)" ;;
-		*) echo "unknown GitHub answered HTTP $code" ;;
+		"https://api.github.com/repos/$gh_repo/$1" 2>>"$run_log") || code=000
+	echo "$code"
+}
+gh_problem() { # code
+	case "$1" in
+		403 | 429) echo "unknown GitHub's rate limit (HTTP $1)" ;;
+		*) echo "unknown GitHub answered HTTP $1" ;;
 	esac
+}
+# Prints green, pending, red, or "unknown <reason>" (rate limit, network, no CI): try again next pass.
+# Green is every check run cd_logic.py names (CHECK_NAMES: `test` and `a11y`) green on the commit,
+# or, when none has run there, on the head of the one pull request merged as it, if that head has
+# the identical tree: CI runs once per release, on the pull request into main (ci.yml).
+ci_status() { # sha
+	local sha=$1 body code verdict pr num head ours theirs
+	body=$(mktemp)
+	code=$(gh_get "commits/$sha/check-runs?filter=latest&per_page=100" "$body")
+	if [ "$code" != 200 ]; then verdict=$(gh_problem "$code")
+	else verdict=$("$py" "$logic" ci-verdict --sha "$sha" <"$body"); fi
+	if [ "$verdict" = pending ]; then
+		code=$(gh_get "commits/$sha/pulls?per_page=100" "$body")
+		if [ "$code" != 200 ]; then verdict=$(gh_problem "$code")
+		elif ! pr=$("$py" "$logic" merged-pr --sha "$sha" <"$body") || [ -z "$pr" ]; then :
+		else
+			read -r num head <<<"$pr"
+			if ! gitc fetch --quiet --no-tags origin "refs/pull/$num/head" >>"$run_log" 2>&1; then
+				verdict="unknown could not fetch pull request #$num's head"
+			elif ! ours=$(gitc rev-parse --verify --quiet "$sha^{tree}") || ! theirs=$(gitc rev-parse --verify --quiet "$head^{tree}") || [ "$ours" != "$theirs" ]; then
+				verdict="unknown no CI on $sha, and pull request #$num's head $head is not the same tree: run CI on main (Actions, CI, Run workflow)"
+			else
+				code=$(gh_get "commits/$head/check-runs?filter=latest&per_page=100" "$body")
+				if [ "$code" != 200 ]; then verdict=$(gh_problem "$code")
+				else verdict=$("$py" "$logic" ci-verdict --sha "$head" <"$body"); fi
+				echo "CI for $sha read from pull request #$num's head $head (the same tree): $verdict" >>"$run_log"
+			fi
+		fi
+	fi
 	rm -f "$body"
+	echo "$verdict"
 }
 
 # --- the front end --------------------------------------------------------------------------------
