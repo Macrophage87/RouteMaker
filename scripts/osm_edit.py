@@ -225,7 +225,10 @@ def edit_problem(edit: object) -> str | None:
         if changes["footway"] is not None and changes["footway"] not in FOOTWAY_VALUES:
             return f"a way's footway may only be removed or set to one of {sorted(FOOTWAY_VALUES)}"
     if "toilets:disposal" in changes and changes["toilets:disposal"] not in TOILET_DISPOSAL_VALUES:
-        return f"a restroom's toilets:disposal may only be set to one of {sorted(TOILET_DISPOSAL_VALUES)}"
+        return (
+            "a restroom's toilets:disposal may only be set to one of "
+            f"{sorted(TOILET_DISPOSAL_VALUES)}"
+        )
     comment = edit.get("comment")
     if not isinstance(comment, str) or not comment.strip() or len(comment) > 255:
         return "comment is the changeset note: 1 to 255 characters"

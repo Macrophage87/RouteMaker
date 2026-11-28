@@ -418,7 +418,7 @@ test("a full account names the route unopened longest and asks before deleting i
   assert.ok(!outcome.ok && outcome.full && outcome.propose?.id === 9);
 });
 
-// Today's directions for a saved line (the owner, 2026-11-24, riding his saved commute, saved 2026-11-10: "The turn that
+// Today's directions for a saved line (the owner, riding a saved route made two weeks before: "The turn that
 // I asked to keep as a test is STILL not shown!"). The fixture is the Metropolitan Branch Trail's jog at Aspen Street
 // as the planner answers it now (fixtures/cues/takoma-mbt-jog.json); the saved answer is the same line with the
 // directions it had before #1310: no jog.
@@ -451,6 +451,14 @@ test("today's directions are not taken where the planner did not follow the save
   const stopAt = { ...(saved.description ?? [])[0], kind: "via", turn: null } as NonNullable<RouteResponse["description"]>[number];
   const withStop = { ...saved, description: [stopAt, ...(saved.description ?? [])] };
   assert.equal(withTodaysDirections(withStop, { ...takoma(), follows_file: true }), null);
+});
+
+test("on a long route, today's directions are taken within a tenth of a percent of its length, not beyond", () => {
+  // A 40 mi (64.4 km) route: 60 m apart is the same line matched again; 70 m apart is not (half a percent was 322 m).
+  const saved = { ...beforeTheFix(takoma()), distance_m: 64_374 };
+  assert.ok(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: 64_374 + 60 }));
+  assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: 64_374 + 70 }), null);
+  assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: 64_374 - 70 }), null);
 });
 
 test("the saved line is asked to be followed as it is, but not on a loop", () => {

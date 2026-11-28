@@ -5531,6 +5531,7 @@ dialog.plan-ride-settings h2:focus {
 }
 
 .ride-summary-felt > button.link,
+.ride-summary-survey > button.link,
 .ride-summary-felt h3 {
   font-size: 16pt;
   min-height: 48px;
@@ -9188,6 +9189,10 @@ details.fold > summary .icon {
 .save-route-said:empty {
   display: none;
 }
+/* The saved line's Share: a 44 px target in Plan's map bar too. */
+.save-route-share {
+  min-height: 44px;
+}
 /* Save's Fixed route box (the owner, 2026-11-10): the box, its name and one line, with Plan's (i) after them; a line
    of its own in every Save form, the box a 44 px target. */
 .save-route-form .save-route-fixed {
@@ -12532,6 +12537,14 @@ dialog.plan-ride-settings .dial-ends {
   height: 20px;
   margin: 0;
   flex: none;
+}
+/* Send and Cancel stay in view at the foot of the card, however many questions it has. */
+.survey-card .survey-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding: 8px 0;
+  margin-top: 4px;
 }
 .survey-near {
   list-style: none;

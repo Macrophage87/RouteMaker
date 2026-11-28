@@ -103,6 +103,9 @@ export interface LayerSectionProps {
   /** The section switch's id; defaults to `${id}-section-switch`. */
   switchId?: string;
   className?: string;
+  /** A language mark for a section whose words are English and Spanish only (i18n.ts planLanguageAttributes). */
+  lang?: string;
+  dir?: "ltr";
   /** The section's layers. None (the stress map unavailable): no switch, the row is its name and the disclosure. */
   layers: readonly SectionLayer[];
   /** Turn each layer to its new state (sectionPress's answer). */
@@ -117,7 +120,7 @@ export interface LayerSectionProps {
 }
 
 /** The section: its row (name, switch, disclosure), its status line, and its layers, closed to begin with. */
-export function LayerSection({ id, title, headingId = `${id}-heading`, switchId = `${id}-section-switch`, className, layers, onLayers, status, children }: LayerSectionProps): ReactElement {
+export function LayerSection({ id, title, headingId = `${id}-heading`, switchId = `${id}-section-switch`, className, lang, dir, layers, onLayers, status, children }: LayerSectionProps): ReactElement {
   const [open, setOpen] = useState(false);
   const state = sectionState(layers);
   const bodyId = `${id}-section-body`;
@@ -125,7 +128,7 @@ export function LayerSection({ id, title, headingId = `${id}-heading`, switchId 
   const said = typeof status === "function" ? status(open) : status;
   return h(
     "section",
-    { "aria-labelledby": headingId, className: ["layer-group", "layer-section", className].filter(Boolean).join(" ") },
+    { "aria-labelledby": headingId, className: ["layer-group", "layer-section", className].filter(Boolean).join(" "), lang, dir },
     h(
       "div",
       { className: "layer-section-row" },

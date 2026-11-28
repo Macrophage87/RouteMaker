@@ -51,19 +51,23 @@ def fetch_json(url: str) -> dict:
 
 
 def query(station: str, begin: date, end: date) -> str:
-    return API + "?" + urllib.parse.urlencode(
-        {
-            "product": "predictions",
-            "application": "routemaker",
-            "begin_date": begin.strftime("%Y%m%d"),
-            "end_date": end.strftime("%Y%m%d"),
-            "datum": "MLLW",
-            "station": station,
-            "time_zone": "gmt",
-            "interval": "hilo",
-            "units": "english",
-            "format": "json",
-        }
+    return (
+        API
+        + "?"
+        + urllib.parse.urlencode(
+            {
+                "product": "predictions",
+                "application": "routemaker",
+                "begin_date": begin.strftime("%Y%m%d"),
+                "end_date": end.strftime("%Y%m%d"),
+                "datum": "MLLW",
+                "station": station,
+                "time_zone": "gmt",
+                "interval": "hilo",
+                "units": "english",
+                "format": "json",
+            }
+        )
     )
 
 

@@ -27,7 +27,8 @@ their own readers (`core.closure_sources`, `core.workzones`).
 
 Kept in one `BikeshareFeedCache` row (`KEY`): each page's text, its hash and the closures last
 drawn from it (public pages only, nothing personal). A changed page is screened by Claude Haiku
-first (`screen`): Opus reads it only where a closure may have changed. docs/OPERATIONS.md, "The closure agent".
+first (`screen`): Opus reads it only where a closure may have changed. docs/OPERATIONS.md,
+"The closure agent".
 """
 
 from __future__ import annotations

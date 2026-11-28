@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { addBeaches, beachAlongRoute, beachNote, BEACH_FILL_LAYER, BEACH_PATH_LAYER, BEACH_SOURCE_ID, loadBeaches, parseBeaches, type BeachMap } from "./beaches.ts";
+import { lowTidesOn, nearestStation, readTides } from "./tides.ts";
 
 const LON = -81.85;
 const RAW = {
@@ -31,18 +32,24 @@ test("a route along the tide line is on the beach path for that stretch only", (
   assert.equal(beachAlongRoute(line, null), null);
 });
 
-test("the note says to ride it at low tide, with that day's low tides at the nearest station", () => {
+test("the note is one short line: ride it at low tide, at that day's low tides on the page's clock", () => {
   const along = { metres: 1609.344, at: [LON, 26.303] as [number, number] };
   const lows = [
     { at: new Date("2026-12-23T10:34:00Z"), feet: -1.3 },
     { at: new Date("2026-12-23T22:18:00Z"), feet: 1.4 },
   ];
-  assert.equal(
-    beachNote(along, lows, "Naples (outer coast)"),
-    "Beach path, 1.0 mi (1.6 km): ride it at low tide, on the firm sand below the high-tide line. Low tide: 5:34 AM, -1.3 ft (-0.4 m); 5:18 PM, 1.4 ft (0.4 m). Naples (outer coast), NOAA.",
-  );
-  assert.match(beachNote(along, null, null), /^Beach path, 1\.0 mi \(1\.6 km\): ride it at low tide, on the firm sand below the high-tide line\.$/);
-  assert.match(beachNote(along, [], "Naples"), /No low tide that day/);
+  assert.equal(beachNote(along, lows, "en-US"), "Beach path, 1.0 mi (1.6 km): ride at low tide (5:34 AM, 5:18 PM).");
+  assert.match(beachNote(along, lows, "fr-FR"), /\(5:34 et 17:18\)\.$/, "a 24-hour page's clock, in its own words");
+  assert.equal(beachNote(along, [], "en-US"), "Beach path, 1.0 mi (1.6 km): ride at low tide. No low tide that day.");
+  assert.equal(beachNote(along, null, "en-US"), "Beach path, 1.0 mi (1.6 km): ride at low tide.", "no tide data says only to ride at low tide");
+});
+
+test("a ride day outside the tide file reads as no tide data, not as no low tide that day", () => {
+  const data = readTides({ from: "2026-12-23", to: "2027-01-23", stations: [{ id: "8725110", name: "Naples", lon: -81.808, lat: 26.132, lows: [] }] })!;
+  const along = { metres: 1609.344, at: [LON, 26.303] as [number, number] };
+  const note = beachNote(along, lowTidesOn(data, nearestStation(data, along.at), new Date("2027-06-01T15:00:00Z")), "en-US");
+  assert.equal(note, "Beach path, 1.0 mi (1.6 km): ride at low tide.");
+  assert.doesNotMatch(note, /No low tide/);
 });
 
 test("the beaches and the tide line are drawn once, under the route", () => {

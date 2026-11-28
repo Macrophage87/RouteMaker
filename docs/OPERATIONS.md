@@ -95,6 +95,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.31.0](#deploying-v0310)
 - [Deploying v0.30.4](#deploying-v0304)
 - [Deploying v0.30.3](#deploying-v0303)
 - [Deploying v0.30.1](#deploying-v0301)
@@ -3710,6 +3711,13 @@ DC to Baltimore, and Southwest Florida (Sarasota to Marco Island and Everglades 
 the owner, 2026-11-23). An area is on where `RM_COVERAGE_AREAS` names it, `dc-baltimore`
 first: `RM_COVERAGE_AREAS=dc-baltimore,southwest-florida`. It must be the same on the
 rebuild box, the PC and beta, because the api's checks and the rebuild's clip read it.
+
+Before the front end is built for it, add `{ "text": "FDOT", "html": "FDOT" }` and
+`{ "text": "Florida DEP (Office of Greenways and Trails)", "html": "Florida DEP (Office of
+Greenways and Trails)" }` and `{ "text": "NOAA tide predictions", "html": "NOAA tide predictions" }`
+to `frontend/src/lib/credits.json`, and drop the "when Southwest Florida
+is turned on" note from their `Credit:` lines in docs/SOURCES.md (`tests/test_credits.py` then
+holds them to it).
 
 With Southwest Florida on:
 
@@ -8262,6 +8270,82 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.31.0
+
+Everything merged into `release/v0.31.0` since v0.30.4 (#1437 to #1469). Ships at once:
+survey spots (#1449, #1450, #1457: a Layers switch, a sky-blue "?" on each low-confidence road,
+a card of questions, the ride summary's list of spots passed, connector `survey_spots_near`);
+via points ride the exact way they sit on (#1459, #1460), count as reached within a quarter
+mile in Ride (#1461), and stay on an automatic re-route (#1463); saved routes take today's
+directions for their own line (#1446); a route stretch says how much is on bridges (#1458);
+the ride chart's close turns as one arrow and route junction markers that show the route's own
+movement (#1439 to #1441); Plan's chart shows stop icons (#1437); beta builds print the GPS
+position in small print in Ride (#1462); the agent park closures through the connector (#1466),
+and the same agent on beta's worker (#1467, "The closure agent on the worker (v0.31.0)"): an
+hourly `run_closure_agent` task (23 past each hour) that reads the park and county agencies'
+pages with Claude and marks, extends and ends the closures it can place.
+
+Takes effect only with a map rebuilt from v0.31.0 or later: Southwest Florida as a second area
+(#1442, #1444; off until `RM_COVERAGE_AREAS` names it, "Map areas: turning on Southwest
+Florida"), its beach path and low tides (#1445), restrooms beside paths and fountains (#1465),
+school, hospital and similar service roads destination-only (#1454), gated communities and their
+paths closed (#1453), Florida trail uses (#1456), sidewalks priced as side paths where the law
+lets bikes ride them and as connectors where no road runs beside them (#1447, #1455), a sidewalk
+beside a level 4 road with a read speed of 45 mph or more priced as a link, in DC-Baltimore too
+(#1451, the owner's "merge that", 2026-11-26), footways joining two streets drawn (#1448) and a
+trail's short join to a corner crosswalk ridden (#1464).
+
+What changes for a deploy:
+
+- migrations `0069_survey_spots` (survey answer and done tables), `0070_agent_closures`
+  (`reviewed_closure.agent_key` and `extended_at`) and `0071_agent_key_db_default` (a database
+  default for `agent_key`); the release agent snapshots the database before it migrates;
+- `docker/api.Dockerfile` copies `fixtures/survey` into the image; `compose.yaml` adds
+  `RM_COVERAGE_AREAS` (default `dc-baltimore`) to the Django services: leave it unset on beta
+  and at home until the Florida map is swapped in, or the api takes Florida points with no roads;
+- `lua/graph.lua` and `lua/routemaker_remap.lua` changed, so the release agent holds the tag as
+  one that needs a map; the code ships alone with `ship-held --no-map`, and the Lua rules do
+  nothing on today's map (no way carries `rm:campus_grounds` or `rm:sidewalk=sidepath` until the
+  pipeline writes them);
+- `docker/requirements-api.txt` adds `anthropic==2.10.0`, so the api image is rebuilt (the
+  Release workflow's image); the worker is recreated and picks up `run_closure_agent`;
+- the closure agent stays off ("off" on its run row) until the worker has
+  `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_WORKSPACE_ID`
+  (env.beta.template lists them; beta's `.env` holds them since 2026-11-28) and the token file
+  (`ANTHROPIC_IDENTITY_TOKEN_FILE`, compose.beta.yaml's default `/run/anthropic-wif/token`) is
+  mounted; when on, the worker
+  also reaches api.anthropic.com, Nominatim, the OSM API and the agencies' pages;
+- `compose.beta.yaml`'s worker binds the host's `/run/anthropic-wif` read-only (the identity
+  token, `ANTHROPIC_IDENTITY_TOKEN_FILE` defaults to `/run/anthropic-wif/token`) with
+  `group_add ${ANTHROPIC_WIF_GID:-986}` (#1469). The bind does not make its folder, so the
+  beta host needs `/etc/tmpfiles.d/anthropic-wif.conf` before its next reboot (the closures
+  thread gave the owner the line; the folder is there today, so this deploy starts);
+- no `valhalla/` or nginx change.
+
+- [ ] **The token folder** **(owner)**. `/etc/tmpfiles.d/anthropic-wif.conf` on the beta host,
+  so `/run/anthropic-wif` comes back after a reboot.
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.31.0`, then approve).
+- [ ] **Beta** **(owner)**. `~/routemaker-beta-state/cd/bin/auto-release.sh ship-held v0.31.0
+  --no-map --dry-run`, then the same without `--dry-run`. Its log shows the snapshot, migrations
+  0069 to 0071, api and worker recreated, and `migrate --check` OK.
+- [ ] **Beta check.** The app says 0.31.0; `/api/coverage` is still one Polygon; Layers, Survey
+  spots draws blue "?" marks in DC; answering one hides it and the count goes to 1; Mark closed
+  and End still work on a closure; the `closure_agent` run row says "off" (or, with the
+  federation settings in, a run at 23 past the hour).
+- [ ] **Later, the closure agent** **(owner)**. Set the three federation settings and mount the
+  token file, recreate the worker, watch one hourly run; then the session agent's hourly
+  scheduled task is retired.
+- [ ] **Rollback.** `auto-release.sh rollback --restore-db` (it loses survey answers and
+  closures made since) with the v0.30.4 front end. `--keep-db` works for closures (0071 gives
+  `agent_key` a database default), but deleting an account that answered a survey spot then
+  fails on `survey_done`'s key, so delete that account's `survey_done` rows by hand first.
+- [ ] **Later, the map** **(owner)**. The map rebuilt from v0.31.0 (or its release head),
+  installed with `scripts/cloud/import-result.sh --beta`. Its log names the campus service
+  roads made destination-only and the sidewalks priced as side paths; after the swap,
+  `refresh_places.py`, the barrier snapshot and `build_intervals`. Florida only by turning on
+  `RM_COVERAGE_AREAS` everywhere, as "Map areas: turning on Southwest Florida" says.
 
 ## Deploying v0.30.4
 

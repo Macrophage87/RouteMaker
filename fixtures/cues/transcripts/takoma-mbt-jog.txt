@@ -1,4 +1,4 @@
-# takoma-mbt-jog: Metropolitan Branch Trail north beside Blair Rd: a right then left in the middle of one way at Aspen St, no junction at either corner (#1310); the owner's saved commute rides it
+# takoma-mbt-jog: Metropolitan Branch Trail north beside Blair Rd: a right then left in the middle of one way at Aspen St, no junction at either corner (#1310)
 
 ## The cues Ride made
     26 m  #0 left Blair Rd NW: Left onto Blair Road Northwest, then immediately left onto Metropolitan Branch Trail.

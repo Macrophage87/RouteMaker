@@ -709,8 +709,8 @@ def campus_ways(ways, areas: Sequence[Area]) -> set[int]:
     emergency entrance, a station's apron, a forecourt, the drives, by at least
     INSIDE_FRACTION of their length inside the grounds. Destination-only for routing
     (`rm:campus_grounds`): reached to or from a point on them (an end, a stop or a via),
-    never a cut-through. The owner, 2026-11-26, after a commute was sent round a school's
-    bus loop at 8 AM: "keep it to service roads in front of a school. Allow with a
+    never a cut-through. The owner, after a route was sent round a school's bus loop:
+    "keep it to service roads in front of a school. Allow with a
     destination, stop, or via." and "cutting through school grounds feels weird as an
     adult if you don't have a reason to go there"; then "some hospitals too might have
     that cut through issue too", and of the stations, places of worship and filling

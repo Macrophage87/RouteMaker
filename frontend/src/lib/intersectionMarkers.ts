@@ -326,6 +326,7 @@ export function junctionIconSvg(junction: Pick<JunctionWarning, "severity" | "ra
   return junction.rated ? movementIconSvg(junction.movement, junction.rated.level, size) : warningIconSvg(junction.severity, size);
 }
 
+// Said through t() where they are used (the catalogs hold each).
 const RATED_MOVE_WORDS: Record<RatedMove["move"], string> = {
   cross: "Crossing",
   left: "Turning left",
@@ -335,7 +336,7 @@ const RATED_MOVE_WORDS: Record<RatedMove["move"], string> = {
 /** "about 40 s": a rated wait, to the nearest 5 seconds from 10 up; "" where none is given or it is nothing. */
 export function ratedWaitText(wait_s: number | null | undefined): string {
   if (typeof wait_s !== "number" || wait_s < 1) return "";
-  return `about ${wait_s >= 10 ? Math.round(wait_s / 5) * 5 : Math.round(wait_s)} s`;
+  return t("about {s} s", { s: wait_s >= 10 ? Math.round(wait_s / 5) * 5 : Math.round(wait_s) });
 }
 
 export interface RatedLine {
@@ -350,7 +351,7 @@ export function ratedLines(rated: Pick<RatedJunction, "moves"> & { move?: RatedJ
   return rated.moves.map((move) => {
     const wait = ratedWaitText(move.wait_s);
     return {
-      text: `${RATED_MOVE_WORDS[move.move]}: ${ratedLevelText(move.level)}${wait ? `, ${wait}` : ""}`,
+      text: `${t(RATED_MOVE_WORDS[move.move])}: ${ratedLevelText(move.level)}${wait ? `, ${wait}` : ""}`,
       yours: move.move === rated.move,
     };
   });
@@ -358,6 +359,8 @@ export function ratedLines(rated: Pick<RatedJunction, "moves"> & { move?: RatedJ
 
 /** "Rated LTS 4 crossing": what a rated junction's marker and card are called. */
 export function ratedTitle(rated: RatedJunction): string {
-  const what = { cross: "crossing", left: "left turn", along: "junction to ride through" }[rated.move];
-  return `Rated ${ratedLevelText(rated.level)} ${what}`;
+  const level = ratedLevelText(rated.level);
+  if (rated.move === "cross") return t("Rated {level} crossing", { level });
+  if (rated.move === "left") return t("Rated {level} left turn", { level });
+  return t("Rated {level} junction to ride through", { level });
 }

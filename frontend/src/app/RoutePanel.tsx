@@ -563,11 +563,11 @@ export function ShareControls(props: {
         </p>
       )}
       {ready && onShareKeep && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
-      <p className="hint share-said" role="status">
+      <p id="share-said" className="hint share-said" role="status">
         {shareSaid.text}
         {shareSaid.count % 2 === 1 ? " " : ""}
       </p>
-      <LinkBox link={shareBox} />
+      <LinkBox link={shareBox} describedBy="share-said" />
     </div>
   );
 }
@@ -620,11 +620,11 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
         </p>
       )}
       {linkSaid && (
-        <span className="hint link-said" aria-hidden="true">
+        <span id="link-said" className="hint link-said" aria-hidden="true">
           {linkSaid}
         </span>
       )}
-      <LinkBox link={linkBox} />
+      <LinkBox link={linkBox} describedBy={linkSaid ? "link-said" : undefined} />
       {linkNote && (
         <p id="link-note" className="hint link-note">
           {linkNote}

@@ -108,7 +108,7 @@ import { metricFirst, subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
-import { ROUTE_TRAIL_LAYER_IDS, ROUTE_TRAIL_SOURCE, routeTrailFeatures, routeTrailLayers } from "./lib/routeTrailLayers.ts";
+import { ROUTE_DRAWN_GAPS_LAYER, ROUTE_LINE_LAYER, ROUTE_LINE_LAYERS, ROUTE_TRAIL_SOURCE, routeTrailFeatures, routeTrailLayers } from "./lib/routeTrailLayers.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
@@ -595,8 +595,6 @@ const ONBOARD_SOURCE = "onboard-path";
 const MOUSE_HIT_PX = 8;
 /** The line layer of Go's other routes to choose from, which a press is tested against (lib/routeChoice.ts). */
 const CHOICE_LINE_LAYER = "route-choice-line";
-/** The route's line layers, for what is drawn just over them (waterLayerBefore). */
-const ROUTE_LINE_LAYERS = ["route-line", "route-drawn-gaps", ...ROUTE_TRAIL_LAYER_IDS];
 const TOUCH_HIT_PX = 18;
 
 // The stress overlay's layer ids, for a press on a mountain-bike trail's line (lib/mapGlue.ts mtbTrailPressed).
@@ -1613,7 +1611,7 @@ export function MapView(props: Props) {
       // A half step's dash in the colour-blind-friendly palette (the owner, 2026-10-31: "keep dashes with the same rules").
       for (const layer of routeHalfLayers(ROUTE_STRESS_SOURCE)) map.addLayer(layer as never);
       map.addLayer({
-        id: "route-line",
+        id: ROUTE_LINE_LAYER,
         type: "line",
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
@@ -1623,7 +1621,7 @@ export function MapView(props: Props) {
       // read dashed beside the routed legs' solid line. Not while the route is greyed for a new plan.
       map.addSource(ROUTE_DRAWN_SOURCE, { type: "geojson", data: routeDrawnLines(null, 0) as never });
       map.addLayer({
-        id: "route-drawn-gaps",
+        id: ROUTE_DRAWN_GAPS_LAYER,
         type: "line",
         source: ROUTE_DRAWN_SOURCE,
         layout: { "line-join": "round", "line-cap": "butt" },

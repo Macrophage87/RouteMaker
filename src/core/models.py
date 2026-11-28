@@ -2385,7 +2385,9 @@ class ReviewedClosure(models.Model):
     # The agency alert an agent closure follows ("aacounty:64ce39415d29:1"): set only on one an
     # agent entered through the connector (core.reviewed_closures, "Agent closures"), which it
     # extends a day at a time while the alert stays up and ends when it goes. Empty: a person's.
-    agent_key = models.CharField(max_length=100, blank=True, default="")
+    # The default is the database's too (0071), so the release before, which leaves the column
+    # out of its inserts, can still mark a closure after a rollback that keeps the database.
+    agent_key = models.CharField(max_length=100, blank=True, default="", db_default="")
     # When its last day was last moved (`reviewed_closures.extend`), so other processes reread.
     extended_at = models.DateTimeField(null=True, blank=True)
 

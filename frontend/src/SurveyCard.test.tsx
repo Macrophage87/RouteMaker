@@ -7,6 +7,7 @@ import { SurveyCard } from "./SurveyCard.tsx";
 import { SurveySection } from "./app/SurveySection.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import { statsStart } from "./lib/rideStats.ts";
+import { setLanguageForTest } from "./lib/i18n.ts";
 import { spotsNear, spotsPassed, surveyIcon, type SurveyMine, type SurveySpot } from "./lib/surveySpots.ts";
 
 const spot: SurveySpot = { id: "s101", road: "Ohio Drive Southwest", lon: -77.03, lat: 38.87 };
@@ -48,6 +49,27 @@ test("the card asks when first, then the spot's own questions", async () => {
   const text = screen.text();
   assert.ok(text.indexOf("When were you last here?") < text.indexOf("How busy was it?"));
   assert.ok(screen.get("radio", "Not sure"));
+});
+
+test("while the questions load, the card says Loading…", async () => {
+  const fetcher = () => new Promise<Response>(() => {});
+  const screen = await render(<SurveyCard spot={spot} origin="" signedIn fetcher={fetcher} onSent={() => {}} onClose={() => {}} />);
+  assert.equal(screen.get("status").textContent, "Loading…");
+  assert.equal(screen.all("radio").length, 0);
+});
+
+test("on a page in another language, each question is marked English, as the server words it", async () => {
+  setLanguageForTest("es");
+  try {
+    const { screen } = await card();
+    const legend = [...screen.container.ownerDocument.querySelectorAll("legend")].find((l) => l.textContent === "How busy was it?");
+    assert.equal(legend?.closest("fieldset")?.getAttribute("lang"), "en");
+    await screen.unmount();
+  } finally {
+    setLanguageForTest("en");
+  }
+  const { screen } = await card();
+  assert.equal(screen.container.ownerDocument.querySelector("fieldset")?.getAttribute("lang"), null, "an English page needs no mark");
 });
 
 test("Send without when says to answer it and sends nothing", async () => {
@@ -94,7 +116,7 @@ test("signed out, the card asks the rider to sign in and has no questions", asyn
 
 test("the Layers section: its switch, hint and the rider's count", async () => {
   let on = false;
-  const screen = await render(<SurveySection on={false} onChange={(v) => (on = v)} status="" count="Spots you have surveyed: 3. Answered on the day you rode there: 2." />);
+  const screen = await render(<SurveySection on={false} onChange={(v) => (on = v)} status="" count="Surveyed: 3 (2 on the day)" />);
   assert.match(screen.text(), /Survey spots/);
   await click(screen.get("switch", /Survey spots/));
   assert.equal(on, true);

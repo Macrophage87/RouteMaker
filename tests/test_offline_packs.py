@@ -192,8 +192,18 @@ def test_the_list_names_each_pack_and_its_address(ways, tmp_path, settings, clie
     areas = {p["id"]: p["area"] for p in body["packs"]}
     assert areas["beltway"]["outline"][0] == areas["beltway"]["outline"][-1]
     assert not areas["beltway"]["outside_beltway"] and areas["nova"]["outside_beltway"]
-    assert areas["rest"] == {"outline": None, "outside_beltway": False, "whole": False, "separate": False}
-    assert areas["all"] == {"outline": None, "outside_beltway": False, "whole": True, "separate": False}
+    assert areas["rest"] == {
+        "outline": None,
+        "outside_beltway": False,
+        "whole": False,
+        "separate": False,
+    }
+    assert areas["all"] == {
+        "outline": None,
+        "outside_beltway": False,
+        "whole": True,
+        "separate": False,
+    }
     assert body["box"] == list(settings.COVERAGE_BBOX)
     foreign = client.get("/api/offline/packs", HTTP_SEC_FETCH_SITE="cross-site", **headers)
     assert foreign.status_code == 403
