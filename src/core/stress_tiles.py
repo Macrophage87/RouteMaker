@@ -77,8 +77,8 @@ cancel between steps, and one cold draw on a busy host was seen to end at
 refused a slot, or cut off by the timeout, is answered 429 or 503 with
 Retry-After, which the front end waits out.
 
-Coverage: a tile straddling the edge of `settings.COVERAGE_BBOX` is drawn from
-its segments clipped to the box, so nothing is drawn in the map's grey area.
+Coverage: a tile straddling the edge of one of the map's areas (`routemaker.coverage`) is drawn from
+its segments clipped to that box, so nothing is drawn in the map's grey area.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ from pipeline.schema import (
     trails_predicate,
     validate_schema_name,
 )
-from routemaker import flow
+from routemaker import coverage, flow
 
 from . import ratelimit, tile_cache
 
@@ -333,17 +333,18 @@ def tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 
 
 def outside_coverage(z: int, x: int, y: int) -> bool:
-    west, south, east, north = tile_bounds(z, x, y)
-    c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
-    return east < c_west or west > c_east or north < c_south or south > c_north
+    return coverage.box_meeting(*tile_bounds(z, x, y)) is None
 
 
 def straddles_coverage(z: int, x: int, y: int, margin: float) -> bool:
     """Whether the tile, with `margin` of its width drawn past each edge,
-    reaches past the coverage box - and so has to be clipped to it."""
+    reaches past the coverage box - and so has to be clipped to it. The box is the one
+    of the map's areas the tile reaches (`routemaker.coverage`)."""
     west, south, east, north = tile_bounds(z, x, y)
     dx, dy = (east - west) * margin, (north - south) * margin
-    c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
+    c_west, c_south, c_east, c_north = coverage.box_meeting(west, south, east, north) or (
+        settings.COVERAGE_BBOX
+    )
     return west - dx < c_west or east + dx > c_east or south - dy < c_south or north + dy > c_north
 
 
@@ -861,7 +862,9 @@ def render(
     if timeout_ms is None:
         timeout_ms = DRAW_TIMEOUT_MS
     level = level_for(z, optional)
-    c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
+    c_west, c_south, c_east, c_north = coverage.box_meeting(*tile_bounds(z, x, y)) or (
+        settings.COVERAGE_BBOX
+    )
     params = {
         "c_west": c_west,
         "c_south": c_south,

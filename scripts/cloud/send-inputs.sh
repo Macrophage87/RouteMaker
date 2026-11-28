@@ -21,7 +21,8 @@
 #                           traffic counts)
 #   elevation.tar           DATA_ROOT/elevation (saves the box the 3DEP download)
 #   extracts.tar            DATA_ROOT/extracts (the box applies the same six-day rule to it)
-#   MANIFEST.txt            run, commit, backup=db.tar and read_at=<the UTC time the dump began>
+#   MANIFEST.txt            run, commit, backup=db.tar, read_at=<the UTC time the dump began>
+#                           and areas=<RM_COVERAGE_AREAS, the map's areas>
 #   SHA256SUMS              one line per file, sent LAST: a folder without it is unfinished,
 #                           and box-rebuild.sh refuses it
 #
@@ -98,6 +99,11 @@ for key in COVERAGE_POLYGON ROUTEMAKER_LIVE_SCHEMA ROUTEMAKER_STAGING_SCHEMA; do
 	[ -z "$set_to" ] ||
 		die "$key is set in $env_file; the cloud box builds with its default, so its map would differ. Build here instead"
 done
+# The map's areas (config.settings.COVERAGE_AREAS) go to the box in MANIFEST.txt, so it
+# builds the areas this deployment serves; unset is the home area alone.
+areas=$(sed -n 's/^RM_COVERAGE_AREAS=//p' "$env_file" | tail -n1 | tr -d "\"'")
+areas=${areas:-dc-baltimore}
+case "$areas" in *[!a-z,-]*) die "RM_COVERAGE_AREAS in $env_file is not a list of area names" ;; esac
 [ -d "$data_root" ] || die "DATA_ROOT $data_root does not exist"
 
 # safe.directory: run with sudo, or as another user than the checkout's owner, git refuses
@@ -241,6 +247,7 @@ done
 	echo "commit=$commit"
 	echo "backup=$(basename "$backup")"
 	echo "read_at=$read_at"
+	echo "areas=$areas"
 	echo "created=$(date -u +%Y%m%dT%H%M%SZ)"
 } >"$stage/MANIFEST.txt"
 (cd "$stage" && sha256sum -- "$backup" reference.tar elevation.tar extracts.tar MANIFEST.txt >SHA256SUMS)

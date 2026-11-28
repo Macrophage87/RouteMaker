@@ -45,7 +45,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 SERVER_NAME = "routemaker"
-SERVER_VERSION = "0.30.4"
+SERVER_VERSION = "0.31.0"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 METRES_PER_MILE = 1609.344
@@ -99,6 +99,9 @@ OUT_OF_TIME = (
     " station named in metro_check as a via point (revise_route add_points), or move its points"
 )
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+# Every area the site may serve (config.settings.KNOWN_COVERAGE_AREAS): the site itself refuses
+# a point in an area it does not serve yet, so the connector only keeps out points in none.
+COVERAGE_AREAS = (COVERAGE_BBOX, (-82.75, 25.65, -80.70, 27.45))
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
 # 50 s) after a wait for its one long slot.
 ROUTE_TIMEOUT_S = 120
@@ -237,8 +240,10 @@ def destination(origin: tuple[float, float], bearing: float, miles: float) -> tu
 
 
 def inside_coverage(point: tuple[float, float]) -> bool:
-    west, south, east, north = COVERAGE_BBOX
-    return west <= point[0] <= east and south <= point[1] <= north
+    return any(
+        west <= point[0] <= east and south <= point[1] <= north
+        for west, south, east, north in COVERAGE_AREAS
+    )
 
 
 def miles_text(metres: float) -> str:
@@ -662,6 +667,21 @@ class Api:
             raise ToolError(f"the interval stretch search failed ({status}): {message}")
         return payload.get("intervals", [])
 
+    def survey_spots_near(self, near: tuple[float, float], miles: float) -> list[dict]:
+        """GET /api/survey/near: the survey spots near a point, nearest first (the signed-in
+        rider's answered ones left out)."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles}
+        status, payload, _ = patient_request(
+            self,
+            "GET",
+            "/api/survey/near?" + urllib.parse.urlencode(params),
+            what="The survey spot search",
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the survey spot search failed ({status}): {message}")
+        return payload.get("spots", [])
+
     def reach(self, body: dict) -> dict:
         """POST /api/reach: the reach rings (isochrones) for points, a ride type and its dials."""
         status, payload, _ = patient_request(
@@ -733,6 +753,22 @@ class Api:
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise ToolError(f"the weather check failed ({status}): {message}")
         return payload
+
+    def closure_list(self) -> list[dict]:
+        """GET /api/closures/reviewed: the reviewed closures in force or to come (admin)."""
+        status, payload, _ = self._request("GET", "/api/closures/reviewed")
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the closures could not be read ({status}): {message}")
+        return payload.get("closures") or []
+
+    def closure_write(self, path: str, body: dict) -> dict:
+        """POST a reviewed closure write (enter, extend, end; admin): its id and message."""
+        status, payload, _ = self._request("POST", path, body)
+        if status in (200, 201) and isinstance(payload, dict):
+            return {"id": payload.get("id"), "message": payload.get("message")}
+        message = payload.get("error") if isinstance(payload, dict) else payload
+        raise ToolError(f"the site did not change it ({status}): {message}")
 
     def saved_routes(self) -> list[dict]:
         """GET /api/me/routes: the signed-in rider's saved routes (names and figures only)."""
@@ -2281,6 +2317,9 @@ MAX_DETOURS = 8
 # farther, the server asks which was meant (Moore Road went to Centreville, VA: 2026-10-25).
 NEAR_PLACE_MI = 15.0
 NAMELESS = ("path", "unnamed road")
+# Miles on bridges are said from the site's own least (`describe.BRIDGE_MIN_M`, 10 m): a
+# footbridge over a creek is often 10 to 16 m, under 0.01 mi, and still shows as 0.01.
+BRIDGE_MIN_MI = 10 / METRES_PER_MILE
 
 
 def _stretches(answer: dict) -> list[dict]:
@@ -2305,6 +2344,17 @@ def _scenic_rows(answer: dict) -> list[dict]:
     ]
 
 
+def _bridge_mi(entry: dict, a: float | None = None, b: float | None = None) -> float:
+    """A stretch's miles on bridges (the site's `bridge_m`: OSM `bridge=*` ways, so a short
+    unnamed path over Rock Creek is said to be a bridge, not read as a drop to the creek;
+    the owner, 2026-11-27), shared out evenly where only `a` to `b` of it is read."""
+    miles = (entry.get("bridge_m") or 0) / METRES_PER_MILE
+    span = entry["to_mi"] - entry["from_mi"]
+    if not miles or a is None or b is None or span <= 0:
+        return miles
+    return miles * max(0.0, min(1.0, (b - a) / span))
+
+
 def _street(entry: dict) -> str:
     return str(entry.get("street") or "unnamed road")
 
@@ -2327,6 +2377,7 @@ def _bridged(rows: list[dict]) -> list[dict]:
                     for key, miles in part[table].items():
                         before[table][key] = before[table].get(key, 0.0) + miles
                 before["unpaved"] = before.get("unpaved", 0.0) + part.get("unpaved", 0.0)
+                before["bridge"] = before.get("bridge", 0.0) + part.get("bridge", 0.0)
             before["to_mi"] = row["to_mi"]
             continue
         out.append(row)
@@ -2335,7 +2386,8 @@ def _bridged(rows: list[dict]) -> list[dict]:
 
 def road_list(answer: dict) -> dict | None:
     """The roads the route takes, in order: each with its miles, its main and worst LTS, its
-    miles at LTS 3 and up, and its scenic designation (a rustic road, a byway); rows under
+    miles at LTS 3 and up, its miles on bridges (`bridge_mi`), and its scenic designation (a
+    rustic road, a byway); rows under
     ROAD_ROW_MIN_MI are counted as short links. None where the site sent no description."""
     stretches = _stretches(answer)
     if not stretches:
@@ -2355,6 +2407,7 @@ def road_list(answer: dict) -> dict | None:
         surface = entry.get("surface")
         unpaved = miles if surface == "unpaved" else miles / 2 if surface == "partly unpaved" else 0
         last["unpaved"] = last.get("unpaved", 0.0) + unpaved
+        last["bridge"] = last.get("bridge", 0.0) + _bridge_mi(entry)
         # "none" (known no facility, round-2 D28) and None (not known) are both plain street.
         kind = entry.get("facility")
         kind = kind if kind in ("path", "protected", "lane") else "street"
@@ -2413,6 +2466,9 @@ def road_list(answer: dict) -> dict | None:
         unpaved = sum(r.get("unpaved", 0.0) for r in group)
         if unpaved >= 0.05:
             item["unpaved_mi"] = round(unpaved, 1)
+        bridge = sum(r.get("bridge", 0.0) for r in group)
+        if bridge >= BRIDGE_MIN_MI:
+            item["bridge_mi"] = round(bridge, 2)
         designations = {
             s["designation"]
             for s in scenic
@@ -2666,6 +2722,25 @@ def via_spurs(plan: Plan) -> list[dict]:
         length, junction = spur_at(plan.line, plan.points[i])
         if length >= SPUR_MI:
             out.append({"point": i, "spur_mi": round(length, 2), "leaves_at": list(junction)})
+    return out
+
+
+def via_ways(plan: Plan) -> list[dict]:
+    """The way the route rides into each via point (the description's stretch that reaches
+    the point's leg end, `_points_along`), so a planner sees whether the point put the route
+    on the way it meant: a via sits on the way it is nearest, and "path beside X" is X's
+    sidewalk or side path, not X (Stephen, 2026-11-27)."""
+    stretches = _stretches(plan.answer)
+    if not stretches or not plan.vias:
+        return []
+    ends = [e["to_mi"] for e in stretches]
+    vias = set(plan.vias)
+    out = []
+    for i, metres in _points_along(plan):
+        if i not in vias:
+            continue
+        k = min(bisect.bisect_left(ends, metres / METRES_PER_MILE - 0.005), len(stretches) - 1)
+        out.append({"point": i, "on": _street(stretches[k])})
     return out
 
 
@@ -3232,6 +3307,9 @@ def route_details(
     spurs = via_spurs(plan)
     if spurs:
         out["via_spurs"] = spurs
+    on = via_ways(plan)
+    if on:
+        out["via_points_on"] = on
     legs = leg_rows(plan)
     if legs:
         out["legs"] = legs
@@ -4238,13 +4316,17 @@ def route_segments(
             facility = "trail" if b > a and _trail_mi(trails, a, b) * 2 >= b - a else None
         key = (_street(entry), entry.get("tier"), facility, entry.get("surface"))
         last = out_rows[-1] if out_rows else None
+        bridge = _bridge_mi(entry, a, b)
         if last is not None and last["_key"] == key and a - last["_b"] <= 0.01:
             last["_b"] = b
+            last["_bridge"] += bridge
             continue
         if len(out_rows) >= rows:
             next_from = round(a, 2)
             break
-        out_rows.append({"_key": key, "_a": a, "_b": b, "_oneway": entry.get("oneway")})
+        out_rows.append(
+            {"_key": key, "_a": a, "_b": b, "_oneway": entry.get("oneway"), "_bridge": bridge}
+        )
     segments = []
     for row in out_rows:
         street, tier, facility, surface = row["_key"]
@@ -4269,6 +4351,8 @@ def route_segments(
                 seg["climb_ft"] = round(gain)
         if row["_oneway"]:
             seg["one_way"] = True
+        if row["_bridge"] >= BRIDGE_MIN_MI:
+            seg["bridge_mi"] = round(row["_bridge"], 2)
         segments.append(seg)
     stop = next_from if next_from is not None else end
     scale = _traced_scale(answer) / METRES_PER_MILE
@@ -5659,6 +5743,28 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "survey_spots_near",
+        "title": "Survey spots near a place",
+        "description": (
+            "List the survey spots near a point, nearest first: road stretches whose stress"
+            " rating was a low-confidence call, where a rider's answers on the spot (lanes, bike"
+            " lane, traffic, speed sign) help rate the road. Each has road, county, its level"
+            " now (low and high), [lon, lat], the questions it asks and away_mi. Spots the rider"
+            " has answered are left out. To ride past them, plan_route through their points as"
+            " via points (or a loop from home through them); answers are given in the app, on"
+            " the spot's card."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {"type": "number", "exclusiveMinimum": 0, "default": 3},
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "closures_near",
         "title": "Closures near a place",
         "description": (
@@ -5710,7 +5816,15 @@ TOOLS = [
             " on its own (a rustic road, a trail; scenic_roads_near lists them), add via points"
             " ON those roads, by [lon, lat]"
             " or by name: a name is searched near the route's other points, and an ambiguous"
-            " one is asked back. `closures` lists the closures it goes through or round, and"
+            " one is asked back. A via point puts the route on the way it sits nearest, so put"
+            " it on the line of the way you mean (the trail itself, or the middle of the street"
+            " mid-block, not at a corner: most sidewalks are mapped, so a point by the kerb or at"
+            " a corner rides the sidewalk); a point on a road beside a trail, or on a sidewalk,"
+            " rides that instead, an override for when the rider wants it. `via_points_on`"
+            " names the way each via point rides"
+            ' ("path beside X" or "sidewalk beside X" is beside X, not X): if it is not'
+            " the way you meant, move the point. `closures` lists the closures it goes through"
+            " or round, and"
             " `closure_warning` says when one is on the route (often a via point only a closed"
             " path reaches: move it); `check_before_you_go` lists park notices for the ride's"
             " time, such as a deer-management closure at night (warnings, not routed round);"
@@ -5764,7 +5878,8 @@ TOOLS = [
                     "items": {"type": "integer"},
                     "description": (
                         "Indices into points of via points, which only shape the route (no stop,"
-                        " no U-turn); never the first or last."
+                        " no U-turn); never the first or last. Each rides the way it sits"
+                        " nearest: put it on the way meant."
                     ),
                 },
                 "loop": {
@@ -6059,7 +6174,8 @@ TOOLS = [
             "Read a draft stretch by stretch, for optimizing it: each stretch's miles, road,"
             " LTS (1 calmest to 4, 5 Avoid), facility (path, trail: a mountain-bike trail,"
             " protected, lane, street), surface"
-            " where unpaved, average and steepest uphill grade, climb, one-way, and minutes at"
+            " where unpaved, miles on bridges, average and steepest uphill grade, climb,"
+            " one-way, and minutes at"
             " the draft's pace (hills and junction waits in place); every higher and very-high"
             " stress junction with its reason; steep grades and road hazards. Give from_mi and"
             " to_mi to read part of a long ride; `next_from_mi` says where the next page starts."
@@ -6325,6 +6441,98 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "mark_closed",
+        "title": "Close a stretch (admin agent)",
+        "description": (
+            "Close a stretch for routing, as the road panel's Mark closed does, for an agent that"
+            " reads an agency's closure alert: on RouteMaker's own connector, for an instance"
+            " admin. Give the stretch as line ([[lon, lat], ...], 2 to 200 points, at most 6.2"
+            " mi) or osm_way_ids, the agency's reason in a few words, its link, and agent_key"
+            " (the alert it follows, e.g. aacounty:64ce39415d29:1). With no end (the agency"
+            " gave no last day) it lasts today only: extend_closure moves it on while the alert"
+            " is still posted, end_closure ends it once the alert is gone. Only what the agency"
+            " says, never another map."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "line": {
+                    "type": "array",
+                    "items": {"type": "array", "items": {"type": "number"}},
+                    "description": "The closed stretch, [[lon, lat], ...].",
+                },
+                "osm_way_ids": {"type": "array", "items": {"type": "integer"}},
+                "reason": {"type": "string", "description": "At most 500 characters."},
+                "url": {"type": "string", "description": "The agency's alert page."},
+                "agent_key": {"type": "string", "description": "The alert this follows."},
+                "start": {"type": "string", "description": "First day, YYYY-MM-DD (today)."},
+                "end": {"type": "string", "description": "Last day, YYYY-MM-DD; none: today."},
+                "on_foot": {
+                    "type": "boolean",
+                    "description": "Closed on foot too (default true; false: sidewalk open).",
+                },
+            },
+            "required": ["reason", "url", "agent_key"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "extend_closure",
+        "title": "Extend a closure (admin agent)",
+        "description": (
+            "Move an agent closure's last day on (a closure_id from agent_closures) while its"
+            " agency alert is still posted: with no end, through the region's tomorrow. One"
+            " that lasts that long already is left as it is, so ask at every check."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "closure_id": {"type": "integer"},
+                "end": {
+                    "type": "string",
+                    "description": "The new last day, YYYY-MM-DD; none: tomorrow (ET).",
+                },
+            },
+            "required": ["closure_id"],
+        },
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    },
+    {
+        "name": "end_closure",
+        "title": "End a closure (admin agent)",
+        "description": (
+            "End a closure now (a closure_id from agent_closures): for an agent's closure whose"
+            " agency alert is gone. It leaves routing within a minute."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"closure_id": {"type": "integer"}},
+            "required": ["closure_id"],
+        },
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    },
+    {
+        "name": "agent_closures",
+        "title": "Agent closures in force",
+        "description": (
+            "The closures an agent entered (agent_key set) that are in force or to come: id,"
+            " agent_key, road, reason, start, end, link. A person's closures are not listed:"
+            " an agent extends or ends only its own."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "draft_route_post",
         "title": "Draft a route post",
         "description": (
@@ -6427,6 +6635,10 @@ TOOLS = [
 
 # Offered only where the site says the rider may write posts (`Server(posts=True)`).
 POST_TOOLS = {"draft_route_post"}
+# The agent closures' tools (core.reviewed_closures, "Agent closures"): offered, like the post
+# tool, only to an instance admin on the site's connector (`Server(posts=True)`).
+CLOSURE_TOOLS = {"mark_closed", "extend_closure", "end_closure", "agent_closures"}
+ADMIN_TOOLS = POST_TOOLS | CLOSURE_TOOLS
 POST_FIELDS = (
     "title",
     "slug",
@@ -6732,7 +6944,7 @@ class Server:
         base map tool where there is a base map."""
         out = []
         for t in TOOLS:
-            if t["name"] in POST_TOOLS and not self.posts:
+            if t["name"] in ADMIN_TOOLS and not self.posts:
                 continue
             if t["name"] in VIEW_TOOLS:
                 # The flat "ui/resourceUri" is the extension's older spelling, still read by
@@ -7174,6 +7386,21 @@ class Server:
         return {
             "intervals": found,
             "source": "Intervals layer: OpenStreetMap (ODbL) and USGS 3DEP elevation",
+        }
+
+    # survey_spots_near
+    def survey_spots_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        try:
+            miles = min(15.0, max(0.25, float(args.get("within_miles") or 3)))
+        except (TypeError, ValueError):
+            raise ToolError("within_miles is a number") from None
+        found = self.api.survey_spots_near(near, miles)
+        for spot in found:
+            spot["point"] = [spot.pop("lon"), spot.pop("lat")]
+        return {
+            "spots": found,
+            "note": "Answers are evidence for the next re-rate, never a rating by themselves.",
         }
 
     # closures_near
@@ -7797,6 +8024,43 @@ class Server:
         """The draft's link, as `_draft` gave it: its exact line and its plan's inputs."""
         fragment = draft.fragment(self._dials(draft.plan))
         return f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
+
+    # mark_closed, extend_closure, end_closure, agent_closures
+    def mark_closed(self, args: dict, call: Call) -> dict:
+        body = {
+            k: args[k]
+            for k in ("line", "osm_way_ids", "reason", "url", "agent_key", "start", "end")
+            if args.get(k) not in (None, "", [])
+        }
+        if not str(body.get("agent_key") or "").strip():
+            raise ToolError("agent_key is the alert this closure follows: give it")
+        if "on_foot" in args:
+            body["on_foot"] = args["on_foot"] is not False
+        return self.api.closure_write("/api/closures/reviewed", body)
+
+    def extend_closure(self, args: dict, call: Call) -> dict:
+        closure_id = int(args["closure_id"])
+        self._agent_closure(closure_id)
+        path = f"/api/closures/reviewed/{closure_id}/extend"
+        body = {"end": str(args["end"])} if args.get("end") else {}
+        return self.api.closure_write(path, body)
+
+    def end_closure(self, args: dict, call: Call) -> dict:
+        closure_id = int(args["closure_id"])
+        self._agent_closure(closure_id)
+        return self.api.closure_write(f"/api/closures/reviewed/{closure_id}/end", {})
+
+    def _agent_closure(self, closure_id: int) -> dict:
+        """The agent's own closure by id; a person's is never the agent's to change."""
+        for row in self.api.closure_list():
+            if row.get("id") == closure_id and row.get("agent_key"):
+                return row
+        raise ToolError(f"no agent closure {closure_id} in force (agent_closures lists them)")
+
+    def agent_closures(self, args: dict, call: Call) -> dict:
+        keep = ("id", "agent_key", "road", "reason", "start", "end", "url", "when_text")
+        rows = [{k: r.get(k) for k in keep} for r in self.api.closure_list() if r.get("agent_key")]
+        return {"closures": rows}
 
     # draft_route_post
     def draft_route_post(self, args: dict, call: Call) -> dict:
@@ -8846,7 +9110,7 @@ class Server:
         return out
 
     def handler(self, name: str):
-        if name in POST_TOOLS and not self.posts:
+        if name in ADMIN_TOOLS and not self.posts:
             return None
         if name == "route_view_map" and (self.basemap is None or self.view_key is None):
             return None
@@ -8863,6 +9127,7 @@ class Server:
             "scenic_roads_near": self.scenic_roads_near,
             "climbs_near": self.climbs_near,
             "intervals_near": self.intervals_near,
+            "survey_spots_near": self.survey_spots_near,
             "closures_near": self.closures_near,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
@@ -8872,6 +9137,10 @@ class Server:
             "save_route": self.save_route,
             "gpx_route": self.gpx_route,
             "draft_route_post": self.draft_route_post,
+            "mark_closed": self.mark_closed,
+            "extend_closure": self.extend_closure,
+            "end_closure": self.end_closure,
+            "agent_closures": self.agent_closures,
             "route_segments": self.route_segments,
             "ride_conditions": self.ride_conditions,
             "my_routes": self.my_routes,
@@ -9135,6 +9404,8 @@ PLAYBOOK = (
     " a week only that part can plan the route again. Save to My routes only when asked. Planning"
     " only to test RouteMaker: pass test: true, or archive_draft each draft when done. Calls may"
     " be sent together; an answer with retry_after_s asks for the same call again after that."
+    " A via point rides the way it sits nearest: put it on the trail or street meant, mid-block,"
+    " and check `via_points_on`."
 )
 
 

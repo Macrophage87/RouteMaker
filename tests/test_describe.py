@@ -1310,6 +1310,38 @@ def surfaced(name, tier, metres, unpaved, facility="none", use="road"):
     ]
 
 
+def bridged(name, tier, metres, facility="none", use="road"):
+    """`road`, every piece of it on a bridge."""
+    return [
+        replace(atom, bridge=True) for atom in road(name, tier, metres, facility=facility, use=use)
+    ]
+
+
+class TestBridges:
+    """The owner, 2026-11-27, on the P Street bridge over Rock Creek: a short unnamed path
+    over a bridge was read as one down to the creek. A stretch says its metres on bridges."""
+
+    def test_an_unnamed_path_over_a_bridge_carries_its_bridge_metres(self):
+        leg = flat(
+            road("", 1, 120, facility="path", use="footway"),
+            bridged("", 1, 180, facility="path", use="footway"),
+        )
+        full, short = d.describe_both([leg], None, 300.0)
+        for entries in (full, short):
+            (entry,) = [e for e in entries if e["kind"] == "stretch"]
+            assert entry["street"] == "path" and entry["bridge_m"] == 180
+
+    def test_a_named_road_keeps_its_name_and_says_its_bridge(self):
+        leg = flat(road("P Street Northwest", 2, 300), bridged("P Street Northwest", 2, 150))
+        (entry,) = d.describe([leg])
+        assert entry["street"] == "P Street Northwest" and entry["bridge_m"] == 150
+
+    def test_no_bridge_or_a_few_metres_of_one_sends_nothing(self):
+        assert "bridge_m" not in d.describe([road("A St", 1, 600)])[0]
+        tiny = [replace(road("A St", 1, 600)[0], metres=5.0, bridge=True)]
+        assert "bridge_m" not in d.describe([flat(road("A St", 1, 600), tiny)])[0]
+
+
 class TestSurface:
     """OWNER-DECISIONS 280 (review SF5): the map's dotted mark is not all a
     screen-reader rider has; a stretch says it is unpaved."""

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import osmium
 
+from routemaker import gated
+
 DERIVED_PREFIX = "rm:"
 
 # Relations this pipeline mints (`write_extract`'s `new_relations`), as
@@ -160,18 +162,22 @@ class NodeLocator(osmium.SimpleHandler):
         self._wanted = wanted
         self.locations: dict[int, tuple[float, float]] = {}
         self.buttons: set[int] = set()
+        self.closed_gates: set[int] = set()
 
     def node(self, n) -> None:  # noqa: N802 - osmium's callback name
         if n.id in self._wanted:
             self.locations[n.id] = (n.location.lon, n.location.lat)
             if n.tags.get("button_operated") == "yes":
                 self.buttons.add(n.id)
+            if "barrier" in n.tags and gated.is_closed_gate({t.k: t.v for t in n.tags}):
+                self.closed_gates.add(n.id)
 
 
 def read_ways(
     path: str | Path,
     keep: Callable[[dict[str, str]], bool] | None = None,
     button_nodes: set[int] | None = None,
+    closed_gates: set[int] | None = None,
 ) -> list[Way]:
     """Every way the filter keeps, with its node coordinates attached. `button_nodes`, where
     given, gains the ways' nodes tagged `button_operated=yes`, read in the same node pass
@@ -183,6 +189,9 @@ def read_ways(
     locator.apply_file(str(path))
     if button_nodes is not None:
         button_nodes.update(locator.buttons)
+    if closed_gates is not None:
+        # The gate nodes closed to the public (`routemaker.gated`).
+        closed_gates.update(locator.closed_gates)
 
     for way in collector.ways:
         located = [

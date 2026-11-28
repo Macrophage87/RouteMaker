@@ -1039,11 +1039,14 @@ one (another line from the routes to choose from, or Go's More direct or Trailma
 shows (and, by your voice setting, says) "New route found. It rejoins your
 route ahead."; only with no way back does it plan again to the end. Whenever the ride plans again (off the route,
 Reroute, Go round, Less traffic, Fewer hills or a Detour), it keeps every stop and every via point still ahead, except the next one if you came within about
-165 ft [50 m] of it and rode on: that counts as reached, so you are never sent back to touch it. On your route, the
-route's own way to it has to be that short too, so a cafe across a creek that the route reaches later by a bridge is
+165 ft [50 m] of a stop, or about a quarter mile [400 m] of a via point (our default), and rode on: that counts as
+reached, so you are never sent back to touch it. The route's own way to it has to be that short too, on the route,
+or for a via point off it too, so a cafe across a creek that the route reaches later by a bridge is
 kept. Each via point is sent
 where your planned route passed it, so the new route keeps the trail you planned even with a road right beside it. If the next point ahead is a via point and reaching it would take more than about 5 minutes longer than the
-planned route would have from where you are (past a closed road, say), it is left out too and the ride shows (and,
+planned route would have from where you are, on a re-route you asked for (Road closed or Reroute) or for a loop's
+own shape point, or more than about 15 minutes on one the ride makes by itself after you leave the line (our
+defaults), it is left out too, so a via point you placed to make the ride longer stays after a wrong turn and the ride shows (and,
 by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
 way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
 way. <strong>Keep going</strong>
@@ -1068,6 +1071,9 @@ checked every 30 seconds instead; in the Android app, riding off more than about
 Otherwise <strong>Resume</strong> carries on.</li>
 <li><strong>Back gesture:</strong> swiping back during a ride does nothing, so a glove or a bump
 can't leave the ride.</li>
+<li><strong>Screenshots in the beta</strong> show your GPS position in small print at the bottom left, so
+a problem report says where it was taken. It is worked out on your phone and sent nowhere, but a
+screenshot you post shows that spot.</li>
 <li><strong>Bikeshare rides</strong> show the time since you undocked, counting up, and <strong>Ride to
 the nearest dock</strong> finds the closest dock with room, or the one that adds least to the ride.
 Stopping by a dock for a while marks the bike as docked; <strong>Restart the time</strong> starts the
@@ -1216,7 +1222,9 @@ Baltimore the Baltimore City Department of Transportation's (its installed racks
 its 2021 inventory of public racks), with OpenStreetMap's where the city lists none; elsewhere they are
 OpenStreetMap's. OpenStreetMap's bike lockers and bike rooms are kept everywhere, even beside a city's rack. Racks within 50 ft [15 m] of each other
 count as one place, with their racks added up. A rack's card says how many racks or spaces it has, whether it is
-covered, that lockers may need a key, a card or a rental, and whose list it is from. Where they would crowd each other, as downtown, some wait until you zoom in. The route's
+covered, that lockers may need a key, a card or a rental, and whose list it is from. Where they would crowd each other, as downtown, some wait until you zoom in. A drinking fountain
+within 50 ft [15 m] of a restroom shows as part of that restroom, unless it has its own season or hours, and water
+and restroom icons draw just over the route's line. The route's
 list names all the water and restrooms near your route, and Repair, in Go's More, lists the nearest
 stands.</li>
 <li><strong>Rail stations</strong>: Metro and MARC, with closed stations struck through and elevator
@@ -1244,6 +1252,16 @@ LTS 4 and Avoid roads are never one. With it on, <strong>Show intervals from</st
 kept on this device. With a mouse, resting on a stretch shows a card: its length, rise and grade, about how many
 minutes, given as a rough guess with the speed it assumes (18 mph on the flat, slower up a climb; real speed
 varies by rider), which way it holds, and any bollards, then its elevation profile. It changes no route.</li>
+<li>In Go and Plan, <strong>Survey spots</strong> (off by default, kept on this device) marks with a sky-blue "?"
+the road stretches whose rating was a close call, for you to check when you ride there. A tap opens its card:
+<strong>When were you last here?</strong> (Today, This week, This month or Longer ago), then about what time of day,
+as a range such as AM rush, 7 to 10 AM, then one to four questions about that road, such as its lanes or a bike
+lane, each with Not sure. Only When must be answered, and you need to be signed in. Send keeps the answers and the
+spot leaves your map; Cancel keeps nothing. The answers are evidence for the next rating of that road, never a
+rating by themselves. An answer keeps the spot, the day, your answers and the time-of-day range, never the time and
+no account; your account keeps only which spots you answered and whether you said Today, for your count, which
+Layers shows. Layers also has <strong>List spots near the map's centre</strong>, and after a ride the summary offers
+the spots you passed and have not answered.</li>
 <li><strong>Closures</strong> in force now show on the map from zoom 12 even with no route (a route's own
 closures show at any zoom): red where a road or path is closed, orange where a bike lane is blocked or construction can be ridden past. Each leaves the map
 once it ends. DDOT's permits and planned work by DDOT, DC Water and WSSC Water show only with
@@ -1251,7 +1269,8 @@ Potential closures on, as a dashed line marked by a barrier on a dashed ring wit
 <a href="/about/routing.html#closures">Closures</a>.</li>
 <li><strong>Closed sites</strong>, such as military bases, secured federal compounds and the closed part of the
 Patuxent Research Refuge, are shaded grey with a hatch and, zoomed in, named with "No public access". A
-start, stop or end inside one goes to its nearest gate ("Restricted site. Route ends at the gate."). Every named green place is named on
+start, stop or end inside one goes to its nearest gate ("Restricted site. Route ends at the gate."). From the next map update,
+gated communities are shaded warm brown, and a start, stop or end inside one goes to its gate. Every named green place is named on
 the map: big parks such as Rock Creek Park from further out, cemeteries, smaller parks and golf courses close in.</li>
 </ul>
 <h3>Finding things on the map</h3>
@@ -1722,7 +1741,7 @@ default).</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.30.4. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.31.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
