@@ -29,6 +29,7 @@ from __future__ import annotations
 import bisect
 import math
 
+from routemaker import coverage
 from routemaker.geo import Point, bearing_delta, bearing_lonlat, haversine
 
 from . import routing
@@ -95,10 +96,11 @@ class LineProblem(ValueError):
 
 
 def checked_line(
-    encoded: str, bbox: tuple[float, float, float, float]
+    encoded: str, bbox: tuple[float, float, float, float] | None = None
 ) -> list[tuple[float, float]]:
     """The line `encoded` (Valhalla's polyline at precision 6) as [(lon, lat), ...], or
-    LineProblem."""
+    LineProblem. Every point must be in `bbox`, or with none given, in one of the map's
+    areas (`routemaker.coverage`)."""
     try:
         line = routing.decode_polyline6(encoded)
     except (IndexError, ValueError, TypeError):
@@ -107,8 +109,12 @@ def checked_line(
         raise LineProblem("follow has fewer than two points")
     if len(line) > MAX_POINTS:
         raise LineProblem(f"follow has more than {MAX_POINTS:,} points")
-    west, south, east, north = bbox
-    if not all(west <= lon <= east and south <= lat <= north for lon, lat in line):
+    if bbox is not None:
+        west, south, east, north = bbox
+        covered = all(west <= lon <= east and south <= lat <= north for lon, lat in line)
+    else:
+        covered = coverage.one_area(line) is not None
+    if not covered:
         raise LineProblem("follow has a point outside the area this map covers")
     if line_m(line) > MAX_DISTANCE_M:
         raise LineProblem("follow is longer than 124 mi (200 km), the most that can be followed")

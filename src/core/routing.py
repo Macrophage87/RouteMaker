@@ -172,6 +172,8 @@ STOP_RADIUS_M = 15
 # that road, and the cheapest way near it was the trail (Stephen, 2026-11-16: "When there's a
 # road that parallels a trail, it's currently difficult to have it prefer the road on that
 # stretch"). A via only shapes the route, so the ramp-beside-a-trail case above is a stop's.
+# The same holds for a sidewalk: a via on one rides it (Stephen, 2026-11-27: "If we intend for
+# the sidewalk though, then we should use it"), so a via meant for the street goes on the street.
 VIA_RADIUS_M = 0
 
 # The whole request's budget, from its arrival to its answer. gunicorn's
@@ -612,6 +614,10 @@ class Piece:
     # said as a U-turn (`describe.UTURN_DEG`, round-3 audit D31). False on every piece of
     # an edge but its first.
     retrace: bool = field(default=False, compare=False)
+    # Whether the edge is on a bridge (`edge.bridge`, asked by
+    # `trace_junctions.TRACE_ATTRIBUTES`): the description says how much of a stretch is
+    # (`describe.Atom.bridge`).
+    bridge: bool = field(default=False, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -722,6 +728,7 @@ def pieces_of_trace(trace: dict, shape: list | None = None) -> list[Piece]:
             "heading_in": _heading(edge.get("begin_heading")),
             "heading_out": _heading(edge.get("end_heading")),
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
+            "bridge": bool(edge.get("bridge")),
         }
         line_in = line_out = turn = None
         choice = None
@@ -4073,6 +4080,7 @@ def describe_route(
                             choice=bool(pieces[i].choice),
                             oneway=getattr(classes[i], "oneway", None),
                             retrace=bool(getattr(pieces[i], "retrace", False)),
+                            bridge=bool(getattr(pieces[i], "bridge", False)),
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -4643,7 +4651,7 @@ def move_restricted_points(
 # private or no public access (an `access` or `vehicle` of no, private, permit, restricted or
 # military, or `bicycle=private`), a military or secure site, and a farm or forest track with
 # no sign it is public.
-NOT_PUBLIC_REASONS = ("private", "military", "secured", "track")
+NOT_PUBLIC_REASONS = ("private", "military", "secured", "track", "gated")
 NOT_PUBLIC_NOTE = (
     "This end point is not typically open to the public, make sure you're authorized to go here."
 )

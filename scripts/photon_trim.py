@@ -79,9 +79,13 @@ def inside(point: tuple[float, float], bbox: tuple[float, float, float, float]) 
 
 
 def trim(
-    lines: Iterable[bytes], bbox: tuple[float, float, float, float], counts: Counts | None = None
+    lines: Iterable[bytes],
+    bbox: tuple[float, float, float, float] | list[tuple[float, float, float, float]],
+    counts: Counts | None = None,
 ) -> Iterator[bytes]:
-    """The lines of a dump that a box-trimmed import needs, in order."""
+    """The lines of a dump that a box-trimmed import needs, in order. `bbox` is one box or
+    a list of them, one per map area: a place in any is kept."""
+    boxes = bbox if isinstance(bbox, list) else [bbox]
     counts = counts if counts is not None else Counts()
     for line in lines:
         counts.read += 1
@@ -95,7 +99,7 @@ def trim(
         if not points:
             counts.unreadable += 1
             continue
-        if any(inside(p, bbox) for p in points):
+        if any(inside(p, box) for p in points for box in boxes):
             counts.kept += 1
             yield line
 
@@ -124,7 +128,8 @@ def _open(path: str):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dump", help="the .jsonl.zst dump, a .jsonl file, or - for stdin")
-    parser.add_argument("--bbox", type=parse_bbox, required=True)
+    # Once per map area (config.settings.COVERAGE_AREAS).
+    parser.add_argument("--bbox", type=parse_bbox, required=True, action="append")
     args = parser.parse_args(argv)
 
     counts = Counts()

@@ -22,6 +22,17 @@ mile lines), ready for a closure's `lines`, and how much of the stretch they cov
 not cover it all, draw the rest from the OpenStreetMap ways (`python scripts/ddot_advisories.py
 lines WAY ...`).
 
+    python scripts/park_alerts.py items
+
+prints every item now on the pages, read or not, one JSON object a line (agency, key, place,
+text, link, trail): what the agent closures follow (docs/OPERATIONS.md, "Agent closures").
+
+    python scripts/park_alerts.py between TRAIL FIRST_STREET SECOND_STREET [--area AREA]
+
+prints the trail's line between where it meets two cross streets
+(`park_alerts.stretch_between`), from OpenStreetMap's own API, ready for the connector's
+mark_closed, and its length; exit 1 where the place is not clear.
+
 Only public pages are read (no sign-in).
 """
 
@@ -37,6 +48,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from routemaker import osm_place  # noqa: E402
 from routemaker import park_alerts as pa  # noqa: E402
 
 USER_AGENT = "RouteMaker-park-alerts"
@@ -106,6 +118,48 @@ def watch(agencies: list[str], mark: bool, get=fetch) -> int:
     return status
 
 
+def items(agencies: list[str], get=fetch) -> int:
+    status = 0
+    for agency in agencies:
+        try:
+            found = items_of(agency, get)
+        except OSError as error:
+            print(f"{pa.AGENCIES[agency].name}: could not be read ({type(error).__name__})",
+                  file=sys.stderr)  # fmt: skip
+            status = 1
+            continue
+        for item in found:
+            row = {
+                "agency": agency,
+                "key": item.key,
+                "place": item.place,
+                "text": item.text,
+                "link": item.link,
+                "trail": item.trail,
+            }
+            print(json.dumps(row, ensure_ascii=False))
+    return status
+
+
+def _get_json(url: str):
+    return json.loads(fetch(url))
+
+
+def between(trail: str, first: str, second: str, area: str, get_json=_get_json) -> int:
+    try:
+        line = osm_place.between(trail, first, second, area, get_json)
+    except osm_place.NotClear as why:
+        print(why, file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as error:  # a refused or failed read (a 429, too many nodes)
+        print(f"{trail}: the map could not be read ({error})", file=sys.stderr)
+        return 1
+    print(json.dumps(line))
+    miles = osm_place.length_m(line) / pa.MILE_M
+    print(f"{trail}, {first} to {second}: {miles:.2f} mi", file=sys.stderr)
+    return 0
+
+
 def towpath(first: float, last: float | None) -> int:
     last = first if last is None else last
     lines = pa.towpath_lines(first, last)
@@ -130,12 +184,23 @@ def main() -> int:
     w = sub.add_parser("watch", help="list park alerts not yet read")
     w.add_argument("--agency", choices=sorted(pa.AGENCIES), action="append")
     w.add_argument("--mark", action="store_true", help="then mark every item read")
+    i = sub.add_parser("items", help="every item now on the pages, as JSON lines")
+    i.add_argument("--agency", choices=sorted(pa.AGENCIES), action="append")
+    b = sub.add_parser("between", help="a trail's line between two cross streets")
+    b.add_argument("trail")
+    b.add_argument("first")
+    b.add_argument("second")
+    b.add_argument("--area", default="Maryland", help="e.g. Anne Arundel County, Maryland")
     t = sub.add_parser("towpath", help="the C&O's lines between two mileposts")
     t.add_argument("first", type=float)
     t.add_argument("last", type=float, nargs="?")
     args = parser.parse_args()
     if args.command == "towpath":
         return towpath(args.first, args.last)
+    if args.command == "items":
+        return items(args.agency or list(pa.AGENCIES))
+    if args.command == "between":
+        return between(args.trail, args.first, args.second, args.area)
     return watch(args.agency or list(pa.AGENCIES), args.mark)
 
 

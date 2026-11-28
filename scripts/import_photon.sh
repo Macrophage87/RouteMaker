@@ -38,6 +38,12 @@ IMAGE="docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429
 # settings.COVERAGE_BBOX, west,south,east,north; tests/test_photon_trim.py holds
 # the two equal.
 BBOX="-78.05,38.2,-76.02,39.72"
+# settings.SOUTHWEST_FLORIDA_BBOX: kept too when RM_COVERAGE_AREAS names the area.
+FLORIDA_BBOX="-82.75,25.65,-80.70,27.45"
+BBOX_ARGS="--bbox=$BBOX"
+case ",${RM_COVERAGE_AREAS:-}," in
+*,southwest-florida,*) BBOX_ARGS="$BBOX_ARGS --bbox=$FLORIDA_BBOX" ;;
+esac
 LANGUAGES="en"
 # The import's heap. The container is capped at the serving limit (3 GB,
 # PLAN.md:60), so the import proves the index fits the box it will run in.
@@ -115,7 +121,7 @@ docker run --rm \
 		trap 'chown -R $(id -u):$(id -g) /photon/data' EXIT
 		if [ ! -f /photon/data/trimmed.done ]; then
 			start=\$(date +%s)
-			/photon/.venv/bin/python /opt/photon_trim.py '/in/$(basename "$dump")' --bbox='$BBOX' \
+			/photon/.venv/bin/python /opt/photon_trim.py '/in/$(basename "$dump")' $BBOX_ARGS \
 				> /photon/data/trimmed.jsonl
 			touch /photon/data/trimmed.done
 			echo \"trimmed in \$((\$(date +%s) - start)) s: \$(du -h /photon/data/trimmed.jsonl | cut -f1)\"

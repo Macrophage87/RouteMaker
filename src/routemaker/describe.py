@@ -323,6 +323,10 @@ HIGH_STRESS_LANE_TIERS = frozenset({"4", "5"})
 SURFACE_UNPAVED = "unpaved"
 SURFACE_PARTLY = "partly unpaved"
 PARTLY_UNPAVED_M = METRES_PER_MILE / 10
+# A stretch's metres on bridges (`bridge_m`) are sent where at least this many are: a deck
+# over a creek or a road, not a few metres of a culvert's headwall mapped as one. Our
+# default (unmeasured).
+BRIDGE_MIN_M = 10.0
 
 
 class RelationName(str):
@@ -434,6 +438,10 @@ class Atom:
     # goes back over the points it came in on (`core.routing._retraces`): a turnaround on
     # the way itself. False elsewhere.
     retrace: bool = False
+    # Whether the piece is on a bridge (Valhalla's `edge.bridge`, from OSM `bridge=*`): a
+    # stretch says how much of it is (`bridge_m`), so a short unnamed path over Rock Creek
+    # is never read as one down to the creek (the owner, 2026-11-27, on the P Street bridge).
+    bridge: bool = False
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -467,6 +475,8 @@ class _Run:
     untraced: bool = False
     leg: int = 0
     unpaved_m: float = 0.0
+    # The metres of it on bridges (`Atom.bridge`).
+    bridge_m: float = 0.0
     # An unnamed service way's word (`SERVICE_WORDS`), else None.
     service: str | None = None
     # A short stretch of another street folded in at its end (`_join`) or its start
@@ -490,6 +500,7 @@ def _run_of(atom: Atom, leg: int) -> _Run:
         path=atom.use in PATH_USES,
         leg=leg,
         unpaved_m=atom.metres if atom.unpaved else 0.0,
+        bridge_m=atom.metres if atom.bridge else 0.0,
         service=None if atom.names else SERVICE_WORDS.get(atom.use),
     )
 
@@ -792,6 +803,7 @@ def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
             run = runs[-1]
             run.metres += atom.metres
             run.unpaved_m += atom.metres if atom.unpaved else 0.0
+            run.bridge_m += atom.metres if atom.bridge else 0.0
             run.last = atom
             run.path = run.path or atom.use in PATH_USES
         else:
@@ -834,6 +846,7 @@ def _join(a: _Run, b: _Run) -> None:
         a.folded_end = True
     a.metres += b.metres
     a.unpaved_m += b.unpaved_m
+    a.bridge_m += b.bridge_m
 
 
 def _coalesce(runs: list[_Run]) -> list[_Run]:
@@ -1150,6 +1163,7 @@ def _fold_connector(before: _Run, run: _Run, after: _Run) -> None:
     turn = turn_between(before.last, after.first)
     after.metres += run.metres
     after.unpaved_m += run.unpaved_m
+    after.bridge_m += run.bridge_m
     after.connector_m += run.metres + run.connector_m
     after.folded_start = True
     if after.first is not None and after.first.fork is not None:
@@ -1236,6 +1250,7 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                     target.folded_start = True
                 target.metres += run.metres
                 target.unpaved_m += run.unpaved_m
+                target.bridge_m += run.bridge_m
             del runs[i]
             changed = True
         coalesced = _coalesce(runs)
@@ -1307,6 +1322,19 @@ def surface_of(run: _Run) -> str | None:
     if run.unpaved_m >= run.metres / 2:
         return SURFACE_UNPAVED
     return SURFACE_PARTLY if run.unpaved_m >= PARTLY_UNPAVED_M else None
+
+
+def bridge_of(run: _Run, scale: float = 1.0) -> int | None:
+    """The stretch's whole metres on bridges, scaled as its ends are, or None where under
+    BRIDGE_MIN_M of it is (or it was not traced)."""
+    if run.untraced or run.bridge_m < BRIDGE_MIN_M:
+        return None
+    return round(run.bridge_m * scale)
+
+
+def _bridge_field(run: _Run, scale: float) -> dict:
+    metres = bridge_of(run, scale)
+    return {} if metres is None else {"bridge_m": metres}
 
 
 def _lanes_hidden(run: _Run, members: list[_Run] | None = None) -> _Run | None:
@@ -2169,6 +2197,7 @@ def _group_run(
         path=first.path,
         leg=first.leg,
         unpaved_m=sum(m.unpaved_m for m in members),
+        bridge_m=sum(m.bridge_m for m in members),
     )
     own = _street_words(first)
     streets: list[tuple[str, str | None]] = []
@@ -2472,6 +2501,8 @@ def describe_both(
     crossing's `group_crossings` row in the full list and None in the overview -
     on the entry for a Mass Ride's group of signalized crossings, else None),
     `surface` (on a stretch, `surface_of`: "unpaved", "partly unpaved" or None),
+    `bridge_m` (on a stretch with at least BRIDGE_MIN_M of it on bridges only: those
+    metres, scaled),
     `text`, and `text_lanes_hidden` (the text with painted lanes on LTS 4 and
     Avoid not called bike lanes, or None where that is `text`).
     `walks` are the stretches to walk a bicycle over, (from, to) in metres in the
@@ -2823,6 +2854,7 @@ def describe_both(
                     facility=entry_facility(run.facility),
                     oneway=_oneway_at_end(run),
                     surface=surface_of(run),
+                    **_bridge_field(run, scale),
                     text_lanes_hidden=text_lanes_hidden,
                     turn=None
                     if turn is None
@@ -2956,6 +2988,7 @@ def describe_both(
                     facility=entry_facility(run.facility),
                     oneway=_oneway_at_end(run),
                     surface=surface_of(run),
+                    **_bridge_field(run, scale),
                     text_lanes_hidden=(
                         _stretch_sentence(hidden, start, end, turn, continues, then, toward)
                         if hidden
