@@ -1469,7 +1469,7 @@ def test_bicycle_link_service_matches_the_remap() -> None:
 
 
 def test_a_schools_or_hospitals_own_service_roads_are_found_and_nothing_else():
-    """The owner, 2026-11-26, after a commute was sent round a school's bus loop at 8 AM:
+    """The owner, after a route was sent round a school's bus loop:
     "keep it to service roads in front of a school. Allow with a destination, stop, or
     via.", then "some hospitals too". Those become destination-only (`rm:campus_grounds`);
     public streets, paths and a way signed for bicycles do not."""

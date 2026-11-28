@@ -418,7 +418,7 @@ test("a full account names the route unopened longest and asks before deleting i
   assert.ok(!outcome.ok && outcome.full && outcome.propose?.id === 9);
 });
 
-// Today's directions for a saved line (the owner, 2026-11-24, riding his saved commute, saved 2026-11-10: "The turn that
+// Today's directions for a saved line (the owner, riding a saved route made two weeks before: "The turn that
 // I asked to keep as a test is STILL not shown!"). The fixture is the Metropolitan Branch Trail's jog at Aspen Street
 // as the planner answers it now (fixtures/cues/takoma-mbt-jog.json); the saved answer is the same line with the
 // directions it had before #1310: no jog.

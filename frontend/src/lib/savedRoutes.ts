@@ -496,7 +496,7 @@ export const SAME_LINE_SHARE = 0.005;
 export const SAME_LINE_M = 25;
 
 /**
- * A reopened route's saved answer with today's directions (the owner, 2026-11-24, on his saved commute: "The turn that I
+ * A reopened route's saved answer with today's directions (the owner, on a saved route: "The turn that I
  * asked to keep as a test is STILL not shown!"). A save keeps the whole answer, its turn list too, so a cue fixed after
  * the save (#1310, the Metropolitan Branch Trail's jog at Aspen Street) never reached it. `today` is the planner's
  * answer following the saved line itself (`follow`, exactly): where it did follow it (`follows_file`) and comes out the

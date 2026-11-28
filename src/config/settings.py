@@ -265,7 +265,9 @@ KNOWN_COVERAGE_AREAS = {
     "southwest-florida": SOUTHWEST_FLORIDA_BBOX,
 }
 _area_names = [
-    n.strip() for n in os.environ.get("RM_COVERAGE_AREAS", "dc-baltimore").split(",") if n.strip()
+    n.strip()
+    for n in (os.environ.get("RM_COVERAGE_AREAS") or "dc-baltimore").split(",")
+    if n.strip()
 ]
 _unknown_areas = [n for n in _area_names if n not in KNOWN_COVERAGE_AREAS]
 if _unknown_areas or not _area_names or _area_names[0] != "dc-baltimore":
