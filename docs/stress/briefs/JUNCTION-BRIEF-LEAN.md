@@ -62,7 +62,7 @@ there is a bike box, a two-stage turn or a left arrow the rider can use from a b
 **No signal, rider must find a gap** (stop sign or yield on the rider's leg, traffic on the other
 road does not stop): one lane each way at 25 mph or less with light traffic: 1 to 1.5. Up to
 30 mph or steady traffic: 2. One lane each way at 35 to 40 mph, or three to four lanes at 30 or
-less: 3. Four or more lanes at 35 mph or more: 4 (a level above Furth's table at 35 mph, on purpose: riders reported that easier crossing levels left them at stop signs they could not get across from). That reason is the wait for a gap, so weigh the count: where a wide road carries light traffic (a few thousand cars a day, gaps every few seconds), it is usually about a level easier than these figures, unless it is 40 mph or faster or the count is missing or borrowed; say so in `why`. Fast, wide and
+less: 3. Four or more lanes at 35 mph or more: 4 (a level above Furth's table at 35 mph, on purpose: riders reported that easier crossing levels left them at stop signs they could not get across from). That reason is the wait for a gap, so this is a starting point, not a floor: weigh it against everything you are given. Light traffic (a few thousand cars a day) can make a wide road easier to cross; speed, a missing or borrowed count, poor sight lines, turning traffic or a busy peak can keep it harsh. Decide from the whole junction and say what decided it in `why`. Fast, wide and
 busy with no gaps to speak of: 4.5 to 5. A refuge island: up to a level easier at 30 mph or less,
 half a level at most on fast multilane roads. A flashing beacon: about half a level, less across
 four fast lanes; a full bike or pedestrian signal makes it a signal. With no signal, a left off or
