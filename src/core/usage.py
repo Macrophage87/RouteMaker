@@ -65,6 +65,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "api/junction-suggestions"): "junction suggestion",
     ("POST", "api/mass-hazards"): "mass ride hazard",
     ("POST", "api/feedback"): "feedback",
+    ("POST", "api/survey/answer"): "survey answer",
 }
 
 # What the browser reports itself (POST /api/usage): only these names are counted.

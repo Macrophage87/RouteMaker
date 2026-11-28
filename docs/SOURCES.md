@@ -283,6 +283,59 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   and route (the owner, 2026-10-31: "Keep 32, cite VDOT"). Licence: VDOT's portal
   disclaimer, as for the counts above.
 
+## FDOT Roadway Characteristics Inventory (Southwest Florida)
+
+- Credit: `FDOT` (added to the map's credits, `frontend/src/lib/credits.json`, when Southwest Florida is turned on)
+- Publisher: Florida Department of Transportation, Transportation Data and Analytics
+  Office (TDA), on FDOT's ArcGIS organisation (`services1.arcgis.com/O1JpcwDW8sjYuddV`),
+  updated weekly from the Roadway Characteristics Inventory (RCI). State roads only.
+- Layers read by the rebuild (`scripts/install_reference_data.py --fdot`, `--volume
+  --volume-source fdot`; `routemaker.agency_roads.parse_fdot_rci`):
+  `Maximum_Speed_Limit_TDA` (item `4a61f17ab4784202ae10d7d5fb3bf9de`, `SPEED`),
+  `Number_Of_Lanes_TDA` (item `3f217f88f25347709458ee7f9f651e03`, `LANE_CNT`) and
+  `Annual_Average_Daily_Traffic_TDA` (item `ceb698fb86d446c08f0b8e54acab6293`, `AADT`).
+  `Bike_Lane_TDA` (item `32b8fa6d23974ed7bed110ea93341a79`) is kept as raw data for the
+  raters; the build reads bike lanes from OSM. The posted speed and lane count are the
+  state's record and win over OSM's on the state road classes they are held to.
+- Licence: Florida public records (Florida Constitution article I, section 24; Florida Statutes chapter 119), which a state agency may not
+  copyright without a statute allowing it: public domain (the owner, 2026-11-26, citing the
+  Department of State's public records presentation,
+  <https://soe.dos.state.fl.us/pdf/GC_Presentation-Public_Records-Final_20191210.pdf>). Published in the public data release with FDOT's "NO WARRANTIES
+  ... DISCLAIMER OF LIABILITY" text kept beside it.
+- Downloaded 2026-11-23 for the Southwest Florida box, each with its README (source,
+  licence text, time, count, sha256), to the project files `data/fdot-2026-11-23-wide/`
+  (the wider box, Sarasota to Shark Valley; `data/fdot-2026-11-23/` is the first, smaller box).
+
+## NOAA tide predictions (the beach path)
+
+- Credit: `NOAA` (added to the map's credits when Southwest Florida is turned on; the beach note in Go is kept short)
+- Publisher: NOAA Center for Operational Oceanographic Products and Services (CO-OPS),
+  `api.tidesandcurrents.noaa.gov/api/prod/datagetter`, `product=predictions`,
+  `interval=hilo`, `datum=MLLW`, `time_zone=gmt`, `units=english`.
+- Stations: eight on the open Gulf by the Southwest Florida beaches
+  (`scripts/build_tides.py` `STATIONS`, from NOAA's station list, 2026-11-23).
+- Licence: a US Government work, public domain. Kept in the repository as
+  `frontend/src/tide-data/tides.json` (low tides only, about 400 days).
+
+## Florida Greenways and Trails, Existing Trails (trail uses)
+
+- Credit: `Florida DEP (Office of Greenways and Trails)` (added to the map's credits when Southwest Florida is turned on)
+- Layer: **Florida Greenways and Trails System - Existing Trails**, Florida Department of
+  Environmental Protection open data
+  (<https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/OGT/MapServer/3>). The
+  field `TYPE` names each trail's uses; any type that lists Biking (such as "Biking",
+  "Hiking/Biking" or "Biking/Equestrian"), and "Multi-Use", opens the trail ways OSM is silent about
+  for bicycles (`routemaker.trail_uses`; the owner, 2026-11-25, "Most of the trails that
+  are advertised for biking are closed for biking"). A way's own `bicycle` tag wins.
+- Installed with `scripts/install_reference_data.py --fl-trail-uses` as
+  `trail-uses.json`; fetched with `scripts/fetch_agency_layer.py` after the owner
+  approves the download (2026-11-26: 5,732 records, project files
+  `data/fl-ogt-2026-11-26/`).
+- Licence: Florida public records (Florida Constitution article I, section 24; Florida Statutes chapter 119), which a state agency may not
+  copyright without a statute allowing it: public domain (the owner, 2026-11-26, citing the
+  Department of State's public records presentation,
+  <https://soe.dos.state.fl.us/pdf/GC_Presentation-Public_Records-Final_20191210.pdf>). Published in the public data release.
+
 ## Maryland traffic counts (MDOT SHA)
 
 - Credit: `State of Maryland (MDOT SHA)`

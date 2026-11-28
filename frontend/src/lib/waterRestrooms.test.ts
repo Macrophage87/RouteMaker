@@ -16,6 +16,7 @@ import {
   ALONG_ROUTE_TEXT,
   WATER_ICONS,
   WATER_LAYER,
+  waterLayerBefore,
   WATER_PREFS_DEFAULT,
   WATER_PREFS_KEY,
   WATER_SOURCE_ID,
@@ -549,4 +550,52 @@ test("the route's Water and restrooms fold lists the water along the route with 
   assert.doesNotMatch(app, /waterOn && waterData && shown/);
   assert.match(panel, /water=\{waterStatus === "ready" \? \{ items: waterAlong, onAddStop: addWaterStop \} : null\}/);
   assert.doesNotMatch(panel, /waterOn && waterStatus/);
+});
+
+test("the icons go just over the route's line, under its names and marks, so a restroom beside the path shows", () => {
+  // The owner, 2026-11-27: "2 public flush restrooms weren't marked"; one sat a few feet off the path, under the line.
+  const lines = ["route-line", "route-drawn-gaps", "route-trail"];
+  const order = ["base", "route-casing", "route-stress", "route-line", "route-drawn-gaps", "route-trail", "route-name", "route-hazard-marks"];
+  assert.equal(waterLayerBefore(order, lines), "route-name");
+  // In a ride the lifted names sit just over the route's trail layers: the water goes under them.
+  const ride = ["base", "route-casing", "route-line", "route-drawn-gaps", "route-trail", "trail-label", "road-label", "route-name", "rail-names", "route-hazard-marks"];
+  assert.equal(waterLayerBefore(ride, lines), "trail-label");
+  // Nothing over the line, or no route at all: the very top.
+  assert.equal(waterLayerBefore(["base", "route-line"], lines), undefined);
+  assert.equal(waterLayerBefore(["base"], lines), undefined);
+});
+
+test("by the route's real layer ids, as MapView adds them: the icons go just over its trail layers, under its names", async () => {
+  const { ROUTE_LINE_LAYER, ROUTE_DRAWN_GAPS_LAYER, ROUTE_LINE_LAYERS, routeTrailLayers } = await import("./routeTrailLayers.ts");
+  const { routeNameLayer } = await import("./routeNames.ts");
+  // A map that keeps its layers in order and puts one under `before`, as MapLibre does.
+  const order: string[] = [];
+  const sources = new Map<string, unknown>();
+  const map = {
+    getSource: (id: string) => sources.get(id),
+    addSource: (id: string, source: unknown) => void sources.set(id, source),
+    addLayer: (layer: { id: string }, before?: string) => void order.splice(before && order.includes(before) ? order.indexOf(before) : order.length, 0, layer.id),
+    getLayer: (id: string) => (order.includes(id) ? {} : undefined),
+    hasImage: () => true,
+    addImage: () => {},
+    setLayoutProperty: () => {},
+    setFilter: () => {},
+  };
+  // MapView's load: the route's line, its drawn gaps, the trail layers it adds (routeTrailLayers), then its names.
+  const trail = routeTrailLayers().map((layer) => String(layer.id));
+  for (const id of ["base", ROUTE_LINE_LAYER, ROUTE_DRAWN_GAPS_LAYER, ...trail, String(routeNameLayer().id)]) map.addLayer({ id });
+  // Every line layer waterLayerBefore looks for is one MapView adds: a renamed trail layer leaves the icons under it.
+  assert.deepEqual(ROUTE_LINE_LAYERS.filter((id) => !order.includes(id)), []);
+  assert.deepEqual(trail.filter((id) => !ROUTE_LINE_LAYERS.includes(id as never)), [], "each trail layer MapView adds is a route line layer");
+  addWaterRestrooms(map, [POINT], ALL, 1, waterLayerBefore(order, ROUTE_LINE_LAYERS));
+  const water = order.indexOf(WATER_LAYER);
+  assert.ok(ROUTE_LINE_LAYERS.every((id) => order.indexOf(id) < water), "over every line layer");
+  assert.equal(order[water + 1], String(routeNameLayer().id), "under the route's names");
+  // A route planned after the layer is on: its layers were there, empty, from the map's load, so the icons stay over
+  // it. Were the route's layers added after the water layer, they would cover the icons: waterLayerBefore puts the
+  // icons at the top then, and MapView adds the route's layers at load, first.
+  const late: string[] = [];
+  const lateMap = { ...map, addLayer: (layer: { id: string }, before?: string) => void late.splice(before && late.includes(before) ? late.indexOf(before) : late.length, 0, layer.id), getSource: () => undefined };
+  addWaterRestrooms(lateMap, [POINT], ALL, 1, waterLayerBefore(["base"], ROUTE_LINE_LAYERS));
+  assert.deepEqual(late, [WATER_LAYER], "no route yet: the very top");
 });

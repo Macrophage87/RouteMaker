@@ -453,8 +453,7 @@ class _Grid:
 
 
 def in_box(lon: float, lat: float) -> bool:
-    west, south, east, north = COVERAGE_BBOX
-    return west <= lon <= east and south <= lat <= north
+    return water.in_coverage(lon, lat)
 
 
 Ways = dict[str, list[list[tuple[int, float, float]]]]

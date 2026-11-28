@@ -24,7 +24,7 @@ from pathlib import Path
 from django.db import connection
 
 from core import offline_network
-from core.offline_packs import OVERLAP_M, PACKS_VERSION, REGIONS, Region
+from core.offline_packs import OVERLAP_M, PACKS_VERSION, REGIONS, Region, regions
 from pipeline.schema import validate_schema_name
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ def region_wkt(region: Region, coverage_box) -> str:
         return _box_wkt(coverage_box)
     with connection.cursor() as cursor:
         if region.outline is None:
+            # The home regions only: a later area's box is far outside the home box.
             others = [_polygon_wkt(r.outline) for r in REGIONS if r.outline is not None]
             cursor.execute(
                 "SELECT ST_AsText(ST_Difference(ST_GeomFromText(%s, 4326),"
@@ -122,7 +123,7 @@ def build_packs(
             shutil.rmtree(part)
         part.mkdir()
         packs = []
-        for region in REGIONS:
+        for region in regions():
             ways = region_ways(schema, region_wkt(region, coverage_box))
             graph = offline_network.graph_of(ways)
             file = f"{region.id}.json.gz"

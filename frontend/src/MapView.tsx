@@ -30,7 +30,7 @@ import { Protocol } from "pmtiles";
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { MAX_BOUNDS_PAD, coverageEnvelope, type LonLat } from "./lib/geo.ts";
 import { loadRatedMap, ratedMapAsk, ratedMapCardBody, ratedMapDot, ratedMapName, ratedMapShown, type RatedMapJunction } from "./lib/ratedMap.ts";
 import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
@@ -108,7 +108,7 @@ import { metricFirst, subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
-import { ROUTE_TRAIL_SOURCE, routeTrailFeatures, routeTrailLayers } from "./lib/routeTrailLayers.ts";
+import { ROUTE_DRAWN_GAPS_LAYER, ROUTE_LINE_LAYER, ROUTE_LINE_LAYERS, ROUTE_TRAIL_SOURCE, routeTrailFeatures, routeTrailLayers } from "./lib/routeTrailLayers.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
@@ -121,7 +121,8 @@ import { addDcMask } from "./lib/dcBoundary.ts";
 import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData, type FederalMap } from "./lib/federalLand.ts";
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
-import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
+import { addWaterRestrooms, setWaterPrefs, waterLayerBefore, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
+import { addBeaches, type BeachData, type BeachMap } from "./lib/beaches.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
 import { MASS_LAYER_IDS, massLayerIds } from "./massStyle.js";
 import { addClimbs, climbsUnder, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
@@ -177,10 +178,9 @@ import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
 import {
   MAP_MAX_ZOOM,
   groupJunctions,
-  groupLabel,
+  junctionIconSvg,
   junctionItems,
   junctionsOnMap,
-  groupIconSvg,
   ICON_PX,
   type JunctionGroup,
   type JunctionItem,
@@ -402,6 +402,8 @@ interface Props {
   onFederalData?: (data: FederalData) => void;
   /** The public water and restrooms (lib/waterRestrooms.ts), once App has loaded them; null before. */
   water?: readonly WaterPoint[] | null;
+  /** The beaches and their tide-line paths (lib/beaches.ts), once App has loaded them; null before. Always shown. */
+  beaches?: BeachData | null;
   /** The rider's switches for their layer (lib/waterRestrooms.ts WaterPrefs): on, basic toilets, untreated water. */
   waterPrefs?: WaterPrefs;
   /** The Climbs layer's climbs (lib/climbs.ts), once App has loaded them; null before. */
@@ -609,7 +611,6 @@ const PICK_UP_BUZZ_MS = 15;
 const INFO_REPEAT_MS = 800;
 /** A right-button press that moved this far rotated the map: its contextmenu is not a request. */
 const RIGHT_DRAG_PX = 5;
-const MAX_BOUNDS_PAD = 0.4;
 /** The map's widest zoom. */
 const MIN_ZOOM = 7;
 /** How long an unanswered stress endpoint is left before it is asked again. */
@@ -674,8 +675,6 @@ export function MapView(props: Props) {
   // The route's junctions, which the markers are drawn from at each zoom.
   const junctionList = useRef<JunctionItem[]>([]);
   const junctionCard = useRef<Popup | null>(null);
-  // After a group's zoom, the junction whose new marker takes the focus.
-  const focusAfterZoom = useRef<number | null>(null);
   // The hover handle as last drawn (null: none), so an unchanged answer is
   // not drawn again; anything else that redraws the edit layer resets it.
   const hoverShown = useRef<LonLat | null>(null);
@@ -726,7 +725,8 @@ export function MapView(props: Props) {
       const active = document.activeElement;
       const back = focusAfterClose(opener, focusWasInCard, active === null || active === document.body);
       if (back === null) return;
-      (back === "marker" ? markerFor(item.index) : rowFor(item.index))?.focus();
+      // Zoomed out past the markers, the junction's list row takes it instead.
+      ((back === "marker" ? markerFor(item.index) : null) ?? rowFor(item.index))?.focus();
     });
     // A rider the settings allow may suggest a danger level for the junction (OWNER-DECISIONS 232): a
     // button at the card's foot opens the road panel on the junction with its suggestion form open
@@ -746,7 +746,7 @@ export function MapView(props: Props) {
       card.getElement().querySelector(".junction-card")?.append(button);
     });
   };
-  /** The marker now drawn for the junction at `index` (its group's, if it is in one). */
+  /** The marker now drawn for the junction at `index`; null when zoomed out past the markers. */
   const markerFor = (index: number): HTMLElement | null => {
     const drawn = junctionMarkers.current;
     const at = groupHolding(
@@ -760,6 +760,8 @@ export function MapView(props: Props) {
   const federalSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the water and restrooms layer in line with the props. */
   const waterSync = useRef<(() => void) | null>(null);
+  /** Set once the map has loaded: adds the beaches when their data comes. */
+  const beachSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the Climbs layer in line with the props. */
   const climbsSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: opens a climb's card with the focus in it (the road panel's "Climb details"). */
@@ -793,7 +795,9 @@ export function MapView(props: Props) {
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
     // The labels' faces come with the app (lib/mapGlyphs.ts), so a kept ride fetches no glyphs for them.
     setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers).filter((stack) => !bundledFace(stack)), () => stressTileTemplate(origin));
-    const [west, south, east, north] = COVERAGE_BBOX;
+    // How far the map pans: around every area the API serves (lib/geo.ts coverageEnvelope; App sets the areas and
+    // the map's maxBounds again once GET /api/coverage answers), padded.
+    const [west, south, east, north] = coverageEnvelope();
     const map = new maplibregl.Map({
       container: container.current,
       style: style as maplibregl.StyleSpecification,
@@ -808,8 +812,9 @@ export function MapView(props: Props) {
       // The bounds hold the part of the map above a phone's sheet, not the whole box (lib/coveredConstrain.ts).
       transformConstrain: (center, zoom) => {
         const box = container.current;
+        const [w, s, e, n] = coverageEnvelope();
         const { center: next, zoom: z } = constrainAbovePanel(center, zoom, {
-          bounds: [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD, east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
+          bounds: [w - MAX_BOUNDS_PAD, s - MAX_BOUNDS_PAD, e + MAX_BOUNDS_PAD, n + MAX_BOUNDS_PAD],
           minZoom: MIN_ZOOM,
           maxZoom: MAP_MAX_ZOOM,
           width: box?.clientWidth ?? 0,
@@ -932,8 +937,10 @@ export function MapView(props: Props) {
       const data = callbacks.current.water;
       if (!data || data.length === 0) return;
       waterById = new Map(data.map((p) => [p.id, p]));
-      // Over the stress overlay and the stations, directly under the route (railLayer.ts's order).
-      addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+      // Over the stress overlay, the stations and the route's line, under the route's names and marks
+      // (waterLayerBefore): a restroom a few feet off the path is not hidden under the ride's wide line.
+      const order = map.getStyle().layers.map((layer) => layer.id);
+      addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), waterLayerBefore(order, ROUTE_LINE_LAYERS));
     };
     let climbCard: ReturnType<typeof attachClimbInteraction> | null = null;
     /** True for the rest of the click that closed a climb card, so no water or federal card opens under it. */
@@ -1604,7 +1611,7 @@ export function MapView(props: Props) {
       // A half step's dash in the colour-blind-friendly palette (the owner, 2026-10-31: "keep dashes with the same rules").
       for (const layer of routeHalfLayers(ROUTE_STRESS_SOURCE)) map.addLayer(layer as never);
       map.addLayer({
-        id: "route-line",
+        id: ROUTE_LINE_LAYER,
         type: "line",
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
@@ -1614,7 +1621,7 @@ export function MapView(props: Props) {
       // read dashed beside the routed legs' solid line. Not while the route is greyed for a new plan.
       map.addSource(ROUTE_DRAWN_SOURCE, { type: "geojson", data: routeDrawnLines(null, 0) as never });
       map.addLayer({
-        id: "route-drawn-gaps",
+        id: ROUTE_DRAWN_GAPS_LAYER,
         type: "line",
         source: ROUTE_DRAWN_SOURCE,
         layout: { "line-join": "round", "line-cap": "butt" },
@@ -1900,6 +1907,12 @@ export function MapView(props: Props) {
       });
       waterSync.current = () => syncWater();
       syncWater();
+      // The beaches, shaded, and their tide-line paths (lib/beaches.ts): over the stress overlay, under the route.
+      beachSync.current = () => {
+        const data = callbacks.current.beaches;
+        if (data) addBeaches(map as unknown as BeachMap, data, ROUTE_BOTTOM_LAYER);
+      };
+      beachSync.current();
       climbCard = attachClimbInteraction(map, {
         visible: () => callbacks.current.climbsOn === true,
         climb: (id) => climbById.get(id),
@@ -1939,6 +1952,7 @@ export function MapView(props: Props) {
       federalSync.current = null;
       water?.detach();
       waterSync.current = null;
+      beachSync.current = null;
       climbCard?.detach();
       climbsSync.current = null;
       climbCardOpener.current = null;
@@ -2526,50 +2540,32 @@ export function MapView(props: Props) {
     if (!props.route || props.stale) return;
     junctionList.current = junctionsOnMap(junctionItems(props.route));
     const draw = () => {
-      // A marker with the focus (a zoom by keyboard from it, or a group's
-      // zoom) hands it to its junction's new marker.
+      // A marker with the focus (a zoom by keyboard from it) hands it to its junction's new marker.
       const focused = junctionMarkers.current.find(({ marker }) => marker.getElement() === document.activeElement);
-      if (focused && focusAfterZoom.current === null) focusAfterZoom.current = focused.group.members[0].index;
+      const wanted = focused ? focused.group.members[0].index : null;
       junctionMarkers.current.forEach(({ marker }) => marker.remove());
-      const groups = groupJunctions(junctionList.current, map.getZoom(), (item) => map.project([item.lon, item.lat]));
-      junctionMarkers.current = groups.map((group) => {
-        const [first] = group.members;
-        const single = group.members.length === 1;
+      // One marker for each junction, none when zoomed out (lib/intersectionMarkers.ts MARKERS_FROM_ZOOM).
+      junctionMarkers.current = groupJunctions(junctionList.current, map.getZoom()).map((group) => {
+        const [item] = group.members;
         const element = document.createElement("button");
         element.type = "button";
-        element.className = `junction-marker junction-${group.severity}${single ? "" : " junction-group"}`;
-        element.dataset.junctionIndex = String(first.index);
-        element.innerHTML =
-          groupIconSvg(group, ICON_PX) +
-          (single ? "" : `<span class="junction-count" aria-hidden="true">${group.members.length}</span>`);
+        element.className = `junction-marker junction-${group.severity}`;
+        element.dataset.junctionIndex = String(item.index);
+        element.innerHTML = junctionIconSvg(item, ICON_PX);
         // The name alone: a title as well was read a second time, as the
         // description (a11y review, int-2).
-        element.setAttribute("aria-label", single ? first.label : groupLabel(group));
-        const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([first.lon, first.lat]).addTo(map);
+        element.setAttribute("aria-label", item.label);
+        const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
         element.addEventListener("click", (event) => {
           // A click on a marker is not a click on the map: it must not add a via point.
           event.stopPropagation();
-          if (single) {
-            openCard(first, "marker");
-            return;
-          }
-          const bounds = new maplibregl.LngLatBounds();
-          group.members.forEach((m) => bounds.extend([m.lon, m.lat]));
-          // The redraw at the zoom's end takes this button away; the focus
-          // goes to the first member's new marker, not to the page's body.
-          focusAfterZoom.current = document.activeElement === element ? first.index : null;
-          // A fit that leaves the zoom as it was has no zoomend to redraw on.
-          map.once("moveend", () => {
-            if (focusAfterZoom.current !== null) draw();
-          });
-          map.fitBounds(bounds, { padding: 120, maxZoom: map.getMaxZoom(), duration: 500 });
+          openCard(item, "marker");
         });
         element.addEventListener("dblclick", (event) => event.stopPropagation());
         return { group, marker };
       });
-      const wanted = focusAfterZoom.current;
-      focusAfterZoom.current = null;
-      if (wanted !== null) markerFor(wanted)?.focus();
+      // Zoomed out past the markers, the focus goes to the junction's list row, not the page's body.
+      if (wanted !== null) (markerFor(wanted) ?? rowFor(wanted))?.focus();
     };
     draw();
     map.on("zoomend", draw);
@@ -2788,8 +2784,14 @@ export function MapView(props: Props) {
     ratedMarkers.current.forEach((marker) => marker.remove());
     ratedMarkers.current = [];
     if (!map) return;
-    const onRoute = props.route && !props.stale ? junctionsOnMap(junctionItems(props.route)).map((item): LonLat => [item.lon, item.lat]) : [];
-    for (const junction of ratedMapShown(ratedMap, onRoute)) {
+    const planned = props.route && !props.stale ? props.route : null;
+    const spot = (item: { lon: number; lat: number }): LonLat => [item.lon, item.lat];
+    const marked = planned ? junctionItems(planned) : [];
+    // The drawn markers stand for the dots at their spots; a marked junction past the map's most keeps its plain dot.
+    const onRoute = junctionsOnMap(marked).map(spot);
+    // A Mass Ride's markers are the busy roads' own tiers, not the rated movements: its dots stay as on the plain map.
+    const line = planned && planned.preset !== "mass-ride" ? (planned.geometry?.coordinates ?? []) : [];
+    for (const junction of ratedMapShown(ratedMap, onRoute, line, marked.map(spot))) {
       const element = ratedMapDot(junction);
       element.addEventListener("click", (event) => {
         // A click on a dot is not a click on the map: it must not add a point.
@@ -3433,6 +3435,11 @@ export function MapView(props: Props) {
   useEffect(() => {
     waterSync.current?.();
   }, [props.water, props.waterPrefs]);
+
+  // The beaches: added once their data comes.
+  useEffect(() => {
+    beachSync.current?.();
+  }, [props.beaches]);
 
   // The Climbs layer: its data when it comes, and the switch.
   useEffect(() => {

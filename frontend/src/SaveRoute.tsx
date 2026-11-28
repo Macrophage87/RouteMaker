@@ -96,6 +96,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
     if (asking) signInRef.current?.focus();
   }, [asking]);
   const formId = useId();
+  const saidId = useId();
   // On the map, the line that says it saved goes after a while: it would cover the map chips under the bar.
   useEffect(() => {
     // Not while a keep is still under way: "Keeping…" stays until it ends (the PR review's 8).
@@ -263,7 +264,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
           </button>
         </form>
       )}
-      <p className="hint save-route-said" role="status">
+      <p id={saidId} className="hint save-route-said" role="status">
         {said.text}
         {said.count % 2 === 1 ? " " : ""}
         {/* On the line's card under the bar, while it shows. */}
@@ -294,7 +295,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
           </>
         )}
       </p>
-      {saved && said.text && <LinkBox link={box} />}
+      {saved && said.text && <LinkBox link={box} describedBy={saidId} />}
     </div>
   );
 }

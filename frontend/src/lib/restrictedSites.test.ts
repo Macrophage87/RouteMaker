@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  GATED_KIND,
+  GATED_STYLE,
   NO_PUBLIC_ACCESS,
   RESTRICTED_EDGE_LAYER,
   RESTRICTED_HATCH_IMAGE,
@@ -90,7 +92,9 @@ test("closed sites: repaints for the dark map and back", () => {
       assert.ok(dark[id] !== undefined);
       assert.ok(light.find((l) => l.id === id) !== undefined);
     }
-    assert.ok((restrictedLightPaint()[0].paint["fill-opacity"] as number) < 0.2);
+    // A light wash over the base map, for either kind: [match, kind, gated, its opacity, the others'].
+    const opacity = restrictedLightPaint()[0].paint["fill-opacity"] as unknown[];
+    assert.ok((opacity[3] as number) < 0.2 && (opacity[4] as number) < 0.2);
   });
 
 test("closed sites: draws a striped tile", () => {
@@ -100,3 +104,15 @@ test("closed sites: draws a striped tile", () => {
     assert.deepEqual(Array.from(tile.data.slice(4, 8)), [0, 0, 0, 0]);
   });
 
+
+test("closed sites: a gated community is washed and edged in its own colour, on both maps", () => {
+  for (const dark of [false, true]) {
+    const layers = restrictedLayers(dark);
+    const tint = layers.find((l) => l.id === RESTRICTED_TINT_LAYER) as { paint: Record<string, unknown> };
+    const edge = layers.find((l) => l.id === RESTRICTED_EDGE_LAYER) as { paint: Record<string, unknown> };
+    const g = dark ? GATED_STYLE.dark : GATED_STYLE.light;
+    assert.deepEqual(tint.paint["fill-color"], ["match", ["get", "kind"], GATED_KIND, g.tint, dark ? "#000000" : "#6b6b78"]);
+    assert.deepEqual((edge.paint["line-color"] as unknown[]).slice(0, 4), ["match", ["get", "kind"], GATED_KIND, g.edge]);
+    assert.notEqual(g.tint, dark ? "#000000" : "#6b6b78");
+  }
+});
