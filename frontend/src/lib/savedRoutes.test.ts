@@ -453,6 +453,14 @@ test("today's directions are not taken where the planner did not follow the save
   assert.equal(withTodaysDirections(withStop, { ...takoma(), follows_file: true }), null);
 });
 
+test("on a long route, today's directions are taken within a tenth of a percent of its length, not beyond", () => {
+  // A 40 mi (64.4 km) route: 60 m apart is the same line matched again; 70 m apart is not (half a percent was 322 m).
+  const saved = { ...beforeTheFix(takoma()), distance_m: 64_374 };
+  assert.ok(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: 64_374 + 60 }));
+  assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: 64_374 + 70 }), null);
+  assert.equal(withTodaysDirections(saved, { ...takoma(), follows_file: true, distance_m: 64_374 - 70 }), null);
+});
+
 test("the saved line is asked to be followed as it is, but not on a loop", () => {
   const route = takoma();
   const line = directionsLine(route);

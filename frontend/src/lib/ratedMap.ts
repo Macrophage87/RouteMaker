@@ -9,6 +9,7 @@ import type { RatedMove } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { movementIconSvg, ratedDotSvg, ratedLines, type Movement } from "./intersectionMarkers.ts";
 import { ratedLevelText } from "./ratedDot.ts";
+import { t } from "./i18n.ts";
 
 /** The map's two closest zooms (its most is 18): the junctions rated 3 or more from the first, every one at the last. */
 export const RATED_MIN_ZOOM = 17;
@@ -172,17 +173,23 @@ function belowThree(moves: readonly RatedMove[], move: Movement): boolean {
   return moves.length > 0 && moves.filter((m) => names.includes(m.move)).every((m) => m.level < 3);
 }
 
-const ROUTE_MOVE_WORDS: Record<Movement, string> = {
-  left: "This route turns left here",
-  right: "This route turns right here",
-  straight: "This route rides straight through here",
+/** The route's own movement at a dot, and the same said to be below LTS 3; worded as called, in the language in force. */
+const ROUTE_MOVE_WORDS: Record<Movement, () => string> = {
+  left: () => t("This route turns left here"),
+  right: () => t("This route turns right here"),
+  straight: () => t("This route rides straight through here"),
+};
+const ROUTE_MOVE_BELOW_THREE: Record<Movement, () => string> = {
+  left: () => t("This route turns left here, below LTS 3"),
+  right: () => t("This route turns right here, below LTS 3"),
+  straight: () => t("This route rides straight through here, below LTS 3"),
 };
 
 /** "Junction rated LTS 4": the dot's name, and its card's title. */
 export function ratedMapName(junction: Pick<RatedMapJunction, "level" | "routeMove"> & Partial<Pick<RatedMapJunction, "moves">>): string {
   // Said to be below 3 only where the dot's own ratings agree (a right has none: the model prices it).
-  if (junction.routeMove) return belowThree(junction.moves ?? [], junction.routeMove) ? `${ROUTE_MOVE_WORDS[junction.routeMove]}, below LTS 3` : ROUTE_MOVE_WORDS[junction.routeMove];
-  return `Junction rated ${ratedLevelText(junction.level)}`;
+  if (junction.routeMove) return (belowThree(junction.moves ?? [], junction.routeMove) ? ROUTE_MOVE_BELOW_THREE : ROUTE_MOVE_WORDS)[junction.routeMove]();
+  return t("Junction rated {level}", { level: ratedLevelText(junction.level) });
 }
 
 /** The dot: a button named by its level, drawn small and in colour only. */
@@ -214,7 +221,7 @@ export function ratedMapCardBody(junction: RatedMapJunction): HTMLDivElement {
   if (!junction.routeMove) {
     const hint = document.createElement("p");
     hint.className = "hint";
-    hint.textContent = "The dot is the colour of its hardest movement.";
+    hint.textContent = t("The dot is the colour of its hardest movement.");
     body.append(hint);
   }
   return body;

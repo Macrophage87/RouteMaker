@@ -11,7 +11,8 @@
  * The map parts are functions of a small map interface so a test can run them against a stand-in, like
  * waterRestrooms.ts.
  */
-import { formatDistance, formatTideFeet } from "./format.ts";
+import { formatDistance } from "./format.ts";
+import { clockLocale, t } from "./i18n.ts";
 import type { LonLat } from "./geo.ts";
 import type { LowTide } from "./tides.ts";
 
@@ -122,21 +123,18 @@ export function beachAlongRoute(line: readonly LonLat[], data: BeachData | null)
   return total > 0 && first ? { metres: total, at: first } : null;
 }
 
-/** The route note: how far on the beach, to ride it at low tide, and that day's low tides at the nearest station. */
-export function beachNote(
-  along: BeachAlong,
-  lows: readonly LowTide[] | null,
-  station: string | null,
-  locale?: string,
-  timeZone = "America/New_York",
-): string {
-  const lead = `Beach path, ${formatDistance(along.metres)}: ride it at low tide, on the firm sand below the high-tide line.`;
-  if (!lows || !station) return lead;
-  if (lows.length === 0) return `${lead} No low tide that day in the tide table.`;
-  const times = lows
-    .map((low) => `${low.at.toLocaleTimeString(locale ?? "en-US", { hour: "numeric", minute: "2-digit", timeZone })}, ${formatTideFeet(low.feet)}`)
-    .join("; ");
-  return `${lead} Low tide: ${times}. ${station}, NOAA.`;
+/**
+ * The route note, one short line in Go and Plan: how far on the beach, and that day's low tides at the nearest station
+ * (lib/tides.ts). `lows` null is no tide data for the day (the file not had, or the day outside it): the line then
+ * says only to ride at low tide.
+ */
+export function beachNote(along: BeachAlong, lows: readonly LowTide[] | null, locale: string | undefined = clockLocale(), timeZone = "America/New_York"): string {
+  const distance = formatDistance(along.metres);
+  if (!lows) return t("Beach path, {distance}: ride at low tide.", { distance });
+  if (lows.length === 0) return t("Beach path, {distance}: ride at low tide. No low tide that day.", { distance });
+  const clock = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", timeZone });
+  const times = new Intl.ListFormat(locale, { type: "unit", style: "short" }).format(lows.map((low) => clock.format(low.at)));
+  return t("Beach path, {distance}: ride at low tide ({times}).", { distance, times });
 }
 
 /** The parts of a MapLibre map these use. */

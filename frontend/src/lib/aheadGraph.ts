@@ -687,7 +687,8 @@ export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[
 /** "Turns ahead: 3. Busy junctions: 1.", or nothing where there are neither. */
 export function turnsSentence(marks: readonly TurnMark[], youM: number): string {
   const ahead = marks.filter((mark) => mark.m >= youM);
-  const turns = ahead.filter((mark) => mark.movement !== null).length;
+  // A merged arrow (spreadMarks) is its turn and each that follows it: counted as the cue cards count them.
+  const turns = ahead.reduce((n, mark) => n + (mark.movement !== null ? 1 + (mark.then?.length ?? 0) : 0), 0);
   const busy = ahead.filter((mark) => mark.severity === "orange" || mark.severity === "red").length;
   // A part that is zero is left out (the v0.19.0 release review: "Turns ahead: 0" said on a stretch with no turns).
   if (turns && busy) return t("Turns ahead: {turns}. Busy junctions: {busy}.", { turns, busy });

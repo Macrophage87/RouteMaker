@@ -5182,7 +5182,8 @@ export function App() {
   } | null>(null);
   // The ended ride's draft's Save: under way, done, or what the server said.
   const [draftSave, setDraftSave] = useState<{ saving: boolean; saved: boolean; said: string | null }>({ saving: false, saved: false, said: null });
-  const surveyShown = surveyOn && !massMap;
+  // Not while riding: a tap mid-ride would open a modal card. The ride summary offers the spots passed instead.
+  const surveyShown = surveyOn && !massMap && !onBike;
   // Loaded with the layer on, or when a signed-in rider's ride ends (the spots it passed; lib/surveySpots.ts spotsPassed).
   const survey = useSurveySpots(surveyShown || (rideEnded !== null && me.signed_in), window.location.origin, me.signed_in ? "in" : "out");
   useEffect(() => {
@@ -5818,7 +5819,7 @@ export function App() {
     if (!beachAlong) return null;
     const station = tideData ? nearestStation(tideData, beachAlong.at) : null;
     const day = new Date(startsMs ?? minute);
-    return beachNote(beachAlong, station ? lowTidesOn(station, day) : null, station?.name ?? null);
+    return beachNote(beachAlong, tideData && station ? lowTidesOn(tideData, station, day) : null);
   }, [beachAlong, tideData, startsMs, minute]);
   // The route's arrival leaving now (or at Plan's start time), after its time in Go and Plan (lib/arrival.ts), on the same minute's clock.
   const arriveMs = leaveNowArriveMs(shown, startsMs ?? minute, startsMs !== null ? null : (dials.when ?? null));
@@ -8219,8 +8220,9 @@ export function App() {
                       on: surveyOn,
                       onChange: changeSurveyOn,
                       status: surveyShown && survey.status === "unavailable" ? SURVEY_UNAVAILABLE : "",
-                      count: !surveyShown ? "" : me.signed_in ? (surveyMine ? surveyCountText(surveyMine.done.length, surveyMine.count) : "") : SURVEY_SIGN_IN,
-                      near: surveyShown && survey.spots
+                      // Go: the switch alone (one control per feature); the count and the list are Plan's.
+                      count: !surveyShown || mode === "go" ? "" : me.signed_in ? (surveyMine ? surveyCountText(surveyMine.done.length, surveyMine.count) : "") : SURVEY_SIGN_IN,
+                      near: surveyShown && survey.spots && mode !== "go"
                         ? () => {
                             const c = getMap()?.getCenter();
                             return c && survey.spots ? spotsNear([c.lng, c.lat], survey.spots) : [];

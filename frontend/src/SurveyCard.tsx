@@ -12,6 +12,7 @@ import {
   SURVEY_CANCEL,
   SURVEY_DONE,
   SURVEY_FAILED,
+  SURVEY_LOADING,
   SURVEY_NEED_WHEN,
   SURVEY_SEND,
   SURVEY_SENT,
@@ -21,7 +22,7 @@ import {
   type SurveyQuestion,
   type SurveySpot,
 } from "./lib/surveySpots.ts";
-import { planLanguageAttributes } from "./lib/i18n.ts";
+import { language, planLanguageAttributes } from "./lib/i18n.ts";
 
 export function SurveyCard({
   spot,
@@ -49,6 +50,9 @@ export function SurveyCard({
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
   const open = spot !== null;
+  /** The questions come from the server in English. */
+  const english = language() === "en";
+  const loading = open && signedIn && !sent && questions === null && !said;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -120,7 +124,7 @@ export function SurveyCard({
           {signedIn &&
             !sent &&
             questions?.map((q) => (
-              <fieldset key={q.key} className="survey-question">
+              <fieldset key={q.key} className="survey-question" lang={english ? undefined : "en"}>
                 <legend>{q.text}</legend>
                 {q.options.map((o) => (
                   <label key={o.value}>
@@ -140,9 +144,9 @@ export function SurveyCard({
               </fieldset>
             ))}
           <p className="survey-said" role="status">
-            {said}
+            {loading ? SURVEY_LOADING : said}
           </p>
-          <div className="closure-choices">
+          <div className="closure-choices survey-actions">
             {signedIn && !sent && questions && (
               <button type="submit" className="primary" aria-disabled={sending ? true : undefined}>
                 {SURVEY_SEND}

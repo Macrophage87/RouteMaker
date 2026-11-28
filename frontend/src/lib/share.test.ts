@@ -119,7 +119,7 @@ test("App shows Share in the Route file sheet everywhere (without a sheet it cop
   assert.match(app, /const done = await outcome;\s*said = shareSaidFor\(done\);/);
   assert.match(app, /if \(said && !quiet\)\s*window\.setTimeout/);
   assert.match(app, /if \(press === sharePresses\.current\) setShareSaid\(\(before\) => \(\{ text: said, count: before\.count \+ 1 \}\)\);/);
-  assert.match(controls, /<p className="hint share-said" role="status">/);
+  assert.match(controls, /<p id="share-said" className="hint share-said" role="status">/);
 });
 
 test("share() is called within the press: synchronously in shareLink, and before any await in shareRoute", () => {
