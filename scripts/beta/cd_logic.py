@@ -14,6 +14,8 @@ functions the tests call directly (tests/test_beta_cd.py):
               by itself, or needs the owner (data from home, sudo, nginx); and which optional
               steps the deploy needs (front end, router restart, services to recreate)
   tag-image   the api image a release tag's message names by digest (the release workflow's)
+  tag-ship    whether a release tag says "ship: code-first" (the owner's go said ship the code now
+              and the map later), so the agent ships a release held only for its map by itself
   provenance  whether GitHub's attestations tie that image to the release workflow on main and
               to the tag's commit
   rollback    which undo steps a failed deploy needs, from the steps it got through
@@ -31,6 +33,7 @@ check-run JSON.
   cd_logic.py lock-hash < frontend/package-lock.json      # 64 hex
   cd_logic.py gate --repo DIR --old SHA --new SHA [--ci-image]  # KEY=VALUE lines
   cd_logic.py tag-image < tag-message.txt                 # the image@sha256:..., or nothing
+  cd_logic.py tag-ship < tag-message.txt                  # code-first, or nothing
   cd_logic.py rollback --done stopped,snapshot,...        # one undo action per line
 """
 
@@ -239,7 +242,8 @@ AGENT_FILES = (
 )
 # The api image's own files: they stop a release the agent would build itself, but not one whose
 # image the release workflow built from the tagged commit and named, by digest, in the tag
-# (.github/workflows/release.yml; the owner, 2026-11-12, "Yes, behind your approval").
+# (.github/workflows/release.yml; the owner, 2026-11-12). The workflow runs on the owner's go to
+# merge the release; it waits for no other approval (the owner, 2026-11-28).
 CI_IMAGE_PREFIXES = ("docker/api.Dockerfile", "docker/requirements", "docker/api-entrypoint.sh")
 # The stops a map shipped with the release answers (`auto-release.sh ship-held --map`): the graph
 # and table builders, whose change needs a map built at home or on the cloud box.
@@ -254,6 +258,29 @@ MAP_PREFIXES = (
 TAG_IMAGE = re.compile(
     r"(?m)^api-image: (ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64})\s*$"
 )
+# The line it writes when the owner's go said "code first" (the release pull request's
+# `code-first` label, or the run's input): a release held only for its map ships its code by
+# itself, and the map follows (the owner, 2026-11-28, "Build all seven").
+TAG_SHIP = re.compile(r"(?m)^ship: code-first\s*$")
+# The map stops "code first" covers: the graph builders alone, which only a graph build reads (a
+# running router never runs lua/). A change to the live tables' layout or the graph variants
+# (schema.py, variants.py, tiles.py, a graph-build setting) may meet api code that expects the
+# new map, so it waits for ship-held.
+CODE_FIRST_PREFIXES = ("lua/", "valhalla/vendor/")
+# The stops `auto-release.sh ship-held --accept` takes, once the owner has read them: the nginx
+# site and its pages, the data directory layout (its sudo line comes first), the api image's own
+# files (built here), a new DATA_ROOT path. A compose image line (a database or router version),
+# an odd file name and a removed migration are still a hand ship.
+ACCEPT_PREFIXES = (
+    "deploy/",
+    "scripts/prepare_data_root.sh",
+    "docker/api.Dockerfile",
+    "docker/requirements",
+    "docker/api-entrypoint.sh",
+)
+NGINX_TEMPLATE = "deploy/beta/nginx-routemaker.conf.template"
+DATA_ROOT_LINE = "compose adds a line under DATA_ROOT"
+
 MIGRATION = re.compile(r"^src/[^/]+/migrations/[^/]+\.py$")
 # A migration that names the live schema reads or reshapes data that comes from home. A
 # comment that merely mentions it stops the release too: that errs closed.
@@ -334,6 +361,12 @@ def compose_change(diff_text: str) -> list:
                 f"{body.strip()[:120]}"
             )
     return sorted(set(reasons))
+
+
+def tag_ship(message: str) -> Optional[str]:
+    """ "code-first" if a release tag's message carries the release workflow's
+    `ship: code-first` line, else None."""
+    return "code-first" if TAG_SHIP.search(message) else None
 
 
 def tag_image(message: str) -> Optional[str]:
@@ -493,6 +526,10 @@ def gate(
         "changed_files": 0,
         "notes": [],
         "map_reasons": [],
+        "accept_reasons": [],
+        "code_first_reasons": [],
+        "nginx_template": False,
+        "data_root": False,
     }
     paths: list = []
     for change in changes:
@@ -522,6 +559,14 @@ def gate(
                     reasons.append(f"{path}: {why}")
                     if prefix in MAP_PREFIXES:
                         result["map_reasons"].append(f"{path}: {why}")
+                    if prefix in CODE_FIRST_PREFIXES:
+                        result["code_first_reasons"].append(f"{path}: {why}")
+                    if prefix in ACCEPT_PREFIXES:
+                        result["accept_reasons"].append(f"{path}: {why}")
+                    if path == NGINX_TEMPLATE:
+                        result["nginx_template"] = True
+                    if prefix == "scripts/prepare_data_root.sh":
+                        result["data_root"] = True
                 break
         if path.startswith("frontend/"):
             result["frontend"] = True
@@ -574,9 +619,15 @@ def gate(
                     reasons.append(why)
                     result["map_reasons"].append(why)
     if compose_diff:
-        reasons.extend(compose_change(compose_diff))
+        for why in compose_change(compose_diff):
+            reasons.append(why)
+            if why.startswith(DATA_ROOT_LINE):
+                result["accept_reasons"].append(why)
+                result["data_root"] = True
     result["reasons"] = sorted(set(reasons))
     result["map_reasons"] = sorted(set(result["map_reasons"]))
+    result["accept_reasons"] = sorted(set(result["accept_reasons"]))
+    result["code_first_reasons"] = sorted(set(result["code_first_reasons"]))
     result["verdict"] = "stop" if result["reasons"] else "deploy"
     return result
 
@@ -718,6 +769,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     g.add_argument("--new", required=True)
     g.add_argument("--ci-image", action="store_true")
     sub.add_parser("tag-image")
+    sub.add_parser("tag-ship")
     pv = sub.add_parser("provenance")
     pv.add_argument("--digest", required=True)
     pv.add_argument("--repo", required=True)
@@ -763,6 +815,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "routers_restart",
             "predraw",
             "agent_changed",
+            "nginx_template",
+            "data_root",
         ):
             print(f"{key}={int(result[key])}")
         print(f"changed_files={result['changed_files']}")
@@ -773,11 +827,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # The reasons above that a map shipped with the release answers (ship-held --map).
         for reason in result["map_reasons"]:
             print(f"map_reason={_clean(reason)}")
+        # The reasons above that `ship-held --accept` takes once the owner has read them.
+        for reason in result["accept_reasons"]:
+            print(f"accept_reason={_clean(reason)}")
+        # The reasons above a "ship: code-first" tag lets the agent ship by itself.
+        for reason in result["code_first_reasons"]:
+            print(f"code_first_reason={_clean(reason)}")
         return 0
     if args.command == "tag-image":
         image = tag_image(sys.stdin.read())
         if image:
             print(image)
+        return 0
+    if args.command == "tag-ship":
+        ship = tag_ship(sys.stdin.read())
+        if ship:
+            print(ship)
         return 0
     if args.command == "provenance":
         try:

@@ -1195,7 +1195,7 @@ def test_a_release_needing_the_owner_is_held_with_the_reason(beta: Beta) -> None
     assert "held" in beta.status()
     held = (beta.cd / "hold" / "v0.2.0").read_text()
     assert "deploy/beta/nginx-routemaker.conf.template" in held
-    assert "mark-deployed v0.2.0" in held
+    assert "auto-release.sh ship-held v0.2.0" in held
     assert "stop api worker" not in beta.calls()
 
 
@@ -3207,14 +3207,18 @@ def test_a_hand_made_tag_still_holds_a_dockerfile_change(beta: Beta) -> None:
     assert "docker pull" not in beta.calls()
 
 
-def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval() -> None:
+def test_the_release_workflow_runs_on_the_merge_and_tags_only_after_its_checks() -> None:
     import yaml
 
     wf = yaml.safe_load((REPO / ".github" / "workflows" / "release.yml").read_text())
     assert wf["permissions"] == {}
+    # PyYAML reads the bare key `on` as True
+    triggers = wf.get("on", wf.get(True))
+    assert triggers["push"] == {"branches": ["main"]} and "workflow_dispatch" in triggers
     jobs = wf["jobs"]
-    # the one job that publishes waits for the `release` environment's reviewer, and the tag
-    # can only follow it
+    # the one job that publishes runs only for a release the check found, in the `release`
+    # environment, and the tag can only follow it
+    assert jobs["image"]["if"] == "needs.check.outputs.version != ''"
     assert jobs["image"]["environment"] == "release"
     assert jobs["image"]["permissions"] == {
         "contents": "read",
@@ -3242,6 +3246,8 @@ def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval
             assert "${{" not in step.get("run", ""), (name, step.get("name"))
     # the tag line is the one the agent reads
     assert "api-image: %s" in jobs["tag"]["steps"][0]["run"]
+    assert "ship: code-first" in jobs["tag"]["steps"][0]["run"]
+    assert cd_logic.TAG_SHIP.pattern == r"(?m)^ship: code-first\s*$"
     assert cd_logic.TAG_IMAGE.pattern.startswith("(?m)^api-image: ")
 
 
@@ -3396,14 +3402,109 @@ def test_ship_held_refuses_a_tag_off_main(beta: Beta) -> None:
     assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
 
 
-def test_ship_held_refuses_a_release_that_needs_nginx_and_changes_nothing(beta: Beta) -> None:
+def test_ship_held_lists_an_nginx_step_and_changes_nothing_until_accepted(beta: Beta) -> None:
     beta.release("v0.2.0", {"deploy/beta/401.html": "<p>x</p>\n"})
     beta.agent("run", **UP)
+    assert "auto-release.sh ship-held v0.2.0" in beta.status()  # the hold names the one line
     beta.log.unlink()
     done = beta.agent("ship-held", "v0.2.0", "--no-map", **UP)
-    assert done.returncode == 1 and "needs the owner by hand: deploy/beta/401.html" in done.stdout
+    assert done.returncode == 1 and "owner step: deploy/beta/401.html" in done.stdout
+    assert "run: auto-release.sh ship-held v0.2.0 --no-map --accept" in done.stdout
     assert "up -d" not in beta.calls() and beta.head() == beta.v1
     assert not (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_accept_ships_an_nginx_page_through_the_agent_s_deploy(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"deploy/beta/401.html": "<p>x</p>\n"})
+    beta.agent("run", **UP)
+    done = beta.agent("ship-held", "v0.2.0", "--accept", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status() and beta.head() == sha
+    # the 401 page is read from the checkout: no sudo line for it
+    assert "nginx -s reload" not in done.stdout
+    assert not (beta.cd / "hold" / "v0.2.0").exists() and not (beta.cd / "PAUSED").exists()
+
+
+def test_ship_held_accept_prints_the_nginx_site_s_sudo_line_when_its_template_changed(
+    beta: Beta,
+) -> None:
+    beta.release("v0.2.0", {"deploy/beta/nginx-routemaker.conf.template": "server {}\n"})
+    beta.agent("run", **UP)
+    first = beta.agent("ship-held", "v0.2.0", **UP)
+    assert first.returncode == 1 and "after it, with sudo, the nginx site" in first.stdout
+    done = beta.agent("ship-held", "v0.2.0", "--accept", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    _order(
+        done.stdout, "code is live and recorded", "last step, with sudo (the nginx site changed)"
+    )
+    assert "sudo nginx -t && sudo nginx -s reload" in done.stdout
+
+
+def test_ship_held_accept_still_refuses_a_compose_image_line(beta: Beta) -> None:
+    result = _gate(
+        {"compose.yaml": ("a", "b")},
+        "+    image: docker.io/postgis/postgis:17\n",
+    )
+    assert result["verdict"] == "stop" and result["accept_reasons"] == []
+    data = _gate({"compose.yaml": ("a", "b")}, "+      - ${DATA_ROOT}/new:/data/new\n")
+    assert data["accept_reasons"] == data["reasons"] and data["data_root"] is True
+
+
+def test_the_gate_marks_which_stops_accept_takes() -> None:
+    nginx = _gate({"deploy/beta/nginx-routemaker.conf.template": ("a", "b")})
+    assert nginx["accept_reasons"] == nginx["reasons"] and nginx["nginx_template"] is True
+    page = _gate({"deploy/beta/502.html": ("a", "b")})
+    assert page["accept_reasons"] == page["reasons"] and page["nginx_template"] is False
+    lua = _gate({"lua/tags.lua": ("a", "b")})
+    assert lua["accept_reasons"] == [] and lua["map_reasons"] == lua["reasons"]
+    odd = _gate({"src/a b.py": ("a", "b")})
+    assert odd["verdict"] == "stop" and odd["accept_reasons"] == []
+
+
+def test_a_tag_says_code_first_only_with_the_workflow_s_line() -> None:
+    assert cd_logic.tag_ship("Release v0.2.0\n\napi-image: x\n\nship: code-first\n") == "code-first"
+    assert cd_logic.tag_ship("Release v0.2.0\n") is None
+    assert cd_logic.tag_ship("ship: code-first please\n") is None
+
+
+def _code_first_release(beta: Beta, files: dict[str, str]) -> str:
+    sha = commit(beta.origin, files)
+    git(beta.origin, "tag", "-a", "v0.2.0", "-m", "Release v0.2.0\n\nship: code-first")
+    beta.sha = sha
+    beta.green()
+    return sha
+
+
+def test_a_code_first_tag_held_only_for_its_map_ships_its_code_by_itself(beta: Beta) -> None:
+    sha = _code_first_release(beta, {"lua/tags.lua": "-- new\n"})
+    done = beta.agent("run", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status() and beta.head() == sha
+    assert (
+        "the tag says code first" in done.stdout
+        and "needs a map later: lua/tags.lua" in done.stdout
+    )
+
+
+def test_a_code_first_tag_that_also_needs_nginx_is_still_held(beta: Beta) -> None:
+    _code_first_release(beta, {"lua/tags.lua": "-- new\n", "deploy/beta/401.html": "<p>x</p>\n"})
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status() and beta.head() == beta.v1
+
+
+def test_a_code_first_tag_still_holds_a_live_table_layout_change(beta: Beta) -> None:
+    # api code may expect the new map's tables: only the graph builders ship code first
+    _code_first_release(beta, {"src/pipeline/schema.py": "X = 2\n"})
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status() and beta.head() == beta.v1
+
+
+def test_a_code_first_tag_never_ships_a_migration_that_reads_the_map_tables(beta: Beta) -> None:
+    _code_first_release(
+        beta, {"lua/tags.lua": "-- new\n", "src/core/migrations/0002_live.py": "# LIVE_SCHEMA\n"}
+    )
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status() and beta.head() == beta.v1
 
 
 def test_rollback_map_that_fails_part_way_marks_broken_with_what_moved(beta: Beta) -> None:
