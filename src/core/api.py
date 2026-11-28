@@ -11678,7 +11678,11 @@ class ReviewedClosureIn(Schema):
 class ClosureExtendIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
-    end: str = Field(description="The new last day, YYYY-MM-DD: later than the closure's.")
+    end: str | None = Field(
+        default=None,
+        description="The new last day, YYYY-MM-DD (the region's tomorrow); one the closure"
+        " lasts to already leaves it as it is.",
+    )
 
 
 class ClosureConfirmIn(Schema):
@@ -11843,7 +11847,14 @@ def reviewed_closure_extend(
     except stress_edits.EditRefused as refused:
         return _edit_refusal(request, refused)
     _private(response)
-    return Status(200, {"id": closure.pk, "message": f"Closed through {body.end}."})
+    from routemaker import ridetime
+
+    if closure.end is None:
+        said = "Closed until a reviewer ends it."
+    else:
+        last = (closure.end.astimezone(ridetime.ZONE) - timedelta(seconds=1)).date()
+        said = f"Closed through {last.isoformat()}."
+    return Status(200, {"id": closure.pk, "message": said})
 
 
 @api.post(

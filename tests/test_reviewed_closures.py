@@ -352,14 +352,27 @@ class TestAgentClosures:
         assert after != before and after == row.extended_at.isoformat()
         tomorrow = timezone.now() + timedelta(days=1, hours=1)
         assert len(workzones.closures_on(ALONG, at=tomorrow)["closures"]) == 1
-        # Only later: the same day again, or an earlier one, is refused; ending is end_now's.
-        assert (
-            post(client, csrf, f"{ENTER}/{closure_id}/extend", {"end": days(1)}).status_code == 409
-        )
+        # Asking again (the next check) leaves it as it is; no end means the region's tomorrow.
+        again = post(client, csrf, f"{ENTER}/{closure_id}/extend", {})
+        assert again.status_code == 200 and again.json()["message"] == f"Closed through {days(1)}."
+        assert AuditLogEntry.objects.filter(action="closure_extend").count() == 1
         assert post(client, csrf, f"{ENTER}/{closure_id}/end", {}).status_code == 200
-        assert (
-            post(client, csrf, f"{ENTER}/{closure_id}/extend", {"end": days(3)}).status_code == 409
+        # An ended one is not extended: the agent enters it again.
+        late = post(client, csrf, f"{ENTER}/{closure_id}/extend", {"end": days(3)})
+        assert late.status_code == 409
+
+    def test_one_entered_late_in_the_day_runs_through_tomorrow(self, live, monkeypatch) -> None:
+        from datetime import datetime, time
+
+        from routemaker import ridetime
+
+        today = timezone.now().astimezone(ridetime.ZONE).date()
+        evening = datetime.combine(today, time(22, 30), ridetime.ZONE)
+        monkeypatch.setattr(timezone, "now", lambda: evening)
+        late = reviewed_closures.create(
+            make_user(), line=ALONG[4:9], reason="Downed trees", agent_key=self.KEY
         )
+        assert late.end.astimezone(ridetime.ZONE).date() == today + timedelta(days=2)
 
     def test_an_admins_connector_marks_extends_lists_and_ends_only_its_own(self, live) -> None:
         from test_connector import call, mcp, tokens_for
@@ -382,8 +395,9 @@ class TestAgentClosures:
         closure_id = out["structuredContent"]["id"]
         (row,) = call(token, "agent_closures", {})["structuredContent"]["closures"]
         assert (row["id"], row["agent_key"]) == (closure_id, self.KEY)
-        out = call(token, "extend_closure", {"closure_id": closure_id, "end": days(1)})
+        out = call(token, "extend_closure", {"closure_id": closure_id})
         assert not out["isError"], out
+        assert out["structuredContent"]["message"] == f"Closed through {days(1)}."
         # A person's closure is not the agent's: not listed, not extended, not ended.
         person = reviewed_closures.create(make_user(), [WAY], "Bridge out", end=days(5))
         assert len(call(token, "agent_closures", {})["structuredContent"]["closures"]) == 1

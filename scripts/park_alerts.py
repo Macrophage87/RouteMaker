@@ -159,6 +159,14 @@ STREETS_APART_MAX_M = 8000.0
 
 
 def between(trail: str, first: str, second: str, area: str, get_json=_get_json) -> int:
+    try:
+        return _between(trail, first, second, area, get_json)
+    except (OSError, ValueError) as error:  # a refused or failed read (a 429, too many nodes)
+        print(f"{trail}: the map could not be read ({error})", file=sys.stderr)
+        return 1
+
+
+def _between(trail: str, first: str, second: str, area: str, get_json) -> int:
     where = f", {area}" if area else ""
     hits = [_search(street + where) for street in (first, second)]
     trail_hits = _search(trail + where)

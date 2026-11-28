@@ -6104,7 +6104,8 @@ The owner, 2026-11-28, on a B&A Trail closure for downed trees: "Is there a way 
 automatically?", then "I'm open to adding in an agent that would check things periodically", and
 "downed trees usually last about a day, so it's important to people riding today, but maybe not a
 week into the future". So an agent, a scheduled Claude session signed in to the site's connector
-as an instance admin, checks the three agencies every 3 hours and closes what it can place on
+as an instance admin, checks the three agencies every hour, day and night (the owner: "why not 1
+hr", "Plenty of people ride then"), and closes what it can place on
 beta itself, through the connector's admin tools (`mark_closed`, `extend_closure`,
 `end_closure`, `agent_closures`; `core.reviewed_closures`, "Agent closures"). Each run:
 
@@ -6117,9 +6118,12 @@ beta itself, through the connector's admin tools (`mark_closed`, `extend_closure
    cross streets, from OpenStreetMap's own API (`park_alerts.stretch_between`; the agencies'
    "B&A" or "W&OD" match the map's long names); for the C&O, `towpath FIRST [LAST]`. Then
    `mark_closed` with the line, the agency's reason in a few words, the alert's link and the
-   `agent_key`, and `end` only where the agency gives a last day. With none it lasts today only.
+   `agent_key`, and `end` only where the agency gives a last day. With none it lasts today only
+   (through tomorrow where it is entered in the day's last 3 hours, `AGENT_LATE_HOURS`, so it
+   does not lapse at midnight before the next check).
 3. For each agent closure whose alert is still on the page and that has no agency last day:
-   `extend_closure` to tomorrow, so it holds as long as the alert does (a holiday weekend's slow
+   `extend_closure` with no `end` (the site takes the region's tomorrow; one that lasts that long
+   already is left as it is), so it holds as long as the alert does (a holiday weekend's slow
    clearing too). For each whose alert is gone: `end_closure`.
 4. Whatever it cannot place (`between` exits 1: a street or the trail is not on the map by that
    name, as the South Shore Trail's newer end on 2026-11-28), a whole park, or work that may leave
@@ -6127,7 +6131,8 @@ beta itself, through the connector's admin tools (`mark_closed`, `extend_closure
 
 These are reviewer closures, so the road panel's Mark closed list shows them and its End button
 ends one at once (a county that leaves a cleared alert up). An agent changes only closures with an
-`agent_key`. One day (`AGENT_DAYS`) and the 3 hours are our defaults, unmeasured. The agent's
+`agent_key`. One day (`AGENT_DAYS`) and the late 3 hours are our defaults, unmeasured; hourly
+checks are the owner's pick. The agent's
 closures count against the admin account's 20 in force (`OPEN_PER_ACCOUNT`). Dated closures that
 outlast a release can still go in `park-closures.json` as above.
 

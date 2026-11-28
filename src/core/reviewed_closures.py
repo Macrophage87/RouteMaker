@@ -70,6 +70,9 @@ AHEAD_MAX = timedelta(days=750)
 # important to people riding today, but maybe not a week into the future". 1 is our default,
 # unmeasured.
 AGENT_DAYS = 1
+# One entered this late in the day runs through tomorrow too, so it does not lapse at midnight
+# before the next check extends it: our default, unmeasured.
+AGENT_LATE_HOURS = 3
 AGENT_KEY_MAX = 100
 
 
@@ -248,9 +251,13 @@ def _make(
     agent_key = clean_agent_key(agent_key)
     if agent_key and end in (None, ""):
         # No last day from the agency: `AGENT_DAYS` from the first day (today where later).
-        today = timezone.now().astimezone(_zone_info()).date()
+        local = timezone.now().astimezone(_zone_info())
+        today = local.date()
         first = max(_day(start, "start") or today, today)
-        end = (first + timedelta(days=AGENT_DAYS - 1)).isoformat()
+        days = AGENT_DAYS - 1
+        if first == today and local.hour >= 24 - AGENT_LATE_HOURS:
+            days += 1
+        end = (first + timedelta(days=days)).isoformat()
     begins, ends = window(start, end)
     if line is not None and way_ids:
         raise stress_edits.Invalid("Send the road pieces or a drawn line, not both.", "line")
@@ -388,13 +395,13 @@ def end_now(user, closure_id: int) -> ReviewedClosure:
     return closure
 
 
-def extend(user, closure_id: int, end_day) -> ReviewedClosure:
-    """Move a closure's last day on to `end_day` (an agent's, while its alert is still up).
-    Only later: to end one sooner, `end_now`."""
+def extend(user, closure_id: int, end_day=None) -> ReviewedClosure:
+    """Move a closure's last day on to `end_day`, the region's tomorrow where none is given (an
+    agent's, while its alert is still up). A closure that lasts to that day already is left as
+    it is, so the agent may ask at every check; to end one sooner, `end_now`."""
     _check(user)
-    last = _day(end_day, "end")
-    if last is None:
-        raise stress_edits.Invalid("Give the new last day as YYYY-MM-DD.", "end")
+    tomorrow = timezone.now().astimezone(_zone_info()).date() + timedelta(days=1)
+    last = _day(end_day, "end") or tomorrow
     with transaction.atomic():
         closure = ReviewedClosure.objects.select_for_update().filter(pk=closure_id).first()
         if closure is None:
@@ -404,7 +411,7 @@ def extend(user, closure_id: int, end_day) -> ReviewedClosure:
             raise Conflict("That closure is over already: enter it again.")
         _, ends = window(None, last.isoformat())
         if closure.end is None or ends <= closure.end:
-            raise Conflict("That closure lasts to that day already.")
+            return closure  # it lasts to that day already: nothing to write
         closure.end = ends
         closure.extended_at = now
         closure.save(update_fields=["end", "extended_at"])

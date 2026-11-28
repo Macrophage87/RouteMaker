@@ -6480,16 +6480,20 @@ TOOLS = [
         "name": "extend_closure",
         "title": "Extend a closure (admin agent)",
         "description": (
-            "Move a closure's last day on (a closure_id from agent_closures): for an agent's"
-            " closure whose agency alert is still posted. Later days only."
+            "Move an agent closure's last day on (a closure_id from agent_closures) while its"
+            " agency alert is still posted: with no end, through the region's tomorrow. One"
+            " that lasts that long already is left as it is, so ask at every check."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "closure_id": {"type": "integer"},
-                "end": {"type": "string", "description": "The new last day, YYYY-MM-DD."},
+                "end": {
+                    "type": "string",
+                    "description": "The new last day, YYYY-MM-DD; none: tomorrow (ET).",
+                },
             },
-            "required": ["closure_id", "end"],
+            "required": ["closure_id"],
         },
         "annotations": {
             "readOnlyHint": False,
@@ -8038,7 +8042,8 @@ class Server:
         closure_id = int(args["closure_id"])
         self._agent_closure(closure_id)
         path = f"/api/closures/reviewed/{closure_id}/extend"
-        return self.api.closure_write(path, {"end": str(args["end"])})
+        body = {"end": str(args["end"])} if args.get("end") else {}
+        return self.api.closure_write(path, body)
 
     def end_closure(self, args: dict, call: Call) -> dict:
         closure_id = int(args["closure_id"])
