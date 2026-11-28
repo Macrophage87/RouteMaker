@@ -6152,11 +6152,16 @@ is more useful", then "Should we expand further than just those 3 agencies? ther
   its site refuses the beta's address. A page is a `Source` (key, name, page, area): adding an agency is one line.
   The roads the feed readers already cover (DDOT, MPD, AlertDC, NPS, SHA, MoCo, the work zones)
   are not read here.
-- **Reading.** Each page's text is hashed; only a changed page is sent to Claude (Claude Opus
-  5.5, low effort, structured output `closure_agent.SCHEMA`), which lists the closures that close
-  one named way between two named places, with the page's days. At most `CALLS_PER_DAY` (120)
-  asks a day, all pages together, about $0.05 each: our default, sized inside the owner's $200 a
-  month of credits. An unchanged page costs nothing.
+- **Reading.** Each page's text is hashed; an unchanged page costs nothing. A changed page is
+  first screened (the owner, 2026-11-28: "haiku to test if there is a change then opus to
+  describe them"): Claude Haiku 5.5 sees only the changed lines since Opus last read the page and
+  says whether a closure may have changed; a clock, a banner or an event does not reach Opus. A
+  page Opus has not read for `RECHECK_DAYS` (1, our default) is read whatever the screen says,
+  and a failed screen counts as a change. Then Claude Opus 5.5 (low effort, structured output
+  `closure_agent.SCHEMA`) lists the closures that close one named way between two named places,
+  with the page's days. At most `CALLS_PER_DAY` (120) Opus asks a day, all pages together, about
+  $0.04 each (estimated, unmeasured): our default, sized inside the owner's $200 a month of
+  credits. The pages' last texts are kept in the agent's row for the screen's comparison.
 - **Placing.** `routemaker.osm_place.between` (shared with `scripts/park_alerts.py between`):
   Nominatim for the two places in the source's area, one search a second, then OpenStreetMap's
   map call round them and `park_alerts.stretch_between` (a page's "Fourth Street" matches the
