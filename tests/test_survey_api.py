@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from django.test import Client
 from test_accounts import addr, send, signed_in
 from test_segment_info_api import insert
 
@@ -86,6 +87,14 @@ class TestAnswers:
         assert r.status_code in (401, 403)
         assert not SurveyAnswer.objects.exists()
 
+    def test_signed_out_with_a_token_is_401(self, spots) -> None:
+        client = Client(enforce_csrf_checks=True)
+        token = "a" * 32  # a CSRF secret, as the cookie and the header both carry it
+        client.cookies["csrftoken"] = token
+        r = answer(client, token, when="today")
+        assert r.status_code == 401, "signed_in_only, not only the CSRF check, refuses it"
+        assert not SurveyAnswer.objects.exists() and not SurveyDone.objects.exists()
+
     def test_an_answer_is_kept_without_the_account_and_hides_the_spot(self, spots) -> None:
         client, user, csrf = signed_in()
         r = answer(client, csrf, when="today", time="pm_rush", traffic="steady")
@@ -143,3 +152,15 @@ class TestAnswers:
         user.delete()
         assert not SurveyDone.objects.exists()
         assert SurveyAnswer.objects.count() == 1, "the answer itself stays: it names no one"
+
+
+@db
+def test_a_host_without_spots_says_so(client, monkeypatch) -> None:
+    def gone():
+        raise survey_spots.Unavailable("no survey spot file")
+
+    monkeypatch.setattr(survey_spots, "spots", gone)
+    survey_spots._points.clear()
+    assert client.get("/api/survey/spots", BOX, **addr()).status_code == 503
+    near = {"lat": 38.9, "lon": -77.0, "miles": 1}
+    assert client.get("/api/survey/near", near, **addr()).status_code == 503
