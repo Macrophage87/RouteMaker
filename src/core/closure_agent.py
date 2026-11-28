@@ -25,8 +25,9 @@ their own readers (`core.closure_sources`, `core.workzones`).
   (`ANTHROPIC_FEDERATION_RULE_ID` and the rest, the SDK's own) or `ANTHROPIC_API_KEY`. The SDK
   reads them; nothing here does, and none is written anywhere.
 
-Kept in one `BikeshareFeedCache` row (`KEY`): each page's text hash and the closures last drawn
-from it, nothing personal. docs/OPERATIONS.md, "The closure agent".
+Kept in one `BikeshareFeedCache` row (`KEY`): each page's text, its hash and the closures last
+drawn from it (public pages only, nothing personal). A changed page is screened by Claude Haiku
+first (`screen`): Opus reads it only where a closure may have changed. docs/OPERATIONS.md, "The closure agent".
 """
 
 from __future__ import annotations
@@ -56,6 +57,14 @@ KEY = "closure_agent"
 # Claude Opus 5.5, the current default model; low effort, as reading a page is plain extraction.
 MODEL = "claude-opus-5-5"
 EFFORT = "low"
+# The screen (the owner, 2026-11-28: "What about haiku to test if there is a change then opus to
+# describe them?"): Claude Haiku 5.5 is shown what changed on a page since Opus last read it and
+# says whether any closure may have changed. Only then is Opus asked, so a page's clock or banner
+# costs a fraction of a cent, not an Opus read. A page Opus has not read for `RECHECK_DAYS` is
+# read again whatever the screen says, in case the screen missed one: our default, unmeasured.
+SCREEN_MODEL = "claude-haiku-5-5"
+SCREEN_DIFF_CHARS_MAX = 20_000
+RECHECK_DAYS = 1
 MAX_TOKENS = 16000
 # At most this many asks a day, all pages together (about $0.05 each): our default, unmeasured,
 # sized to stay well inside the owner's $200 a month of credits.
@@ -81,8 +90,9 @@ class Source:
 
 
 # The pages. The first three are the ones the person-read watch has followed since v0.26.0; the
-# rest were found on 2026-11-28 to list closures as text. Arlington's and Baltimore County's
-# refused the build's proxy that day: the run line names a page that cannot be read.
+# rest were found on 2026-11-28 to list closures as text. Baltimore County's and Laurel's answered
+# the beta's worker 403 that day (their bot screens): the run line names a page that cannot be
+# read. Arlington's long-term traffic alerts are left out: its site refuses the beta's address.
 SOURCES = (
     Source("nova", "NOVA Parks", pa.NOVA.page, "Virginia"),
     Source("choh", "NPS, C&O Canal", pa.CHOH.page, "Maryland"),
@@ -104,12 +114,6 @@ SOURCES = (
         "NPS, Rock Creek Park",
         "https://www.nps.gov/rocr/planyourvisit/conditions.htm",
         "Washington, DC",
-    ),
-    Source(
-        "arlington",
-        "Arlington County",
-        "https://www.arlingtonva.us/Government/Programs/Transportation/Streets/Long-Term-Traffic-Alerts",
-        "Arlington County, Virginia",
     ),
     Source(
         "baltco",
@@ -237,14 +241,59 @@ def read(source: Source, get=http_get) -> str:
 # --- Asking Claude ------------------------------------------------------------------------
 
 
+SCREEN_SYSTEM = """You compare two readings of one public agency's closures page for a bicycle route
+planner. You are shown the lines that changed. Answer true if the change could add, remove or
+alter a closure of a trail, path or road (its place, its days, or whether it is closed), and false
+if it cannot (a clock, a date stamp, a banner, an event, a menu). When unsure, answer true."""
+
+SCREEN_SCHEMA = {
+    "type": "object",
+    "properties": {"closure_change": {"type": "boolean"}},
+    "required": ["closure_change"],
+    "additionalProperties": False,
+}
+
+
+def changed_lines(before: str, after: str) -> str:
+    """The lines that differ between two readings, as a unified diff."""
+    import difflib
+
+    lines = difflib.unified_diff(before.splitlines(), after.splitlines(), lineterm="", n=1)
+    return "\n".join(list(lines)[2:])[:SCREEN_DIFF_CHARS_MAX]
+
+
+def _client(client):
+    if client is not None:
+        return client
+    import anthropic
+
+    # Well inside the run's deadline (config.procrastinate CLOSURE_AGENT_TIMEOUT_S).
+    return anthropic.Anthropic(timeout=ASK_TIMEOUT_S, max_retries=1)
+
+
+def screen(source: Source, diff: str, client=None) -> bool:
+    """Whether the change may touch a closure (Haiku). True where it cannot tell."""
+    response = _client(client).messages.create(
+        model=SCREEN_MODEL,
+        max_tokens=2000,
+        system=SCREEN_SYSTEM,
+        messages=[
+            {
+                "role": "user",
+                "content": f"{source.name}, {source.page}:\n\n<changes>\n{diff}\n</changes>",
+            }
+        ],
+        output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCREEN_SCHEMA}},
+    )
+    if response.stop_reason != "end_turn":
+        return True
+    answer = [b.text for b in response.content if b.type == "text"][-1]
+    return bool(json.loads(answer).get("closure_change", True))
+
+
 def ask(source: Source, text: str, today: date, client=None) -> list[dict]:
     """The closures Claude finds on the page (`SCHEMA`)."""
-    if client is None:
-        import anthropic
-
-        # Well inside the run's deadline (config.procrastinate CLOSURE_AGENT_TIMEOUT_S).
-        client = anthropic.Anthropic(timeout=ASK_TIMEOUT_S, max_retries=1)
-    response = client.beta.messages.create(
+    response = _client(client).beta.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
         betas=["server-side-fallback-2026-07-01"],
@@ -427,7 +476,7 @@ def run(get=http_get, get_json=None, client=None, now: datetime | None = None) -
     calls = state.get("calls") or {}
     used = int(calls.get("n") or 0) if calls.get("day") == today.isoformat() else 0
     totals = {"entered": 0, "extended": 0, "ended": 0, "refused": 0}
-    asked = missed = unread = read_ok = 0
+    asked = missed = unread = read_ok = screened = 0
     failed, cut, capped = [], [], []
     # A different page first each hour, so a spent allowance does not always fall on the last.
     turn = now.hour % len(SOURCES)
@@ -446,7 +495,18 @@ def run(get=http_get, get_json=None, client=None, now: datetime | None = None) -
         redraw = any(item.get("redraw") for item in kept.get("closures") or [])
         if kept.get("hash") != digest:
             tries = int(kept.get("tries") or 0) if kept.get("asking") == digest else 0
-            if used >= CALLS_PER_DAY:
+            read_on = kept.get("read_on") or ""
+            fresh = bool(read_on) and (today - date.fromisoformat(read_on)).days < RECHECK_DAYS
+            quiet = False
+            if fresh and kept.get("text"):
+                try:
+                    quiet = not screen(source, changed_lines(kept["text"], text), client)
+                except Exception as error:  # noqa: BLE001 - Opus reads it instead
+                    log.info("closure agent: %s screen failed (%s)", source.key, error)
+                screened += 1
+            if quiet:
+                kept.update(hash=digest, text=text)  # no closure changed: nothing to ask
+            elif used >= CALLS_PER_DAY:
                 capped.append(source.key)
             elif tries >= ASK_TRIES:
                 pass  # this text failed every try: asked again when the page changes
@@ -460,7 +520,13 @@ def run(get=http_get, get_json=None, client=None, now: datetime | None = None) -
                     found = None
                 if found is not None:
                     asked += 1
-                    kept = {"hash": digest, "found": found, "closures": kept.get("closures")}
+                    kept = {
+                        "hash": digest,
+                        "text": text,
+                        "read_on": today.isoformat(),
+                        "found": found,
+                        "closures": kept.get("closures"),
+                    }
                     redraw = True
         if redraw and kept.get("hash") == digest:
             wanted, kept["unplaced"], lost = drawn(
@@ -476,7 +542,7 @@ def run(get=http_get, get_json=None, client=None, now: datetime | None = None) -
     state.update(pages=pages, calls={"day": today.isoformat(), "n": used})
     _save(state)
     parts = [
-        f"read {read_ok} of {len(SOURCES)} pages, asked {asked}",
+        f"read {read_ok} of {len(SOURCES)} pages, screened {screened}, asked {asked}",
         f"entered {totals['entered']}, extended {totals['extended']}, ended {totals['ended']}",
         f"not placed {missed}",
     ]
