@@ -133,8 +133,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         FIXES,
     ),
     ("no short credit", CSS, 'content: "© OpenStreetMap" / "";', 'content: "";', FIXES),
-    # --- grouping ------------------------------------------------------------
-    ("groups at the last zoom", IM, "  if (zoom >= maxZoom) return 0;\n", "", MARKERS),
     # --- the red marker is a diamond (OWNER-DECISIONS 311) -----------------
     (
         "red marker back to the octagon",
@@ -155,27 +153,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         IM,
         '<rect x="11" y="7" width="2" height="7" rx="1" fill="#fff"/>',
         '<rect x="11" y="5.5" width="2" height="8" rx="1" fill="#fff"/>',
-        MARKERS,
-    ),
-    (
-        "last zoom exclusive",
-        IM,
-        "const radius = zoom >= maxZoom ? 0",
-        "const radius = zoom > maxZoom ? 0",
-        MARKERS,
-    ),
-    (
-        "no overlap groups above 14",
-        IM,
-        "zoom < GROUP_BELOW_ZOOM ? GROUP_RADIUS_PX : OVERLAP_RADIUS_PX",
-        "zoom < GROUP_BELOW_ZOOM ? GROUP_RADIUS_PX : 0",
-        MARKERS,
-    ),
-    (
-        "overlap radius exclusive",
-        IM,
-        "Math.hypot(g.at.x - at.x, g.at.y - at.y) <= radius",
-        "Math.hypot(g.at.x - at.x, g.at.y - at.y) < radius",
         MARKERS,
     ),
     (
@@ -798,8 +775,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "marker title back",
         MV,
-        '        element.setAttribute("aria-label", single ? first.label : groupLabel(group));\n',
-        '        element.setAttribute("aria-label", single ? first.label : groupLabel(group));\n        element.title = single ? first.reason : groupLabel(group);\n',
+        '        element.setAttribute("aria-label", item.label);\n',
+        '        element.setAttribute("aria-label", item.label);\n        element.title = item.label;\n',
         FIXES,
     ),
     # --- the rings -----------------------------------------------------------
