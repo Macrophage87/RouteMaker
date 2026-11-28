@@ -1403,6 +1403,12 @@ class TestBuild:
         )
         return made
 
+    def test_the_busiest_road_at_the_node_is_carried(self) -> None:
+        """The raters' left and crossing are about it (`intersections.rater_move`)."""
+        made = self.built(crossroads())
+        assert made.node_top == 4.0 and made.node_top_names == frozenset({"main st"})
+        assert self.built(crossroads(), roads={}).node_top == 0.0
+
     def test_the_movement_round_a_roundabout_is_carried(self) -> None:
         """Hunt J4: the trace's reading of a ride round a ring reaches the model."""
         made = self.built(crossroads(), raw(ring_movement=Movement.LEFT))

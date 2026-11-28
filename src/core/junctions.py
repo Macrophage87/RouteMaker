@@ -1202,6 +1202,10 @@ def build_junctions(
                 same = [a for a in (*one, *other) if _same_road(a, chosen)]
                 crossed = (road(chosen, chosen.way_id, same),)
             links = crossed_links(node, raw)
+        # The busiest road at the node (`Junction.node_top`), paths left out.
+        at_node = [road(a, a.way_id, [a]) for a in node.arms if a.is_road] if node else []
+        top = max((r.level for r in at_node), default=None)
+        top_names = frozenset(name for r in at_node if r.level == top for name in r.names)
         in_arms = [node.in_arm] if node is not None else []
         out_arms = [node.out_arm] if node is not None and node.out_arm is not None else []
         continues = raw.movement is Movement.STRAIGHT and (
@@ -1225,6 +1229,8 @@ def build_junctions(
                 located=node is not None,
                 continues=continues,
                 ring_movement=raw.ring_movement,
+                node_top=top,
+                node_top_names=top_names,
             )
         )
     return junctions

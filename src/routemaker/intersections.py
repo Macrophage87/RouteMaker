@@ -606,10 +606,35 @@ def _crossed_names(junction: Junction) -> frozenset[str]:
     return frozenset(name for names in _crossings(junction) for name in names)
 
 
+def _map_level(road: Road) -> float:
+    """The road's level as the map gives it, before `by_traffic` read it busier."""
+    if road.map_tier is None:
+        return road.level
+    return road.map_tier + (0.5 if road.map_half and road.map_tier < 5 else 0.0)
+
+
 def rater_move(junction: Junction) -> str | None:
     """The raters' movement the route makes at a junction: a left is `left`; straight on
     along the busiest road there (or with nothing crossed) is `along`, straight across a
-    busier one `cross`. A right turn has no rating: the model prices it."""
+    busier one `cross`. A right turn has no rating: the model prices it.
+
+    A movement that meets only roads quieter than the junction's busiest
+    (`Junction.node_top`) is not the left or the crossing the raters rated: those are the
+    left off or onto that road and the crossing of it. Straight on, it is riding past the
+    busiest road, as on a path beside it, which the brief rates as `along`; a left has no
+    rating, and the model prices it by the roads it does meet. A side path beside Pacific
+    Blvd, Sterling, joins its carriageway's node at Dresden St (LTS 3), and a left off the
+    path onto Dresden St read Pacific Blvd's left, 4.5 (the owner, 2026-11-28: "it wouldn't
+    make sense to be, as it's turning across an LTS3 street")."""
+    own = (junction.incoming, junction.outgoing)
+    # By the map's levels, as `node_top` is: a quiet multilane street read by its traffic
+    # (`by_traffic`) is still not the road the raters rated.
+    met = [_map_level(r) for r in (*own, *junction.crossed) if r.tier is not None]
+    # Read only where the rider's own roads are known: an unknown one may be the busiest.
+    known = all(r.tier is not None for r in own)
+    named = any(r.names & junction.node_top_names for r in (*own, *junction.crossed))
+    if known and not named and junction.node_top is not None and max(met) < junction.node_top:
+        return "along" if junction.movement is Movement.STRAIGHT else None
     if junction.movement is Movement.LEFT:
         return "left"
     if junction.movement is not Movement.STRAIGHT:
@@ -815,6 +840,15 @@ class Junction:
     ring_movement: Movement | None = None
     # The raters' reading of the junction's node (`with_raters`), None where not rated.
     rater: RaterRating | None = field(default=None, compare=False)
+    # The busiest road at the node as the map has it (`Road.level`), every road arm
+    # counted, the rider's own and the crossed one included; None where not read. The
+    # raters rate a junction's crossing and left about its busiest road (the junction
+    # brief: "`left`: turning left off or onto the busiest road"), so a movement that
+    # meets only quieter roads there is not the one they rated (`rater_move`).
+    node_top: float | None = field(default=None, compare=False)
+    # Its names (a divided road's carriageways share them, and a road a level quieter
+    # across the junction keeps them), so the rider meets it whatever its level there.
+    node_top_names: frozenset[str] = field(default=frozenset(), compare=False)
 
 
 @dataclass(frozen=True)
