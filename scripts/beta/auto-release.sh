@@ -763,7 +763,9 @@ pull_ci_image() { # image@sha256:... commit
 	esac
 	say "step: pull the api image the release workflow built ($image)"
 	quiet dk pull "$image" </dev/null && quiet dk tag "$image" "$API_IMAGE:$short" </dev/null || return 2
-	quiet dk image rm "$image" </dev/null || true
+	# No `docker image rm "$image"` after the tag: on the beta's Docker, removing the digest
+	# reference untagged the new tag too and deleted the image (v0.31.0, by hand, 2026-11-28).
+	quiet dk image inspect "$API_IMAGE:$short" </dev/null || { say "the pulled image is not tagged $API_IMAGE:$short"; return 2; }
 }
 
 # A release with nothing for the server (documentation, CI, a new tag on the deployed commit):
