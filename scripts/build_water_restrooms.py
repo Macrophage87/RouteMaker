@@ -227,7 +227,8 @@ MILITARY_OPEN = frozenset({"no", "danger_area"})
 # A Throne unit is an OSM restroom this close, or this close to one tagged as a Throne.
 THRONE_SAME_M = 15.0  # 50 ft
 THRONE_TAGGED_M = 300.0  # 1,000 ft: the list's positions are street addresses
-# A drinking fountain this close to a restroom is that restroom's water: one place (merge_fountains).
+# A drinking fountain this close to a restroom is that restroom's water: one place
+# (merge_fountains).
 # 50 ft, as THRONE_SAME_M: our default, unmeasured.
 FOUNTAIN_SAME_M = 15.0
 THRONE_STATUSES = frozenset({"open", "opens soon", "unverified"})
@@ -674,7 +675,9 @@ def merge_throne(amenities: list[Amenity], units: list[dict]) -> tuple[list[Amen
 
 
 def merge_fountains(amenities: list[Amenity]) -> tuple[list[Amenity], int]:
-    """Fold each drinking fountain within FOUNTAIN_SAME_M of a restroom into the nearest one: the points, and how many.
+    """Fold each drinking fountain within FOUNTAIN_SAME_M of a restroom into the nearest one.
+
+    Returns the points, and how many were folded.
 
     The owner, 2026-11-27, of a ride past a park restroom the map did not show: "2 public
     flush restrooms weren't marked". The restroom was in the file, but a drinking fountain
@@ -683,8 +686,8 @@ def merge_fountains(amenities: list[Amenity]) -> tuple[list[Amenity], int]:
     restroom tagged drinking_water=yes already does, and Go's Water and Restroom lists both
     find it. Only a plain drinking-water point is folded (not untreated water, a repair stand
     or a shop, nor one with its own season or hours); the restroom keeps its own place, name
-    and details and takes the fountain's bottle filler. A restroom placed from a street address (approx) takes none, as it may be
-    a block away.
+    and details and takes the fountain's bottle filler. A restroom placed from a street address
+    (approx) takes none, as it may be a block away.
     """
     restrooms = [i for i, a in enumerate(amenities) if a.toilet is not None and not a.approx]
     out = list(amenities)

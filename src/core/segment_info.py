@@ -749,8 +749,8 @@ def _row(label: str, value: str, source: str | None) -> dict:
 
 def override_note(row: dict) -> str | None:
     """An override row's own approved, public note, shown as the Why line in place of
-    "Rated from this road's own evidence" (the owner, 2026-11-01: where we keep ours over an agency's, a
-    short narration "available in the route lookup as to our justification"). It used to
+    "Rated from this road's own evidence" (the owner, 2026-11-01: where we keep ours over an
+    agency's, a short narration "available in the route lookup as to our justification"). It used to
     be a separate "Note" row. Only an approved, public row's note is ever written to the
     segment (`StressAdjustment.exposed`); one marked route_only is for a route over the
     stretch, never a map click."""

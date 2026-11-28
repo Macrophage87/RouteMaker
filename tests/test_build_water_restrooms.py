@@ -7,9 +7,9 @@ out, and the file the front end reads.
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import replace
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
