@@ -1,13 +1,15 @@
 name: CI
 
-# Pull requests into main (in practice the release branch's, owner 2026-10-28, and Dependabot's) and
-# the push to main that merging one makes, which the beta's release agent reads. Pull requests into
-# a release branch merge after a review agent without CI, so they start no run. By hand: Actions,
-# "CI", Run workflow, on any branch but not on a tagged main commit: the release agent reads the
-# newest `test` there, so a cancelled manual run would hold the release.
+# Pull requests into main (in practice the release branch's, owner 2026-10-28, and Dependabot's),
+# and by hand. Not the push to main that merging one makes: CI runs once per release (the owner,
+# 2026-11-28). The squash merge's commit has the pull request head's tree, and the release workflow
+# and the beta's release agent take that head's `test` and `a11y` for it when the trees are
+# identical (scripts/beta/auto-release.sh, ci_status). Pull requests into a release branch merge
+# after a review agent without CI, so they start no run. By hand: Actions, "CI", Run workflow, on
+# any branch (on main when its commit is not a pull request's tree), but not on a tagged main
+# commit: the release agent reads the newest `test` there, so a cancelled manual run would hold
+# the release.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -16,9 +18,9 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same pull request replaces the run still going. Never on a branch push: the
-# beta's release agent reads a cancelled `test` as red (scripts/beta/cd_logic.py, ci_verdict), and
-# a shared group would also drop a queued push run, so each push run gets a group of its own.
+# A newer push to the same pull request replaces the run still going. Never a manual run: the
+# beta's release agent reads a cancelled `test` as red (scripts/beta/cd_logic.py, ci_verdict), so
+# each manual run gets a group of its own.
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

@@ -7,6 +7,8 @@ functions the tests call directly (tests/test_beta_cd.py):
 
   pick        which release tag to deploy: the highest strict vX.Y.Z newer than the deployed one
   ci-verdict  whether GitHub's `test` and `a11y` check runs are green for the tag's commit
+  merged-pr   the one pull request merged as a commit on main, whose head's CI stands for that
+              commit when the two have the identical tree (CI runs once per release)
   lock-hash   the front end's lockfile, named without its version fields (node_modules' key)
   gate        whether the change between two commits is a code release the server may deploy
               by itself, or needs the owner (data from home, sudo, nginx); and which optional
@@ -24,6 +26,8 @@ check-run JSON.
   cd_logic.py pick --deployed v0.1.0 < tags.txt          # prints the tag, or nothing
   cd_logic.py semver v0.2.0                               # exit 0 if strict vX.Y.Z
   cd_logic.py ci-verdict --sha <40 hex> < check-runs.json # green | pending | red
+  cd_logic.py ci-verdict --sha <40 hex> --none < ...      # or none: no run on it at all
+  cd_logic.py merged-pr --sha <40 hex> < pulls.json      # "<number> <head sha>", or nothing
   cd_logic.py lock-hash < frontend/package-lock.json      # 64 hex
   cd_logic.py gate --repo DIR --old SHA --new SHA [--ci-image]  # KEY=VALUE lines
   cd_logic.py tag-image < tag-message.txt                 # the image@sha256:..., or nothing
@@ -85,14 +89,8 @@ CHECK_NAMES = (CHECK_NAME, "a11y")
 CHECK_APP = "github-actions"
 
 
-def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK_APP) -> str:
-    """green, pending or red for the latest `name` check run on `sha`, from the JSON of
-    GET /repos/{owner}/{repo}/commits/{sha}/check-runs.
-
-    Only runs by GitHub Actions on exactly this commit count. The newest such run (highest
-    id: a re-run supersedes) decides. No run yet, or one still queued or running, is
-    pending: try again next time. Anything that finished other than success is red."""
-    runs = [
+def _check_runs(payload: dict, sha: str, name: str, app: str = CHECK_APP) -> list:
+    return [
         run
         for run in payload.get("check_runs") or []
         if isinstance(run, dict)
@@ -100,6 +98,16 @@ def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK
         and run.get("head_sha") == sha
         and (run.get("app") or {}).get("slug") == app
     ]
+
+
+def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK_APP) -> str:
+    """green, pending or red for the latest `name` check run on `sha`, from the JSON of
+    GET /repos/{owner}/{repo}/commits/{sha}/check-runs.
+
+    Only runs by GitHub Actions on exactly this commit count. The newest such run (highest
+    id: a re-run supersedes) decides. No run yet, or one still queued or running, is
+    pending: try again next time. Anything that finished other than success is red."""
+    runs = _check_runs(payload, sha, name, app)
     if not runs:
         return "pending"
     latest = max(runs, key=lambda run: int(run.get("id") or 0))
@@ -108,14 +116,47 @@ def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK
     return "green" if latest.get("conclusion") == "success" else "red"
 
 
-def ci_verdicts(payload: dict, sha: str, names: Sequence[str] = CHECK_NAMES) -> str:
-    """green only when every check run in `names` is green; red if any is red; else pending."""
+def ci_verdicts(
+    payload: dict, sha: str, names: Sequence[str] = CHECK_NAMES, none: bool = False
+) -> str:
+    """green only when every check run in `names` is green; red if any is red; else pending.
+
+    With `none`, "none" when no run of any of them (by GitHub Actions) is on `sha` at all: only
+    then may a merged pull request's head stand for it (merged_pr). A run of its own, even one
+    still queued or one that failed, decides."""
+    if none and not any(_check_runs(payload, sha, name) for name in names):
+        return "none"
     verdicts = [ci_verdict(payload, sha, name) for name in names]
     if "red" in verdicts:
         return "red"
     if "pending" in verdicts:
         return "pending"
     return "green"
+
+
+def merged_pr(pulls, sha: str, base: str = "main") -> Optional[tuple]:
+    """(number, head sha) of the pull request merged into `base` as `sha`, from the JSON of
+    GET /repos/{owner}/{repo}/commits/{sha}/pulls; None if there is none, or more than one that
+    disagree, or the answer is not what GitHub sends (it errs closed).
+
+    CI runs on the release branch's pull request into main, not again on the squash merge's
+    new commit (.github/workflows/ci.yml). That head's `test` and `a11y` stand for `sha` only
+    when its tree is `sha`'s tree, which the caller checks with git before it reads them."""
+    if not isinstance(pulls, list) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        return None
+    found = set()
+    for pull in pulls:
+        if not isinstance(pull, dict) or pull.get("merge_commit_sha") != sha:
+            continue
+        if not pull.get("merged_at") or (pull.get("base") or {}).get("ref") != base:
+            continue
+        number, head = pull.get("number"), (pull.get("head") or {}).get("sha")
+        if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
+            return None
+        if not isinstance(head, str) or not re.fullmatch(r"[0-9a-f]{40}", head):
+            return None
+        found.add((number, head))
+    return found.pop() if len(found) == 1 else None
 
 
 # --- the front end's lockfile ----------------------------------------------------------------
@@ -144,10 +185,9 @@ def lock_hash(text: str) -> str:
 
 # Paths whose change means the release needs the owner. Each says why, in the report's words.
 STOP_PREFIXES: Sequence[tuple] = (
-    (
-        "deploy/",
-        "the nginx site, its 401 or 502 page or the env template changed (owner steps, with sudo)",
-    ),
+    # After ENV_TEMPLATE, which is a note: anything else here (the nginx site, its 401 and 502
+    # pages, a file added later) stops.
+    ("deploy/", "the nginx site or its 401 or 502 page changed (owner steps, with sudo)"),
     (
         "scripts/prepare_data_root.sh",
         "the data directory layout changed (prepare_data_root.sh runs with sudo)",
@@ -170,6 +210,11 @@ STOP_PREFIXES: Sequence[tuple] = (
     ("docker/requirements", "a pinned Python dependency changed"),
     ("docker/api-entrypoint.sh", "the api image's entrypoint changed"),
 )
+# The beta's .env template (scripts/beta/make-env.sh writes a first .env from it; nothing reads
+# it after). A change is new or documented settings that .env may want: a note in the report,
+# not a stop (v0.31.0 added commented lines beta's .env already had, and was shipped by hand).
+ENV_TEMPLATE = "deploy/beta/env.beta.template"
+ENV_TEMPLATE_NOTE = f"{ENV_TEMPLATE}: the env template changed: compare .env with it"
 # A path git would have to quote (a byte outside printable ASCII, a quote, a backslash) or one
 # with a character no file in the repository uses: the gate cannot be sure what it is, so it
 # stops (it errs closed). The repository's own paths use only these characters.
@@ -464,6 +509,9 @@ def gate(
         if path.startswith(INERT_PREFIXES) or path.endswith(INERT_SUFFIXES):
             continue
         result["changed_files"] += 1
+        if path == ENV_TEMPLATE:
+            result["notes"].append(ENV_TEMPLATE_NOTE)
+            continue
         for prefix, why in STOP_PREFIXES:
             if path == prefix or path.startswith(prefix):
                 if ci_image and prefix in CI_IMAGE_PREFIXES:
@@ -659,7 +707,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("pick").add_argument("--deployed", required=True)
     sub.add_parser("semver").add_argument("tag")
-    sub.add_parser("ci-verdict").add_argument("--sha", required=True)
+    v = sub.add_parser("ci-verdict")
+    v.add_argument("--sha", required=True)
+    v.add_argument("--none", action="store_true")
+    sub.add_parser("merged-pr").add_argument("--sha", required=True)
     sub.add_parser("lock-hash")
     g = sub.add_parser("gate")
     g.add_argument("--repo", required=True)
@@ -686,7 +737,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload = json.loads(sys.stdin.read() or "{}")
         except ValueError:
             payload = {}
-        print(ci_verdicts(payload if isinstance(payload, dict) else {}, args.sha))
+        payload = payload if isinstance(payload, dict) else {}
+        print(ci_verdicts(payload, args.sha, none=args.none))
+        return 0
+    if args.command == "merged-pr":
+        try:
+            pulls = json.loads(sys.stdin.read() or "null")
+        except ValueError:
+            pulls = None
+        pr = merged_pr(pulls, args.sha)
+        if pr:
+            print(f"{pr[0]} {pr[1]}")
         return 0
     if args.command == "lock-hash":
         print(lock_hash(sys.stdin.read()))

@@ -266,7 +266,7 @@ database initialised with the old one. The required values and what is optional:
 | `WAHOO_CLIENT_ID`, `WAHOO_CLIENT_SECRET`, `WAHOO_REDIRECT_URI` | no | Wahoo (`core/wahoo.py`): the Wahoo Cloud API app's client id and secret from Wahoo's developer portal, and `https://beta.example.org/auth/wahoo/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Wahoo connection. The host must reach `api.wahooligan.com` (443). Then `beta-compose.sh up -d api`. |
 | `HEALTHCHECK_PING_URL` | no | The off-host uptime check's ping address (Healthchecks.io), read by `alert.sh heartbeat` on the host, never by a container ("Alerts", below). The owner pastes it himself. Empty or absent: nothing is pinged. No restart needed. |
 | `PRIVACY_CONTACT` | no | The privacy policy's contact (`/privacy`, `core/privacy_policy.py`): an e-mail address or a web address, read by the api. Empty: the page says to ask the site's owner on Discord. The owner fills it in; then `beta-compose.sh up -d api`. |
-| `PRIVACY_HOSTING` | no | Who hosts the server, named in the privacy policy's "Where your data is kept" (Garmin's developer program asks for every party that stores riders' data), for example `Amazon Web Services (AWS)`. Empty: the page says the owner runs it at home or with a hosting company, which is vaguer than Garmin wants, so set it on beta. Not in `env.beta.template` (a template change holds the release agent): add the line to `.env` by hand, then `beta-compose.sh up -d api`. |
+| `PRIVACY_HOSTING` | no | Who hosts the server, named in the privacy policy's "Where your data is kept" (Garmin's developer program asks for every party that stores riders' data), for example `Amazon Web Services (AWS)`. Empty: the page says the owner runs it at home or with a hosting company, which is vaguer than Garmin wants, so set it on beta. Not in `env.beta.template`: add the line to `.env` by hand, then `beta-compose.sh up -d api`. |
 | `PRIVACY_OPERATOR` | no | Who runs the site, named in the privacy policy's Contact section (`/privacy`, `core/privacy_policy.py`; GDPR asks for the controller's identity), read by the api. Empty: the page names nobody. The owner fills it in by hand in `.env` (not in `env.beta.template`); then `beta-compose.sh up -d api`. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Sign in with Google (v0.27.0, `core/oidc_login.py`, `openid` scope only), read by the api: a Google Cloud OAuth client's id and secret, and its registered redirect, the site's address followed by `auth/google/callback`. Any unset: Google is not offered. Not in `env.beta.template`; the owner adds them by hand, then `beta-compose.sh up -d api`. Allow outbound `accounts.google.com` and `oauth2.googleapis.com` from the api. |
 | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_REDIRECT_URI` | no | Sign in with Apple (v0.27.0, `core/oidc_login.py`), read by the api: the Services ID, team id, key id and the `.p8` key's contents on one line with `\n` for each line break, and the registered redirect, the site's address followed by `auth/apple/callback`. Any unset: Apple is not offered. Not in `env.beta.template`; set by hand, then `beta-compose.sh up -d api`. Allow outbound `appleid.apple.com` from the api. |
@@ -1174,8 +1174,12 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    deploying an older one.
 4. The tag must be annotated (`git tag -a`), or a lightweight one on a commit whose subject is
    "Release vX.Y.Z" for that tag; its commit on `origin/main` and descended from the deployed
-   release; and GitHub's `test` and `a11y` check runs (by GitHub Actions, on exactly that commit,
-   the newest run of each) green: either one red holds the tag, either one unfinished waits. The check is an unauthenticated read of the public API, a few calls an hour at
+   release; and GitHub's `test` and `a11y` check runs (by GitHub Actions, the newest run of each)
+   green: either one red holds the tag, either one unfinished waits. They are read on exactly that
+   commit or, when neither has run there at all (a queued or red run of its own decides), on the head of the one pull request merged as it (GitHub's
+   `commits/<sha>/pulls`, fetched as `refs/pull/<n>/head`), if that head has the identical tree:
+   CI runs once per release, on the pull request into main, not again on the squash merge's
+   commit. Another tree, two pull requests that disagree or a GitHub error waits. The check is an unauthenticated read of the public API, a few calls an hour at
    most; a rate limit or a network failure is tried again next pass. Signed tags: the repository has
    none today; setting `RM_CD_REQUIRE_SIGNED_TAGS=1` makes `git verify-tag` a requirement too (the
    server then needs the signer's public key in its keyring). A tag made by the release workflow
@@ -1195,7 +1199,8 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
 | `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the routers: the four, and valhalla-offroad and valhalla-mtb once their tiles (`$RM_DATA/tiles/<variant>/current`) are on the host |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
-| `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
+| `deploy/beta/env.beta.template` | settings `.env` may want (nothing reads the template after `make-env.sh`) | deploys, with a note in the report: compare `.env` with it |
+| `deploy/`, anything else (the nginx template, the 401 and 502 pages) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
 | a compose `image:` line | a third-party image to pull, maybe a data mismatch | **stops** |
 | `docker/api.Dockerfile`, `docker/requirements*.txt`, `docker/api-entrypoint.sh` | a new base image, system package or dependency in the api image | **stops**, unless the tag names the release workflow's image: then deploys with that image (the owner, 2026-11-12) |
@@ -1461,21 +1466,22 @@ paused, and the report says what to run next.
 ### The release workflow
 
 `.github/workflows/release.yml` (the owner, 2026-11-12: a workflow he approves may make the tag and
-build the image). Once the release branch has merged into main and CI is green there: GitHub,
+build the image). Once the release branch has merged into main (CI ran on its pull request): GitHub,
 Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`; `docs/releases/vX.Y.Z.md`
 must be in the commit). It releases main's newest commit, the one the run starts at, and no
 other, so the image's provenance names the tag's commit. It checks the
 version (strict, newer than every tag, not taken), the commit (on main), the notes, and that `test`
-and `a11y` are green on that commit, then **waits for the owner's approval** (the `release`
-environment). Approved, it builds the api image from that commit, checks that it starts, records
+and `a11y` are green on that commit, or on the merged pull request's head with the identical tree
+(as the agent reads them, step 4 above). Then, in the `release` environment (no required reviewer:
+the owner, 2026-11-28, his go to merge is the one gate), it builds the api image from that commit, checks that it starts, records
 GitHub build provenance for it, publishes it as `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag,
 whose message names the image by digest. The agent deploys the tag on its next pass as above,
 pulling that exact image. Tagging from the PC still works as before.
 
 Once, by the owner, before the first run:
 
-1. Repository Settings, Environments, New environment `release`: Required reviewers, add yourself;
-   Deployment branches and tags, Selected, add `main`. That approval is the release button.
+1. Repository Settings, Environments, New environment `release`: Deployment branches and tags,
+   Selected, add `main` (no required reviewer, the owner's choice).
 2. After the first run has published the image: the package's page (your GitHub profile, Packages,
    `routemaker-api`), Package settings, Change visibility, Public, so the beta pulls it without a
    token (the image holds no secret and no server address). If GitHub refuses the first push

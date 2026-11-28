@@ -299,8 +299,10 @@ Dependabot pull request, not as a red main. CI lints and format-checks
 migration fails it) and the phone app's Node tests (`mobile/`, which pin parts of
 the front end), and cancels a pull request's older run when a newer push lands.
 It runs on every pull request into main (in practice the release branch's, and
-Dependabot's), on the push to main, and by hand (Actions, "CI", Run workflow);
-pull requests into a release branch start no run.
+Dependabot's) and by hand (Actions, "CI", Run workflow), not on the push to main:
+CI runs once per release, and the release workflow and the beta's release agent
+take the merged pull request head's run for main's commit when the trees are
+identical. Pull requests into a release branch start no run.
 `tests/test_mutants_apply.py` runs every `scripts/mutants_*.py --check` (a text
 match, no tests): a change that rewrites a line a mutant targets fails there, and
 re-anchors or drops that mutant in the same change.
