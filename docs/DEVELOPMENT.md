@@ -10301,7 +10301,7 @@ added; every figure below is our default, unmeasured.
   The cue bench's weak-GPS variant rides it.
 - **Standing still is not weak GPS** (`gpsStill.ts` `stillAtLight`, Stephen 2026-11-28: the note came at red
   lights). A rough fix (over `POOR_FIX_M`) after a slow last good fix (a real speed under 2 m/s), with no speed of its
-  own (or under 0.5 m/s) and the last good spot inside its accuracy circle, restarts the weak-GPS clock as a good fix
+  own (or under 0.5 m/s) and the last good spot inside its accuracy circle (capped at `STILL_RADIUS_M`, 60 m), restarts the weak-GPS clock as a good fix
   does, for up to `STILL_MS` (3 min) after that good fix, and RideMode's tick keeps the clock until the next fix
   (no beat follows a rough fix). Never once the note is up. Roam does the same for its road-names note. Riding off
   under rough GPS (a speed, or out of the circle) runs the clock again, so the note still comes. Our defaults,
