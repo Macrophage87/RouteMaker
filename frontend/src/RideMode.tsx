@@ -86,6 +86,7 @@ import { checkClosures } from "./lib/closureCheck.ts";
 import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, keepLeftRideReplans, rideReplans, seeLeftRide, unseeLeftRide, type RideReplans } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
+import { GpsMark } from "./GpsMark.tsx";
 import { placeLetter } from "./lib/letteredPlaces.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance, unitsFirst } from "./lib/format.ts";
@@ -140,6 +141,7 @@ import {
   leftNearStop,
   nearStopsStep,
   skippableVia,
+  viaSkipLimitS,
   viaSkipWorth,
   viaSkippedNote,
   replanTold,
@@ -839,6 +841,7 @@ export function RideMode({
   replans = null,
   riderDots = NO_DOTS,
   onSheetHeight,
+  gpsMark = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -969,6 +972,8 @@ export function RideMode({
   /** The bottom panel's height in CSS pixels (0 while it is hidden), at each change: the map's follow camera keeps the
    *  rider's arrow above it (MapView ridePanelH). */
   onSheetHeight?: (px: number) => void;
+  /** The rider's GPS position in small print in a corner (GpsMark.tsx), for screenshots sent with bug reports; beta builds. */
+  gpsMark?: boolean;
 }) {
   // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
   // Kept riding after the end (Keep riding), its route is the ride to the chosen dock, on the bike's own ride type.
@@ -1535,7 +1540,7 @@ export function RideMode({
       const keptAll = done
         ? restartKept(modelRef.current, progressM, plan.current.points, plan.current.loop, done)
         : replanKept(modelRef.current, progressM, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
-      // A stop or via point the rider came near and rode away from is reached (NEAR_STOP_M); a restart's own picks stand.
+      // A stop or via point the rider came near and rode away from is reached (NEAR_STOP_M; a via point once near, NEAR_VIA_M); a restart's own picks stand.
       const keptPoints = done ? keptAll : keptAll.filter((i) => !leftNearStop(nearStopsRef.current, plan.current.points[i], here));
       // Each via point where the planned line passes it, so the re-route rides the way the planned route did (viaOnLine).
       const keptLeft = withoutStop(viaOnLine(modelRef.current, plan.current.points, VIA_MARKS), keptPoints, here, skip ?? -1);
@@ -1627,15 +1632,14 @@ export function RideMode({
         failed = result.ok ? null : result.error.kind;
         // A re-route may leave out the next via point, never a later one and never a stop (Stephen, 2026-10-27: "Vias can
         // be skipped a little more, for instance if a road is closed, you shouldn't expect a 20 minute detour just to get
-        // to the other side. Those are guides. Stops are where you want to end up." and "Sometimes people plan very
-        // indirect routes for fun, so it shouldn't skip all of the vias"): where the new route takes more than
-        // VIA_SKIP_EXTRA_S longer to reach it than the planned one would have from the rider's place on it now
-        // (replanFromM), it is planned once more without it. Not for a detour, a held U-turn's check, a restart, or a
-        // Calmer or Flatter press (its route is slower by choice). The second ask is made only when that trips.
+        // to the other side."): where the new route takes longer to reach it than the planned one would have from the
+        // rider's place on it now (replanFromM) by more than viaSkipLimitS (5 minutes when asked, 15 on an automatic
+        // re-route, so a small wrong turn keeps a via point placed to lengthen the ride), it is planned once more
+        // without it. A loop's shape point (above, or kept from an earlier re-route) goes as one asked for, unsaid.
         const eased = easing.current?.ticket === ticket;
-        // A loop's shape point (above) is the next via point there, and goes as one does, unsaid: the rider placed none.
-        const next = result.ok && !via && !check && !done && !eased ? (shape ?? skippableVia(modelRef.current, keptPoints)) : null;
-        if (result.ok && next && viaSkipWorth(modelRef.current, fromM, next.atM, modelOf(result.route, points), 1) && !voided()) {
+        const next = result.ok ? (shape ?? skippableVia(modelRef.current, keptPoints)) : null;
+        const limitS = viaSkipLimitS({ asked, detour: !!via, check, restart: !!done, eased, shape: !!next && VIA_MARKS.isShape(points[1]) });
+        if (result.ok && next && limitS !== null && viaSkipWorth(modelRef.current, fromM, next.atM, modelOf(result.route, points), 1, limitS) && !voided()) {
           const dropped = points[1];
           const without = points.filter((_, i) => i !== 1);
           const again = await ask(without);
@@ -2189,7 +2193,7 @@ export function RideMode({
         say(out.events);
         return;
       }
-      // Near the next stop or via point (NEAR_STOP_M): once away from it again, a re-route takes it as reached. Sure fixes only.
+      // Near the next stop or via point (NEAR_STOP_M; a via point NEAR_VIA_M): once away from it again, a re-route takes it as reached. Sure fixes only.
       if (fix.accuracyM <= OFF_SURE_M && out.state.progressM !== null) nearStopsStep(nearStopsRef.current, modelRef.current, out.state.progressM, plan.current.points, plan.current.loop, fix.point, out.state.off);
       // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
       if (!restartAsked.current && out.state.progressM !== null) {
@@ -4679,6 +4683,7 @@ export function RideMode({
         {/* The modal makes the ride's own regions inert: its cues go on being heard from in here, as in Ride settings. */}
         {suddenAsk && <PopupLiveRegions polite={polite} assertive={assertive} />}
       </SuddenClosureDialog>
+      {gpsMark && <GpsMark point={ride.fix?.point ?? null} stale={!!gps} />}
     </section>
   );
 }

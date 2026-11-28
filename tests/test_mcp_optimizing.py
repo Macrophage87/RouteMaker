@@ -611,6 +611,29 @@ def test_rows_are_cut_into_pages_with_where_the_next_starts() -> None:
     assert out["to_mi"] == pytest.approx(1.0)
 
 
+def test_a_segment_says_its_miles_on_bridges() -> None:
+    # The owner, 2026-11-27: a path over Rock Creek read as one down to the creek.
+    over = {**stretch("path", 1.0, 1.2, 1, "path"), "bridge_m": round(0.1 * MI)}
+    entries = [stretch("P Street", 0.0, 1.0, 2), over, stretch("N Street", 1.2, 2.0, 1)]
+    p = mcp.Plan(
+        [tuple(east(0)), tuple(east(2))],
+        [],
+        "default",
+        answer_for({"points": [east(0), east(2)]}, entries),
+        None,
+        {},
+    )
+    segments = mcp.route_segments(p)["segments"]
+    assert [s.get("bridge_mi") for s in segments] == [None, pytest.approx(0.1, abs=0.005), None]
+    # Half the stretch read: half its bridge, shared out evenly.
+    part = mcp.route_segments(p, 1.1)["segments"][0]
+    assert part["bridge_mi"] == pytest.approx(0.05, abs=0.005)
+    # A 12 m footbridge is under 0.01 mi and still said.
+    short = {**over, "bridge_m": 12}
+    p.answer["description"] = [entries[0], short, entries[2]]
+    assert mcp.route_segments(p)["segments"][1]["bridge_mi"] == 0.01
+
+
 def test_legs_run_between_stops_not_via_points(tools) -> None:
     out = tools.call(
         "plan_route",

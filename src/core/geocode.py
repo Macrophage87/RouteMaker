@@ -9,8 +9,8 @@ This module is the proxy's client and its answer's shape. It is not an open
 proxy: the Photon URL is built here from a fixed path and from nothing but the
 parameters named below - the query, an optional location bias, a result count
 and a language this index was imported with - and every search is fenced to
-`settings.COVERAGE_BBOX` by Photon's own `bbox` parameter, with each result
-checked against the box again on the way out. What comes back is a small list
+the map's areas (`routemaker.coverage`) by Photon's own `bbox` parameter, with each
+result checked against the areas again on the way out. What comes back is a small list
 of `{name, label, lon, lat, kind, osm_type, osm_id, osm_key, osm_value, way_in}`, never
 Photon's own GeoJSON, so nothing Photon adds to its answer reaches a visitor by
 accident.
@@ -35,6 +35,7 @@ import urllib.request
 
 from django.conf import settings
 
+from routemaker import coverage
 from routemaker.geo import Point, haversine
 
 # Photon's data is OpenStreetMap's (ODbL); the geocoder itself is Photon. Brief, as
@@ -215,14 +216,19 @@ class Unavailable(Exception):
     """Photon did not answer, or answered with something that is not a result."""
 
 
-def _bbox_param() -> str:
-    west, south, east, north = settings.COVERAGE_BBOX
+def _bbox_param(near: tuple[float, float] | None = None) -> str:
+    """Photon's one `bbox`: the area the bias point is in, else the area alone when the
+    map has one, else the rectangle around them all (each result is checked against the
+    areas themselves on the way out, `inside`)."""
+    box = coverage.box_of(*near) if near is not None else None
+    if box is None:
+        box = coverage.envelope()
+    west, south, east, north = box
     return f"{west},{south},{east},{north}"
 
 
 def inside(lon: float, lat: float) -> bool:
-    west, south, east, north = settings.COVERAGE_BBOX
-    return west <= lon <= east and south <= lat <= north
+    return coverage.inside(lon, lat)
 
 
 def _get(path: str, params: dict) -> dict:
@@ -449,7 +455,7 @@ def search(
         "q": expand_abbreviations(q),
         "limit": min(limit + OVERFETCH, PHOTON_MAX_RESULTS),
         "lang": lang,
-        "bbox": _bbox_param(),
+        "bbox": _bbox_param((lon, lat) if lat is not None and lon is not None else None),
     }
     near = None
     if lat is not None and lon is not None:

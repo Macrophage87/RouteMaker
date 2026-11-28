@@ -70,6 +70,7 @@ WHY = {
     "mtb": "A mountain-bike trail",
     "singletrack": "Rated singletrack",
     "dismount": "A long walk-your-bike connector",
+    "gated": "A street behind a closed gate",
 }
 
 

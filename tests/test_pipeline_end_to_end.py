@@ -698,7 +698,7 @@ def test_a_monument_grounds_walk_opens_and_a_memorial_walk_stays_closed(
     assert seen
 
 
-def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(
+def test_a_roadless_sidewalk_is_ridden_as_a_link_but_not_on_mass_rides(
     tmp_path, segment_schemas, states
 ) -> None:
     """The owner, 2026-10-20: "Bikes can go on sidewalks". An untagged sidewalk outside
@@ -711,9 +711,10 @@ def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(
     assert SUBURBAN_SIDEWALK_ID in context.sidewalk_rides
     assert CBD_SIDEWALK_ID not in context.sidewalk_rides
     assert CIRCLE_CROSSING_ID not in context.sidewalk_rides, "the circle parks open it outright"
-    # Beside no road rated 4.5 or Avoid: priced above an LTS 4 road (2026-10-21).
-    assert SUBURBAN_SIDEWALK_ID in context.sidewalk_last_resort
-    assert int(context.stress_by_way[SUBURBAN_SIDEWALK_ID].tier) == 4
+    # Beside no road at all (the fixture draws none near it): a connector, priced as a link
+    # rather than a last resort (#1447, Briggs Road in Glenmont).
+    assert SUBURBAN_SIDEWALK_ID not in context.sidewalk_last_resort
+    assert int(context.stress_by_way[SUBURBAN_SIDEWALK_ID].tier) == 3
     seen = set()
     for variant in Variant:
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
@@ -723,7 +724,7 @@ def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(
         # Nor on the e-bike and Road Bike graphs (the owner, 2026-11-14: "road bikes probably
         # never. Ebikes are typically prohibited from sidewalks").
         unridden = variant is Variant.NO_TRAIL or variant in NO_SIDEWALK_VARIANTS
-        expected = None if unridden else "last_resort"
+        expected = None if unridden else "yes"
         assert tags[SUBURBAN_SIDEWALK_ID].get("rm:sidewalk") == expected, variant.value
     assert Variant.STANDARD in seen
 

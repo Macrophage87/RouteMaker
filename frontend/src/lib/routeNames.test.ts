@@ -83,6 +83,6 @@ test("in a ride the route's names go up with the street names, on top of them", 
 test("MapView draws the names over the route line, under its hazard marks, and refreshes them with the route", () => {
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   const at = (s: string) => mapView.indexOf(s);
-  assert.ok(at('id: "route-line"') < at("routeNameLayer(ROUTE_NAME_SOURCE_ID") && at("routeNameLayer(ROUTE_NAME_SOURCE_ID") < at("routeHazardLayer()"));
+  assert.ok(at("id: ROUTE_LINE_LAYER,") < at("routeNameLayer(ROUTE_NAME_SOURCE_ID") && at("routeNameLayer(ROUTE_NAME_SOURCE_ID") < at("routeHazardLayer()"));
   assert.match(mapView, /ROUTE_NAME_SOURCE_ID\) as GeoJSONSource \| undefined\)\?\.setData\(routeNameFeatures\(stale \? null : route\)/);
 });

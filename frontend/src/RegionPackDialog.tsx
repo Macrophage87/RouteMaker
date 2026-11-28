@@ -296,7 +296,8 @@ function AreaMap({
   kept: ReadonlySet<string>;
 }) {
   const maskId = useId().replace(/:/g, "");
-  const outlined = Object.entries(areas.areas).filter(([, a]) => a.outline);
+  // The home area's regions; a later area's own pack (separate) is far off the picture and is listed only.
+  const outlined = Object.entries(areas.areas).filter(([, a]) => a.outline && !a.separate);
   const xs = outlined.flatMap(([, a]) => a.outline!.map((p) => p[0]));
   const ys = outlined.flatMap(([, a]) => a.outline!.map((p) => p[1]));
   const [w, s, e, n] = areas.box ?? [

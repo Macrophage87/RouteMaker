@@ -269,6 +269,14 @@ new secret and the container holding it, during which every `/auth/callback`
 fails the code exchange and the user gets a sign-in refusal; it is seconds if
 the `.env` edit is ready before the rotation.
 
+**`ANTHROPIC_IDENTITY_TOKEN_FILE`: nothing to rotate here; the file's token is replaced where it
+is issued.** It names a file inside `worker` holding a short-lived identity token, which the
+Anthropic SDK exchanges under Workload Identity Federation (`ANTHROPIC_FEDERATION_RULE_ID`,
+`ANTHROPIC_ORGANIZATION_ID`, neither of them secret) for an access token on each closure agent
+run (OPERATIONS, "The closure agent on the worker (v0.31.0)"). There is no API key. Nothing is
+stored or encrypted under it, so a new token costs nothing; revoking the federation rule stops
+the agent at its next hourly run, and the run row then says it failed.
+
 **`GARMIN_CLIENT_SECRET`: rotate it in Garmin's developer portal first, then
 here, then `up -d`.** It is issued with the Connect Developer Program app.
 `api` uses it to exchange a rider's sign-in code and to refresh their token;

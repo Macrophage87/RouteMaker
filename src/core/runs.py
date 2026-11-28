@@ -60,6 +60,9 @@ STALE_AFTER = {
     # The closures on saved routes (v0.7.0), every fifteen minutes: past an hour riders'
     # My routes are not being told of new closures.
     "check_saved_route_closures": 60 * 60,
+    # The closure agent (v0.31.0), every hour: past three hours its undated closures are
+    # lapsing unextended and new ones go unread.
+    "run_closure_agent": 3 * 60 * 60,
 }
 
 # How long a run row is kept. The five-minute tasks alone write about 105,000

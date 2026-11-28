@@ -327,6 +327,8 @@ class TestSchema:
             "oneway",
             # 2026-11-03: the busy roads a path stretch crosses, for Ride's "Cross ..." cue.
             "crossings",
+            # v0.31.0 (#1458): a stretch's metres on bridges, where it has some.
+            "bridge_m",
         }
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).

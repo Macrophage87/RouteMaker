@@ -372,6 +372,9 @@ const GO_RIDE_ALSO = [
   "GoSpotDialog.tsx",
   "lib/spotNearby.ts",
   "lib/routeSpot.ts",
+  // Go's beach note and the junction dots' names on Go's map (the v0.31.0 release review).
+  "lib/beaches.ts",
+  "lib/ratedMap.ts",
 ];
 
 function goRideFiles(): string[] {
