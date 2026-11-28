@@ -20,7 +20,7 @@ from django.core.exceptions import ImproperlyConfigured
 # that downloads the extract and it owns the list of what is downloaded; a
 # second copy of three URLs here would be the copy that goes stale. It imports
 # nothing from Django, so there is no cycle.
-from pipeline.source import GEOFABRIK_EXTRACTS
+from pipeline.source import geofabrik_extracts
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -249,6 +249,34 @@ VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 # with the others (`pipeline.source.GEOFABRIK_REGIONS`, which lists it since v0.7.0).
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 
+# The map's areas, by name, each (west, south, east, north). The first is the home
+# area, the one COVERAGE_BBOX names and the one the District's own data is for; a
+# later one is a separate island of map with no roads joining it to the first
+# (routemaker.coverage). The owner, 2026-11-23: "a map for the Southwest Florida area
+# to include the area around Bonita springs and maybe an hour drive from there".
+# Southwest Florida is Sarasota and Siesta Key in the north to Marco Island and
+# Everglades City in the south, out east through Big Cypress to Shark Valley on the
+# Tamiami Trail (the owner, 2026-11-23: "from Sarasota to just past Shark" Valley,
+# "a lot of cycling options in big cypress"). It joins COVERAGE_AREAS once its first
+# map is built (RM_COVERAGE_AREAS lists the areas a deployment serves, by name).
+SOUTHWEST_FLORIDA_BBOX = (-82.75, 25.65, -80.70, 27.45)
+KNOWN_COVERAGE_AREAS = {
+    "dc-baltimore": COVERAGE_BBOX,
+    "southwest-florida": SOUTHWEST_FLORIDA_BBOX,
+}
+_area_names = [
+    n.strip()
+    for n in (os.environ.get("RM_COVERAGE_AREAS") or "dc-baltimore").split(",")
+    if n.strip()
+]
+_unknown_areas = [n for n in _area_names if n not in KNOWN_COVERAGE_AREAS]
+if _unknown_areas or not _area_names or _area_names[0] != "dc-baltimore":
+    raise ImproperlyConfigured(
+        "RM_COVERAGE_AREAS lists the map's areas, dc-baltimore first, from "
+        f"{', '.join(KNOWN_COVERAGE_AREAS)}; it says {os.environ.get('RM_COVERAGE_AREAS')!r}"
+    )
+COVERAGE_AREAS = {n: KNOWN_COVERAGE_AREAS[n] for n in dict.fromkeys(_area_names)}
+
 # The coverage polygon itself, which `osmium extract --polygon` would take in
 # preference to the box. PLAN:13's region is a polygon and the box around it
 # reaches past Fredericksburg and Frederick, so clipping to the box carries more
@@ -274,12 +302,9 @@ COVERAGE_POLYGON = Path(_coverage_polygon) if _coverage_polygon else None
 # The URLs come from that module rather than being restated here, so there is
 # one list of what this project downloads. A deployment behind a mirror sets
 # SOURCE_EXTRACT_URLS to a comma-separated list of its own.
-SOURCE_EXTRACT_URLS = (
-    tuple(
-        url.strip() for url in os.environ.get("SOURCE_EXTRACT_URLS", "").split(",") if url.strip()
-    )
-    or GEOFABRIK_EXTRACTS
-)
+SOURCE_EXTRACT_URLS = tuple(
+    url.strip() for url in os.environ.get("SOURCE_EXTRACT_URLS", "").split(",") if url.strip()
+) or geofabrik_extracts(tuple(COVERAGE_AREAS))
 
 # Six days, just under the weekly rebuild cadence: at or above seven the
 # ordinary weekly run would accept last week's snapshot and the map would age a

@@ -66,6 +66,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 import urllib.parse
 import urllib.request
@@ -89,6 +90,8 @@ SOURCE_OSM = "OpenStreetMap contributors, ODbL 1.0"
 # src/config/settings.py COVERAGE_BBOX (west, south, east, north), as
 # build_water_restrooms.py has it.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+# And Southwest Florida's when RM_COVERAGE_AREAS names it, as build_water_restrooms.py has it.
+SOUTHWEST_FLORIDA_BBOX = (-82.75, 25.65, -80.70, 27.45)
 PUBLIC_ACCESS = frozenset({"yes", "public", "permissive", "designated"})
 # An OSM rack this close to a DDOT rack is the same one: about 80 ft.
 SAME_RACK_M = 25.0
@@ -141,8 +144,9 @@ class Rack:
 
 
 def inside(lon: float, lat: float) -> bool:
-    west, south, east, north = COVERAGE_BBOX
-    return west <= lon <= east and south <= lat <= north
+    names = {n.strip() for n in os.environ.get("RM_COVERAGE_AREAS", "").split(",")}
+    boxes = [COVERAGE_BBOX] + ([SOUTHWEST_FLORIDA_BBOX] if "southwest-florida" in names else [])
+    return any(w <= lon <= e and s <= lat <= n for w, s, e, n in boxes)
 
 
 def _int(value: object) -> int | None:

@@ -186,6 +186,10 @@ if ! done_already fetch; then
 fi
 commit=$(manifest commit)
 read_at=$(manifest read_at)
+# The home deployment's map areas; a run sent before areas existed builds the home area.
+areas=$(manifest areas)
+areas=${areas:-dc-baltimore}
+case "$areas" in *[!a-z,-]*) die "MANIFEST.txt names areas that are not area names: $areas" ;; esac
 backup=$(manifest backup)
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die "MANIFEST.txt names no commit"
 [[ "$read_at" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || die "MANIFEST.txt names no read_at"
@@ -225,6 +229,7 @@ fi
 set_env TAG cloud
 set_env DATA_ROOT "$data_root"
 set_env COMPOSE_PROJECT_NAME routemaker
+set_env RM_COVERAGE_AREAS "$areas"
 # A Tuesday tick on a box left running records a pause instead of building;
 # run_rebuild_now ignores it.
 set_env WEEKLY_REBUILD_PAUSED 1

@@ -49,6 +49,7 @@ DELETED = [
     "Your saved routes and their earlier versions",
     "Your settings kept with the account, and My Go, including Home",
     "Your 311 log",
+    "Which survey spots you answered, and your count",
     "Links you shared while signed in: they stop working",
     "The apps connected to your account, and the routes they drafted",
     "Your suggestions and hazard reports still waiting for review, and your agree or disagree "
@@ -66,6 +67,7 @@ WAHOO_LINE = (
 KEPT = [
     "Suggestions already approved or declined, and map changes made from them, as part of the "
     "map's history, with nothing linking them to you",
+    "Survey spot answers (the spot, the day and the answers), with nothing linking them to you",
     "A note that an account was deleted, and when, under an account number",
     "Database backups, until they age out: within a week, or with the next backup that "
     "succeeds if that is later",

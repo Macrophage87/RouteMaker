@@ -110,6 +110,13 @@ DC_CLOSURES_TIMEOUT_S = 6 * 60
 ALERTDC_CRON = "* * * * *"
 ALERTDC_TIMEOUT_S = 55
 
+# The closure agent (v0.31.0, core.closure_agent): every hour, day and night (the owner,
+# 2026-11-28: "why not 1 hr", "Plenty of people ride then"), at 23 past so it misses the
+# quarter-hour closures' refresh. Its pages, Claude's reading and the map look-ups are budgeted
+# well inside this deadline.
+CLOSURE_AGENT_CRON = "23 * * * *"
+CLOSURE_AGENT_TIMEOUT_S = 15 * 60
+
 # The closures on riders' saved routes (v0.7.0 closures; core.saved_route_alerts): every fifteen
 # minutes, seven minutes after the closures' refresh, so it reads what that refresh stored.
 SAVED_ROUTE_CLOSURES_CRON = "7-59/15 * * * *"
@@ -1136,6 +1143,21 @@ def refresh_alertdc(timestamp: int) -> None:
     with record("refresh_alertdc") as run:
         run.detail = run_with_deadline(refresh_fast, ALERTDC_TIMEOUT_S, "refresh_alertdc")
         run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=CLOSURE_AGENT_CRON)
+@app.task(name="run_closure_agent", queue="maintenance", queueing_lock="run_closure_agent")
+def run_closure_agent(timestamp: int) -> None:
+    """Read the agencies' closure pages, have Claude list the closures on the ones that changed,
+    and enter, extend or end the agent's closures to match (core.closure_agent). Off, with a
+    run row that says so, where the worker has no Claude credentials. Not retried: the next hour
+    is the retry. No credential is written to the run row or the log."""
+    from core.closure_agent import run
+    from core.runs import record, run_with_deadline
+
+    with record("run_closure_agent") as row:
+        row.detail = run_with_deadline(run, CLOSURE_AGENT_TIMEOUT_S, "run_closure_agent")
+        row.save(update_fields=["detail"])
 
 
 @app.periodic(cron=SAVED_ROUTE_CLOSURES_CRON)

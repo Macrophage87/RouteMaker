@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # The states the coverage needs, whose absence refuses the rebuild.
 REQUIRED_STATES = ("DC", "MD", "VA")
 # Which state a point on a shared boundary goes to: the higher default first.
-STATE_PRIORITY = ("MD", "VA", "WV", "PA", "DE", "DC")
+STATE_PRIORITY = ("MD", "VA", "WV", "PA", "DE", "FL", "DC")
 CHUNK = 50_000
 
 
@@ -69,6 +69,13 @@ def states_without_urban(
 # REQUIRED_STATES refuse), but its law and its urban defaults then apply nowhere,
 # which the rebuild says out loud (`unplaced_states`).
 COVERED_STATES = ("DC", "MD", "VA", "WV")
+# The states each later map area adds (`config.settings.COVERAGE_AREAS`).
+AREA_STATES = {"southwest-florida": ("FL",)}
+
+
+def covered_states(areas: Sequence[str] = ("dc-baltimore",)) -> tuple[str, ...]:
+    """COVERED_STATES and the states of the other areas named."""
+    return COVERED_STATES + tuple(s for a in areas for s in AREA_STATES.get(a, ()))
 
 
 def unplaced_states(state_of: dict[int, str], covered: Sequence[str] = COVERED_STATES) -> list[str]:

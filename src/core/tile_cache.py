@@ -40,6 +40,8 @@ from typing import NamedTuple
 from django.conf import settings
 from django.db import connection
 
+from routemaker import coverage
+
 logger = logging.getLogger(__name__)
 
 # The zooms drawn ahead and kept for good: every one the map asks for
@@ -181,18 +183,19 @@ def tiles_in_coverage(max_zoom: int) -> list[tuple[int, int, int]]:
     """
     from .stress_tiles import MIN_ZOOM, outside_coverage
 
-    west, south, east, north = settings.COVERAGE_BBOX
     tiles = []
-    for z in range(MIN_ZOOM, max_zoom + 1):
-        x0, y0 = tile_index(west, north, z)
-        x1, y1 = tile_index(east, south, z)
-        tiles.extend(
-            (z, x, y)
-            for x in range(x0, x1 + 1)
-            for y in range(y0, y1 + 1)
-            if not outside_coverage(z, x, y)
-        )
-    return tiles
+    for west, south, east, north in coverage.boxes():
+        for z in range(MIN_ZOOM, max_zoom + 1):
+            x0, y0 = tile_index(west, north, z)
+            x1, y1 = tile_index(east, south, z)
+            tiles.extend(
+                (z, x, y)
+                for x in range(x0, x1 + 1)
+                for y in range(y0, y1 + 1)
+                if not outside_coverage(z, x, y)
+            )
+    # At the widest zooms one tile can reach two areas; it is drawn once.
+    return list(dict.fromkeys(tiles))
 
 
 class Predrawn(NamedTuple):

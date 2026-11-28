@@ -661,6 +661,7 @@ def test_an_unchanged_world_resumes(env, reset_calls) -> None:
 CONTEXT_VALUED = {
     "COVERAGE_BBOX": lambda env: {"coverage_bbox": (-77.5, 38.5, -76.5, 39.5)},
     "COVERAGE_POLYGON": lambda env: {"coverage_polygon": write_polygon(env)},
+    "COVERAGE_AREAS": lambda env: {"other_areas": (tuple(settings.SOUTHWEST_FLORIDA_BBOX),)},
     "SEGMENT_SCHEMA_STAGING": lambda env: {
         "staging_schema": settings.SEGMENT_SCHEMA_STAGING + "_c"
     },
