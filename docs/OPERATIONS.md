@@ -6082,7 +6082,8 @@ filled in the browser from Nixle. Each needs its own look before it can be watch
    posts with its dates (a first and a last day) and a clear place (named cross streets, mileposts,
    a named bridge) goes in without asking, and the owner is told after, with the alert's link. One
    with no dates, an open end ("until further notice", "through spring") or a place that cannot be
-   pinned down waits for the owner's word. Evidence is the agency's words and what a rider saw,
+   pinned down waits for the owner's word; since v0.31.0 the agent closes an undated one it can
+   place on beta a day at a time instead ("Agent closures" below). Evidence is the agency's words and what a rider saw,
    never another map. A closure that starts before the next release reaches riders only through a
    reviewer closure (the road panel's "Mark closed", an admin's), so for a short one that is the
    way.
@@ -6096,6 +6097,39 @@ towpath detour, miles 106 to 106.8, and the Polly Pond bridge, mile 134.3, past 
 3 Anne Arundel ones (none a closure of the B&A). After the owner's rule, the W&OD crosswalk
 detour (Nov 17-24) was entered and the first items marked read; the Dam No. 5 detour (no dates)
 waits for the owner.
+
+### Agent closures (v0.31.0)
+
+The owner, 2026-11-28, on a B&A Trail closure for downed trees: "Is there a way to do this
+automatically?", then "I'm open to adding in an agent that would check things periodically", and
+"downed trees usually last about a day, so it's important to people riding today, but maybe not a
+week into the future". So an agent, a scheduled Claude session signed in to the site's connector
+as an instance admin, checks the three agencies every 3 hours and closes what it can place on
+beta itself, through the connector's admin tools (`mark_closed`, `extend_closure`,
+`end_closure`, `agent_closures`; `core.reviewed_closures`, "Agent closures"). Each run:
+
+1. `python scripts/park_alerts.py items` prints every item now on the pages, one JSON line each
+   (agency, key, place, text, link). `agent_closures` lists the agent's closures in force, each
+   with its `agent_key` (`agency:key:n`, n counting the item's stretches from 1).
+2. For each item that closes a way a bicycle uses and has no agent closure yet, place each
+   stretch: `python scripts/park_alerts.py between "B&A Trail" "Severn Way" "Boulters Way"
+   --area "Anne Arundel County, Maryland"` prints the trail's line between where it meets the two
+   cross streets, from OpenStreetMap's own API (`park_alerts.stretch_between`; the agencies'
+   "B&A" or "W&OD" match the map's long names); for the C&O, `towpath FIRST [LAST]`. Then
+   `mark_closed` with the line, the agency's reason in a few words, the alert's link and the
+   `agent_key`, and `end` only where the agency gives a last day. With none it lasts today only.
+3. For each agent closure whose alert is still on the page and that has no agency last day:
+   `extend_closure` to tomorrow, so it holds as long as the alert does (a holiday weekend's slow
+   clearing too). For each whose alert is gone: `end_closure`.
+4. Whatever it cannot place (`between` exits 1: a street or the trail is not on the map by that
+   name, as the South Shore Trail's newer end on 2026-11-28), a whole park, or work that may leave
+   the trail open goes to the owner, as before. Evidence is the agency's words only.
+
+These are reviewer closures, so the road panel's Mark closed list shows them and its End button
+ends one at once (a county that leaves a cleared alert up). An agent changes only closures with an
+`agent_key`. One day (`AGENT_DAYS`) and the 3 hours are our defaults, unmeasured. The agent's
+closures count against the admin account's 20 in force (`OPEN_PER_ACCOUNT`). Dated closures that
+outlast a release can still go in `park-closures.json` as above.
 
 ## Deer-management closures (v0.12.3)
 

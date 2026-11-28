@@ -24,6 +24,14 @@ found fenced off - a reviewer enters here, or confirms from a rider's report:
   beside the feeds' (`core.workzones._load`), so the planner routes round them and the closure
   check and saved-route alerts name them exactly as a feed's.
 
+- **Agent closures.** An agent that reads the park agencies' alerts every few hours enters a
+  closure through the site's connector (`mcp/routemaker_mcp.py` mark_closed, the owner,
+  2026-11-28: "an agent that would check things periodically") with `agent_key`, the alert it
+  follows. An alert with no last day gets one day (`AGENT_DAYS`): the agent moves the last day
+  on (`extend`) at each check while the alert is still posted, and ends the closure when it is
+  gone. So a tree down across a trail closes it for today's rides, not for a ride planned a week
+  out, however long the agency's page takes to clear. One live closure per key.
+
 Every write is one audit row. A rider's report keeps no account (it comes from the short form);
 the reviewer's account is on the row for the admin, never in what a rider reads.
 """
@@ -57,6 +65,12 @@ OPEN_PER_ACCOUNT = 20
 GUILD_REVIEWERS = False
 # At most this far ahead a closure may be entered to start or end (about two years).
 AHEAD_MAX = timedelta(days=750)
+# An agent closure with no last day lasts this many days, today counted, until the agent moves
+# it on (`extend`): the owner, 2026-11-28, "downed trees usually last about a day, so it's
+# important to people riding today, but maybe not a week into the future". 1 is our default,
+# unmeasured.
+AGENT_DAYS = 1
+AGENT_KEY_MAX = 100
 
 
 class Forbidden(stress_edits.EditRefused):
@@ -186,6 +200,18 @@ def way_lines(way_ids: list[int]) -> list[list[list[float]]]:
     return lines
 
 
+def clean_agent_key(value) -> str:
+    """An agent closure's alert key: letters, digits and `:._-`, at most `AGENT_KEY_MAX`."""
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    if len(value) > AGENT_KEY_MAX or not all(c.isalnum() or c in ":._-" for c in value):
+        raise stress_edits.Invalid(
+            f"The alert key is at most {AGENT_KEY_MAX} letters, digits and ':._-'.", "agent_key"
+        )
+    return value
+
+
 def _ways(way_ids) -> list[int]:
     if not isinstance(way_ids, list) or not way_ids:
         raise stress_edits.Invalid("Choose the road that is closed.", "osm_way_ids")
@@ -213,12 +239,18 @@ def _check(user) -> None:
 
 
 def _make(
-    user, way_ids, line, reason, start, end, url, report=None, on_foot=True
+    user, way_ids, line, reason, start, end, url, report=None, on_foot=True, agent_key=""
 ) -> ReviewedClosure:
     # on_foot=True: closed on foot unless the reviewer says otherwise - Claude's default, not
     # measured (C4-1). `create` and `confirm_report` pass the same default on.
     reason = clean_reason(reason)
     url = clean_url(url)
+    agent_key = clean_agent_key(agent_key)
+    if agent_key and end in (None, ""):
+        # No last day from the agency: `AGENT_DAYS` from the first day (today where later).
+        today = timezone.now().astimezone(_zone_info()).date()
+        first = max(_day(start, "start") or today, today)
+        end = (first + timedelta(days=AGENT_DAYS - 1)).isoformat()
     begins, ends = window(start, end)
     if line is not None and way_ids:
         raise stress_edits.Invalid("Send the road pieces or a drawn line, not both.", "line")
@@ -234,6 +266,8 @@ def _make(
         live = live.exclude(end__lte=now)
         if live.count() >= OPEN_MAX:
             raise Conflict(f"{OPEN_MAX} closures are in force already. End one first.")
+        if agent_key and live.filter(agent_key=agent_key).exists():
+            raise Conflict("A closure for that alert is in force already: extend it instead.")
         if live.filter(created_by=user).count() >= OPEN_PER_ACCOUNT:
             raise Conflict(
                 f"You have {OPEN_PER_ACCOUNT} closures in force or to come. End one first."
@@ -249,15 +283,26 @@ def _make(
             source_url=url,
             report=report,
             on_foot=bool(on_foot),
+            agent_key=agent_key,
         )
 
 
 def create(
-    user, way_ids=None, reason="", start=None, end=None, url="", line=None, on_foot=True
+    user,
+    way_ids=None,
+    reason="",
+    start=None,
+    end=None,
+    url="",
+    line=None,
+    on_foot=True,
+    agent_key="",
 ) -> ReviewedClosure:
-    """A closure a reviewer enters. Raises EditRefused."""
+    """A closure a reviewer enters (an agent's with `agent_key`). Raises EditRefused."""
     _check(user)
-    closure = _make(user, way_ids, line, reason, start, end, url, on_foot=on_foot)
+    closure = _make(
+        user, way_ids, line, reason, start, end, url, on_foot=on_foot, agent_key=agent_key
+    )
     audit.record(
         user, "closure_enter", "reviewed_closure", closure.pk, AuditLogEntry.Outcome.ALLOWED
     )
@@ -343,6 +388,34 @@ def end_now(user, closure_id: int) -> ReviewedClosure:
     return closure
 
 
+def extend(user, closure_id: int, end_day) -> ReviewedClosure:
+    """Move a closure's last day on to `end_day` (an agent's, while its alert is still up).
+    Only later: to end one sooner, `end_now`."""
+    _check(user)
+    last = _day(end_day, "end")
+    if last is None:
+        raise stress_edits.Invalid("Give the new last day as YYYY-MM-DD.", "end")
+    with transaction.atomic():
+        closure = ReviewedClosure.objects.select_for_update().filter(pk=closure_id).first()
+        if closure is None:
+            raise stress_edits.NotFound("That closure is not there.")
+        now = timezone.now()
+        if closure.ended_at is not None or (closure.end is not None and closure.end <= now):
+            raise Conflict("That closure is over already: enter it again.")
+        _, ends = window(None, last.isoformat())
+        if closure.end is None or ends <= closure.end:
+            raise Conflict("That closure lasts to that day already.")
+        closure.end = ends
+        closure.extended_at = now
+        closure.save(update_fields=["end", "extended_at"])
+    audit.record(
+        user, "closure_extend", "reviewed_closure", closure.pk, AuditLogEntry.Outcome.ALLOWED,
+        detail=f"to {last.isoformat()}",
+    )  # fmt: skip
+    _forget()
+    return closure
+
+
 # --- What the planner and the reviewer read -----------------------------------------------
 
 
@@ -393,13 +466,16 @@ def zones(now: datetime | None = None) -> list[rules.Zone]:
 
 
 def changed_at() -> datetime | None:
-    """When the reviewed closures last changed: the newest one entered or ended (None: none).
-    A closure is only ever entered or ended, so this moves exactly when the rows do."""
+    """When the reviewed closures last changed: the newest one entered, extended or ended
+    (None: none). A closure is only ever entered, extended or ended, so this moves exactly when
+    the rows do."""
     from django.db.models import Max
-    from django.db.models.functions import Greatest
 
-    found = ReviewedClosure.objects.aggregate(at=Greatest(Max("created_at"), Max("ended_at")))
-    return found["at"]
+    found = ReviewedClosure.objects.aggregate(
+        made=Max("created_at"), ended=Max("ended_at"), extended=Max("extended_at")
+    )
+    times = [t for t in found.values() if t is not None]
+    return max(times) if times else None
 
 
 def summary(closure: ReviewedClosure, now: datetime | None = None) -> dict:
@@ -416,6 +492,7 @@ def summary(closure: ReviewedClosure, now: datetime | None = None) -> dict:
         "url": closure.source_url or None,
         "when_text": rules.when_text(shown[0], now, False) if shown else "",
         "from_report": closure.report_id is not None,
+        "agent_key": closure.agent_key or None,
         "point": None if not shown else list(shown[0].line[len(shown[0].line) // 2]),
     }
 
@@ -455,6 +532,7 @@ __all__ = [
     "confirm_report",
     "create",
     "end_now",
+    "extend",
     "may_review",
     "open_reports",
     "reject_report",

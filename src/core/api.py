@@ -11667,6 +11667,18 @@ class ReviewedClosureIn(Schema):
         description="Closed to people on foot too (Run and Walk route round it); false for a"
         " road closed to traffic whose sidewalk stays open.",
     )
+    agent_key: str = Field(
+        default="",
+        max_length=100,
+        description="An agent's closure only: the agency alert it follows. With no `end`, it"
+        " lasts one day until extended (core.reviewed_closures, Agent closures).",
+    )
+
+
+class ClosureExtendIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    end: str = Field(description="The new last day, YYYY-MM-DD: later than the closure's.")
 
 
 class ClosureConfirmIn(Schema):
@@ -11697,6 +11709,7 @@ class ReviewedClosureOut(Schema):
     when_text: str
     from_report: bool
     point: list[float] | None
+    agent_key: str | None = None
 
 
 class ClosureReportOut(Schema):
@@ -11806,11 +11819,31 @@ def reviewed_closure_create(request, body: ReviewedClosureIn, response: HttpResp
             url=body.url,
             line=body.line,
             on_foot=body.on_foot,
+            agent_key=body.agent_key,
         )
     except stress_edits.EditRefused as refused:
         return _edit_refusal(request, refused)
     _private(response)
     return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reviewed/{closure_id}/extend",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Move a confirmed closure's last day on (reviewer; an agent's while its alert stays)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_extend(
+    request, closure_id: int, body: ClosureExtendIn, response: HttpResponse
+):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.extend(request.user, closure_id, body.end)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": closure.pk, "message": f"Closed through {body.end}."})
 
 
 @api.post(

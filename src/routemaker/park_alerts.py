@@ -34,6 +34,7 @@ Pure: no network, no database. `core.workzones.snapshot` adds `zones(now)` to th
 from __future__ import annotations
 
 import hashlib
+import heapq
 import html
 import json
 import math
@@ -289,6 +290,111 @@ def towpath_lines(first_mile: float, last_mile: float, data: dict | None = None)
     return out
 
 
+# --- A trail between two cross streets (scripts/park_alerts.py between) -----------------------
+
+# A cross street that does not share a node with the trail (a bridge, an underpass, a gap in the
+# mapping) still meets it where it passes this close: our default, unmeasured.
+CROSSING_NEAR_M = 60.0
+# The most points a drawn closure takes (core.reviewed_closures.LINE_MAX_POINTS).
+LINE_POINTS_MAX = 200
+
+
+_FILLER = {"&", "and", "the", "of"}
+
+
+def _initials(words: list[str]) -> str:
+    return "".join(w[0] for w in words if w not in _FILLER)
+
+
+def _named(tags: dict, name: str) -> bool:
+    """Whether the way's name holds `name`, or `name` shortens it the agencies' way ("B&A
+    Trail" for OpenStreetMap's "Baltimore & Annapolis Trail")."""
+    wanted = name.lower().split()
+    short = re.fullmatch(r"([a-z]+)&([a-z]+)", wanted[0]) if wanted else None
+    for key in ("name", "alt_name", "official_name", "old_name", "short_name"):
+        have = str(tags.get(key, "")).lower().split()
+        if not have:
+            continue
+        if " ".join(wanted) in " ".join(have):
+            return True
+        if short:
+            tail = wanted[1:]  # "trail": the words after the initials, the same in both
+            head = have[: len(have) - len(tail)]
+            if have[len(head) :] == tail and _initials(head) == short.group(1) + short.group(2):
+                return True
+    return False
+
+
+def stretch_between(elements: list[dict], trail: str, first: str, second: str) -> list | None:
+    """The trail's line from where it meets one cross street to where it meets the other, as
+    [[lon, lat], ...] with at most `LINE_POINTS_MAX` points, from OpenStreetMap's own elements
+    (the API's map call: nodes with lat/lon, ways with node lists and tags). The trail is every
+    way whose name contains `trail`; a street meets it at a shared node, else at the trail node
+    nearest the street within `CROSSING_NEAR_M`. None where the trail, either street or a path
+    along the trail between them is not found: then the place is not clear, and a person decides.
+    """
+    nodes = {
+        e["id"]: (float(e["lon"]), float(e["lat"]))
+        for e in elements
+        if e.get("type") == "node" and "lat" in e
+    }
+    ways = [e for e in elements if e.get("type") == "way" and e.get("nodes")]
+    trail_ways = [w for w in ways if _named(w.get("tags") or {}, trail)]
+    graph: dict[int, dict[int, float]] = {}
+    for way in trail_ways:
+        ids = [n for n in way["nodes"] if n in nodes]
+        for a, b in zip(ids, ids[1:], strict=False):
+            length = _metres(nodes[a], nodes[b])
+            graph.setdefault(a, {})[b] = length
+            graph.setdefault(b, {})[a] = length
+    if not graph:
+        return None
+
+    def meeting(street: str) -> int | None:
+        street_ways = [
+            w for w in ways if _named(w.get("tags") or {}, street) and w not in trail_ways
+        ]
+        street_nodes = [n for w in street_ways for n in w["nodes"] if n in nodes]
+        shared = [n for n in street_nodes if n in graph]
+        if shared:
+            return shared[0]
+        best = None
+        for t in graph:
+            for n in street_nodes:
+                away = _metres(nodes[t], nodes[n])
+                if away <= CROSSING_NEAR_M and (best is None or away < best[0]):
+                    best = (away, t)
+        return None if best is None else best[1]
+
+    start, end = meeting(first), meeting(second)
+    if start is None or end is None or start == end:
+        return None
+    # Shortest path along the trail (Dijkstra).
+    done: dict[int, int | None] = {}
+    queue = [(0.0, start, None)]
+    while queue:
+        far, node, came = heapq.heappop(queue)
+        if node in done:
+            continue
+        done[node] = came
+        if node == end:
+            break
+        for other, length in graph[node].items():
+            if other not in done:
+                heapq.heappush(queue, (far + length, other, node))
+    if end not in done:
+        return None
+    path = [end]
+    while done[path[-1]] is not None:
+        path.append(done[path[-1]])
+    path.reverse()
+    points = [nodes[n] for n in path]
+    if len(points) > LINE_POINTS_MAX:
+        step = (len(points) - 1) / (LINE_POINTS_MAX - 1)
+        points = [points[round(i * step)] for i in range(LINE_POINTS_MAX)]
+    return [[round(lon, 7), round(lat, 7)] for lon, lat in points]
+
+
 __all__ = [
     "AGENCIES",
     "SOURCE",
@@ -298,6 +404,7 @@ __all__ = [
     "choh_items",
     "nova_item",
     "nova_links",
+    "stretch_between",
     "towpath_lines",
     "unseen",
     "updated",
