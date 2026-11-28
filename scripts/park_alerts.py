@@ -41,7 +41,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import urllib.parse
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -49,6 +48,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from routemaker import osm_place  # noqa: E402
 from routemaker import park_alerts as pa  # noqa: E402
 
 USER_AGENT = "RouteMaker-park-alerts"
@@ -145,65 +145,18 @@ def _get_json(url: str):
     return json.loads(fetch(url))
 
 
-def _search(query: str) -> list[tuple[float, float]]:
-    params = {"q": query, "format": "json", "limit": "8"}
-    found = _get_json(
-        "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(params)
-    )
-    return [(float(hit["lon"]), float(hit["lat"])) for hit in found or []]
-
-
-# Two cross streets of one closure are at most this far apart (the same name elsewhere in the
-# area is another street): our default.
-STREETS_APART_MAX_M = 8000.0
-
-
 def between(trail: str, first: str, second: str, area: str, get_json=_get_json) -> int:
     try:
-        return _between(trail, first, second, area, get_json)
+        line = osm_place.between(trail, first, second, area, get_json)
+    except osm_place.NotClear as why:
+        print(why, file=sys.stderr)
+        return 1
     except (OSError, ValueError) as error:  # a refused or failed read (a 429, too many nodes)
         print(f"{trail}: the map could not be read ({error})", file=sys.stderr)
         return 1
-
-
-def _between(trail: str, first: str, second: str, area: str, get_json) -> int:
-    where = f", {area}" if area else ""
-    hits = [_search(street + where) for street in (first, second)]
-    trail_hits = _search(trail + where)
-
-    def off_trail(point) -> float:
-        # How far the point is from the trail's nearest search hit (0 where none was found).
-        return min((pa._metres(point, t) for t in trail_hits), default=0.0)
-
-    # The pair of streets nearest each other and the trail: the two of this one place.
-    pairs = sorted(
-        (pa._metres(a, b) + off_trail(a) + off_trail(b), pa._metres(a, b), a, b)
-        for a in hits[0]
-        for b in hits[1]
-        if pa._metres(a, b) <= STREETS_APART_MAX_M
-    )
-    if not pairs:
-        print(f"{first} and {second}: not found near each other{where}", file=sys.stderr)
-        return 1
-    points = [pairs[0][2], pairs[0][3]]
-    margin = 0.006  # about 0.4 mi round the two streets: our default
-    bbox = (
-        min(p[0] for p in points) - margin,
-        min(p[1] for p in points) - margin,
-        max(p[0] for p in points) + margin,
-        max(p[1] for p in points) + margin,
-    )
-    url = "https://api.openstreetmap.org/api/0.6/map.json?bbox=" + ",".join(
-        f"{v:.5f}" for v in bbox
-    )
-    elements = get_json(url).get("elements") or []
-    line = pa.stretch_between(elements, trail, first, second)
-    if line is None:
-        print(f"{trail} between {first} and {second}: not clear on the map", file=sys.stderr)
-        return 1
-    length = sum(pa._metres(a, b) for a, b in zip(line, line[1:], strict=False))
     print(json.dumps(line))
-    print(f"{trail}, {first} to {second}: {length / pa.MILE_M:.2f} mi", file=sys.stderr)
+    miles = osm_place.length_m(line) / pa.MILE_M
+    print(f"{trail}, {first} to {second}: {miles:.2f} mi", file=sys.stderr)
     return 0
 
 

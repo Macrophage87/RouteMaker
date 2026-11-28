@@ -6136,6 +6136,57 @@ checks are the owner's pick. The agent's
 closures count against the admin account's 20 in force (`OPEN_PER_ACCOUNT`). Dated closures that
 outlast a release can still go in `park-closures.json` as above.
 
+### The closure agent on the worker (v0.31.0)
+
+The owner, 2026-11-28: "build it now, as if this computer is off, then it would stop. Durability
+is more useful", then "Should we expand further than just those 3 agencies? there's a bunch" and
+"Roadway too". So the same work runs on the beta's own worker, with no Claude session needed:
+`run_closure_agent` (config.procrastinate, hourly at 23 past, day and night; `core.closure_agent`).
+
+- **Pages** (`closure_agent.SOURCES`): NOVA Parks, the C&O conditions, Anne Arundel's closings
+  (through their tested readers), the Fairfax County Park Authority's alerts, Montgomery Parks'
+  trail status, Rock Creek Park's alerts, Arlington's long-term traffic alerts, Baltimore
+  County's road closures and the City of Laurel's road closures. Arlington's and Baltimore
+  County's answered 403 to the build's proxy on 2026-11-28; the run line names any page that
+  cannot be read. A page is a `Source` (key, name, page, area): adding an agency is one line.
+  The roads the feed readers already cover (DDOT, MPD, AlertDC, NPS, SHA, MoCo, the work zones)
+  are not read here.
+- **Reading.** Each page's text is hashed; only a changed page is sent to Claude (Claude Opus
+  5.5, low effort, structured output `closure_agent.SCHEMA`), which lists the closures that close
+  one named way between two named places, with the page's days. At most `CALLS_PER_DAY` (120)
+  asks a day, all pages together, about $0.05 each: our default, sized inside the owner's $200 a
+  month of credits. An unchanged page costs nothing.
+- **Placing.** `routemaker.osm_place.between` (shared with `scripts/park_alerts.py between`):
+  Nominatim for the two places in the source's area, one search a second, then OpenStreetMap's
+  map call round them and `park_alerts.stretch_between` (a page's "Fourth Street" matches the
+  map's "4th Street"); the C&O by its mileposts. What cannot be drawn is counted in the run line
+  ("not placed"), never guessed.
+- **Closing.** As the session agent above, with keys `a:SOURCE:HASH:n` (the hash of the way and
+  its two places): entered with the page's days, or today only; moved on a day at each read while
+  the page lists it (to the end of the region's tomorrow); ended at the first read that does
+  not. A page that cannot be read changes nothing, so an undated closure lapses by itself by the
+  end of the next day at most. One a person ends (the road panel's list) is not entered again
+  while the page lists it. A page whose reading fails is asked again next hour, three times at
+  most for the same text; a closure whose map could not be read keeps its last line and is
+  drawn again at the next read. Pages take turns going first, so a spent day's allowance does
+  not always fall on the same one, and a page past it keeps what was last drawn from it. The
+  rows have no account (the
+  worker's `reviewed_closures.WORKER`), count against `WORKER_OPEN_MAX` (60, our default), and
+  the agent never touches a closure without its `a:` key: the session agent's and a person's are
+  left alone. The run row's detail reads like "read 7 of 9 pages, asked 1; entered 2, extended
+  3, ended 0; not placed 1; failed arlington (HTTPError), baltco (HTTPError)".
+- **Off** until the worker has Claude credentials: `ANTHROPIC_FEDERATION_RULE_ID`,
+  `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_IDENTITY_TOKEN_FILE` (Workload Identity Federation,
+  read by the Anthropic SDK alone; compose.yaml passes them to `worker` and no API key). The run
+  row says "off" meanwhile. The identity token's file must be inside the worker container; where
+  it comes from on the beta is the owner's to say, and its mount is added then.
+- **Outbound hosts for the worker:** api.anthropic.com, nominatim.openstreetmap.org,
+  api.openstreetmap.org, www.novaparks.com, www.nps.gov, www.aacounty.org,
+  www.fairfaxcounty.gov, www.montgomeryparks.org, www.arlingtonva.us,
+  www.baltimorecountymd.gov, laurelmd.gov.
+- **When it runs on the beta,** retire the session agent's hourly task, so the two do not enter
+  the same closure twice under their two keys.
+
 ## Deer-management closures (v0.12.3)
 
 Rock Creek Park (NPS) and Montgomery Parks close parts of their parks at night, or for whole
