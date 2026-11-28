@@ -10287,8 +10287,8 @@ added; every figure below is our default, unmeasured.
   140 ms for right; `RideCuePlugin.buzz` skips a phone set to silent; a browser uses `navigator.vibrate`. Not
   with the cue output "Neither".
 - **Estimated cues through weak GPS** (`navigate.ts` `estimateStep`, `ESTIMATE_MS` 30 s, `ESTIMATE_AFTER_MS`
-  5 s, `ESTIMATE_MIN_SPEED_MS` about 4.5 mph): with no good fix for 5 s while poor fixes come (a stopped rider's
-  GPS sends none, so a rider at a light is never reckoned on), riding the line (not off route, alongside,
+  5 s, `ESTIMATE_MIN_SPEED_MS` about 4.5 mph): with no good fix for 5 s while poor fixes come (a rider standing
+  still at a light is never reckoned on: `stillAtLight` below keeps poor fixes there from counting), riding the line (not off route, alongside,
   arrived, walking to a dock, docking, or asked about the start) with a turn next before any stop or the end,
   RideMode's 3 s check carries the ride on along the line at the slower of the last fix's speed and the
   smoothed one (`RideState.estM`, never `progressM`), and says the next turn's phases as estimates: "In about
@@ -10297,6 +10297,13 @@ added; every figure below is our default, unmeasured.
   dropped as passed on a guess. A stop, the end and road notes wait for a real fix; nothing goes off route or
   re-plans on a guess. The weak-GPS note waits until the estimates end where they can run (`weakNoteAfterMs`).
   The cue bench's weak-GPS variant rides it.
+- **Standing still is not weak GPS** (`gpsStill.ts` `stillAtLight`, Stephen 2026-11-28: the note came at red
+  lights). A rough fix (over `POOR_FIX_M`) after a slow last good fix (a real speed under 2 m/s), with no speed of its
+  own (or under 0.5 m/s) and the last good spot within its accuracy and `STILL_RADIUS_M` (60 m), restarts the weak-GPS clock as a good fix
+  does, for up to `STILL_MS` (3 min) after that good fix, and RideMode's tick keeps the clock until the next fix
+  (no beat follows a rough fix). Never once the note is up. Roam does the same for its road-names note. Riding off
+  under rough GPS (a speed, or more than 60 m off) runs the clock again, so the note still comes. Our defaults,
+  unmeasured.
 - **Cue timing** (cue bench findings): a polite turn warning waits only for the gap after the last turn
   warning, never behind a road note or a "Where am I?" answer (`Announcer.lastTurn`; the voice still lets
   what is being said finish); arriving at a stop or the end is `after`, so it waits for the turn's "now" being
