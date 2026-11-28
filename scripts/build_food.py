@@ -159,8 +159,7 @@ def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Place | 
     name = water._text(tags.get("name")) or water._text(tags.get("brand"))
     if not name:
         return None
-    west, south, east, north = COVERAGE_BBOX
-    if not (west <= lon <= east and south <= lat <= north):
+    if not water.in_coverage(lon, lat):
         return None
     return Place(
         osm=osm,

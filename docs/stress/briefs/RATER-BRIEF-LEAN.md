@@ -82,6 +82,17 @@ rated as a painted lane. A shared-lane marking or a signed route is no facility:
 sidewalk open to bikes is about 2 (walkers, driveways, kerb ramps), not a protected lane; a wide,
 railed bridge sidewalk about 1.5.
 
+**Sidewalks where the law lets bikes ride them** (the law table at the end). A sidewalk beside a
+road is usually the side path there, whatever the map calls it and whether or not it carries a
+bicycle tag: rate it as a side path from its own facts. About 1.5 to 2 where it is 8 ft or wider
+with few driveways; about 2 to 2.5 at 5 to 7 ft or with frequent driveways and side streets; its
+road crossings are junctions, not part of this level. Call it `last resort` (level 4, ridden only
+where nothing else connects) only where it is narrow (under about 5 ft), broken or missing in
+stretches, crowded with walkers, or signed against riding, and say which. With no width given,
+judge from the road it serves and any agency record, and say what you assumed. Where the law
+leaves sidewalk riding to local rules or bars it, keep `last resort` unless the facts show bikes
+are allowed there.
+
 **Road crossings are not part of this level.** Each road crossing is rated separately as a
 junction, with its own stress and delay, and the planner charges it once, where it is. So a signal,
 a multilane crossing, a slip lane or a highway ramp must not raise the level of the lane, side path
@@ -155,15 +166,19 @@ A JSON array, one object per group id:
 reason when you departed by a level or more. Set `second_look` true when you are torn by 1.5 levels
 or more, or when you rate a busy or main road calm.
 
-## Law for the first region
+## Law by region
 
-## Statutory speeds (law)
+## Statutory speeds and sidewalk riding (law)
 
-| Jurisdiction | Town (residence or business district) | Open country | Other | Citation |
-|---|---|---|---|---|
-| District of Columbia | 20 mph on every street unless posted | (none) | Alleys 15 mph | 18 DCMR 2200.6 |
-| Maryland | 30 undivided, 35 divided | 50 undivided, 55 divided | | Transportation Article 21-801.1 |
-| Virginia | 25 | 55 | 35 on unpaved roads | Code of Virginia 46.2-870 to 46.2-878 |
-| West Virginia | 25 | 55 | | W. Va. Code 17C-6-1 |
+| Jurisdiction | Town (residence or business district) | Open country | Other | Bikes on sidewalks | Citation |
+|---|---|---|---|---|---|
+| District of Columbia | 20 mph on every street unless posted | (none) | Alleys 15 mph | Allowed outside the central business district | 18 DCMR 2200.6, 1201.9 |
+| Maryland | 30 undivided, 35 divided | 50 undivided, 55 divided | | Only where a local law allows it | Transportation Article 21-801.1, 21-1103 |
+| Virginia | 25 | 55 | 35 on unpaved roads | Allowed unless a local law or sign bars it | Code of Virginia 46.2-870 to 46.2-878, 46.2-904 |
+| West Virginia | 25 | 55 | | Not checked | W. Va. Code 17C-6-1 |
+| Florida | 30 | 55 | A county or city may post 20 or 25 after a study | Allowed, with a pedestrian's rights and duties, unless a local law bars it | Fla. Stat. 316.183(2), 316.189, 316.2065(9)-(10) |
+
+The sidewalk column says whether a rider may be there, not what riding there is like: rate that
+from the sidewalk's own facts (width, driveways, walkers), as the bike-facility section says.
 
 DC also has a stop-as-yield law for bikes (a junction matter, not a road level).

@@ -41,7 +41,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
-from django.conf import settings
+from routemaker import coverage
 
 logger = logging.getLogger(__name__)
 
@@ -444,7 +444,7 @@ def points_problem(points: object) -> str | None:
 
 
 def inside_coverage(points: list) -> list:
-    """The points inside the area routes are planned in (`settings.COVERAGE_BBOX`). A point
+    """The points inside the area routes are planned in (`routemaker.coverage`). A point
     past its edge (a roaming rider over the line) is left unasked: the check says the alerts
     and rain unchecked rather than refusing the points that are inside."""
     return [points[i] for i in inside_indices(points)]
@@ -453,5 +453,4 @@ def inside_coverage(points: list) -> list:
 def inside_indices(points: list) -> list[int]:
     """Where in `points` the ones `inside_coverage` keeps are: a rain point found among them
     is told by its place in the whole list, which is the list the page reads it against."""
-    west, south, east, north = settings.COVERAGE_BBOX
-    return [i for i, p in enumerate(points) if west <= p[0] <= east and south <= p[1] <= north]
+    return [i for i, p in enumerate(points) if coverage.inside(p[0], p[1])]

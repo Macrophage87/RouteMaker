@@ -875,8 +875,25 @@ export function hoverChanged(before: readonly [number, number] | null, after: re
 /** GET /api/coverage: the area the API routes in, as a GeoJSON polygon feature. */
 export interface Coverage {
   type: "Feature";
-  geometry: { type: "Polygon"; coordinates: number[][][] };
+  // One area is a Polygon; a map of more areas (core.api.coverage_geometry) is a MultiPolygon.
+  geometry: { type: "Polygon"; coordinates: number[][][] } | { type: "MultiPolygon"; coordinates: number[][][][] };
   properties: Record<string, unknown>;
+}
+
+/** Each area's outer ring. */
+export function coverageRings(coverage: Coverage): number[][][] {
+  return coverage.geometry.type === "Polygon"
+    ? [coverage.geometry.coordinates[0]]
+    : coverage.geometry.coordinates.map((polygon) => polygon[0]);
+}
+
+/** Each area's box, (west, south, east, north), from its ring. */
+export function coverageBoxes(coverage: Coverage): Array<[number, number, number, number]> {
+  return coverageRings(coverage).map((ring) => {
+    const lons = ring.map((p) => p[0]);
+    const lats = ring.map((p) => p[1]);
+    return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  });
 }
 
 export const COVERAGE_SOURCE_ID = "coverage";
@@ -898,21 +915,21 @@ const WORLD: number[][] = [
  * the map shows as covered is what the planner accepts.
  */
 export function coverageMask(coverage: Coverage) {
-  const ring = coverage.geometry.coordinates[0];
+  const rings = coverageRings(coverage);
   return {
     type: "FeatureCollection" as const,
     features: [
       {
         type: "Feature" as const,
         properties: { part: "mask" },
-        // A hole winds the other way from its outer ring (RFC 7946 3.1.6).
-        geometry: { type: "Polygon" as const, coordinates: [WORLD, [...ring].reverse()] },
+        // A hole winds the other way from its outer ring (RFC 7946 3.1.6); one hole per area.
+        geometry: { type: "Polygon" as const, coordinates: [WORLD, ...rings.map((ring) => [...ring].reverse())] },
       },
-      {
+      ...rings.map((ring) => ({
         type: "Feature" as const,
         properties: { part: "edge" },
         geometry: { type: "LineString" as const, coordinates: ring },
-      },
+      })),
     ],
   };
 }
@@ -971,8 +988,10 @@ export async function fetchCoverage(origin: string, get: typeof fetch = fetch): 
     const response = await get(`${origin}/api/coverage`);
     if (!response.ok) return null;
     const body = (await response.json()) as Coverage;
-    const ring = body?.geometry?.coordinates?.[0];
-    if (body?.geometry?.type !== "Polygon" || !Array.isArray(ring) || ring.length < 4) return null;
+    const type = body?.geometry?.type;
+    if (type !== "Polygon" && type !== "MultiPolygon") return null;
+    const rings = coverageRings(body);
+    if (rings.length === 0 || rings.some((ring) => !Array.isArray(ring) || ring.length < 4)) return null;
     return body;
   } catch {
     return null;

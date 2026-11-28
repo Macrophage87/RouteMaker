@@ -202,6 +202,10 @@ CLIMBS_NEAR_BURST = Limit(scope="climbs-near-10s", requests=5, window_s=10)
 CLIMBS_NEAR = Limit(scope="climbs-near", requests=20, window_s=60)
 INTERVALS_NEAR_BURST = Limit(scope="intervals-near-10s", requests=5, window_s=10)
 INTERVALS_NEAR = Limit(scope="intervals-near", requests=20, window_s=60)
+# The Survey spots layer (GET /api/survey/spots, /api/survey/near; core.survey_spots): one per
+# map move with the layer on, so the map's own pace; answers are one per spot a rider fills in.
+SURVEY_SPOTS = Limit(scope="survey-spots", requests=120, window_s=60)
+SURVEY_ANSWERS = Limit(scope="survey-answer", requests=60, window_s=3600)
 # The road panel's street photo (GET /api/street-photo, v0.7.0): one per panel opened, as above.
 STREET_PHOTO = Limit(scope="street-photo", requests=60, window_s=60)
 # The rider's own latest suggestion for the road (GET /api/stress-suggestions/mine): one per

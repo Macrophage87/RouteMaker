@@ -36,6 +36,7 @@ import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { JunctionShape } from "./junctionShape.ts";
 import { NOTE_NEAR_M, noteRideText, type NoteKind, type RouteNote } from "./routeNotes.ts";
+import { VIA_MARKS } from "./pointKinds.ts";
 
 // ---- Settings ---------------------------------------------------------------------------------
 
@@ -2643,20 +2644,48 @@ export function replanPoints(model: RideModel, progressM: number, here: LonLat, 
 export const NEAR_STOP_M = 50;
 
 /**
+ * A via point is an anchor, not a place to reach (Stephen, 2026-11-27: "they are anchor points, but aren't mandatory"):
+ * once the rider has come this close to the next one (about a quarter mile), a re-route takes it as reached, so it never
+ * sends them round the block or back along the trail to touch its exact spot. Our default, unmeasured. Stops keep
+ * NEAR_STOP_M: they are where the rider means to be.
+ */
+export const NEAR_VIA_M = 400;
+
+/** How close the rider must come to the plan's `point` for a re-route to take it as reached: a via point's or a stop's. */
+function nearM(point: LonLat, isVia: (p: LonLat) => boolean): number {
+  return isVia(point) ? NEAR_VIA_M : NEAR_STOP_M;
+}
+
+/**
  * The next stop or via point the rider has not reached (replanKept's first, never the end) that a sure fix came within
- * NEAR_STOP_M of: one per place in the plan's points. Only the next one, so a stop the route reaches on a later pass (a
+ * NEAR_STOP_M (a via point: NEAR_VIA_M) of: one per place in the plan's points. Only the next one, so a stop the route reaches on a later pass (a
  * cafe for the way home, passed on the way out) is never counted. On the line (`off` false) the line's own way to it
  * must be that short too: a cafe across a creek that the route reaches later by a bridge is not passed by riding the
- * near bank. Off the line the rider's own way got them there, so the straight distance counts.
+ * near bank. Off the line the rider's own way got them there, so a stop's straight distance counts; a via point's
+ * line distance still does.
  */
-export function nearStopsStep(near: WeakSet<LonLat>, model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, here: LonLat, off: boolean): void {
+export function nearStopsStep(
+  near: WeakSet<LonLat>,
+  model: RideModel,
+  progressM: number,
+  points: readonly LonLat[],
+  loop: boolean,
+  here: LonLat,
+  off: boolean,
+  isVia: (p: LonLat) => boolean = VIA_MARKS.isVia,
+): void {
   const kept = replanKept(model, progressM, points, loop);
   if (kept.length < 2) return;
   const next = points[kept[0]];
-  if (!next || haversineM(next, here) > NEAR_STOP_M) return;
-  if (!off) {
+  if (!next) return;
+  const within = nearM(next, isVia);
+  if (haversineM(next, here) > within) return;
+  // On the line, the line's own way to it must be that short too. Off it, a stop counts by the straight distance (the
+  // rider's own way got them there); a via point still by the line's, so a loop planned to lengthen the ride is not cut
+  // short by a rider who strays near its far end.
+  if (!off || isVia(next)) {
     const lineM = stopLineM(model, kept[0]);
-    if (lineM !== null && lineM - progressM > NEAR_STOP_M) return;
+    if (lineM !== null && lineM - progressM > within) return;
   }
   near.add(next);
 }
@@ -2670,11 +2699,13 @@ function stopLineM(model: RideModel, i: number): number | null {
 }
 
 /**
- * Whether a re-route from `here` takes `point` as reached: the rider came within NEAR_STOP_M of it (`nearStopsStep`)
- * and is past NEAR_STOP_M from it now, so it is left.
+ * Whether a re-route from `here` takes `point` as reached. A stop: the rider came within NEAR_STOP_M of it
+ * (`nearStopsStep`) and is past NEAR_STOP_M from it now, so it is left. A via point: the rider came within NEAR_VIA_M
+ * of it, wherever they are now, since it has done its work of bringing the route this way.
  */
-export function leftNearStop(near: WeakSet<LonLat>, point: LonLat, here: LonLat): boolean {
-  return near.has(point) && haversineM(point, here) > NEAR_STOP_M;
+export function leftNearStop(near: WeakSet<LonLat>, point: LonLat, here: LonLat, isVia: (p: LonLat) => boolean = VIA_MARKS.isVia): boolean {
+  if (!near.has(point)) return false;
+  return isVia(point) || haversineM(point, here) > NEAR_STOP_M;
 }
 
 /**
@@ -2794,6 +2825,24 @@ export function loopShapePoint(model: Pick<RideModel, "coordinates" | "along" | 
 export const VIA_SKIP_EXTRA_S = 300;
 
 /**
+ * An automatic re-route (the rider left the line) leaves out a via point the rider placed only where keeping it costs
+ * more than this, about the "20 minute detour" Stephen named (2026-10-27); a small wrong turn never drops one (2026-11-27:
+ * "it drops via points that intentionally lengthen the route when a small reroute"). Our default, unmeasured.
+ */
+export const VIA_SKIP_AUTO_EXTRA_S = 900;
+
+/**
+ * How much longer the new route may take to reach the next via point before a re-route leaves it out (viaSkipWorth),
+ * or null where it never does: VIA_SKIP_EXTRA_S on a re-route the rider asked for (Road closed, Re-route) and for a
+ * loop's own shape point, which the rider never placed; VIA_SKIP_AUTO_EXTRA_S on an automatic one. Never for a detour,
+ * a held U-turn's check, a restart, or a Calmer or Flatter press (its route is slower by choice).
+ */
+export function viaSkipLimitS(how: { asked: boolean; detour: boolean; check: boolean; restart: boolean; eased: boolean; shape: boolean }): number | null {
+  if (how.detour || how.check || how.restart || how.eased) return null;
+  return how.asked || how.shape ? VIA_SKIP_EXTRA_S : VIA_SKIP_AUTO_EXTRA_S;
+}
+
+/**
  * The via point a re-route may leave out (VIA_SKIP_EXTRA_S): the first of `kept` (replanKept's answer) where it is a
  * via point, the next point the rider heads for, with its place on the planned line; null where that is a stop or the
  * end. A via point behind a stop is not this one: the stop comes first.
@@ -2809,11 +2858,11 @@ export function skippableVia(model: Pick<RideModel, "passes">, kept: readonly nu
  * from `progressM` to the same point at `viaAtM`, each by its own time along its line (secondsAt: the API's time marks,
  * hills and junction waits in place, else the route's own pace). False where either time is unknown.
  */
-export function viaSkipWorth(planned: RideModel, progressM: number, viaAtM: number, fresh: RideModel, freshPoint: number): boolean {
+export function viaSkipWorth(planned: RideModel, progressM: number, viaAtM: number, fresh: RideModel, freshPoint: number, limitS = VIA_SKIP_EXTRA_S): boolean {
   const before = secondsBetween(planned, progressM, viaAtM);
   const pass = fresh.passes?.find((p) => p.point === freshPoint);
   const after = pass ? secondsAt(fresh, pass.atM) : null;
-  return before !== null && after !== null && after - before > VIA_SKIP_EXTRA_S;
+  return before !== null && after !== null && after - before > limitS;
 }
 
 /** A stop cue's place in the request the model was planned from (its `point`, else its number); null on any other cue. */

@@ -33,12 +33,15 @@ def test_every_extract_snapshot_and_builder_is_listed() -> None:
         "trail-miles",
         "bike-parking",
         "restricted-sites",
+        "beaches",
         "barriers",
     }
     for snapshot in mod.SNAPSHOTS:
         assert (REPO / "scripts" / snapshot.script).is_file(), snapshot.script
         assert snapshot.path.is_file(), snapshot.path
-        assert snapshot.items(json.loads(snapshot.path.read_text(encoding="utf-8"))), snapshot.name
+        items = snapshot.items(json.loads(snapshot.path.read_text(encoding="utf-8")))
+        # The beaches are Southwest Florida's alone: empty until a map with that area is built.
+        assert items or snapshot.name == "beaches", snapshot.name
 
 
 def test_the_committed_dates_file_names_every_snapshot() -> None:

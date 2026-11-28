@@ -9,7 +9,7 @@
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
 import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RatedJunction, RatedMove, RouteResponse } from "./api.ts";
-import { currentPalette } from "../stressStyle.js";
+import { currentPalette, relativeLuminance } from "../stressStyle.js";
 import { ratedDotFill, ratedLevelText } from "./ratedDot.ts";
 import { FEET_PER_MILE, KM_PER_MILE, both, formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
@@ -233,68 +233,27 @@ export function warningIconSvg(severity: Severity, size = ICON_PX): string {
 }
 
 /**
- * Below this zoom, markers closer than GROUP_RADIUS_PX on screen are drawn as
- * one (review r1: three to five triangles overlapped at one interchange on a
- * zoomed-out calm route). A group shows the worst severity's shape and how many
- * junctions it holds, and a click on it zooms in until they come apart.
- *
- * At and above it, markers that would overlap (centres closer than an icon,
- * OVERLAP_RADIUS_PX) are still one group (a11y review, int-2: two reds 10 m
- * apart sat 2 px apart at zoom 14 and up), except at the map's last zoom, where
- * zooming in cannot part them: there each is its own marker, and the focused
- * one is drawn on top (styles.css).
+ * The route's junction markers are drawn from this zoom up, each its own marker, and none below it (the owner,
+ * 2026-11-22: "Any level that would show an intersection marker should show the one taken ... If you zoom out past
+ * the point where you'd see the arrows, then just omit junction markers"). Markers merged into one showed the hardest
+ * of them, "way too much alarm" where a junction is fine for the movement the route makes. 14 is where markers
+ * stopped being merged (review r1: three to five triangles overlapped at one interchange zoomed out); the list keeps
+ * every junction at every zoom. Where two still overlap, the focused or hovered one is drawn on top (styles.css).
  */
-export const GROUP_BELOW_ZOOM = 14;
-export const GROUP_RADIUS_PX = 28;
-export const OVERLAP_RADIUS_PX = ICON_PX;
+export const MARKERS_FROM_ZOOM = 14;
 /** The map's last zoom (MapView.tsx maxZoom). */
 export const MAP_MAX_ZOOM = 18;
 
 export interface JunctionGroup {
-  /** In route order; the first is where the group is drawn. */
+  /** The one junction the marker is drawn for. */
   members: JunctionItem[];
   severity: Severity;
 }
 
-/** How near on screen two junctions are drawn as one at `zoom`; 0 at the map's last zoom. */
-export function groupRadius(zoom: number, maxZoom = MAP_MAX_ZOOM): number {
-  if (zoom >= maxZoom) return 0;
-  return zoom < GROUP_BELOW_ZOOM ? GROUP_RADIUS_PX : OVERLAP_RADIUS_PX;
-}
-
-/**
- * The junctions as the map draws them at a zoom: each joined to the first
- * group in route order whose anchor is within the radius on screen (`project`
- * gives a junction's screen position; the radius is groupRadius's unless
- * given), or a group of its own.
- */
-export function groupJunctions(
-  items: readonly JunctionItem[],
-  zoom: number,
-  project: (item: JunctionItem) => { x: number; y: number },
-  radiusPx?: number,
-  maxZoom = MAP_MAX_ZOOM,
-): JunctionGroup[] {
-  const radius = zoom >= maxZoom ? 0 : (radiusPx ?? groupRadius(zoom, maxZoom));
-  const groups: { at: { x: number; y: number }; members: JunctionItem[] }[] = [];
-  for (const item of items) {
-    const at = project(item);
-    const near = radius > 0 ? groups.find((g) => Math.hypot(g.at.x - at.x, g.at.y - at.y) <= radius) : undefined;
-    if (near) near.members.push(item);
-    else groups.push({ at, members: [item] });
-  }
-  return groups.map(({ members }) => ({
-    members,
-    severity: members.some((m) => m.severity === "red") ? "red" : "orange",
-  }));
-}
-
-/** What a screen reader hears for a group's marker. */
-export function groupLabel(group: JunctionGroup): string {
-  const red = group.members.filter((m) => m.severity === "red").length;
-  const parts = [`${group.members.length} stressful junctions here`];
-  if (red > 0) parts.push(`${red} very high stress`);
-  return `${parts.join(", ")}: zoom in to see them`;
+/** The markers the map draws at a zoom: one for each junction from MARKERS_FROM_ZOOM up, none below it. */
+export function groupJunctions(items: readonly JunctionItem[], zoom: number): JunctionGroup[] {
+  if (zoom < MARKERS_FROM_ZOOM) return [];
+  return items.map((item) => ({ members: [item], severity: item.severity }));
 }
 
 /** The junctions to draw: all of them up to MAX_ON_MAP, the worst kept past it. */
@@ -331,18 +290,43 @@ export function ratedDotSvg(level: number, size = ICON_PX, palette: string = cur
   );
 }
 
-/** A junction's icon: the rated dot where the raters set its cost, else the warning shape. */
-export function junctionIconSvg(junction: Pick<JunctionWarning, "severity" | "rated">, size = ICON_PX): string {
-  return junction.rated ? ratedDotSvg(junction.rated.level, size) : warningIconSvg(junction.severity, size);
+export type Movement = JunctionWarning["movement"];
+
+/** A turn arrow on the marker's disc, for a left (a right is its mirror): up the middle, then off to the side. */
+const TURN_ARROW = `<path d="M14.5 17.5 V11.5 H10" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.8 7.6 L6.4 11.5 L10.8 15.4 Z"/>`;
+
+/**
+ * The movement the route makes at a junction, as its marker (the owner, 2026-11-22: "show the movement done at each
+ * intersection colored by the movement when LtS >=3. Dots for riding through"): a dot for straight through, a turn
+ * arrow for a left or a right, in that movement's stress colour where `level` is 3 or more. Below that, or with no
+ * level, it is drawn without a stress colour: white with dark ink.
+ */
+export function movementIconSvg(movement: Movement, level: number | null, size = ICON_PX, palette: string = currentPalette()): string {
+  const coloured = level !== null && level >= 3;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">`;
+  if (movement === "straight") {
+    if (coloured) return ratedDotSvg(level, size, palette);
+    return `${open}<circle cx="12" cy="12" r="6.6" fill="#ffffff" stroke="#111111" stroke-width="1.2"/><circle cx="12" cy="12" r="2.4" fill="#111111"/></svg>`;
+  }
+  const fill = coloured ? ratedDotFill(level, palette) : "#ffffff";
+  const l = relativeLuminance(fill);
+  // Near-black on a light colour, white on a dark one (the higher contrast of the two).
+  const ink = (l + 0.05) / 0.056 >= 1.05 / (l + 0.05) ? "#111111" : "#ffffff";
+  const flip = movement === "right" ? ` transform="matrix(-1 0 0 1 24 0)"` : "";
+  return (
+    `${open}<circle cx="12" cy="12" r="9.4" fill="#ffffff" stroke="#111111" stroke-width="1.2"/>` +
+    `<circle cx="12" cy="12" r="7.8" fill="${fill}"/>` +
+    `<g fill="${ink}" stroke="${ink}"${flip}>${TURN_ARROW}</g></svg>`
+  );
 }
 
-/** A drawn group's icon: its hardest rated member's dot where every member is rated, else the worst severity's shape. */
-export function groupIconSvg(group: JunctionGroup, size = ICON_PX): string {
-  const levels = group.members.map((m) => m.rated?.level);
-  if (levels.every((l): l is number => typeof l === "number")) return ratedDotSvg(Math.max(...levels), size);
-  return warningIconSvg(group.severity, size);
+/** A junction's icon: where the raters set its cost, the movement the route makes there in its level's colour
+ * (`movementIconSvg`), else the warning shape. */
+export function junctionIconSvg(junction: Pick<JunctionWarning, "severity" | "rated" | "movement">, size = ICON_PX): string {
+  return junction.rated ? movementIconSvg(junction.movement, junction.rated.level, size) : warningIconSvg(junction.severity, size);
 }
 
+// Said through t() where they are used (the catalogs hold each).
 const RATED_MOVE_WORDS: Record<RatedMove["move"], string> = {
   cross: "Crossing",
   left: "Turning left",
@@ -352,7 +336,7 @@ const RATED_MOVE_WORDS: Record<RatedMove["move"], string> = {
 /** "about 40 s": a rated wait, to the nearest 5 seconds from 10 up; "" where none is given or it is nothing. */
 export function ratedWaitText(wait_s: number | null | undefined): string {
   if (typeof wait_s !== "number" || wait_s < 1) return "";
-  return `about ${wait_s >= 10 ? Math.round(wait_s / 5) * 5 : Math.round(wait_s)} s`;
+  return t("about {s} s", { s: wait_s >= 10 ? Math.round(wait_s / 5) * 5 : Math.round(wait_s) });
 }
 
 export interface RatedLine {
@@ -367,7 +351,7 @@ export function ratedLines(rated: Pick<RatedJunction, "moves"> & { move?: RatedJ
   return rated.moves.map((move) => {
     const wait = ratedWaitText(move.wait_s);
     return {
-      text: `${RATED_MOVE_WORDS[move.move]}: ${ratedLevelText(move.level)}${wait ? `, ${wait}` : ""}`,
+      text: `${t(RATED_MOVE_WORDS[move.move])}: ${ratedLevelText(move.level)}${wait ? `, ${wait}` : ""}`,
       yours: move.move === rated.move,
     };
   });
@@ -375,6 +359,8 @@ export function ratedLines(rated: Pick<RatedJunction, "moves"> & { move?: RatedJ
 
 /** "Rated LTS 4 crossing": what a rated junction's marker and card are called. */
 export function ratedTitle(rated: RatedJunction): string {
-  const what = { cross: "crossing", left: "left turn", along: "junction to ride through" }[rated.move];
-  return `Rated ${ratedLevelText(rated.level)} ${what}`;
+  const level = ratedLevelText(rated.level);
+  if (rated.move === "cross") return t("Rated {level} crossing", { level });
+  if (rated.move === "left") return t("Rated {level} left turn", { level });
+  return t("Rated {level} junction to ride through", { level });
 }

@@ -1,3 +1,3 @@
 """RouteMaker: route planning and navigation for many kinds of cycling, DC to Baltimore."""
 
-__version__ = "0.30.4"
+__version__ = "0.31.0"
