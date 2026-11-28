@@ -3712,6 +3712,12 @@ the owner, 2026-11-23). An area is on where `RM_COVERAGE_AREAS` names it, `dc-ba
 first: `RM_COVERAGE_AREAS=dc-baltimore,southwest-florida`. It must be the same on the
 rebuild box, the PC and beta, because the api's checks and the rebuild's clip read it.
 
+Before the front end is built for it, add `{ "text": "FDOT", "html": "FDOT" }` and
+`{ "text": "Florida DEP (Office of Greenways and Trails)", "html": "Florida DEP (Office of
+Greenways and Trails)" }` to `frontend/src/lib/credits.json`, and drop the "when Southwest Florida
+is turned on" note from their `Credit:` lines in docs/SOURCES.md (`tests/test_credits.py` then
+holds them to it).
+
 With Southwest Florida on:
 
 - The rebuild downloads Florida's Geofabrik extract too and clips to a MultiPolygon of the

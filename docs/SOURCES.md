@@ -285,7 +285,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 
 ## FDOT Roadway Characteristics Inventory (Southwest Florida)
 
-- Credit: `FDOT`
+- Credit: `FDOT` (added to the map's credits, `frontend/src/lib/credits.json`, when Southwest Florida is turned on)
 - Publisher: Florida Department of Transportation, Transportation Data and Analytics
   Office (TDA), on FDOT's ArcGIS organisation (`services1.arcgis.com/O1JpcwDW8sjYuddV`),
   updated weekly from the Roadway Characteristics Inventory (RCI). State roads only.
@@ -319,7 +319,7 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 
 ## Florida Greenways and Trails, Existing Trails (trail uses)
 
-- Credit: `Florida DEP (Office of Greenways and Trails)`
+- Credit: `Florida DEP (Office of Greenways and Trails)` (added to the map's credits when Southwest Florida is turned on)
 - Layer: **Florida Greenways and Trails System - Existing Trails**, Florida Department of
   Environmental Protection open data
   (<https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/OGT/MapServer/3>). The
