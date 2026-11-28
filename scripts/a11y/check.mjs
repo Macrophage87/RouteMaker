@@ -96,12 +96,17 @@ const b = await connect(CDP_PORT);
 // Directions fold.
 // The route's junction markers are drawn from zoom 14 up only (#1440, lib/intersectionMarkers.ts MARKERS_FROM_ZOOM),
 // and a planned route opens fitted, below it: Zoom in until they show, as a rider would.
+// Zoomed in, a marker may sit off screen: window.__marker() is the first one whose middle is on screen and its own.
+const ON_SCREEN_MARKER = `window.__marker = () => [...document.querySelectorAll('.junction-marker')].find((m) => {
+  const r = m.getBoundingClientRect(); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return h === m || m.contains(h); }) ?? document.querySelector('.junction-marker'); true`;
 async function zoomToMarkers(p) {
   for (let i = 0; i < 6; i++) {
-    if (await p.eval("document.querySelectorAll('.junction-marker').length > 0")) return true;
+    if (await p.eval("document.querySelectorAll('.junction-marker').length > 0")) break;
     await p.eval("(() => { document.querySelector('.maplibregl-ctrl-zoom-in')?.click(); return true; })()");
     await p.waitFor("document.querySelectorAll('.junction-marker').length > 0", 1500);
   }
+  await p.eval(ON_SCREEN_MARKER);
   return p.eval("document.querySelectorAll('.junction-marker').length > 0");
 }
 
@@ -560,9 +565,8 @@ if (mine(8)) {
 // ---- 3. The card from a marker: focus into it, back to the marker ----
 if (mine(5)) {
   const p = await open();
-  // Zoomed in, so each junction has its own marker.
-  await p.eval("true");
-  const single = await p.eval("(() => { const m = [...document.querySelectorAll('.junction-marker:not(.junction-group)')][0]; m.focus(); return m.dataset.junctionIndex; })()");
+  // Zoomed in (open), so each junction has its own marker; one on screen.
+  const single = await p.eval("(() => { const m = window.__marker(); m.focus(); return m.dataset.junctionIndex; })()");
   await p.enter();
   await sleep(500);
   check("marker: Enter opens its card and the focus goes to its close button", await p.eval("document.activeElement?.classList.contains('maplibregl-popup-close-button') && !!document.activeElement.closest('.junction-popup')"), await focused(p));
@@ -579,12 +583,12 @@ if (mine(5)) {
   // Zoomed out below MARKERS_FROM_ZOOM there are no junction markers, merged or otherwise (#1440); the list keeps
   // every junction, so each is still reached from the keyboard.
   const rows = await p.eval("document.querySelectorAll('.junction-item').length");
-  for (let i = 0; i < 4 && (await p.eval("document.querySelectorAll('.junction-marker').length > 0")); i++) {
+  for (let i = 0; i < 10 && (await p.eval("document.querySelectorAll('.junction-marker').length > 0")); i++) {
     await p.eval("(() => { document.querySelector('.maplibregl-ctrl-zoom-out')?.click(); return true; })()");
     await sleep(700);
   }
-  const out = await p.eval("({ markers: document.querySelectorAll('.junction-marker').length, groups: document.querySelectorAll('.junction-group.junction-marker').length, rows: document.querySelectorAll('.junction-item').length })");
-  check("zoomed out: no junction markers and no merged ones, and the list keeps every junction", out.markers === 0 && out.groups === 0 && out.rows === rows && rows > 0, JSON.stringify({ ...out, before: rows }));
+  const out = await p.eval("({ markers: document.querySelectorAll('.junction-marker').length, rows: document.querySelectorAll('.junction-item').length })");
+  check("zoomed out: no junction markers, and the list keeps every junction", out.markers === 0 && out.rows === rows && rows > 0, JSON.stringify({ ...out, before: rows }));
   await p.close();
 }
 
@@ -643,9 +647,9 @@ if (mine(3)) {
 if (mine(17)) for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["forced-dark", { scheme: "dark", forced: true }], ["forced-light", { forced: true }]]) {
   const p = await open({ ...opts });
   // A keyboard focus, so :focus-visible applies.
-  await p.eval("document.querySelector('.junction-marker:not(.junction-group)').scrollIntoView(); document.querySelector('.junction-marker:not(.junction-group)').focus(); true");
+  await p.eval("window.__marker().focus(); true");
   await p.eval("document.activeElement.blur(); true");
-  const index = await p.eval("document.querySelector('.junction-marker:not(.junction-group)').dataset.junctionIndex");
+  const index = await p.eval("window.__marker().dataset.junctionIndex");
   // Tab to it from the skip link's side, so the focus is a keyboard one.
   await p.eval(`(() => { const all = [...document.querySelectorAll('.junction-marker')]; const m = all.find((e) => e.dataset.junctionIndex === "${index}"); const before = document.createElement('button'); before.id = '__before'; before.style.cssText = 'position:fixed;left:-99px;top:0'; m.parentElement.insertBefore(before, m); before.focus(); return true; })()`);
   await p.tab();
@@ -2129,7 +2133,8 @@ if (mine(15)) {
   // The legend off screen: Layers closed by its Back button (Escape closes it only from inside).
   await p.eval("(() => { const s = document.querySelector('#sheet-layers'); if (s && !s.hidden) s.querySelector('.sheet-back')?.click(); return true; })()");
   await sleep(250);
-  for (let i = 0; i < 6; i++) {
+  // Room for open()'s zoom in to the junction markers too.
+  for (let i = 0; i < 10; i++) {
     if (/only wide open/.test(await p.eval(`document.querySelector('${bandsLine}')?.textContent ?? ''`))) break;
     await p.eval("document.querySelector('.maplibregl-ctrl-zoom-out')?.click(); true");
     await sleep(800);
@@ -3943,7 +3948,7 @@ if (mine(1)) {
   // From a junction marker's card: Suggest a junction change opens the panel with the form open.
   const p = await open({ suggester: true });
   p.junctionAt = JUNCTION_AT;
-  await p.eval("(() => { const m = [...document.querySelectorAll('.junction-marker:not(.junction-group)')][0]; m.focus(); return true; })()");
+  await p.eval("(() => { const m = window.__marker(); m.focus(); return true; })()");
   await p.enter();
   await p.waitFor(`[...document.querySelectorAll('.junction-popup button')].some((b) => b.textContent === '${JUNCTION_BUTTON}')`, 8000);
   const cardButton = await p.eval(`(() => { const b = [...document.querySelectorAll('.junction-popup button')].find((e) => e.textContent === '${JUNCTION_BUTTON}'); return { tag: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);
