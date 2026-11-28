@@ -83,6 +83,7 @@ import { StartFirstDialog } from "./StartFirstDialog.tsx";
 import { SuddenClosureDialog, type SuddenAsk } from "./SuddenClosureDialog.tsx";
 import { WATCH_MS, closedAheadSaid, closuresStamp, lineFromIndex, newWatchState, watchStep, watchedOf, type Watched } from "./lib/closureWatch.ts";
 import { checkClosures } from "./lib/closureCheck.ts";
+import { STILL_MS, stillAtLight } from "./lib/gpsStill.ts";
 import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, keepLeftRideReplans, rideReplans, seeLeftRide, unseeLeftRide, type RideReplans } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
@@ -1990,6 +1991,11 @@ export function RideMode({
   const lastRealFix = useRef<RideFix | null>(null);
   // When the last real fix came (Date.now()), never moved by the heartbeat: a watch failure shows by it (failureShown).
   const realFixAt = useRef(0);
+  // The last good fix and when it came (Date.now clock): what a rough fix at a light is weighed against (lib/gpsStill.ts).
+  const lastGoodFix = useRef<RideFix | null>(null);
+  const lastGoodAt = useRef(0);
+  // The latest fix was a rough one at a light: until another comes, the clock keeps time as the beats do (STILL_MS).
+  const stillRef = useRef(false);
   const failureLater = useRef(0);
   const stay = useRef<Stay | null>(null);
   const everyTick = useRef((now: number) => void now);
@@ -2092,7 +2098,16 @@ export function RideMode({
       lastFixAt.current = Date.now();
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       // Poor fixes since the last good one: the GPS is weak, not just quiet (estimateStep reckons only then).
-      poorSeen.current = fix.accuracyM > POOR_FIX_M;
+      // A rough fix at a light, where the last good one was (lib/gpsStill.ts): standing still, not weak GPS.
+      // Not once the note is up: only a good fix takes it down, so it is never said twice over one weak spell.
+      const still = !gpsWeak.current.weak && stillAtLight(lastGoodFix.current, lastGoodAt.current, fix, lastFixAt.current);
+      stillRef.current = still;
+      if (fix.accuracyM <= POOR_FIX_M) {
+        lastGoodFix.current = fix;
+        lastGoodAt.current = lastFixAt.current;
+      }
+      if (still) gpsWeak.current = { goodAt: lastFixAt.current, weak: false };
+      poorSeen.current = fix.accuracyM > POOR_FIX_M && !still;
       const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current, weakNoteAfterMs(modelRef.current, rideRef.current, estimateGround(), prefsRef.current.verbosity));
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
       if (weighed.sayNow) rideCueLog.note("gps-weak", Date.now());
@@ -2389,6 +2404,9 @@ export function RideMode({
       const beat = heartbeatFix(last, last?.at ?? 0, now);
       if (beat) onFixRef.current(beat, true);
     }
+    // Still at the light after a rough fix, and no fix since: no beat comes (the last fix was rough), so the weak-GPS
+    // clock and the turn list's are kept here, up to STILL_MS after the last good fix (lib/gpsStill.ts).
+    if (stillRef.current && now - lastGoodAt.current <= STILL_MS) gpsWeak.current = { goodAt: now, weak: false };
     // After the line, the clock moves things on when no fix comes: the train's stops by the timetable, a walk not
     // seen to end by its planned time (lib/onward.ts).
     if (rideRef.current.arrived && onwardRef.current !== null && onwardActive(onwardParts, onwardRef.current)) followOnward(null);
