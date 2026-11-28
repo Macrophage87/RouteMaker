@@ -1187,8 +1187,12 @@ def build_junctions(
         def tier(arm: Arm) -> int:
             return road(arm, arm.way_id).tier or 0
 
+        def tier_level(arm: Arm) -> float:
+            return road(arm, arm.way_id).level
+
         crossed: tuple[Road, ...] = ()
         links: list[Arm] = []
+        found = None
         if node is not None:
             found = crossing_sides(node, raw)
             if found is not None:
@@ -1202,6 +1206,20 @@ def build_junctions(
                 same = [a for a in (*one, *other) if _same_road(a, chosen)]
                 crossed = (road(chosen, chosen.way_id, same),)
             links = crossed_links(node, raw)
+        # Whether the movement meets the busiest road at the node (`Junction.meets_top`),
+        # by the map's levels, paths left out. A left meets it where it turns off or onto it
+        # (the junction brief's `left`): a path beside the road joining its node lies with
+        # the road's arms on the right of a left off the path, which it never crosses.
+        # Straight on, a road on either side of the crossing counts too (`crossing_sides`),
+        # which the quieter `crossed` may stand for.
+        meets_top = None
+        if node is not None:
+            top = max((tier_level(a) for a in node.arms if a.is_road), default=None)
+            own = [node.in_arm] + ([node.out_arm] if node.out_arm is not None else [])
+            straight = raw.movement is Movement.STRAIGHT
+            sides = [a for side in (found or ()) for a in side] if straight else []
+            if top and all(road(a, a.way_id).tier is not None for a in own):
+                meets_top = any(tier_level(a) >= top for a in (*own, *sides))
         in_arms = [node.in_arm] if node is not None else []
         out_arms = [node.out_arm] if node is not None and node.out_arm is not None else []
         continues = raw.movement is Movement.STRAIGHT and (
@@ -1225,6 +1243,7 @@ def build_junctions(
                 located=node is not None,
                 continues=continues,
                 ring_movement=raw.ring_movement,
+                meets_top=meets_top,
             )
         )
     return junctions
