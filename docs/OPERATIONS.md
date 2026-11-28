@@ -8277,7 +8277,7 @@ wide gates), so the beta agent stops on the tag.
 A patch on v0.31.0, on the owner's ask (2026-11-28, "patch"): only #1478 and #1475. Stopped at a
 light, the phone's location drops to rough fixes that drift, and twelve seconds of them brought up
 the weak-GPS note and paused turn cues. A rough fix with no speed, after a slow good fix that lies
-inside the rough fix's accuracy circle, now counts as still at the light for up to 3 minutes; riding
+within the rough fix's accuracy and 60 m, now counts as still at the light for up to 3 minutes; riding
 off under rough GPS still pauses cues and says so (#1478, `frontend/src/lib/gpsStill.ts`). The
 release agent no longer runs `docker image rm` by digest after tagging the pulled api image, which
 on the beta's Docker deleted the image (#1475).
@@ -8287,8 +8287,10 @@ What changes for a deploy:
 - front end and the release agent only: no migration; no `lua/`, `valhalla/`, compose, nginx,
   Dockerfile or requirements change; the lockfile's dependencies are unchanged;
 - the agent installed on beta still has the `docker image rm` line until this release reinstalls
-  it (the gate sees the agent changed); `up -d` then pulls the same image again by its
-  `:<short sha>` tag from ghcr (the package is public), so the agent deploys the tag by itself;
+  it (the gate sees the agent changed): it checks the image's provenance, pulls it, deletes it again,
+  finds the tag missing and builds the api image on the host from the tag's tree (`pull_policy:
+  never`, no ghcr pull), a few minutes with beta still serving (`step: build the api image` in the
+  run log); then the quick swap, the smoke tests, and the fixed agent reinstalled for the next pass;
 - no router restart and no map step.
 
 - [ ] **The tag.** The Release workflow on main, version `v0.31.1`.
