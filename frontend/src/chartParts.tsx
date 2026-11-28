@@ -8,6 +8,9 @@ import type { ReactNode } from "react";
 import type { RouteProfile, RouteResponse } from "./lib/api.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
 import { ratedDotFill, ratedLevelText } from "./lib/ratedDot.ts";
+import { NOTE_ICONS, type NoteIcon } from "./lib/routeNotes.ts";
+import type { IconStyle } from "./lib/iconStyle.ts";
+import { NOTO_ICON_URLS } from "./app/iconArt.tsx";
 import {
   AVOID_FRAME,
   FLOW_BANDS,
@@ -293,5 +296,31 @@ export function Tables({
           </div>
         ))}
     </div>
+  );
+}
+
+/**
+ * A stop: its icon (Noto or the phone's emoji, as on the map), or its number where it has none, on a disc of the panel
+ * with an edge, so it reads over any colour. Ride's graph draws it in its turns' row (AheadGraph.tsx), Plan's chart in
+ * its junction markers' row (ElevationChart.tsx). `small` is Plan's size, its type to match.
+ */
+export function StopMark({ number, icon, cx, cy, r, iconStyle, small = false }: { number: number | null; icon: NoteIcon | null; cx: number; cy: number; r: number; iconStyle: IconStyle; small?: boolean }) {
+  return (
+    <g className={small ? "ride-ahead-stop pc-stop" : "ride-ahead-stop"}>
+      <circle cx={cx} cy={cy} r={r} className="ride-ahead-stop-disc" />
+      {icon ? (
+        iconStyle === "emoji" ? (
+          <text x={cx} y={cy + (small ? (r * 5) / 11 : 5)} textAnchor="middle" className="ride-ahead-stop-emoji">
+            {NOTE_ICONS[icon]}
+          </text>
+        ) : (
+          <image href={NOTO_ICON_URLS[icon]} x={cx - r + 2} y={cy - r + 2} width={2 * r - 4} height={2 * r - 4} />
+        )
+      ) : (
+        <text x={cx} y={cy + (small ? (r * 4.5) / 11 : 4.5)} textAnchor="middle" className="ride-ahead-stop-number">
+          {number ?? ""}
+        </text>
+      )}
+    </g>
   );
 }

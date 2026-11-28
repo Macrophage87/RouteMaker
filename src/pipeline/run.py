@@ -43,8 +43,10 @@ from routemaker import (
     cbd,
     circleparks,
     corridors,
+    coverage,
     divided,
     facility,
+    gated,
     hazards,
     lane_overrides,
     mallgrounds,
@@ -80,6 +82,7 @@ from . import (
     aadt_smoothing,
     agency_ratings,
     agency_signals,
+    beaches,
     bike_network,
     bikeshare_corridors,
     borders,
@@ -111,6 +114,7 @@ from . import (
     tiles,
     trail_closures,
     trail_routes,
+    trail_uses,
     variants,
     writers,
 )
@@ -369,6 +373,29 @@ def _setting(name: str):
     return getattr(settings, name)
 
 
+AREAS_POLYGON_NAME = "coverage-areas.geojson"
+
+
+def clip_region(context, extracts_dir: Path):
+    """What the source extract is clipped to: the deployment's coverage polygon when it
+    has one; else, for a map of more than one area, the areas as a MultiPolygon file
+    beside the extracts (rewritten each time, so its hash in the extract's record follows
+    the areas); else the home box."""
+    if context.coverage_polygon is not None:
+        return context.coverage_polygon
+    areas = tuple(context.coverage_areas or ())
+    if len(areas) <= 1:
+        return context.coverage_bbox
+    from routemaker import coverage
+
+    path = Path(extracts_dir) / AREAS_POLYGON_NAME
+    text = coverage.polygon_geojson(areas)
+    if not path.is_file() or path.read_text() != text:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    return path
+
+
 class ValidationFailed(RuntimeError):
     """A pre-swap check did not pass, so the swap must not happen."""
 
@@ -559,6 +586,9 @@ class ReferenceData:
     # Optional like `roadway.json`: without it the line says urban or rural alone.
     # Never read by the classifier.
     setting_by_way: dict[int, list] = field(default_factory=dict)
+    # The land managers' trail-use lines (`pipeline.trail_uses`), from `trail-uses.json`.
+    # Optional like `roadway.json`: without it no trail is opened by a manager's record.
+    trail_use_features: tuple[conflation.RoadFeature, ...] = ()
 
     @classmethod
     def load(
@@ -700,6 +730,7 @@ class ReferenceData:
                     strict=True,
                 )
             ),
+            trail_use_features=trail_uses.load(directory / trail_uses.FILE_NAME),
         )
 
     @staticmethod
@@ -795,6 +826,20 @@ class RebuildContext:
     coverage_bbox: tuple[float, float, float, float] = field(
         default_factory=lambda: tuple(_setting("COVERAGE_BBOX"))
     )
+    # The boxes of the map's later areas (`routemaker.coverage`), the home one being
+    # coverage_bbox; with any, the clip is given all of them as a polygon file
+    # (`clip_region`). `areas` is every box, home first, so an override of coverage_bbox
+    # moves the home box everywhere it is read.
+    other_areas: tuple[tuple[float, float, float, float], ...] = field(
+        default_factory=lambda: tuple(
+            tuple(b) for name, b in _setting("COVERAGE_AREAS").items() if name != "dc-baltimore"
+        )
+    )
+
+    @property
+    def coverage_areas(self) -> tuple[tuple[float, float, float, float], ...]:
+        return (tuple(self.coverage_bbox), *self.other_areas)
+
     # The coverage polygon the clip prefers over the box, when a deployment has
     # one. None everywhere today: the repository carries no polygon file, and
     # the box is what PLAN:13's clip is given until it does.
@@ -947,6 +992,11 @@ class RebuildContext:
     # The node ids of the extract's rail platforms (`pipeline.station_links.read_platform_nodes`):
     # the `bicycle=yes` walkways at them are walked (`routemaker.station_links.platform_walks`).
     platform_nodes: set[int] = field(default_factory=set)
+    # The beach paths (`pipeline.beaches`; the owner, 2026-11-23): the coastline ways cut
+    # to the tide line beside a beach, and the beach accesses carried on to them. Their
+    # node lists are written into every variant's extract.
+    beach_path_ids: set[int] = field(default_factory=set)
+    beach_node_list_ways: set[int] = field(default_factory=set)
     # (the roads they lie along, the reviewed list by way), worked out once
     # (`hazard_inputs`); None until then.
     hazard_inputs: tuple | None = None
@@ -975,6 +1025,8 @@ class RebuildContext:
     sidewalk_rides: set[int] = field(default_factory=set)
     # Those of them priced above an LTS 4 road (`sidewalks.LAST_RESORT`), rated LTS 4.
     sidewalk_last_resort: set[int] = field(default_factory=set)
+    # Those of them an override row rates below LTS 3, priced as paths (`sidewalks.SIDEPATH`).
+    sidewalk_sidepaths: set[int] = field(default_factory=set)
     # The short links among them (`sidewalks.links`), which the graphs that ride no sidewalk
     # still walk (`sidewalk_derived`).
     sidewalk_links: set[int] = field(default_factory=set)
@@ -1008,9 +1060,17 @@ class RebuildContext:
     # The sidewalks and crosswalks open to bicycles the map draws after all, as the
     # only link between two pieces of the trail network (`facility.trail_link_sidewalks`).
     trail_link_sidewalks: set[int] = field(default_factory=set)
+    # The ways the short-path declutter alone hides (`facility.short_paths_to_hide`), and
+    # the footways bicycles may ride the map draws after all as links between two streets
+    # (`sidewalks.street_links`).
+    short_paths_declutter: set[int] = field(default_factory=set)
+    street_links: set[int] = field(default_factory=set)
     # The ways inside a cemetery, routed only to or from a point inside one
     # (`rm:cemetery`; OWNER-DECISIONS 98).
     cemetery_ways: set[int] = field(default_factory=set)
+    # A school's or a hospital's own service roads, destination-only for routing alike
+    # (`rm:campus_grounds`; `restricted_areas.campus_ways`, the owner 2026-11-26).
+    campus_ways: set[int] = field(default_factory=set)
     # Every way inside a military area, and whether the rule closed it
     # (`restricted_areas.military_closures`; the rebuild's military-closures.csv).
     military_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
@@ -1024,6 +1084,14 @@ class RebuildContext:
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
+    # The streets behind a closed gate (`routemaker.gated`), closed but where an
+    # override's bicycle key reopens one.
+    behind_gate_ways: frozenset[int] = frozenset()
+    # The paths inside a private community (`routemaker.gated.private_paths`), closed as
+    # its streets are.
+    private_path_ways: frozenset[int] = frozenset()
+    # The silent trail ways a land manager's record opened (`pipeline.trail_uses`).
+    trail_use_ways: frozenset[int] = frozenset()
     # The circle parks' walkways opened to bicycles (`routemaker.circleparks`).
     circle_park_ways: set[int] = field(default_factory=set)
     # The Capitol grounds' walks opened to bicycles (`routemaker.capitolgrounds`).
@@ -2197,15 +2265,65 @@ def very_stressful(stress) -> bool:
     return tier >= int(Stress.AVOID) or (tier == 4 and writers._half(stress))
 
 
+# A road rated 4 whose traffic runs this fast is one a rider leaves for the sidewalk beside
+# it, as a 4.5 or Avoid road is. The audit of the home area's rules against Southwest
+# Florida (2026-11-25): the rule below was set where a level 4 road is a 30 to 35 mph city
+# artery, which "a lot of people would still ride" (the owner, 2026-10-21); there, 1,557 mi
+# are rated 4 and most are 45 mph multilane roads whose sidewalk is the place riders use
+# (and may: Fla. Stat. 316.2065(9)). The figure is our default, unmeasured. The speed is
+# the one read for the road (a tag or an agency's record): where the classifier only
+# assumed a speed there is none (`StressResult.speed_mph`), and the road does not count.
+FAST_ROAD_MPH = 45.0
+
+
+def sidewalk_beats_road(stress) -> bool:
+    """Whether a sidewalk beside a road rated so is priced as a link rather than a last
+    resort: the road is rated 4.5 or Avoid, or rated 4 with traffic at FAST_ROAD_MPH or more."""
+    if very_stressful(stress):
+        return True
+    if stress is None or stress.tier is None or int(stress.tier) != 4:
+        return False
+    speed = getattr(stress, "speed_mph", None)
+    return speed is not None and speed >= FAST_ROAD_MPH
+
+
 def last_resort_sidewalks(
     ways: Collection,
     stress_by_way: dict,
     ridden: Collection[int],
     links: Collection[int],
+    roadless: Collection[int] | None = None,
 ) -> set[int]:
     """The ridden footways priced above an LTS 4 road (`sidewalks.LAST_RESORT`; the owner,
-    2026-10-21, "Beside 4.5/Avoid only"): all but the links and the sidewalks running
-    beside a road rated 4.5 or Avoid (`sidewalks.beside`)."""
+    2026-10-21, "Beside 4.5/Avoid only"): all but the links, the sidewalks running
+    beside a road rated 4.5 or Avoid or a fast road rated 4 (`sidewalk_beats_road`,
+    `sidewalks.beside`), and the sidewalks running beside no road at all.
+
+    The last-resort price keeps a rider on the calmer road beside a sidewalk; with no road
+    beside it there is none to keep to, and the "sidewalk" is a connector, priced as a link.
+    The owner, of the walk joining the two ends of Briggs Road in Glenmont
+    (OSM 656603494, `footway=sidewalk`, 410 ft, no road beside it): "a short connector path
+    on briggs road that was open to bikes but not included"; routes rode 0.7 mi round."""
+    from routemaker.classes import TRAIL_CLASS_HIGHWAY
+
+    asked, roads, stressful = [], [], []
+    for way in ways:
+        if way.osm_id in ridden:
+            if way.osm_id not in links and way.tags.get("footway") == "sidewalk":
+                asked.append((way.osm_id, way.coordinates))
+        elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
+            roads.append((way.osm_id, way.coordinates))
+            if sidewalk_beats_road(stress_by_way.get(way.osm_id)):
+                stressful.append((way.osm_id, way.coordinates))
+    if roadless is None:
+        roadless = sidewalks.roadless(asked, roads)
+    return set(ridden) - set(links) - sidewalks.beside(asked, stressful) - set(roadless)
+
+
+def roadless_sidewalks(
+    ways: Collection, ridden: Collection[int], links: Collection[int]
+) -> set[int]:
+    """The ridden sidewalks, links aside, that run beside no road (`sidewalks.roadless`)."""
     from routemaker.classes import TRAIL_CLASS_HIGHWAY
 
     asked, roads = [], []
@@ -2213,11 +2331,9 @@ def last_resort_sidewalks(
         if way.osm_id in ridden:
             if way.osm_id not in links and way.tags.get("footway") == "sidewalk":
                 asked.append((way.osm_id, way.coordinates))
-        elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY and very_stressful(
-            stress_by_way.get(way.osm_id)
-        ):
+        elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
             roads.append((way.osm_id, way.coordinates))
-    return set(ridden) - set(links) - sidewalks.beside(asked, roads)
+    return sidewalks.roadless(asked, roads)
 
 
 # The graphs that ride no sidewalk (the owner, 2026-11-14: "Novices might use them more and
@@ -2235,15 +2351,43 @@ def sidewalk_derived(
     ridden: Collection[int],
     last_resort: Collection[int],
     links: Collection[int],
+    sidepaths: Collection[int] = frozenset(),
 ) -> dict[str, object]:
     """What a graph is told of a sidewalk ridden as a last resort (`routemaker.sidewalks`),
     which lua/routemaker_remap.lua prices: nothing on Mass Ride's graph (a crowd on a
-    sidewalk), a walked link or nothing on the graphs of `NO_SIDEWALK_VARIANTS`."""
+    sidewalk), a walked link or nothing on the graphs of `NO_SIDEWALK_VARIANTS`; one a rater
+    rates a side path (`sidepaths`) is marked `sidewalks.SIDEPATH`, priced as a path."""
     if way_id not in ridden or variant is variants.Variant.NO_TRAIL:
         return {}
     if variant in NO_SIDEWALK_VARIANTS:
         return {"link_walk": True} if way_id in links else {}
+    if way_id in sidepaths:
+        return {"sidewalk": sidewalks.SIDEPATH}
     return {"sidewalk": sidewalks.LAST_RESORT if way_id in last_resort else True}
+
+
+def rated_sidepath_sidewalks(
+    ways: Collection, stress_by_way: dict, ridden: Collection[int]
+) -> set[int]:
+    """The ridden sidewalks an override row (a rater's) rates below LTS 3 (`sidewalks.TIER`):
+    the side paths they are, priced as paths (`sidewalks.SIDEPATH`), never as a last resort.
+
+    The rater brief ("Sidewalks where the law lets bikes ride them", 2026-11-26) rates a
+    sidewalk from its own width, setback and driveways, and keeps "last resort" (level 4)
+    where it is narrow, broken, crowded or signed against riding. Without a row the map's
+    tag decides, as before. Only sidewalks (`footway=sidewalk`): a crosswalk, link or
+    cut-through keeps its price, since the remap prices only a sidewalk as a path."""
+    sidewalk_ids = {
+        way.osm_id for way in ways if way.osm_id in ridden and way.tags.get("footway") == "sidewalk"
+    }
+    found = set()
+    for way_id in sidewalk_ids:
+        current = stress_by_way.get(way_id)
+        if current is None or getattr(current, "adjustment", None) is None:
+            continue
+        if current.tier is not None and int(current.tier) < sidewalks.TIER:
+            found.add(way_id)
+    return found
 
 
 def raise_ridden_sidewalks(
@@ -2343,6 +2487,8 @@ def build_handlers(
         deployment may point it elsewhere), else the setting."""
         if name == "COVERAGE_BBOX":
             return list(context.coverage_bbox)
+        if name == "COVERAGE_AREAS":
+            return [list(b) for b in context.other_areas]
         if name == "COVERAGE_POLYGON":
             return None if context.coverage_polygon is None else str(context.coverage_polygon)
         if name == "SEGMENT_SCHEMA_STAGING":
@@ -2543,7 +2689,7 @@ def build_handlers(
             max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
             force=_setting("SOURCE_EXTRACT_FORCE_REFRESH"),
             urls=_setting("SOURCE_EXTRACT_URLS"),
-            region=context.coverage_polygon or context.coverage_bbox,
+            region=clip_region(context, extracts_dir),
         )
 
         # The disk gate, before anything is written *and before the download*.
@@ -2565,7 +2711,7 @@ def build_handlers(
 
         produced = source.ensure_extract(
             extracts_dir,
-            context.coverage_polygon or context.coverage_bbox,
+            clip_region(context, extracts_dir),
             run,
             urls=_setting("SOURCE_EXTRACT_URLS"),
             max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
@@ -2596,7 +2742,51 @@ def build_handlers(
         # The ways' nodes tagged `button_operated=yes` are read in the same pass (the beg
         # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
         context.button_nodes = set()
-        context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
+        closed_gates: set[int] = set()
+        context.ways = extract.read_ways(
+            context.source_pbf, button_nodes=context.button_nodes, closed_gates=closed_gates
+        )
+        # The streets behind a closed gate (`routemaker.gated`; the owner, 2026-11-25, of
+        # gated communities: "only open to people who are residents or guests"), closed
+        # with the area rules below (2026-11-26: "like with restricted areas in dc").
+        behind = gated.behind_gates(
+            ((way.osm_id, way.tags, way.node_ids) for way in context.ways), closed_gates
+        )
+        context.behind_gate_ways = frozenset(behind)
+        # And the community's own paths (the owner, 2026-11-26: "several bike trails on
+        # places that are in private complexes, such as near bonita bay boulevard").
+        context.private_path_ways = frozenset(
+            gated.private_paths(
+                ((way.osm_id, way.tags, way.node_ids) for way in context.ways), behind
+            )
+        )
+        logger.info(
+            "paths inside a private community: %d ways, %.0f mi",
+            len(context.private_path_ways),
+            sum(
+                facility._length_m(w.coordinates)
+                for w in context.ways
+                if w.osm_id in context.private_path_ways
+            )
+            / 1609.344,
+        )
+        logger.info(
+            "streets behind a closed gate: %d ways, %.0f mi (%d closed gates)",
+            len(behind),
+            sum(facility._length_m(w.coordinates) for w in context.ways if w.osm_id in behind)
+            / 1609.344,
+            len(closed_gates),
+        )
+        # The beach paths along the tide line, in the map areas whose beaches are ridden
+        # (`pipeline.beaches`; the owner, 2026-11-23), joined to the beach accesses.
+        beach_boxes = [box for name, box in coverage.areas().items() if name in beaches.BEACH_AREAS]
+        if beach_boxes:
+            found = beaches.read(context.source_pbf, beach_boxes, context.ways)
+            logger.info("beach paths: %s", beaches.summary(found))
+            joined = beaches.apply_joins({w.osm_id: w for w in context.ways}, found.joins)
+            context.ways.extend(found.paths)
+            context.beach_path_ids = {way.osm_id for way in found.paths}
+            context.beach_node_list_ways = context.beach_path_ids | joined
         # The OSM route relations the ways are in, for the zoomed-out long trails
         # (OWNER-DECISIONS 375).
         routes = trail_routes.read_routes(context.source_pbf)
@@ -2631,9 +2821,11 @@ def build_handlers(
         # Cached across rebuilds and re-validated on each: a truncated tile
         # reads as flat terrain rather than as an error, and the build stage
         # reads whatever is in this directory without complaint.
-        context.elevation_tiles = elevation.ensure_tiles(
-            context.elevation_dir, context.coverage_bbox, fetch_elevation, run
-        )
+        context.elevation_tiles = [
+            tile
+            for box in context.coverage_areas
+            for tile in elevation.ensure_tiles(context.elevation_dir, box, fetch_elevation, run)
+        ]
 
     def conflate_road_blocks(entries: list) -> None:
         """Match the agency street blocks to the ways that lie along them."""
@@ -2879,7 +3071,8 @@ def build_handlers(
             raise ValidationFailed(str(missing)) from missing
         # A covered state that placed no way (West Virginia's relation may not
         # close in the extract): its speed law and urban defaults apply nowhere.
-        for state in states.unplaced_states(state_of):
+        covered = states.covered_states(tuple(_setting("COVERAGE_AREAS")))
+        for state in states.unplaced_states(state_of, covered):
             logger.warning(
                 "no way placed in %s: its boundary did not close, so its speed law "
                 "and urban defaults do not apply and its ways read the old class tables "
@@ -3534,6 +3727,15 @@ def build_handlers(
         }
         context.bicycle_override_directions = superseded
         context.bicycle_override_ways = frozenset(superseding)
+        # The trails a land manager lists for biking (`pipeline.trail_uses`; the owner,
+        # 2026-11-25), opened where OSM is silent, before the trail rules read the tags.
+        # Kept apart from the override ways (it reopens no area closure and is no owner
+        # override on the panel), but passed to the trail rules with them, so a
+        # mountain-bike-class trail the record opens rides on every graph.
+        listed = trail_uses.open_listed(
+            context.ways, getattr(reference, "trail_use_features", ()) if reference else ()
+        )
+        context.trail_use_ways = frozenset(listed)
         for way_id in sorted(superseded):
             way = context.ways_by_id.get(way_id)
             directions = superseded[way_id]
@@ -3603,6 +3805,12 @@ def build_handlers(
         areas = restricted_areas.restricted_areas(context.source_pbf)
         placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
+        # A school's or a hospital's own service roads: no cut-through either (the owner,
+        # 2026-11-26), but drawn as before.
+        context.campus_ways = restricted_areas.campus_ways(placed, areas["campus"])
+        logger.info(
+            "school and hospital service roads (destination-only): %d", len(context.campus_ways)
+        )
         # And closed to bicycles, everything inside a military area (by the share of
         # its length) but a numbered public road, a way signed for bicycles, the
         # Pentagon's listed ways and what an owner's override reopens (owner report
@@ -3685,6 +3893,23 @@ def build_handlers(
             trail_routes={w for w, r in routes.items() if r.bicycle_route or r.hiking},
         )
         track_closed = {m.way_id for m in context.track_ways if m.closed}
+        # And the streets behind a closed gate (`routemaker.gated`; the owner, 2026-11-26:
+        # "Have them closed, like with restricted areas in dc, but with a different
+        # color"), and the community's own paths, but where an override wrote a bicycle
+        # key since they were read.
+        gated_closed = {
+            way.osm_id
+            for way in context.ways
+            if way.osm_id not in context.bicycle_override_ways
+            and (
+                way.osm_id in context.private_path_ways
+                or (
+                    way.osm_id in context.behind_gate_ways
+                    and "bicycle" not in way.tags
+                    and "access" not in way.tags
+                )
+            )
+        }
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
         if context.secured_missing:
             logger.warning(
@@ -3703,6 +3928,8 @@ def build_handlers(
             )
             if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
         }
+        # Their roads leave the map, as a base's do; the shading says why.
+        context.short_paths_hidden |= gated_closed
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
         logger.info(
             "%s",
@@ -3775,16 +4002,18 @@ def build_handlers(
         # A count to compare across rebuilds: #1427 draws webs of short walks anywhere.
         logger.info("short paths hidden from the map: %d ways", len(short_hidden))
         context.short_paths_hidden |= short_hidden
+        context.short_paths_declutter = short_hidden
         nobike = trail_closures.closures(
             context.ways,
             routes,
             areas[restricted_areas.PARK],
             military=military_closed,
             secured=secured_closed,
-            reopened=context.bicycle_override_ways,
+            reopened=context.bicycle_override_ways | context.trail_use_ways,
             works=works_closed,
             golf=golf_closed,
             tracks=track_closed,
+            behind_gates=gated_closed,
         )
         context.no_bicycle = nobike.reasons
         write_bike_bans(placed, areas[restricted_areas.PARK])
@@ -3845,8 +4074,23 @@ def build_handlers(
         context.aisle_links = nobike.aisle_links
         context.walk_bike = nobike.walk_bike
         context.sidewalk_rides = nobike.sidewalk_rides
-        context.sidewalk_last_resort = last_resort_sidewalks(
-            context.ways, context.stress_by_way, nobike.sidewalk_rides, nobike.sidewalk_links
+        roadless = roadless_sidewalks(context.ways, nobike.sidewalk_rides, nobike.sidewalk_links)
+        context.sidewalk_sidepaths = rated_sidepath_sidewalks(
+            context.ways, context.stress_by_way, nobike.sidewalk_rides
+        )
+        context.sidewalk_last_resort = (
+            last_resort_sidewalks(
+                context.ways,
+                context.stress_by_way,
+                nobike.sidewalk_rides,
+                nobike.sidewalk_links,
+                roadless,
+            )
+            - context.sidewalk_sidepaths
+        )
+        logger.info(
+            "sidewalks a rater rates as side paths, priced as paths: %d ways",
+            len(context.sidewalk_sidepaths),
         )
         context.sidewalk_links = set(nobike.sidewalk_links)
         context.no_public_traffic_sidewalks = sidewalks.no_public_traffic_sidewalks(
@@ -3875,6 +4119,36 @@ def build_handlers(
         logger.info(
             "sidewalk runs drawn as the only link between two trails: %d ways",
             len(context.trail_link_sidewalks),
+        )
+        # And a footway bicycles may ride that joins two streets, which the map would leave
+        # out as a sidewalk or a short path (the owner, of the walk joining the two ends of
+        # Briggs Road in Glenmont): a ridden link or connector, or an open path the
+        # declutter alone hid; never one hidden by its place or closed.
+        place_hidden = context.short_paths_hidden - context.short_paths_declutter
+        # Sidewalks and crosswalks only where they are links or beside no road: a sidewalk
+        # along a busy road, and a crosswalk, stay off the map.
+        candidates = {
+            way.osm_id
+            for way in context.ways
+            if (
+                way.osm_id in nobike.sidewalk_links
+                or way.osm_id in roadless
+                or (
+                    way.osm_id in context.short_paths_declutter and sidewalks.bicycle_open(way.tags)
+                )
+            )
+            and (way.tags.get("footway") not in sidewalks.SIDEWALK_KINDS or way.osm_id in roadless)
+        }
+        context.street_links = sidewalks.street_links(
+            [(way.osm_id, way.tags, way.node_ids) for way in context.ways],
+            candidates
+            - place_hidden
+            - set(nobike.reasons)
+            - nobike.platform_walks
+            - nobike.walk_links,
+        )
+        logger.info(
+            "footways drawn as links between two streets: %d ways", len(context.street_links)
         )
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
@@ -4214,6 +4488,9 @@ def build_handlers(
                 if way.osm_id in context.cemetery_ways:
                     # No cut-through: reached only from or to a point inside.
                     derived["cemetery"] = True
+                if way.osm_id in context.campus_ways:
+                    # No cut-through: reached only to or from a point on it.
+                    derived["campus_grounds"] = True
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
@@ -4260,6 +4537,7 @@ def build_handlers(
                         context.sidewalk_rides,
                         context.sidewalk_last_resort,
                         context.sidewalk_links,
+                        context.sidewalk_sidepaths,
                     )
                 )
                 # A sidewalk open to bicycles along a street closed to public driving
@@ -4313,6 +4591,9 @@ def build_handlers(
                 node_lists[way_id] = borders.insert_nodes_into_way(
                     context.ways_by_id[way_id].node_ids, nodes
                 )
+            # The beach paths, cut to the tide line, and the accesses carried on to them.
+            for way_id in context.beach_node_list_ways - dropped:
+                node_lists.setdefault(way_id, list(context.ways_by_id[way_id].node_ids))
 
             logger.info("%s: ways priced for a known hazard: %d", variant.value, hazard_ways)
             # No U-turn round the end of a median, from one carriageway of a divided
@@ -4521,6 +4802,9 @@ def build_handlers(
         """
         if osm_id in context.cbd_sidewalks:
             return facility.MapClass.BARRED
+        if osm_id in context.street_links:
+            # A footway bicycles may ride joining two streets (`sidewalks.street_links`).
+            return facility.MapClass.ROAD
         if osm_id in context.short_paths_hidden:
             return facility.MapClass.HIDDEN
         if osm_id in context.platform_walks:

@@ -1249,6 +1249,18 @@ check("a last-resort sidewalk is opened with the stress penalty", last.bicycle =
 check("at the sidewalk speed", last["maxspeed:practical"] == M.SIDEWALK_SPEED)
 check("with LTS 4's top lane count both ways",
   last["lanes:forward"] == M.GRADED_LANES and last["lanes:backward"] == M.GRADED_LANES)
+-- One a rater rates a side path (2026-11-26): opened plainly and priced as a path.
+local rated = M.remap_way({ highway = "footway", footway = "sidewalk" },
+  { sidewalk = M.SIDEPATH_SIDEWALK, is_trail_class = true, stress_tier = 2 })
+check("a rated side path sidewalk is opened without the stress penalty", rated.bicycle == "yes")
+check("at no sidewalk speed", rated["maxspeed:practical"] == nil)
+check("and priced as a path, its footway value off", rated.footway == M.REMOVE)
+check("a rated side path never overrules a closure reason",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { sidewalk = M.SIDEPATH_SIDEWALK, is_trail_class = true, no_bicycle = "cbd_sidewalk" }).bicycle == "no")
+check("nor a bicycle tag",
+  M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "no" },
+    { sidewalk = M.SIDEPATH_SIDEWALK, is_trail_class = true }).footway == nil)
 check("a ridden sidewalk never overrules a bicycle tag",
   M.remap_way({ highway = "footway", bicycle = "no" },
     { sidewalk = true, is_trail_class = true }).bicycle == nil)

@@ -32,6 +32,8 @@ Contents:
 - [The rebuild's own budget](#the-rebuilds-own-budget)
 - [Tile build threads](#tile-build-threads)
 - [Rebuild checkpoints](#rebuild-checkpoints)
+- [Map areas: turning on Southwest Florida](#map-areas-turning-on-southwest-florida)
+- [The beach path (Southwest Florida)](#the-beach-path-southwest-florida)
 - [The source extract](#the-source-extract)
 - [The base map](#the-base-map)
 - [Applying a Caddyfile change](#applying-a-caddyfile-change)
@@ -93,6 +95,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.31.0](#deploying-v0310)
 - [Deploying v0.30.4](#deploying-v0304)
 - [Deploying v0.30.3](#deploying-v0303)
 - [Deploying v0.30.1](#deploying-v0301)
@@ -112,6 +115,7 @@ Contents:
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
 - [The Climbs layer (454; MTB/topo slice 5; claude/v0-5-0-climbs)](#the-climbs-layer-454-mtbtopo-slice-5-claudev0-5-0-climbs)
 - [The Intervals layer](#the-intervals-layer)
+- [Survey spots](#survey-spots)
 - [The rebuild bundle (wip/rebuild-bundle)](#the-rebuild-bundle-wiprebuild-bundle)
 - [Bikeshare feeds](#bikeshare-feeds)
 - [Work zones](#work-zones)
@@ -1243,9 +1247,9 @@ and z13 the stress map is a "where to ride" view:
 
 - **Not drawn:** LTS 3, LTS 4, Avoid and the roads bikes may not use, and the
   junction warning markers. They come in from z14 with the quiet streets. (The
-  only junction markers on the map are a planned route's own, and the route
-  keeps its own busy stretches and junctions at every zoom, so nothing changes
-  there.)
+  only junction markers on the map are a planned route's own: the route keeps
+  its busy stretches at every zoom, and its junction markers come in from z14
+  too, one per junction; its junction list keeps every one at every zoom.)
 - **Drawn:** the long and connected traffic-free paths, the calm roads worth a
   long ride (402, 402a), and the roads closed to cars at set times, whatever their length
   (377). One feature per class, simplified, as before
@@ -1628,7 +1632,14 @@ the same whatever the style decides):
   `rm:cemetery=yes`, and the transform (`lua/routemaker_remap.lua`) makes it
   `access=destination` where its own access leaves it open, upstream's
   destination-only flag, so a route enters only to reach a point inside. The
-  rest of this is map only.
+  own service roads of a school, a hospital, a fire or police station, a place of worship
+  or a filling station (a bus loop, a drop-off lane, an emergency entrance, an apron, a
+  forecourt, the drives: `highway=service` at least half inside an `amenity=school`,
+  `hospital`, `fire_station`, `police`, `place_of_worship` or `fuel` area,
+  `restricted_areas.campus_ways`; not a university's) are destination-only the same
+  way (`rm:campus_grounds`; the owner, 2026-11-26): a route
+  takes one only to reach an end, a stop or a via on it, and the map still draws them.
+  The rest of this is map only.
 
   Route-relation membership is not read: an unnamed short piece of a signed
   route is left out like any other. Routing is unchanged: Valhalla reads the
@@ -3692,6 +3703,70 @@ with a local-directory implementation and publish and restore that hash every fi
 `pipeline.checkpoint_store`; it is not wired into the rebuild yet, so nothing above changes.
 The staging schema (bullet 2) is slice 2 of docs/CLOUD-REBUILD-PLAN.md, which has the rest and
 the questions for the owner.
+
+## Map areas: turning on Southwest Florida
+
+The map can be more than one area (`routemaker.coverage`, `config.settings.COVERAGE_AREAS`):
+DC to Baltimore, and Southwest Florida (Sarasota to Marco Island and Everglades City, east through Big Cypress to Shark Valley;
+the owner, 2026-11-23). An area is on where `RM_COVERAGE_AREAS` names it, `dc-baltimore`
+first: `RM_COVERAGE_AREAS=dc-baltimore,southwest-florida`. It must be the same on the
+rebuild box, the PC and beta, because the api's checks and the rebuild's clip read it.
+
+Before the front end is built for it, add `{ "text": "FDOT", "html": "FDOT" }` and
+`{ "text": "Florida DEP (Office of Greenways and Trails)", "html": "Florida DEP (Office of
+Greenways and Trails)" }` and `{ "text": "NOAA tide predictions", "html": "NOAA tide predictions" }`
+to `frontend/src/lib/credits.json`, and drop the "when Southwest Florida
+is turned on" note from their `Credit:` lines in docs/SOURCES.md (`tests/test_credits.py` then
+holds them to it).
+
+With Southwest Florida on:
+
+- The rebuild downloads Florida's Geofabrik extract too and clips to a MultiPolygon of the
+  areas (`coverage-areas.geojson` beside the extracts), fetches elevation for each area,
+  and builds a Southwest Florida offline pack. `COVERAGE_AREAS` is a classification
+  checkpoint setting, so the first build with it starts fresh.
+- `install_reference_data.py --urban-areas` is run again on the new extract (the TIGER
+  urban-areas file is national), with the FDOT layers: `--fdot /data/reference/inputs/fdot-max-speed.geojson
+  --fdot /data/reference/inputs/fdot-lanes.geojson` and `--volume
+  /data/reference/inputs/fdot-aadt.geojson --volume-source fdot
+  --aadt-property AADT` (docs/SOURCES.md, "FDOT Roadway Characteristics Inventory").
+- `fetch_basemap.sh` and `import_photon.sh`, run with the same `RM_COVERAGE_AREAS`, take
+  both boxes (the base map as one MultiPolygon region), and the place layers
+  (`refresh_places.py`) keep points in either area.
+- The app reads the areas from GET /api/coverage: a grey mask with a hole for each area,
+  and a map that pans over the rectangle around them.
+
+## The beach path (Southwest Florida)
+
+The owner, 2026-11-23: "you can ride your bike on the beach here, but generally only
+adviseable in low tide below the high tide lines", and the tide line as "a specific beach
+biking path". In the map areas whose beaches are ridden (`pipeline.beaches.BEACH_AREAS`:
+Southwest Florida), the rebuild's first read (`reset_and_read`) makes each coastline way's
+longest stretch within 20 m of a beach (`natural=beach`, closed ways and multipolygons; not
+one tagged `bicycle=no`, `access=no` or `private`) a path: the way keeps its id, its node
+list is cut to that stretch (at least 100 m), and it is tagged `highway=path`,
+`surface=sand`, `bicycle=yes`, `foot=yes` (`routemaker.beaches`). OSM's coastline is drawn
+at mean high water, so the path is the high-tide line. Footways, paths, cycleways and
+pedestrian ways that end within 15 m of a beach are carried on to the path's nearest node
+within 150 m, so it joins the network (a way joined at its first node has its segments
+renumbered once, on the first rebuild with the beach path). A coastline way that is a
+highway already (a seawall promenade) is left as the highway it is. Sand is loose ground to the router and the surface
+setting, so a ride that keeps to pavement leaves it. All four distances are our defaults
+(unmeasured). The rebuild log says what it found: `beach paths: N beaches ..., N beach
+paths, X km of Y km of coastline beside an open beach; N beach accesses joined`. A
+coastline way that passes two beaches gives only the longer stretch, which is the gap
+between X and Y. Measured on the 2026-11-23 Florida extract: 240 km of coastline lies
+within 20 m of a beach, and 3,754 coastline ways, 69 of them 90% or more on a beach
+(`/mnt/project-files/plans/beach-path/measure-output.json`, project files).
+
+The map shades the beaches and draws the paths as a dashed tide line from zoom 10
+(`frontend/src/lib/beaches.ts`, from `beach-data/beaches.json`, which
+`scripts/refresh_places.py` rebuilds with the places). A route that rides a path says so
+in its notes, with the day's low tides at the nearest of eight Gulf tide stations
+(`frontend/src/tide-data/tides.json`, NOAA's predictions, `scripts/build_tides.py`).
+Re-make the tide file with every map rebuild; it holds about 400 days:
+
+    python3 scripts/build_tides.py
 
 ## The source extract
 
@@ -6015,7 +6090,8 @@ filled in the browser from Nixle. Each needs its own look before it can be watch
    posts with its dates (a first and a last day) and a clear place (named cross streets, mileposts,
    a named bridge) goes in without asking, and the owner is told after, with the alert's link. One
    with no dates, an open end ("until further notice", "through spring") or a place that cannot be
-   pinned down waits for the owner's word. Evidence is the agency's words and what a rider saw,
+   pinned down waits for the owner's word; since v0.31.0 the agent closes an undated one it can
+   place on beta a day at a time instead ("Agent closures" below). Evidence is the agency's words and what a rider saw,
    never another map. A closure that starts before the next release reaches riders only through a
    reviewer closure (the road panel's "Mark closed", an admin's), so for a short one that is the
    way.
@@ -6029,6 +6105,108 @@ towpath detour, miles 106 to 106.8, and the Polly Pond bridge, mile 134.3, past 
 3 Anne Arundel ones (none a closure of the B&A). After the owner's rule, the W&OD crosswalk
 detour (Nov 17-24) was entered and the first items marked read; the Dam No. 5 detour (no dates)
 waits for the owner.
+
+### Agent closures (v0.31.0)
+
+The owner, 2026-11-28, on a B&A Trail closure for downed trees: "Is there a way to do this
+automatically?", then "I'm open to adding in an agent that would check things periodically", and
+"downed trees usually last about a day, so it's important to people riding today, but maybe not a
+week into the future". So an agent, a scheduled Claude session signed in to the site's connector
+as an instance admin, checks the three agencies every hour, day and night (the owner: "why not 1
+hr", "Plenty of people ride then"), and closes what it can place on
+beta itself, through the connector's admin tools (`mark_closed`, `extend_closure`,
+`end_closure`, `agent_closures`; `core.reviewed_closures`, "Agent closures"). Each run:
+
+1. `python scripts/park_alerts.py items` prints every item now on the pages, one JSON line each
+   (agency, key, place, text, link). `agent_closures` lists the agent's closures in force, each
+   with its `agent_key` (`agency:key:n`, n counting the item's stretches from 1).
+2. For each item that closes a way a bicycle uses and has no agent closure yet, place each
+   stretch: `python scripts/park_alerts.py between "B&A Trail" "Severn Way" "Boulters Way"
+   --area "Anne Arundel County, Maryland"` prints the trail's line between where it meets the two
+   cross streets, from OpenStreetMap's own API (`park_alerts.stretch_between`; the agencies'
+   "B&A" or "W&OD" match the map's long names); for the C&O, `towpath FIRST [LAST]`. Then
+   `mark_closed` with the line, the agency's reason in a few words, the alert's link and the
+   `agent_key`, and `end` only where the agency gives a last day. With none it lasts today only
+   (through tomorrow where it is entered in the day's last 3 hours, `AGENT_LATE_HOURS`, so it
+   does not lapse at midnight before the next check).
+3. For each agent closure whose alert is still on the page and that has no agency last day:
+   `extend_closure` with no `end` (the site takes the region's tomorrow; one that lasts that long
+   already is left as it is), so it holds as long as the alert does (a holiday weekend's slow
+   clearing too). For each whose alert is gone: `end_closure`.
+4. Whatever it cannot place (`between` exits 1: a street or the trail is not on the map by that
+   name, as the South Shore Trail's newer end on 2026-11-28), a whole park, or work that may leave
+   the trail open goes to the owner, as before. Evidence is the agency's words only.
+
+These are reviewer closures, so the road panel's Mark closed list shows them and its End button
+ends one at once (a county that leaves a cleared alert up). An agent changes only closures with an
+`agent_key`. One day (`AGENT_DAYS`) and the late 3 hours are our defaults, unmeasured; hourly
+checks are the owner's pick. The agent's
+closures count against the admin account's 20 in force (`OPEN_PER_ACCOUNT`). Dated closures that
+outlast a release can still go in `park-closures.json` as above.
+
+### The closure agent on the worker (v0.31.0)
+
+The owner, 2026-11-28: "build it now, as if this computer is off, then it would stop. Durability
+is more useful", then "Should we expand further than just those 3 agencies? there's a bunch" and
+"Roadway too". So the same work runs on the beta's own worker, with no Claude session needed:
+`run_closure_agent` (config.procrastinate, hourly at 23 past, day and night; `core.closure_agent`).
+
+- **Pages** (`closure_agent.SOURCES`): NOVA Parks, the C&O conditions, Anne Arundel's closings
+  (through their tested readers), the Fairfax County Park Authority's alerts, Montgomery Parks'
+  trail status, Rock Creek Park's alerts, Baltimore County's road closures and the City of
+  Laurel's road closures. Baltimore County's and Laurel's answered the beta's worker 403 on
+  2026-11-28 (their bot screens; the agent says who it is and does not pose as a browser); the
+  run line names any page that cannot be read. Arlington's long-term traffic alerts are left out:
+  its site refuses the beta's address. A page is a `Source` (key, name, page, area): adding an agency is one line.
+  The roads the feed readers already cover (DDOT, MPD, AlertDC, NPS, SHA, MoCo, the work zones)
+  are not read here.
+- **Reading.** Each page's text is hashed; an unchanged page costs nothing. A changed page is
+  first screened (the owner, 2026-11-28: "haiku to test if there is a change then opus to
+  describe them"): Claude Haiku 5.5 sees only the changed lines since Opus last read the page and
+  says whether a closure may have changed; a clock, a banner or an event does not reach Opus. A
+  page Opus has not read for `RECHECK_DAYS` (1, our default) is read whatever the screen says,
+  and a failed screen counts as a change. Then Claude Opus 5.5 (low effort, structured output
+  `closure_agent.SCHEMA`) lists the closures that close one named way between two named places,
+  with the page's days. At most `CALLS_PER_DAY` (120) Opus asks a day, all pages together, about
+  $0.04 each (estimated, unmeasured): our default, sized inside the owner's $200 a month of
+  credits. The pages' last texts are kept in the agent's row for the screen's comparison.
+- **Placing.** `routemaker.osm_place.between` (shared with `scripts/park_alerts.py between`):
+  Nominatim for the two places in the source's area, one search a second, then OpenStreetMap's
+  map call round them and `park_alerts.stretch_between` (a page's "Fourth Street" matches the
+  map's "4th Street"); the C&O by its mileposts. What cannot be drawn is counted in the run line
+  ("not placed"), never guessed.
+- **Closing.** As the session agent above, with keys `a:SOURCE:HASH:n` (the hash of the way and
+  its two places): entered with the page's days, or today only; moved on a day at each read while
+  the page lists it (to the end of the region's tomorrow); ended at the first read that does
+  not. A page that cannot be read changes nothing, so an undated closure lapses by itself by the
+  end of the next day at most. One a person ends (the road panel's list) is not entered again
+  while the page lists it. A page whose reading fails is asked again next hour, three times at
+  most for the same text; a closure whose map could not be read keeps its last line and is
+  drawn again at the next read. Pages take turns going first, so a spent day's allowance does
+  not always fall on the same one, and a page past it keeps what was last drawn from it. The
+  rows have no account (the
+  worker's `reviewed_closures.WORKER`), count against `WORKER_OPEN_MAX` (60, our default), and
+  the agent never touches a closure without its `a:` key: the session agent's and a person's are
+  left alone. The run row's detail reads like "read 6 of 8 pages, asked 1; entered 2, extended
+  3, ended 0; not placed 1; failed baltco (HTTPError), laurel (HTTPError)".
+- **Off** until the worker has Claude credentials: `ANTHROPIC_FEDERATION_RULE_ID` and
+  `ANTHROPIC_ORGANIZATION_ID` in the beta's `.env` (Workload Identity Federation, read by the
+  Anthropic SDK alone; compose.yaml passes them to `worker` and no API key; the rule and
+  organization ids come from the Claude Console's Workload identity page and stay out of this
+  repository). The run row says "off" meanwhile. On the beta the host's own refresher (a systemd
+  timer, every 10 minutes) keeps the identity token in `/run/anthropic-wif/token`, readable by
+  its group only; compose.beta.yaml binds that folder read-only into `worker` (the one bind from
+  outside DATA_ROOT, `check_beta_compose.HOST_READ_ONLY`), adds the group
+  (`ANTHROPIC_WIF_GID`, 986 there), and points `ANTHROPIC_IDENTITY_TOKEN_FILE` at it;
+  `ANTHROPIC_WORKSPACE_ID` is optional. The bind does not create its folder, so the host makes it
+  at boot before Docker starts: `/etc/tmpfiles.d/anthropic-wif.conf` holds
+  `d /run/anthropic-wif 0750 root anthropic-wif -`. The worker does not ask the instance's
+  metadata service for the role's own credentials.
+- **Outbound hosts for the worker:** api.anthropic.com, nominatim.openstreetmap.org,
+  api.openstreetmap.org, www.novaparks.com, www.nps.gov, www.aacounty.org,
+  www.fairfaxcounty.gov, www.montgomeryparks.org, www.baltimorecountymd.gov, laurelmd.gov.
+- **When it runs on the beta,** retire the session agent's hourly task, so the two do not enter
+  the same closure twice under their two keys.
 
 ## Deer-management closures (v0.12.3)
 
@@ -6643,6 +6821,8 @@ it. It writes, in the checkout it runs from:
   the cities' racks were fetched);
 - `frontend/src/restricted-data/restricted-sites.json` (the restricted sites and their gates; the
   api image copies it too);
+- `frontend/src/beach-data/beaches.json` (the Southwest Florida beaches and their tide-line
+  paths, `scripts/build_beaches.py`; empty from an extract without that area);
 - `src/core/geodata/barriers.json` (with the extract's day as its `built`); the census's coverage
   report goes to `~/barrier-census-<day>.md`, kept with the release's notes, never committed.
 
@@ -8091,6 +8271,82 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.31.0
+
+Everything merged into `release/v0.31.0` since v0.30.4 (#1437 to #1469). Ships at once:
+survey spots (#1449, #1450, #1457: a Layers switch, a sky-blue "?" on each low-confidence road,
+a card of questions, the ride summary's list of spots passed, connector `survey_spots_near`);
+via points ride the exact way they sit on (#1459, #1460), count as reached within a quarter
+mile in Ride (#1461), and stay on an automatic re-route (#1463); saved routes take today's
+directions for their own line (#1446); a route stretch says how much is on bridges (#1458);
+the ride chart's close turns as one arrow and route junction markers that show the route's own
+movement (#1439 to #1441); Plan's chart shows stop icons (#1437); beta builds print the GPS
+position in small print in Ride (#1462); the agent park closures through the connector (#1466),
+and the same agent on beta's worker (#1467, "The closure agent on the worker (v0.31.0)"): an
+hourly `run_closure_agent` task (23 past each hour) that reads the park and county agencies'
+pages with Claude and marks, extends and ends the closures it can place.
+
+Takes effect only with a map rebuilt from v0.31.0 or later: Southwest Florida as a second area
+(#1442, #1444; off until `RM_COVERAGE_AREAS` names it, "Map areas: turning on Southwest
+Florida"), its beach path and low tides (#1445), restrooms beside paths and fountains (#1465),
+school, hospital and similar service roads destination-only (#1454), gated communities and their
+paths closed (#1453), Florida trail uses (#1456), sidewalks priced as side paths where the law
+lets bikes ride them and as connectors where no road runs beside them (#1447, #1455), a sidewalk
+beside a level 4 road with a read speed of 45 mph or more priced as a link, in DC-Baltimore too
+(#1451, the owner's "merge that", 2026-11-26), footways joining two streets drawn (#1448) and a
+trail's short join to a corner crosswalk ridden (#1464).
+
+What changes for a deploy:
+
+- migrations `0069_survey_spots` (survey answer and done tables), `0070_agent_closures`
+  (`reviewed_closure.agent_key` and `extended_at`) and `0071_agent_key_db_default` (a database
+  default for `agent_key`); the release agent snapshots the database before it migrates;
+- `docker/api.Dockerfile` copies `fixtures/survey` into the image; `compose.yaml` adds
+  `RM_COVERAGE_AREAS` (default `dc-baltimore`) to the Django services: leave it unset on beta
+  and at home until the Florida map is swapped in, or the api takes Florida points with no roads;
+- `lua/graph.lua` and `lua/routemaker_remap.lua` changed, so the release agent holds the tag as
+  one that needs a map; the code ships alone with `ship-held --no-map`, and the Lua rules do
+  nothing on today's map (no way carries `rm:campus_grounds` or `rm:sidewalk=sidepath` until the
+  pipeline writes them);
+- `docker/requirements-api.txt` adds `anthropic==2.10.0`, so the api image is rebuilt (the
+  Release workflow's image); the worker is recreated and picks up `run_closure_agent`;
+- the closure agent stays off ("off" on its run row) until the worker has
+  `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_WORKSPACE_ID`
+  (env.beta.template lists them; beta's `.env` holds them since 2026-11-28) and the token file
+  (`ANTHROPIC_IDENTITY_TOKEN_FILE`, compose.beta.yaml's default `/run/anthropic-wif/token`) is
+  mounted; when on, the worker
+  also reaches api.anthropic.com, Nominatim, the OSM API and the agencies' pages;
+- `compose.beta.yaml`'s worker binds the host's `/run/anthropic-wif` read-only (the identity
+  token, `ANTHROPIC_IDENTITY_TOKEN_FILE` defaults to `/run/anthropic-wif/token`) with
+  `group_add ${ANTHROPIC_WIF_GID:-986}` (#1469). The bind does not make its folder, so the
+  beta host needs `/etc/tmpfiles.d/anthropic-wif.conf` before its next reboot (the closures
+  thread gave the owner the line; the folder is there today, so this deploy starts);
+- no `valhalla/` or nginx change.
+
+- [ ] **The token folder** **(owner)**. `/etc/tmpfiles.d/anthropic-wif.conf` on the beta host,
+  so `/run/anthropic-wif` comes back after a reboot.
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
+  (Actions, "Release", Run workflow on main, version `v0.31.0`, then approve).
+- [ ] **Beta** **(owner)**. `~/routemaker-beta-state/cd/bin/auto-release.sh ship-held v0.31.0
+  --no-map --dry-run`, then the same without `--dry-run`. Its log shows the snapshot, migrations
+  0069 to 0071, api and worker recreated, and `migrate --check` OK.
+- [ ] **Beta check.** The app says 0.31.0; `/api/coverage` is still one Polygon; Layers, Survey
+  spots draws blue "?" marks in DC; answering one hides it and the count goes to 1; Mark closed
+  and End still work on a closure; the `closure_agent` run row says "off" (or, with the
+  federation settings in, a run at 23 past the hour).
+- [ ] **Later, the closure agent** **(owner)**. Set the three federation settings and mount the
+  token file, recreate the worker, watch one hourly run; then the session agent's hourly
+  scheduled task is retired.
+- [ ] **Rollback.** `auto-release.sh rollback --restore-db` (it loses survey answers and
+  closures made since) with the v0.30.4 front end. `--keep-db` works for closures (0071 gives
+  `agent_key` a database default), but deleting an account that answered a survey spot then
+  fails on `survey_done`'s key, so delete that account's `survey_done` rows by hand first.
+- [ ] **Later, the map** **(owner)**. The map rebuilt from v0.31.0 (or its release head),
+  installed with `scripts/cloud/import-result.sh --beta`. Its log names the campus service
+  roads made destination-only and the sidewalks priced as side paths; after the swap,
+  `refresh_places.py`, the barrier snapshot and `build_intervals`. Florida only by turning on
+  `RM_COVERAGE_AREAS` everywhere, as "Map areas: turning on Southwest Florida" says.
+
 ## Deploying v0.30.4
 
 A patch on v0.30.3, on the owner's ask (2026-11-22, "release as a patch", "the other ones in flight
@@ -9013,7 +9269,19 @@ line, a point whose gate is where the point before it is routed, and a point in 
 gate found. The map washes, hatches and dashes the edge of each site from zoom 10, and names
 each piece of a named site: a piece of 0.25 km2 or more by name from zoom 13 and with "No public
 access" under it from zoom 14, a smaller piece (the Marine Barracks' blocks) with both from zoom
-15 (our defaults). Sites, gates and the hand-drawn closed
+15 (our defaults). Gated communities are closed sites too (the owner, 2026-11-26: "Have them
+closed, like with restricted areas in dc, but with a different color"): the streets that reach
+the rest only through a closed gate or an entrance drive tagged private (`routemaker.gated`) are
+closed on every graph (`rm:no_bicycle=gated`) and left off the stress map, and the map washes
+the community in a warm brown (kind `gated`, unnamed) instead of grey, with its closed gates as
+the gates a trip point inside is moved to. A community's paths close with it (the owner,
+2026-11-26, of Bonita Bay's private bike paths): a path tagged `access=private` or `residents`
+whatever its bicycle tag but `permissive`, and an untagged path whose network meets streets
+only where they are behind a gate (`gated.private_paths`). A street open to bicycles
+(`access=no` + `bicycle=yes`) and a private driveway off a public street are no gate. Trails a
+state record lists for biking open where OSM says nothing of bicycles
+(`install_reference_data.py --fl-trail-uses` writes `trail-uses.json`; without it the step
+warns and opens nothing; docs/SOURCES.md). Sites, gates and the hand-drawn closed
 areas in `fixtures/restricted-sites/` come from `scripts/build_restricted_sites.py`, run on the
 PC against the extract (`frontend/src/restricted-data/README.md`); `scripts/refresh_places.py`
 reruns it after each map rebuild ("Refreshing the places after a map rebuild"). No map rebuild
@@ -9059,9 +9327,23 @@ its speed. Then, 2026-10-21: "a lot of people would still ride on some lts 4 roa
 take the sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only". The
 router prices LTS 4 and 4.5 roads alike, so the rebuild sorts the sidewalks instead
 (`pipeline.run.last_resort_sidewalks`, `sidewalks.beside`): a link, and a sidewalk lying
-within 100 ft (30 m) of a road rated 4.5 or Avoid and parallel to it along most of its
-length, keep `rm:sidewalk=yes` and are rated LTS 3; every other ridden sidewalk and
-crosswalk gets `rm:sidewalk=last_resort`, which also writes LTS 4's top lane count, and is
+within 100 ft (30 m) of a road rated 4.5 or Avoid, or of a road rated 4 whose posted or
+recorded speed is 45 mph or more (`pipeline.run.sidewalk_beats_road`, since the 2026-11-25
+audit against Southwest Florida; a road whose speed is only assumed does not count), and
+parallel to it along most of its length, keep `rm:sidewalk=yes` and are rated LTS 3. So does a sidewalk beside no road
+(`sidewalks.roadless`: at most 20% of it within 150 ft (45 m) of a road and level with it,
+our defaults, unmeasured), such as the walk tagged `footway=sidewalk` that joins the two
+ends of Briggs Road in Glenmont (OSM 656603494), which routes rode 0.7 mi round.
+A ridden sidewalk an override row (a rater's) rates below LTS 3 is the side path the rater
+says it is (`pipeline.run.rated_sidepath_sidewalks`, since 2026-11-26; the rater brief's
+"Sidewalks where the law lets bikes ride them"): it gets `rm:sidewalk=sidepath`, which the
+remap opens plainly and prices as a path (`footway=sidewalk` comes off), and it is never a
+last resort. A rater's level 4, or no row, leaves the price above.
+The map draws such a walk too (`sidewalks.street_links`): a footway bicycles may ride (a
+link, a cut-through, a roadless sidewalk, or an open path the short-path declutter hid) whose
+run meets public streets at two or more nodes (never a sidewalk beside a road or a crosswalk), so a street that carries on through a short walk
+does not look broken. In six sample areas from DC to Baltimore it draws 0 to 3 ways each.
+Every other ridden sidewalk and crosswalk gets `rm:sidewalk=last_resort`, which also writes LTS 4's top lane count, and is
 rated LTS 4. A crosswalk is never beside a road, so even on a corridor beside a 4.5 or
 Avoid road its crosswalks are last resort: short, they barely move the price. A crosswalk
 that carries a trail across a road (`sidewalks.trail_crossings`: at most 160 ft (50 m), a
@@ -9615,6 +9897,28 @@ both into the running rebuild container first and remove them after, until the n
 It writes `<DATA_ROOT>/rebuild/intervals.json` and prints the counts (both ways, one way). Copy it
 to `frontend/src/interval-data/intervals.json`, note the date and counts in that directory's
 README, and commit. It reads only and is safe to re-run.
+
+## Survey spots
+
+The owner, 2026-11-25: highlight the roads whose rating was a low-confidence call so riders can tap
+one (or answer the ones a ride passed) and say what it is like there; a spot answered once no longer
+shows for that rider; the count of spots answered "Today" (the honor system, any ride) is for a
+Freezing Saddles side prize. Layers has one switch, "Survey spots" (off until turned on, kept per
+browser as `routemaker.surveyLayer`; not on the Mass Ride map). The connector's `survey_spots_near`
+lists spots near a point; a plan goes through them as via points.
+
+- **The list** is `fixtures/survey/spots.json`, written from a re-rate's outputs:
+  `python3 scripts/make_survey_spots.py --rerate <re-rate folder>` (the 2026-11-13 re-rate gave
+  6,019 spots, Florida left out). Write it again after each re-rate and commit it.
+  `docker/api.Dockerfile` copies `fixtures/survey` into the api image, so a new list reaches beta
+  with the next api image. No file: the endpoints answer 503 and the switch says the spots are
+  unavailable.
+- **Points** are the middle of each spot's longest segment on the live map, worked out once per
+  live segment table (a map swap is picked up by the table's oid); a spot whose way left the map is
+  not shown.
+- **Kept** (migration 0069): `survey_answer` (spot, day, answers, a time of day only as a range such as AM rush; a random key, no account) and
+  `survey_done` (account, spot, counted; deleted with the account). Answers are evidence for the
+  next re-rate's rater, never a rating by themselves.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 
@@ -10898,12 +11202,16 @@ Python 3.11 or later, standard library only.
   copy it. `--server live` only on the owner's go.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
-  absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
+  absent), `set` (null = remove), `comment` and `source` (`survey`, or for `bicycle` and
+  `motor_vehicle` keys the https link to the managing agency's own published rule, the owner,
+  2026-11-26). Only the keys in
   `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
   `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing;
   `cycleway:<side>:separation` for a physical divider such as flex posts seen on the street; `motor_vehicle` and
   `motor_vehicle:conditional` for a road closed or opened to cars, from the managing agency's
-  own notice or what is posted there);
+  own notice or what is posted there; `footway`, on a way only, removed or set to `sidewalk` or
+  `crossing`, for a walk mapped as a sidewalk that runs beside no street);
+  `toilets:disposal` to `flush`, `chemical` or `pitlatrine`, for a restroom's kind seen on the spot;
   `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,

@@ -567,6 +567,11 @@ def check_source_binds(repo: Path = REPO) -> list[str]:
     return problems
 
 
+# Host folders a service may bind from outside DATA_ROOT, read-only, each for one service: the
+# closure agent's identity token, kept fresh by the host (compose.beta.yaml, `worker`).
+HOST_READ_ONLY = {"/run/anthropic-wif": "worker"}
+
+
 def check_mounts(services: dict, data_root: str | None, semantics: str = "explicit") -> list[str]:
     """Binds come from DATA_ROOT or the repository, never the Docker socket, and never create
     their source: /data is mounted `nofail` on the server and Docker can start first, and a
@@ -582,10 +587,17 @@ def check_mounts(services: dict, data_root: str | None, semantics: str = "explic
             kind = volume.get("type", "bind") if isinstance(volume, dict) else "bind"
             if "docker.sock" in source:
                 problems.append(f"{name}: mounts the Docker socket")
+            allowed = (
+                HOST_READ_ONLY.get(source) == name
+                and isinstance(volume, dict)
+                and volume.get("read_only") is True
+                and not _creates_host_path(volume, semantics)
+            )
             if (
                 data_root
                 and source.startswith("/")
                 and not (source.startswith(data_root) or source.startswith(str(REPO)))
+                and not allowed
             ):
                 problems.append(
                     f"{name}: bind source {source} is outside DATA_ROOT and the checkout"

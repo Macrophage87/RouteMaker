@@ -15,14 +15,21 @@ Then, 2026-10-21: "a lot of people would still ride on some lts 4 roads than tak
 sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only".
 
 So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua prices them
-(`rm:sidewalk`) at one of two levels:
-- a link, and a sidewalk running beside a road rated 4.5 or Avoid (`beside`): costlier than
-  any road up to LTS 3.5, cheaper than LTS 4, 4.5 and Avoid from the slider's middle up,
-  rated LTS 3 (`TIER`);
+(`rm:sidewalk`) at one of two levels, unless a rater rates one a side path (the last item):
+- a link, a sidewalk running beside a road rated 4.5 or Avoid, or rated 4 with traffic at
+  45 mph or more (`beside`, `pipeline.run.sidewalk_beats_road`; the fast level 4 road since
+  the 2026-11-25 audit against Southwest Florida, where that is the usual artery), and a sidewalk
+  beside no road at all (`roadless`: a walk joining two streets end to end, with no road to
+  keep to): costlier than any road up to LTS 3.5, cheaper than LTS 4, 4.5 and Avoid from the
+  slider's middle up, rated LTS 3 (`TIER`);
 - every other sidewalk and crosswalk (`LAST_RESORT`): a little costlier than an LTS 4 road
   at every slider position, so it is ridden only where nothing else connects or beside an
   Avoid road, rated LTS 4 (`LAST_RESORT_TIER`). The router prices LTS 4 and 4.5 roads alike,
   which is why the rebuild tells the two kinds apart rather than the price.
+- and one rated a side path (`SIDEPATH`): a ridden sidewalk whose override row, a rater's,
+  rates it below LTS 3, priced as the path it is (the rater brief rates a sidewalk where the
+  law lets bikes ride it from its own width, setback and driveways; "last resort" is the
+  rater's call, never the map's tag alone).
 The ratings let the route's stress, the rolling stress chart and RouteMaker's own ranking
 count them as the router prices them, not as a quiet trail.
 
@@ -44,6 +51,9 @@ count them as the router prices them, not as a quiet trail.
   meets at one of its ends and that reaches another bicycle-open way (the road it crosses
   at least), priced as a link: the crossing's stress belongs to the junction (Little Falls
   Parkway, 2026-11-19).
+- `stubs`: a plain footway with no bicycle tag, at most `STUB_M` long, joining a trail to a
+  ridden crosswalk, sidewalk or another trail: the few metres a mapper draws at a
+  corner, priced as a link (Ashburn Village Boulevard).
 - `gap_links`: a run of footways with no bicycle tag, at most `GAP_M` long, whose ends meet
   bicycle-open ways (a trail among them) that the open network joins only by riding
   `GAP_DETOUR_M` or more, priced as a link: the owner, 2026-11-20, "Do a search for places
@@ -92,6 +102,10 @@ TIER = 3
 RULE = "sidewalk ridden as a last resort (the owner, 2026-10-20)"
 # Every other ridden sidewalk and crosswalk: priced above an LTS 4 road, rated LTS 4.
 LAST_RESORT = "last_resort"
+# A ridden sidewalk an override row rates below `TIER` (a rater's side path; the rater
+# brief, "Sidewalks where the law lets bikes ride them", 2026-11-26): priced as the path it
+# is, not as a sidewalk (`pipeline.run.rated_sidepath_sidewalks`).
+SIDEPATH = "sidepath"
 LAST_RESORT_TIER = 4
 LAST_RESORT_RULE = (
     "sidewalk beside a calmer road, ridden only where nothing else connects (the owner, 2026-10-21)"
@@ -117,6 +131,9 @@ CUT_THROUGH_M = 150.0
 # A gap link (`gap_links`) bridges two bicycle-open ways the open network itself joins only
 # by riding at least this far (about 1,000 ft). Our default, unmeasured.
 GAP_DETOUR_M = 300.0
+# The longest footway `stubs` opens (about 30 ft): the join a mapper draws between a trail and
+# the crosswalk or sidewalk at a corner. Our default, unmeasured.
+STUB_M = 10.0
 # How many footways off one dead-end stretch a cut-through is looked for from, nearest the
 # end first (a short path to a door may leave nearer the end than the cut-through does).
 STRETCH_FOOTWAYS = 4
@@ -316,6 +333,138 @@ def beside(
     return found
 
 
+# A sidewalk lies beside no road (`roadless`) when at most ROADLESS_FRACTION of its length
+# is within ROADLESS_M of a road's centreline, square to one of its segments (level with
+# it, not past a dead end) and within ROADLESS_ANGLE of parallel (a side street ending at it
+# is not beside it). Our defaults, unmeasured, looser than `beside` on purpose: a sidewalk
+# the beside test misses (a wide boulevard, a bend) is not taken for a connector.
+ROADLESS_M = 45.0
+ROADLESS_ANGLE = 45.0
+ROADLESS_FRACTION = 0.2
+
+
+def _alongside_m(p, a, b) -> float:
+    """How far `p` is from the segment a-b, measured square to it, or infinity where it lies
+    past either end: level with the road, not beyond its dead end or round a corner."""
+    (px, py), (ax, ay), (bx, by) = p, a, b
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy
+    t = -1.0 if length2 == 0 else ((px - ax) * dx + (py - ay) * dy) / length2
+    if not 0.0 <= t <= 1.0:
+        return math.inf
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def roadless(
+    sidewalks: Sequence[tuple[int, Sequence[tuple[float, float]]]],
+    roads: Sequence[tuple[int, Sequence[tuple[float, float]]]],
+) -> set[int]:
+    """The sidewalks lying beside no road, each (osm id, [(lon, lat), ...]): a walk tagged
+    `footway=sidewalk` that joins two streets end to end, say, which the rebuild prices as a
+    link rather than a last resort (`pipeline.run.last_resort_sidewalks`; the owner, of the
+    walk joining the two ends of Briggs Road in Glenmont, OSM 656603494). A sidewalk with
+    fewer than two points is never roadless."""
+    lat0 = 38.9
+    cell = ROADLESS_M
+    asked = [
+        (osm_id, [_xy(lon, lat, lat0) for lon, lat in coords])
+        for osm_id, coords in sidewalks
+        if len(coords) >= 2
+    ]
+    if not asked:
+        return set()
+    wanted: set[tuple[int, int]] = set()
+    for _osm_id, points in asked:
+        for p, _bearing_at, _metres_at in _samples(points, BESIDE_STEP_M):
+            wanted.add((int(p[0] // cell), int(p[1] // cell)))
+    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float]]]] = (
+        defaultdict(list)
+    )
+    for _road_id, coords in roads:
+        if len(coords) < 2:
+            continue
+        points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        for a, b in zip(points, points[1:], strict=False):
+            steps = max(1, math.ceil(math.dist(a, b) / (cell / 2)))
+            cells = set()
+            for k in range(steps + 1):
+                x = a[0] + (b[0] - a[0]) * k / steps
+                y = a[1] + (b[1] - a[1]) * k / steps
+                cx, cy = int(x // cell), int(y // cell)
+                cells.update((cx + di, cy + dj) for di in (-1, 0, 1) for dj in (-1, 0, 1))
+            for key in cells & wanted:
+                grid[key].append((a, b))
+    found: set[int] = set()
+    for osm_id, points in asked:
+        total = near = 0.0
+        for p, bearing, metres in _samples(points, BESIDE_STEP_M):
+            total += metres
+            if any(
+                _alongside_m(p, a, b) <= ROADLESS_M
+                and _angle_between(bearing, _bearing(a, b)) <= ROADLESS_ANGLE
+                for a, b in grid.get((int(p[0] // cell), int(p[1] // cell)), ())
+            ):
+                near += metres
+        if total > 0 and near <= ROADLESS_FRACTION * total:
+            found.add(osm_id)
+    return found
+
+
+# The streets a drawn street link joins (`street_links`): public streets of every class,
+# busy ones too (unlike a cut-through's `STREET_HIGHWAY`, which names where one starts),
+# never a service road or a track (a parking lot's walk to the street is no link).
+LINKED_STREET_HIGHWAY = OPEN_ROAD_HIGHWAY - {"service", "track", "cycleway"}
+
+
+def street_links(
+    ways: Sequence[tuple[int, dict[str, str], Sequence[int]]], candidates: Set[int]
+) -> set[int]:
+    """The `candidates` the map draws as links between streets: footways a bicycle may ride
+    that the map would leave out (a sidewalk, a short unnamed path). Joined into runs at any
+    node, a run is drawn where it meets public streets (`LINKED_STREET_HIGHWAY`, open to
+    bicycles) at two or more different nodes, of one street or two (a walk cutting off a
+    crescent's bend is a link too). The owner, of the walk joining the two ends
+    of Briggs Road in Glenmont: "This is a useful link that should be included", then
+    "Similar ones probably should as well". `ways` is (osm id, tags, node ids)."""
+    nodes_of = {
+        osm_id: frozenset(node_ids)
+        for osm_id, _tags, node_ids in ways
+        if osm_id in candidates and len(node_ids) >= 2
+    }
+    if not nodes_of:
+        return set()
+    wanted = set().union(*nodes_of.values())
+    street_nodes: set[int] = set()
+    for osm_id, tags, node_ids in ways:
+        if (
+            osm_id not in candidates
+            and tags.get("highway") in LINKED_STREET_HIGHWAY
+            and bicycle_open(tags)
+        ):
+            street_nodes.update(set(node_ids) & wanted)
+    by_node: dict[int, list[int]] = defaultdict(list)
+    for osm_id, nodes in nodes_of.items():
+        for node in nodes:
+            by_node[node].append(osm_id)
+    found: set[int] = set()
+    seen: set[int] = set()
+    for start in nodes_of:
+        if start in seen:
+            continue
+        run, stack = set(), [start]
+        while stack:
+            osm_id = stack.pop()
+            if osm_id in run:
+                continue
+            run.add(osm_id)
+            for node in nodes_of[osm_id]:
+                stack.extend(by_node[node])
+        seen |= run
+        if len(set().union(*(nodes_of[osm_id] for osm_id in run)) & street_nodes) >= 2:
+            found |= run
+    return found
+
+
 # A sidewalk of a street the public may not drive (`no_public_traffic_sidewalks`): one OSM
 # opens to bicycles (`bicycle=yes` and the like) running beside a street closed to public
 # motor traffic (`motor_vehicle=no` and the like: authorized vehicles at most), and beside no
@@ -504,6 +653,52 @@ def trail_crossings(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> s
         reached = set().union(*(open_at.get(node, ()) for node in node_ids))
         if trails and reached - trails:
             found.add(osm_id)
+    return found
+
+
+def stubs(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
+    """The joins to price as links (`TIER`): a plain footway with no bicycle tag (no
+    sidewalk or crosswalk, which are ridden already), at most `STUB_M` long, with a trail
+    at one end and, at the other, a ridden sidewalk or crosswalk (at any of its nodes) or
+    another trail. Never a road, service road or track: a nub onto one is no corner join.
+    `ways` as `links` takes them.
+
+    At Ashburn Village Boulevard and Red Rum Drive (the owner: "Weird routing
+    here"), the side path (OSM 709050181, `bicycle=yes`) meets the corner's signalized
+    crosswalk only through a 4 m footway with no tags (1138421927). Upstream closes it by
+    its class, and the other rules miss it: the side path runs on past it (no dead end for
+    `links`), the crosswalk is longer than a link and no trail ends on it
+    (`trail_crossings`), and the corner's sidewalks join it into a run longer than a gap
+    (`gap_links`). So the route rode 0.1 mi on along Red Rum Drive (LTS 3) and back on the
+    side path to reach a path a step away."""
+    trail_at: dict[int, set[int]] = defaultdict(set)
+    open_at: dict[int, set[int]] = defaultdict(set)
+    short: list[tuple[int, Sequence[int]]] = []
+    for osm_id, tags, node_ids, coords in ways:
+        if osm_id in closed or len(node_ids) < 2:
+            continue
+        if is_link_candidate(tags):
+            if tags.get("footway") in SIDEWALK_KINDS:
+                for node in node_ids:
+                    open_at[node].add(osm_id)
+            elif 0 < _length(coords) <= STUB_M:
+                short.append((osm_id, node_ids))
+            continue
+        # Only a trail counts at either end: a nub from a path onto a driveway, a parking
+        # aisle or a road mid-block is no corner join.
+        if not bicycle_open(tags) or tags.get("highway") not in TRAIL_HIGHWAY:
+            continue
+        for node in node_ids:
+            open_at[node].add(osm_id)
+            trail_at[node].add(osm_id)
+    found: set[int] = set()
+    for osm_id, node_ids in short:
+        a, b = node_ids[0], node_ids[-1]
+        for here, there in ((a, b), (b, a)):
+            trails = trail_at.get(here, set())
+            if trails and open_at.get(there, set()) - trails:
+                found.add(osm_id)
+                break
     return found
 
 

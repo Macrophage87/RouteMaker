@@ -1,0 +1,32 @@
+[
+ {
+  "turn": "Start",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Left",
+  "road": "Blair Rd NW",
+  "then": "then left onto Metropolitan Branch Trl",
+  "arrow": "turn left,left"
+ },
+ {
+  "turn": "Right",
+  "road": "Metropolitan Branch Trl",
+  "then": "then left onto Metropolitan Branch Trl",
+  "arrow": "turn right,left"
+ },
+ {
+  "turn": "Left",
+  "road": "Tulip Ave",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]

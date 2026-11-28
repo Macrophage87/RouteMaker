@@ -82,6 +82,10 @@ test("the turns strip: each turn the card shows, flagged junctions and Avoid; ne
     cue("turn", 900, "right", "orange"),
     cue("turn", 960, "left", null, { joined: true }),
     cue("turn", 1200, "right", null, { cross: "Redland Road" }),
+    cue("turn", 1300, "right", "red", { cross: "Shellhorn Road", then: [{ movement: "left" }] }),
+    cue("turn", 1310, "left", null, { joined: true }),
+    cue("turn", 1400, "right", "orange", { cross: "Waxpool Road" }),
+    cue("turn", 1450, "right", null, { cross: "Shellhorn Road", then: [{ movement: "right", exit: 2 }, { movement: "left" }] }),
     cue("hazard", 1500, null, "red", { source: "junction" }),
     cue("hazard", 1600, null, "red", { source: "workzone" }),
     cue("busy", 1700, null, "avoid", { source: "avoid" }),
@@ -92,10 +96,13 @@ test("the turns strip: each turn the card shows, flagged junctions and Avoid; ne
   assert.deepEqual(marks, [
     { m: 100, movement: "left", severity: null },
     { m: 900, movement: "right", severity: "orange" },
+    { m: 1300, movement: "left", severity: "red" },
+    { m: 1400, movement: null, severity: "orange" },
+    { m: 1450, movement: "right", severity: null, exit: true },
     { m: 1500, movement: null, severity: "red" },
     { m: 1700, movement: null, severity: "avoid" },
-  ], "a jog's later turn, a crossing straight over and a work zone are left off");
-  assert.equal(turnsSentence(marks, 500), "Turns ahead: 1. Busy junctions: 2.");
+  ], "a jog's later turn, a quiet crossing straight over and a work zone are left off; the turn after a crossing and a busy crossing are drawn");
+  assert.equal(turnsSentence(marks, 500), "Turns ahead: 3. Busy junctions: 4.");
   assert.equal(turnsSentence([], 0), "", "nothing said where there is nothing");
   // Two marks closer than the gap are drawn as one: the arrow kept, in the worse colour.
   assert.deepEqual(spreadMarks([{ m: 900, movement: "right", severity: "orange" }, { m: 1000, movement: null, severity: "red" }, { m: 1500, movement: "left", severity: null }], 200), [
@@ -255,6 +262,17 @@ test("the turns sentence leaves out a part that is zero (v0.19.0 release review)
   const busy = { m: 700, movement: null, severity: "red" as const };
   assert.equal(turnsSentence([turn], 0), "Turns ahead: 1.");
   assert.equal(turnsSentence([busy, busy], 0), "Busy junctions: 2.");
+});
+
+test("a merged arrow counts as each of its turns, as the cue cards count them (the v0.31.0 review)", () => {
+  // A jog (left, then right) drawn as one arrow, and a lone turn after it: three turns on the cards.
+  const jog = { m: 600, movement: "left" as const, severity: null, then: ["right" as const] };
+  const lone = { m: 900, movement: "right" as const, severity: null };
+  assert.equal(turnsSentence([jog, lone], 0), "Turns ahead: 3.");
+  const merged = spreadMarks([{ m: 600, movement: "left", severity: null }, { m: 620, movement: "right", severity: null }, lone], 100);
+  assert.equal(merged.length, 2, "the two close turns drawn as one arrow");
+  assert.equal(turnsSentence(merged, 0), "Turns ahead: 3.");
+  assert.equal(turnsSentence([jog, lone], 700), "Turns ahead: 1.", "a jog behind the rider is not ahead");
 });
 
 test("y labels keep their distance; the bottom one is always kept", () => {
