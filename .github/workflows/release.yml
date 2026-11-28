@@ -68,11 +68,11 @@ jobs:
           git cat-file -e "$sha:docs/releases/$VERSION.md" 2>/dev/null ||
             { echo "::error::docs/releases/$VERSION.md is not in $sha: the release notes come first"; exit 1; }
           # The same verdict the beta's agent reads (auto-release.sh, ci_status): `test` and `a11y`
-          # green on this commit or, when none has run there, on the head of the one pull request
+          # green on this commit or, when neither has run there at all, on the head of the one pull request
           # merged as it, if that head has the identical tree (CI runs once, on that pull request).
           verdict=$(gh api "repos/$REPO/commits/$sha/check-runs?filter=latest&per_page=100" |
-            python3 scripts/beta/cd_logic.py ci-verdict --sha "$sha")
-          if [ "$verdict" = pending ]; then
+            python3 scripts/beta/cd_logic.py ci-verdict --sha "$sha" --none)
+          if [ "$verdict" = none ]; then
             pr=$(gh api "repos/$REPO/commits/$sha/pulls?per_page=100" |
               python3 scripts/beta/cd_logic.py merged-pr --sha "$sha")
             [ -n "$pr" ] || { echo "::error::no CI on $sha and no one pull request merged as it"; exit 1; }

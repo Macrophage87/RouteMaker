@@ -26,6 +26,7 @@ check-run JSON.
   cd_logic.py pick --deployed v0.1.0 < tags.txt          # prints the tag, or nothing
   cd_logic.py semver v0.2.0                               # exit 0 if strict vX.Y.Z
   cd_logic.py ci-verdict --sha <40 hex> < check-runs.json # green | pending | red
+  cd_logic.py ci-verdict --sha <40 hex> --none < ...      # or none: no run on it at all
   cd_logic.py merged-pr --sha <40 hex> < pulls.json      # "<number> <head sha>", or nothing
   cd_logic.py lock-hash < frontend/package-lock.json      # 64 hex
   cd_logic.py gate --repo DIR --old SHA --new SHA [--ci-image]  # KEY=VALUE lines
@@ -88,14 +89,8 @@ CHECK_NAMES = (CHECK_NAME, "a11y")
 CHECK_APP = "github-actions"
 
 
-def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK_APP) -> str:
-    """green, pending or red for the latest `name` check run on `sha`, from the JSON of
-    GET /repos/{owner}/{repo}/commits/{sha}/check-runs.
-
-    Only runs by GitHub Actions on exactly this commit count. The newest such run (highest
-    id: a re-run supersedes) decides. No run yet, or one still queued or running, is
-    pending: try again next time. Anything that finished other than success is red."""
-    runs = [
+def _check_runs(payload: dict, sha: str, name: str, app: str = CHECK_APP) -> list:
+    return [
         run
         for run in payload.get("check_runs") or []
         if isinstance(run, dict)
@@ -103,6 +98,16 @@ def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK
         and run.get("head_sha") == sha
         and (run.get("app") or {}).get("slug") == app
     ]
+
+
+def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK_APP) -> str:
+    """green, pending or red for the latest `name` check run on `sha`, from the JSON of
+    GET /repos/{owner}/{repo}/commits/{sha}/check-runs.
+
+    Only runs by GitHub Actions on exactly this commit count. The newest such run (highest
+    id: a re-run supersedes) decides. No run yet, or one still queued or running, is
+    pending: try again next time. Anything that finished other than success is red."""
+    runs = _check_runs(payload, sha, name, app)
     if not runs:
         return "pending"
     latest = max(runs, key=lambda run: int(run.get("id") or 0))
@@ -111,8 +116,16 @@ def ci_verdict(payload: dict, sha: str, name: str = CHECK_NAME, app: str = CHECK
     return "green" if latest.get("conclusion") == "success" else "red"
 
 
-def ci_verdicts(payload: dict, sha: str, names: Sequence[str] = CHECK_NAMES) -> str:
-    """green only when every check run in `names` is green; red if any is red; else pending."""
+def ci_verdicts(
+    payload: dict, sha: str, names: Sequence[str] = CHECK_NAMES, none: bool = False
+) -> str:
+    """green only when every check run in `names` is green; red if any is red; else pending.
+
+    With `none`, "none" when no run of any of them (by GitHub Actions) is on `sha` at all: only
+    then may a merged pull request's head stand for it (merged_pr). A run of its own, even one
+    still queued or one that failed, decides."""
+    if none and not any(_check_runs(payload, sha, name) for name in names):
+        return "none"
     verdicts = [ci_verdict(payload, sha, name) for name in names]
     if "red" in verdicts:
         return "red"
@@ -694,7 +707,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("pick").add_argument("--deployed", required=True)
     sub.add_parser("semver").add_argument("tag")
-    sub.add_parser("ci-verdict").add_argument("--sha", required=True)
+    v = sub.add_parser("ci-verdict")
+    v.add_argument("--sha", required=True)
+    v.add_argument("--none", action="store_true")
     sub.add_parser("merged-pr").add_argument("--sha", required=True)
     sub.add_parser("lock-hash")
     g = sub.add_parser("gate")
@@ -722,7 +737,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload = json.loads(sys.stdin.read() or "{}")
         except ValueError:
             payload = {}
-        print(ci_verdicts(payload if isinstance(payload, dict) else {}, args.sha))
+        payload = payload if isinstance(payload, dict) else {}
+        print(ci_verdicts(payload, args.sha, none=args.none))
         return 0
     if args.command == "merged-pr":
         try:

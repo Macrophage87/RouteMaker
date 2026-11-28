@@ -454,15 +454,16 @@ gh_problem() { # code
 }
 # Prints green, pending, red, or "unknown <reason>" (rate limit, network, no CI): try again next pass.
 # Green is every check run cd_logic.py names (CHECK_NAMES: `test` and `a11y`) green on the commit,
-# or, when none has run there, on the head of the one pull request merged as it, if that head has
+# or, when none of them has run there at all (a queued or red run of its own decides), on the head of the one pull request merged as it, if that head has
 # the identical tree: CI runs once per release, on the pull request into main (ci.yml).
 ci_status() { # sha
 	local sha=$1 body code verdict pr num head ours theirs
 	body=$(mktemp)
 	code=$(gh_get "commits/$sha/check-runs?filter=latest&per_page=100" "$body")
 	if [ "$code" != 200 ]; then verdict=$(gh_problem "$code")
-	else verdict=$("$py" "$logic" ci-verdict --sha "$sha" <"$body"); fi
-	if [ "$verdict" = pending ]; then
+	else verdict=$("$py" "$logic" ci-verdict --sha "$sha" --none <"$body"); fi
+	if [ "$verdict" = none ]; then
+		verdict=pending
 		code=$(gh_get "commits/$sha/pulls?per_page=100" "$body")
 		if [ "$code" != 200 ]; then verdict=$(gh_problem "$code")
 		elif ! pr=$("$py" "$logic" merged-pr --sha "$sha" <"$body") || [ -z "$pr" ]; then :

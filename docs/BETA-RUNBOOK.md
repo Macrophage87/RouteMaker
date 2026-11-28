@@ -1176,7 +1176,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    "Release vX.Y.Z" for that tag; its commit on `origin/main` and descended from the deployed
    release; and GitHub's `test` and `a11y` check runs (by GitHub Actions, the newest run of each)
    green: either one red holds the tag, either one unfinished waits. They are read on exactly that
-   commit or, when none has run there, on the head of the one pull request merged as it (GitHub's
+   commit or, when neither has run there at all (a queued or red run of its own decides), on the head of the one pull request merged as it (GitHub's
    `commits/<sha>/pulls`, fetched as `refs/pull/<n>/head`), if that head has the identical tree:
    CI runs once per release, on the pull request into main, not again on the squash merge's
    commit. Another tree, two pull requests that disagree or a GitHub error waits. The check is an unauthenticated read of the public API, a few calls an hour at

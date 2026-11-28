@@ -148,6 +148,26 @@ def test_a_malformed_check_run_answer_is_pending_not_green() -> None:
     assert done.stdout.strip() == "pending"
 
 
+def test_none_only_when_no_run_of_either_check_is_on_the_commit() -> None:
+    # Before: no run and a queued run were both "pending", so a merged pull request's green head
+    # stood in for a commit whose own run was still going (or whose a11y was red, test queued).
+    none = {"check_runs": [run_(name="lint"), run_(app={"slug": "someone-else"})]}
+    assert cd_logic.ci_verdicts(none, SHA, none=True) == "none"
+    assert cd_logic.ci_verdicts(none, SHA) == "pending"
+    queued = {"check_runs": [run_(status="queued", conclusion=None)]}
+    assert cd_logic.ci_verdicts(queued, SHA, none=True) == "pending"
+    red = {"check_runs": [run_(name="a11y", conclusion="failure")]}
+    assert cd_logic.ci_verdicts(red, SHA, none=True) == "red"
+    done = subprocess.run(
+        [sys.executable, str(BETA / "cd_logic.py"), "ci-verdict", "--sha", SHA, "--none"],
+        input="not json",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert done.stdout.strip() == "none"
+
+
 HEAD = "b" * 40
 
 
@@ -1101,6 +1121,24 @@ def test_ci_on_the_merged_pull_request_s_head_counts_when_the_tree_is_the_same(b
     calls = beta.calls()
     assert f"/commits/{sha}/check-runs" in calls and f"/commits/{sha}/pulls" in calls
     assert f"/commits/{head}/check-runs" in calls
+
+
+def test_a_run_of_main_s_own_decides_over_the_pull_request_s_head(beta: Beta) -> None:
+    sha = beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    pulls, head = _pull_request(beta, 12, sha)
+    runs = json.loads(beta.ci.read_text())["check_runs"]
+    for status, conclusion, word in (
+        ("queued", None, "has not finished"),
+        ("completed", "failure", ""),
+    ):
+        own = [
+            dict(r, id=r["id"] + 10, head_sha=sha, status=status, conclusion=conclusion)
+            for r in runs
+        ]
+        beta.ci.write_text(json.dumps({"check_runs": runs + own}))
+        done = beta.agent("run", "--dry-run", STUB_PULLS=str(pulls))
+        assert "would deploy" not in done.stdout, done.stdout
+        assert word in done.stdout and f"/commits/{head}/check-runs" not in beta.calls()
 
 
 def test_ci_on_a_pull_request_head_with_another_tree_is_not_green(beta: Beta) -> None:
