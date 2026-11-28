@@ -22,6 +22,17 @@ mile lines), ready for a closure's `lines`, and how much of the stretch they cov
 not cover it all, draw the rest from the OpenStreetMap ways (`python scripts/ddot_advisories.py
 lines WAY ...`).
 
+    python scripts/park_alerts.py items
+
+prints every item now on the pages, read or not, one JSON object a line (agency, key, place,
+text, link, trail): what the agent closures follow (docs/OPERATIONS.md, "Agent closures").
+
+    python scripts/park_alerts.py between TRAIL FIRST_STREET SECOND_STREET [--area AREA]
+
+prints the trail's line between where it meets two cross streets
+(`park_alerts.stretch_between`), from OpenStreetMap's own API, ready for the connector's
+mark_closed, and its length; exit 1 where the place is not clear.
+
 Only public pages are read (no sign-in).
 """
 
@@ -30,6 +41,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.parse
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -106,6 +118,95 @@ def watch(agencies: list[str], mark: bool, get=fetch) -> int:
     return status
 
 
+def items(agencies: list[str], get=fetch) -> int:
+    status = 0
+    for agency in agencies:
+        try:
+            found = items_of(agency, get)
+        except OSError as error:
+            print(f"{pa.AGENCIES[agency].name}: could not be read ({type(error).__name__})",
+                  file=sys.stderr)  # fmt: skip
+            status = 1
+            continue
+        for item in found:
+            row = {
+                "agency": agency,
+                "key": item.key,
+                "place": item.place,
+                "text": item.text,
+                "link": item.link,
+                "trail": item.trail,
+            }
+            print(json.dumps(row, ensure_ascii=False))
+    return status
+
+
+def _get_json(url: str):
+    return json.loads(fetch(url))
+
+
+def _search(query: str) -> list[tuple[float, float]]:
+    params = {"q": query, "format": "json", "limit": "8"}
+    found = _get_json(
+        "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(params)
+    )
+    return [(float(hit["lon"]), float(hit["lat"])) for hit in found or []]
+
+
+# Two cross streets of one closure are at most this far apart (the same name elsewhere in the
+# area is another street): our default.
+STREETS_APART_MAX_M = 8000.0
+
+
+def between(trail: str, first: str, second: str, area: str, get_json=_get_json) -> int:
+    try:
+        return _between(trail, first, second, area, get_json)
+    except (OSError, ValueError) as error:  # a refused or failed read (a 429, too many nodes)
+        print(f"{trail}: the map could not be read ({error})", file=sys.stderr)
+        return 1
+
+
+def _between(trail: str, first: str, second: str, area: str, get_json) -> int:
+    where = f", {area}" if area else ""
+    hits = [_search(street + where) for street in (first, second)]
+    trail_hits = _search(trail + where)
+
+    def off_trail(point) -> float:
+        # How far the point is from the trail's nearest search hit (0 where none was found).
+        return min((pa._metres(point, t) for t in trail_hits), default=0.0)
+
+    # The pair of streets nearest each other and the trail: the two of this one place.
+    pairs = sorted(
+        (pa._metres(a, b) + off_trail(a) + off_trail(b), pa._metres(a, b), a, b)
+        for a in hits[0]
+        for b in hits[1]
+        if pa._metres(a, b) <= STREETS_APART_MAX_M
+    )
+    if not pairs:
+        print(f"{first} and {second}: not found near each other{where}", file=sys.stderr)
+        return 1
+    points = [pairs[0][2], pairs[0][3]]
+    margin = 0.006  # about 0.4 mi round the two streets: our default
+    bbox = (
+        min(p[0] for p in points) - margin,
+        min(p[1] for p in points) - margin,
+        max(p[0] for p in points) + margin,
+        max(p[1] for p in points) + margin,
+    )
+    url = "https://api.openstreetmap.org/api/0.6/map.json?bbox=" + ",".join(
+        f"{v:.5f}" for v in bbox
+    )
+    elements = get_json(url).get("elements") or []
+    line = pa.stretch_between(elements, trail, first, second)
+    if line is None:
+        print(f"{trail} between {first} and {second}: not clear on the map", file=sys.stderr)
+        return 1
+    length = sum(pa._metres(a, b) for a, b in zip(line, line[1:], strict=False))
+    print(json.dumps(line))
+    print(f"{trail}, {first} to {second}: {length / pa.MILE_M:.2f} mi", file=sys.stderr)
+    return 0
+
+
 def towpath(first: float, last: float | None) -> int:
     last = first if last is None else last
     lines = pa.towpath_lines(first, last)
@@ -130,12 +231,23 @@ def main() -> int:
     w = sub.add_parser("watch", help="list park alerts not yet read")
     w.add_argument("--agency", choices=sorted(pa.AGENCIES), action="append")
     w.add_argument("--mark", action="store_true", help="then mark every item read")
+    i = sub.add_parser("items", help="every item now on the pages, as JSON lines")
+    i.add_argument("--agency", choices=sorted(pa.AGENCIES), action="append")
+    b = sub.add_parser("between", help="a trail's line between two cross streets")
+    b.add_argument("trail")
+    b.add_argument("first")
+    b.add_argument("second")
+    b.add_argument("--area", default="Maryland", help="e.g. Anne Arundel County, Maryland")
     t = sub.add_parser("towpath", help="the C&O's lines between two mileposts")
     t.add_argument("first", type=float)
     t.add_argument("last", type=float, nargs="?")
     args = parser.parse_args()
     if args.command == "towpath":
         return towpath(args.first, args.last)
+    if args.command == "items":
+        return items(args.agency or list(pa.AGENCIES))
+    if args.command == "between":
+        return between(args.trail, args.first, args.second, args.area)
     return watch(args.agency or list(pa.AGENCIES), args.mark)
 
 

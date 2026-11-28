@@ -2382,6 +2382,12 @@ class ReviewedClosure(models.Model):
     # Closed on foot by default (true here, in the API and for null rows) is Claude's default,
     # not measured: the closures entered so far are mostly trails, so the cautious reading.
     on_foot = models.BooleanField(null=True, blank=True)
+    # The agency alert an agent closure follows ("aacounty:64ce39415d29:1"): set only on one an
+    # agent entered through the connector (core.reviewed_closures, "Agent closures"), which it
+    # extends a day at a time while the alert stays up and ends when it goes. Empty: a person's.
+    agent_key = models.CharField(max_length=100, blank=True, default="")
+    # When its last day was last moved (`reviewed_closures.extend`), so other processes reread.
+    extended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "reviewed_closure"

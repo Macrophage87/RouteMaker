@@ -754,6 +754,22 @@ class Api:
             raise ToolError(f"the weather check failed ({status}): {message}")
         return payload
 
+    def closure_list(self) -> list[dict]:
+        """GET /api/closures/reviewed: the reviewed closures in force or to come (admin)."""
+        status, payload, _ = self._request("GET", "/api/closures/reviewed")
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the closures could not be read ({status}): {message}")
+        return payload.get("closures") or []
+
+    def closure_write(self, path: str, body: dict) -> dict:
+        """POST a reviewed closure write (enter, extend, end; admin): its id and message."""
+        status, payload, _ = self._request("POST", path, body)
+        if status in (200, 201) and isinstance(payload, dict):
+            return {"id": payload.get("id"), "message": payload.get("message")}
+        message = payload.get("error") if isinstance(payload, dict) else payload
+        raise ToolError(f"the site did not change it ({status}): {message}")
+
     def saved_routes(self) -> list[dict]:
         """GET /api/me/routes: the signed-in rider's saved routes (names and figures only)."""
         status, payload, _ = self._request("GET", "/api/me/routes")
@@ -6425,6 +6441,98 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "mark_closed",
+        "title": "Close a stretch (admin agent)",
+        "description": (
+            "Close a stretch for routing, as the road panel's Mark closed does, for an agent that"
+            " reads an agency's closure alert: on RouteMaker's own connector, for an instance"
+            " admin. Give the stretch as line ([[lon, lat], ...], 2 to 200 points, at most 6.2"
+            " mi) or osm_way_ids, the agency's reason in a few words, its link, and agent_key"
+            " (the alert it follows, e.g. aacounty:64ce39415d29:1). With no end (the agency"
+            " gave no last day) it lasts today only: extend_closure moves it on while the alert"
+            " is still posted, end_closure ends it once the alert is gone. Only what the agency"
+            " says, never another map."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "line": {
+                    "type": "array",
+                    "items": {"type": "array", "items": {"type": "number"}},
+                    "description": "The closed stretch, [[lon, lat], ...].",
+                },
+                "osm_way_ids": {"type": "array", "items": {"type": "integer"}},
+                "reason": {"type": "string", "description": "At most 500 characters."},
+                "url": {"type": "string", "description": "The agency's alert page."},
+                "agent_key": {"type": "string", "description": "The alert this follows."},
+                "start": {"type": "string", "description": "First day, YYYY-MM-DD (today)."},
+                "end": {"type": "string", "description": "Last day, YYYY-MM-DD; none: today."},
+                "on_foot": {
+                    "type": "boolean",
+                    "description": "Closed on foot too (default true; false: sidewalk open).",
+                },
+            },
+            "required": ["reason", "url", "agent_key"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "extend_closure",
+        "title": "Extend a closure (admin agent)",
+        "description": (
+            "Move an agent closure's last day on (a closure_id from agent_closures) while its"
+            " agency alert is still posted: with no end, through the region's tomorrow. One"
+            " that lasts that long already is left as it is, so ask at every check."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "closure_id": {"type": "integer"},
+                "end": {
+                    "type": "string",
+                    "description": "The new last day, YYYY-MM-DD; none: tomorrow (ET).",
+                },
+            },
+            "required": ["closure_id"],
+        },
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    },
+    {
+        "name": "end_closure",
+        "title": "End a closure (admin agent)",
+        "description": (
+            "End a closure now (a closure_id from agent_closures): for an agent's closure whose"
+            " agency alert is gone. It leaves routing within a minute."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"closure_id": {"type": "integer"}},
+            "required": ["closure_id"],
+        },
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    },
+    {
+        "name": "agent_closures",
+        "title": "Agent closures in force",
+        "description": (
+            "The closures an agent entered (agent_key set) that are in force or to come: id,"
+            " agent_key, road, reason, start, end, link. A person's closures are not listed:"
+            " an agent extends or ends only its own."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "draft_route_post",
         "title": "Draft a route post",
         "description": (
@@ -6527,6 +6635,10 @@ TOOLS = [
 
 # Offered only where the site says the rider may write posts (`Server(posts=True)`).
 POST_TOOLS = {"draft_route_post"}
+# The agent closures' tools (core.reviewed_closures, "Agent closures"): offered, like the post
+# tool, only to an instance admin on the site's connector (`Server(posts=True)`).
+CLOSURE_TOOLS = {"mark_closed", "extend_closure", "end_closure", "agent_closures"}
+ADMIN_TOOLS = POST_TOOLS | CLOSURE_TOOLS
 POST_FIELDS = (
     "title",
     "slug",
@@ -6832,7 +6944,7 @@ class Server:
         base map tool where there is a base map."""
         out = []
         for t in TOOLS:
-            if t["name"] in POST_TOOLS and not self.posts:
+            if t["name"] in ADMIN_TOOLS and not self.posts:
                 continue
             if t["name"] in VIEW_TOOLS:
                 # The flat "ui/resourceUri" is the extension's older spelling, still read by
@@ -7913,6 +8025,43 @@ class Server:
         fragment = draft.fragment(self._dials(draft.plan))
         return f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
 
+    # mark_closed, extend_closure, end_closure, agent_closures
+    def mark_closed(self, args: dict, call: Call) -> dict:
+        body = {
+            k: args[k]
+            for k in ("line", "osm_way_ids", "reason", "url", "agent_key", "start", "end")
+            if args.get(k) not in (None, "", [])
+        }
+        if not str(body.get("agent_key") or "").strip():
+            raise ToolError("agent_key is the alert this closure follows: give it")
+        if "on_foot" in args:
+            body["on_foot"] = args["on_foot"] is not False
+        return self.api.closure_write("/api/closures/reviewed", body)
+
+    def extend_closure(self, args: dict, call: Call) -> dict:
+        closure_id = int(args["closure_id"])
+        self._agent_closure(closure_id)
+        path = f"/api/closures/reviewed/{closure_id}/extend"
+        body = {"end": str(args["end"])} if args.get("end") else {}
+        return self.api.closure_write(path, body)
+
+    def end_closure(self, args: dict, call: Call) -> dict:
+        closure_id = int(args["closure_id"])
+        self._agent_closure(closure_id)
+        return self.api.closure_write(f"/api/closures/reviewed/{closure_id}/end", {})
+
+    def _agent_closure(self, closure_id: int) -> dict:
+        """The agent's own closure by id; a person's is never the agent's to change."""
+        for row in self.api.closure_list():
+            if row.get("id") == closure_id and row.get("agent_key"):
+                return row
+        raise ToolError(f"no agent closure {closure_id} in force (agent_closures lists them)")
+
+    def agent_closures(self, args: dict, call: Call) -> dict:
+        keep = ("id", "agent_key", "road", "reason", "start", "end", "url", "when_text")
+        rows = [{k: r.get(k) for k in keep} for r in self.api.closure_list() if r.get("agent_key")]
+        return {"closures": rows}
+
     # draft_route_post
     def draft_route_post(self, args: dict, call: Call) -> dict:
         if bool(args.get("draft_id")) == bool(args.get("follow")):
@@ -8961,7 +9110,7 @@ class Server:
         return out
 
     def handler(self, name: str):
-        if name in POST_TOOLS and not self.posts:
+        if name in ADMIN_TOOLS and not self.posts:
             return None
         if name == "route_view_map" and (self.basemap is None or self.view_key is None):
             return None
@@ -8988,6 +9137,10 @@ class Server:
             "save_route": self.save_route,
             "gpx_route": self.gpx_route,
             "draft_route_post": self.draft_route_post,
+            "mark_closed": self.mark_closed,
+            "extend_closure": self.extend_closure,
+            "end_closure": self.end_closure,
+            "agent_closures": self.agent_closures,
             "route_segments": self.route_segments,
             "ride_conditions": self.ride_conditions,
             "my_routes": self.my_routes,
