@@ -76,6 +76,26 @@ AGENT_LATE_HOURS = 3
 AGENT_KEY_MAX = 100
 
 
+# The worker's closure agent (`core.closure_agent`) acts as no account: the rows it writes have no
+# `created_by`, their audit rows no actor. Only code can pass it; no request can.
+class _Worker:
+    is_authenticated = True
+    is_active = True
+
+    def __repr__(self) -> str:
+        return "WORKER"
+
+
+WORKER = _Worker()
+# At most this many agent closures in force at once from the worker: our default, unmeasured.
+WORKER_OPEN_MAX = 60
+
+
+def _account(user):
+    """The account a row and its audit row name: none for the worker."""
+    return None if user is WORKER else user
+
+
 class Forbidden(stress_edits.EditRefused):
     status = 403
     code = "not_reviewer"
@@ -236,7 +256,11 @@ def _forget() -> None:
     workzones.forget()
 
 
-def _check(user) -> None:
+def _check(user, worker=True) -> None:
+    if user is WORKER:
+        if worker:
+            return
+        raise Forbidden("The agent only enters, extends and ends its own closures.")
     if not may_review(user):
         raise Forbidden("Only a RouteMaker reviewer can enter or confirm a closure.")
 
@@ -275,12 +299,17 @@ def _make(
             raise Conflict(f"{OPEN_MAX} closures are in force already. End one first.")
         if agent_key and live.filter(agent_key=agent_key).exists():
             raise Conflict("A closure for that alert is in force already: extend it instead.")
-        if live.filter(created_by=user).count() >= OPEN_PER_ACCOUNT:
+        if user is WORKER:
+            if live.filter(created_by__isnull=True).exclude(agent_key="").count() >= (
+                WORKER_OPEN_MAX
+            ):
+                raise Conflict(f"The agent has {WORKER_OPEN_MAX} closures in force already.")
+        elif live.filter(created_by=user).count() >= OPEN_PER_ACCOUNT:
             raise Conflict(
                 f"You have {OPEN_PER_ACCOUNT} closures in force or to come. End one first."
             )
         return ReviewedClosure.objects.create(
-            created_by=user,
+            created_by=_account(user),
             osm_way_ids=ways,
             lines=lines,
             road=road,
@@ -311,8 +340,9 @@ def create(
         user, way_ids, line, reason, start, end, url, on_foot=on_foot, agent_key=agent_key
     )
     audit.record(
-        user, "closure_enter", "reviewed_closure", closure.pk, AuditLogEntry.Outcome.ALLOWED
-    )
+        _account(user), "closure_enter", "reviewed_closure", closure.pk,
+        AuditLogEntry.Outcome.ALLOWED,
+    )  # fmt: skip
     _forget()
     return closure
 
@@ -334,7 +364,7 @@ def confirm_report(
     user, report_id: int, reason="", start=None, end=None, url="", on_foot=True
 ) -> ReviewedClosure:
     """Confirm a rider's report: the closure on its road piece, and the report approved."""
-    _check(user)
+    _check(user, worker=False)
     with transaction.atomic():
         report = _open_report(report_id)
         closure = _make(
@@ -361,7 +391,7 @@ def confirm_report(
 
 
 def reject_report(user, report_id: int) -> StressSuggestion:
-    _check(user)
+    _check(user, worker=False)
     with transaction.atomic():
         report = _open_report(report_id)
         report.status = StressSuggestion.Status.DELETED
@@ -384,9 +414,11 @@ def end_now(user, closure_id: int) -> ReviewedClosure:
         if closure.ended_at is not None:
             raise Conflict("That closure was ended already.")
         closure.ended_at = timezone.now()
-        closure.ended_by = user
+        closure.ended_by = _account(user)
         closure.save(update_fields=["ended_at", "ended_by"])
-    audit.record(user, "closure_end", "reviewed_closure", closure.pk, AuditLogEntry.Outcome.ALLOWED)
+    audit.record(
+        _account(user), "closure_end", "reviewed_closure", closure.pk, AuditLogEntry.Outcome.ALLOWED
+    )
     _forget()
     from . import saved_route_alerts
 
@@ -416,8 +448,8 @@ def extend(user, closure_id: int, end_day=None) -> ReviewedClosure:
         closure.extended_at = now
         closure.save(update_fields=["end", "extended_at"])
     audit.record(
-        user, "closure_extend", "reviewed_closure", closure.pk, AuditLogEntry.Outcome.ALLOWED,
-        detail=f"to {last.isoformat()}",
+        _account(user), "closure_extend", "reviewed_closure", closure.pk,
+        AuditLogEntry.Outcome.ALLOWED, detail=f"to {last.isoformat()}",
     )  # fmt: skip
     _forget()
     return closure
