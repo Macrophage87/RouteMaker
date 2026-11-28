@@ -8267,7 +8267,10 @@ mile in Ride (#1461), and stay on an automatic re-route (#1463); saved routes ta
 directions for their own line (#1446); a route stretch says how much is on bridges (#1458);
 the ride chart's close turns as one arrow and route junction markers that show the route's own
 movement (#1439 to #1441); Plan's chart shows stop icons (#1437); beta builds print the GPS
-position in small print in Ride (#1462); the agent park closures through the connector (#1466).
+position in small print in Ride (#1462); the agent park closures through the connector (#1466),
+and the same agent on beta's worker (#1467, "The closure agent on the worker (v0.31.0)"): an
+hourly `run_closure_agent` task (23 past each hour) that reads the park and county agencies'
+pages with Claude and marks, extends and ends the closures it can place.
 
 Takes effect only with a map rebuilt from v0.31.0 or later: Southwest Florida as a second area
 (#1442, #1444; off until `RM_COVERAGE_AREAS` names it, "Map areas: turning on Southwest
@@ -8291,7 +8294,14 @@ What changes for a deploy:
   one that needs a map; the code ships alone with `ship-held --no-map`, and the Lua rules do
   nothing on today's map (no way carries `rm:campus_grounds` or `rm:sidewalk=sidepath` until the
   pipeline writes them);
-- no requirements, `valhalla/`, nginx or `compose.beta.yaml` change.
+- `docker/requirements-api.txt` adds `anthropic==2.10.0`, so the api image is rebuilt (the
+  Release workflow's image); the worker is recreated and picks up `run_closure_agent`;
+- the closure agent stays off ("off" on its run row) until the worker has
+  `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and
+  `ANTHROPIC_IDENTITY_TOKEN_FILE` (compose.yaml passes them; env.beta.template lists them) and
+  the token file is mounted; how beta gets its token is the owner's call; when on, the worker
+  also reaches api.anthropic.com, Nominatim, the OSM API and the agencies' pages;
+- no `valhalla/`, nginx or `compose.beta.yaml` change.
 
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
   (Actions, "Release", Run workflow on main, version `v0.31.0`, then approve).
@@ -8300,7 +8310,11 @@ What changes for a deploy:
   0069 to 0071, api and worker recreated, and `migrate --check` OK.
 - [ ] **Beta check.** The app says 0.31.0; `/api/coverage` is still one Polygon; Layers, Survey
   spots draws blue "?" marks in DC; answering one hides it and the count goes to 1; Mark closed
-  and End still work on a closure.
+  and End still work on a closure; the `closure_agent` run row says "off" (or, with the
+  federation settings in, a run at 23 past the hour).
+- [ ] **Later, the closure agent** **(owner)**. Set the three federation settings and mount the
+  token file, recreate the worker, watch one hourly run; then the session agent's hourly
+  scheduled task is retired.
 - [ ] **Rollback.** `auto-release.sh rollback --restore-db` (it loses survey answers and
   closures made since) with the v0.30.4 front end. `--keep-db` works for closures (0071 gives
   `agent_key` a database default), but deleting an account that answered a survey spot then
