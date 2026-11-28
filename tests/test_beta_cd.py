@@ -3492,6 +3492,13 @@ def test_a_code_first_tag_that_also_needs_nginx_is_still_held(beta: Beta) -> Non
     assert "held: v0.2.0" in beta.status() and beta.head() == beta.v1
 
 
+def test_a_code_first_tag_still_holds_a_live_table_layout_change(beta: Beta) -> None:
+    # api code may expect the new map's tables: only the graph builders ship code first
+    _code_first_release(beta, {"src/pipeline/schema.py": "X = 2\n"})
+    beta.agent("run", **UP)
+    assert "held: v0.2.0" in beta.status() and beta.head() == beta.v1
+
+
 def test_a_code_first_tag_never_ships_a_migration_that_reads_the_map_tables(beta: Beta) -> None:
     _code_first_release(
         beta, {"lua/tags.lua": "-- new\n", "src/core/migrations/0002_live.py": "# LIVE_SCHEMA\n"}

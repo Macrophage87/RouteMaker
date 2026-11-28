@@ -1470,9 +1470,10 @@ paused, and the report says what to run next.
 `.github/workflows/release.yml` (the owner, 2026-11-12; from 2026-11-28 his go to merge is the one
 approval, and the workflow waits for no other). It runs by itself when the release reaches main
 (docs/RELEASING.md: main is fast-forwarded to the release branch's tested commit), and by hand
-from Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`). On the push it
-releases the version `pyproject.toml` names, if that tag is not made yet and
-`docs/releases/vX.Y.Z.md` is in the commit; any other push to main does nothing. It releases
+from Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`). On the push that
+changes the version in `pyproject.toml` it releases that version, if it is not tagged yet and
+`docs/releases/vX.Y.Z.md` is in the commit; any other push to main does nothing (a failed release
+run is run again by hand). It releases
 main's newest commit, the one the run starts at, and no other, so the image's provenance names the
 tag's commit. It checks the version (strict, newer than every tag, not taken), the commit (on
 main), the notes, and that `test` and `a11y` are green on that commit, or on the merged pull
@@ -1482,7 +1483,7 @@ that commit, checks that it starts, records GitHub build provenance for it, publ
 `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag, whose
 message names the image by digest, and says `ship: code-first` when the release pull request has
 the `code-first` label (or the run's input asks): the agent then ships a release held only for
-its map by itself, as `ship-held --no-map` would, and the map follows by hand. The agent deploys
+the graph builders (`lua/`, `valhalla/vendor/`) by itself, as `ship-held --no-map` would, and the map follows by hand. The agent deploys
 the tag on its next pass as above, pulling that exact image. A tag pushed from the PC carries no
 image, so the agent builds the image itself and holds a change to the image's own files.
 

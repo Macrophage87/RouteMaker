@@ -7392,12 +7392,13 @@ How a release ships is docs/RELEASING.md from v0.32.0 (the owner, 2026-11-28, "S
 release procedure"); the releases before it are in docs/DEPLOY-HISTORY.md. What v0.32.0 changes:
 
 - CI runs on the release branch's pull request, and main is fast-forwarded to that tested commit
-  (`git push origin release/vX.Y.Z:main`), so main's commit is the one CI passed and nothing runs
+  (`git push origin <tested sha>:main`), so main's commit is the one CI passed and nothing runs
   again. A squash merge still works: its commit has the head's tree, and the Release workflow and
   the agent take the head's `test` and `a11y` for it (`cd_logic.py merged-pr`).
-- The Release workflow runs by itself on the push to main and tags the version pyproject.toml
-  names. The `code-first` label on the release pull request puts `ship: code-first` in the tag:
-  the agent then ships a release held only for its map without the owner's paste.
+- The Release workflow runs by itself on the push to main that bumps the version, and tags the
+  version pyproject.toml names. The `code-first` label on the release pull request puts `ship: code-first` in the tag:
+  the agent then ships a release held only for the graph builders (`lua/`, `valhalla/vendor/`)
+  without the owner's paste.
 - `auto-release.sh ship-held vX.Y.Z --accept` ships a release held for nginx, a data path or an
   api image built on the beta through the agent's own deploy, and prints the one sudo line each
   needs; an env template change alone is a note, not a stop.

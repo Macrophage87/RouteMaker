@@ -262,6 +262,11 @@ TAG_IMAGE = re.compile(
 # `code-first` label, or the run's input): a release held only for its map ships its code by
 # itself, and the map follows (the owner, 2026-11-28, "Build all seven").
 TAG_SHIP = re.compile(r"(?m)^ship: code-first\s*$")
+# The map stops "code first" covers: the graph builders alone, which only a graph build reads (a
+# running router never runs lua/). A change to the live tables' layout or the graph variants
+# (schema.py, variants.py, tiles.py, a graph-build setting) may meet api code that expects the
+# new map, so it waits for ship-held.
+CODE_FIRST_PREFIXES = ("lua/", "valhalla/vendor/")
 # The stops `auto-release.sh ship-held --accept` takes, once the owner has read them: the nginx
 # site and its pages, the data directory layout (its sudo line comes first), the api image's own
 # files (built here), a new DATA_ROOT path. A compose image line (a database or router version),
@@ -522,6 +527,7 @@ def gate(
         "notes": [],
         "map_reasons": [],
         "accept_reasons": [],
+        "code_first_reasons": [],
         "nginx_template": False,
         "data_root": False,
     }
@@ -553,6 +559,8 @@ def gate(
                     reasons.append(f"{path}: {why}")
                     if prefix in MAP_PREFIXES:
                         result["map_reasons"].append(f"{path}: {why}")
+                    if prefix in CODE_FIRST_PREFIXES:
+                        result["code_first_reasons"].append(f"{path}: {why}")
                     if prefix in ACCEPT_PREFIXES:
                         result["accept_reasons"].append(f"{path}: {why}")
                     if path == NGINX_TEMPLATE:
@@ -619,6 +627,7 @@ def gate(
     result["reasons"] = sorted(set(reasons))
     result["map_reasons"] = sorted(set(result["map_reasons"]))
     result["accept_reasons"] = sorted(set(result["accept_reasons"]))
+    result["code_first_reasons"] = sorted(set(result["code_first_reasons"]))
     result["verdict"] = "stop" if result["reasons"] else "deploy"
     return result
 
@@ -821,6 +830,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # The reasons above that `ship-held --accept` takes once the owner has read them.
         for reason in result["accept_reasons"]:
             print(f"accept_reason={_clean(reason)}")
+        # The reasons above a "ship: code-first" tag lets the agent ship by itself.
+        for reason in result["code_first_reasons"]:
+            print(f"code_first_reason={_clean(reason)}")
         return 0
     if args.command == "tag-image":
         image = tag_image(sys.stdin.read())

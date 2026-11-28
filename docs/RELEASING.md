@@ -6,8 +6,8 @@ procedure"). A normal release takes about an hour. The owner is asked once.
 ## The owner's part
 
 - **One go**, on a card at the start: merge, tag and ship vX.Y.Z, with the code now and the map
-  later, or with the map, or hold. That answer covers the merge to main, the tag and the agent's
-  deploy. It lapses if a reviewer calls a hold or a fix changes what the release does; then ask
+  later (a release held only for `lua/` or `valhalla/vendor/`), or with the map, or hold. That
+  answer covers the merge to main, the tag and the agent's deploy. It lapses if a reviewer calls a hold or a fix changes what the release does; then ask
   again.
 - **One pasted line** only when the beta agent holds the release: the `ship-held` line its report
   gives (below). Map swaps and anything with sudo stay his.
@@ -33,10 +33,12 @@ procedure"). A normal release takes about an hour. The owner is asked once.
    the full notes in the pull request's description, the about pages at `DOCS_RELEASE=X.Y.Z`. A
    deploy step the beta needs goes in the pull request too, never in docs/OPERATIONS.md.
 5. **Merge, once CI is green and the go is in.** If the go said code first, add the `code-first`
-   label to the pull request. Then fast-forward main to the tested commit:
-   `git push origin release/vX.Y.Z:main`. It refuses if main has moved: merge main into the
-   branch, let CI pass, push again. The Release workflow then builds the image and makes the tag by
-   itself (`.github/workflows/release.yml`); nothing waits for approval in GitHub.
+   label to the pull request. Then fast-forward main to the commit CI passed, by its id:
+   `git push origin <tested sha>:main`. It refuses if main has moved: merge main into the
+   branch, let CI pass, push again. The Release workflow then builds the image and makes the tag
+   by itself (`.github/workflows/release.yml`); nothing waits for approval in GitHub. It runs only
+   on the push that bumps the version, so if that run fails, run it by hand (Actions, Release,
+   Run workflow, on main).
 6. **Beta.** The agent deploys the tag on its next pass (about 10 minutes) and the release notes
    post to Discord by themselves. If it holds the tag, its report names the one line to send the
    owner: `auto-release.sh ship-held vX.Y.Z` with `--map RUN_URL`, `--no-map` or `--accept` as it

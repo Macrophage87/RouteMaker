@@ -55,10 +55,10 @@
 #      2026-11-12). A pull that fails waits for the next pass.
 #   5. the gate (cd_logic.py gate): only a code release is deployed by itself. Anything needing
 #      data from home, sudo or the nginx site stops with a report in $RM_STATE/cd/hold/<tag>,
-#      except a release held only for its map whose tag says "ship: code-first" (the owner's go
-#      said code now, map later; .github/workflows/release.yml): its code is deployed, as
-#      `ship-held --no-map` would, and the map follows by hand. The graphs' Lua (lua/) is read
-#      only when a graph is built, never by a running router, so the old map keeps working. A
+#      except a release held only for the graph builders (lua/, valhalla/vendor/) whose tag says
+#      "ship: code-first" (the owner's go said code now, map later; .github/workflows/release.yml):
+#      its code is deployed, as `ship-held --no-map` would, and the map follows by hand. Those are
+#      read only when a graph is built, never by a running router, so the old map keeps working. A
 #      release with nothing for the server (documentation, CI) is only recorded, if the running api
 #      image is on the host (if not, it is a full deploy): the checkout and TAG move (the running
 #      api image is tagged with it), nothing is stopped.
@@ -1185,11 +1185,10 @@ pass() {
 	"$py" "$logic" gate --repo "$RM_SRC" --old "$cur_sha" --new "$new" ${ci_image:+--ci-image} >"$gate_file" || { rm -f "$gate_file"; finish error "the gate failed to run"; return 1; }
 	say "gate: $(kv verdict "$gate_file") ($(kv changed_files "$gate_file") server-relevant files changed since $cur)"
 	sed -n 's/^note=/note: /p' "$gate_file" | while IFS= read -r reason; do say "$reason"; done
-	# Held only for its map, with the owner's "code first" in the tag: the code goes now (as
-	# `ship-held --no-map`), the map later by hand. A migration that reads the map tables never does.
-	other=$(sed -n 's/^reason=//p' "$gate_file" | grep -vxF -f <(sed -n 's/^map_reason=//p' "$gate_file" | grep .) || true)
-	if [ "$(kv verdict "$gate_file")" != deploy ] && [ "$code_first" = code-first ] && [ -z "$other" ] &&
-		! grep -q '^map_reason=.*a migration names the live schema' "$gate_file"; then
+	# Held only for the graph builders, with the owner's "code first" in the tag: the code goes now
+	# (as `ship-held --no-map`), the map later by hand. Any other stop still holds.
+	other=$(sed -n 's/^reason=//p' "$gate_file" | grep -vxF -f <(sed -n 's/^code_first_reason=//p' "$gate_file" | grep .) || true)
+	if [ "$(kv verdict "$gate_file")" != deploy ] && [ "$code_first" = code-first ] && [ -z "$other" ]; then
 		sed -n 's/^map_reason=/needs a map later: /p' "$gate_file" | while IFS= read -r reason; do say "$reason"; done
 		say "the tag says code first (the owner's go): the code ships now; the map follows by hand (scripts/cloud/import-result.sh --beta, or auto-release.sh ship-held $tag --map RUN_URL)"
 	elif [ "$(kv verdict "$gate_file")" != deploy ]; then
@@ -1365,6 +1364,7 @@ ship_held_pass() { # tag map-url no-map allow dry accept
 			[ "$(kv nginx_template "$gate_file")" != 1 ] || say "after it, with sudo, the nginx site (this command prints the line when the code is live)"
 			rm -f "$gate_file"; finish error "$tag needs the owner steps above; once you have read them, run: $rerun"; return 1
 		fi
+		[ "$(kv data_root "$gate_file")" != 1 ] || say "the data directories must exist first (with sudo: git -C \"$RM_SRC\" show $new:scripts/prepare_data_root.sh | sudo sh -s -- --env-file \"$RM_SRC/.env\"); without them the deploy fails and rolls back"
 		say "accepted by the owner (--accept): the deploy runs"
 	fi
 	if grep -q 'a migration names the live schema' <<<"$map_reasons"; then

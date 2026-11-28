@@ -2,13 +2,13 @@ name: Release
 
 # Runs by itself when a release reaches main (the owner's go to merge is the one approval: the
 # owner, 2026-11-28), and by hand from GitHub (Actions, "Release", Run workflow, on main). On the
-# push it releases the version pyproject.toml names, if that tag is not made yet and
+# push that changes pyproject.toml's version it releases that version, if it is not tagged yet and
 # docs/releases/vX.Y.Z.md is in the commit; any other push to main (Dependabot) does nothing.
 # It checks the commit and its CI (run on the release branch: ci.yml), then builds the api image
 # from that commit in the `release` environment (no required reviewer), publishes it, and makes
 # the annotated release tag, which names the image by digest, and carries "ship: code-first"
 # when the release pull request has the `code-first` label (or the run's input says so): the
-# beta's agent then ships a release held only for its map without waiting for the owner's paste.
+# beta's agent then ships a release held only for lua/ or valhalla/vendor/ without the owner's paste.
 # The beta's release agent (scripts/beta/auto-release.sh) deploys the tag, pulling that exact
 # image. Nothing here touches the beta. One-time setup: docs/BETA-RUNBOOK.md, "The release
 # workflow".
@@ -59,6 +59,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           CODE_FIRST: ${{ inputs.code_first }}
           EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
           # The commit this run started at, main's newest: the only one it builds and tags, so the
           # image's provenance (which names the commit the workflow ran at) names the tag's commit.
           COMMIT: ${{ github.sha }}
@@ -70,16 +71,21 @@ jobs:
           [ "$REF" = refs/heads/main ] || { echo "::error::run the release workflow on main, not $REF"; exit 1; }
           git fetch --quiet --tags origin
           if [ "$EVENT" = push ]; then
-            # The version the release branch bumped to (scripts/bump_version.py); a push whose
-            # version is tagged already, or has no notes, is not a release (Dependabot, a fix).
-            VERSION=v$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pyproject.toml | head -n 1)
-            if git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null || [ ! -f "docs/releases/$VERSION.md" ]; then
-              echo "No release in this push ($VERSION is tagged already or has no notes)." >>"$GITHUB_STEP_SUMMARY"
+            # A release is the push that bumps the version (scripts/bump_version.py on the release
+            # branch): any other push (Dependabot, a fix, a push after a failed release run) is
+            # not, so it never gets tagged as a release the owner's go did not cover.
+            version_at() { git show "$1:pyproject.toml" 2>/dev/null | sed -n 's/^version = "\([^"]*\)"$/\1/p' | head -n 1; }
+            VERSION=v$(version_at "$COMMIT")
+            if [ "$VERSION" = "v$(version_at "$BEFORE")" ] || git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null ||
+              ! git cat-file -e "$COMMIT:docs/releases/$VERSION.md" 2>/dev/null; then
+              echo "No release in this push ($VERSION: unchanged, tagged already or without notes); a failed release is run by hand." >>"$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             # The owner's "code first": the release pull request's `code-first` label.
+            [[ $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::pyproject.toml's version $VERSION is not X.Y.Z"; exit 1; }
             labels=$(gh api "repos/$REPO/commits/$COMMIT/pulls?per_page=100" --jq \
-              "[.[] | select(.head.ref == \"release/$VERSION\") | .labels[].name] | join(\" \")" || true)
+              "[.[] | select(.head.ref == \"release/$VERSION\") | .labels[].name] | join(\" \")") ||
+              { echo "::warning::could not read the release pull request's labels: no code-first"; labels=""; }
             CODE_FIRST=false
             case " $labels " in *" code-first "*) CODE_FIRST=true ;; esac
           fi
