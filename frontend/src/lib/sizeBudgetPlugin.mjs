@@ -20,11 +20,13 @@ export const BUDGET_KB = {
   // them) the first load measured 923 KB. 935 since v0.30.0: the Ride settings popup in Go, the Surface picker and the
   // rider's own ride types (#1384, #1386, #1385) brought it to 930.1 KB. 940 since v0.30.1: the junction dots on the map,
   // the list, the chart and the ribbon (#1291) with #1401's accessibility fixes brought it to 935.8 KB.
-  firstLoad: 940,
+  // 947 since v0.31.0: survey spots, Southwest Florida area, beach path (944.9 KB).
+  firstLoad: 947,
   // App's own chunk. 329 since v0.28.0: 323 KB measured with Ride mode on first use (it was 356 before); 362 in v0.27.1.
   // 332 since v0.30.0: the intuitiveness review's Plan changes (#1398) on top of Ride settings, Surface and own ride
   // types brought it to 329.7 KB. 335 since v0.30.3: Go's route card at a tapped spot (#1420) brought it to 332.7 KB.
-  app: 335,
+  // 341 since v0.31.0: survey spots, Southwest Florida area, beach path (338.5 KB).
+  app: 341,
 };
 
 /** The chunks and stylesheets a first open downloads: the entry, what it imports at once, and App's (appPreloads). */

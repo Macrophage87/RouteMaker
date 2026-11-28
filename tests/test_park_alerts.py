@@ -293,3 +293,67 @@ def test_the_snapshot_holds_them_and_names_the_source(monkeypatch) -> None:
         assert "park_alert-choh-mp30-31-0" in {z.zone_id for z in snap.zones}
     finally:
         workzones.forget()
+
+
+# --- A trail between two cross streets (the agent closures, 2026-11-28) ---------------------
+
+
+def _elements():
+    """A trail named as OpenStreetMap names the B&A, running east along five nodes, crossed by
+    Severn Way at node 2 (shared) and passing 30 m from Boulters Way's end (no shared node)."""
+    nodes = [
+        {"type": "node", "id": i, "lon": -76.5100 + 0.001 * i, "lat": 39.0200} for i in range(1, 6)
+    ]
+    nodes += [
+        {"type": "node", "id": 20, "lon": -76.5090, "lat": 39.0210},
+        {"type": "node", "id": 30, "lon": -76.5060, "lat": 39.02027},
+        {"type": "node", "id": 31, "lon": -76.5060, "lat": 39.0230},
+    ]
+    ways = [
+        {"type": "way", "id": 100, "nodes": [1, 2, 3], "tags": {
+            "highway": "cycleway", "name": "Baltimore & Annapolis Trail"}},
+        {"type": "way", "id": 101, "nodes": [3, 4, 5], "tags": {
+            "highway": "cycleway", "name": "Baltimore & Annapolis Trail"}},
+        {"type": "way", "id": 200, "nodes": [20, 2], "tags": {"name": "Severn Way"}},
+        {"type": "way", "id": 300, "nodes": [30, 31], "tags": {"name": "Boulters Way"}},
+    ]  # fmt: skip
+    return nodes + ways
+
+
+def test_the_trail_is_drawn_between_where_the_two_streets_meet_it() -> None:
+    line = pa.stretch_between(_elements(), "B&A Trail", "Severn Way", "Boulters Way")
+    # From the shared node 2 to node 4, the trail node nearest Boulters Way (about 30 m off).
+    assert line == [[-76.508, 39.02], [-76.507, 39.02], [-76.506, 39.02]]
+    # Either way round, the same stretch.
+    back = pa.stretch_between(_elements(), "B&A Trail", "Boulters Way", "Severn Way")
+    assert back == line[::-1]
+
+
+def test_an_unclear_place_is_not_drawn() -> None:
+    # A street that is not near the trail, or a trail the map does not name so: a person decides.
+    assert pa.stretch_between(_elements(), "B&A Trail", "Severn Way", "Main Street") is None
+    assert (
+        pa.stretch_between(_elements(), "South Shore Trail", "Severn Way", "Boulters Way") is None
+    )
+
+
+def test_the_agencies_short_names_match_the_maps_long_ones() -> None:
+    tags = {"name": "Baltimore & Annapolis Trail"}
+    assert pa._named(tags, "B&A Trail") and pa._named(tags, "Baltimore & Annapolis Trail")
+    assert not pa._named(tags, "W&OD Trail") and not pa._named(tags, "B&A Path")
+    assert pa._named({"name": "Washington & Old Dominion Railroad Regional Park"}, "W&OD") is False
+    assert pa._named({"name": "Washington and Old Dominion Trail"}, "W&OD Trail")
+
+
+def test_a_road_matches_its_maps_name_written_out_or_shortened() -> None:
+    # The pages write "Fourth Street" and "Gorman Ave"; OpenStreetMap has "4th Street" and
+    # "Gorman Avenue" (City of Laurel's closures, read by the closure agent, 2026-11-28).
+    assert pa._named({"name": "4th Street"}, "Fourth Street")
+    assert pa._named({"name": "Gorman Avenue"}, "Gorman Ave")
+    assert not pa._named({"name": "14th Street"}, "Fourth Street")
+    assert not pa._named({"name": "5th Street"}, "Fourth Street")
+
+
+def test_a_quadrant_tells_two_streets_apart() -> None:
+    assert pa._named({"name": "4th Street Northwest"}, "Fourth Street NW")
+    assert not pa._named({"name": "4th Street Southwest"}, "Fourth Street NW")

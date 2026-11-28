@@ -710,3 +710,39 @@ def test_a_way_crossing_the_city_line_keeps_another_agency_s_blocks() -> None:
     crossing = _Way(9, {"highway": "secondary", "name": "K Street"}, line((0, 4), (600, 4)))
     facts = _facts_for(crossing, blocks=[city, dc])
     assert facts[9].blocks == ("dc",)
+
+
+# -- FDOT's Roadway Characteristics Inventory: the state roads of Southwest Florida
+
+
+def _fdot(block_id: str, coords, **properties):
+    from routemaker import agency_roads
+
+    return RoadFeature(block_id, coords, agency_roads.parse_fdot_rci(properties))
+
+
+def test_an_fdot_speed_reaches_its_state_road_over_osms() -> None:
+    """The state's posted 45 on a state road, over OSM's 35."""
+    from pipeline.conflation import overlay_road_facts
+    from routemaker import agency_roads
+
+    speed = _fdot("fdot-speed-1-0", line((0, 0), (300, 0)), ROADWAY="12000154", SPEED=45)
+    road = _Way(
+        20,
+        {"highway": "primary", "name": "Bonita Beach Road", "maxspeed": "35 mph"},
+        line((0, 4), (300, 4)),
+    )
+    facts = _facts_for(road, blocks=[speed])
+    assert facts[20].agency == agency_roads.FDOT_AGENCY
+    overlay = overlay_road_facts([road], facts)[20]
+    assert overlay.tags["maxspeed"] == "45 mph"
+    assert overlay.sources["maxspeed"] == agency_roads.FDOT_AGENCY
+
+
+@pytest.mark.parametrize("highway", ["residential", "service", "unclassified", "cycleway"])
+def test_an_fdot_record_never_reaches_a_street_beside_the_state_road(highway) -> None:
+    """The layer names no street, so its record is held to a state road's classes: a side
+    street or a service road along it keeps OSM's facts."""
+    speed = _fdot("fdot-speed-2-0", line((0, 0), (300, 0)), ROADWAY="12000154", SPEED=45)
+    beside = _Way(21, {"highway": highway, "name": "Frontage Road"}, line((0, 4), (300, 4)))
+    assert 21 not in _facts_for(beside, blocks=[speed])

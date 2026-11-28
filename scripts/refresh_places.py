@@ -78,6 +78,12 @@ def _feature_items(doc: dict) -> list[str]:
     return [json.dumps(f.get("properties", {}), sort_keys=True) for f in doc.get("features", [])]
 
 
+def _beach_items(doc: dict) -> list[str]:
+    """The beaches by OSM id and the tide-line paths by way id (scripts/build_beaches.py)."""
+    props = [f.get("properties", {}) for f in doc.get("features", [])]
+    return [str(p.get("osm") or f"path-{p.get('way')}") for p in props]
+
+
 def _barrier_items(doc: dict) -> list[str]:
     return [f"{b[0]},{b[1]}" for b in doc.get("barriers", [])]
 
@@ -124,6 +130,13 @@ SNAPSHOTS: tuple[Snapshot, ...] = (
         "build_restricted_sites.py",
         lambda pbf, _: ["--pbf", str(pbf)],
         _feature_items,
+    ),
+    Snapshot(
+        "beaches",
+        REPO / "frontend" / "src" / "beach-data" / "beaches.json",
+        "build_beaches.py",
+        lambda pbf, _: ["--pbf", str(pbf)],
+        _beach_items,
     ),
     Snapshot(
         "barriers",

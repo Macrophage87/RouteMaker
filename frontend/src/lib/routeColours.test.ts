@@ -114,7 +114,7 @@ test("a paved Avoid section carries the white dash-dot, in every palette; nothin
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   const unpavedAt = mapView.indexOf("map.addLayer(routeUnpavedLayer(");
   const avoidAt = mapView.indexOf("map.addLayer(routeAvoidLayer(");
-  assert.ok(unpavedAt > 0 && avoidAt > unpavedAt && avoidAt < mapView.indexOf('id: "route-line"'));
+  assert.ok(unpavedAt > 0 && avoidAt > unpavedAt && avoidAt < mapView.indexOf("id: ROUTE_LINE_LAYER,"));
   // The legend's swatch draws it too: the same dash-dot, in SVG units of the mark's width (r4 mutation NIT 8).
   const w = avoidClass.width;
   assert.equal(routeMarkDash(w), ROUTE_AVOID_MARK_DASH.map((d) => d * routeMarkWidth(w)).join(" "));

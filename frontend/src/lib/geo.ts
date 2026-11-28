@@ -35,9 +35,49 @@ export function pathLengthM(points: readonly LonLat[]): number {
   return total;
 }
 
-export function insideCoverage([lon, lat]: LonLat): boolean {
-  const [west, south, east, north] = COVERAGE_BBOX;
+/** One area's box, (west, south, east, north). */
+export type Box = readonly [number, number, number, number];
+
+/**
+ * The map's areas (core.api.coverage_geometry, routemaker.coverage): the home box until GET /api/coverage
+ * answers, then one box per area it serves. A later area (Southwest Florida, the owner, 2026-11-23) is its own
+ * island of roads, so a point is covered in any of them and the land between them is not.
+ */
+let areas: readonly Box[] = [COVERAGE_BBOX];
+
+export function coverageAreas(): readonly Box[] {
+  return areas;
+}
+
+/** Take the areas GET /api/coverage served; an empty list keeps the ones held. */
+export function setCoverageAreas(next: readonly Box[]): void {
+  if (next.length > 0) areas = next;
+}
+
+function inBox([west, south, east, north]: Box, [lon, lat]: LonLat): boolean {
   return lon >= west && lon <= east && lat >= south && lat <= north;
+}
+
+/** The area a point is in, or null outside them all. */
+export function areaOf(point: LonLat): Box | null {
+  return areas.find((box) => inBox(box, point)) ?? null;
+}
+
+/** How far past the areas' rectangle the map may be panned, degrees. */
+export const MAX_BOUNDS_PAD = 0.4;
+
+/** The one rectangle around every area: how far the map may be panned. */
+export function coverageEnvelope(): Box {
+  return [
+    Math.min(...areas.map((b) => b[0])),
+    Math.min(...areas.map((b) => b[1])),
+    Math.max(...areas.map((b) => b[2])),
+    Math.max(...areas.map((b) => b[3])),
+  ];
+}
+
+export function insideCoverage(point: LonLat): boolean {
+  return areaOf(point) !== null;
 }
 
 /**

@@ -83,6 +83,8 @@ export interface PackArea {
   outline: LonLat[] | null;
   outsideBeltway: boolean;
   whole: boolean;
+  /** A later map area's own pack (Southwest Florida): not part of the whole map, which is the home area. */
+  separate?: boolean;
 }
 
 /** One pack as GET /api/offline/packs lists it. */
@@ -118,11 +120,16 @@ export interface KeptPack {
 
 function readArea(raw: unknown): PackArea | null {
   if (!raw || typeof raw !== "object") return null;
-  const area = raw as { outline?: unknown; outside_beltway?: unknown; whole?: unknown };
+  const area = raw as { outline?: unknown; outside_beltway?: unknown; whole?: unknown; separate?: unknown };
   const outline = Array.isArray(area.outline)
     ? (area.outline.filter((p): p is LonLat => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number")) as LonLat[])
     : null;
-  return { outline: outline && outline.length >= 4 ? outline : null, outsideBeltway: area.outside_beltway === true, whole: area.whole === true };
+  return {
+    outline: outline && outline.length >= 4 ? outline : null,
+    outsideBeltway: area.outside_beltway === true,
+    whole: area.whole === true,
+    ...(area.separate === true ? { separate: true } : {}),
+  };
 }
 
 /** The packs on offer, or null (no signal, not built yet, refused). Never throws. */
@@ -228,7 +235,7 @@ export function covers(id: string, here: LonLat, found: Areas = read<Areas>(AREA
   const area = found.areas[id];
   if (!area) return false;
   if (area.whole) return inBox(here, found.box);
-  const beltway = Object.values(found.areas).find((a) => a.outline && !a.outsideBeltway)?.outline;
+  const beltway = Object.values(found.areas).find((a) => a.outline && !a.outsideBeltway && !a.separate)?.outline;
   if (area.outline) return inRing(here, area.outline) && !(area.outsideBeltway && beltway && inRing(here, beltway));
   // The map less every outlined area.
   return inBox(here, found.box) && !Object.values(found.areas).some((a) => a.outline && inRing(here, a.outline));
@@ -247,7 +254,7 @@ export function packFor(here: LonLat | null | undefined, kept: KeptPack[] = kept
       const holding = parts.find((k) => covers(k.id, here, areas));
       if (holding) return holding.id;
       const whole = kept.find((k) => areas.areas[k.id]?.whole);
-      if (whole) return whole.id;
+      if (whole && covers(whole.id, here, areas)) return whole.id;
     }
   }
   return kept.length === 1 ? kept[0].id : null;
@@ -384,14 +391,18 @@ async function fetchAndKeep(job: Job): Promise<DownloadOutcome> {
   }
   const before = keptPacks();
   // Deleted while it downloaded, or an area landing after the whole map was kept (which holds it): not kept.
-  const holds = !pack.area?.whole && before.some((k) => k.id !== pack.id && (storedAreas()?.areas[k.id]?.whole ?? k.id === "all"));
+  const holds =
+    !pack.area?.whole && !pack.area?.separate && before.some((k) => k.id !== pack.id && (storedAreas()?.areas[k.id]?.whole ?? k.id === "all"));
   if (job.cancelled || holds) {
     if (!before.some((k) => k.key === pack.id)) await store.delete(pack.id).catch(() => undefined);
     return "cancelled";
   }
   const kept: KeptPack = { id: pack.id, name: pack.name, buildId: list.buildId, bytes: bytes.byteLength, sha256: pack.sha256, levelFactor: list.levelFactor, key: pack.id };
   // The whole map stands for every area: the separate ones are removed once it is in.
-  const gone = pack.area?.whole ? before.filter((k) => k.id !== pack.id) : before.filter((k) => k.id === pack.id && k.key !== pack.id);
+  // A later area's own pack (separate) is not in it, so it stays.
+  const gone = pack.area?.whole
+    ? before.filter((k) => k.id !== pack.id && !storedAreas()?.areas[k.id]?.separate)
+    : before.filter((k) => k.id === pack.id && k.key !== pack.id);
   writeKept([...before.filter((k) => k.id !== pack.id && !gone.includes(k)), kept]);
   for (const k of gone) await store.delete(k.key).catch(() => undefined);
   return "kept";

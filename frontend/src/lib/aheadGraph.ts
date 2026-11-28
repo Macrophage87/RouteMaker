@@ -579,6 +579,13 @@ export interface TurnMark {
   m: number;
   /** A turn's arrow; null for a junction marker that is not a turn. */
   movement: TurnMovementKey | null;
+  /**
+   * The turns drawn with it as one arrow (lib/jogArrow.ts, as the cue card draws a jog): a jog's later turns, and the
+   * turns of marks too close to draw apart (the owner, 2026-11-22: "Can it show the merged arrow?").
+   */
+  then?: TurnMovementKey[];
+  /** A circle's exit: never one arrow with other turns (its ring says more), as on the cue card. */
+  exit?: true;
   /** Orange (a triangle) and red (a diamond) as the planner's junction markers; "avoid" an Avoid stretch's start. */
   severity: "orange" | "red" | "avoid" | null;
   /** The raters' level there (3 to 5): the mark is drawn in that level's stress colour, a dot where it is not a turn. */
@@ -598,7 +605,11 @@ interface CueLike {
   ratedLevel?: number;
   /** A jog's later turn: drawn with the jog's first, as the cue card draws it. */
   joined?: boolean;
-  /** A short path straight across a road: not a turn on the card, so not one here. */
+  /** A jog's later turns, on its first. */
+  then?: readonly { movement: string; exit?: unknown }[];
+  /** A circle's exit, on a turn at one. */
+  exit?: unknown;
+  /** A short path straight across a road: not a turn on the card, so not one here; the turn after it (`then`) is. */
   cross?: string;
   source?: string;
   /** A stop's number, on a "stop" cue. */
@@ -607,7 +618,7 @@ interface CueLike {
 
 /**
  * The turns and the stress markers in the window: each turn the card shows (a jog as one, a crossing straight over not
- * at all), each junction the planner flagged orange or red, and where an Avoid stretch starts. Not work zones or
+ * at all but the turn after it, a busy one as a junction marker), each junction the planner flagged orange or red, and where an Avoid stretch starts. Not work zones or
  * hazards: they are not junctions.
  */
 export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWindow, "fromM" | "toM">, stopIcon: (cue: C) => NoteIcon | undefined = () => undefined): TurnMark[] {
@@ -617,7 +628,21 @@ export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWi
     if (c.kind === "stop") {
       marks.push({ m: c.atM, movement: null, severity: null, stop: { number: c.stop ?? null, icon: stopIcon(c) ?? null } });
     } else if (c.kind === "turn") {
-      if (c.movement !== null && !c.joined && !c.cross) marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null, ...rated(c) });
+      const severity = c.severity === "orange" || c.severity === "red" ? c.severity : null;
+      if (c.cross) {
+        // A crossing straight over is not a turn, but the turn after it, said on the same card ("Cross Shellhorn Road,
+        // then left onto the path"), is: drawn here, as the jog's later turn is never drawn on its own. A busy crossing
+        // with no turn after it keeps its junction marker.
+        // A circle's exit after it keeps the exit's arrow alone, as on any other turn.
+        const exit = !!c.then?.some((t) => t.exit);
+        const [movement = null, ...rest] = (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));
+        const then = exit ? [] : rest;
+        if (movement || severity) marks.push({ m: c.atM, movement, severity, ...rated(c), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) });
+      } else if (c.movement !== null && !c.joined) {
+        const exit = !!c.exit || !!c.then?.some((t) => t.exit);
+        const then = exit ? [] : (c.then ?? []).map((t) => t.movement).filter((m): m is TurnMovementKey => Object.hasOwn(TURN_KEYS, m));
+        marks.push({ m: c.atM, movement: c.movement, severity, ...rated(c), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) });
+      }
     } else if (c.source === "junction" && (c.severity === "orange" || c.severity === "red")) {
       marks.push({ m: c.atM, movement: null, severity: c.severity, ...rated(c) });
     } else if (c.source === "avoid") {
@@ -627,6 +652,8 @@ export function turnMarks<C extends CueLike>(cues: readonly C[], w: Pick<AheadWi
   return marks;
 }
 
+const TURN_KEYS: Record<TurnMovementKey, true> = { left: true, right: true, bear_left: true, bear_right: true, uturn: true };
+
 function rated(c: CueLike): { rated?: number } {
   return c.ratedLevel != null && (c.severity === "orange" || c.severity === "red") ? { rated: c.ratedLevel } : {};
 }
@@ -634,7 +661,8 @@ function rated(c: CueLike): { rated?: number } {
 const RANK: Record<string, number> = { red: 3, orange: 2, avoid: 1 };
 
 /**
- * Marks closer than `minM` drawn as one, so they never pile up: the turn's arrow kept, in the worse colour of the two.
+ * Marks closer than `minM` drawn as one, so they never pile up: their turns as one arrow (`then`; the owner, 2026-11-22:
+ * "Can it show the merged arrow?"), in the worse colour of the two (both are movements the route makes).
  * A stop is never joined to a turn or a junction marker (the review: a stop must not hide a busy junction): both drawn.
  */
 export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[] {
@@ -644,7 +672,11 @@ export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[
     if (last && mark.m - last.m < minM && !last.stop && !mark.stop) {
       const severity = (RANK[mark.severity ?? ""] ?? 0) > (RANK[last.severity ?? ""] ?? 0) ? mark.severity : last.severity;
       const worst = Math.max(last.rated ?? 0, mark.rated ?? 0);
-      out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity, ...(worst ? { rated: worst } : {}) };
+      // A circle's exit is never joined into one arrow: the first turn's arrow is kept, as before.
+      const exit = !!last.exit || !!mark.exit;
+      const turns = exit ? [last.movement ?? mark.movement] : [last.movement, ...(last.then ?? []), mark.movement, ...(mark.then ?? [])];
+      const [movement = null, ...then] = turns.filter((m): m is TurnMovementKey => m !== null);
+      out[out.length - 1] = { m: last.m, movement, severity, ...(worst ? { rated: worst } : {}), ...(then.length ? { then } : {}), ...(exit ? { exit: true as const } : {}) };
       continue;
     }
     out.push({ ...mark });
@@ -655,7 +687,8 @@ export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[
 /** "Turns ahead: 3. Busy junctions: 1.", or nothing where there are neither. */
 export function turnsSentence(marks: readonly TurnMark[], youM: number): string {
   const ahead = marks.filter((mark) => mark.m >= youM);
-  const turns = ahead.filter((mark) => mark.movement !== null).length;
+  // A merged arrow (spreadMarks) is its turn and each that follows it: counted as the cue cards count them.
+  const turns = ahead.reduce((n, mark) => n + (mark.movement !== null ? 1 + (mark.then?.length ?? 0) : 0), 0);
   const busy = ahead.filter((mark) => mark.severity === "orange" || mark.severity === "red").length;
   // A part that is zero is left out (the v0.19.0 release review: "Turns ahead: 0" said on a stretch with no turns).
   if (turns && busy) return t("Turns ahead: {turns}. Busy junctions: {busy}.", { turns, busy });

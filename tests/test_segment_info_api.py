@@ -744,7 +744,7 @@ class TestAnswer:
         stress = section(get(client).json(), "stress")
         assert stress["Level"]["value"] == "Avoid"
         assert stress["Level"]["source"] == "Owner override"
-        assert stress["Why"]["value"] == "Owner-rated corridor"
+        assert stress["Why"]["value"] == "Rated from this road's own evidence"
         assert stress["Before the override"]["value"] == "LTS 3: For experienced cyclists"
         assert stress["Owner's reason"]["value"] == "Speed"
         # A route-only note is never shown on a map click.
@@ -888,7 +888,7 @@ class TestWords:
                 "override: stress adjustment moco-lts5-georgia-avenue",
                 "Montgomery County rates it LTS 5, which means very high stress: LTS 4.5 here",
             ),
-            ("named corridor: c1, e2", "Owner-rated corridor"),
+            ("named corridor: c1, e2", "Rated from this road's own evidence"),
             ("trail-class way (footway)", "Path away from traffic"),
             (
                 "trail-class way (path, not open to bicycles)",
@@ -1291,7 +1291,7 @@ def test_a_route_only_note_stays_off_the_road_panel() -> None:
     row = _adjusted_row("east-anacostia-suitland-parkway")
     row["stress_adjustment_note"] = "Freeway-grade highway with fast through traffic."
     rows = {r["label"]: r for r in segment_info.stress_rows(row)}
-    assert rows["Why"]["value"] == "Owner-rated corridor"
+    assert rows["Why"]["value"] == "Rated from this road's own evidence"
     assert "Note" not in rows
 
 
@@ -1301,7 +1301,7 @@ def test_an_owner_adjusted_row_still_reads_as_an_owner_override() -> None:
         for r in segment_info.stress_rows(_adjusted_row("east-anacostia-suitland-parkway"))
     }
     assert rows["Level"]["source"] == segment_info.OWNER
-    assert rows["Why"]["value"] == "Owner-rated corridor"
+    assert rows["Why"]["value"] == "Rated from this road's own evidence"
     assert rows["Owner's reason"]["value"] == "Other"
     assert "Before the override" in rows
 

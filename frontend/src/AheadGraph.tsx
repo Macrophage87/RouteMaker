@@ -57,15 +57,15 @@ import {
 import type { Cue } from "./lib/navigate.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
 import { ratedDotFill } from "./lib/ratedDot.ts";
-import { RatedDot } from "./chartParts.tsx";
+import { jogArrowPath } from "./lib/jogArrow.ts";
+import { RatedDot, StopMark } from "./chartParts.tsx";
 import { ROUTE_AVOID_MAGENTA } from "./lib/avoidColour.ts";
 import { GRADE_BAND_FILL } from "./lib/profileChart.ts";
 import { ACCESS_MODE_CLASS } from "./lib/accessMode.ts";
 import { units } from "./lib/units.ts";
 import { TRAIL_ROCK } from "./lib/trailRocks.ts";
-import { NOTE_ICONS, type NoteIcon } from "./lib/routeNotes.ts";
-import type { IconStyle } from "./lib/iconStyle.ts";
-import { NOTO_ICON_URLS, useIconStyle } from "./app/iconArt.tsx";
+import type { NoteIcon } from "./lib/routeNotes.ts";
+import { useIconStyle } from "./app/iconArt.tsx";
 
 /** The drawing's width, in viewBox units (about pixels on a phone), at the usual text size; larger text draws the same
  *  in a narrower box, so every word and mark grows with it (the v0.19.0 release review: the graph's text stayed 11 to
@@ -425,13 +425,26 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
   return (
     <g className="ride-ahead-turns">
       {/* Stops first, so a turn or busy junction beside one is drawn over it, never hidden. */}
-      {marks.map((mark, i) => mark.stop && <StopMark key={`s${i}`} stop={mark.stop} cx={x(mark.m)} cy={cy} r={(halo ? STOP_R_ON_RIBBON : STOP_R) * scale} iconStyle={iconStyle} />)}
+      {marks.map((mark, i) => mark.stop && <StopMark key={`s${i}`} number={mark.stop.number} icon={mark.stop.icon} cx={x(mark.m)} cy={cy} r={(halo ? STOP_R_ON_RIBBON : STOP_R) * scale} iconStyle={iconStyle} />)}
       {marks.map((mark, i) => {
         if (mark.stop) return null;
         const cx = x(mark.m);
         const flagged = mark.severity === "orange" || mark.severity === "red";
         // A rated junction takes its level's stress colour, as its dot on the map does.
         const colour = !flagged ? null : mark.rated != null ? { fill: ratedDotFill(mark.rated), stroke: "#1c1917" } : SEVERITY_COLOURS[mark.severity as "orange" | "red"];
+        const jog = mark.movement && mark.then?.length ? jogArrowPath({ movement: mark.movement, then: mark.then.map((movement) => ({ movement, street: null })) }) : null;
+        if (jog) {
+          // Turns drawn as one arrow, as the cue card draws a jog (lib/jogArrow.ts, its 48 x 56 box) at the strip's size.
+          const k = 0.42 * scale;
+          const width = (w: number) => ({ strokeWidth: w / k });
+          return (
+            <g key={i} transform={`translate(${cx - 24 * k} ${cy - 30 * k}) scale(${k})`} className={colour ? `ride-ahead-arrow ride-ahead-arrow-${mark.severity}` : "ride-ahead-arrow"}>
+              {halo && <path d={jog} className="ride-ahead-arrow-halo" style={width(6)} />}
+              {colour && <path d={jog} className="ride-ahead-arrow-edge" stroke={colour.stroke} style={width(5.5)} />}
+              <path d={jog} className="ride-ahead-arrow-shaft ride-ahead-arrow-jog" style={{ ...width(3), ...(colour ? { stroke: colour.fill } : {}) }} />
+            </g>
+          );
+        }
         if (mark.movement) {
           const arrow = ARROWS[mark.movement];
           return (
@@ -452,28 +465,6 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
         }
         return <rect key={i} x={cx - 7} y={cy - 7} width={14} height={14} fill={ROUTE_AVOID_MAGENTA} stroke="#1c1917" strokeWidth={1.5} />;
       })}
-    </g>
-  );
-}
-
-/** A stop in the turns' row: on a disc of the panel with an edge, so it reads on the ribbon too. */
-function StopMark({ stop, cx, cy, r, iconStyle }: { stop: NonNullable<TurnMark["stop"]>; cx: number; cy: number; r: number; iconStyle: IconStyle }) {
-  return (
-    <g className="ride-ahead-stop">
-      <circle cx={cx} cy={cy} r={r} className="ride-ahead-stop-disc" />
-      {stop.icon ? (
-        iconStyle === "emoji" ? (
-          <text x={cx} y={cy + 5} textAnchor="middle" className="ride-ahead-stop-emoji">
-            {NOTE_ICONS[stop.icon]}
-          </text>
-        ) : (
-          <image href={NOTO_ICON_URLS[stop.icon]} x={cx - r + 2} y={cy - r + 2} width={2 * r - 4} height={2 * r - 4} />
-        )
-      ) : (
-        <text x={cx} y={cy + 4.5} textAnchor="middle" className="ride-ahead-stop-number">
-          {stop.number ?? ""}
-        </text>
-      )}
     </g>
   );
 }

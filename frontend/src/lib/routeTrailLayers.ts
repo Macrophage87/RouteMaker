@@ -15,6 +15,11 @@ export const ROUTE_TRAIL_LAYER = "route-trail";
 export const ROUTE_TRAIL_ROCK_EDGE_LAYER = "route-trail-rocks-edge";
 export const ROUTE_TRAIL_ROCK_LAYER = "route-trail-rocks";
 export const ROUTE_TRAIL_LAYER_IDS = [ROUTE_TRAIL_ROCK_EDGE_LAYER, ROUTE_TRAIL_ROCK_LAYER, ROUTE_TRAIL_LAYER] as const;
+/** The route's blue line and the white gaps over its hand-drawn legs, as MapView adds them under the trail layers. */
+export const ROUTE_LINE_LAYER = "route-line";
+export const ROUTE_DRAWN_GAPS_LAYER = "route-drawn-gaps";
+/** The route's line layers, for what is drawn just over them (lib/waterRestrooms.ts waterLayerBefore). */
+export const ROUTE_LINE_LAYERS = [ROUTE_LINE_LAYER, ROUTE_DRAWN_GAPS_LAYER, ...ROUTE_TRAIL_LAYER_IDS];
 /** The stones: each this wide (pixels), on each side of the line, this far apart along it. */
 export const ROCK_PX = 3;
 export const ROCK_EDGE_PX = 4.5;

@@ -10,6 +10,10 @@
  * site's every piece carries its name and "No public access" (zoom rules below). A trip
  * point inside one is routed to its gate by the API (core.routing, move_restricted_points), which says so.
  *
+ * Gated communities (kind "gated": streets that reach the rest only through a closed gate, routemaker.gated) are
+ * closed the same way, and washed in their own colour. The owner, 2026-11-26: "Have them closed, like with
+ * restricted areas in dc, but with a different color."
+ *
  * These are functions of a small map interface so a test can run them against a stand-in (the real map needs WebGL).
  */
 import { MAP_LABEL_FONT } from "./mapGlyphs.ts";
@@ -44,6 +48,13 @@ export const RESTRICTED_STYLE = {
   dark: { tint: "#000000", tintOpacity: 0.35, ink: [210, 210, 225, 102] as const, edge: "#a8a8bc", text: "#ececf4", halo: "#1f1f1f" },
 } as const;
 
+/** A gated community's kind, and its wash and edge (our defaults, unmeasured: a warm brown, apart from the grey). */
+export const GATED_KIND = "gated";
+export const GATED_STYLE = {
+  light: { tint: "#9a6a2f", tintOpacity: 0.14, edge: "#7a5020" },
+  dark: { tint: "#c08a48", tintOpacity: 0.2, edge: "#d6a466" },
+} as const;
+
 const isArea = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
 const isLabel = ["all", ["==", ["geometry-type"], "Point"], ["has", "name"]];
 
@@ -63,6 +74,8 @@ export function hatchImage(ink: readonly [number, number, number, number]): { wi
 /** The layers, on the light map or the dark. */
 export function restrictedLayers(dark = false, noAccess = t(NO_PUBLIC_ACCESS)): Record<string, unknown>[] {
   const s = dark ? RESTRICTED_STYLE.dark : RESTRICTED_STYLE.light;
+  const g = dark ? GATED_STYLE.dark : GATED_STYLE.light;
+  const byKind = (gatedColour: string | number, other: string | number) => ["match", ["get", "kind"], GATED_KIND, gatedColour, other];
   const name = ["get", "name"];
   const full = ["format", name, {}, "\n", {}, noAccess, { "font-scale": 0.82 }];
   const small = ["==", ["get", "small"], true];
@@ -73,7 +86,7 @@ export function restrictedLayers(dark = false, noAccess = t(NO_PUBLIC_ACCESS)): 
       source: RESTRICTED_SOURCE_ID,
       minzoom: RESTRICTED_MIN_ZOOM,
       filter: isArea,
-      paint: { "fill-color": s.tint, "fill-opacity": s.tintOpacity },
+      paint: { "fill-color": byKind(g.tint, s.tint), "fill-opacity": byKind(g.tintOpacity, s.tintOpacity) },
     },
     {
       id: RESTRICTED_HATCH_LAYER,
@@ -89,7 +102,7 @@ export function restrictedLayers(dark = false, noAccess = t(NO_PUBLIC_ACCESS)): 
       source: RESTRICTED_SOURCE_ID,
       minzoom: RESTRICTED_MIN_ZOOM,
       filter: isArea,
-      paint: { "line-color": s.edge, "line-width": 1.5, "line-dasharray": [3, 2] },
+      paint: { "line-color": byKind(g.edge, s.edge), "line-width": 1.5, "line-dasharray": [3, 2] },
     },
     {
       id: RESTRICTED_LABEL_LAYER,
