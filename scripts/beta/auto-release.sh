@@ -740,9 +740,8 @@ build_api() { # src-dir short-sha
 }
 
 # The image a release-workflow tag names: its build provenance first (GitHub's attestations for the
-# digest must say this repository's release workflow on main built it, the run the owner approved),
-# then the pull, tagged with the release's TAG; the digest reference is dropped again so pruning the
-# tag frees the image. Returns 0 when the image is here, 1 when its provenance does not check out
+# digest must say this repository's release workflow on main built it), then the pull, tagged with
+# the release's TAG (pruning that tag later drops the digest reference with it). Returns 0 when the image is here, 1 when its provenance does not check out
 # (hold the tag), 2 when GitHub or the registry did not answer (try again next pass).
 pull_ci_image() { # image@sha256:... commit
 	local image=$1 commit=$2 short=${2:0:12} body code verdict
@@ -763,7 +762,9 @@ pull_ci_image() { # image@sha256:... commit
 	esac
 	say "step: pull the api image the release workflow built ($image)"
 	quiet dk pull "$image" </dev/null && quiet dk tag "$image" "$API_IMAGE:$short" </dev/null || return 2
-	quiet dk image rm "$image" </dev/null || true
+	# No `docker image rm "$image"` after the tag: on the beta's Docker, removing the digest
+	# reference untagged the new tag too and deleted the image (v0.31.0, by hand, 2026-11-28).
+	quiet dk image inspect "$API_IMAGE:$short" </dev/null || { say "the pulled image is not tagged $API_IMAGE:$short"; return 2; }
 }
 
 # A release with nothing for the server (documentation, CI, a new tag on the deployed commit):
