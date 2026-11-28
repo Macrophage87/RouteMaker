@@ -1207,13 +1207,17 @@ def build_junctions(
                 crossed = (road(chosen, chosen.way_id, same),)
             links = crossed_links(node, raw)
         # Whether the movement meets the busiest road at the node (`Junction.meets_top`),
-        # by the map's levels, paths left out: its own roads in and out, or a road on either
-        # side of its crossing (`crossing_sides`), which the quieter `crossed` may stand for.
+        # by the map's levels, paths left out. A left meets it where it turns off or onto it
+        # (the junction brief's `left`): a path beside the road joining its node lies with
+        # the road's arms on the right of a left off the path, which it never crosses.
+        # Straight on, a road on either side of the crossing counts too (`crossing_sides`),
+        # which the quieter `crossed` may stand for.
         meets_top = None
         if node is not None:
             top = max((tier_level(a) for a in node.arms if a.is_road), default=None)
             own = [node.in_arm] + ([node.out_arm] if node.out_arm is not None else [])
-            sides = [a for side in (found or ()) for a in side]
+            straight = raw.movement is Movement.STRAIGHT
+            sides = [a for side in (found or ()) for a in side] if straight else []
             if top and all(road(a, a.way_id).tier is not None for a in own):
                 meets_top = any(tier_level(a) >= top for a in (*own, *sides))
         in_arms = [node.in_arm] if node is not None else []

@@ -1405,8 +1405,6 @@ class TestBuild:
 
     def test_the_busiest_road_at_the_node_is_carried(self) -> None:
         """The raters' left and crossing are about it (`intersections.rater_move`)."""
-        """Straight across way 20 (LTS 4): it meets the busiest road. Its own road
-        unknown: not read."""
         assert self.built(crossroads()).meets_top is True
         assert self.built(crossroads(), roads={(0, 20): Road(4)}).meets_top is None
 
@@ -1433,23 +1431,47 @@ class TestBuild:
         assert [r.tier for r in made.crossed] == [3]
         assert made.meets_top is True
 
-    def test_a_turn_off_a_path_onto_a_side_street_misses_the_arterial(self) -> None:
-        """A path joins the arterial's node (way 20, LTS 4, east-west) and the rider turns
-        right off it onto the side street (way 30, LTS 3) south: never on the arterial."""
-        node_answer = answer(
+    @staticmethod
+    def _path_at_the_arterial():
+        """Pacific Blvd x Dresden St's south carriageway node, by bearings: the one-way
+        carriageway (way 20, LTS 4) runs west to east, Dresden St (way 30, LTS 3) leaves
+        north and south, and the side path (way 10) joins from the east-south-east."""
+        return answer(
             [
-                edge(1, 10, N, 1.0, 0.0, use="cycleway"),  # path arriving from the south-ish
-                edge(2, 30, 901, 0.0, 90.0),  # side street leaving east
-                edge(3, 30, N, 1.0, 270.0),
-                edge(5, 20, 902, 0.0, 0.0),  # arterial leaving north
-                edge(6, 20, N, 1.0, 180.0),
+                edge(1, 10, N, 1.0, 280.0, use="cycleway"),  # path arriving, heading west
+                edge(2, 30, 901, 0.0, 180.0),  # Dresden St leaving south (the way out)
+                edge(3, 30, N, 1.0, 0.0),
+                edge(4, 31, 902, 0.0, 0.0),  # Dresden St leaving north
+                edge(5, 31, N, 1.0, 180.0),
+                edge(6, 20, N, 1.0, 90.0, names=["Pacific Blvd"]),  # arriving from the west
+                edge(7, 20, 903, 0.0, 90.0, names=["Pacific Blvd"]),  # leaving east
             ],
             [node(N)],
         )
-        roads = {(0, 10): Road(2), (0, 20): Road(4, 45, 2), (0, 30): Road(3, 35, 2)}
-        turn = raw(in_way=10, out_way=30, movement=Movement.RIGHT, in_use="cycleway")
-        made = self.built(node_answer, turn, roads=roads)
+
+    def test_a_left_off_a_path_onto_a_side_street_misses_the_arterial(self) -> None:
+        """The owner, 2026-11-28: the left read Pacific Blvd's rated left, 4.5."""
+        roads = {
+            (0, 10): Road(2),
+            (0, 20): Road(4, 45, 2, oneway=True),
+            (0, 30): Road(3, 35, 2),
+            (0, 31): Road(3, 35, 2),
+        }
+        left = raw(in_way=10, out_way=30, movement=Movement.LEFT, in_use="cycleway", out_edge_id=2)
+        made = self.built(self._path_at_the_arterial(), left, roads=roads)
         assert made.meets_top is False
+        # From Dresden St, a left onto the carriageway turns onto the arterial.
+        onto = answer(
+            [
+                edge(3, 30, N, 1.0, 0.0),  # Dresden St arriving from the south, heading north
+                edge(7, 20, 903, 0.0, 270.0, names=["Pacific Blvd"]),  # leaving west
+                edge(4, 31, 902, 0.0, 0.0),
+                edge(6, 20, N, 1.0, 90.0, names=["Pacific Blvd"]),
+            ],
+            [node(N)],
+        )
+        turn = raw(in_edge_id=3, in_way=30, out_way=20, movement=Movement.LEFT, out_edge_id=7)
+        assert self.built(onto, turn, roads=roads).meets_top is True
 
     def test_the_movement_round_a_roundabout_is_carried(self) -> None:
         """Hunt J4: the trace's reading of a ride round a ring reaches the model."""
