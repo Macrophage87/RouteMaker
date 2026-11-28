@@ -127,6 +127,23 @@ export function stopCard(
   };
 }
 
+/**
+ * A layer whose points open the page's own card (a survey spot's, SurveyCard.tsx), not a stop card: a press on one is
+ * the card's in MapView's main click, as a stop's is (never a point or the destination).
+ */
+export function cardLayer(map: MapLibreMap, layer: string, onPick: (id: string) => void): () => void {
+  const onClick = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
+    const id = event.features?.[0]?.properties?.id;
+    if (typeof id === "string") onPick(id);
+  };
+  map.on("click", layer, onClick);
+  stopLayers.add(layer);
+  return () => {
+    map.off("click", layer, onClick);
+    stopLayers.delete(layer);
+  };
+}
+
 /** The stop cards as MapView's main click sees them (lib/mapGlue.ts FeatureCards): a press on one is the card's. */
 export function stopCards(map: MapLibreMap): FeatureCards {
   return {

@@ -306,6 +306,127 @@ class TestEntering:
 
 
 @db
+class TestAgentClosures:
+    """The owner, 2026-11-28: "an agent that would check things periodically", and "downed trees
+    usually last about a day, so it's important to people riding today, but maybe not a week
+    into the future"."""
+
+    KEY = "aacounty:64ce39415d29:1"
+
+    def test_an_agents_closure_with_no_last_day_is_for_today_only(self, live) -> None:
+        client, csrf = reviewer_client()
+        body = {"line": ALONG[4:9], "reason": "Downed trees", "agent_key": self.KEY}
+        assert post(client, csrf, ENTER, body).status_code == 201
+        row = ReviewedClosure.objects.get()
+        assert row.agent_key == self.KEY and row.end is not None
+        from routemaker import ridetime
+
+        assert row.end.astimezone(ridetime.ZONE).date().isoformat() == days(1)
+        assert [c["title"] for c in workzones.closures_on(ALONG)["closures"]] == ["Closed"]
+        # A ride planned for tomorrow does not route round it...
+        tomorrow = timezone.now() + timedelta(days=1, hours=1)
+        assert workzones.closures_on(ALONG, at=tomorrow)["closures"] == []
+        # ...and the list says whose it is.
+        (listed,) = client.get(ENTER, **addr()).json()["closures"]
+        assert listed["agent_key"] == self.KEY
+        # A second for the same alert is refused: the agent extends the one it has.
+        assert post(client, csrf, ENTER, body).status_code == 409
+        # A person's closure has no key, and its no-last-day meaning stays "until ended".
+        person = reviewed_closures.create(make_user(), [WAY], "Bridge out")
+        assert person.agent_key == "" and person.end is None
+
+    def test_the_agent_moves_the_last_day_on_while_the_alert_stays(self, live) -> None:
+        client, csrf = reviewer_client()
+        body = {"line": ALONG[4:9], "reason": "Downed trees", "agent_key": self.KEY}
+        closure_id = post(client, csrf, ENTER, body).json()["id"]
+        before = workzones._load(timezone.now() + timedelta(minutes=5)).read_at["reviewer"]
+        answer = post(client, csrf, f"{ENTER}/{closure_id}/extend", {"end": days(1)})
+        assert answer.status_code == 200, answer.content
+        row = ReviewedClosure.objects.get()
+        from routemaker import ridetime
+
+        assert row.end.astimezone(ridetime.ZONE).date().isoformat() == days(2)
+        assert AuditLogEntry.objects.filter(action="closure_extend").count() == 1
+        # Other processes reread: the read time moved.
+        after = workzones._load(timezone.now() + timedelta(minutes=5)).read_at["reviewer"]
+        assert after != before and after == row.extended_at.isoformat()
+        tomorrow = timezone.now() + timedelta(days=1, hours=1)
+        assert len(workzones.closures_on(ALONG, at=tomorrow)["closures"]) == 1
+        # Asking again (the next check) leaves it as it is; no end means the region's tomorrow.
+        again = post(client, csrf, f"{ENTER}/{closure_id}/extend", {})
+        assert again.status_code == 200 and again.json()["message"] == f"Closed through {days(1)}."
+        assert AuditLogEntry.objects.filter(action="closure_extend").count() == 1
+        assert post(client, csrf, f"{ENTER}/{closure_id}/end", {}).status_code == 200
+        # An ended one is not extended: the agent enters it again.
+        late = post(client, csrf, f"{ENTER}/{closure_id}/extend", {"end": days(3)})
+        assert late.status_code == 409
+
+    def test_one_entered_late_in_the_day_runs_through_tomorrow(self, live, monkeypatch) -> None:
+        from datetime import datetime, time
+
+        from routemaker import ridetime
+
+        today = timezone.now().astimezone(ridetime.ZONE).date()
+        evening = datetime.combine(today, time(22, 30), ridetime.ZONE)
+        monkeypatch.setattr(timezone, "now", lambda: evening)
+        late = reviewed_closures.create(
+            make_user(), line=ALONG[4:9], reason="Downed trees", agent_key=self.KEY
+        )
+        assert late.end.astimezone(ridetime.ZONE).date() == today + timedelta(days=2)
+
+    def test_an_admins_connector_marks_extends_lists_and_ends_only_its_own(self, live) -> None:
+        from test_connector import call, mcp, tokens_for
+
+        _user, tokens, _ = tokens_for(make_user(admin=True))
+        token = tokens["access_token"]
+        names = {t["name"] for t in mcp(token, "tools/list").json()["result"]["tools"]}
+        assert {"mark_closed", "extend_closure", "end_closure", "agent_closures"} <= names
+        out = call(
+            token,
+            "mark_closed",
+            {
+                "line": ALONG[4:9],
+                "reason": "Downed trees on power lines",
+                "url": "https://example.org/closings",
+                "agent_key": self.KEY,
+            },
+        )
+        assert not out["isError"], out
+        closure_id = out["structuredContent"]["id"]
+        (row,) = call(token, "agent_closures", {})["structuredContent"]["closures"]
+        assert (row["id"], row["agent_key"]) == (closure_id, self.KEY)
+        out = call(token, "extend_closure", {"closure_id": closure_id})
+        assert not out["isError"], out
+        assert out["structuredContent"]["message"] == f"Closed through {days(1)}."
+        # A person's closure is not the agent's: not listed, not extended, not ended.
+        person = reviewed_closures.create(make_user(), [WAY], "Bridge out", end=days(5))
+        assert len(call(token, "agent_closures", {})["structuredContent"]["closures"]) == 1
+        assert call(token, "end_closure", {"closure_id": person.pk})["isError"]
+        assert call(token, "extend_closure", {"closure_id": person.pk, "end": days(9)})["isError"]
+        assert not call(token, "end_closure", {"closure_id": closure_id})["isError"]
+        assert call(token, "agent_closures", {})["structuredContent"]["closures"] == []
+        person.refresh_from_db()
+        assert person.ended_at is None
+
+    def test_a_riders_connector_is_not_offered_them(self, live) -> None:
+        from test_connector import mcp, tokens_for
+
+        _user, tokens, _ = tokens_for(make_user(admin=False))
+        token = tokens["access_token"]
+        names = {t["name"] for t in mcp(token, "tools/list").json()["result"]["tools"]}
+        assert not names & {"mark_closed", "extend_closure", "end_closure", "agent_closures"}
+        r = mcp(token, "tools/call", {"name": "mark_closed", "arguments": {}})
+        assert r.json()["error"]["code"] == -32602
+        assert not ReviewedClosure.objects.exists()
+
+    def test_an_alert_key_is_short_and_plain(self) -> None:
+        assert reviewed_closures.clean_agent_key(" nova:3983225cb0d9 ") == "nova:3983225cb0d9"
+        for bad in ("a b", "x" * 101, "<script>"):
+            with pytest.raises(stress_edits.Invalid):
+                reviewed_closures.clean_agent_key(bad)
+
+
+@db
 class TestRiderReports:
     def test_a_closed_report_needs_no_level_and_waits_with_the_closures(self, live) -> None:
         report = send(step=3, reasons=("closed",))  # the road's own level: no change asked

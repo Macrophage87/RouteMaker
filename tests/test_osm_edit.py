@@ -349,6 +349,28 @@ def test_a_way_s_car_access_may_be_corrected(osm, tmp_path):
     assert osm_edit.edit_problem(json.loads(closed.read_text())) is None
 
 
+def test_a_walk_mapped_as_a_sidewalk_may_lose_the_sidewalk_tag(osm, tmp_path):
+    # A walk joining two street ends, beside no street, mapped as a sidewalk.
+    walk = _edit(
+        tmp_path,
+        element="way",
+        expect={"footway": "sidewalk", "bicycle": None},
+        set={"footway": None, "bicycle": "yes"},
+    )
+    assert osm_edit.edit_problem(json.loads(walk.read_text())) is None
+
+
+def test_a_restroom_s_kind_may_be_set_from_the_spot(osm, tmp_path):
+    # A park restroom mapped with no kind, seen to be a flush one.
+    restroom = _edit(
+        tmp_path,
+        element="way",
+        expect={"toilets:disposal": None},
+        set={"toilets:disposal": "flush"},
+    )
+    assert osm_edit.edit_problem(json.loads(restroom.read_text())) is None
+
+
 def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
     assert osm_edit.main(["show", str(_edit(tmp_path))]) == 0
     assert "highway: None -> 'traffic_signals'" in capsys.readouterr().out
@@ -373,11 +395,22 @@ def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
             {"set": {"cycleway:lane": "advisory"}, "expect": {"cycleway:lane": None}},
             "not one this tool may change",
         ),
+        ({"set": {"footway": None}, "expect": {"footway": "sidewalk"}}, "footway may only"),
+        (
+            {"element": "way", "set": {"footway": "path"}, "expect": {"footway": "sidewalk"}},
+            "footway may only be removed or set to",
+        ),
+        (
+            {"set": {"toilets:disposal": "fancy"}, "expect": {"toilets:disposal": None}},
+            "toilets:disposal may only be set to",
+        ),
         ({"element": "relation"}, "node or way"),
         ({"id": True}, "positive OSM id"),
         ({"set": {"highway": " traffic_signals"}}, "no spaces at the ends"),
         ({"comment": ""}, "changeset note"),
         ({"source": "Google Street View"}, "survey or local_knowledge"),
+        # A linked agency rule speaks only to who may use a way, not to a signal.
+        ({"source": "https://www.nps.gov/bicy/planyourvisit/bicycling.htm"}, "may only change"),
         (
             {
                 "set": {
@@ -395,6 +428,19 @@ def test_edits_the_tool_will_not_send(osm, tmp_path, capsys, changes, words):
     assert osm_edit.main(["upload", str(_edit(tmp_path, **changes)), "--approved"]) == 1
     assert words in capsys.readouterr().err
     assert osm.calls == []
+
+
+def test_a_bicycle_rule_may_cite_the_managers_published_page(osm, tmp_path, capsys):
+    # The owner, 2026-11-26: "can we update osm with a link to the location where it says
+    # that?" (Florida trails a land manager lists for biking).
+    edit = _edit(
+        tmp_path,
+        element="way",
+        set={"bicycle": "yes"},
+        expect={"bicycle": None},
+        source="https://www.nps.gov/bicy/planyourvisit/bicycling.htm",
+    )
+    assert osm_edit.edit_problem(json.loads(edit.read_text())) is None
 
 
 def test_not_signed_in(osm, tmp_path, capsys):

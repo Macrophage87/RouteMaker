@@ -15,7 +15,9 @@
  * link it shares (lib/sharedRoutes.ts).
  */
 import { PAGE_NOTES } from "./routeNotes.ts";
-import type { RouteResponse } from "./api.ts";
+import { FOLLOW_MAX_POINTS, type RouteResponse } from "./api.ts";
+import { FOLLOW_MAX_M, thinForMatch } from "./gpxMatch.ts";
+import { cumulative } from "./trackMatch.ts";
 import { locale, t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
 import { formatClimb, formatDistance } from "./format.ts";
@@ -484,6 +486,42 @@ export async function restoreVersion(origin: string, id: number, versionId: numb
   } catch {
     return null;
   }
+}
+
+/**
+ * How far today's match of a saved line may be from the saved length for its directions to be taken (our default,
+ * unmeasured): the same line matched again moves only where a vertex snaps to a slightly different point. A tenth of
+ * a percent (the v0.31.0 review: half a percent let a 40 mi route's cues shift some 300 m), 25 m on a short route.
+ */
+export const SAME_LINE_SHARE = 0.001;
+export const SAME_LINE_M = 25;
+
+/**
+ * A reopened route's saved answer with today's directions (the owner, on a saved route: "The turn that I
+ * asked to keep as a test is STILL not shown!"). A save keeps the whole answer, its turn list too, so a cue fixed after
+ * the save (#1310, the Metropolitan Branch Trail's jog at Aspen Street) never reached it. `today` is the planner's
+ * answer following the saved line itself (`follow`, exactly): where it did follow it (`follows_file`) and comes out the
+ * same length with the same stops, its directions replace the saved ones. The line, and every other figure, stays as
+ * saved. Null where today's answer is not that line: the saved answer then stands as it is.
+ */
+export function withTodaysDirections(saved: RouteResponse, today: RouteResponse): RouteResponse | null {
+  if (today.follows_file !== true || !today.description?.length) return null;
+  const apart = Math.abs(today.distance_m - saved.distance_m);
+  if (!(apart <= Math.max(SAME_LINE_M, saved.distance_m * SAME_LINE_SHARE))) return null;
+  // The same stops, so the saved legs (`leg_ends`) still hold the directions' stop entries.
+  const stops = (route: RouteResponse) => (route.description ?? []).filter((e) => e.kind === "via").length;
+  if (stops(today) !== stops(saved)) return null;
+  return { ...saved, description: today.description, description_overview: today.description_overview ?? null };
+}
+
+/**
+ * The saved line as the planner is asked to follow it for today's directions (`withTodaysDirections`): thinned to
+ * what a followed line may hold; undefined for a loop (which the planner does not follow) or a line too long to follow.
+ */
+export function directionsLine(answer: Pick<RouteResponse, "geometry">, loop = false): LonLat[] | undefined {
+  const line = answer.geometry.coordinates.map((p) => [p[0], p[1]] as LonLat);
+  if (loop || line.length < 2 || (cumulative(line).at(-1) ?? 0) > FOLLOW_MAX_M) return undefined;
+  return thinForMatch(line, FOLLOW_MAX_POINTS);
 }
 
 /** The plan line and route a reopened planned route shows: its saved answer, unchanged. */

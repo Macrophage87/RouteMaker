@@ -286,6 +286,62 @@ def test_only_sidewalks_beside_a_45_or_avoid_road_keep_the_lower_price():
     assert 13 not in last, "a link keeps its price"
 
 
+def test_a_sidewalk_beside_a_fast_level_4_road_keeps_the_lower_price():
+    """A 45 mph road rated 4 (most of Southwest Florida's level 4 miles): its sidewalk is a
+    link. A 35 mph road rated 4, and one with no speed known, keep the last-resort price."""
+    from dataclasses import replace
+
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(10, {"highway": "primary"}, [(0.0, 0.0), (400.0, 0.0)]),
+        way(11, dict(SIDEWALK), [(20.0, 12.0), (380.0, 12.0)]),
+    ]
+    for speed, cheap in ((45.0, {11}), (55.0, {11}), (35.0, set()), (None, set())):
+        rating = replace(_stress(4), speed_mph=speed)
+        assert last_resort_sidewalks(ways, {10: rating}, {11}, set()) == {11} - cheap, speed
+    calm = replace(_stress(3), speed_mph=45.0)
+    assert last_resort_sidewalks(ways, {10: calm}, {11}, set()) == {11}
+
+
+def test_a_sidewalk_beside_no_road_is_priced_as_a_connector():
+    """Briggs Road, Glenmont (the owner's report): a walk tagged `footway=sidewalk`
+    joins the two ends of the street, 124 m, with no road beside it; the last-resort price
+    sent routes 0.7 mi round. A sidewalk beside a calm street keeps the last-resort price."""
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(20, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0)]),
+        way(21, dict(SIDEWALK), [(0.0, 0.0), (124.0, 0.0)]),
+        way(22, {"highway": "residential"}, [(124.0, 0.0), (400.0, 0.0)]),
+        way(23, dict(SIDEWALK), [(-280.0, 12.0), (-20.0, 12.0)]),
+    ]
+    last = last_resort_sidewalks(ways, {20: _stress(1), 22: _stress(1)}, {21, 23}, set())
+    assert last == {23}
+
+
+def test_a_short_walk_between_two_dead_ends_is_roadless():
+    ways = [
+        way(30, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0)]),
+        way(31, dict(SIDEWALK), [(0.0, 0.0), (60.0, 0.0)]),
+        way(32, {"highway": "residential"}, [(60.0, 0.0), (400.0, 0.0)]),
+    ]
+    from pipeline.run import last_resort_sidewalks
+
+    assert last_resort_sidewalks(ways, {}, {31}, set()) == set()
+
+
+def test_a_sidewalk_partly_along_an_lts_4_road_stays_last_resort():
+    """Half along a busy road, then off on its own: not a connector."""
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(40, {"highway": "primary"}, [(0.0, 0.0), (500.0, 0.0)]),
+        way(41, dict(SIDEWALK), [(0.0, 40.0), (500.0, 40.0), (1000.0, 300.0)]),
+    ]
+    assert last_resort_sidewalks(ways, {40: _stress(4)}, {41}, set()) == {41}
+
+
 def test_a_last_resort_sidewalk_is_rated_lts_4():
     from pipeline.run import raise_ridden_sidewalks
 
@@ -826,3 +882,133 @@ def test_the_most_specific_motor_key_decides_whether_the_public_drives():
     assert found({"highway": "service", "access": "yes", "motor_vehicle": "no"}) == {2}
     assert found({"highway": "service", "motor_vehicle": "no;destination"}) == {2}
     assert found({"highway": "pedestrian"}) == {2}
+
+
+def test_a_footway_joining_two_streets_is_drawn_as_a_street_link():
+    """Briggs Road, Glenmont (the owner's report): a walk joining the two ends of the street
+    is drawn; one off a single street node, or ending at a parking lot, is not."""
+    ways = [
+        (1, {"highway": "residential"}, [10, 11]),
+        (2, dict(SIDEWALK), [11, 12]),
+        (3, {"highway": "residential"}, [12, 13]),
+        # A walk in two pieces from a street to a parking lot's service road.
+        (4, {"highway": "footway", "bicycle": "yes"}, [13, 20]),
+        (5, {"highway": "footway", "bicycle": "yes"}, [20, 21]),
+        (6, {"highway": "service"}, [21, 22]),
+        # A walk from a street to a closed street.
+        (7, {"highway": "footway", "bicycle": "yes"}, [10, 30]),
+        (8, {"highway": "residential", "access": "private"}, [30, 31]),
+    ]
+    assert sw.street_links(ways, {2, 4, 5, 7}) == {2}
+    assert sw.street_links(ways, set()) == set()
+
+
+def test_roadless_sidewalks_feed_the_last_resort_rule():
+    from pipeline.run import last_resort_sidewalks, roadless_sidewalks
+
+    ways = [
+        way(20, {"highway": "residential"}, [(-300.0, 0.0), (0.0, 0.0)]),
+        way(21, dict(SIDEWALK), [(0.0, 0.0), (124.0, 0.0)]),
+        way(22, {"highway": "residential"}, [(124.0, 0.0), (400.0, 0.0)]),
+        way(23, dict(SIDEWALK), [(-280.0, 12.0), (-20.0, 12.0)]),
+    ]
+    roadless = roadless_sidewalks(ways, {21, 23}, set())
+    assert roadless == {21}
+    assert last_resort_sidewalks(ways, {}, {21, 23}, set(), roadless) == {23}
+
+
+# The rater brief, 2026-11-26 ("Sidewalks where the law lets bikes ride them"): a sidewalk a
+# rater rates below LTS 3 is the side path it is, priced as a path; a rater's level 4, a
+# formula's rating, or no row at all leaves the sidewalk's price as it was.
+def test_a_sidewalk_a_rater_rates_a_side_path_is_priced_as_a_path():
+    from dataclasses import replace
+
+    from pipeline import variants
+    from pipeline.run import rated_sidepath_sidewalks, sidewalk_derived
+
+    def rater(tier, half=False):
+        return replace(
+            _stress(tier, half), rule="override: stress adjustment 1", adjustment=object()
+        )
+
+    ratings = {
+        1: rater(1, half=True),
+        2: rater(2),
+        3: rater(4),
+        4: _stress(1),
+        6: rater(2),
+        7: rater(2),
+        8: rater(5),
+    }
+    ways = [way(i, dict(SIDEWALK), [(0.0, 0.0), (0.0, 50.0)]) for i in (1, 2, 3, 4, 5, 6, 8)]
+    ways.append(way(7, dict(CROSSWALK), [(0.0, 0.0), (0.0, 12.0)]))
+    found = rated_sidepath_sidewalks(ways, ratings, {1, 2, 3, 4, 5, 7, 8})
+    assert found == {1, 2}, "only ridden sidewalks, not a crosswalk, a rater rates below 3"
+    assert sidewalk_derived(variants.Variant.STANDARD, 1, {1, 3}, {1, 3}, set(), found) == {
+        "sidewalk": sw.SIDEPATH
+    }
+    assert sidewalk_derived(variants.Variant.STANDARD, 3, {1, 3}, {1, 3}, set(), found) == {
+        "sidewalk": sw.LAST_RESORT
+    }
+    assert sidewalk_derived(variants.Variant.EBIKE, 1, {1}, set(), set(), found) == {}
+
+
+# Ashburn Village Boulevard at Red Rum Drive (the owner: "Weird routing here"):
+# the side path runs on past the corner, and a 4 m footway with no tags joins it to the
+# signalized crosswalk over the road. In metres: the side path runs north up x=0, the join
+# goes east from (0, 50) to (4, 50), and the crosswalk runs on east across the road at x=20.
+PLAIN = {"highway": "footway"}
+
+
+def ashburn(join=PLAIN, join_m=4.0, crosswalk=CROSSWALK, path=SIDE_PATH):
+    return [
+        placed(300, dict(path), [(0.0, 0.0), (0.0, 50.0), (0.0, 200.0)]),
+        placed(301, dict(join), [(0.0, 50.0), (join_m, 50.0)]),
+        placed(302, dict(crosswalk), [(join_m, 50.0), (20.0, 50.0), (80.0, 50.0)]),
+        placed(303, {"highway": "secondary"}, [(20.0, -100.0), (20.0, 50.0), (20.0, 200.0)]),
+    ]
+
+
+def test_a_trails_short_join_to_a_crosswalk_is_a_stub():
+    assert sw.stubs(ashburn()) == {301}
+    assert sw.links(ashburn()) == {}, "the side path runs on: no dead end"
+    assert sw.trail_crossings(ashburn()) == set(), "the crosswalk is longer than a link"
+
+
+def test_a_stub_is_short_untagged_open_and_joins_a_trail_to_something_ridden():
+    assert sw.stubs(ashburn(join_m=sw.STUB_M + 2)) == set(), "too long for a join"
+    assert sw.stubs(ashburn(join={**PLAIN, "bicycle": "no"})) == set()
+    assert sw.stubs(ashburn(), closed={301}) == set()
+    assert sw.stubs(ashburn(path={"highway": "residential"})) == set(), "no trail at an end"
+    assert sw.stubs(ashburn(crosswalk={**CROSSWALK, "bicycle": "no"})) == set(), (
+        "nothing ridden beyond"
+    )
+    assert sw.stubs(ashburn(join=SIDEWALK)) == set(), "a sidewalk is ridden already"
+
+
+def test_a_stub_never_joins_a_trail_to_a_road_or_driveway():
+    for far in ({"highway": "service", "service": "driveway"}, {"highway": "secondary"}):
+        ways = ashburn()
+        ways[2] = placed(302, far, [(4.0, 50.0), (4.0, 100.0)])
+        assert sw.stubs(ways) == set(), far
+
+
+def test_a_stub_may_meet_a_sidewalk_part_way_along():
+    ways = ashburn()
+    ways[2] = placed(302, SIDEWALK, [(4.0, 0.0), (4.0, 50.0), (4.0, 100.0)])
+    assert sw.stubs(ways) == {301}
+
+
+def test_the_rebuild_rides_a_stub_as_a_link():
+    ways = [
+        way(osm_id, tags, [(e, n) for e, n in pts])
+        for osm_id, tags, pts in (
+            (300, SIDE_PATH, [(0.0, 0.0), (0.0, 50.0), (0.0, 200.0)]),
+            (301, PLAIN, [(0.0, 50.0), (4.0, 50.0)]),
+            (302, CROSSWALK, [(4.0, 50.0), (20.0, 50.0), (80.0, 50.0)]),
+            (303, {"highway": "secondary"}, [(20.0, -100.0), (20.0, 50.0), (20.0, 200.0)]),
+        )
+    ]
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    assert 301 in result.sidewalk_links

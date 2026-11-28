@@ -22,7 +22,7 @@ spot asked about, so a sweep drops it at that age even when nothing else is aske
 2026-10-29: nothing that could identify a person's location stays on the server for more than
 2 minutes). A photo's signed file URL is kept by its image id for `CACHE_S`: an image id is not
 where anyone was. Only photos inside the covered area
-(`settings.COVERAGE_BBOX`) are looked up or served, and neither fetch follows a redirect, so
+(`routemaker.coverage`) are looked up or served, and neither fetch follows a redirect, so
 every request goes to the host it names.
 
 Licence: Mapillary's imagery is CC BY-SA 4.0 (<https://www.mapillary.com/terms>); the panel
@@ -48,6 +48,7 @@ from django.conf import settings
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
+from routemaker import coverage
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +106,8 @@ _OPENER = urllib.request.build_opener(_NoFollow)
 
 
 def in_area(lon: float, lat: float) -> bool:
-    """Whether a point is inside the covered area (`settings.COVERAGE_BBOX`)."""
-    west, south, east, north = settings.COVERAGE_BBOX
-    return west <= lon <= east and south <= lat <= north
+    """Whether a point is inside the covered area (`routemaker.coverage`)."""
+    return coverage.inside(lon, lat)
 
 
 def http_get(url: str, headers: dict, timeout: float) -> bytes:
