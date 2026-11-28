@@ -15,7 +15,7 @@ function ride(fixes: Array<{ at: number; fix: RideFix }>): boolean {
   let lastGoodAt = 0;
   let said = false;
   for (const { at, fix: f } of fixes) {
-    const still = stillAtLight(lastGood, lastGoodAt, f, at);
+    const still = !weak.weak && stillAtLight(lastGood, lastGoodAt, f, at);
     if (f.accuracyM <= 50) {
       lastGood = f;
       lastGoodAt = at;
@@ -63,4 +63,15 @@ test("GPS gone for longer than any light is said in the end, even standing still
 test("a good fix, or no good fix yet, is never taken as standing still", () => {
   assert.equal(stillAtLight(fix({}), 0, fix({ accuracyM: 10 }), 1_000), false);
   assert.equal(stillAtLight(null, 0, fix({ accuracyM: 90, speedMs: null }), 1_000), false);
+});
+
+test("a slow rider under trees, or a phone that gives no speed, still hears the GPS is weak", () => {
+  // About 3.4 mph with a real speed on the last good fix: still braking or stopped, so drift is held...
+  assert.equal(stillAtLight(fix({ speedMs: 1.5 }), 0, fix({ accuracyM: 100, speedMs: null }), 5_000), true);
+  // ...but rough fixes that carry the rider's own speed are riding, not waiting.
+  assert.equal(stillAtLight(fix({ speedMs: 1.5 }), 0, fix({ accuracyM: 100, speedMs: 1.4 }), 5_000), false);
+  // No speed on the last good fix: nothing says the rider stopped, so weighFix decides as before.
+  const fixes = [{ at: 0, fix: fix({ speedMs: null }) }];
+  for (let t = 2_000; t <= GPS_WEAK_MS + 4_000; t += 2_000) fixes.push({ at: t, fix: fix({ accuracyM: 120, speedMs: null }) });
+  assert.equal(ride(fixes), true);
 });

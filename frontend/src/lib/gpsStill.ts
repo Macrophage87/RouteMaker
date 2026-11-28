@@ -6,7 +6,7 @@
  * while the rider waits.
  *
  * A rough fix that still fits a rider standing where the last good fix was keeps the weak-GPS clock as a good fix
- * would: the last good fix was slow (braking or stopped), the rough fix shows no movement of its own, and the last
+ * would: the last good fix had a speed and it was slow (braking or stopped), the rough fix shows no movement of its own, and the last
  * good spot lies inside its accuracy circle. For STILL_MS at most, so GPS that is really gone is said in the end even
  * at a long wait. A rider who rides off under rough GPS sends fixes with a speed, or soon leaves the circle: the clock
  * runs for them from then, and the note comes as before. Our defaults, unmeasured.
@@ -28,7 +28,8 @@ export const STILL_MS = 180_000;
 export function stillAtLight(lastGood: RideFix | null, lastGoodAt: number, fix: RideFix, now: number): boolean {
   if (!lastGood || !(fix.accuracyM > POOR_FIX_M)) return false;
   if (now - lastGoodAt > STILL_MS) return false;
-  if (lastGood.speedMs !== null && lastGood.speedMs >= STILL_LAST_SPEED_MS) return false;
+  // A real speed only: with none, a rider at any speed would pass (review of #1478).
+  if (lastGood.speedMs === null || lastGood.speedMs >= STILL_LAST_SPEED_MS) return false;
   if (fix.speedMs !== null && fix.speedMs >= STILL_SPEED_MS) return false;
   return haversineM(lastGood.point, fix.point) <= fix.accuracyM;
 }
