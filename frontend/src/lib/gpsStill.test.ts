@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STILL_MS, stillAtLight } from "./gpsStill.ts";
+import { STILL_MS, STILL_RADIUS_M, stillAtLight } from "./gpsStill.ts";
 import { GPS_WEAK_MS, weighFix, type GpsWeakness, type RideFix } from "./navigate.ts";
 
 const LIGHT: [number, number] = [-77.0365, 38.8977];
@@ -40,6 +40,14 @@ test("riding off under rough GPS still says it is weak", () => {
   // Rough fixes that move: the rider is off again, at about 11 mph.
   for (let t = 2_000; t <= 30_000; t += 2_000) fixes.push({ at: t, fix: fix({ point: north(t / 200), accuracyM: 80, speedMs: 5 }) });
   assert.equal(ride(fixes), true);
+});
+
+test("riding off under very rough GPS with no speed still says it is weak, within about 24 s", () => {
+  const fixes = [{ at: 0, fix: fix({ speedMs: 1 }) }];
+  // Speedless 300 m cell fixes that follow the rider off at about 11 mph: the circle alone would hold them for 3 min.
+  for (let t = 2_000; t <= 26_000; t += 2_000) fixes.push({ at: t, fix: fix({ point: north(t / 200), accuracyM: 300, speedMs: null }) });
+  assert.equal(ride(fixes), true);
+  assert.equal(stillAtLight(fix({ speedMs: 0 }), 0, fix({ point: north(STILL_RADIUS_M + 5), accuracyM: 1000, speedMs: null }), 5_000), false);
 });
 
 test("rough GPS while riding at speed is weak GPS, as before", () => {
