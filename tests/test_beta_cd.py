@@ -1577,7 +1577,7 @@ def test_the_runbook_documents_continuous_deployment() -> None:
         '"$A" ship-held',
         "RM_CD_ALWAYS_STOP=1",
         ".github/workflows/release.yml",
-        "Required reviewers",
+        "no required reviewer",
     ):
         assert needle in section, needle
 
@@ -2968,7 +2968,8 @@ def test_a_workflow_tag_pulls_its_image_and_deploys_a_dockerfile_change(beta: Be
     assert f"docker pull {DIGEST}" in calls
     assert f"docker tag {DIGEST} {API}:{sha[:12]}" in calls
     assert "docker build -f" not in calls
-    assert f"docker image rm {DIGEST}" in calls  # the tag alone holds it, so pruning frees it
+    # Never removed by digest: on the beta that deleted the image the tag had just named.
+    assert f"docker image rm {DIGEST}" not in calls
     _order(calls, "/attestations/sha256:", "docker pull", "up -d api worker", "smoke --local")
 
 
