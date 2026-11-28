@@ -8314,8 +8314,15 @@ What changes for a deploy:
   `ANTHROPIC_IDENTITY_TOKEN_FILE` (compose.yaml passes them; env.beta.template lists them) and
   the token file is mounted; how beta gets its token is the owner's call; when on, the worker
   also reaches api.anthropic.com, Nominatim, the OSM API and the agencies' pages;
-- no `valhalla/`, nginx or `compose.beta.yaml` change.
+- `compose.beta.yaml`'s worker binds the host's `/run/anthropic-wif` read-only (the identity
+  token, `ANTHROPIC_IDENTITY_TOKEN_FILE` defaults to `/run/anthropic-wif/token`) with
+  `group_add ${ANTHROPIC_WIF_GID:-986}` (#1469). The bind does not make its folder, so the
+  beta host needs `/etc/tmpfiles.d/anthropic-wif.conf` before its next reboot (the closures
+  thread gave the owner the line; the folder is there today, so this deploy starts);
+- no `valhalla/` or nginx change.
 
+- [ ] **The token folder** **(owner)**. `/etc/tmpfiles.d/anthropic-wif.conf` on the beta host,
+  so `/run/anthropic-wif` comes back after a reboot.
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
   (Actions, "Release", Run workflow on main, version `v0.31.0`, then approve).
 - [ ] **Beta** **(owner)**. `~/routemaker-beta-state/cd/bin/auto-release.sh ship-held v0.31.0
