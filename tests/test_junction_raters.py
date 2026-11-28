@@ -438,36 +438,32 @@ def test_a_left_that_never_meets_the_busiest_road_is_not_its_rated_left() -> Non
     arterial's carriageway node, and a left off it onto Dresden St (LTS 3) read Pacific
     Blvd's rated left, 4.5. The raters rated the left off or onto the busiest road."""
     path = Road(2, names=frozenset({"path"}))
-    # Read by its traffic at the junction (`by_traffic`) it is 4, but by the map it is 3:
-    # still not the road the raters rated.
+    # Read by its traffic at the junction (`by_traffic`) it is 4; the busiest road at the
+    # node is still Pacific Blvd, which the move never meets.
     side = Road(
         3, speed_mph=35.0, lanes=2, oneway=False, aadt=1900, names=frozenset({"dresden st"})
     )
     r = rater(cross=4.5, left=4.5, along=1.5)
     left = junction(
-        movement=Movement.LEFT, incoming=path, outgoing=side, crossed=(side,), node_top=4.0
+        movement=Movement.LEFT, incoming=path, outgoing=side, crossed=(side,), meets_top=False
     )
     assert m.rater_move(left) is None
     event = m.assess(replace(left, rater=r))
     assert event is not None and event.rater_level is None
     assert event == m.assess(left)
     # Straight on along the path past the side street is riding past the arterial: `along`.
-    on = junction(incoming=path, outgoing=path, crossed=(side,), continues=True, node_top=4.0)
+    on = junction(incoming=path, outgoing=path, crossed=(side,), continues=True, meets_top=False)
     assert m.rater_move(on) == "along"
     assert m.assess(replace(on, rater=r)) is None
 
 
 def test_a_move_that_meets_the_busiest_road_keeps_its_rating() -> None:
     r = rater(cross=4.5, left=4.5, along=1.5)
-    onto = junction(movement=Movement.LEFT, crossed=(), outgoing=BUSY, node_top=4.0)
+    onto = junction(movement=Movement.LEFT, crossed=(), outgoing=BUSY, meets_top=True)
     assert m.rater_move(onto) == "left"
-    across = junction(node_top=4.0)
+    across = junction(meets_top=True)
     assert m.rater_move(across) == "cross"
     assert m.assess(replace(across, rater=r)).rater_level == 4.5
-    # The busiest road a level quieter across the junction is still the road crossed.
-    quieter = replace(BUSY, tier=3, half=True)
-    named = junction(crossed=(quieter,), node_top=4.0, node_top_names=BUSY.names)
-    assert m.rater_move(named) == "cross"
-    # A road the map does not know may be the busiest: the rating stands.
-    unknown = junction(movement=Movement.LEFT, crossed=(), outgoing=Road(None), node_top=4.0)
+    # Not read (the rider's own road unknown): the rating stands.
+    unknown = junction(movement=Movement.LEFT, crossed=(), outgoing=Road(None), meets_top=None)
     assert m.rater_move(unknown) == "left"

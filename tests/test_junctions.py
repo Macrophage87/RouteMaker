@@ -1405,9 +1405,51 @@ class TestBuild:
 
     def test_the_busiest_road_at_the_node_is_carried(self) -> None:
         """The raters' left and crossing are about it (`intersections.rater_move`)."""
-        made = self.built(crossroads())
-        assert made.node_top == 4.0 and made.node_top_names == frozenset({"main st"})
-        assert self.built(crossroads(), roads={}).node_top == 0.0
+        """Straight across way 20 (LTS 4): it meets the busiest road. Its own road
+        unknown: not read."""
+        assert self.built(crossroads()).meets_top is True
+        assert self.built(crossroads(), roads={(0, 20): Road(4)}).meets_top is None
+
+    @pytest.mark.parametrize("names", [((), ()), (["Main St"], ["Elm St"])])
+    def test_a_crossing_meets_the_busiest_road_whichever_side_is_quieter(self, names) -> None:
+        """The crossed road is the quieter side's (way 21, LTS 3); the busiest (way 20,
+        LTS 4) is on the other side, unnamed or under another name (review, #1476)."""
+        north, south = names
+        node_answer = answer(
+            [
+                edge(1, 10, N, 1.0, 90.0),
+                edge(3, 10, 900, 0.0, 270.0),
+                edge(2, 10, 901, 0.0, 90.0),
+                edge(4, 10, N, 1.0, 270.0),
+                edge(5, 20, 902, 0.0, 0.0, names=north),
+                edge(6, 20, N, 1.0, 180.0, names=north),
+                edge(7, 21, 903, 0.0, 180.0, names=south),
+                edge(8, 21, N, 1.0, 0.0, names=south),
+            ],
+            [node(N)],
+        )
+        roads = {(0, 10): Road(2), (0, 20): Road(4, 40, 2), (0, 21): Road(3, 30, 1)}
+        made = self.built(node_answer, roads=roads)
+        assert [r.tier for r in made.crossed] == [3]
+        assert made.meets_top is True
+
+    def test_a_turn_off_a_path_onto_a_side_street_misses_the_arterial(self) -> None:
+        """A path joins the arterial's node (way 20, LTS 4, east-west) and the rider turns
+        right off it onto the side street (way 30, LTS 3) south: never on the arterial."""
+        node_answer = answer(
+            [
+                edge(1, 10, N, 1.0, 0.0, use="cycleway"),  # path arriving from the south-ish
+                edge(2, 30, 901, 0.0, 90.0),  # side street leaving east
+                edge(3, 30, N, 1.0, 270.0),
+                edge(5, 20, 902, 0.0, 0.0),  # arterial leaving north
+                edge(6, 20, N, 1.0, 180.0),
+            ],
+            [node(N)],
+        )
+        roads = {(0, 10): Road(2), (0, 20): Road(4, 45, 2), (0, 30): Road(3, 35, 2)}
+        turn = raw(in_way=10, out_way=30, movement=Movement.RIGHT, in_use="cycleway")
+        made = self.built(node_answer, turn, roads=roads)
+        assert made.meets_top is False
 
     def test_the_movement_round_a_roundabout_is_carried(self) -> None:
         """Hunt J4: the trace's reading of a ride round a ring reaches the model."""
