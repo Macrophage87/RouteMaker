@@ -1472,16 +1472,16 @@ must be in the commit). It releases main's newest commit, the one the run starts
 other, so the image's provenance names the tag's commit. It checks the
 version (strict, newer than every tag, not taken), the commit (on main), the notes, and that `test`
 and `a11y` are green on that commit, or on the merged pull request's head with the identical tree
-(as the agent reads them, step 4 above), then **waits for the owner's approval** (the `release`
-environment). Approved, it builds the api image from that commit, checks that it starts, records
+(as the agent reads them, step 4 above). Then, in the `release` environment (no required reviewer:
+the owner, 2026-11-28, his go to merge is the one gate), it builds the api image from that commit, checks that it starts, records
 GitHub build provenance for it, publishes it as `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag,
 whose message names the image by digest. The agent deploys the tag on its next pass as above,
 pulling that exact image. Tagging from the PC still works as before.
 
 Once, by the owner, before the first run:
 
-1. Repository Settings, Environments, New environment `release`: Required reviewers, add yourself;
-   Deployment branches and tags, Selected, add `main`. That approval is the release button.
+1. Repository Settings, Environments, New environment `release`: Deployment branches and tags,
+   Selected, add `main` (no required reviewer, the owner's choice).
 2. After the first run has published the image: the package's page (your GitHub profile, Packages,
    `routemaker-api`), Package settings, Change visibility, Public, so the beta pulls it without a
    token (the image holds no secret and no server address). If GitHub refuses the first push

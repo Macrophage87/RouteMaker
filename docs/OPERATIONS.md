@@ -8344,8 +8344,9 @@ What changes for a deploy:
 
 - [ ] **The token folder** **(owner)**. `/etc/tmpfiles.d/anthropic-wif.conf` on the beta host,
   so `/run/anthropic-wif` comes back after a reboot.
-- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`: the Release workflow
-  (Actions, "Release", Run workflow on main, version `v0.31.0`, then approve).
+- [ ] **The tag**. Once `test` and `a11y` are green on `main`: the Release workflow (Actions,
+  "Release", Run workflow on main, version `v0.31.0`), started by the release thread after the
+  owner's go to merge; it needs no approval, as the `release` environment has no reviewer.
 - [ ] **Beta** **(owner)**. By hand, not `ship-held --no-map`: the env template's new
   `ANTHROPIC_*` lines are a stop that ship-held does not take (it answers map stops only), so
   v0.31.0 went out by docs/BETA-RUNBOOK.md, "Shipping an update later" (`pause --wait` first,
