@@ -63,10 +63,14 @@ export function nearestStation(data: TideData, [lon, lat]: LonLat): TideStation 
   return best;
 }
 
-/** The low tides on the calendar day of `day` in `timeZone` (the beaches' own, Eastern). */
-export function lowTidesOn(station: TideStation, day: Date, timeZone = "America/New_York"): LowTide[] {
+/**
+ * The low tides on the calendar day of `day` in `timeZone` (the beaches' own, Eastern), or null where the day is outside
+ * the file's from and to: no tide data, which is not a day with no low tide.
+ */
+export function lowTidesOn(data: Pick<TideData, "from" | "to">, station: TideStation, day: Date, timeZone = "America/New_York"): LowTide[] | null {
   const key = (d: Date) => d.toLocaleDateString("en-CA", { timeZone });
   const want = key(day);
+  if (want < data.from || want > data.to) return null;
   return station.lows
     .map(([minutes, tenths]) => ({ at: new Date(minutes * 60_000), feet: tenths / 10 }))
     .filter((low) => key(low.at) === want);

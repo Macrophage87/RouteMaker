@@ -253,7 +253,7 @@ export function LayersSheet(props: LayersSheetProps) {
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>
 
-      {/* Survey spots (the owner, 2026-11-25): Go and Plan, one switch, off by default; the rider's count inside. */}
+      {/* Survey spots (the owner, 2026-11-25): Go and Plan, one switch, off by default; the count and the list in Plan only. */}
       {survey && <SurveySection {...survey} />}
       {/* v0.8.0: the Scenic layer, one switch, off by default, after Trails and terrain; Plan's alone. */}
       {scenic && <ScenicSection {...scenic} drawn={scenicDrawn} />}

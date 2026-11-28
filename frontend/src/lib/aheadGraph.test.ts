@@ -264,6 +264,17 @@ test("the turns sentence leaves out a part that is zero (v0.19.0 release review)
   assert.equal(turnsSentence([busy, busy], 0), "Busy junctions: 2.");
 });
 
+test("a merged arrow counts as each of its turns, as the cue cards count them (the v0.31.0 review)", () => {
+  // A jog (left, then right) drawn as one arrow, and a lone turn after it: three turns on the cards.
+  const jog = { m: 600, movement: "left" as const, severity: null, then: ["right" as const] };
+  const lone = { m: 900, movement: "right" as const, severity: null };
+  assert.equal(turnsSentence([jog, lone], 0), "Turns ahead: 3.");
+  const merged = spreadMarks([{ m: 600, movement: "left", severity: null }, { m: 620, movement: "right", severity: null }, lone], 100);
+  assert.equal(merged.length, 2, "the two close turns drawn as one arrow");
+  assert.equal(turnsSentence(merged, 0), "Turns ahead: 3.");
+  assert.equal(turnsSentence([jog, lone], 700), "Turns ahead: 1.", "a jog behind the rider is not ahead");
+});
+
 test("y labels keep their distance; the bottom one is always kept", () => {
   const ticks = [1, 2, 3, 4, 5].map((n) => ({ y: 100 - n * 9, label: String(n) }));
   assert.deepEqual(spacedTicks(ticks, 13).map((t) => t.label), ["1", "3", "5"]);

@@ -358,6 +358,8 @@ export function ratedLines(rated: Pick<RatedJunction, "moves"> & { move?: RatedJ
 
 /** "Rated LTS 4 crossing": what a rated junction's marker and card are called. */
 export function ratedTitle(rated: RatedJunction): string {
-  const what = { cross: "crossing", left: "left turn", along: "junction to ride through" }[rated.move];
-  return `Rated ${ratedLevelText(rated.level)} ${what}`;
+  const level = ratedLevelText(rated.level);
+  if (rated.move === "cross") return t("Rated {level} crossing", { level });
+  if (rated.move === "left") return t("Rated {level} left turn", { level });
+  return t("Rated {level} junction to ride through", { level });
 }

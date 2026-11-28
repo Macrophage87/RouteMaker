@@ -13,7 +13,7 @@ import { stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { segmentClass, segmentStyle, stressSegments } from "./lib/stressBar.ts";
 import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
 import { METRES_PER_MILE, formatClimb, formatDistance, formatDuration } from "./lib/format.ts";
-import { t } from "./lib/i18n.ts";
+import { planLanguageAttributes, t } from "./lib/i18n.ts";
 import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
@@ -272,7 +272,7 @@ export function RideSummaryCard({
         {origin != null && spots.length > 0 && <ClosedOffer origin={origin} spots={spots} />}
         {origin != null && felt.length > 0 && <FeltDifferent origin={origin} stretches={felt} />}
         {surveyPassed && surveyPassed.length > 0 && onSurvey && (
-          <p className="ride-summary-survey">
+          <p className="ride-summary-survey" {...planLanguageAttributes()}>
             <button type="button" className="link" onClick={() => onSurvey(surveyPassed)}>
               {surveyPassedText(surveyPassed.length)}
             </button>

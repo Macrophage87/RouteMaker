@@ -3,6 +3,7 @@
  * without that module's Plan phrases.
  */
 import { HALF_PALETTES, PALETTES, currentPalette } from "../stressStyle.js";
+import { t } from "./i18n.ts";
 
 /**
  * A junction the raters rated is a dot in its level's stress colour, the map's own (the owner,
@@ -11,7 +12,7 @@ import { HALF_PALETTES, PALETTES, currentPalette } from "../stressStyle.js";
  * 2026-11-20: "Just colors as small dots"); its level is in the words of its panel and its list row. The junctions the model prices keep the triangle and the diamond.
  */
 export function ratedLevelText(level: number): string {
-  return level >= 5 ? "Avoid" : `LTS ${level}`;
+  return level >= 5 ? t("Avoid") : `LTS ${level}`;
 }
 
 /** The dot's fill for a level in a palette (a half step's own colour where the palette has one, else its lower level's). */

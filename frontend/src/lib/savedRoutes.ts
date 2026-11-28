@@ -490,9 +490,10 @@ export async function restoreVersion(origin: string, id: number, versionId: numb
 
 /**
  * How far today's match of a saved line may be from the saved length for its directions to be taken (our default,
- * unmeasured): the same line matched again moves only where a vertex snaps to a slightly different point.
+ * unmeasured): the same line matched again moves only where a vertex snaps to a slightly different point. A tenth of
+ * a percent (the v0.31.0 review: half a percent let a 40 mi route's cues shift some 300 m), 25 m on a short route.
  */
-export const SAME_LINE_SHARE = 0.005;
+export const SAME_LINE_SHARE = 0.001;
 export const SAME_LINE_M = 25;
 
 /**

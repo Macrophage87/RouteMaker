@@ -28,12 +28,22 @@ test("a beach in Bonita Springs takes Naples' tides, one on Siesta Key takes Sie
 });
 
 test("the low tides are those of the ride's day on the beach's clock, with their height", () => {
-  const naples = readTides(RAW)!.stations[0];
+  const data = readTides(RAW)!;
+  const naples = data.stations[0];
   // 22:18 UTC on the 23rd is 5:18 PM that day in Florida; 11:23 UTC on the 24th is the next morning.
-  const lows = lowTidesOn(naples, new Date("2026-12-23T15:00:00Z"));
+  const lows = lowTidesOn(data, naples, new Date("2026-12-23T15:00:00Z"))!;
   assert.deepEqual(lows.map((l) => l.at.toISOString()), ["2026-12-23T10:34:00.000Z", "2026-12-23T22:18:00.000Z"]);
   assert.deepEqual(lows.map((l) => l.feet), [-1.3, 1.4]);
-  assert.deepEqual(lowTidesOn(naples, new Date("2027-03-01T15:00:00Z")), []);
+  assert.deepEqual(lowTidesOn(data, naples, new Date("2027-01-10T15:00:00Z")), [], "a day in the file with no low tide listed");
+});
+
+test("a day outside the file's from and to is no tide data, not a day with no low tide", () => {
+  const data = readTides(RAW)!;
+  const naples = data.stations[0];
+  assert.equal(lowTidesOn(data, naples, new Date("2027-03-01T15:00:00Z")), null, "after to");
+  assert.equal(lowTidesOn(data, naples, new Date("2026-12-22T15:00:00Z")), null, "before from");
+  // 9 PM on the 23rd in Florida is already the 24th in UTC: the beach's own day counts, inside the file.
+  assert.ok(lowTidesOn(data, naples, new Date("2027-01-24T02:00:00Z")), "the 23rd of January on the beach's clock");
 });
 
 test("the file is fetched once, and a failed fetch is tried again next time", async () => {

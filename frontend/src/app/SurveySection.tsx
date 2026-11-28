@@ -1,8 +1,10 @@
 // The Layers sheet's Survey spots section (lib/surveySpots.ts; the owner, 2026-11-25): one switch, off by default, its
 // hint, the signed-in rider's count (spots answered, and those answered on the day they rode there), and a list of the
-// spots near the map's centre as buttons, so a keyboard or screen reader reaches a spot's card too.
+// spots near the map's centre as buttons, so a keyboard or screen reader reaches a spot's card too. Go shows the
+// switch and hint alone (one control per feature): App passes no count and no list there.
 import { useEffect, useState } from "react";
 import { LayerSection } from "../lib/layerSection.ts";
+import { planLanguageAttributes } from "../lib/i18n.ts";
 import { SURVEY_HINT, SURVEY_LABEL, SURVEY_NEAR, type SurveySpot } from "../lib/surveySpots.ts";
 
 export interface SurveySectionProps {
@@ -28,7 +30,7 @@ export function SurveySection({ on, onChange, status, count, near, spots, onPick
   const still = spots ? new Set(spots.map((s) => s.id)) : null;
   const listed = asked && still ? asked.filter((s) => still.has(s.id)) : asked;
   return (
-    <LayerSection id="survey" title={SURVEY_LABEL} layers={[{ key: "survey", label: SURVEY_LABEL, on }]} onLayers={(next) => onChange(next.survey)} status={status}>
+    <LayerSection {...planLanguageAttributes()} id="survey" title={SURVEY_LABEL} layers={[{ key: "survey", label: SURVEY_LABEL, on }]} onLayers={(next) => onChange(next.survey)} status={status}>
       <p className="hint">{SURVEY_HINT}</p>
       {count && <p className="hint survey-count">{count}</p>}
       {on && near && onPick && (
