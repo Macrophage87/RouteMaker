@@ -1781,7 +1781,7 @@ def test_the_runbook_documents_continuous_deployment() -> None:
         '"$A" ship-held',
         "RM_CD_ALWAYS_STOP=1",
         ".github/workflows/release.yml",
-        "no required reviewer",
+        "Required reviewers",
     ):
         assert needle in section, needle
 

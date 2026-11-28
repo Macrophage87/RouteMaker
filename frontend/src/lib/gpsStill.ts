@@ -24,6 +24,12 @@ export const STILL_LAST_SPEED_MS = 2;
 export const STILL_SPEED_MS = 0.5;
 /** For this long after the last good fix at most (a long DC light is 60-120 s; the beats' own limit). */
 export const STILL_MS = 180_000;
+/**
+ * And within this of the last good spot, however rough the fix: a speedless 1000 m cell fix would otherwise keep a rider
+ * who rode off "still" for all of STILL_MS, cues paused with no word (review of v0.31.1). At 5 m/s a rider leaves it in
+ * about 12 s, so the note comes about 24 s after the light at worst. Our default, unmeasured.
+ */
+export const STILL_RADIUS_M = 60;
 
 /**
  * Whether `fix`, a rough one, is a rider still standing at `lastGood`, which came in at `lastGoodAt`; `now` is the
@@ -35,5 +41,5 @@ export function stillAtLight(lastGood: RideFix | null, lastGoodAt: number, fix: 
   // A real speed only: with none, a rider at any speed would pass (review of #1478).
   if (lastGood.speedMs === null || lastGood.speedMs >= STILL_LAST_SPEED_MS) return false;
   if (fix.speedMs !== null && fix.speedMs >= STILL_SPEED_MS) return false;
-  return haversineM(lastGood.point, fix.point) <= fix.accuracyM;
+  return haversineM(lastGood.point, fix.point) <= Math.min(fix.accuracyM, STILL_RADIUS_M);
 }
