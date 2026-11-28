@@ -306,16 +306,38 @@ def _initials(words: list[str]) -> str:
     return "".join(w[0] for w in words if w not in _FILLER)
 
 
+_ORDINALS = {
+    word: f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+    for n, word in enumerate(
+        "first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth"
+        " thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth"
+        " twentieth".split(),
+        start=1,
+    )
+}
+
+
+def _key(name: str) -> str:
+    """A name as a page and the map must share it: "Fourth St." and "4th Street" alike."""
+    from .dc_closures import street_key
+
+    # The quadrant is kept: "Fourth Street NW" is not 4th Street Southwest.
+    return " ".join(_ORDINALS.get(w, w) for w in street_key(name).split())
+
+
 def _named(tags: dict, name: str) -> bool:
     """Whether the way's name holds `name`, or `name` shortens it the agencies' way ("B&A
-    Trail" for OpenStreetMap's "Baltimore & Annapolis Trail")."""
+    Trail" for OpenStreetMap's "Baltimore & Annapolis Trail"; "Fourth St" for "4th Street")."""
     wanted = name.lower().split()
+    wanted_key = f" {_key(name)} "
     short = re.fullmatch(r"([a-z]+)&([a-z]+)", wanted[0]) if wanted else None
     for key in ("name", "alt_name", "official_name", "old_name", "short_name"):
         have = str(tags.get(key, "")).lower().split()
         if not have:
             continue
         if " ".join(wanted) in " ".join(have):
+            return True
+        if wanted_key.strip() and wanted_key in f" {_key(str(tags[key]))} ":
             return True
         if short:
             tail = wanted[1:]  # "trail": the words after the initials, the same in both

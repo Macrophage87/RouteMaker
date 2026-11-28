@@ -343,3 +343,17 @@ def test_the_agencies_short_names_match_the_maps_long_ones() -> None:
     assert not pa._named(tags, "W&OD Trail") and not pa._named(tags, "B&A Path")
     assert pa._named({"name": "Washington & Old Dominion Railroad Regional Park"}, "W&OD") is False
     assert pa._named({"name": "Washington and Old Dominion Trail"}, "W&OD Trail")
+
+
+def test_a_road_matches_its_maps_name_written_out_or_shortened() -> None:
+    # The pages write "Fourth Street" and "Gorman Ave"; OpenStreetMap has "4th Street" and
+    # "Gorman Avenue" (City of Laurel's closures, read by the closure agent, 2026-11-28).
+    assert pa._named({"name": "4th Street"}, "Fourth Street")
+    assert pa._named({"name": "Gorman Avenue"}, "Gorman Ave")
+    assert not pa._named({"name": "14th Street"}, "Fourth Street")
+    assert not pa._named({"name": "5th Street"}, "Fourth Street")
+
+
+def test_a_quadrant_tells_two_streets_apart() -> None:
+    assert pa._named({"name": "4th Street Northwest"}, "Fourth Street NW")
+    assert not pa._named({"name": "4th Street Southwest"}, "Fourth Street NW")
