@@ -81,8 +81,9 @@ class Source:
 
 
 # The pages. The first three are the ones the person-read watch has followed since v0.26.0; the
-# rest were found on 2026-11-28 to list closures as text. Arlington's and Baltimore County's
-# refused the build's proxy that day: the run line names a page that cannot be read.
+# rest were found on 2026-11-28 to list closures as text. Baltimore County's and Laurel's answered
+# the beta's worker 403 that day (their bot screens): the run line names a page that cannot be
+# read. Arlington's long-term traffic alerts are left out: its site refuses the beta's address.
 SOURCES = (
     Source("nova", "NOVA Parks", pa.NOVA.page, "Virginia"),
     Source("choh", "NPS, C&O Canal", pa.CHOH.page, "Maryland"),
@@ -104,12 +105,6 @@ SOURCES = (
         "NPS, Rock Creek Park",
         "https://www.nps.gov/rocr/planyourvisit/conditions.htm",
         "Washington, DC",
-    ),
-    Source(
-        "arlington",
-        "Arlington County",
-        "https://www.arlingtonva.us/Government/Programs/Transportation/Streets/Long-Term-Traffic-Alerts",
-        "Arlington County, Virginia",
     ),
     Source(
         "baltco",

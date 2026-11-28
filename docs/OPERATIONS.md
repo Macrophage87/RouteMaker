@@ -6145,10 +6145,11 @@ is more useful", then "Should we expand further than just those 3 agencies? ther
 
 - **Pages** (`closure_agent.SOURCES`): NOVA Parks, the C&O conditions, Anne Arundel's closings
   (through their tested readers), the Fairfax County Park Authority's alerts, Montgomery Parks'
-  trail status, Rock Creek Park's alerts, Arlington's long-term traffic alerts, Baltimore
-  County's road closures and the City of Laurel's road closures. Arlington's and Baltimore
-  County's answered 403 to the build's proxy on 2026-11-28; the run line names any page that
-  cannot be read. A page is a `Source` (key, name, page, area): adding an agency is one line.
+  trail status, Rock Creek Park's alerts, Baltimore County's road closures and the City of
+  Laurel's road closures. Baltimore County's and Laurel's answered the beta's worker 403 on
+  2026-11-28 (their bot screens; the agent says who it is and does not pose as a browser); the
+  run line names any page that cannot be read. Arlington's long-term traffic alerts are left out:
+  its site refuses the beta's address. A page is a `Source` (key, name, page, area): adding an agency is one line.
   The roads the feed readers already cover (DDOT, MPD, AlertDC, NPS, SHA, MoCo, the work zones)
   are not read here.
 - **Reading.** Each page's text is hashed; only a changed page is sent to Claude (Claude Opus
@@ -6173,17 +6174,24 @@ is more useful", then "Should we expand further than just those 3 agencies? ther
   rows have no account (the
   worker's `reviewed_closures.WORKER`), count against `WORKER_OPEN_MAX` (60, our default), and
   the agent never touches a closure without its `a:` key: the session agent's and a person's are
-  left alone. The run row's detail reads like "read 7 of 9 pages, asked 1; entered 2, extended
-  3, ended 0; not placed 1; failed arlington (HTTPError), baltco (HTTPError)".
-- **Off** until the worker has Claude credentials: `ANTHROPIC_FEDERATION_RULE_ID`,
-  `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_IDENTITY_TOKEN_FILE` (Workload Identity Federation,
-  read by the Anthropic SDK alone; compose.yaml passes them to `worker` and no API key). The run
-  row says "off" meanwhile. The identity token's file must be inside the worker container; where
-  it comes from on the beta is the owner's to say, and its mount is added then.
+  left alone. The run row's detail reads like "read 6 of 8 pages, asked 1; entered 2, extended
+  3, ended 0; not placed 1; failed baltco (HTTPError), laurel (HTTPError)".
+- **Off** until the worker has Claude credentials: `ANTHROPIC_FEDERATION_RULE_ID` and
+  `ANTHROPIC_ORGANIZATION_ID` in the beta's `.env` (Workload Identity Federation, read by the
+  Anthropic SDK alone; compose.yaml passes them to `worker` and no API key; the rule and
+  organization ids come from the Claude Console's Workload identity page and stay out of this
+  repository). The run row says "off" meanwhile. On the beta the host's own refresher (a systemd
+  timer, every 10 minutes) keeps the identity token in `/run/anthropic-wif/token`, readable by
+  its group only; compose.beta.yaml binds that folder read-only into `worker` (the one bind from
+  outside DATA_ROOT, `check_beta_compose.HOST_READ_ONLY`), adds the group
+  (`ANTHROPIC_WIF_GID`, 986 there), and points `ANTHROPIC_IDENTITY_TOKEN_FILE` at it;
+  `ANTHROPIC_WORKSPACE_ID` is optional. The bind does not create its folder, so the host makes it
+  at boot before Docker starts: `/etc/tmpfiles.d/anthropic-wif.conf` holds
+  `d /run/anthropic-wif 0750 root anthropic-wif -`. The worker does not ask the instance's
+  metadata service for the role's own credentials.
 - **Outbound hosts for the worker:** api.anthropic.com, nominatim.openstreetmap.org,
   api.openstreetmap.org, www.novaparks.com, www.nps.gov, www.aacounty.org,
-  www.fairfaxcounty.gov, www.montgomeryparks.org, www.arlingtonva.us,
-  www.baltimorecountymd.gov, laurelmd.gov.
+  www.fairfaxcounty.gov, www.montgomeryparks.org, www.baltimorecountymd.gov, laurelmd.gov.
 - **When it runs on the beta,** retire the session agent's hourly task, so the two do not enter
   the same closure twice under their two keys.
 

@@ -203,6 +203,8 @@ services:
     environment:
       WEEKLY_REBUILD_PAUSED: "1"
       STRESS_PREDRAW_WORKERS: "1"
+      ANTHROPIC_IDENTITY_TOKEN_FILE: ${ANTHROPIC_IDENTITY_TOKEN_FILE:-/run/anthropic-wif/token}
+      ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
     volumes:
       - type: bind
         source: ${DATA_ROOT}/backups
@@ -220,6 +222,17 @@ services:
         target: /data/basemap
         read_only: true
         bind: { create_host_path: false }
+      # The closure agent's identity token (v0.31.0, core.closure_agent): the host's refresher
+      # keeps it fresh in this folder (docs/OPERATIONS.md, "The closure agent on the worker").
+      # Read-only, the one bind from outside DATA_ROOT (check_beta_compose HOST_READ_ONLY); the
+      # host's tmpfiles.d entry makes the folder at boot, before Docker starts.
+      - type: bind
+        source: /run/anthropic-wif
+        target: /run/anthropic-wif
+        read_only: true
+        bind: { create_host_path: false }
+    # The token's group, so this service's user may read it and nothing else of the host's.
+    group_add: ["${ANTHROPIC_WIF_GID:-986}"]
     memswap_limit: 512M
     deploy:
       resources:
