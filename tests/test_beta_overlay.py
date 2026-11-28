@@ -528,7 +528,8 @@ def test_every_bind_the_beta_runs_refuses_to_create_a_missing_source(offroad: bo
                 volume,
             )
     counts = {name: len(volumes) for name, volumes in binds.items() if volumes}
-    expected = {"api": 3, "worker": 3, "postgis": 1, "photon": 1}
+    # The worker's fourth: the closure agent's identity token (v0.31.0).
+    expected = {"api": 3, "worker": 4, "postgis": 1, "photon": 1}
     expected.update({f"valhalla-{g}": 4 for g in ("standard", "no-trail", "ebike", "weekend")})
     if offroad:
         expected["valhalla-offroad"] = 4
@@ -4137,3 +4138,19 @@ def test_receive_files_installs_the_first_packs_and_goes_on(tmp_path: Path) -> N
     assert done.returncode == 0, done.stderr
     assert "region packs installed: packs-20261113T030000Z" in done.stderr
     assert "front end installed" in done.stderr
+
+
+def test_only_the_worker_binds_the_identity_token_and_only_read_only() -> None:
+    # The closure agent's token folder (v0.31.0) is the one bind from outside DATA_ROOT.
+    semantics = "explicit"
+    token = {
+        "type": "bind",
+        "source": "/run/anthropic-wif",
+        "target": "/run/anthropic-wif",
+        "read_only": True,
+        "bind": {"create_host_path": False},
+    }
+    assert beta.check_mounts({"worker": {"volumes": [token]}}, "/data/x", semantics) == []
+    writable = dict(token, read_only=False)
+    assert beta.check_mounts({"worker": {"volumes": [writable]}}, "/data/x", semantics)
+    assert beta.check_mounts({"api": {"volumes": [token]}}, "/data/x", semantics)

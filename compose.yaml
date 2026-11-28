@@ -417,9 +417,8 @@ services:
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
       # The closure agent's Claude credentials (v0.31.0, core.closure_agent): Workload Identity
       # Federation, read by the Anthropic SDK alone. Empty, the agent is off (its run row says
-      # so). No API key is passed, so the federation is what the SDK uses. Where the identity
-      # token comes from on the beta is the owner's to say (docs/OPERATIONS.md, "The closure
-      # agent"); until then nothing is mounted for it.
+      # so). No API key is passed, so the federation is what the SDK uses. On the beta the token's
+      # folder, its group and the token path come from compose.beta.yaml.
       ANTHROPIC_FEDERATION_RULE_ID: ${ANTHROPIC_FEDERATION_RULE_ID:-}
       ANTHROPIC_ORGANIZATION_ID: ${ANTHROPIC_ORGANIZATION_ID:-}
       ANTHROPIC_IDENTITY_TOKEN_FILE: ${ANTHROPIC_IDENTITY_TOKEN_FILE:-}

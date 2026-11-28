@@ -41,10 +41,20 @@ TREE = {
 class Claude:
     """Answers each ask with the closures it is given, and counts the asks."""
 
-    def __init__(self, closures: list[dict]) -> None:
+    def __init__(self, closures: list[dict], changed: bool = True) -> None:
         self.closures = closures
         self.asks: list[dict] = []
+        self.screens: list[dict] = []
+        self.changed = changed  # what the Haiku screen answers
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self.create))
+        self.messages = SimpleNamespace(create=self.screen)
+
+    def screen(self, **request):
+        self.screens.append(request)
+        text = json.dumps({"closure_change": self.changed})
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[SimpleNamespace(type="text", text=text)]
+        )
 
     def create(self, **request):
         self.asks.append(request)
@@ -254,3 +264,29 @@ def test_the_answer_is_the_last_models_after_a_fallback() -> None:
 def test_the_agent_cannot_confirm_or_reject_a_riders_report() -> None:
     with pytest.raises(rc.Forbidden):
         rc.reject_report(rc.WORKER, 1)
+
+
+@db
+def test_haiku_screens_a_change_before_opus_reads_the_page(live) -> None:
+    claude = Claude([TREE], changed=False)
+    agent.run(get=page("Test Trail closed. Updated 9:00"), client=claude)
+    assert len(claude.asks) == 1 and claude.screens == []  # the first read is Opus's
+    # Only the clock changed: Haiku says so, Opus is not asked, the closure holds.
+    line = agent.run(get=page("Test Trail closed. Updated 10:00"), client=claude)
+    assert "screened 1, asked 0" in line, line
+    assert len(claude.asks) == 1 and claude.screens[0]["model"] == agent.SCREEN_MODEL
+    assert "Updated 10:00" in claude.screens[0]["messages"][0]["content"]
+    assert ReviewedClosure.objects.get().ended_at is None
+    # A change Haiku thinks may touch a closure goes to Opus.
+    claude.changed, claude.closures = True, []
+    line = agent.run(get=page("All trails open. Updated 11:00"), client=claude)
+    assert "asked 1" in line and "ended 1" in line, line
+
+
+@db
+def test_a_page_opus_has_not_read_for_a_day_is_read_whatever_the_screen_says(live) -> None:
+    claude = Claude([TREE], changed=False)
+    agent.run(get=page("Test Trail closed. Updated 9:00"), client=claude)
+    later = timezone.now() + timedelta(days=agent.RECHECK_DAYS)
+    agent.run(get=page("Test Trail closed. Updated 9:00 tomorrow"), client=claude, now=later)
+    assert len(claude.asks) == 2 and claude.screens == []
