@@ -267,6 +267,11 @@ export function formatFeet(metres: number): string {
   return both(`${feet.toLocaleString("en-US")} ft`, `${Math.round(metres)} m`);
 }
 
+/** A tide's height to a tenth: "-1.3 ft (-0.4 m)" (the beach path's low tides, lib/beaches.ts). */
+export function formatTideFeet(feet: number): string {
+  return both(`${feet.toFixed(1)} ft`, `${(feet / FEET_PER_METRE).toFixed(1)} m`);
+}
+
 /** A short chart's height label, a round figure in feet alone, the unit once: "450 ft", "1,000 ft" (the ride's elevation graph, lib/aheadGraph.ts). */
 export function formatAxisFeet(feet: number): string {
   return `${Math.round(feet).toLocaleString("en-US")} ft`;

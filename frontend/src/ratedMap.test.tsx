@@ -4,7 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import "./testSupport/render.ts";
 import { PALETTES } from "./stressStyle.js";
-import { loadRatedMap, ratedMapAsk, ratedMapCardBody, ratedMapDot, ratedMapShown, type RatedMapJunction } from "./lib/ratedMap.ts";
+import { loadRatedMap, ratedMapAsk, ratedMapCardBody, ratedMapDot, ratedMapShown, routeMoveAt, type RatedMapJunction } from "./lib/ratedMap.ts";
+import type { LonLat } from "./lib/geo.ts";
+import { loadLanguage, setLanguageForTest } from "./lib/i18n.ts";
 
 const J: RatedMapJunction = {
   lon: -77.03,
@@ -60,7 +62,60 @@ test("a planned route's own junction marker stands for the map's dot there", () 
   assert.deepEqual(ratedMapShown([J, far], [[-77.03, 38.909]]), [J, far]);
 });
 
+// About 100 m in each direction from J, heading north into it.
+const SOUTH: LonLat = [-77.03, 38.8991];
+const NORTH: LonLat = [-77.03, 38.9009];
+const WEST: LonLat = [-77.03116, 38.9];
+const EAST: LonLat = [-77.02884, 38.9];
+
+test("the route's own movement is read from its line: straight through, a left or a right", () => {
+  assert.equal(routeMoveAt([SOUTH, [-77.03, 38.9], NORTH], [-77.03, 38.9]), "straight");
+  assert.equal(routeMoveAt([SOUTH, [-77.03, 38.9], WEST], [-77.03, 38.9]), "left");
+  assert.equal(routeMoveAt([SOUTH, [-77.03, 38.9], EAST], [-77.03, 38.9]), "right");
+  assert.equal(routeMoveAt([SOUTH, [-77.03, 38.9], NORTH], [-77.029, 38.9]), null, "a dot 90 m off the line is not on the route");
+});
+
+test("a dot the route rides through shows the route's movement uncoloured, never the junction's hardest one", () => {
+  // The owner, 2026-11-22: "Instead show the movement done at each intersection colored by the movement when LtS >=3.
+  // Dots for riding through." J's hardest movement is an LTS 4 left; the route rides straight through, unmarked.
+  const quiet: RatedMapJunction = { ...J, moves: [{ move: "cross", level: 2, wait_s: 10 }, { move: "left", level: 4, wait_s: 45 }] };
+  const [through] = ratedMapShown([quiet], [], [SOUTH, [-77.03, 38.9], NORTH]);
+  const dot = ratedMapDot(through);
+  assert.equal(dot.getAttribute("aria-label"), "This route rides straight through here, below LTS 3");
+  assert.ok(!dot.innerHTML.includes(PALETTES.twotone[4].color), "not in the hardest movement's colour");
+  assert.ok(!dot.innerHTML.includes(PALETTES.twotone[3].color));
+  const card = ratedMapCardBody(through);
+  assert.equal(card.querySelector("strong")?.textContent, "This route rides straight through here, below LTS 3");
+  assert.equal(card.querySelectorAll("li").length, 2, "its movements still listed");
+  assert.doesNotMatch(card.textContent ?? "", /hardest/);
+  // Its left is rated 4, so the dot names the left without saying it is below 3 (its card lists the 4).
+  const [turning] = ratedMapShown([quiet], [], [SOUTH, [-77.03, 38.9], WEST]);
+  assert.equal(ratedMapDot(turning).getAttribute("aria-label"), "This route turns left here");
+  assert.ok(ratedMapDot(turning).innerHTML.includes("<path"), "a turn is an arrow, not a dot");
+  // A marked junction past the map's most drawn keeps its plain dot, never "below LTS 3".
+  const [overflow] = ratedMapShown([J], [], [SOUTH, [-77.03, 38.9], NORTH], [[-77.03, 38.9]]);
+  assert.equal(ratedMapDot(overflow).getAttribute("aria-label"), "Junction rated LTS 4");
+  // Off the route, the dot is the plain map's.
+  const [off] = ratedMapShown([J], [], [[-77.029, 38.8991], [-77.029, 38.9009]]);
+  assert.equal(ratedMapDot(off).getAttribute("aria-label"), "Junction rated LTS 4");
+});
+
 test("an answer that could not be read leaves the last dots drawn (null), a bad one draws none", async () => {
   assert.equal(await loadRatedMap("/x", undefined, async () => ({ ok: false, json: async () => ({}) })), null);
   assert.deepEqual(await loadRatedMap("/x", undefined, async () => ({ ok: true, json: async () => ({ junctions: [J, { lon: "x" }] }) })), [J]);
+});
+
+test("a dot's name and card are in the page's language (the v0.31.0 review)", async () => {
+  await loadLanguage("fr");
+  setLanguageForTest("fr");
+  try {
+    const [turning] = ratedMapShown([J], [], [SOUTH, [-77.03, 38.9], WEST]);
+    assert.equal(ratedMapDot(turning).getAttribute("aria-label"), "Cet itinéraire tourne à gauche ici");
+    const [off] = ratedMapShown([J], [], [[-77.029, 38.8991], [-77.029, 38.9009]]);
+    const card = ratedMapCardBody(off);
+    assert.equal(card.querySelector("strong")?.textContent, "Carrefour noté LTS 4");
+    assert.equal(card.querySelector(".hint")?.textContent, "Le point a la couleur de son mouvement le plus difficile.");
+  } finally {
+    setLanguageForTest("en");
+  }
 });

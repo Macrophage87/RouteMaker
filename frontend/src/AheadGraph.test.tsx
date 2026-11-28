@@ -10,7 +10,7 @@ import { spreadMarks, turnMarks } from "./lib/aheadGraph.ts";
 import { stopCardParts, stopPointIndex } from "./lib/navigate.ts";
 
 const ROUTE = { profile: null, stress_spans: [{ from_m: 0, to_m: 3000, tier: 2, facility: null }], trail_levels: null } as unknown as RouteResponse;
-type GraphCue = Pick<Cue, "kind" | "atM" | "movement" | "severity" | "ratedLevel" | "joined" | "cross" | "source" | "stop" | "point">;
+type GraphCue = Pick<Cue, "kind" | "atM" | "movement" | "severity" | "ratedLevel" | "joined" | "cross" | "source" | "stop" | "point" | "then" | "exit">;
 const cue = (over: Partial<GraphCue>): GraphCue => ({ kind: "turn", atM: 0, movement: null, severity: null, source: "stretch", stop: null, ...over });
 const CUES: GraphCue[] = [
   cue({ atM: 300, movement: "left" }),
@@ -72,4 +72,55 @@ test("rated marks drawn as one keep the harder level", () => {
     { fromM: 0, toM: 3000 },
   );
   assert.deepEqual(spreadMarks(marks, 50), [{ m: 100, movement: "right", severity: "red", rated: 4.5 }]);
+});
+
+// The owner, 2026-11-22: "Can it show the merged arrow?" Turns too close to draw apart, and a jog's turns, are one
+// arrow through them all, as the cue card draws a jog.
+test("turns too close to draw apart are one arrow through both, and a jog's turns too", async () => {
+  const merged = spreadMarks(
+    turnMarks([cue({ atM: 1000, movement: "right" }), cue({ atM: 1030, movement: "left", severity: "orange", ratedLevel: 3 })], { fromM: 0, toM: 3000 }),
+    50,
+  );
+  assert.deepEqual(merged, [{ m: 1000, movement: "right", then: ["left"], severity: "orange", rated: 3 }]);
+  const screen = await render(
+    <AheadGraph
+      views={["stress"]}
+      route={ROUTE}
+      cues={[cue({ atM: 1000, movement: "right" }), cue({ atM: 1010, movement: "left" }), cue({ atM: 2000, movement: "left", then: [{ movement: "right", street: null }] })]}
+      youM={0}
+      lengthM={3000}
+    />,
+  );
+  const arrows = [...screen.container.querySelectorAll(".ride-ahead-turns .ride-ahead-arrow")];
+  assert.equal(arrows.length, 2, "the close pair is one arrow, the jog another");
+  for (const arrow of arrows) {
+    const d = arrow.querySelector(".ride-ahead-arrow-jog")?.getAttribute("d") ?? "";
+    assert.equal((d.match(/L/g) ?? []).length, 5, "one arrow with a leg after each of its two turns, and its head");
+  }
+});
+
+test("a merged arrow keeps its colour, and turns one arrow cannot draw keep the first turn's own", async () => {
+  const screen = await render(
+    <AheadGraph
+      views={["stress"]}
+      route={ROUTE}
+      cues={[
+        cue({ atM: 500, movement: "right", severity: "orange" }),
+        cue({ atM: 510, movement: "left" }),
+        // Three rights wind back past a U: no one arrow, as on the cue card.
+        cue({ atM: 1500, movement: "right", then: [{ movement: "right", street: null }, { movement: "right", street: null }] }),
+      ]}
+      youM={0}
+      lengthM={3000}
+    />,
+  );
+  const arrows = [...screen.container.querySelectorAll(".ride-ahead-turns .ride-ahead-arrow")];
+  assert.equal(arrows.length, 2);
+  assert.ok(arrows[0].classList.contains("ride-ahead-arrow-orange"), "the merged arrow in the worse colour");
+  assert.ok(arrows[0].querySelector(".ride-ahead-arrow-jog"));
+  assert.equal(arrows[1].querySelector(".ride-ahead-arrow-jog"), null, "the first turn's own arrow");
+  // A circle's exit is never drawn into one arrow with other turns.
+  const ring = turnMarks([cue({ atM: 100, movement: "right", exit: { number: 2 } as Cue["exit"], then: [{ movement: "left", street: null }] })], { fromM: 0, toM: 3000 });
+  assert.equal(ring[0].then, undefined);
+  assert.deepEqual(spreadMarks([...ring, { m: 120, movement: "left", severity: null }], 50).map((m) => [m.movement, m.then]), [["right", undefined]]);
 });

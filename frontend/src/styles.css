@@ -2646,28 +2646,12 @@ ul.station-links {
   line-height: 0;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
-.junction-marker.junction-group {
-  position: relative;
-}
-/* Markers that still overlap (at the map's last zoom, where grouping stops):
-   the focused or hovered one is drawn on top. MapLibre positions the marker's
+/* Markers that overlap (each junction is its own marker): the focused or
+   hovered one is drawn on top. MapLibre positions the marker's
    own element, so z-index applies to it. */
 .junction-marker:focus,
 .junction-marker:hover {
   z-index: 3;
-}
-.junction-count {
-  position: absolute;
-  right: -8px;
-  top: -6px;
-  min-width: 16px;
-  padding: 0 3px;
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  font: 600 11px/14px system-ui, sans-serif;
-  text-align: center;
 }
 .junction-marker:focus-visible {
   border-radius: 4px;
@@ -2858,11 +2842,6 @@ ul.station-links {
   .maplibregl-ctrl-attrib-button:focus-visible {
     outline: 3px solid Highlight;
     outline-offset: -3px;
-  }
-
-  .junction-count {
-    forced-color-adjust: auto;
-    border-color: CanvasText;
   }
 
   button,
@@ -4779,6 +4758,16 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-ahead-stop-emoji {
   font: 13px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
+/* Plan's chart (ElevationChart.tsx): a smaller disc, in the junction markers' row. */
+.pc-stop .ride-ahead-stop-number {
+  font-size: 10px;
+}
+.pc-stop .ride-ahead-stop-emoji {
+  font-size: 10px;
+}
+.pc-stop .ride-ahead-stop-disc {
+  stroke-width: 1.5;
+}
 
 /* A turn drawn on the stress ribbon (no room for the turns' strip): a halo of the panel round it, so it reads on any colour. */
 /* Under a mountain-bike trail's rocks, the panel, so the trail rail's purple does not show between them. */
@@ -5542,6 +5531,7 @@ dialog.plan-ride-settings h2:focus {
 }
 
 .ride-summary-felt > button.link,
+.ride-summary-survey > button.link,
 .ride-summary-felt h3 {
   font-size: 16pt;
   min-height: 48px;
@@ -9199,6 +9189,10 @@ details.fold > summary .icon {
 .save-route-said:empty {
   display: none;
 }
+/* The saved line's Share: a 44 px target in Plan's map bar too. */
+.save-route-share {
+  min-height: 44px;
+}
 /* Save's Fixed route box (the owner, 2026-11-10): the box, its name and one line, with Plan's (i) after them; a line
    of its own in every Save form, the box a 44 px target. */
 .save-route-form .save-route-fixed {
@@ -9795,6 +9789,27 @@ summary.closure-notices-heading {
 
 .app.riding .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
   max-width: calc(100vw - 100px);
+}
+
+/* The rider's GPS position in small print (GpsMark.tsx, beta builds), under the scale and credits at the bottom
+   left, which move up a line for it, so a screenshot says where it was taken. Small and quiet; it takes no taps, so
+   the map drags through it. */
+.app.riding:has(.ride-gps-mark) .maplibregl-ctrl-bottom-right {
+  bottom: calc(var(--ride-sheet-h, 0px) + 14px);
+}
+
+.ride > .ride-gps-mark {
+  position: absolute;
+  left: 10px;
+  bottom: calc(var(--ride-sheet-h, 0px) + 10px);
+  margin: 0;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* With the bottom panel up the side buttons may wrap into a second column: the opened credits stay clear of it. */
@@ -12498,4 +12513,44 @@ dialog.plan-ride-settings .dial-ends {
 /* A ride has its own compass (.ride-compass): the map's stays away there. */
 .app.riding .maplibregl-ctrl-compass {
   display: none;
+}
+
+/* A survey spot's card (SurveyCard.tsx): one answer per row, each a full-width tap target. */
+.survey-card .survey-question {
+  border: 1px solid var(--border, #9ca3af);
+  border-radius: 8px;
+  margin: 0 0 12px;
+  padding: 4px 12px 8px;
+}
+.survey-card .survey-question legend {
+  font-weight: 600;
+  padding: 0 4px;
+}
+.survey-card .survey-question label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.survey-card .survey-question input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+}
+/* Send and Cancel stay in view at the foot of the card, however many questions it has. */
+.survey-card .survey-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding: 8px 0;
+  margin-top: 4px;
+}
+.survey-near {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.survey-near li button {
+  min-height: 44px;
 }

@@ -104,6 +104,9 @@ x-django-env: &django-env
   PGDATABASE: ${PGDATABASE:-routemaker}
   PGUSER: ${PGUSER:-routemaker}
   DJANGO_CONN_MAX_AGE: ${DJANGO_CONN_MAX_AGE:-60}
+  # The map's areas, dc-baltimore first (config.settings.COVERAGE_AREAS). Every service that
+  # loads the settings carries it: the api's checks and the rebuild's clip must agree.
+  RM_COVERAGE_AREAS: ${RM_COVERAGE_AREAS:-dc-baltimore}
   # How many stress tiles the pre-draw draws at once (config.settings): in the
   # rebuild after its swap, and in `manage.py predraw_stress_tiles` run in the
   # api. A PostgreSQL core each; two measured fastest, a third bought nothing.
@@ -412,6 +415,13 @@ services:
       VALHALLA_PAVED_URL: ${VALHALLA_PAVED_URL:-http://valhalla-paved:8002}
       VALHALLA_PAVED_WEEKEND_URL: ${VALHALLA_PAVED_WEEKEND_URL:-http://valhalla-paved-weekend:8002}
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
+      # The closure agent's Claude credentials (v0.31.0, core.closure_agent): Workload Identity
+      # Federation, read by the Anthropic SDK alone. Empty, the agent is off (its run row says
+      # so). No API key is passed, so the federation is what the SDK uses. On the beta the token's
+      # folder, its group and the token path come from compose.beta.yaml.
+      ANTHROPIC_FEDERATION_RULE_ID: ${ANTHROPIC_FEDERATION_RULE_ID:-}
+      ANTHROPIC_ORGANIZATION_ID: ${ANTHROPIC_ORGANIZATION_ID:-}
+      ANTHROPIC_IDENTITY_TOKEN_FILE: ${ANTHROPIC_IDENTITY_TOKEN_FILE:-}
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
       # Read-only, and for one caller: `check_operations`. Its fourth check is

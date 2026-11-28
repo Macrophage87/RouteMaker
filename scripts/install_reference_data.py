@@ -52,6 +52,10 @@ volume-conflation stage (OWNER-DECISIONS 151, 159; PLAN.md item 183):
     --roadway-block dc-roadway-block.geojson          DDOT, CC BY 4.0
     --baltimore-centerline baltimore-street-centerline.geojson   Open Baltimore
     --alexandria-streets alexandria-transport-streets.geojson    City of Alexandria, CC0
+    --fdot fdot-max-speed.geojson --fdot fdot-lanes.geojson       FDOT RCI (TDA layers)
+
+FDOT's daily counts install as a --volume: `--volume fdot-aadt.geojson --volume-source fdot
+--aadt-property AADT` (the `Annual_Average_Daily_Traffic_TDA` layer).
 
 Each is the layer exactly as `scripts/fetch_agency_layer.py` stored it; the
 posted speed, lanes by direction, one-way, bike facility, parking and count are
@@ -73,6 +77,13 @@ rebuild's scenic stage (`pipeline.scenic_layer`; v0.8.0), never by the classifie
 each as `scripts/fetch_agency_layer.py` stored it; `--byway-name-field` names the
 byway layer's name field, and `--rustic-name-field` the rustic roads' road-name field,
 where it is not one `routemaker.scenic` looks for (a layer with none is refused).
+
+Florida's biking trails go to `trail-uses.json`, optional, read by the rebuild's
+override stage (`pipeline.trail_uses`): a silent trail way along one opens to bicycles:
+
+    --fl-trail-uses fl-ogt-existing-trails.geojson   FL DEP Office of Greenways and Trails
+
+as `scripts/fetch_agency_layer.py` stored it.
 
 The agencies' traffic signal lists go to `signals.json`, optional, read by the
 rebuild's tag stage (`pipeline.agency_signals`; v0.10.0) to mark the junctions at a
@@ -106,6 +117,7 @@ import math
 import os
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -149,6 +161,7 @@ SOURCE_TIERS = {
     "prince-georges": "locality",
     # State DOTs.
     "vdot": "state",
+    "fdot": "state",
     "mdot-sha": "state",
     # Derived from OSM's own tagging rather than surveyed by anyone.
     "osm": "osm",
@@ -349,6 +362,13 @@ def urban_way_ids(
 # cannot import without a configured Django; tests/test_reference_data_install.py holds
 # the two the same.
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+# settings.SOUTHWEST_FLORIDA_BBOX, read too when RM_COVERAGE_AREAS names the area.
+SOUTHWEST_FLORIDA_BBOX = (-82.75, 25.65, -80.70, 27.45)
+
+
+def coverage_boxes() -> list[tuple[float, float, float, float]]:
+    names = {n.strip() for n in os.environ.get("RM_COVERAGE_AREAS", "").split(",")}
+    return [COVERAGE_BBOX] + ([SOUTHWEST_FLORIDA_BBOX] if "southwest-florida" in names else [])
 
 
 def install_setting(
@@ -362,15 +382,18 @@ def install_setting(
     jobs: dict[str, int] = {}
     for path in lodes_wac:
         jobs.update(setting.wac_jobs(path))
-    west, south, east, north = COVERAGE_BBOX
     margin = 0.05
+    boxes = coverage_boxes()
     blocks = []
     for path in census_blocks:
         rows = [
             row
             for row in setting.block_rows(path)
-            if west - margin <= row[1] <= east + margin
-            and south - margin <= row[2] <= north + margin
+            if any(
+                west - margin <= row[1] <= east + margin
+                and south - margin <= row[2] <= north + margin
+                for west, south, east, north in boxes
+            )
         ]
         blocks.extend(setting.join_jobs(rows, jobs))
     if not blocks:
@@ -393,8 +416,9 @@ def install_counties(counties: Path, target: Path) -> int:
     """The counties in `counties` that reach the coverage box, written to `target`
     as a FeatureCollection with the properties the report names them by."""
     from shapely.geometry import box, mapping
+    from shapely.ops import unary_union
 
-    area = box(*COVERAGE_BBOX)
+    area = unary_union([box(*b) for b in coverage_boxes()])
     features = [
         {
             "type": "Feature",
@@ -518,7 +542,10 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
 
 
 def roadway_rows(
-    roadway_block: Path | None, baltimore: Path | None, alexandria: Path | None = None
+    roadway_block: Path | None,
+    baltimore: Path | None,
+    alexandria: Path | None = None,
+    fdot: Sequence[Path] = (),
 ) -> list[dict]:
     """Agency street blocks in the shape `ReferenceData.load_road_blocks` reads.
 
@@ -543,6 +570,8 @@ def roadway_rows(
         (roadway_block, "dc", lambda props: agency_roads.parse_dc_roadway_block(props)),
         (baltimore, "baltimore", agency_roads.parse_baltimore_centerline),
         (alexandria, "alexandria", agency_roads.parse_alexandria_transport_streets),
+        # FDOT's speed and lane layers, one prefix each so their row numbers stay apart.
+        *((path, f"fdot-{path.stem}", agency_roads.parse_fdot_rci) for path in fdot),
     )
     for path, prefix, parse in layers:
         if path is None:
@@ -650,6 +679,16 @@ def main(argv: list[str] | None = None) -> int:
         "--baltimore-centerline", type=Path, help="Baltimore street centerline, GeoJSON as fetched"
     )
     parser.add_argument(
+        "--fdot",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "FDOT's Maximum_Speed_Limit_TDA or Number_Of_Lanes_TDA layer, GeoJSON as fetched; "
+            "repeats"
+        ),
+    )
+    parser.add_argument(
         "--alexandria-streets",
         type=Path,
         help="City of Alexandria Transport Streets (CC0), GeoJSON as fetched",
@@ -663,6 +702,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--scenic-byways", type=Path, help="MDOT SHA Scenic Byways (MD iMAP), GeoJSON as fetched"
+    )
+    parser.add_argument(
+        "--fl-trail-uses",
+        type=Path,
+        help="Florida Greenways and Trails, Existing Trails (FL DEP), GeoJSON as fetched",
     )
     parser.add_argument(
         "--dc-signals", type=Path, help="DDOT Traffic Signals (DC GIS), GeoJSON as fetched"
@@ -720,9 +764,11 @@ def main(argv: list[str] | None = None) -> int:
         args.roadway_block,
         args.baltimore_centerline,
         args.alexandria_streets,
+        *args.fdot,
         args.dc_pci,
         args.rustic_roads,
         args.scenic_byways,
+        args.fl_trail_uses,
         args.dc_signals,
         args.md_signals,
         args.va_signals,
@@ -797,10 +843,13 @@ def main(argv: list[str] | None = None) -> int:
         (reference / "volume.json").write_text(json.dumps(rows))
         print(f"wrote {reference / 'volume.json'}: {len(rows)} count lines")
 
-    if args.roadway_block or args.baltimore_centerline or args.alexandria_streets:
+    if args.roadway_block or args.baltimore_centerline or args.alexandria_streets or args.fdot:
         try:
             blocks = roadway_rows(
-                args.roadway_block, args.baltimore_centerline, args.alexandria_streets
+                args.roadway_block,
+                args.baltimore_centerline,
+                args.alexandria_streets,
+                args.fdot,
             )
         except InternalOnlySource as refused:
             parser.error(str(refused))
@@ -842,6 +891,21 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("two scenic lines share an id")
         (reference / "scenic.json").write_text(json.dumps(rows, separators=(",", ":")))
         print(f"wrote {reference / 'scenic.json'}: {len(rows)} scenic lines")
+
+    if args.fl_trail_uses:
+        # The trails Florida's Office of Greenways and Trails lists for biking
+        # (`routemaker.trail_uses`; the owner, 2026-11-25), read by the rebuild's
+        # override stage (`pipeline.trail_uses`).
+        from routemaker import trail_uses
+
+        rows, dropped = trail_uses.fl_ogt_rows(json.loads(args.fl_trail_uses.read_text()))
+        if len({row["id"] for row in rows}) != len(rows):
+            parser.error("two trail-use lines share an id")
+        (reference / "trail-uses.json").write_text(json.dumps(rows, separators=(",", ":")))
+        print(
+            f"wrote {reference / 'trail-uses.json'}: {len(rows)} biking trail lines, "
+            f"{dropped} records left out (not for bicycles)"
+        )
 
     signal_inputs = (
         (args.dc_signals, "ddot_rows", {}),
