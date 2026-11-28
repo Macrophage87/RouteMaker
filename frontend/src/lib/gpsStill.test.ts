@@ -65,8 +65,10 @@ test("a good fix, or no good fix yet, is never taken as standing still", () => {
   assert.equal(stillAtLight(null, 0, fix({ accuracyM: 90, speedMs: null }), 1_000), false);
 });
 
-test("a slow rider under trees, or a phone that gives no speed, still hears the GPS is weak", () => {
-  // About 3.4 mph with a real speed on the last good fix: still braking or stopped, so drift is held...
+test("braking to a stop holds the clock; rough fixes with a speed, or no speed to go by, do not", () => {
+  // About 3.4 mph on the last good fix: braking for the light (the 4 m filter sends no slower fix). Known cost: a
+  // walking-pace rider under trees whose rough fixes carry no speed waits for the note too (estimates never run
+  // under 2 m/s anyway, ESTIMATE_MIN_SPEED_MS)...
   assert.equal(stillAtLight(fix({ speedMs: 1.5 }), 0, fix({ accuracyM: 100, speedMs: null }), 5_000), true);
   // ...but rough fixes that carry the rider's own speed are riding, not waiting.
   assert.equal(stillAtLight(fix({ speedMs: 1.5 }), 0, fix({ accuracyM: 100, speedMs: 1.4 }), 5_000), false);

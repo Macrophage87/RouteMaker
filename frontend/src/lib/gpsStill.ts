@@ -14,7 +14,11 @@
 import { haversineM } from "./geo.ts";
 import { POOR_FIX_M, type RideFix } from "./navigate.ts";
 
-/** The last good fix slower than this (about 4.5 mph): the rider was braking for a light or stopped. */
+/**
+ * The last good fix slower than this (about 4.5 mph): the rider was braking for a light or stopped. Not STOPPED_MS:
+ * with the 4 m filter the last fix before a stop is often still rolling at 1-2 m/s. The cost, a walking-pace rider
+ * under trees with speedless rough fixes, hears the note late; no estimate runs below this speed either.
+ */
 export const STILL_LAST_SPEED_MS = 2;
 /** A rough fix with a speed under this (about 1 mph), or none at all, shows no movement of its own. */
 export const STILL_SPEED_MS = 0.5;
